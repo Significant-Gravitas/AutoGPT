@@ -10,7 +10,7 @@ export default function OnboardingBackButton({
 }: OnboardingBackButtonProps) {
   return (
     <Link
-      className="font-geist flex items-center gap-2 text-base font-medium text-zinc-700 transition-colors duration-200 hover:text-zinc-800"
+      className="flex items-center gap-2 font-sans text-base font-medium text-zinc-700 transition-colors duration-200 hover:text-zinc-800"
       href={href}
     >
       <ChevronLeft size={24} className="-mr-1" />

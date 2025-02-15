@@ -2,6 +2,9 @@
 import { ReactNode } from "react";
 import OnboardingBackButton from "./OnboardingBackButton";
 import { cn } from "@/lib/utils";
+import OnboardingProgress from "./OnboardingProgress";
+import { useOnboarding } from "@/app/onboarding/layout";
+import { useRouter } from "next/navigation";
 
 export function OnboardingStep({
   dotted,
@@ -31,14 +34,20 @@ export function OnboardingHeader({
   transparent,
   children,
 }: OnboardingHeaderProps) {
+  const { state } = useOnboarding();
+
   return (
     <div className="sticky top-0 z-10 w-full">
       <div
         className={cn(transparent ? "bg-transparent" : "bg-gray-100", "pb-5")}
       >
-        <div className="flex w-full items-center justify-between px-5 py-5">
+        <div className="flex w-full items-center justify-between px-5 py-4">
           <OnboardingBackButton href={backHref} />
-          <div>Progress...</div>
+          <OnboardingProgress
+            totalSteps={5}
+            fromStep={(state.prevStep || 1) - 1}
+            toStep={state.step - 1}
+          />
         </div>
         {children}
       </div>

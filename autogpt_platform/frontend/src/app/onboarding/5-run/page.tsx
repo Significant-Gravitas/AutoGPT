@@ -43,7 +43,7 @@ function isEmptyOrWhitespace(str: string | undefined | null): boolean {
 }
 
 export default function Page() {
-  const { state, setState } = useOnboarding(4);
+  const { state, setState } = useOnboarding(5);
   const [showInput, setShowInput] = useState(false);
   const selectedAgent = agents.find(
     (agent) => agent.id === state.chosenAgentId,
@@ -74,7 +74,10 @@ export default function Page() {
         </span>
 
         <div
-          onClick={() => setShowInput(true)}
+          onClick={() => {
+            setShowInput(true);
+            setState({ step: 6 });
+          }}
           className={cn(
             "mt-16 flex h-[68px] w-[330px] items-center justify-center rounded-xl border-2 border-violet-700 bg-neutral-50",
             "cursor-pointer transition-all duration-200 ease-in-out hover:bg-violet-50",

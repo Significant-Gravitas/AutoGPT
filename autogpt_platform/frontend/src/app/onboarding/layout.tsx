@@ -9,6 +9,7 @@ import {
 
 type OnboardingState = {
   step: number;
+  prevStep?: number;
   usageReason?: string;
   integrations: string[];
   otherIntegrations?: string;
@@ -24,15 +25,15 @@ const OnboardingContext = createContext<
   | undefined
 >(undefined);
 
-export function useOnboarding(step: number) {
+export function useOnboarding(step?: number) {
   const context = useContext(OnboardingContext);
   if (!context)
     throw new Error("useOnboarding must be used within OnboardingLayout");
 
   useEffect(() => {
-    if (step > context.state.step) {
-      context.setState({ step });
-    }
+    if (!step) return;
+
+    context.setState({ step });
   }, [step]);
 
   return context;
@@ -48,12 +49,10 @@ export default function OnboardingLayout({
     integrations: [],
   });
 
-  //todo kcze user
-
   const setState = (newState: Partial<OnboardingState>) => {
-    // Don't update step if it's lower than current
-    if (newState.step && newState.step < state.step) {
-      delete newState.step;
+    // Update prevStep if step is being set
+    if (newState.step) {
+      newState.prevStep = state.step;
     }
     setStateRaw((prev) => ({ ...prev, ...newState }));
   };
