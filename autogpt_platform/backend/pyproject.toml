@@ -63,6 +63,7 @@ uvicorn = { extras = ["standard"], version = "^0.34.0" }
 websockets = "^13.1"
 youtube-transcript-api = "^0.6.2"
 # NOTE: please insert new dependencies in their alphabetical location
+poetry = "^2.1.1"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.4.4"
