@@ -351,6 +351,14 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         Run the block with the given input data.
         Args:
             input_data: The input data with the structure of input_schema.
+
+        Kwargs: Currently 14/02/2025 these include
+            graph_id: The ID of the graph.
+            node_id: The ID of the node.
+            graph_exec_id: The ID of the graph execution.
+            node_exec_id: The ID of the node execution.
+            user_id: The ID of the user.
+
         Returns:
             A Generator that yields (output_name, output_data).
             output_name: One of the output name defined in Block's output_schema.
