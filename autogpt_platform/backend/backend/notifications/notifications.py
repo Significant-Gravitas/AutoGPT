@@ -1,9 +1,7 @@
 import logging
 import time
-from typing import TYPE_CHECKING
 
 from aio_pika.exceptions import QueueEmpty
-from autogpt_libs.utils.cache import thread_cached
 
 from backend.data.notifications import (
     BatchingStrategy,
@@ -13,13 +11,10 @@ from backend.data.notifications import (
     get_data_type,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.executor.database import DatabaseManager
+from backend.data.user import get_user_email_by_id, get_user_notification_preference
 from backend.notifications.email import EmailSender
-from backend.util.service import AppService, expose, get_service_client
+from backend.util.service import AppService, expose
 from backend.util.settings import Settings
-
-if TYPE_CHECKING:
-    from backend.executor import DatabaseManager
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -119,15 +114,15 @@ class NotificationManager(AppService):
     def queue_notification(self, event: NotificationEventDTO) -> NotificationResult:
         """Queue a notification - exposed method for other services to call"""
         try:
-            logger.info(f"Recieved Request to queue {event=}")
-            # Workaround for not being able to seralize generics over the expose bus
+            logger.info(f"Received Request to queue {event=}")
+            # Workaround for not being able to serialize generics over the expose bus
             parsed_event = NotificationEventModel[
                 get_data_type(event.type)
             ].model_validate(event.model_dump())
             routing_key = self.get_routing_key(parsed_event)
             message = parsed_event.model_dump_json()
 
-            logger.info(f"Recieved Request to queue {message=}")
+            logger.info(f"Received Request to queue {message=}")
 
             exchange = "notifications"
 
@@ -144,7 +139,7 @@ class NotificationManager(AppService):
 
             return NotificationResult(
                 success=True,
-                message=(f"Notification queued with routing key: {routing_key}"),
+                message=f"Notification queued with routing key: {routing_key}",
             )
 
         except Exception as e:
@@ -158,12 +153,10 @@ class NotificationManager(AppService):
             parsed_event = NotificationEventModel[
                 get_data_type(event.type)
             ].model_validate_json(message)
-            user_email = get_db_client().get_user_email_by_id(event.user_id)
-            should_send = (
-                get_db_client()
-                .get_user_notification_preference(event.user_id)
-                .preferences[event.type]
-            )
+            user_email = self.run_and_wait(get_user_email_by_id(event.user_id))
+            should_send = self.run_and_wait(
+                get_user_notification_preference(event.user_id)
+            ).preferences[event.type]
             if not user_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False
@@ -217,12 +210,3 @@ class NotificationManager(AppService):
         """Cleanup service resources"""
         self.running = False
         super().cleanup()
-
-    # ------- UTILITIES ------- #
-
-
-@thread_cached
-def get_db_client() -> "DatabaseManager":
-    from backend.executor import DatabaseManager
-
-    return get_service_client(DatabaseManager)

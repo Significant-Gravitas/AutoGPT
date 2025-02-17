@@ -4,8 +4,13 @@ from collections import defaultdict
 from datetime import datetime, timezone
 
 import stripe
+from autogpt_libs.utils.cache import thread_cached
 from prisma import Json
-from prisma.enums import CreditRefundRequestStatus, CreditTransactionType
+from prisma.enums import (
+    CreditRefundRequestStatus,
+    CreditTransactionType,
+    NotificationType,
+)
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditRefundRequest, CreditTransaction, User
 from prisma.types import CreditTransactionCreateInput, CreditTransactionWhereInput
@@ -23,7 +28,10 @@ from backend.data.model import (
     TransactionHistory,
     UserTransaction,
 )
+from backend.data.notifications import NotificationEventDTO
 from backend.data.user import get_user_by_id
+from backend.notifications import NotificationManager
+from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -338,6 +346,10 @@ class UsageTransactionMetadata(BaseModel):
 
 class UserCredit(UserCreditBase):
 
+    @thread_cached
+    def notification_client(self) -> NotificationManager:
+        return get_service_client(NotificationManager)
+
     def _block_usage_cost(
         self,
         block: Block,
@@ -460,7 +472,7 @@ class UserCredit(UserCreditBase):
         refund_key = f"{transaction.createdAt.strftime('%Y-%W')}-{user_id}"
 
         try:
-            await CreditRefundRequest.prisma().create(
+            refund_request = await CreditRefundRequest.prisma().create(
                 data={
                     "id": refund_key,
                     "transactionKey": transaction_key,
@@ -477,7 +489,20 @@ class UserCredit(UserCreditBase):
             )
 
         if amount - balance > settings.config.refund_credit_tolerance_threshold:
-            # TODO: add a notification for the platform administrator.
+            self.notification_client().queue_notification(
+                NotificationEventDTO(
+                    user_id=user_id,
+                    type=NotificationType.REFUND_REQUEST,
+                    data={
+                        "user_id": user_id,
+                        "transaction_id": transaction_key,
+                        "refund_request_id": refund_request.id,
+                        "reason": refund_request.reason,
+                        "amount": amount,
+                        "balance": balance,
+                    },
+                )
+            )
             return 0  # Register the refund request for manual approval.
 
         # Auto refund the top-up.

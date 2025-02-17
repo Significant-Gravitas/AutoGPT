@@ -9,3 +9,4 @@
 ALTER TYPE "CreditTransactionType" ADD VALUE 'GRANT';
 ALTER TYPE "CreditTransactionType" ADD VALUE 'REFUND';
 ALTER TYPE "CreditTransactionType" ADD VALUE 'CARD_CHECK';
+ALTER TYPE "NotificationType" ADD VALUE 'REFUND_REQUEST';
