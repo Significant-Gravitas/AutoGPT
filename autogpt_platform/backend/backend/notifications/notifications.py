@@ -143,7 +143,7 @@ class NotificationManager(AppService):
             )
 
         except Exception as e:
-            logger.error(f"Error queueing notification: {e}")
+            logger.exception(f"Error queueing notification: {e}")
             return NotificationResult(success=False, message=str(e))
 
     async def _process_immediate(self, message: str) -> bool:
