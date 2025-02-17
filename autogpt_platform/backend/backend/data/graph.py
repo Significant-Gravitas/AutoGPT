@@ -259,11 +259,42 @@ class GraphModel(Graph):
 
     def validate_graph(self, for_run: bool = False):
         def sanitize(name):
-            return name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
+            return name.split("_#_")[0].split("_@_")[0].split("_$_")[0].split("_^_")[0]
+
+        # Validate smart decision maker nodes
+        smart_decision_maker_nodes = set()
+        # smd_unique_tool_links = {}
+        agent_nodes = set()
+
+        for node in self.nodes:
+            if node.block_id == "3b191d9f-356f-482d-8238-ba04b6d18381":
+                smart_decision_maker_nodes.add(node.id)
+            elif node.block_id == "e189baac-8c20-45a1-94a7-55177ea42565":
+                agent_nodes.add(node.id)
 
         input_links = defaultdict(list)
+        tool_name_to_node = {}
+
         for link in self.links:
             input_links[link.sink_id].append(link)
+
+            if (
+                link.source_id in smart_decision_maker_nodes
+                and link.source_name.startswith("tools_^_")
+            ):
+                tool_name = link.source_name.split("_^_")[1]
+                if tool_name in tool_name_to_node:
+                    if tool_name_to_node[tool_name] != link.sink_id:
+                        raise ValueError(
+                            f"Tool name {tool_name} links to multiple nodes: {tool_name_to_node[tool_name]} and {link.sink_id}"
+                        )
+                else:
+                    tool_name_to_node[tool_name] = link.sink_id
+
+                # TODO: Uncomment this when I've updated the tests
+                # smd_unique_tool_links[link.source_id] = set(link.sink_id)
+                # if link.sink_id not in agent_nodes:
+                #     raise ValueError(f"Smart decision maker node {link.source_id} cannot link to non-agent node {link.sink_id}")
 
         # Nodes: required fields are filled or connected and dependencies are satisfied
         for node in self.nodes:

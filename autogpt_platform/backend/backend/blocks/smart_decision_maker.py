@@ -28,7 +28,7 @@ class SmartDecisionMakerBlock(Block):
 
     class Output(BlockSchema):
         # Starting with a single tool.
-        tool: dict[str, dict[str, Any]] = SchemaField(
+        tools: dict[str, dict[str, Any]] = SchemaField(
             description="The tools that are available to use."
         )
 
@@ -40,7 +40,20 @@ class SmartDecisionMakerBlock(Block):
             input_schema=SmartDecisionMakerBlock.Input,
             output_schema=SmartDecisionMakerBlock.Output,
             test_input={"text": "Hello, World!"},
-            test_output=("status", "printed"),
+            test_output=[
+                (
+                    "tools",
+                    {
+                        "add_to_dictionary": {
+                            "key": "greeting",
+                            "value": "Hello, World!",
+                        },
+                        "print_to_console": {
+                            "text": "Hello, World!",
+                        },
+                    },
+                )
+            ],
         )
 
     @staticmethod
@@ -73,7 +86,14 @@ class SmartDecisionMakerBlock(Block):
         tool_links = [
             link
             for link in graph.links
-            if link.source_name == "tool" and link.source_id == node_id
+            # NOTE: Maybe we can do a specific database call to only get relevant nodes
+            # async def get_connected_output_nodes(source_node_id: str) -> list[Node]:
+            #     links = await AgentNodeLink.prisma().find_many(
+            #         where={"agentNodeSourceId": source_node_id},
+            #         include={"AgentNode": {"include": AGENT_NODE_INCLUDE}},
+            #     )
+            #     return [NodeModel.from_db(link.AgentNodeSink) for link in links]
+            if link.source_name.startswith("tools_^_") and link.source_id == node_id
         ]
 
         node_block_map = {node.id: node.block_id for node in graph.nodes}
@@ -174,11 +194,4 @@ class SmartDecisionMakerBlock(Block):
 
         tool_functions = self._create_function_signature(node_id, graph)
 
-        yield "tool", tool_functions
-
-
-"""
-Lets first divise a test for this....
-
-
-"""
+        yield "tools_#_add_to_dictionary_#_key", tool_functions

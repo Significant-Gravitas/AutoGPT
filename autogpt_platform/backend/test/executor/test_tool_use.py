@@ -3,7 +3,7 @@ import logging
 import pytest
 from prisma.models import User
 
-from backend.blocks.basic import PrintToConsoleBlock, StoreValueBlock
+from backend.blocks.basic import AddToDictionaryBlock, StoreValueBlock
 from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 from backend.data import graph
 from backend.server.model import CreateGraph
@@ -30,7 +30,7 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
             block_id=StoreValueBlock().id,
         ),
         graph.Node(
-            block_id=PrintToConsoleBlock().id,
+            block_id=AddToDictionaryBlock().id,
         ),
     ]
 
@@ -40,14 +40,20 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
         graph.Link(
             source_id=smd_id,
             sink_id=nodes[1].id,
-            source_name="tool",
+            source_name="tools_^_store_value_^_input",
             sink_name="input",
         ),
         graph.Link(
             source_id=smd_id,
             sink_id=nodes[2].id,
-            source_name="tool",
-            sink_name="text",
+            source_name="tools_^_add_to_dictionary_^_key",
+            sink_name="key",
+        ),
+        graph.Link(
+            source_id=smd_id,
+            sink_id=nodes[2].id,
+            source_name="tools_^_add_to_dictionary_^_value",
+            sink_name="value",
         ),
     ]
 
@@ -64,30 +70,48 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
     tool_functions = SmartDecisionMakerBlock._create_function_signature(
         test_graph.nodes[0].id, test_graph
     )
-    assert tool_functions is not None
+    assert tool_functions is not None, "Tool functions should not be None"
     assert (
         len(tool_functions) == 2
     ), f"Expected 2 tool functions, got {len(tool_functions)}"
 
     store_value_function = next(
-        filter(lambda x: x["function"]["name"] == "StoreValueBlock", tool_functions)
+        filter(lambda x: x["function"]["name"] == "StoreValueBlock", tool_functions),
+        None,
     )
-    print_to_console_function = next(
-        filter(lambda x: x["function"]["name"] == "PrintToConsoleBlock", tool_functions)
+    add_to_dictionary_function = next(
+        filter(
+            lambda x: x["function"]["name"] == "AddToDictionaryBlock", tool_functions
+        ),
+        None,
     )
 
-    assert store_value_function["function"]["name"] == "StoreValueBlock"
+    assert store_value_function is not None, "StoreValueBlock function not found"
+    assert (
+        store_value_function["function"]["name"] == "StoreValueBlock"
+    ), "Incorrect function name for StoreValueBlock"
     assert (
         store_value_function["function"]["parameters"]["properties"]["input"]["type"]
         == "string"
-    )
-    assert store_value_function["function"]["parameters"]["required"] == ["input"]
+    ), "Input type for StoreValueBlock should be 'string'"
+    assert store_value_function["function"]["parameters"]["required"] == [
+        "input"
+    ], "Required parameters for StoreValueBlock should be ['input']"
 
-    assert print_to_console_function["function"]["name"] == "PrintToConsoleBlock"
     assert (
-        print_to_console_function["function"]["parameters"]["properties"]["text"][
+        add_to_dictionary_function is not None
+    ), "AddToDictionaryBlock function not found"
+    assert (
+        add_to_dictionary_function["function"]["name"] == "AddToDictionaryBlock"
+    ), "Incorrect function name for AddToDictionaryBlock"
+    assert (
+        add_to_dictionary_function["function"]["parameters"]["properties"]["key"][
             "type"
         ]
         == "string"
-    )
-    assert print_to_console_function["function"]["parameters"]["required"] == ["text"]
+    ), "Key type for AddToDictionaryBlock should be 'string'"
+    assert sorted(
+        add_to_dictionary_function["function"]["parameters"]["required"]
+    ) == sorted(
+        ["key", "value"]
+    ), f"Required parameters for AddToDictionaryBlock should be ['key', 'value'], they where {add_to_dictionary_function['function']['parameters']['required']}"
