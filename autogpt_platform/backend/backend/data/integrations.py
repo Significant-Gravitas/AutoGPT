@@ -8,14 +8,23 @@ from pydantic import Field, computed_field
 from backend.data.includes import INTEGRATION_WEBHOOK_INCLUDE
 from backend.data.queue import AsyncRedisEventBus
 from backend.integrations.providers import ProviderName
-from backend.integrations.webhooks.utils import webhook_ingress_url
+from backend.util.settings import Config
 
 from .db import BaseDbModel
 
 if TYPE_CHECKING:
     from .graph import NodeModel
 
+app_config = Config()
+
 logger = logging.getLogger(__name__)
+
+
+def webhook_ingress_url(provider_name: ProviderName, webhook_id: str) -> str:
+    return (
+        f"{app_config.platform_base_url}/api/integrations/{provider_name.value}"
+        f"/webhooks/{webhook_id}/ingress"
+    )
 
 
 class Webhook(BaseDbModel):
