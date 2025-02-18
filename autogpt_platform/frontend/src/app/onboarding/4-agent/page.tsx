@@ -53,12 +53,12 @@ export default function Page() {
       <div className="my-12 flex items-center justify-between gap-5">
         <OnboardingAgentCard
           {...agents[0]}
-          selected={state.chosenAgentId == "0"}
+          selected={state?.chosenAgentId == "0"}
           onClick={() => setState({ chosenAgentId: "0" })}
         />
         <OnboardingAgentCard
           {...agents[1]}
-          selected={state.chosenAgentId == "1"}
+          selected={state?.chosenAgentId == "1"}
           onClick={() => setState({ chosenAgentId: "1" })}
         />
       </div>
@@ -66,7 +66,7 @@ export default function Page() {
       <OnboardingFooter>
         <OnboardingButton
           href="/onboarding/5-run"
-          disabled={isEmptyOrWhitespace(state.chosenAgentId)}
+          disabled={isEmptyOrWhitespace(state?.chosenAgentId)}
         >
           Next
         </OnboardingButton>

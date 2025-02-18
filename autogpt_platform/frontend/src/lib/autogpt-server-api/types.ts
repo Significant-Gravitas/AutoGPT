@@ -589,3 +589,13 @@ export interface TransactionHistory {
   transactions: CreditTransaction[];
   next_transaction_time: Date | null;
 }
+
+export interface UserOnboarding {
+  step: number;
+  usageReason?: string;
+  integrations: string[];
+  otherIntegrations?: string;
+  chosenAgentId?: string;
+  agentInput?: { [key: string]: string };
+  isCompleted: boolean;
+}

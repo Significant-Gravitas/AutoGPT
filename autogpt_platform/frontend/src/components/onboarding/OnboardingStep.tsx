@@ -42,7 +42,7 @@ export function OnboardingHeader({
       >
         <div className="flex w-full items-center justify-between px-5 py-4">
           <OnboardingBackButton href={backHref} />
-          <OnboardingProgress totalSteps={5} toStep={state.step - 1} />
+          <OnboardingProgress totalSteps={5} toStep={(state?.step || 1) - 1} />
         </div>
         {children}
       </div>

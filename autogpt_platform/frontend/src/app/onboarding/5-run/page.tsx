@@ -44,7 +44,7 @@ export default function Page() {
   const { state, setState } = useOnboarding(5);
   const [showInput, setShowInput] = useState(false);
   const selectedAgent = agents.find(
-    (agent) => agent.id === state.chosenAgentId,
+    (agent) => agent.id === state?.chosenAgentId,
   );
 
   const setAgentInput = useCallback(
@@ -52,7 +52,7 @@ export default function Page() {
       setState({
         ...state,
         agentInput: {
-          ...state.agentInput,
+          ...state?.agentInput,
           [key]: value,
         },
       });
@@ -173,14 +173,14 @@ export default function Page() {
                   name={"Video Count"}
                   description={"The number of videos you'd like to generate"}
                   placeholder={"eg. 1"}
-                  value={state.agentInput?.videoCount || ""}
+                  value={state?.agentInput?.videoCount || ""}
                   onChange={(v) => setAgentInput("videoCount", v)}
                 />
                 <OnboardingAgentInput
                   name={"Source Website"}
                   description={"The website to source the stories from"}
                   placeholder={"eg. youtube URL"}
-                  value={state.agentInput?.sourceWebsite || ""}
+                  value={state?.agentInput?.sourceWebsite || ""}
                   onChange={(v) => setAgentInput("sourceWebsite", v)}
                 />
               </div>
@@ -188,8 +188,8 @@ export default function Page() {
                 variant="violet"
                 className="mt-8 w-[136px]"
                 disabled={
-                  isEmptyOrWhitespace(state.agentInput?.videoCount) ||
-                  isEmptyOrWhitespace(state.agentInput?.sourceWebsite)
+                  isEmptyOrWhitespace(state?.agentInput?.videoCount) ||
+                  isEmptyOrWhitespace(state?.agentInput?.sourceWebsite)
                 }
               >
                 <Play className="" size={18} />

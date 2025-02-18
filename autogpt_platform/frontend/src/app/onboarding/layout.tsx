@@ -1,4 +1,6 @@
 "use client";
+import { UserOnboarding } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   createContext,
   ReactNode,
@@ -7,19 +9,10 @@ import {
   useState,
 } from "react";
 
-type OnboardingState = {
-  step: number;
-  usageReason?: string;
-  integrations: string[];
-  otherIntegrations?: string;
-  chosenAgentId?: string;
-  agentInput?: { [key: string]: string };
-};
-
 const OnboardingContext = createContext<
   | {
-      state: OnboardingState;
-      setState: (state: Partial<OnboardingState>) => void;
+      state: UserOnboarding | null;
+      setState: (state: Partial<UserOnboarding>) => void;
     }
   | undefined
 >(undefined);
@@ -43,13 +36,31 @@ export default function OnboardingLayout({
 }: {
   children: ReactNode;
 }) {
-  const [state, setStateRaw] = useState<OnboardingState>({
-    step: 0,
-    integrations: [],
-  });
+  const [state, setStateRaw] = useState<UserOnboarding | null>(null);
+  const api = useBackendAPI();
 
-  const setState = (newState: Partial<OnboardingState>) => {
-    setStateRaw((prev) => ({ ...prev, ...newState }));
+  useEffect(() => {
+    const fetchOnboarding = async () => {
+      const onboarding = await api.getUserOnboarding();
+      setStateRaw(onboarding);
+      console.log("userOnboarding", onboarding);
+    };
+    fetchOnboarding();
+  }, [api]);
+
+  const setState = (newState: Partial<UserOnboarding>) => {
+    setStateRaw((prev) => {
+      if (!prev) {
+        // Handle initial state
+        return {
+          step: 1,
+          integrations: [],
+          isCompleted: false,
+          ...newState,
+        } as UserOnboarding;
+      }
+      return { ...prev, ...newState };
+    });
   };
 
   return (
