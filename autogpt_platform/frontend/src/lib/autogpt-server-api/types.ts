@@ -224,12 +224,12 @@ export type GraphExecution = {
   duration: number;
   total_run_time: number;
   status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
-  graph_id: string;
+  graph_id: GraphID;
   graph_version: number;
 };
 
 export type GraphMeta = {
-  id: string;
+  id: GraphID;
   version: number;
   is_active: boolean;
   name: string;
@@ -237,6 +237,8 @@ export type GraphMeta = {
   input_schema: BlockIOObjectSubSchema;
   output_schema: BlockIOObjectSubSchema;
 };
+
+export type GraphID = Brand<string, "GraphID">;
 
 /* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
@@ -259,7 +261,7 @@ export type GraphCreatable = Omit<GraphUpdateable, "id"> & { id?: string };
 
 /* Mirror of backend/data/execution.py:ExecutionResult */
 export type NodeExecutionResult = {
-  graph_id: string;
+  graph_id: GraphID;
   graph_version: number;
   graph_exec_id: string;
   node_exec_id: string;
@@ -503,7 +505,7 @@ export type Schedule = {
   name: string;
   cron: string;
   user_id: string;
-  graph_id: string;
+  graph_id: GraphID;
   graph_version: number;
   input_data: { [key: string]: any };
   next_run_time: string;
@@ -511,7 +513,7 @@ export type Schedule = {
 
 export type ScheduleCreatable = {
   cron: string;
-  graph_id: string;
+  graph_id: GraphID;
   graph_version: number;
   input_data: { [key: string]: any };
 };
@@ -574,12 +576,13 @@ export interface CreateAPIKeyResponse {
 }
 
 export interface CreditTransaction {
+  transaction_key: string;
   transaction_time: Date;
   transaction_type: string;
   amount: number;
   balance: number;
   description: string;
-  usage_graph_id: string;
+  usage_graph_id: GraphID;
   usage_execution_id: string;
   usage_node_count: number;
   usage_starting_time: Date;
@@ -590,16 +593,12 @@ export interface TransactionHistory {
   next_transaction_time: Date | null;
 }
 
-export enum AgentStatus {
-  COMPLETED = "COMPLETED",
-  HEALTHY = "HEALTHY",
-  WAITING = "WAITING",
-  ERROR = "ERROR",
-}
+/* *** LIBRARY *** */
 
-export interface LibraryAgent {
-  id: string;
-  agent_id: string;
+/* Mirror of backend/server/v2/library/model.py:LibraryAgent */
+export type LibraryAgent = {
+  id: LibraryAgentID;
+  agent_id: GraphID;
   agent_version: number;
   image_url: string;
   creator_name: string;
@@ -608,10 +607,19 @@ export interface LibraryAgent {
   updated_at: Date;
   name: string;
   description: string;
-  input_schema: { [key: string]: any };
+  input_schema: BlockIOObjectSubSchema;
   new_output: boolean;
   can_access_graph: boolean;
   is_latest_version: boolean;
+}
+
+export type LibraryAgentID = Brand<string, "LibraryAgentID">;
+
+export enum AgentStatus {
+  COMPLETED = "COMPLETED",
+  HEALTHY = "HEALTHY",
+  WAITING = "WAITING",
+  ERROR = "ERROR",
 }
 
 export interface LibraryAgentResponse {
@@ -653,8 +661,26 @@ export interface CreateLibraryAgentPresetRequest {
   is_active: boolean;
 }
 
-// Types for v2 Library
 export enum LibraryAgentSortEnum {
   CREATED_AT = "createdAt",
   UPDATED_AT = "updatedAt",
 }
+
+export interface RefundRequest {
+  id: string;
+  user_id: string;
+  transaction_key: string;
+  amount: number;
+  reason: string;
+  result: string | null;
+  status: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+/* *** UTILITIES *** */
+
+/** Use branded types for IDs -> deny mixing IDs between different object classes */
+export type Brand<T, Brand extends string> = T & {
+  readonly [B in Brand as `__${B}_brand`]: never;
+};

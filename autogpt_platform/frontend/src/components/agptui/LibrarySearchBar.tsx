@@ -11,7 +11,7 @@ export const LibrarySearchBar = () => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isFocused, setIsFocused] = useState(false);
   const api = useBackendAPI();
-  const { setAgentLoading, setAgents, libraryFilter, setSearchTerm } =
+  const { setAgentLoading, setAgents, librarySort, setSearchTerm } =
     useLibraryPageContext();
 
   const debouncedSearch = debounce(async (value: string) => {
@@ -21,7 +21,7 @@ export const LibrarySearchBar = () => {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       const response = await api.listLibraryAgents({
         search_term: value,
-        sort_by: libraryFilter,
+        sort_by: librarySort,
         page: 1,
       });
       setAgents(response.agents);

@@ -6,40 +6,39 @@ import {
   APIKeyCredentials,
   APIKeyPermission,
   Block,
-  CreatorsResponse,
-  CreatorDetails,
   CreateAPIKeyResponse,
+  CreateLibraryAgentPresetRequest,
+  CreatorDetails,
+  CreatorsResponse,
   Credentials,
   CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
-  GraphExecution,
   Graph,
   GraphCreatable,
+  GraphExecution,
   GraphMeta,
   GraphUpdateable,
+  LibraryAgentPreset,
+  LibraryAgentPresetResponse,
+  LibraryAgentResponse,
+  LibraryAgentSortEnum,
   MyAgentsResponse,
   NodeExecutionResult,
   ProfileDetails,
+  RefundRequest,
   Schedule,
   ScheduleCreatable,
-  StoreAgentsResponse,
   StoreAgentDetails,
-  StoreSubmissionsResponse,
-  StoreSubmissionRequest,
-  StoreSubmission,
-  StoreReviewCreate,
+  StoreAgentsResponse,
   StoreReview,
+  StoreReviewCreate,
+  StoreSubmission,
+  StoreSubmissionRequest,
+  StoreSubmissionsResponse,
   TransactionHistory,
   User,
   UserPasswordCredentials,
-  LibraryAgentResponse,
-  LibraryAgentPresetResponse,
-  CreateLibraryAgentPresetRequest,
-  LibraryAgent,
-  LibraryAgentPreset,
-  AgentStatus,
-  LibraryAgentSortEnum,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -108,24 +107,29 @@ export default class BackendAPI {
   }
 
   getTransactionHistory(
-    lastTransction: Date | null,
-    countLimit: number,
+    lastTransction: Date | null = null,
+    countLimit: number | null = null,
+    transactionType: string | null = null,
   ): Promise<TransactionHistory> {
-    return this._get(
-      `/credits/transactions`,
-      lastTransction
-        ? {
-            transaction_time: lastTransction,
-            transaction_count_limit: countLimit,
-          }
-        : {
-            transaction_count_limit: countLimit,
-          },
-    );
+    const filters: Record<string, any> = {};
+    if (lastTransction) filters.transaction_time = lastTransction;
+    if (countLimit) filters.transaction_count_limit = countLimit;
+    if (transactionType) filters.transaction_type = transactionType;
+    return this._get(`/credits/transactions`, filters);
+  }
+
+  getRefundRequests(): Promise<RefundRequest[]> {
+    return this._get(`/credits/refunds`);
   }
 
   requestTopUp(credit_amount: number): Promise<{ checkout_url: string }> {
     return this._request("POST", "/credits", { credit_amount });
+  }
+
+  refundTopUp(transaction_key: string, reason: string): Promise<number> {
+    return this._request("POST", `/credits/${transaction_key}/refund`, {
+      reason,
+    });
   }
 
   getUserPaymentPortalLink(): Promise<{ url: string }> {
