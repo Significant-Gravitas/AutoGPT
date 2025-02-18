@@ -1,5 +1,5 @@
 import React from "react";
-import { GraphExecution, GraphMeta } from "@/lib/autogpt-server-api";
+import { GraphExecution, LibraryAgent } from "@/lib/autogpt-server-api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -14,7 +14,7 @@ import { FlowRunStatusBadge } from "@/components/monitor/FlowRunStatusBadge";
 import { TextRenderer } from "../ui/render";
 
 export const FlowRunsList: React.FC<{
-  flows: GraphMeta[];
+  flows: LibraryAgent[];
   executions: GraphExecution[];
   className?: string;
   selectedRun?: GraphExecution | null;
@@ -51,7 +51,9 @@ export const FlowRunsList: React.FC<{
             >
               <TableCell>
                 <TextRenderer
-                  value={flows.find((f) => f.id == execution.graph_id)?.name}
+                  value={
+                    flows.find((f) => f.agent_id == execution.graph_id)?.name
+                  }
                   truncateLengthLimit={30}
                 />
               </TableCell>

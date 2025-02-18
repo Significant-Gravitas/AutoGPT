@@ -1,8 +1,5 @@
-import BackendAPI, {
-  GraphExecution,
-  GraphMeta,
-} from "@/lib/autogpt-server-api";
-import React, { useMemo } from "react";
+import { GraphExecution, LibraryAgent } from "@/lib/autogpt-server-api";
+import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { TextRenderer } from "@/components/ui/render";
@@ -39,10 +36,10 @@ export const AgentFlowList = ({
   onSelectFlow,
   className,
 }: {
-  flows: GraphMeta[];
+  flows: LibraryAgent[];
   executions?: GraphExecution[];
-  selectedFlow: GraphMeta | null;
-  onSelectFlow: (f: GraphMeta) => void;
+  selectedFlow: LibraryAgent | null;
+  onSelectFlow: (f: LibraryAgent) => void;
   className?: string;
 }) => {
   return (
@@ -112,7 +109,7 @@ export const AgentFlowList = ({
                   lastRun: GraphExecution | null = null;
                 if (executions) {
                   const _flowRuns = executions.filter(
-                    (r) => r.graph_id == flow.id,
+                    (r) => r.graph_id == flow.agent_id,
                   );
                   runCount = _flowRuns.length;
                   lastRun =
