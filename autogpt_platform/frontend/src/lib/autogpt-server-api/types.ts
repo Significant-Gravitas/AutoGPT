@@ -224,12 +224,12 @@ export type GraphExecution = {
   duration: number;
   total_run_time: number;
   status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
-  graph_id: string;
+  graph_id: GraphID;
   graph_version: number;
 };
 
 export type GraphMeta = {
-  id: Brand<string, "GraphID">;
+  id: GraphID;
   version: number;
   is_active: boolean;
   name: string;
@@ -237,6 +237,8 @@ export type GraphMeta = {
   input_schema: BlockIOObjectSubSchema;
   output_schema: BlockIOObjectSubSchema;
 };
+
+export type GraphID = Brand<string, "GraphID">;
 
 /* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
@@ -259,7 +261,7 @@ export type GraphCreatable = Omit<GraphUpdateable, "id"> & { id?: string };
 
 /* Mirror of backend/data/execution.py:ExecutionResult */
 export type NodeExecutionResult = {
-  graph_id: string;
+  graph_id: GraphID;
   graph_version: number;
   graph_exec_id: string;
   node_exec_id: string;
@@ -282,8 +284,8 @@ export type NodeExecutionResult = {
 
 /* Mirror of backend/server/v2/library/model.py:LibraryAgent */
 export type LibraryAgent = {
-  id: Brand<string, "LibraryAgentID">;
-  agent_id: GraphMeta["id"];
+  id: LibraryAgentID;
+  agent_id: GraphID;
   agent_version: number;
   preset_id: string | null;
   updated_at: Date;
@@ -295,6 +297,8 @@ export type LibraryAgent = {
   is_created_by_user: boolean;
   is_latest_version: boolean;
 };
+
+export type LibraryAgentID = Brand<string, "LibraryAgentID">;
 
 /* Mirror of backend/server/integrations/router.py:CredentialsMetaResponse */
 export type CredentialsMetaResponse = {
@@ -519,7 +523,7 @@ export type Schedule = {
   name: string;
   cron: string;
   user_id: string;
-  graph_id: string;
+  graph_id: GraphID;
   graph_version: number;
   input_data: { [key: string]: any };
   next_run_time: string;
@@ -527,7 +531,7 @@ export type Schedule = {
 
 export type ScheduleCreatable = {
   cron: string;
-  graph_id: string;
+  graph_id: GraphID;
   graph_version: number;
   input_data: { [key: string]: any };
 };
@@ -596,7 +600,7 @@ export interface CreditTransaction {
   amount: number;
   balance: number;
   description: string;
-  usage_graph_id: string;
+  usage_graph_id: GraphID;
   usage_execution_id: string;
   usage_node_count: number;
   usage_starting_time: Date;
