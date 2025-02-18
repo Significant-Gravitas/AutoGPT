@@ -153,11 +153,14 @@ class NotificationManager(AppService):
             parsed_event = NotificationEventModel[
                 get_data_type(event.type)
             ].model_validate_json(message)
-            user_email = self.run_and_wait(get_user_email_by_id(event.user_id))
+            if event.recipient_email:
+                recipient_email = event.recipient_email
+            else:
+                recipient_email = self.run_and_wait(get_user_email_by_id(event.user_id))
             should_send = self.run_and_wait(
                 get_user_notification_preference(event.user_id)
             ).preferences[event.type]
-            if not user_email:
+            if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False
             if not should_send:
@@ -165,7 +168,7 @@ class NotificationManager(AppService):
                     f"User {event.user_id} does not want to receive {event.type} notifications"
                 )
                 return True
-            self.email_sender.send_templated(event.type, user_email, parsed_event)
+            self.email_sender.send_templated(event.type, recipient_email, parsed_event)
             logger.info(f"Processing notification: {parsed_event}")
             return True
         except Exception as e:

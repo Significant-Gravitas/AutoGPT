@@ -5,7 +5,5 @@
 -- multiple migrations, each migration adding only one value to
 -- the enum.
 
-
-ALTER TYPE "CreditTransactionType" ADD VALUE 'GRANT';
-ALTER TYPE "CreditTransactionType" ADD VALUE 'REFUND';
-ALTER TYPE "CreditTransactionType" ADD VALUE 'CARD_CHECK';
+ALTER TYPE "NotificationType" ADD VALUE 'REFUND_REQUEST';
+ALTER TYPE "NotificationType" ADD VALUE 'REFUND_PROCESSED';

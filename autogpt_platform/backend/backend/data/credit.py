@@ -28,7 +28,7 @@ from backend.data.model import (
     TransactionHistory,
     UserTransaction,
 )
-from backend.data.notifications import NotificationEventDTO
+from backend.data.notifications import NotificationEventDTO, RefundRequestData
 from backend.data.user import get_user_by_id
 from backend.notifications import NotificationManager
 from backend.util.service import get_service_client
@@ -469,7 +469,8 @@ class UserCredit(UserCreditBase):
         )
         balance = await self.get_credits(user_id)
         amount = transaction.amount
-        refund_key = f"{transaction.createdAt.strftime('%Y-%W')}-{user_id}"
+        refund_key_format = settings.config.refund_request_time_key_format
+        refund_key = f"{transaction.createdAt.strftime(refund_key_format)}-{user_id}"
 
         try:
             refund_request = await CreditRefundRequest.prisma().create(
@@ -489,18 +490,22 @@ class UserCredit(UserCreditBase):
             )
 
         if amount - balance > settings.config.refund_credit_tolerance_threshold:
+            user_data = await get_user_by_id(user_id)
             self.notification_client().queue_notification(
                 NotificationEventDTO(
+                    recipient_email=settings.config.refund_notification_email,
                     user_id=user_id,
                     type=NotificationType.REFUND_REQUEST,
-                    data={
-                        "user_id": user_id,
-                        "transaction_id": transaction_key,
-                        "refund_request_id": refund_request.id,
-                        "reason": refund_request.reason,
-                        "amount": amount,
-                        "balance": balance,
-                    },
+                    data=RefundRequestData(
+                        user_id=user_id,
+                        user_name=user_data.name or "AutoGPT Platform User",
+                        user_email=user_data.email,
+                        transaction_id=transaction_key,
+                        refund_request_id=refund_request.id,
+                        reason=refund_request.reason,
+                        amount=amount,
+                        balance=balance,
+                    ).model_dump(),
                 )
             )
             return 0  # Register the refund request for manual approval.
@@ -534,7 +539,7 @@ class UserCredit(UserCreditBase):
                 f"Invalid amount to deduct ${request.amount/100} from ${transaction.amount/100} top-up"
             )
 
-        await self._add_transaction(
+        balance, _ = await self._add_transaction(
             user_id=transaction.userId,
             amount=-request.amount,
             transaction_type=CreditTransactionType.REFUND,
@@ -554,6 +559,25 @@ class UserCredit(UserCreditBase):
                 "status": CreditRefundRequestStatus.APPROVED,
                 "result": "The refund request has been approved, the amount will be credited back to your account.",
             },
+        )
+
+        user_data = await get_user_by_id(transaction.userId)
+        self.notification_client().queue_notification(
+            NotificationEventDTO(
+                recipient_email=settings.config.refund_notification_email,
+                user_id=user_data.id,
+                type=NotificationType.REFUND_REQUEST,
+                data=RefundRequestData(
+                    user_id=user_data.id,
+                    user_name=user_data.name or "AutoGPT Platform User",
+                    user_email=user_data.email,
+                    transaction_id=transaction.transactionKey,
+                    refund_request_id=request.id,
+                    reason=str(request.reason or "-"),
+                    amount=transaction.amount,
+                    balance=balance,
+                ).model_dump(),
+            )
         )
 
     async def handle_dispute(self, dispute: stripe.Dispute):
