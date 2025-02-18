@@ -6,6 +6,7 @@ import BackendAPI, {
   BlockUIType,
   formatEdgeID,
   Graph,
+  GraphID,
   NodeExecutionResult,
 } from "@/lib/autogpt-server-api";
 import {
@@ -21,13 +22,12 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
 import { InputItem } from "@/components/RunnerUIWrapper";
 import { GraphMeta } from "@/lib/autogpt-server-api";
-import useCredits from "./useCredits";
 import { default as NextLink } from "next/link";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
 export default function useAgentGraph(
-  flowID?: string,
+  flowID?: GraphID,
   flowVersion?: number,
   flowExecutionID?: string,
   passDataToBeads?: boolean,
@@ -76,7 +76,6 @@ export default function useAgentGraph(
     useState(false);
   const [nodes, setNodes] = useState<CustomNode[]>([]);
   const [edges, setEdges] = useState<CustomEdge[]>([]);
-  const { credits, fetchCredits } = useCredits();
 
   const api = useMemo(
     () => new BackendAPI(process.env.NEXT_PUBLIC_AGPT_SERVER_URL!),

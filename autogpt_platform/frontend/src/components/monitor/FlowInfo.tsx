@@ -2,10 +2,10 @@ import React, { useEffect, useState, useCallback } from "react";
 import {
   GraphExecutionMeta,
   Graph,
-  GraphMeta,
   safeCopyGraph,
   BlockUIType,
   BlockIORootSchema,
+  LibraryAgent,
 } from "@/lib/autogpt-server-api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -38,7 +38,7 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export const FlowInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {
-    flow: GraphMeta;
+    flow: LibraryAgent;
     executions: GraphExecutionMeta[];
     flowVersion?: number | "all";
     refresh: () => void;
@@ -64,7 +64,7 @@ export const FlowInfo: React.FC<
     setNodes,
     edges,
     setEdges,
-  } = useAgentGraph(flow.id, flow.version, undefined, false);
+  } = useAgentGraph(flow.agent_id, flow.agent_version, undefined, false);
 
   const api = useBackendAPI();
   const { toast } = useToast();
@@ -75,7 +75,8 @@ export const FlowInfo: React.FC<
   );
   const selectedFlowVersion: Graph | undefined = flowVersions?.find(
     (v) =>
-      v.version == (selectedVersion == "all" ? flow.version : selectedVersion),
+      v.version ==
+      (selectedVersion == "all" ? flow.agent_version : selectedVersion),
   );
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -138,8 +139,10 @@ export const FlowInfo: React.FC<
   };
 
   useEffect(() => {
-    api.getGraphAllVersions(flow.id).then((result) => setFlowVersions(result));
-  }, [flow.id, api]);
+    api
+      .getGraphAllVersions(flow.agent_id)
+      .then((result) => setFlowVersions(result));
+  }, [flow.agent_id, api]);
 
   const openRunnerInput = () => setIsRunnerInputOpen(true);
 
@@ -180,7 +183,8 @@ export const FlowInfo: React.FC<
       <CardHeader className="flex-row justify-between space-x-3 space-y-0">
         <div>
           <CardTitle>
-            {flow.name} <span className="font-light">v{flow.version}</span>
+            {flow.name}{" "}
+            <span className="font-light">v{flow.agent_version}</span>
           </CardTitle>
         </div>
         <div className="flex items-start space-x-2">
@@ -223,7 +227,7 @@ export const FlowInfo: React.FC<
           )}
           <Link
             className={buttonVariants({ variant: "default" })}
-            href={`/build?flowID=${flow.id}&flowVersion=${flow.version}`}
+            href={`/build?flowID=${flow.agent_id}&flowVersion=${flow.agent_version}`}
           >
             <Pencil2Icon className="mr-2" />
             Open in Builder
@@ -267,10 +271,10 @@ export const FlowInfo: React.FC<
       </CardHeader>
       <CardContent>
         <FlowRunsStats
-          flows={[selectedFlowVersion ?? flow]}
+          flows={[flow]}
           executions={executions.filter(
             (execution) =>
-              execution.graph_id == flow.id &&
+              execution.graph_id == flow.agent_id &&
               (selectedVersion == "all" ||
                 execution.graph_version == selectedVersion),
           )}
@@ -295,7 +299,7 @@ export const FlowInfo: React.FC<
             <Button
               variant="destructive"
               onClick={() => {
-                api.deleteGraph(flow.id).then(() => {
+                api.deleteGraph(flow.agent_id).then(() => {
                   setIsDeleteModalOpen(false);
                   refresh();
                 });
