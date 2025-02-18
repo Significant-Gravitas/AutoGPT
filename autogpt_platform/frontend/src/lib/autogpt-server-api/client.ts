@@ -18,6 +18,7 @@ import {
   GraphCreatable,
   GraphMeta,
   GraphUpdateable,
+  LibraryAgent,
   MyAgentsResponse,
   NodeExecutionResult,
   ProfileDetails,
@@ -450,7 +451,7 @@ export default class BackendAPI {
   /////////// V2 LIBRARY API //////////////
   /////////////////////////////////////////
 
-  async listLibraryAgents(): Promise<GraphMeta[]> {
+  async listLibraryAgents(): Promise<LibraryAgent[]> {
     return this._get("/library/agents");
   }
 

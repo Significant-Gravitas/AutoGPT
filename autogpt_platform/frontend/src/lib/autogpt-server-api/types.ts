@@ -229,7 +229,7 @@ export type GraphExecution = {
 };
 
 export type GraphMeta = {
-  id: string;
+  id: Brand<string, "GraphID">;
   version: number;
   is_active: boolean;
   name: string;
@@ -278,6 +278,22 @@ export type NodeExecutionResult = {
   queue_time?: Date;
   start_time?: Date;
   end_time?: Date;
+};
+
+/* Mirror of backend/server/v2/library/model.py:LibraryAgent */
+export type LibraryAgent = {
+  id: Brand<string, "LibraryAgentID">;
+  agent_id: GraphMeta["id"];
+  agent_version: number;
+  preset_id: string | null;
+  updated_at: Date;
+  name: string;
+  description: string;
+  input_schema: BlockIOObjectSubSchema;
+  output_schema: BlockIOObjectSubSchema;
+  is_favorite: boolean;
+  is_created_by_user: boolean;
+  is_latest_version: boolean;
 };
 
 /* Mirror of backend/server/integrations/router.py:CredentialsMetaResponse */
@@ -602,3 +618,10 @@ export interface RefundRequest {
   created_at: Date;
   updated_at: Date;
 }
+
+/* *** UTILITIES *** */
+
+/** Use branded types for IDs -> deny mixing IDs between different object classes */
+export type Brand<T, Brand extends string> = T & {
+  readonly [B in Brand as `__${B}_brand`]: never;
+};
