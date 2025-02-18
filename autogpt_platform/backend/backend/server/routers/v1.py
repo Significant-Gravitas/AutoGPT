@@ -10,6 +10,7 @@ from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.feature_flag.client import feature_flag
 from autogpt_libs.utils.cache import thread_cached
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
+from prisma.types import UserOnboardingUpdateInput
 from typing_extensions import Optional, TypedDict
 
 import backend.data.block
@@ -40,6 +41,7 @@ from backend.data.credit import (
     get_user_credit_model,
     set_auto_top_up,
 )
+from backend.data.onboarding import get_user_onboarding, update_user_onboarding
 from backend.data.user import get_or_create_user
 from backend.executor import ExecutionManager, ExecutionScheduler, scheduler
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -106,6 +108,27 @@ v1_router.include_router(
 async def get_or_create_user_route(user_data: dict = Depends(auth_middleware)):
     user = await get_or_create_user(user_data)
     return user.model_dump()
+
+
+########################################################
+##################### Onboarding #######################
+########################################################
+
+
+@v1_router.get(
+    "/onboarding", tags=["onboarding"], dependencies=[Depends(auth_middleware)]
+)
+async def get_onboarding(user_id: Annotated[str, Depends(get_user_id)]):
+    return await get_user_onboarding(user_id)
+
+
+@v1_router.patch(
+    "/onboarding", tags=["onboarding"], dependencies=[Depends(auth_middleware)]
+)
+async def update_onboarding(
+    user_id: Annotated[str, Depends(get_user_id)], data: UserOnboardingUpdateInput
+):
+    return await update_user_onboarding(user_id, data)
 
 
 ########################################################
