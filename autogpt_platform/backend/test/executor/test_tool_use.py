@@ -40,19 +40,19 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
         graph.Link(
             source_id=smd_id,
             sink_id=nodes[1].id,
-            source_name="tools_^_store_value_^_input",
+            source_name="tools_store_value_#_input",
             sink_name="input",
         ),
         graph.Link(
             source_id=smd_id,
             sink_id=nodes[2].id,
-            source_name="tools_^_add_to_dictionary_^_key",
+            source_name="tools_add_to_dictionary_#_key",
             sink_name="key",
         ),
         graph.Link(
             source_id=smd_id,
             sink_id=nodes[2].id,
-            source_name="tools_^_add_to_dictionary_^_value",
+            source_name="tools_add_to_dictionary_#_value",
             sink_name="value",
         ),
     ]

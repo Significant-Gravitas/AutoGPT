@@ -93,7 +93,7 @@ class SmartDecisionMakerBlock(Block):
             #         include={"AgentNode": {"include": AGENT_NODE_INCLUDE}},
             #     )
             #     return [NodeModel.from_db(link.AgentNodeSink) for link in links]
-            if link.source_name.startswith("tools_^_") and link.source_id == node_id
+            if link.source_name.startswith("tools_") and link.source_id == node_id
         ]
 
         node_block_map = {node.id: node.block_id for node in graph.nodes}

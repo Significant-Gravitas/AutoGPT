@@ -259,7 +259,10 @@ class GraphModel(Graph):
 
     def validate_graph(self, for_run: bool = False):
         def sanitize(name):
-            return name.split("_#_")[0].split("_@_")[0].split("_$_")[0].split("_^_")[0]
+            sanitized_name = name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
+            if sanitized_name.startswith("tools_"):
+                return sanitized_name.split("_")[0]
+            return sanitized_name
 
         # Validate smart decision maker nodes
         smart_decision_maker_nodes = set()
@@ -280,9 +283,9 @@ class GraphModel(Graph):
 
             if (
                 link.source_id in smart_decision_maker_nodes
-                and link.source_name.startswith("tools_^_")
+                and link.source_name.startswith("tools_")
             ):
-                tool_name = link.source_name.split("_^_")[1]
+                tool_name = link.source_name.split("_#_")[0]
                 if tool_name in tool_name_to_node:
                     if tool_name_to_node[tool_name] != link.sink_id:
                         raise ValueError(

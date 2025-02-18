@@ -26,6 +26,10 @@ def test_parse_execution_output():
     assert parse_execution_output(output, "direct") == "match"
     assert parse_execution_output(output, "nomatch") is None
 
+    output = ("tools_add_to_dictionary", {"key": "some_key", "value": "some_value"})
+    assert parse_execution_output(output, "tools_add_to_dictionary_#_key") == "some_key"
+    assert parse_execution_output(output, "tools_add_to_dictionary_#_value") == "some_value"
+
 
 def test_merge_execution_input():
     # Test case for merging list inputs
