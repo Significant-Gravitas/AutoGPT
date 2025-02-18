@@ -102,7 +102,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Email address to send refund notifications to.",
     )
     refund_request_time_key_format: str = Field(
-        default="%Y-%W",  # This will allow for weekly refunds per user. 
+        default="%Y-%W",  # This will allow for weekly refunds per user.
         description="Time key format for refund requests.",
     )
 

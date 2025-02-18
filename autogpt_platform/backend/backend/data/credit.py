@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -350,6 +351,22 @@ class UserCredit(UserCreditBase):
     def notification_client(self) -> NotificationManager:
         return get_service_client(NotificationManager)
 
+    async def _send_refund_notification(
+        self,
+        notification_request: RefundRequestData,
+        notification_type: NotificationType,
+    ):
+        await asyncio.to_thread(
+            lambda: self.notification_client().queue_notification(
+                NotificationEventDTO(
+                    recipient_email=settings.config.refund_notification_email,
+                    user_id=notification_request.user_id,
+                    type=notification_type,
+                    data=notification_request.model_dump(),
+                )
+            )
+        )
+
     def _block_usage_cost(
         self,
         block: Block,
@@ -491,22 +508,18 @@ class UserCredit(UserCreditBase):
 
         if amount - balance > settings.config.refund_credit_tolerance_threshold:
             user_data = await get_user_by_id(user_id)
-            self.notification_client().queue_notification(
-                NotificationEventDTO(
-                    recipient_email=settings.config.refund_notification_email,
+            await self._send_refund_notification(
+                RefundRequestData(
                     user_id=user_id,
-                    type=NotificationType.REFUND_REQUEST,
-                    data=RefundRequestData(
-                        user_id=user_id,
-                        user_name=user_data.name or "AutoGPT Platform User",
-                        user_email=user_data.email,
-                        transaction_id=transaction_key,
-                        refund_request_id=refund_request.id,
-                        reason=refund_request.reason,
-                        amount=amount,
-                        balance=balance,
-                    ).model_dump(),
-                )
+                    user_name=user_data.name or "AutoGPT Platform User",
+                    user_email=user_data.email,
+                    transaction_id=transaction_key,
+                    refund_request_id=refund_request.id,
+                    reason=refund_request.reason,
+                    amount=amount,
+                    balance=balance,
+                ),
+                NotificationType.REFUND_REQUEST,
             )
             return 0  # Register the refund request for manual approval.
 
@@ -562,22 +575,18 @@ class UserCredit(UserCreditBase):
         )
 
         user_data = await get_user_by_id(transaction.userId)
-        self.notification_client().queue_notification(
-            NotificationEventDTO(
-                recipient_email=settings.config.refund_notification_email,
+        await self._send_refund_notification(
+            RefundRequestData(
                 user_id=user_data.id,
-                type=NotificationType.REFUND_REQUEST,
-                data=RefundRequestData(
-                    user_id=user_data.id,
-                    user_name=user_data.name or "AutoGPT Platform User",
-                    user_email=user_data.email,
-                    transaction_id=transaction.transactionKey,
-                    refund_request_id=request.id,
-                    reason=str(request.reason or "-"),
-                    amount=transaction.amount,
-                    balance=balance,
-                ).model_dump(),
-            )
+                user_name=user_data.name or "AutoGPT Platform User",
+                user_email=user_data.email,
+                transaction_id=transaction.transactionKey,
+                refund_request_id=request.id,
+                reason=str(request.reason or "-"),
+                amount=transaction.amount,
+                balance=balance,
+            ),
+            NotificationType.REFUND_PROCESSED,
         )
 
     async def handle_dispute(self, dispute: stripe.Dispute):
