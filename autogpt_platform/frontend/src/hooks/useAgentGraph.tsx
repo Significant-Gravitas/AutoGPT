@@ -606,6 +606,13 @@ export default function useAgentGraph(
 
     const fetchExecutions = async () => {
       const results = await api.getGraphExecutionInfo(flowID, flowExecutionID);
+      const execution = await api.getExecution(flowExecutionID);
+      if (
+        execution.status in ["QUEUED", "RUNNING"] &&
+        saveRunRequest.request === "none"
+      ) {
+        setSaveRunRequest({ request: "run", state: "running" });
+      }
       setUpdateQueue((prev) => [...prev, ...results]);
 
       // Track execution until completed

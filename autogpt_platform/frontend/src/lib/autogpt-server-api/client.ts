@@ -37,7 +37,6 @@ import {
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
-import { filter } from "../../../test-runner-jest.config";
 
 const isClient = typeof window !== "undefined";
 
@@ -146,6 +145,10 @@ export default class BackendAPI {
 
   getExecutions(): Promise<GraphExecution[]> {
     return this._get(`/executions`);
+  }
+
+  getExecution(graph_exec_id: string): Promise<GraphExecution> {
+    return this._get(`/executions/${graph_exec_id}`);
   }
 
   getGraph(
