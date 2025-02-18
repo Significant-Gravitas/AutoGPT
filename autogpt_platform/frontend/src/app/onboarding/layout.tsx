@@ -4,6 +4,7 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   createContext,
   ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useState,
@@ -48,20 +49,41 @@ export default function OnboardingLayout({
     fetchOnboarding();
   }, [api]);
 
-  const setState = (newState: Partial<UserOnboarding>) => {
-    setStateRaw((prev) => {
-      if (!prev) {
-        // Handle initial state
-        return {
-          step: 1,
-          integrations: [],
-          isCompleted: false,
-          ...newState,
-        } as UserOnboarding;
+  const setState = useCallback(
+    (newState: Partial<UserOnboarding>) => {
+      function removeNullFields<T extends object>(obj: T): Partial<T> {
+        return Object.fromEntries(
+          Object.entries(obj).filter(([_, value]) => value != null),
+        ) as Partial<T>;
       }
-      return { ...prev, ...newState };
-    });
-  };
+
+      const updateState = (state: Partial<UserOnboarding>) => {
+        if (!state) return;
+
+        api.updateUserOnboarding(state);
+        console.log("updateState", state);
+      };
+
+      setStateRaw((prev) => {
+        //todo save state when step changes
+        if (newState.step && prev?.step !== newState.step) {
+          updateState(removeNullFields({ ...prev, ...newState }));
+        }
+
+        if (!prev) {
+          // Handle initial state
+          return {
+            step: 1,
+            integrations: [],
+            isCompleted: false,
+            ...newState,
+          } as UserOnboarding;
+        }
+        return { ...prev, ...newState };
+      });
+    },
+    [api, setStateRaw],
+  );
 
   return (
     <OnboardingContext.Provider value={{ state, setState }}>

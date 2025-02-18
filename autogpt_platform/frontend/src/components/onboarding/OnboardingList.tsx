@@ -91,7 +91,7 @@ type OnboardingListProps = {
     text: string;
     id: string;
   }>;
-  selectedId?: string;
+  selectedId?: string | null;
   onSelect: (id: string) => void;
 };
 
@@ -103,7 +103,7 @@ function OnboardingList({
 }: OnboardingListProps) {
   const isCustom = useCallback(() => {
     return (
-      selectedId !== undefined &&
+      selectedId !== null &&
       !elements.some((element) => element.id === selectedId)
     );
   }, [selectedId, elements]);
