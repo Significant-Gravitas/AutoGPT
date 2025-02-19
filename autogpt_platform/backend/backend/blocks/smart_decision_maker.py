@@ -3,8 +3,7 @@ from typing import Any, List
 
 from autogpt_libs.utils.cache import thread_cached
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.graph import Graph
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
 
 logger = logging.getLogger(__name__)
@@ -23,7 +22,7 @@ class SmartDecisionMakerBlock(Block):
 
     class Input(BlockSchema):
         # Note: This is a placeholder for the actual input schema
-        text: str = SchemaField(description="The text to print to the console.")
+        prompt: str = SchemaField(description="The text to print to the console.")
 
     class Output(BlockSchema):
         # Starting with a single tool.
@@ -36,13 +35,15 @@ class SmartDecisionMakerBlock(Block):
             id="3b191d9f-356f-482d-8238-ba04b6d18381",
             description="Uses AI to intelligently decide what tool to use.",
             categories={BlockCategory.BASIC},
+            block_type=BlockType.AGENT,
             input_schema=SmartDecisionMakerBlock.Input,
             output_schema=SmartDecisionMakerBlock.Output,
             test_input={"text": "Hello, World!"},
             test_output=[],
         )
 
-    def get_tool_graph_metadata(self, node_id: str, graph: Graph) -> List[Graph]:
+    # If I import Graph here, it will break with a circular import.
+    def get_tool_graph_metadata(self, node_id: str, graph: Any) -> List[Any]:
         db_client = get_database_manager_client()
         graph_meta = []
 
@@ -65,7 +66,10 @@ class SmartDecisionMakerBlock(Block):
 
     @staticmethod
     def _create_function_signature(
-        node_id: str, graph: Graph, tool_graph_metadata: List[Graph]
+        # If I import Graph here, it will break with a circular import.
+        node_id: str,
+        graph: Any,
+        tool_graph_metadata: List[Any],
     ) -> list[dict[str, Any]]:
         """
         Creates a list of function signatures for tools linked to a specific node in a graph.
@@ -194,15 +198,20 @@ class SmartDecisionMakerBlock(Block):
         db_client = get_database_manager_client()
 
         # Retrieve the current graph and node details
-        graph = db_client.get_graph(graph_id)
+        graph = db_client.get_graph(graph_id=graph_id, user_id=user_id)
 
         if not graph:
-            raise ValueError(f"Graph not found {graph_id}")
+            raise ValueError(
+                f"The currently running graph that is executing this node is not found {graph_id}"
+            )
 
         tool_graph_metadata = self.get_tool_graph_metadata(node_id, graph)
 
-        # WIP: no assignment to pass linting
-        self._create_function_signature(node_id, graph, tool_graph_metadata)
+        tool_functions = self._create_function_signature(
+            node_id, graph, tool_graph_metadata
+        )
 
-        yield "tools_sample_tool_#_input_1", "Hello,"
-        yield "tools_sample_tool_#_input_2", " World!"
+        logger.warning(f"Tool functions: {tool_functions}")
+
+        yield "tools_sample_tool_input_1", "Hello"
+        yield "tools_sample_tool_input_2", "World"

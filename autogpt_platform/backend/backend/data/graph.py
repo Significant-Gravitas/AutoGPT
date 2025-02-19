@@ -189,7 +189,6 @@ class Graph(BaseDbModel):
         props = []
         for p in data:
             try:
-                logger.warning(f"P: {p}")
                 props.append(type_class(**p))
             except Exception as e:
                 logger.warning(f"Invalid {type_class}: {p}, {e}")
@@ -404,7 +403,7 @@ class GraphModel(Graph):
                         if block.block_type != BlockType.AGENT
                         else vals.get("input_schema", {}).get("properties", {}).keys()
                     )
-                if sanitized_name not in fields:
+                if sanitized_name not in fields and not name.startswith("tools_"):
                     fields_msg = f"Allowed fields: {fields}"
                     raise ValueError(f"{suffix}, `{name}` invalid, {fields_msg}")
 
