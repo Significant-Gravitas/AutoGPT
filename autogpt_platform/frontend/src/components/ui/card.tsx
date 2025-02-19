@@ -8,10 +8,7 @@ const Card = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn(
-      "agpt-card text-neutral-950", // TODO: check styling of existing usages
-      className,
-    )}
+    className={cn("agpt-card text-neutral-950", className)}
     {...props}
   />
 ));
