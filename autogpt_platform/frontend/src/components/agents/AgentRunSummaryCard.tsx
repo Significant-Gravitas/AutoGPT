@@ -3,7 +3,6 @@ import moment from "moment";
 import { MoreVertical } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { GraphExecutionMeta } from "@/lib/autogpt-server-api";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -14,12 +13,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-import AgentRunStatusChip from "@/components/agents/AgentRunStatusChip";
+import AgentRunStatusChip, {
+  AgentRunStatus,
+} from "@/components/agents/AgentRunStatusChip";
 
 export type AgentRunSummaryProps = {
   agentID: string;
   agentRunID: string;
-  status: GraphExecutionMeta["status"];
+  status: AgentRunStatus;
   title: string;
   timestamp: number | Date;
   selected?: boolean;

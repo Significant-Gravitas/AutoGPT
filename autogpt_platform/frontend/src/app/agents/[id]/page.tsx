@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge";
 import AgentRunDraftView from "@/components/agents/AgentRunDraftView";
 import AgentRunDetailsView from "@/components/agents/AgentRunDetailsView";
 import AgentRunSummaryCard from "@/components/agents/AgentRunSummaryCard";
+import { agentRunStatusMap } from "@/components/agents/AgentRunStatusChip";
 import AgentScheduleDetailsView from "@/components/agents/AgentScheduleDetailsView";
 
 export default function AgentRunsPage(): React.ReactElement {
@@ -202,7 +203,7 @@ export default function AgentRunsPage(): React.ReactElement {
                     key={i}
                     agentID={run.graph_id}
                     agentRunID={run.execution_id}
-                    status={run.status}
+                    status={agentRunStatusMap[run.status]}
                     title={agent.name}
                     timestamp={run.started_at}
                     selected={selectedView.id === run.execution_id}

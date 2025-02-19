@@ -52,15 +52,14 @@ const statusStyles = {
 export default function AgentRunStatusChip({
   status,
 }: {
-  status: GraphExecutionMeta["status"];
+  status: AgentRunStatus;
 }): React.ReactElement {
-  const _status = agentRunStatusMap[status];
   return (
     <Badge
       variant="secondary"
-      className={`text-xs font-medium ${statusStyles[statusData[_status].variant]} rounded-[45px] px-[9px] py-[3px]`}
+      className={`text-xs font-medium ${statusStyles[statusData[status].variant]} rounded-[45px] px-[9px] py-[3px]`}
     >
-      {statusData[_status].label}
+      {statusData[status].label}
     </Badge>
   );
 }
