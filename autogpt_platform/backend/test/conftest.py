@@ -1,4 +1,5 @@
 import logging
+import os
 
 import pytest
 
@@ -9,9 +10,10 @@ from backend.util.logging import configure_logging
 configure_logging()
 logger = logging.getLogger(__name__)
 
-# Reduce Prisma log spam
-prisma_logger = logging.getLogger("prisma")
-prisma_logger.setLevel(logging.INFO)
+# Reduce Prisma log spam unless PRISMA_DEBUG is set
+if not os.getenv("PRISMA_DEBUG"):
+    prisma_logger = logging.getLogger("prisma")
+    prisma_logger.setLevel(logging.INFO)
 
 
 @pytest.fixture(scope="session")
