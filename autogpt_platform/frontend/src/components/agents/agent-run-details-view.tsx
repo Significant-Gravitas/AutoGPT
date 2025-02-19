@@ -88,7 +88,7 @@ export default function AgentRunDetailsView({
   );
 
   const agentRunOutputs:
-    | Record<string, { /* type: BlockIOSubType; */ value: any }>
+    | Record<string, { /* type: BlockIOSubType; */ values: Array<any> }>
     | null
     | undefined = useMemo(() => {
     if (!("outputs" in run)) return undefined;
@@ -99,7 +99,7 @@ export default function AgentRunDetailsView({
     return Object.fromEntries(
       Object.entries(run.outputs).map(([k, v]) => [
         k,
-        { value: v /* type: agent.output_schema.properties[k].type */ },
+        { values: v /* type: agent.output_schema.properties[k].type */ },
       ]),
     );
   }, [run, selectedRunStatus]);
@@ -136,10 +136,12 @@ export default function AgentRunDetailsView({
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               {agentRunOutputs !== undefined ? (
-                Object.entries(agentRunOutputs).map(([key, { value }]) => (
+                Object.entries(agentRunOutputs).map(([key, { values }]) => (
                   <div key={key} className="flex flex-col gap-1.5">
                     <label className="text-sm font-medium">{key}</label>
-                    <pre>{value}</pre>
+                    {values.map((value, i) => (
+                      <pre key={i}>{value}</pre>
+                    ))}
                     {/* TODO: pretty type-dependent rendering */}
                   </div>
                 ))

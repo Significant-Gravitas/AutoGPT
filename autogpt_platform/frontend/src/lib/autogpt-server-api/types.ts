@@ -232,7 +232,7 @@ export type GraphExecutionMeta = {
 /* Mirror of backend/data/graph.py:GraphExecution */
 export type GraphExecution = GraphExecutionMeta & {
   inputs: Record<string, any>;
-  outputs: Record<string, any>;
+  outputs: Record<string, Array<any>>;
   node_executions: NodeExecutionResult[];
 };
 

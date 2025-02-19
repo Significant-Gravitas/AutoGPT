@@ -151,7 +151,7 @@ class GraphExecutionMeta(BaseDbModel):
 
 class GraphExecution(GraphExecutionMeta):
     inputs: dict[str, Any]
-    outputs: dict[str, Any]
+    outputs: dict[str, list[Any]]
     node_executions: list[ExecutionResult]
 
     @staticmethod
@@ -164,6 +164,7 @@ class GraphExecution(GraphExecutionMeta):
         node_executions = [
             ExecutionResult.from_db(ne) for ne in _graph_exec.AgentNodeExecutions
         ]
+
         inputs = {
             **{
                 # inputs from Agent Input Blocks
@@ -179,11 +180,12 @@ class GraphExecution(GraphExecutionMeta):
                 and block.block_type in [BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL]
             },
         }
-        outputs = {
-            exec.input_data["name"]: exec.input_data["value"]
-            for exec in node_executions
-            if exec.block_id == _OUTPUT_BLOCK_ID
-        }
+
+        outputs: dict[str, list] = defaultdict(list)
+        for exec in node_executions:
+            if exec.block_id == _OUTPUT_BLOCK_ID:
+                outputs[exec.input_data["name"]].append(exec.input_data["value"])
+
         return GraphExecution(
             **{
                 field_name: getattr(graph_exec, field_name)
