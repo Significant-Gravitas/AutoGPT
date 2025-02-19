@@ -144,13 +144,6 @@ class SmartDecisionMakerBlock(Block):
                     f"Sink graph metadata not found: {graph_id} {graph_version}"
                 )
 
-            logger.warning(f"Sink node: {sink_node}")
-            logger.warning(f"Sink node block: {sink_node.input_default}")
-            logger.warning(f"Sink graph_id: {sink_node.input_default['graph_id']}")
-            logger.warning(
-                f"Sink graph_version: {sink_node.input_default['graph_version']}"
-            )
-
             tool_function: dict[str, Any] = {
                 "name": sink_graph_meta.name,
                 "description": sink_graph_meta.description,
@@ -185,7 +178,6 @@ class SmartDecisionMakerBlock(Block):
             return_tool_functions.append(
                 {"type": "function", "function": tool_function}
             )
-        logger.warning(f"Tool functions: {return_tool_functions}")
         return return_tool_functions
 
     def run(
@@ -209,8 +201,8 @@ class SmartDecisionMakerBlock(Block):
 
         tool_graph_metadata = self.get_tool_graph_metadata(node_id, graph)
 
-        tool_functions = self._create_function_signature(
-            node_id, graph, tool_graph_metadata
-        )
+        # WIP: no assignment to pass linting
+        self._create_function_signature(node_id, graph, tool_graph_metadata)
 
-        yield "tools_#_add_to_dictionary_#_key", tool_functions
+        yield "tools_sample_tool_#_input_1", "Hello,"
+        yield "tools_sample_tool_#_input_2", " World!"
