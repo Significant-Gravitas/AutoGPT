@@ -55,20 +55,32 @@ export default function AgentRunSummaryCard({
             {title}
           </h3>
 
-          <DropdownMenu>
+          {/* <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="h-5 w-5 p-0">
                 <MoreVertical className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              <DropdownMenuItem /* TODO: implement */>
+              <DropdownMenuItem
+                // TODO: implement
+              >
                 Pin into a template
               </DropdownMenuItem>
-              <DropdownMenuItem /* TODO: implement */>Rename</DropdownMenuItem>
-              <DropdownMenuItem /* TODO: implement */>Delete</DropdownMenuItem>
+
+              <DropdownMenuItem
+                // TODO: implement
+              >
+                Rename
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                // TODO: implement
+              >
+                Delete
+              </DropdownMenuItem>
             </DropdownMenuContent>
-          </DropdownMenu>
+          </DropdownMenu> */}
         </div>
 
         <p
