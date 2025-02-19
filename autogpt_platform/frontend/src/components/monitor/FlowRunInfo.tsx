@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   GraphExecution,
-  GraphMeta,
+  LibraryAgent,
   NodeExecutionResult,
   SpecialBlockID,
 } from "@/lib/autogpt-server-api";
@@ -17,7 +17,7 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export const FlowRunInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {
-    flow: GraphMeta;
+    flow: LibraryAgent;
     execution: GraphExecution;
   }
 > = ({ flow, execution, ...props }) => {
@@ -27,7 +27,7 @@ export const FlowRunInfo: React.FC<
 
   const fetchBlockResults = useCallback(async () => {
     const executionResults = await api.getGraphExecutionInfo(
-      flow.id,
+      flow.agent_id,
       execution.execution_id,
     );
 
@@ -70,7 +70,7 @@ export const FlowRunInfo: React.FC<
         result: result.output_data?.output || undefined,
       })),
     );
-  }, [api, flow.id, execution.execution_id]);
+  }, [api, flow.agent_id, execution.execution_id]);
 
   // Fetch graph and execution data
   useEffect(() => {
@@ -78,15 +78,15 @@ export const FlowRunInfo: React.FC<
     fetchBlockResults();
   }, [isOutputOpen, fetchBlockResults]);
 
-  if (execution.graph_id != flow.id) {
+  if (execution.graph_id != flow.agent_id) {
     throw new Error(
       `FlowRunInfo can't be used with non-matching execution.graph_id and flow.id`,
     );
   }
 
   const handleStopRun = useCallback(() => {
-    api.stopGraphExecution(flow.id, execution.execution_id);
-  }, [api, flow.id, execution.execution_id]);
+    api.stopGraphExecution(flow.agent_id, execution.execution_id);
+  }, [api, flow.agent_id, execution.execution_id]);
 
   return (
     <>
@@ -107,17 +107,19 @@ export const FlowRunInfo: React.FC<
             <Button onClick={() => setIsOutputOpen(true)} variant="outline">
               <ExitIcon className="mr-2" /> View Outputs
             </Button>
-            <Link
-              className={buttonVariants({ variant: "default" })}
-              href={`/build?flowID=${flow.id}&flowVersion=${execution.graph_version}&flowExecutionID=${execution.execution_id}`}
-            >
-              <Pencil2Icon className="mr-2" /> Open in Builder
-            </Link>
+            {flow.is_created_by_user && (
+              <Link
+                className={buttonVariants({ variant: "default" })}
+                href={`/build?flowID=${execution.graph_id}&flowVersion=${execution.graph_version}&flowExecutionID=${execution.execution_id}`}
+              >
+                <Pencil2Icon className="mr-2" /> Open in Builder
+              </Link>
+            )}
           </div>
         </CardHeader>
         <CardContent>
           <p className="hidden">
-            <strong>Agent ID:</strong> <code>{flow.id}</code>
+            <strong>Agent ID:</strong> <code>{flow.agent_id}</code>
           </p>
           <p className="hidden">
             <strong>Run ID:</strong> <code>{execution.execution_id}</code>

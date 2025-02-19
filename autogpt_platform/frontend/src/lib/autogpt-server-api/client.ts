@@ -18,6 +18,7 @@ import {
   GraphCreatable,
   GraphMeta,
   GraphUpdateable,
+  LibraryAgent,
   MyAgentsResponse,
   NodeExecutionResult,
   ProfileDetails,
@@ -33,9 +34,11 @@ import {
   TransactionHistory,
   User,
   UserPasswordCredentials,
+  RefundRequest,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
+import { filter } from "../../../test-runner-jest.config";
 
 const isClient = typeof window !== "undefined";
 
@@ -101,24 +104,29 @@ export default class BackendAPI {
   }
 
   getTransactionHistory(
-    lastTransction: Date | null,
-    countLimit: number,
+    lastTransction: Date | null = null,
+    countLimit: number | null = null,
+    transactionType: string | null = null,
   ): Promise<TransactionHistory> {
-    return this._get(
-      `/credits/transactions`,
-      lastTransction
-        ? {
-            transaction_time: lastTransction,
-            transaction_count_limit: countLimit,
-          }
-        : {
-            transaction_count_limit: countLimit,
-          },
-    );
+    const filters: Record<string, any> = {};
+    if (lastTransction) filters.transaction_time = lastTransction;
+    if (countLimit) filters.transaction_count_limit = countLimit;
+    if (transactionType) filters.transaction_type = transactionType;
+    return this._get(`/credits/transactions`, filters);
+  }
+
+  getRefundRequests(): Promise<RefundRequest[]> {
+    return this._get(`/credits/refunds`);
   }
 
   requestTopUp(credit_amount: number): Promise<{ checkout_url: string }> {
     return this._request("POST", "/credits", { credit_amount });
+  }
+
+  refundTopUp(transaction_key: string, reason: string): Promise<number> {
+    return this._request("POST", `/credits/${transaction_key}/refund`, {
+      reason,
+    });
   }
 
   getUserPaymentPortalLink(): Promise<{ url: string }> {
@@ -160,10 +168,8 @@ export default class BackendAPI {
     return this._get(`/graphs/${id}/versions`);
   }
 
-  createGraph(graphCreateBody: GraphCreatable): Promise<Graph>;
-
-  createGraph(graphID: GraphCreatable | string): Promise<Graph> {
-    let requestBody = { graph: graphID } as GraphCreateRequestBody;
+  createGraph(graph: GraphCreatable): Promise<Graph> {
+    let requestBody = { graph } as GraphCreateRequestBody;
 
     return this._request("POST", "/graphs", requestBody);
   }
@@ -445,7 +451,7 @@ export default class BackendAPI {
   /////////// V2 LIBRARY API //////////////
   /////////////////////////////////////////
 
-  async listLibraryAgents(): Promise<GraphMeta[]> {
+  async listLibraryAgents(): Promise<LibraryAgent[]> {
     return this._get("/library/agents");
   }
 
