@@ -149,11 +149,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
           </div>
 
           <div className="flex justify-between gap-4 border-t border-slate-200 p-4 dark:border-slate-700 sm:p-6">
-            <Button
-              onClick={onCancel}
-              size="default"
-              className="w-full sm:flex-1"
-            >
+            <Button onClick={onCancel} size="lg" className="w-full sm:flex-1">
               Back
             </Button>
             <Button
@@ -163,7 +159,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                 }
               }}
               disabled={!selectedAgentId || !selectedAgentVersion}
-              size="default"
+              size="lg"
               className="w-full bg-neutral-800 text-white hover:bg-neutral-900 sm:flex-1"
             >
               Next

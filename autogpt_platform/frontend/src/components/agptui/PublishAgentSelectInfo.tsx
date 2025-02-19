@@ -344,7 +344,6 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
               You can use AI to generate a cover image for you
             </p>
             <Button
-              size="sm"
               className={`bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 ${
                 images.length >= 5 ? "cursor-not-allowed opacity-50" : ""
               }`}
@@ -425,14 +424,14 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
       <div className="flex justify-between gap-4 border-t border-slate-200 p-6 dark:border-slate-700">
         <Button
           onClick={onBack}
-          size="default"
+          size="lg"
           className="w-full dark:border-slate-700 dark:text-slate-300 sm:flex-1"
         >
           Back
         </Button>
         <Button
           onClick={handleSubmit}
-          size="default"
+          size="lg"
           className="w-full bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 sm:flex-1"
         >
           Submit for review
