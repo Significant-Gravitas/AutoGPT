@@ -3,6 +3,7 @@ from typing import Any, List
 
 from autogpt_libs.utils.cache import thread_cached
 
+import backend.blocks.llm as llm
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
 
@@ -21,11 +22,54 @@ class SmartDecisionMakerBlock(Block):
     # Note: Currently proving out the concept of determining the inputs a tool takes
 
     class Input(BlockSchema):
-        # Note: This is a placeholder for the actual input schema
-        prompt: str = SchemaField(description="The text to print to the console.")
+        prompt: str = SchemaField(
+            description="The prompt to send to the language model.",
+            placeholder="Enter your prompt here...",
+        )
+        model: llm.LlmModel = SchemaField(
+            title="LLM Model",
+            default=llm.LlmModel.GPT4O,
+            description="The language model to use for answering the prompt.",
+            advanced=False,
+        )
+        credentials: llm.AICredentials = llm.AICredentialsField()
+        sys_prompt: str = SchemaField(
+            title="System Prompt",
+            default="Thinking carefully step by step decide which function to call. Always choose a function call from the list of function signatures.",
+            description="The system prompt to provide additional context to the model.",
+        )
+        conversation_history: list[llm.Message] = SchemaField(
+            default=[],
+            description="The conversation history to provide context for the prompt.",
+        )
+        retry: int = SchemaField(
+            title="Retry Count",
+            default=3,
+            description="Number of times to retry the LLM call if the response does not match the expected format.",
+        )
+        prompt_values: dict[str, str] = SchemaField(
+            advanced=False,
+            default={},
+            description="Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}.",
+        )
+        max_tokens: int | None = SchemaField(
+            advanced=True,
+            default=None,
+            description="The maximum number of tokens to generate in the chat completion.",
+        )
+        ollama_host: str = SchemaField(
+            advanced=True,
+            default="localhost:11434",
+            description="Ollama host for local  models",
+        )
 
     class Output(BlockSchema):
-        # Starting with a single tool.
+
+        prompt: str = SchemaField(description="The prompt sent to the language model.")
+        error: str = SchemaField(description="Error message if the API call failed.")
+        function_signatures: list[dict[str, Any]] = SchemaField(
+            description="The function signatures that are sent to the language model."
+        )
         tools: dict[str, dict[str, Any]] = SchemaField(
             description="The tools that are available to use."
         )
@@ -43,7 +87,20 @@ class SmartDecisionMakerBlock(Block):
         )
 
     # If I import Graph here, it will break with a circular import.
-    def get_tool_graph_metadata(self, node_id: str, graph: Any) -> List[Any]:
+    def _get_tool_graph_metadata(self, node_id: str, graph: Any) -> List[Any]:
+        """
+        Retrieves metadata for tool graphs linked to a specified node within a graph.
+
+        This method identifies the tool links connected to the given node_id and fetches
+        the metadata for each linked tool graph from the database.
+
+        Args:
+            node_id (str): The ID of the node for which tool graph metadata is to be retrieved.
+            graph (Any): The graph object containing nodes and links.
+
+        Returns:
+            List[Any]: A list of metadata for the tool graphs linked to the specified node.
+        """
         db_client = get_database_manager_client()
         graph_meta = []
 
@@ -72,28 +129,25 @@ class SmartDecisionMakerBlock(Block):
         tool_graph_metadata: List[Any],
     ) -> list[dict[str, Any]]:
         """
-        Creates a list of function signatures for tools linked to a specific node in a graph.
+        Creates function signatures for tools linked to a specified node within a graph.
 
-        This method identifies all tool links associated with a given node ID within a graph,
-        groups them by tool name, and constructs a function signature for each tool. Each
-        function signature includes the tool's name, description, and parameters required
-        for its execution.
+        This method filters the graph links to identify those that are tools and are
+        connected to the given node_id. It then constructs function signatures for each
+        tool based on the metadata and input schema of the linked nodes.
 
-        Parameters:
-        - node_id (str): The ID of the node for which tool function signatures are to be created.
-        - graph (GraphModel): The graph model containing nodes and links.
+        Args:
+            node_id (str): The ID of the node for which tool function signatures are to be created.
+            graph (Any): The graph object containing nodes and links.
+            tool_graph_metadata (List[Any]): Metadata for the tool graphs, used to retrieve
+                                             names and descriptions for the tools.
 
         Returns:
-        - list[dict[str, Any]]: A list of dictionaries, each representing a tool function signature.
-          Each dictionary contains:
-            - "name": The name of the tool.
-            - "description": A description of the tool or its multi-step process.
-            - "parameters": A dictionary detailing the parameters required by the tool, including:
-                - "type": The data type of the parameter.
-                - "description": A description of the parameter.
+            list[dict[str, Any]]: A list of dictionaries, each representing a function signature
+                                  for a tool, including its name, description, and parameters.
 
         Raises:
-        - ValueError: If no tool links are found for the given node ID or if no tool sink nodes are identified.
+            ValueError: If no tool links are found for the specified node_id, or if a sink node
+                        or its metadata cannot be found.
         """
         # Filter the graph links to find those that are tools and are linked to the specified node_id
         tool_links = [
@@ -157,9 +211,7 @@ class SmartDecisionMakerBlock(Block):
             required = []
 
             for link in links:
-
                 sink_block_input_schema = sink_node.input_default["input_schema"]
-
                 description = (
                     sink_block_input_schema["properties"][link.sink_name]["description"]
                     if "description"
@@ -205,11 +257,13 @@ class SmartDecisionMakerBlock(Block):
                 f"The currently running graph that is executing this node is not found {graph_id}"
             )
 
-        tool_graph_metadata = self.get_tool_graph_metadata(node_id, graph)
+        tool_graph_metadata = self._get_tool_graph_metadata(node_id, graph)
 
         tool_functions = self._create_function_signature(
             node_id, graph, tool_graph_metadata
         )
+
+        yield "function_signatures", tool_functions
 
         logger.warning(f"Tool functions: {tool_functions}")
 
