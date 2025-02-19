@@ -1,10 +1,12 @@
 import logging
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Coroutine
 
+import aio_pika
+from aio_pika.abc import AbstractQueue
 from aio_pika.exceptions import QueueEmpty
 from autogpt_libs.utils.cache import thread_cached
-
+from prisma.enums import NotificationType
 from backend.data.notifications import (
     BatchingStrategy,
     NotificationEventDTO,
@@ -29,10 +31,7 @@ def create_notification_config() -> RabbitMQConfig:
     """Create RabbitMQ configuration for notifications"""
     notification_exchange = Exchange(name="notifications", type=ExchangeType.TOPIC)
 
-    summary_exchange = Exchange(name="summaries", type=ExchangeType.TOPIC)
-
-    dead_letter_exchange = Exchange(name="dead_letter", type=ExchangeType.DIRECT)
-    delay_exchange = Exchange(name="delay", type=ExchangeType.DIRECT)
+    dead_letter_exchange = Exchange(name="dead_letter", type=ExchangeType.TOPIC)
 
     queues = [
         # Main notification queues
@@ -45,34 +44,6 @@ def create_notification_config() -> RabbitMQConfig:
                 "x-dead-letter-routing-key": "failed.immediate",
             },
         ),
-        Queue(
-            name="backoff_notifications",
-            exchange=notification_exchange,
-            routing_key="notification.backoff.#",
-            arguments={
-                "x-dead-letter-exchange": dead_letter_exchange.name,
-                "x-dead-letter-routing-key": "failed.backoff",
-            },
-        ),
-        # Summary queues
-        Queue(
-            name="daily_summary_trigger",
-            exchange=summary_exchange,
-            routing_key="summary.daily",
-            arguments={"x-message-ttl": 86400000},  # 24 hours
-        ),
-        Queue(
-            name="weekly_summary_trigger",
-            exchange=summary_exchange,
-            routing_key="summary.weekly",
-            arguments={"x-message-ttl": 604800000},  # 7 days
-        ),
-        Queue(
-            name="monthly_summary_trigger",
-            exchange=summary_exchange,
-            routing_key="summary.monthly",
-            arguments={"x-message-ttl": 2592000000},  # 30 days
-        ),
         # Failed notifications queue
         Queue(
             name="failed_notifications",
@@ -84,10 +55,7 @@ def create_notification_config() -> RabbitMQConfig:
     return RabbitMQConfig(
         exchanges=[
             notification_exchange,
-            # batch_exchange,
-            summary_exchange,
             dead_letter_exchange,
-            delay_exchange,
         ],
         queues=queues,
     )
@@ -151,6 +119,15 @@ class NotificationManager(AppService):
             logger.error(f"Error queueing notification: {e}")
             return NotificationResult(success=False, message=str(e))
 
+    async def _should_email_user_based_on_preference(
+        self, user_id: str, event_type: NotificationType
+    ) -> bool:
+        return (
+            get_db_client()
+            .get_user_notification_preference(user_id)
+            .preferences[event_type]
+        )
+
     async def _process_immediate(self, message: str) -> bool:
         """Process a single notification immediately, returning whether to put into the failed queue"""
         try:
@@ -159,10 +136,8 @@ class NotificationManager(AppService):
                 get_data_type(event.type)
             ].model_validate_json(message)
             user_email = get_db_client().get_user_email_by_id(event.user_id)
-            should_send = (
-                get_db_client()
-                .get_user_notification_preference(event.user_id)
-                .preferences[event.type]
+            should_send = await self._should_email_user_based_on_preference(
+                event.user_id, event.type
             )
             if not user_email:
                 logger.error(f"User email not found for user {event.user_id}")
@@ -179,6 +154,27 @@ class NotificationManager(AppService):
             logger.error(f"Error processing notification: {e}")
             return False
 
+    def _run_queue(
+        self,
+        queue: aio_pika.abc.AbstractQueue,
+        process_func: Callable[[str], Coroutine[Any, Any, bool]],
+        error_queue_name: str,
+    ):
+        try:
+            # This parameter "no_ack" is named like shit, think of it as "auto_ack"
+            message = self.run_and_wait(queue.get(timeout=1.0, no_ack=False))
+            result = self.run_and_wait(process_func(message.body.decode()))
+            if result:
+                self.run_and_wait(message.ack())
+            else:
+                self.run_and_wait(message.reject(requeue=False))
+
+        except QueueEmpty:
+            logger.debug(f"Queue {error_queue_name} empty")
+        except Exception as e:
+            logger.error(f"Error in notification service loop: {e}")
+            self.run_and_wait(message.reject(requeue=False))
+
     def run_service(self):
         logger.info(f"[{self.service_name}] Started notification service")
 
@@ -191,20 +187,11 @@ class NotificationManager(AppService):
 
         while self.running:
             try:
-                # Process immediate notifications
-                try:
-                    message = self.run_and_wait(immediate_queue.get())
-
-                    if message:
-                        success = self.run_and_wait(
-                            self._process_immediate(message.body.decode())
-                        )
-                        if success:
-                            self.run_and_wait(message.ack())
-                        else:
-                            self.run_and_wait(message.reject(requeue=True))
-                except QueueEmpty:
-                    logger.debug("Immediate queue empty")
+                self._run_queue(
+                    queue=immediate_queue,
+                    process_func=self._process_immediate,
+                    error_queue_name="immediate_notifications",
+                )
 
                 time.sleep(0.1)
 
