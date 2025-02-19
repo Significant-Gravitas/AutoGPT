@@ -93,7 +93,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=1500,
         description="Number of credits to refill for each user",
     )
-    # Add more configuration fields as needed
+    refund_credit_tolerance_threshold: int = Field(
+        default=500,
+        description="Maximum number of credits above the balance to be auto-approved.",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -184,6 +187,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     rabbitmq_vhost: str = Field(
         default="/",
         description="The vhost for the RabbitMQ server",
+    )
+
+    postmark_sender_email: str = Field(
+        default="invalid@invalid.com",
+        description="The email address to use for sending emails",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")
@@ -280,6 +288,10 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     rabbitmq_default_user: str = Field(default="", description="RabbitMQ default user")
     rabbitmq_default_pass: str = Field(
         default="", description="RabbitMQ default password"
+    )
+
+    postmark_server_api_token: str = Field(
+        default="", description="Postmark server API token used for sending emails"
     )
 
     # OAuth server credentials for integrations
