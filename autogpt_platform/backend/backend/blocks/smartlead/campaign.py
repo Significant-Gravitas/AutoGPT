@@ -57,10 +57,6 @@ class CreateCampaignBlock(Block):
             test_input={"name": "Test Campaign", "credentials": TEST_CREDENTIALS_INPUT},
             test_output=[
                 (
-                    "ok",
-                    True,
-                ),
-                (
                     "id",
                     1,
                 ),
@@ -171,10 +167,6 @@ class AddLeadToCampaignBlock(Block):
                 (
                     "campaign_id",
                     1,
-                ),
-                (
-                    "ok",
-                    True,
                 ),
                 (
                     "upload_count",
@@ -291,10 +283,6 @@ class SaveCampaignSequencesBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
-                (
-                    "ok",
-                    True,
-                ),
                 (
                     "message",
                     "Sequences saved successfully",
