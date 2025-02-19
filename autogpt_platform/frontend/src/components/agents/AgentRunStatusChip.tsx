@@ -1,5 +1,8 @@
 import React from "react";
+
 import { Badge } from "@/components/ui/badge";
+
+import { GraphExecutionMeta } from "@/lib/autogpt-server-api/types";
 
 export type AgentRunStatus =
   | "success"
@@ -9,6 +12,18 @@ export type AgentRunStatus =
   | "stopped"
   | "scheduled"
   | "draft";
+
+export const agentRunStatusMap: Record<
+  GraphExecutionMeta["status"],
+  AgentRunStatus
+> = {
+  COMPLETED: "success",
+  FAILED: "failed",
+  QUEUED: "queued",
+  RUNNING: "running",
+  TERMINATED: "stopped",
+  // TODO: implement "draft" - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
+};
 
 const statusData: Record<
   AgentRunStatus,
@@ -37,14 +52,15 @@ const statusStyles = {
 export default function AgentRunStatusChip({
   status,
 }: {
-  status: AgentRunStatus;
+  status: GraphExecutionMeta["status"];
 }): React.ReactElement {
+  const _status = agentRunStatusMap[status];
   return (
     <Badge
       variant="secondary"
-      className={`text-xs font-medium ${statusStyles[statusData[status].variant]} rounded-[45px] px-[9px] py-[3px]`}
+      className={`text-xs font-medium ${statusStyles[statusData[_status].variant]} rounded-[45px] px-[9px] py-[3px]`}
     >
-      {statusData[status].label}
+      {statusData[_status].label}
     </Badge>
   );
 }
