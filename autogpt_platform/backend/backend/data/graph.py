@@ -165,9 +165,19 @@ class GraphExecution(GraphExecutionMeta):
             ExecutionResult.from_db(ne) for ne in _graph_exec.AgentNodeExecutions
         ]
         inputs = {
-            exec.input_data["name"]: exec.input_data["value"]
-            for exec in node_executions
-            if exec.block_id == _INPUT_BLOCK_ID
+            **{
+                # inputs from Agent Input Blocks
+                exec.input_data["name"]: exec.input_data["value"]
+                for exec in node_executions
+                if exec.block_id == _INPUT_BLOCK_ID
+            },
+            **{
+                # input from webhook-triggered block
+                "payload": exec.input_data["payload"]
+                for exec in node_executions
+                if (block := get_block(exec.block_id))
+                and block.block_type in [BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL]
+            },
         }
         outputs = {
             exec.input_data["name"]: exec.input_data["value"]
