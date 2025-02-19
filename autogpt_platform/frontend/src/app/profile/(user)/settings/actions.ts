@@ -37,33 +37,36 @@ export async function updateSettings(formData: FormData) {
     }
   }
 
-  const preferencesError = {};
-
-  if (preferencesError) {
-    throw new SettingsError(
-      `Failed to update preferences: ${preferencesError.message}`,
-    );
+  try {
+    const api = new BackendApi();
+    const preferences: NotificationPreferenceDTO = {
+      email: user?.email || "",
+      preferences: {
+        AGENT_RUN: formData.get("notifyOnAgentRun") === "true",
+        ZERO_BALANCE: formData.get("notifyOnZeroBalance") === "true",
+        LOW_BALANCE: formData.get("notifyOnLowBalance") === "true",
+        BLOCK_EXECUTION_FAILED:
+          formData.get("notifyOnBlockExecutionFailed") === "true",
+        CONTINUOUS_AGENT_ERROR:
+          formData.get("notifyOnContinuousAgentError") === "true",
+        DAILY_SUMMARY: formData.get("notifyOnDailySummary") === "true",
+        WEEKLY_SUMMARY: formData.get("notifyOnWeeklySummary") === "true",
+        MONTHLY_SUMMARY: formData.get("notifyOnMonthlySummary") === "true",
+      },
+      daily_limit: 0,
+    };
+    await api.updateUserPreferences(preferences);
+  } catch (error) {
+    console.error(error);
+    throw new Error(`Failed to update preferences: ${error}`);
   }
-
-  const api = new BackendApi();
-  const preferences: NotificationPreferenceDTO = {
-    email: user?.email || "",
-    preferences: {
-      agent_run: formData.get("notifyOnAgentRun") === "true",
-      zero_balance: formData.get("notifyOnZeroBalance") === "true",
-      low_balance: formData.get("notifyOnLowBalance") === "true",
-      block_execution_failed:
-        formData.get("notifyOnBlockExecutionFailed") === "true",
-      continuous_agent_error:
-        formData.get("notifyOnContinuousAgentError") === "true",
-      daily_summary: formData.get("notifyOnDailySummary") === "true",
-      weekly_summary: formData.get("notifyOnWeeklySummary") === "true",
-      monthly_summary: formData.get("notifyOnMonthlySummary") === "true",
-    },
-    daily_limit: 0,
-  };
-  await api.updateUserPreferences(preferences);
 
   revalidatePath("/profile/settings");
   return { success: true };
+}
+
+export async function getUserPreferences(): Promise<NotificationPreferenceDTO> {
+  const api = new BackendApi();
+  const preferences = await api.getUserPreferences();
+  return preferences;
 }
