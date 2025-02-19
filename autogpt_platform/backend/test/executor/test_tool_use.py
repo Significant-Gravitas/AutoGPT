@@ -3,11 +3,12 @@ import logging
 import pytest
 from prisma.models import User
 
-from backend.blocks.basic import AddToDictionaryBlock, StoreValueBlock
+from backend.blocks.agent import AgentExecutorBlock
+from backend.blocks.basic import StoreValueBlock
 from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 from backend.data import graph
 from backend.server.model import CreateGraph
-from backend.usecases.sample import create_test_user
+from backend.usecases.sample import create_test_graph, create_test_user
 from backend.util.test import SpinTestServer
 
 logger = logging.getLogger(__name__)
@@ -19,7 +20,9 @@ async def create_graph(s: SpinTestServer, g: graph.Graph, u: User) -> graph.Grap
 
 
 @pytest.mark.asyncio(scope="session")
-async def test_smart_decision_maker_function_signature(server: SpinTestServer):
+async def test_graph_validation_with_tool_nodes_correct(server: SpinTestServer):
+    test_user = await create_test_user()
+    test_tool_graph = await create_graph(server, create_test_graph(), test_user)
 
     nodes = [
         graph.Node(
@@ -27,33 +30,28 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
             input_default={"text": "Hello, World!"},
         ),
         graph.Node(
-            block_id=StoreValueBlock().id,
-        ),
-        graph.Node(
-            block_id=AddToDictionaryBlock().id,
+            block_id=AgentExecutorBlock().id,
+            input_default={
+                "graph_id": test_tool_graph.id,
+                "graph_version": test_tool_graph.version,
+                "input_schema": test_tool_graph.input_schema,
+                "output_schema": test_tool_graph.output_schema,
+            },
         ),
     ]
 
-    smd_id = nodes[0].id
-
     links = [
         graph.Link(
-            source_id=smd_id,
+            source_id=nodes[0].id,
             sink_id=nodes[1].id,
-            source_name="tools_store_value_#_input",
-            sink_name="input",
+            source_name="tools_sample_tool_#_input_1",
+            sink_name="input_1",
         ),
         graph.Link(
-            source_id=smd_id,
-            sink_id=nodes[2].id,
-            source_name="tools_add_to_dictionary_#_key",
-            sink_name="key",
-        ),
-        graph.Link(
-            source_id=smd_id,
-            sink_id=nodes[2].id,
-            source_name="tools_add_to_dictionary_#_value",
-            sink_name="value",
+            source_id=nodes[0].id,
+            sink_id=nodes[1].id,
+            source_name="tools_sample_tool_#_input_2",
+            sink_name="input_2",
         ),
     ]
 
@@ -63,55 +61,133 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
         nodes=nodes,
         links=links,
     )
+    test_graph = await create_graph(server, test_graph, test_user)
+
+
+@pytest.mark.asyncio(scope="session")
+async def test_graph_validation_with_tool_nodes_raises_error(server: SpinTestServer):
 
     test_user = await create_test_user()
+    test_tool_graph = await create_graph(server, create_test_graph(), test_user)
+
+    nodes = [
+        graph.Node(
+            block_id=SmartDecisionMakerBlock().id,
+            input_default={"text": "Hello, World!"},
+        ),
+        graph.Node(
+            block_id=AgentExecutorBlock().id,
+            input_default={
+                "graph_id": test_tool_graph.id,
+                "graph_version": test_tool_graph.version,
+                "input_schema": test_tool_graph.input_schema,
+                "output_schema": test_tool_graph.output_schema,
+            },
+        ),
+        graph.Node(
+            block_id=StoreValueBlock().id,
+        ),
+    ]
+
+    links = [
+        graph.Link(
+            source_id=nodes[0].id,
+            sink_id=nodes[1].id,
+            source_name="tools_sample_tool_#_input_1",
+            sink_name="input_1",
+        ),
+        graph.Link(
+            source_id=nodes[0].id,
+            sink_id=nodes[1].id,
+            source_name="tools_sample_tool_#_input_2",
+            sink_name="input_2",
+        ),
+        graph.Link(
+            source_id=nodes[0].id,
+            sink_id=nodes[2].id,
+            source_name="tools_store_value_#_input",
+            sink_name="input",
+        ),
+    ]
+
+    test_graph = graph.Graph(
+        name="TestGraph",
+        description="Test graph",
+        nodes=nodes,
+        links=links,
+    )
+    with pytest.raises(Exception):
+        test_graph = await create_graph(server, test_graph, test_user)
+
+
+@pytest.mark.asyncio(scope="session")
+async def test_smart_decision_maker_function_signature(server: SpinTestServer):
+    test_user = await create_test_user()
+    test_tool_graph = await create_graph(server, create_test_graph(), test_user)
+
+    nodes = [
+        graph.Node(
+            block_id=SmartDecisionMakerBlock().id,
+            input_default={"text": "Hello, World!"},
+        ),
+        graph.Node(
+            block_id=AgentExecutorBlock().id,
+            input_default={
+                "graph_id": test_tool_graph.id,
+                "graph_version": test_tool_graph.version,
+                "input_schema": test_tool_graph.input_schema,
+                "output_schema": test_tool_graph.output_schema,
+            },
+        ),
+    ]
+
+    links = [
+        graph.Link(
+            source_id=nodes[0].id,
+            sink_id=nodes[1].id,
+            source_name="tools_sample_tool_#_input_1",
+            sink_name="input_1",
+        ),
+        graph.Link(
+            source_id=nodes[0].id,
+            sink_id=nodes[1].id,
+            source_name="tools_sample_tool_#_input_2",
+            sink_name="input_2",
+        ),
+    ]
+
+    test_graph = graph.Graph(
+        name="TestGraph",
+        description="Test graph",
+        nodes=nodes,
+        links=links,
+    )
     test_graph = await create_graph(server, test_graph, test_user)
 
     tool_functions = SmartDecisionMakerBlock._create_function_signature(
-        test_graph.nodes[0].id, test_graph
+        test_graph.nodes[0].id, test_graph, [test_tool_graph]
     )
     assert tool_functions is not None, "Tool functions should not be None"
     assert (
-        len(tool_functions) == 2
-    ), f"Expected 2 tool functions, got {len(tool_functions)}"
+        len(tool_functions) == 1
+    ), f"Expected 1 tool function, got {len(tool_functions)}"
 
-    store_value_function = next(
-        filter(lambda x: x["function"]["name"] == "StoreValueBlock", tool_functions),
+    tool_function = next(
+        filter(lambda x: x["function"]["name"] == "TestGraph", tool_functions),
         None,
     )
-    add_to_dictionary_function = next(
-        filter(
-            lambda x: x["function"]["name"] == "AddToDictionaryBlock", tool_functions
-        ),
-        None,
-    )
-
-    assert store_value_function is not None, "StoreValueBlock function not found"
+    assert tool_function is not None, "TestGraph function not found"
     assert (
-        store_value_function["function"]["name"] == "StoreValueBlock"
-    ), "Incorrect function name for StoreValueBlock"
+        tool_function["function"]["name"] == "TestGraph"
+    ), "Incorrect function name for TestGraph"
     assert (
-        store_value_function["function"]["parameters"]["properties"]["input"]["type"]
+        tool_function["function"]["parameters"]["properties"]["input_1"]["type"]
         == "string"
-    ), "Input type for StoreValueBlock should be 'string'"
-    assert store_value_function["function"]["parameters"]["required"] == [
-        "input"
-    ], "Required parameters for StoreValueBlock should be ['input']"
-
+    ), "Input type for input_1 should be 'string'"
     assert (
-        add_to_dictionary_function is not None
-    ), "AddToDictionaryBlock function not found"
-    assert (
-        add_to_dictionary_function["function"]["name"] == "AddToDictionaryBlock"
-    ), "Incorrect function name for AddToDictionaryBlock"
-    assert (
-        add_to_dictionary_function["function"]["parameters"]["properties"]["key"][
-            "type"
-        ]
+        tool_function["function"]["parameters"]["properties"]["input_2"]["type"]
         == "string"
-    ), "Key type for AddToDictionaryBlock should be 'string'"
-    assert sorted(
-        add_to_dictionary_function["function"]["parameters"]["required"]
-    ) == sorted(
-        ["key", "value"]
-    ), f"Required parameters for AddToDictionaryBlock should be ['key', 'value'], they where {add_to_dictionary_function['function']['parameters']['required']}"
+    ), "Input type for input_2 should be 'string'"
+    assert (
+        tool_function["function"]["parameters"]["required"] == []
+    ), "Required parameters should be an empty list"

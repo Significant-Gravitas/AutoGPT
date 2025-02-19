@@ -1,9 +1,8 @@
 import logging
-from typing import Any
+from typing import Any, List
 
 from autogpt_libs.utils.cache import thread_cached
 
-import backend.blocks
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.graph import Graph
 from backend.data.model import SchemaField
@@ -40,24 +39,34 @@ class SmartDecisionMakerBlock(Block):
             input_schema=SmartDecisionMakerBlock.Input,
             output_schema=SmartDecisionMakerBlock.Output,
             test_input={"text": "Hello, World!"},
-            test_output=[
-                (
-                    "tools",
-                    {
-                        "add_to_dictionary": {
-                            "key": "greeting",
-                            "value": "Hello, World!",
-                        },
-                        "print_to_console": {
-                            "text": "Hello, World!",
-                        },
-                    },
-                )
-            ],
+            test_output=[],
         )
 
+    def get_tool_graph_metadata(self, node_id: str, graph: Graph) -> List[Graph]:
+        db_client = get_database_manager_client()
+        graph_meta = []
+
+        tool_links = {
+            link.sink_id
+            for link in graph.links
+            if link.source_name.startswith("tools_") and link.source_id == node_id
+        }
+
+        for link_id in tool_links:
+            node = next((node for node in graph.nodes if node.id == link_id), None)
+            if node:
+                node_graph_meta = db_client.get_graph_metadata(
+                    node.input_default["graph_id"], node.input_default["graph_version"]
+                )
+                if node_graph_meta:
+                    graph_meta.append(node_graph_meta)
+
+        return graph_meta
+
     @staticmethod
-    def _create_function_signature(node_id: str, graph: Graph) -> list[dict[str, Any]]:
+    def _create_function_signature(
+        node_id: str, graph: Graph, tool_graph_metadata: List[Graph]
+    ) -> list[dict[str, Any]]:
         """
         Creates a list of function signatures for tools linked to a specific node in a graph.
 
@@ -96,14 +105,13 @@ class SmartDecisionMakerBlock(Block):
             if link.source_name.startswith("tools_") and link.source_id == node_id
         ]
 
-        node_block_map = {node.id: node.block_id for node in graph.nodes}
-
         if not tool_links:
             raise ValueError(
                 f"Expected at least one tool link in the graph. Node ID: {node_id}. Graph: {graph.links}"
             )
 
-        tool_functions = []
+        return_tool_functions = []
+
         grouped_tool_links = {}
 
         for link in tool_links:
@@ -112,53 +120,58 @@ class SmartDecisionMakerBlock(Block):
         logger.warning(f"Grouped tool links: {grouped_tool_links}")
 
         for tool_name, links in grouped_tool_links.items():
-            tool_sink_nodes = {link.sink_id for link in links}
-            tool_function = {"name": tool_name}
+            sink_node = next(
+                (node for node in graph.nodes if node.id == links[0].sink_id), None
+            )
 
-            if len(tool_sink_nodes) == 1:
-                tool_block = backend.blocks.AVAILABLE_BLOCKS[
-                    node_block_map[next(iter(tool_sink_nodes))]
-                ]
-                tool_function["name"] = tool_block().name
-                tool_function["description"] = tool_block().description
-            elif len(tool_sink_nodes) > 1:
-                tool_blocks = [
-                    backend.blocks.AVAILABLE_BLOCKS[node_block_map[node_id]]
-                    for node_id in tool_sink_nodes
-                ]
-                tool_function["name"] = tool_blocks[0]().name
-                tool_function["description"] = (
-                    "This tool is a multi-step tool that can be used to perform a task. "
-                    "It includes blocks that do: "
-                    + ", ".join(
-                        block.name
-                        for block in tool_blocks
-                        if isinstance(block.name, str)
-                    )
-                )
-            else:
+            if not sink_node:
+                raise ValueError(f"Sink node not found: {links[0].sink_id}")
+
+            graph_id = sink_node.input_default["graph_id"]
+            graph_version = sink_node.input_default["graph_version"]
+
+            sink_graph_meta = next(
+                (
+                    meta
+                    for meta in tool_graph_metadata
+                    if meta.id == graph_id and meta.version == graph_version
+                ),
+                None,
+            )
+
+            if not sink_graph_meta:
                 raise ValueError(
-                    f"Expected at least one tool link in the graph: {tool_links}"
+                    f"Sink graph metadata not found: {graph_id} {graph_version}"
                 )
+
+            logger.warning(f"Sink node: {sink_node}")
+            logger.warning(f"Sink node block: {sink_node.input_default}")
+            logger.warning(f"Sink graph_id: {sink_node.input_default['graph_id']}")
+            logger.warning(
+                f"Sink graph_version: {sink_node.input_default['graph_version']}"
+            )
+
+            tool_function: dict[str, Any] = {
+                "name": sink_graph_meta.name,
+                "description": sink_graph_meta.description,
+            }
 
             properties = {}
             required = []
 
             for link in links:
-                required.append(link.sink_name)
-                sink_block = backend.blocks.AVAILABLE_BLOCKS[
-                    node_block_map[link.sink_id]
-                ]
-                sink_block_input = sink_block().input_schema.__fields__[link.sink_name]
-                sink_type = sink_block_input.annotation
-                sink_description = sink_block_input.description
 
-                if sink_type not in ["string", "number", "boolean", "object"]:
-                    sink_type = "string"
+                sink_block_input_schema = sink_node.input_default["input_schema"]
 
+                description = (
+                    sink_block_input_schema["properties"][link.sink_name]["description"]
+                    if "description"
+                    in sink_block_input_schema["properties"][link.sink_name]
+                    else f"The {link.sink_name} of the tool"
+                )
                 properties[link.sink_name] = {
-                    "type": sink_type,
-                    "description": sink_description,
+                    "type": "string",
+                    "description": description,
                 }
 
             tool_function["parameters"] = {
@@ -169,9 +182,11 @@ class SmartDecisionMakerBlock(Block):
                 "strict": True,
             }
 
-            tool_functions.append({"type": "function", "function": tool_function})
-
-        return tool_functions
+            return_tool_functions.append(
+                {"type": "function", "function": tool_function}
+            )
+        logger.warning(f"Tool functions: {return_tool_functions}")
+        return return_tool_functions
 
     def run(
         self,
@@ -192,6 +207,10 @@ class SmartDecisionMakerBlock(Block):
         if not graph:
             raise ValueError(f"Graph not found {graph_id}")
 
-        tool_functions = self._create_function_signature(node_id, graph)
+        tool_graph_metadata = self.get_tool_graph_metadata(node_id, graph)
+
+        tool_functions = self._create_function_signature(
+            node_id, graph, tool_graph_metadata
+        )
 
         yield "tools_#_add_to_dictionary_#_key", tool_functions

@@ -189,6 +189,7 @@ class Graph(BaseDbModel):
         props = []
         for p in data:
             try:
+                logger.warning(f"P: {p}")
                 props.append(type_class(**p))
             except Exception as e:
                 logger.warning(f"Invalid {type_class}: {p}, {e}")
@@ -266,12 +267,14 @@ class GraphModel(Graph):
 
         # Validate smart decision maker nodes
         smart_decision_maker_nodes = set()
-        # smd_unique_tool_links = {}
+        smd_unique_tool_links = {}
         agent_nodes = set()
 
         for node in self.nodes:
+            # Smart decision maker nodes
             if node.block_id == "3b191d9f-356f-482d-8238-ba04b6d18381":
                 smart_decision_maker_nodes.add(node.id)
+            # Agent nodes
             elif node.block_id == "e189baac-8c20-45a1-94a7-55177ea42565":
                 agent_nodes.add(node.id)
 
@@ -294,10 +297,11 @@ class GraphModel(Graph):
                 else:
                     tool_name_to_node[tool_name] = link.sink_id
 
-                # TODO: Uncomment this when I've updated the tests
-                # smd_unique_tool_links[link.source_id] = set(link.sink_id)
-                # if link.sink_id not in agent_nodes:
-                #     raise ValueError(f"Smart decision maker node {link.source_id} cannot link to non-agent node {link.sink_id}")
+                smd_unique_tool_links[link.source_id] = set(link.sink_id)
+                if link.sink_id not in agent_nodes:
+                    raise ValueError(
+                        f"Smart decision maker node {link.source_id} cannot link to non-agent node {link.sink_id}"
+                    )
 
         # Nodes: required fields are filled or connected and dependencies are satisfied
         for node in self.nodes:
@@ -561,6 +565,33 @@ async def get_execution(user_id: str, execution_id: str) -> GraphExecution | Non
         where={"id": execution_id, "userId": user_id}
     )
     return GraphExecution.from_db(execution) if execution else None
+
+
+async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph | None:
+    where_clause: AgentGraphWhereInput = {
+        "id": graph_id,
+    }
+
+    if version is not None:
+        where_clause["version"] = version
+
+    graph = await AgentGraph.prisma().find_first(
+        where=where_clause,
+        include=AGENT_GRAPH_INCLUDE,
+        order={"version": "desc"},
+    )
+
+    if not graph:
+        return None
+
+    return Graph(
+        id=graph.id,
+        name=graph.name or "",
+        description=graph.description or "",
+        version=graph.version,
+        is_active=graph.isActive,
+        is_template=graph.isTemplate,
+    )
 
 
 async def get_graph(
