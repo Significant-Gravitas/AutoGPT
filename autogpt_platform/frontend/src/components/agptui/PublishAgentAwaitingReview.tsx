@@ -36,11 +36,11 @@ export const PublishAgentAwaitingReview: React.FC<
         <div className="absolute left-0 top-[40px] flex w-full flex-col items-center justify-start px-6 sm:top-[40px]">
           <div
             id="modal-title"
-            className="mb-4 text-center font-['Poppins'] text-xl font-semibold leading-relaxed text-neutral-900 dark:text-neutral-100 sm:mb-2 sm:text-2xl"
+            className="mb-4 text-center text-xl font-semibold leading-relaxed text-neutral-900 dark:text-neutral-100 sm:mb-2 sm:text-2xl"
           >
             Agent is awaiting review
           </div>
-          <div className="max-w-[280px] text-center font-['Inter'] text-sm font-normal leading-relaxed text-slate-500 dark:text-slate-400 sm:max-w-none">
+          <div className="max-w-[280px] text-center text-sm font-normal leading-relaxed text-slate-500 dark:text-slate-400 sm:max-w-none">
             In the meantime you can check your progress on your Creator
             Dashboard page
           </div>
@@ -60,10 +60,10 @@ export const PublishAgentAwaitingReview: React.FC<
       <div className="flex flex-1 flex-col items-center gap-8 px-6 py-6 sm:gap-6">
         <div className="mt-4 flex w-full flex-col items-center gap-6 sm:mt-0 sm:gap-4">
           <div className="flex flex-col items-center gap-3 sm:gap-2">
-            <div className="text-center font-['Geist'] text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+            <div className="text-center text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
               {agentName}
             </div>
-            <div className="max-w-[280px] text-center font-['Geist'] text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400 sm:max-w-none">
+            <div className="max-w-[280px] text-center text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400 sm:max-w-none">
               {subheader}
             </div>
           </div>
@@ -87,7 +87,7 @@ export const PublishAgentAwaitingReview: React.FC<
           </div>
 
           <div
-            className="h-[150px] w-full overflow-y-auto font-['Geist'] text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400 sm:h-[180px]"
+            className="h-[150px] w-full overflow-y-auto text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400 sm:h-[180px]"
             tabIndex={0}
             role="region"
             aria-label="Agent description"

@@ -32,10 +32,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${GeistSans.variable} ${GeistMono.variable} ${poppins.variable} ${inter.variable}`}
-    >
+    <html lang="en" className={`${poppins.variable}`}>
       <body className={cn("antialiased transition-colors", inter.className)}>
         <Providers
           attribute="class"

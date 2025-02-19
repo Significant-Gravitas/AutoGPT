@@ -115,14 +115,14 @@ export const SettingsInputForm = ({
         <div className="flex gap-3">
           <Button
             variant="secondary"
-            className="h-[50px] rounded-[35px] bg-neutral-200 px-6 py-3 font-['Geist'] text-base font-medium text-neutral-800 transition-colors hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-600"
+            className="h-[50px] rounded-[35px] bg-neutral-200 px-6 py-3 text-base font-medium text-neutral-800 transition-colors hover:bg-neutral-300 dark:bg-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-600"
             onClick={handleCancel}
           >
             Cancel
           </Button>
           <Button
             variant="default"
-            className="h-[50px] rounded-[35px] bg-neutral-800 px-6 py-3 font-['Geist'] text-base font-medium text-white transition-colors hover:bg-neutral-900 dark:bg-neutral-900 dark:hover:bg-neutral-800"
+            className="h-[50px] rounded-[35px] bg-neutral-800 px-6 py-3 text-base font-medium text-white transition-colors hover:bg-neutral-900 dark:bg-neutral-900 dark:hover:bg-neutral-800"
             onClick={handleSaveChanges}
           >
             Save changes
