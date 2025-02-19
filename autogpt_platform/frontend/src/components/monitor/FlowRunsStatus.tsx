@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { GraphExecution, LibraryAgent } from "@/lib/autogpt-server-api";
+import { GraphExecutionMeta, LibraryAgent } from "@/lib/autogpt-server-api";
 import { CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,7 +12,7 @@ import { FlowRunsTimeline } from "@/components/monitor/FlowRunsTimeline";
 
 export const FlowRunsStatus: React.FC<{
   flows: LibraryAgent[];
-  executions: GraphExecution[];
+  executions: GraphExecutionMeta[];
   title?: string;
   className?: string;
 }> = ({ flows, executions: executions, title, className }) => {

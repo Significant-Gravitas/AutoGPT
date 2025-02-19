@@ -1,4 +1,4 @@
-import { GraphExecution, LibraryAgent } from "@/lib/autogpt-server-api";
+import { GraphExecutionMeta, LibraryAgent } from "@/lib/autogpt-server-api";
 import {
   ComposedChart,
   DefaultLegendContentProps,
@@ -23,7 +23,7 @@ export const FlowRunsTimeline = ({
   className,
 }: {
   flows: LibraryAgent[];
-  executions: GraphExecution[];
+  executions: GraphExecutionMeta[];
   dataMin: "dataMin" | number;
   className?: string;
 }) => (
@@ -60,8 +60,10 @@ export const FlowRunsTimeline = ({
       <Tooltip
         content={({ payload, label }) => {
           if (payload && payload.length) {
-            const data: GraphExecution & { time: number; _duration: number } =
-              payload[0].payload;
+            const data: GraphExecutionMeta & {
+              time: number;
+              _duration: number;
+            } = payload[0].payload;
             const flow = flows.find((f) => f.agent_id === data.graph_id);
             return (
               <Card className="p-2 text-xs leading-normal">
