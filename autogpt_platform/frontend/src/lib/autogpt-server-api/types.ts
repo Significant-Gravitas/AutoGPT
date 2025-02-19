@@ -168,21 +168,17 @@ export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
 
 // At the time of writing, combined schemas only occur on the first nested level in a
 // block schema. It is typed this way to make the use of these objects less tedious.
-type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta &
-  (
+type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta & { type: never } & (
     | {
-        type: "allOf";
         allOf: [BlockIOSimpleTypeSubSchema];
         secret?: boolean;
       }
     | {
-        type: "anyOf";
         anyOf: BlockIOSimpleTypeSubSchema[];
         default?: string | number | boolean | null;
         secret?: boolean;
       }
     | {
-        type: "oneOf";
         oneOf: BlockIOSimpleTypeSubSchema[];
         default?: string | number | boolean | null;
         secret?: boolean;
