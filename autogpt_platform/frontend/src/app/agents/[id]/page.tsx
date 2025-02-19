@@ -1,7 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Plus } from "lucide-react";
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
@@ -11,14 +10,9 @@ import {
   Schedule,
 } from "@/lib/autogpt-server-api";
 
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Button } from "@/components/agptui/Button";
-import { Badge } from "@/components/ui/badge";
-
 import AgentRunDraftView from "@/components/agents/agent-run-draft-view";
 import AgentRunDetailsView from "@/components/agents/agent-run-details-view";
-import AgentRunSummaryCard from "@/components/agents/agent-run-summary-card";
-import { agentRunStatusMap } from "@/components/agents/agent-run-status-chip";
+import AgentRunsSelectorList from "@/components/agents/agent-runs-selector-list";
 import AgentScheduleDetailsView from "@/components/agents/agent-schedule-details-view";
 
 export default function AgentRunsPage(): React.ReactElement {
@@ -38,9 +32,6 @@ export default function AgentRunsPage(): React.ReactElement {
   >(null);
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(
     null,
-  );
-  const [activeListTab, setActiveListTab] = useState<"runs" | "scheduled">(
-    "runs",
   );
   const [isFirstLoad, setIsFirstLoad] = useState<boolean>(true);
 
@@ -138,96 +129,17 @@ export default function AgentRunsPage(): React.ReactElement {
   return (
     <div className="container justify-stretch p-0 lg:flex">
       {/* Sidebar w/ list of runs */}
-      {/* TODO: separate this out as a component */}
       {/* TODO: render this below header in sm and md layouts */}
-      <aside className="agpt-div flex w-full flex-col gap-4 border-b lg:w-auto lg:border-b-0 lg:border-r">
-        <Button
-          size="card"
-          className={
-            "mb-4 hidden h-16 w-72 items-center gap-2 py-6 lg:flex xl:w-80 " +
-            (selectedView.type == "run" && !selectedView.id
-              ? "agpt-card-selected text-accent"
-              : "")
-          }
-          onClick={() => openRunDraftView()}
-        >
-          <Plus className="h-6 w-6" />
-          <span>New run</span>
-        </Button>
-
-        {/* Runs / Scheduled list switcher */}
-        <div className="flex gap-2">
-          <Badge
-            variant={activeListTab === "runs" ? "secondary" : "outline"}
-            className="cursor-pointer gap-2 rounded-full text-base"
-            onClick={() => setActiveListTab("runs")}
-          >
-            <span>Runs</span>
-            <span className="text-neutral-600">{agentRuns.length}</span>
-          </Badge>
-
-          <Badge
-            variant={activeListTab === "scheduled" ? "secondary" : "outline"}
-            className="cursor-pointer gap-2 rounded-full text-base"
-            onClick={() => setActiveListTab("scheduled")}
-          >
-            <span>Scheduled</span>
-            <span className="text-neutral-600">
-              {schedules.filter((s) => s.graph_id === agentID).length}
-            </span>
-          </Badge>
-        </div>
-
-        {/* Runs / Schedules list */}
-        <ScrollArea className="lg:h-[calc(100vh-200px)]">
-          <div className="flex gap-2 lg:flex-col">
-            {/* New Run button - only in small layouts */}
-            <Button
-              size="card"
-              className={
-                "flex h-28 w-40 items-center gap-2 py-6 lg:hidden " +
-                (selectedView.type == "run" && !selectedView.id
-                  ? "agpt-card-selected text-accent"
-                  : "")
-              }
-              onClick={() => openRunDraftView()}
-            >
-              <Plus className="h-6 w-6" />
-              <span>New run</span>
-            </Button>
-
-            {activeListTab === "runs"
-              ? agentRuns.map((run, i) => (
-                  <AgentRunSummaryCard
-                    className="h-28 w-72 lg:h-32 xl:w-80"
-                    key={i}
-                    agentID={run.graph_id}
-                    agentRunID={run.execution_id}
-                    status={agentRunStatusMap[run.status]}
-                    title={agent.name}
-                    timestamp={run.started_at}
-                    selected={selectedView.id === run.execution_id}
-                    onClick={() => selectRun(run.execution_id)}
-                  />
-                ))
-              : schedules
-                  .filter((schedule) => schedule.graph_id === agentID)
-                  .map((schedule, i) => (
-                    <AgentRunSummaryCard
-                      className="h-28 w-72 lg:h-32 xl:w-80"
-                      key={i}
-                      agentID={schedule.graph_id}
-                      agentRunID={schedule.id}
-                      status="scheduled"
-                      title={schedule.name}
-                      timestamp={schedule.next_run_time}
-                      selected={selectedView.id === schedule.id}
-                      onClick={() => selectSchedule(schedule)}
-                    />
-                  ))}
-          </div>
-        </ScrollArea>
-      </aside>
+      <AgentRunsSelectorList
+        className="agpt-div w-full border-b lg:w-auto lg:border-b-0 lg:border-r"
+        agent={agent}
+        agentRuns={agentRuns}
+        schedules={schedules}
+        selectedView={selectedView}
+        onSelectRun={selectRun}
+        onSelectSchedule={selectSchedule}
+        onDraftNewRun={openRunDraftView}
+      />
 
       <div className="flex-1">
         {/* Header */}
