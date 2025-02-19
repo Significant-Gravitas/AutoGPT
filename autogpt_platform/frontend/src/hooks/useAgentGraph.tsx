@@ -6,6 +6,7 @@ import BackendAPI, {
   BlockUIType,
   formatEdgeID,
   Graph,
+  GraphID,
   NodeExecutionResult,
 } from "@/lib/autogpt-server-api";
 import {
@@ -26,7 +27,7 @@ import { default as NextLink } from "next/link";
 const ajv = new Ajv({ strict: false, allErrors: true });
 
 export default function useAgentGraph(
-  flowID?: string,
+  flowID?: GraphID,
   flowVersion?: number,
   flowExecutionID?: string,
   passDataToBeads?: boolean,

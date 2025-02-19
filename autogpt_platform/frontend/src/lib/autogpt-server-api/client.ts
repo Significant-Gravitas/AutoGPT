@@ -18,6 +18,7 @@ import {
   GraphCreatable,
   GraphMeta,
   GraphUpdateable,
+  LibraryAgent,
   MyAgentsResponse,
   NodeExecutionResult,
   ProfileDetails,
@@ -32,7 +33,9 @@ import {
   StoreReview,
   TransactionHistory,
   User,
+  NotificationPreferenceDTO,
   UserPasswordCredentials,
+  NotificationPreference,
   RefundRequest,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
@@ -82,12 +85,26 @@ export default class BackendAPI {
     return this._request("POST", "/auth/user", {});
   }
 
+  updateUserEmail(email: string): Promise<{ email: string }> {
+    return this._request("POST", "/auth/user/email", { email });
+  }
+
   getUserCredit(page?: string): Promise<{ credits: number }> {
     try {
       return this._get(`/credits`, undefined, page);
     } catch (error) {
       return Promise.resolve({ credits: 0 });
     }
+  }
+
+  getUserPreferences(): Promise<NotificationPreferenceDTO> {
+    return this._get("/auth/user/preferences");
+  }
+
+  updateUserPreferences(
+    preferences: NotificationPreferenceDTO,
+  ): Promise<NotificationPreference> {
+    return this._request("POST", "/auth/user/preferences", preferences);
   }
 
   getAutoTopUpConfig(): Promise<{ amount: number; threshold: number }> {
@@ -453,7 +470,7 @@ export default class BackendAPI {
   /////////// V2 LIBRARY API //////////////
   /////////////////////////////////////////
 
-  async listLibraryAgents(): Promise<GraphMeta[]> {
+  async listLibraryAgents(): Promise<LibraryAgent[]> {
     return this._get("/library/agents");
   }
 
