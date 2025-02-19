@@ -49,7 +49,9 @@ export default function AgentRunDraftView({
           <CardContent className="flex flex-col gap-4">
             {Object.entries(agentInputs).map(([key, inputSubSchema]) => (
               <div key={key} className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium">{key}</label>
+                <label className="text-sm font-medium">
+                  {inputSubSchema.title || key}
+                </label>
                 <Input
                   // TODO: render specific inputs based on input types
                   defaultValue={

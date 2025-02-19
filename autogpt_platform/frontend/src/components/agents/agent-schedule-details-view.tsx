@@ -41,7 +41,7 @@ export default function AgentScheduleDetailsView({
 
   const agentRunInputs: Record<
     string,
-    { /* type: BlockIOSubType; */ value: any }
+    { title?: string; /* type: BlockIOSubType; */ value: any }
   > = useMemo(() => {
     // TODO: show (link to) preset - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
 
@@ -49,10 +49,14 @@ export default function AgentScheduleDetailsView({
     return Object.fromEntries(
       Object.entries(schedule.input_data).map(([k, v]) => [
         k,
-        { value: v /* TODO: type: agent.input_schema.properties[k].type */ },
+        {
+          title: agent.input_schema.properties[k].title,
+          /* TODO: type: agent.input_schema.properties[k].type */
+          value: v,
+        },
       ]),
     );
-  }, [schedule]);
+  }, [agent, schedule]);
 
   const runNow = useCallback(
     () =>
@@ -93,9 +97,9 @@ export default function AgentScheduleDetailsView({
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {agentRunInputs !== undefined ? (
-              Object.entries(agentRunInputs).map(([key, { value }]) => (
+              Object.entries(agentRunInputs).map(([key, { title, value }]) => (
                 <div key={key} className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium">{key}</label>
+                  <label className="text-sm font-medium">{title || key}</label>
                   <Input
                     defaultValue={value}
                     className="rounded-full"

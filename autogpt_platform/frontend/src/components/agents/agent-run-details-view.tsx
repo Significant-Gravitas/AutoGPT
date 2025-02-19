@@ -57,7 +57,7 @@ export default function AgentRunDetailsView({
   }, [run, selectedRunStatus]);
 
   const agentRunInputs:
-    | Record<string, { /* type: BlockIOSubType; */ value: any }>
+    | Record<string, { title?: string; /* type: BlockIOSubType; */ value: any }>
     | undefined = useMemo(() => {
     if (!("inputs" in run)) return undefined;
     // TODO: show (link to) preset - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
@@ -67,12 +67,13 @@ export default function AgentRunDetailsView({
       Object.entries(run.inputs).map(([k, v]) => [
         k,
         {
-          value: v,
+          title: agent.input_schema.properties[k].title,
           // type: agent.input_schema.properties[k].type, // TODO: implement typed graph inputs
+          value: v,
         },
       ]),
     );
-  }, [run]);
+  }, [agent, run]);
 
   const runAgain = useCallback(
     () =>
@@ -88,7 +89,10 @@ export default function AgentRunDetailsView({
   );
 
   const agentRunOutputs:
-    | Record<string, { /* type: BlockIOSubType; */ values: Array<any> }>
+    | Record<
+        string,
+        { title?: string; /* type: BlockIOSubType; */ values: Array<any> }
+      >
     | null
     | undefined = useMemo(() => {
     if (!("outputs" in run)) return undefined;
@@ -99,10 +103,14 @@ export default function AgentRunDetailsView({
     return Object.fromEntries(
       Object.entries(run.outputs).map(([k, v]) => [
         k,
-        { values: v /* type: agent.output_schema.properties[k].type */ },
+        {
+          title: agent.output_schema.properties[k].title,
+          /* type: agent.output_schema.properties[k].type */
+          values: v,
+        },
       ]),
     );
-  }, [run, selectedRunStatus]);
+  }, [agent, run, selectedRunStatus]);
 
   const runActions: { label: string; callback: () => void }[] = useMemo(
     () => [{ label: "Run again", callback: () => runAgain() }],
@@ -136,15 +144,19 @@ export default function AgentRunDetailsView({
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               {agentRunOutputs !== undefined ? (
-                Object.entries(agentRunOutputs).map(([key, { values }]) => (
-                  <div key={key} className="flex flex-col gap-1.5">
-                    <label className="text-sm font-medium">{key}</label>
-                    {values.map((value, i) => (
-                      <pre key={i}>{value}</pre>
-                    ))}
-                    {/* TODO: pretty type-dependent rendering */}
-                  </div>
-                ))
+                Object.entries(agentRunOutputs).map(
+                  ([key, { title, values }]) => (
+                    <div key={key} className="flex flex-col gap-1.5">
+                      <label className="text-sm font-medium">
+                        {title || key}
+                      </label>
+                      {values.map((value, i) => (
+                        <pre key={i}>{value}</pre>
+                      ))}
+                      {/* TODO: pretty type-dependent rendering */}
+                    </div>
+                  ),
+                )
               ) : (
                 <p>Loading...</p>
               )}
@@ -158,9 +170,9 @@ export default function AgentRunDetailsView({
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {agentRunInputs !== undefined ? (
-              Object.entries(agentRunInputs).map(([key, { value }]) => (
+              Object.entries(agentRunInputs).map(([key, { title, value }]) => (
                 <div key={key} className="flex flex-col gap-1.5">
-                  <label className="text-sm font-medium">{key}</label>
+                  <label className="text-sm font-medium">{title || key}</label>
                   <Input
                     defaultValue={value}
                     className="rounded-full"
