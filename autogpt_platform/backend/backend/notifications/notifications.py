@@ -1,12 +1,13 @@
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Coroutine
+from typing import TYPE_CHECKING, Any, Callable, Coroutine
 
 import aio_pika
-from aio_pika.abc import AbstractQueue
 from aio_pika.exceptions import QueueEmpty
 from autogpt_libs.utils.cache import thread_cached
 from prisma.enums import NotificationType
+from pydantic import BaseModel
+
 from backend.data.notifications import (
     BatchingStrategy,
     NotificationEventDTO,
@@ -25,6 +26,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 settings = Settings()
+
+
+class NotificationEvent(BaseModel):
+    event: NotificationEventDTO
+    model: NotificationEventModel
 
 
 def create_notification_config() -> RabbitMQConfig:
@@ -128,13 +134,25 @@ class NotificationManager(AppService):
             .preferences[event_type]
         )
 
+    def _parse_message(self, message: str) -> NotificationEvent | None:
+        try:
+            event = NotificationEventDTO.model_validate_json(message)
+            model = NotificationEventModel[
+                get_data_type(event.type)
+            ].model_validate_json(message)
+            return NotificationEvent(event=event, model=model)
+        except Exception as e:
+            logger.error(f"Error parsing message due to non matching schema {e}")
+            return None
+
     async def _process_immediate(self, message: str) -> bool:
         """Process a single notification immediately, returning whether to put into the failed queue"""
         try:
-            event = NotificationEventDTO.model_validate_json(message)
-            parsed_event = NotificationEventModel[
-                get_data_type(event.type)
-            ].model_validate_json(message)
+            parsed = self._parse_message(message)
+            if not parsed:
+                return False
+            event = parsed.event
+            model = parsed.model
             user_email = get_db_client().get_user_email_by_id(event.user_id)
             should_send = await self._should_email_user_based_on_preference(
                 event.user_id, event.type
@@ -147,8 +165,8 @@ class NotificationManager(AppService):
                     f"User {event.user_id} does not want to receive {event.type} notifications"
                 )
                 return True
-            self.email_sender.send_templated(event.type, user_email, parsed_event)
-            logger.info(f"Processing notification: {parsed_event}")
+            self.email_sender.send_templated(event.type, user_email, model)
+            logger.info(f"Processing notification: {model}")
             return True
         except Exception as e:
             logger.error(f"Error processing notification: {e}")
@@ -160,6 +178,7 @@ class NotificationManager(AppService):
         process_func: Callable[[str], Coroutine[Any, Any, bool]],
         error_queue_name: str,
     ):
+        message: aio_pika.abc.AbstractMessage | None = None
         try:
             # This parameter "no_ack" is named like shit, think of it as "auto_ack"
             message = self.run_and_wait(queue.get(timeout=1.0, no_ack=False))
@@ -172,8 +191,15 @@ class NotificationManager(AppService):
         except QueueEmpty:
             logger.debug(f"Queue {error_queue_name} empty")
         except Exception as e:
-            logger.error(f"Error in notification service loop: {e}")
-            self.run_and_wait(message.reject(requeue=False))
+            if message:
+                logger.error(
+                    f"Error in notification service loop, message rejected {e}"
+                )
+                self.run_and_wait(message.reject(requeue=False))
+            else:
+                logger.error(
+                    f"Error in notification service loop, message unable to be rejected, and will have to be manually removed to free space in the queue: {e}"
+                )
 
     def run_service(self):
         logger.info(f"[{self.service_name}] Started notification service")
