@@ -76,6 +76,7 @@ export default function AgentRunDetailsView({
       agentRunInputs &&
       api.executeGraph(
         agent.id,
+        agent.version,
         Object.fromEntries(
           Object.entries(agentRunInputs).map(([k, v]) => [k, v.value]),
         ),
