@@ -39,18 +39,20 @@ export default function AgentScheduleDetailsView({
     ];
   }, [schedule, selectedRunStatus]);
 
-  const agentRunInputs: Record<string, { type: BlockIOSubType; value: any }> =
-    useMemo(() => {
-      // TODO: show (link to) preset - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
+  const agentRunInputs: Record<
+    string,
+    { /* type: BlockIOSubType; */ value: any }
+  > = useMemo(() => {
+    // TODO: show (link to) preset - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
 
-      // Add type info from agent input schema
-      return Object.fromEntries(
-        Object.entries(schedule.input_data).map(([k, v]) => [
-          k,
-          { value: v, type: agent.input_schema.properties[k].type },
-        ]),
-      );
-    }, [agent, schedule]);
+    // Add type info from agent input schema
+    return Object.fromEntries(
+      Object.entries(schedule.input_data).map(([k, v]) => [
+        k,
+        { value: v /* TODO: type: agent.input_schema.properties[k].type */ },
+      ]),
+    );
+  }, [schedule]);
 
   const runNow = useCallback(
     () =>

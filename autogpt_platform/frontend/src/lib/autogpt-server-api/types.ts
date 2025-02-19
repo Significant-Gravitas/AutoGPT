@@ -239,11 +239,26 @@ export type GraphMeta = {
   is_active: boolean;
   name: string;
   description: string;
-  input_schema: BlockIOObjectSubSchema;
-  output_schema: BlockIOObjectSubSchema;
+  input_schema: GraphIOSchema;
+  output_schema: GraphIOSchema;
 };
 
 export type GraphID = Brand<string, "GraphID">;
+
+/* Derived from backend/data/graph.py:Graph._generate_schema() */
+export type GraphIOSchema = {
+  type: "object";
+  properties: { [key: string]: GraphIOSubSchema };
+  required: (keyof BlockIORootSchema["properties"])[];
+};
+export type GraphIOSubSchema = Omit<
+  BlockIOSubSchemaMeta,
+  "placeholder" | "depends_on" | "hidden"
+> & {
+  type: never; // bodge to avoid type checking hell; doesn't exist at runtime
+  default?: string;
+  secret: boolean;
+};
 
 /* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
@@ -258,8 +273,8 @@ export type GraphUpdateable = Omit<
   version?: number;
   is_active?: boolean;
   links: Array<LinkCreatable>;
-  input_schema?: BlockIOObjectSubSchema;
-  output_schema?: BlockIOObjectSubSchema;
+  input_schema?: GraphIOSchema;
+  output_schema?: GraphIOSchema;
 };
 
 export type GraphCreatable = Omit<GraphUpdateable, "id"> & { id?: string };

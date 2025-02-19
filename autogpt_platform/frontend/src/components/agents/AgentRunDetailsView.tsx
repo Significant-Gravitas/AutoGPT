@@ -57,7 +57,7 @@ export default function AgentRunDetailsView({
   }, [run, selectedRunStatus]);
 
   const agentRunInputs:
-    | Record<string, { type: BlockIOSubType; value: any }>
+    | Record<string, { /* type: BlockIOSubType; */ value: any }>
     | undefined = useMemo(() => {
     if (!("inputs" in run)) return undefined;
     // TODO: show (link to) preset - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
@@ -66,10 +66,13 @@ export default function AgentRunDetailsView({
     return Object.fromEntries(
       Object.entries(run.inputs).map(([k, v]) => [
         k,
-        { value: v, type: agent.input_schema.properties[k].type },
+        {
+          value: v,
+          // type: agent.input_schema.properties[k].type, // TODO: implement typed graph inputs
+        },
       ]),
     );
-  }, [agent, run]);
+  }, [run]);
 
   const runAgain = useCallback(
     () =>
@@ -85,7 +88,7 @@ export default function AgentRunDetailsView({
   );
 
   const agentRunOutputs:
-    | Record<string, { type: BlockIOSubType; value: any }>
+    | Record<string, { /* type: BlockIOSubType; */ value: any }>
     | null
     | undefined = useMemo(() => {
     if (!("outputs" in run)) return undefined;
@@ -96,10 +99,10 @@ export default function AgentRunDetailsView({
     return Object.fromEntries(
       Object.entries(run.outputs).map(([k, v]) => [
         k,
-        { value: v, type: agent.output_schema.properties[k].type },
+        { value: v /* type: agent.output_schema.properties[k].type */ },
       ]),
     );
-  }, [agent, run, selectedRunStatus]);
+  }, [run, selectedRunStatus]);
 
   const runActions: { label: string; callback: () => void }[] = useMemo(
     () => [{ label: "Run again", callback: () => runAgain() }],
