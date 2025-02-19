@@ -33,6 +33,7 @@ from backend.data.api_key import (
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import (
     AutoTopUpConfig,
+    RefundRequest,
     TransactionHistory,
     get_auto_top_up,
     get_block_costs,
@@ -187,8 +188,7 @@ def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput
 async def get_user_credits(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, int]:
-    # Credits can go negative, so ensure it's at least 0 for user to see.
-    return {"credits": max(await _user_credit_model.get_credits(user_id), 0)}
+    return {"credits": await _user_credit_model.get_credits(user_id)}
 
 
 @v1_router.post(
@@ -201,6 +201,19 @@ async def request_top_up(
         user_id, request.credit_amount
     )
     return {"checkout_url": checkout_url}
+
+
+@v1_router.post(
+    path="/credits/{transaction_key}/refund",
+    tags=["credits"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def refund_top_up(
+    user_id: Annotated[str, Depends(get_user_id)],
+    transaction_key: str,
+    metadata: dict[str, str],
+) -> int:
+    return await _user_credit_model.top_up_refund(user_id, transaction_key, metadata)
 
 
 @v1_router.patch(
@@ -276,6 +289,12 @@ async def stripe_webhook(request: Request):
             session_id=event["data"]["object"]["id"]
         )
 
+    if event["type"] == "charge.dispute.created":
+        await _user_credit_model.handle_dispute(event["data"]["object"])
+
+    if event["type"] == "refund.created" or event["type"] == "charge.dispute.closed":
+        await _user_credit_model.deduct_credits(event["data"]["object"])
+
     return Response(status_code=200)
 
 
@@ -285,7 +304,7 @@ async def manage_payment_method(
 ) -> dict[str, str]:
     session = stripe.billing_portal.Session.create(
         customer=await get_stripe_customer_id(user_id),
-        return_url=settings.config.frontend_base_url + "/marketplace/credits",
+        return_url=settings.config.frontend_base_url + "/profile/credits",
     )
     if not session:
         raise HTTPException(
@@ -298,6 +317,7 @@ async def manage_payment_method(
 async def get_credit_history(
     user_id: Annotated[str, Depends(get_user_id)],
     transaction_time: datetime | None = None,
+    transaction_type: str | None = None,
     transaction_count_limit: int = 100,
 ) -> TransactionHistory:
     if transaction_count_limit < 1 or transaction_count_limit > 1000:
@@ -305,9 +325,17 @@ async def get_credit_history(
 
     return await _user_credit_model.get_transaction_history(
         user_id=user_id,
-        transaction_time=transaction_time or datetime.max,
+        transaction_time_ceiling=transaction_time,
         transaction_count_limit=transaction_count_limit,
+        transaction_type=transaction_type,
     )
+
+
+@v1_router.get(path="/credits/refunds", dependencies=[Depends(auth_middleware)])
+async def get_refund_requests(
+    user_id: Annotated[str, Depends(get_user_id)]
+) -> list[RefundRequest]:
+    return await _user_credit_model.get_refund_requests(user_id)
 
 
 ########################################################
