@@ -5,7 +5,7 @@ import { BlockIOSubType, GraphMeta, Schedule } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AgentRunStatus } from "@/components/agents/AgentRunStatusChip";
+import { AgentRunStatus } from "@/components/agents/agent-run-status-chip";
 import { Button } from "@/components/agptui/Button";
 import { Input } from "@/components/ui/input";
 

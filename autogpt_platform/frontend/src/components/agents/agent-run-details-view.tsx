@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input";
 import {
   AgentRunStatus,
   agentRunStatusMap,
-} from "@/components/agents/AgentRunStatusChip";
+} from "@/components/agents/agent-run-status-chip";
 
 export default function AgentRunDetailsView({
   agent,

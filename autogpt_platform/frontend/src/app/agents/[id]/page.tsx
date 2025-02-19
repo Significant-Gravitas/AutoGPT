@@ -15,11 +15,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/agptui/Button";
 import { Badge } from "@/components/ui/badge";
 
-import AgentRunDraftView from "@/components/agents/AgentRunDraftView";
-import AgentRunDetailsView from "@/components/agents/AgentRunDetailsView";
-import AgentRunSummaryCard from "@/components/agents/AgentRunSummaryCard";
-import { agentRunStatusMap } from "@/components/agents/AgentRunStatusChip";
-import AgentScheduleDetailsView from "@/components/agents/AgentScheduleDetailsView";
+import AgentRunDraftView from "@/components/agents/agent-run-draft-view";
+import AgentRunDetailsView from "@/components/agents/agent-run-details-view";
+import AgentRunSummaryCard from "@/components/agents/agent-run-summary-card";
+import { agentRunStatusMap } from "@/components/agents/agent-run-status-chip";
+import AgentScheduleDetailsView from "@/components/agents/agent-schedule-details-view";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: string } = useParams();

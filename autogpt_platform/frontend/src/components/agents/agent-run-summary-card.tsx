@@ -15,7 +15,7 @@ import {
 
 import AgentRunStatusChip, {
   AgentRunStatus,
-} from "@/components/agents/AgentRunStatusChip";
+} from "@/components/agents/agent-run-status-chip";
 
 export type AgentRunSummaryProps = {
   agentID: string;
