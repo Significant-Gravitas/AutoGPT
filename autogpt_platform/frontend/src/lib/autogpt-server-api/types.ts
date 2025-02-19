@@ -535,7 +535,7 @@ export type Schedule = {
   graph_id: GraphID;
   graph_version: number;
   input_data: { [key: string]: any };
-  next_run_time: string;
+  next_run_time: Date;
 };
 
 export type ScheduleCreatable = {

@@ -480,15 +480,19 @@ export default class BackendAPI {
   }
 
   async createSchedule(schedule: ScheduleCreatable): Promise<Schedule> {
-    return this._request("POST", `/schedules`, schedule);
+    return this._request("POST", `/schedules`, schedule).then(
+      parseScheduleTimestamp,
+    );
   }
 
-  async deleteSchedule(scheduleId: string): Promise<Schedule> {
+  async deleteSchedule(scheduleId: string): Promise<{ id: string }> {
     return this._request("DELETE", `/schedules/${scheduleId}`);
   }
 
   async listSchedules(): Promise<Schedule[]> {
-    return this._get(`/schedules`);
+    return this._get(`/schedules`).then((schedules) =>
+      schedules.map(parseScheduleTimestamp),
+    );
   }
 
   private async _uploadFile(path: string, file: File): Promise<string> {
@@ -818,5 +822,12 @@ function parseNodeExecutionResultTimestamps(result: any): NodeExecutionResult {
     queue_time: result.queue_time ? new Date(result.queue_time) : undefined,
     start_time: result.start_time ? new Date(result.start_time) : undefined,
     end_time: result.end_time ? new Date(result.end_time) : undefined,
+  };
+}
+
+function parseScheduleTimestamp(result: any): Schedule {
+  return {
+    ...result,
+    next_run_time: new Date(result.next_run_time),
   };
 }

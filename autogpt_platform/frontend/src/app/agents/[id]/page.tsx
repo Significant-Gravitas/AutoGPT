@@ -220,7 +220,7 @@ export default function AgentRunsPage(): React.ReactElement {
                       agentRunID={schedule.id}
                       status="scheduled"
                       title={schedule.name}
-                      timestamp={schedule.next_run_time} // FIXME
+                      timestamp={schedule.next_run_time}
                       selected={selectedView.id === schedule.id}
                       onClick={() => selectSchedule(schedule)}
                     />

@@ -32,7 +32,10 @@ export default function AgentScheduleDetailsView({
           selectedRunStatus.charAt(0).toUpperCase() +
           selectedRunStatus.slice(1),
       },
-      { label: "Scheduled for", value: schedule.next_run_time },
+      {
+        label: "Scheduled for",
+        value: schedule.next_run_time.toLocaleString(),
+      },
     ];
   }, [schedule, selectedRunStatus]);
 
