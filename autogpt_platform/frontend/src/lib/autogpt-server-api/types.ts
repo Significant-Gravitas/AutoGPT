@@ -41,6 +41,8 @@ export type BlockIOSubSchema =
   | BlockIOSimpleTypeSubSchema
   | BlockIOCombinedTypeSubSchema;
 
+export type BlockIOSubType = BlockIOSimpleTypeSubSchema["type"];
+
 export type BlockIOSimpleTypeSubSchema =
   | BlockIOObjectSubSchema
   | BlockIOCredentialsSubSchema
@@ -152,8 +154,7 @@ export const PROVIDER_NAMES = {
 export type CredentialsProviderName =
   (typeof PROVIDER_NAMES)[keyof typeof PROVIDER_NAMES];
 
-export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
-  type: "object";
+export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   /* Mirror of backend/data/model.py:CredentialsFieldSchemaExtra */
   credentials_provider: CredentialsProviderName[];
   credentials_scopes?: string[];
@@ -170,21 +171,17 @@ export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
 
 // At the time of writing, combined schemas only occur on the first nested level in a
 // block schema. It is typed this way to make the use of these objects less tedious.
-type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta &
-  (
+type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta & { type: never } & (
     | {
-        type: "allOf";
         allOf: [BlockIOSimpleTypeSubSchema];
         secret?: boolean;
       }
     | {
-        type: "anyOf";
         anyOf: BlockIOSimpleTypeSubSchema[];
         default?: string | number | boolean | null;
         secret?: boolean;
       }
     | {
-        type: "oneOf";
         oneOf: BlockIOSimpleTypeSubSchema[];
         default?: string | number | boolean | null;
         secret?: boolean;
@@ -219,8 +216,8 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
   id?: string;
 };
 
-/* Mirror of backend/data/graph.py:GraphExecution */
-export type GraphExecution = {
+/* Mirror of backend/data/graph.py:GraphExecutionMeta */
+export type GraphExecutionMeta = {
   execution_id: string;
   started_at: number;
   ended_at: number;
@@ -229,6 +226,14 @@ export type GraphExecution = {
   status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
   graph_id: GraphID;
   graph_version: number;
+  preset_id?: string;
+};
+
+/* Mirror of backend/data/graph.py:GraphExecution */
+export type GraphExecution = GraphExecutionMeta & {
+  inputs: Record<string, any>;
+  outputs: Record<string, Array<any>>;
+  node_executions: NodeExecutionResult[];
 };
 
 export type GraphMeta = {
@@ -237,11 +242,26 @@ export type GraphMeta = {
   is_active: boolean;
   name: string;
   description: string;
-  input_schema: BlockIOObjectSubSchema;
-  output_schema: BlockIOObjectSubSchema;
+  input_schema: GraphIOSchema;
+  output_schema: GraphIOSchema;
 };
 
 export type GraphID = Brand<string, "GraphID">;
+
+/* Derived from backend/data/graph.py:Graph._generate_schema() */
+export type GraphIOSchema = {
+  type: "object";
+  properties: { [key: string]: GraphIOSubSchema };
+  required: (keyof BlockIORootSchema["properties"])[];
+};
+export type GraphIOSubSchema = Omit<
+  BlockIOSubSchemaMeta,
+  "placeholder" | "depends_on" | "hidden"
+> & {
+  type: never; // bodge to avoid type checking hell; doesn't exist at runtime
+  default?: string;
+  secret: boolean;
+};
 
 /* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
@@ -256,8 +276,8 @@ export type GraphUpdateable = Omit<
   version?: number;
   is_active?: boolean;
   links: Array<LinkCreatable>;
-  input_schema?: BlockIOObjectSubSchema;
-  output_schema?: BlockIOObjectSubSchema;
+  input_schema?: GraphIOSchema;
+  output_schema?: GraphIOSchema;
 };
 
 export type GraphCreatable = Omit<GraphUpdateable, "id"> & { id?: string };
@@ -553,7 +573,7 @@ export type Schedule = {
   graph_id: GraphID;
   graph_version: number;
   input_data: { [key: string]: any };
-  next_run_time: string;
+  next_run_time: Date;
 };
 
 export type ScheduleCreatable = {

@@ -1,4 +1,4 @@
-import { GraphExecution, LibraryAgent } from "@/lib/autogpt-server-api";
+import { GraphExecutionMeta, LibraryAgent } from "@/lib/autogpt-server-api";
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,7 @@ export const AgentFlowList = ({
   className,
 }: {
   flows: LibraryAgent[];
-  executions?: GraphExecution[];
+  executions?: GraphExecutionMeta[];
   selectedFlow: LibraryAgent | null;
   onSelectFlow: (f: LibraryAgent) => void;
   className?: string;
@@ -106,7 +106,7 @@ export const AgentFlowList = ({
             {flows
               .map((flow) => {
                 let runCount = 0,
-                  lastRun: GraphExecution | null = null;
+                  lastRun: GraphExecutionMeta | null = null;
                 if (executions) {
                   const _flowRuns = executions.filter(
                     (r) => r.graph_id == flow.agent_id,
