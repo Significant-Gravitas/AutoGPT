@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 
 import {
-  GraphExecution,
+  GraphExecutionMeta,
   Schedule,
   LibraryAgent,
 } from "@/lib/autogpt-server-api";
@@ -20,10 +20,12 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 const Monitor = () => {
   const [flows, setFlows] = useState<LibraryAgent[]>([]);
-  const [executions, setExecutions] = useState<GraphExecution[]>([]);
+  const [executions, setExecutions] = useState<GraphExecutionMeta[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [selectedFlow, setSelectedFlow] = useState<LibraryAgent | null>(null);
-  const [selectedRun, setSelectedRun] = useState<GraphExecution | null>(null);
+  const [selectedRun, setSelectedRun] = useState<GraphExecutionMeta | null>(
+    null,
+  );
   const [sortColumn, setSortColumn] = useState<keyof Schedule>("id");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const api = useBackendAPI();
