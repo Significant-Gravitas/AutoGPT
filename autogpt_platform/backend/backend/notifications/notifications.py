@@ -154,7 +154,7 @@ class NotificationManager(AppService):
                 recipient_email = self.run_and_wait(get_user_email_by_id(event.user_id))
             if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
-                return True
+                return False
 
             should_send = self._should_email_user_based_on_preference(
                 event.user_id, event.type
