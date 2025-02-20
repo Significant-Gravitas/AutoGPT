@@ -56,7 +56,7 @@ export const LibraryAgentCard = ({
       </div>
 
       <div className="flex w-full flex-1 flex-col px-4 py-4">
-        <h3 className="font-poppins mb-2 text-2xl font-semibold leading-tight text-[#272727] dark:text-neutral-100">
+        <h3 className="mb-2 font-poppins text-2xl font-semibold leading-tight text-[#272727] dark:text-neutral-100">
           {name}
         </h3>
 
