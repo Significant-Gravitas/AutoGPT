@@ -242,7 +242,7 @@ export const SchedulesTable = ({
                   </TableCell>
                   <TableCell>{schedule.graph_version}</TableCell>
                   <TableCell>
-                    {new Date(schedule.next_run_time).toLocaleString()}
+                    {schedule.next_run_time.toLocaleString()}
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">
