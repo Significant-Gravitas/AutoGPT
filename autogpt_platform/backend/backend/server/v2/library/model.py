@@ -20,10 +20,15 @@ class AgentStatus(str, Enum):
     ERROR = "ERROR"  # Agent is in an error state
 
 
+class AgentStatusResult(pydantic.BaseModel):
+    status: AgentStatus
+    new_output: bool
+
+
 def _calculate_agent_status(
     executions: list[prisma.models.AgentGraphExecution],
     recent_threshold: datetime.datetime,
-) -> tuple[AgentStatus, bool]:
+) -> AgentStatusResult:
     """
     Helper function to determine the overall agent status and whether there
     is new output (i.e., completed runs within the recent threshold).
@@ -34,7 +39,7 @@ def _calculate_agent_status(
     """
 
     if not executions:
-        return AgentStatus.COMPLETED, False
+        return AgentStatusResult(status=AgentStatus.COMPLETED, new_output=False)
 
     # Track how many times each execution status appears
     status_counts = {status: 0 for status in prisma.enums.AgentExecutionStatus}
@@ -49,13 +54,13 @@ def _calculate_agent_status(
 
     # Determine the final status based on counts
     if status_counts[prisma.enums.AgentExecutionStatus.FAILED] > 0:
-        return AgentStatus.ERROR, new_output
+        return AgentStatusResult(status=AgentStatus.ERROR, new_output=new_output)
     elif status_counts[prisma.enums.AgentExecutionStatus.QUEUED] > 0:
-        return AgentStatus.WAITING, new_output
+        return AgentStatusResult(status=AgentStatus.WAITING, new_output=new_output)
     elif status_counts[prisma.enums.AgentExecutionStatus.RUNNING] > 0:
-        return AgentStatus.HEALTHY, new_output
+        return AgentStatusResult(status=AgentStatus.HEALTHY, new_output=new_output)
     else:
-        return AgentStatus.COMPLETED, new_output
+        return AgentStatusResult(status=AgentStatus.COMPLETED, new_output=new_output)
 
 
 class LibraryAgent(pydantic.BaseModel):
@@ -131,7 +136,9 @@ class LibraryAgent(pydantic.BaseModel):
             days=7
         )
         executions = agent.Agent.AgentGraphExecution or []
-        status, new_output = _calculate_agent_status(executions, week_ago)
+        status_result = _calculate_agent_status(executions, week_ago)
+        status = status_result.status
+        new_output = status_result.new_output
 
         # Check if user can access the graph
         can_access_graph = agent.Agent.userId == agent.userId
