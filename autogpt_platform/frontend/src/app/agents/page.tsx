@@ -1,15 +1,15 @@
-import LibraryActionHeader from "@/components/agptui/composite/LibraryActionHeader";
 import { LibraryActionSubHeader } from "@/components/agptui/composite/LibraryActionSubHeader";
 import LibraryAgentListContainer from "@/components/agptui/composite/LibraryAgentListContainer";
+import LibraryActionHeader from "@/components/agptui/composite/LibraryActionHeader";
 
 /**
  * LibraryPage Component
  * Main component that manages the library interface including agent listing and actions
  */
 
-const LibraryPage = () => {
+export default function LibraryPage() {
   return (
-    <main className="mx-auto w-screen max-w-[1600px] space-y-[16px] bg-neutral-50 p-4 px-2 dark:bg-neutral-900 sm:px-8 md:px-12">
+    <main className="mx-auto w-screen max-w-[1600px] space-y-4 bg-neutral-50 p-4 px-2 dark:bg-neutral-900 sm:px-8 md:px-12">
       {/* Header section containing notifications, search functionality and upload mechanism */}
       <LibraryActionHeader />
 
@@ -20,6 +20,4 @@ const LibraryPage = () => {
       <LibraryAgentListContainer />
     </main>
   );
-};
-
-export default LibraryPage;
+}
