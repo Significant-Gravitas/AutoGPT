@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any, List
 
@@ -82,8 +83,12 @@ class SmartDecisionMakerBlock(Block):
             block_type=BlockType.AGENT,
             input_schema=SmartDecisionMakerBlock.Input,
             output_schema=SmartDecisionMakerBlock.Output,
-            test_input={"text": "Hello, World!"},
+            test_input={
+                "prompt": "Hello, World!",
+                "credentials": llm.TEST_CREDENTIALS_INPUT,
+            },
             test_output=[],
+            test_credentials=llm.TEST_CREDENTIALS,
         )
 
     # If I import Graph here, it will break with a circular import.
@@ -240,6 +245,7 @@ class SmartDecisionMakerBlock(Block):
         self,
         input_data: Input,
         *,
+        credentials: llm.APIKeyCredentials,
         graph_id: str,
         node_id: str,
         graph_exec_id: str,
@@ -263,9 +269,37 @@ class SmartDecisionMakerBlock(Block):
             node_id, graph, tool_graph_metadata
         )
 
-        yield "function_signatures", tool_functions
+        prompt = [p.model_dump() for p in input_data.conversation_history]
 
-        logger.warning(f"Tool functions: {tool_functions}")
+        values = input_data.prompt_values
+        if values:
+            input_data.prompt = llm.fmt.format_string(input_data.prompt, values)
+            input_data.sys_prompt = llm.fmt.format_string(input_data.sys_prompt, values)
 
-        yield "tools_sample_tool_input_1", "Hello"
-        yield "tools_sample_tool_input_2", "World"
+        if input_data.sys_prompt:
+            prompt.append({"role": "system", "content": input_data.sys_prompt})
+
+        if input_data.prompt:
+            prompt.append({"role": "user", "content": input_data.prompt})
+
+        response = llm.llm_call(
+            credentials=credentials,
+            llm_model=input_data.model,
+            prompt=prompt,
+            json_format=False,
+            max_tokens=input_data.max_tokens,
+            tools=tool_functions,
+            ollama_host=input_data.ollama_host,
+        )
+
+        if not response.tool_calls:
+
+            yield "error", f"No Decision Made: {response.response}"
+
+        if response.tool_calls:
+            for tool_call in response.tool_calls:
+                tool_name = tool_call.function.name
+                tool_args = json.loads(tool_call.function.arguments)
+
+                for arg_name, arg_value in tool_args.items():
+                    yield f"tools_{tool_name}_{arg_name}", arg_value

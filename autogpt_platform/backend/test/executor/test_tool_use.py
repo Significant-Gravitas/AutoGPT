@@ -3,11 +3,13 @@ import logging
 import pytest
 from prisma.models import User
 
+import backend.blocks.llm as llm
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 from backend.data import graph
 from backend.data.execution import AgentExecutionStatus
+from backend.data.model import ProviderName
 from backend.server.model import CreateGraph
 from backend.server.rest_api import AgentServer
 from backend.usecases.sample import create_test_graph, create_test_user
@@ -19,6 +21,17 @@ logger = logging.getLogger(__name__)
 async def create_graph(s: SpinTestServer, g: graph.Graph, u: User) -> graph.Graph:
     logger.info(f"Creating graph for user {u.id}")
     return await s.agent_server.test_create_graph(CreateGraph(graph=g), u.id)
+
+
+def create_credentials(s: SpinTestServer, u: User):
+    provider = ProviderName.OPENAI
+    credentials = llm.TEST_CREDENTIALS
+    try:
+        s.agent_server.test_create_credentials(u.id, provider, credentials)
+    except Exception:
+        # Errors when trying to recreate the same credentials
+        # so hidding the error
+        pass
 
 
 async def execute_graph(
@@ -52,11 +65,15 @@ async def execute_graph(
 async def test_graph_validation_with_tool_nodes_correct(server: SpinTestServer):
     test_user = await create_test_user()
     test_tool_graph = await create_graph(server, create_test_graph(), test_user)
+    create_credentials(server, test_user)
 
     nodes = [
         graph.Node(
             block_id=SmartDecisionMakerBlock().id,
-            input_default={"text": "Hello, World!"},
+            input_default={
+                "prompt": "Hello, World!",
+                "credentials": llm.TEST_CREDENTIALS_INPUT,
+            },
         ),
         graph.Node(
             block_id=AgentExecutorBlock().id,
@@ -98,11 +115,15 @@ async def test_graph_validation_with_tool_nodes_raises_error(server: SpinTestSer
 
     test_user = await create_test_user()
     test_tool_graph = await create_graph(server, create_test_graph(), test_user)
+    create_credentials(server, test_user)
 
     nodes = [
         graph.Node(
             block_id=SmartDecisionMakerBlock().id,
-            input_default={"text": "Hello, World!"},
+            input_default={
+                "prompt": "Hello, World!",
+                "credentials": llm.TEST_CREDENTIALS_INPUT,
+            },
         ),
         graph.Node(
             block_id=AgentExecutorBlock().id,
@@ -153,11 +174,15 @@ async def test_graph_validation_with_tool_nodes_raises_error(server: SpinTestSer
 async def test_smart_decision_maker_function_signature(server: SpinTestServer):
     test_user = await create_test_user()
     test_tool_graph = await create_graph(server, create_test_graph(), test_user)
+    create_credentials(server, test_user)
 
     nodes = [
         graph.Node(
             block_id=SmartDecisionMakerBlock().id,
-            input_default={"text": "Hello, World!"},
+            input_default={
+                "prompt": "Hello, World!",
+                "credentials": llm.TEST_CREDENTIALS_INPUT,
+            },
         ),
         graph.Node(
             block_id=AgentExecutorBlock().id,
@@ -226,11 +251,15 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
 async def test_execute_graph_with_smart_decision_maker_function(server: SpinTestServer):
     test_user = await create_test_user()
     test_tool_graph = await create_graph(server, create_test_graph(), test_user)
+    create_credentials(server, test_user)
 
     nodes = [
         graph.Node(
             block_id=SmartDecisionMakerBlock().id,
-            input_default={"prompt": "Hello, World!"},
+            input_default={
+                "prompt": "Hello, World!",
+                "credentials": llm.TEST_CREDENTIALS_INPUT,
+            },
         ),
         graph.Node(
             block_id=AgentExecutorBlock().id,

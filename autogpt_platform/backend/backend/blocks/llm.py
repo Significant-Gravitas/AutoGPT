@@ -6,7 +6,7 @@ from json import JSONDecodeError
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, List, Literal, NamedTuple
 
-from pydantic import SecretStr
+from pydantic import BaseModel, SecretStr
 
 from backend.integrations.providers import ProviderName
 
@@ -16,7 +16,11 @@ if TYPE_CHECKING:
 import anthropic
 import ollama
 import openai
+import openai.types
 from groq import Groq
+from openai.types.chat.chat_completion_message_tool_call import (
+    ChatCompletionMessageToolCall,
+)
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import (
@@ -238,6 +242,190 @@ class Message(BlockSchema):
     content: str
 
 
+class LLMResponse(BaseModel):
+    prompt: str
+    response: str
+    tool_calls: List[ChatCompletionMessageToolCall] | None
+    prompt_tokens: int
+    completion_tokens: int
+
+
+def llm_call(
+    credentials: APIKeyCredentials,
+    llm_model: LlmModel,
+    prompt: list[dict],
+    json_format: bool,
+    max_tokens: int | None,
+    tools: list[dict] | None = None,
+    ollama_host: str = "localhost:11434",
+) -> LLMResponse:
+    """
+    Args:
+        credentials: The API key credentials to use.
+        llm_model: The LLM model to use.
+        prompt: The prompt to send to the LLM.
+        json_format: Whether the response should be in JSON format.
+        max_tokens: The maximum number of tokens to generate in the chat completion.
+        ollama_host: The host for ollama to use
+
+    Returns:
+        The prompt sent to the LLM.
+        The response from the LLM.
+        The number of tokens used in the prompt.
+        The number of tokens used in the completion.
+    """
+    provider = llm_model.metadata.provider
+    max_tokens = max_tokens or llm_model.max_output_tokens or 4096
+
+    if provider == "openai":
+        tools_param = tools if tools else openai.NOT_GIVEN
+        oai_client = openai.OpenAI(api_key=credentials.api_key.get_secret_value())
+        response_format = None
+
+        if llm_model in [LlmModel.O1_MINI, LlmModel.O1_PREVIEW]:
+            sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
+            usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
+            prompt = [
+                {"role": "user", "content": "\n".join(sys_messages)},
+                {"role": "user", "content": "\n".join(usr_messages)},
+            ]
+        elif json_format:
+            response_format = {"type": "json_object"}
+
+        response = oai_client.chat.completions.create(
+            model=llm_model.value,
+            messages=prompt,  # type: ignore
+            response_format=response_format,  # type: ignore
+            max_completion_tokens=max_tokens,
+            tools=tools_param,  # type: ignore
+        )
+
+        return LLMResponse(
+            prompt=json.dumps(prompt),
+            response=response.choices[0].message.content or "",
+            tool_calls=response.choices[0].message.tool_calls,
+            prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
+            completion_tokens=response.usage.completion_tokens if response.usage else 0,
+        )
+    elif provider == "anthropic":
+        if tools:
+            raise ValueError("Anthropic does not support tools.")
+
+        system_messages = [p["content"] for p in prompt if p["role"] == "system"]
+        sysprompt = " ".join(system_messages)
+
+        messages = []
+        last_role = None
+        for p in prompt:
+            if p["role"] in ["user", "assistant"]:
+                if p["role"] != last_role:
+                    messages.append({"role": p["role"], "content": p["content"]})
+                    last_role = p["role"]
+                else:
+                    # If the role is the same as the last one, combine the content
+                    messages[-1]["content"] += "\n" + p["content"]
+
+        client = anthropic.Anthropic(api_key=credentials.api_key.get_secret_value())
+        try:
+            resp = client.messages.create(
+                model=llm_model.value,
+                system=sysprompt,
+                messages=messages,
+                max_tokens=max_tokens,
+            )
+
+            if not resp.content:
+                raise ValueError("No content returned from Anthropic.")
+
+            return LLMResponse(
+                prompt=json.dumps(prompt),
+                response=(
+                    resp.content[0].name
+                    if isinstance(resp.content[0], anthropic.types.ToolUseBlock)
+                    else resp.content[0].text
+                ),
+                tool_calls=None,
+                prompt_tokens=resp.usage.input_tokens,
+                completion_tokens=resp.usage.output_tokens,
+            )
+        except anthropic.APIError as e:
+            error_message = f"Anthropic API error: {str(e)}"
+            logger.error(error_message)
+            raise ValueError(error_message)
+    elif provider == "groq":
+        if tools:
+            raise ValueError("Groq does not support tools.")
+
+        client = Groq(api_key=credentials.api_key.get_secret_value())
+        response_format = {"type": "json_object"} if json_format else None
+        response = client.chat.completions.create(
+            model=llm_model.value,
+            messages=prompt,  # type: ignore
+            response_format=response_format,  # type: ignore
+            max_tokens=max_tokens,
+        )
+        return LLMResponse(
+            prompt=json.dumps(prompt),
+            response=response.choices[0].message.content or "",
+            tool_calls=None,
+            prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
+            completion_tokens=response.usage.completion_tokens if response.usage else 0,
+        )
+    elif provider == "ollama":
+        if tools:
+            raise ValueError("Ollama does not support tools.")
+
+        client = ollama.Client(host=ollama_host)
+        sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
+        usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
+        response = client.generate(
+            model=llm_model.value,
+            prompt=f"{sys_messages}\n\n{usr_messages}",
+            stream=False,
+        )
+        return LLMResponse(
+            prompt=json.dumps(prompt),
+            response=response.get("response") or "",
+            tool_calls=None,
+            prompt_tokens=response.get("prompt_eval_count") or 0,
+            completion_tokens=response.get("eval_count") or 0,
+        )
+    elif provider == "open_router":
+        tools_param = tools if tools else openai.NOT_GIVEN
+        client = openai.OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=credentials.api_key.get_secret_value(),
+        )
+
+        response = client.chat.completions.create(
+            extra_headers={
+                "HTTP-Referer": "https://agpt.co",
+                "X-Title": "AutoGPT",
+            },
+            model=llm_model.value,
+            messages=prompt,  # type: ignore
+            max_tokens=max_tokens,
+            tools=tools_param,  # type: ignore
+        )
+
+        # If there's no response, raise an error
+        if not response.choices:
+            if response:
+                raise ValueError(f"OpenRouter error: {response}")
+            else:
+                raise ValueError("No response from OpenRouter.")
+
+        return LLMResponse(
+            prompt=json.dumps(prompt),
+            response=response.choices[0].message.content or "",
+            tool_calls=response.choices[0].message.tool_calls,
+            prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
+            completion_tokens=response.usage.completion_tokens if response.usage else 0,
+        )
+    else:
+        raise ValueError(f"Unsupported LLM provider: {provider}")
+
+
 class AIBlockBase(Block, ABC):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -260,7 +448,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4_TURBO,
+            default=LlmModel.GPT4O,
             description="The language model to use for answering the prompt.",
             advanced=False,
         )
@@ -311,7 +499,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             input_schema=AIStructuredResponseGeneratorBlock.Input,
             output_schema=AIStructuredResponseGeneratorBlock.Output,
             test_input={
-                "model": LlmModel.GPT4_TURBO,
+                "model": LlmModel.GPT4O,
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "expected_format": {
                     "key1": "value1",
@@ -621,7 +809,7 @@ class AITextGeneratorBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4_TURBO,
+            default=LlmModel.GPT4O,
             description="The language model to use for answering the prompt.",
             advanced=False,
         )
@@ -714,7 +902,7 @@ class AITextSummarizerBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4_TURBO,
+            default=LlmModel.GPT4O,
             description="The language model to use for summarizing the text.",
         )
         focus: str = SchemaField(
@@ -880,7 +1068,7 @@ class AIConversationBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4_TURBO,
+            default=LlmModel.GPT4O,
             description="The language model to use for the conversation.",
         )
         credentials: AICredentials = AICredentialsField()
@@ -919,7 +1107,7 @@ class AIConversationBlock(AIBlockBase):
                     },
                     {"role": "user", "content": "Where was it played?"},
                 ],
-                "model": LlmModel.GPT4_TURBO,
+                "model": LlmModel.GPT4O,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -981,7 +1169,7 @@ class AIListGeneratorBlock(AIBlockBase):
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
-            default=LlmModel.GPT4_TURBO,
+            default=LlmModel.GPT4O,
             description="The language model to use for generating the list.",
             advanced=True,
         )
@@ -1030,7 +1218,7 @@ class AIListGeneratorBlock(AIBlockBase):
                     "drawing explorers to uncover its mysteries. Each planet showcases the limitless possibilities of "
                     "fictional worlds."
                 ),
-                "model": LlmModel.GPT4_TURBO,
+                "model": LlmModel.GPT4O,
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "max_retries": 3,
             },
