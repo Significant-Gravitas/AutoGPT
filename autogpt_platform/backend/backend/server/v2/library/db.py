@@ -269,14 +269,9 @@ async def update_library_agent(
         DatabaseError: If there's an error in the update operation.
     """
     logger.debug(
-        "Updating library agent %s for user %s with auto_update_version=%s, "
-        "is_favorite=%s, is_archived=%s, is_deleted=%s",
-        library_agent_id,
-        user_id,
-        auto_update_version,
-        is_favorite,
-        is_archived,
-        is_deleted,
+        f"Updating library agent {library_agent_id} for user {user_id} with "
+        f"auto_update_version={auto_update_version}, is_favorite={is_favorite}, "
+        f"is_archived={is_archived}, is_deleted={is_deleted}"
     )
     try:
         await prisma.models.LibraryAgent.prisma().update_many(
@@ -556,7 +551,7 @@ async def delete_preset(user_id: str, preset_id: str) -> None:
     Raises:
         DatabaseError: If there's a database error during deletion.
     """
-    logger.info("Deleting preset %s for user %s", preset_id, user_id)
+    logger.info(f"Deleting preset {preset_id} for user {user_id}")
     try:
         await prisma.models.AgentPreset.prisma().update_many(
             where={"id": preset_id, "userId": user_id},
