@@ -76,7 +76,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
 
       {agents.length === 0 ? (
         <div className="inline-flex h-[370px] flex-col items-center justify-center gap-[29px] px-4 py-5 sm:px-6">
-          <div className="w-full text-center font-['Geist'] text-lg font-normal leading-7 text-neutral-600 dark:text-neutral-400 sm:w-[573px] sm:text-xl">
+          <div className="w-full text-center font-sans text-lg font-normal leading-7 text-neutral-600 dark:text-neutral-400 sm:w-[573px] sm:text-xl">
             Uh-oh.. It seems like you don&apos;t have any agents in your
             library.
             <br />
@@ -84,7 +84,6 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
           </div>
           <Button
             onClick={onOpenBuilder}
-            variant="default"
             size="lg"
             className="bg-neutral-800 text-white hover:bg-neutral-900"
           >
@@ -150,12 +149,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
           </div>
 
           <div className="flex justify-between gap-4 border-t border-slate-200 p-4 dark:border-slate-700 sm:p-6">
-            <Button
-              onClick={onCancel}
-              variant="outline"
-              size="default"
-              className="w-full sm:flex-1"
-            >
+            <Button onClick={onCancel} size="lg" className="w-full sm:flex-1">
               Back
             </Button>
             <Button
@@ -165,8 +159,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                 }
               }}
               disabled={!selectedAgentId || !selectedAgentVersion}
-              variant="default"
-              size="default"
+              size="lg"
               className="w-full bg-neutral-800 text-white hover:bg-neutral-900 sm:flex-1"
             >
               Next
