@@ -220,7 +220,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="A tagline for your agent"
             value={subheader}
             onChange={(e) => setSubheader(e.target.value)}
-            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-sans text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           />
         </div>
 
@@ -237,7 +237,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="URL-friendly name for your agent"
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
-            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-sans text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           />
         </div>
 
@@ -256,7 +256,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                 className="rounded-md"
               />
             ) : (
-              <p className="text-sm font-normal text-neutral-600 dark:text-neutral-400">
+              <p className="font-sans text-sm font-normal text-neutral-600 dark:text-neutral-400">
                 No images yet
               </p>
             )}
@@ -284,7 +284,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                       size="lg"
                       className="text-neutral-600 dark:text-neutral-300"
                     />
-                    <span className="mt-1 text-xs font-normal text-neutral-600 dark:text-neutral-300">
+                    <span className="mt-1 font-sans text-xs font-normal text-neutral-600 dark:text-neutral-300">
                       Add image
                     </span>
                   </label>
@@ -325,7 +325,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                       size="lg"
                       className="text-neutral-600 dark:text-neutral-300"
                     />
-                    <span className="mt-1 text-xs font-normal text-neutral-600 dark:text-neutral-300">
+                    <span className="mt-1 font-sans text-xs font-normal text-neutral-600 dark:text-neutral-300">
                       Add image
                     </span>
                   </Button>
@@ -374,7 +374,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="Paste a video link here"
             value={youtubeLink}
             onChange={(e) => setYoutubeLink(e.target.value)}
-            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-sans text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           />
         </div>
 
@@ -389,7 +389,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             id="category"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="w-full appearance-none rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-5 text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="w-full appearance-none rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-5 font-sans text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           >
             <option value="">Select a category for your agent</option>
             <option value="productivity">Productivity</option>
@@ -418,7 +418,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="Describe your agent and what it does"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="h-[100px] w-full resize-none rounded-2xl border border-slate-200 bg-white py-2.5 pl-4 pr-14 text-base font-normal leading-normal text-slate-900 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="h-[100px] w-full resize-none rounded-2xl border border-slate-200 bg-white py-2.5 pl-4 pr-14 font-sans text-base font-normal leading-normal text-slate-900 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           ></textarea>
         </div>
       </div>
