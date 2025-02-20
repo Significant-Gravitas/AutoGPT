@@ -178,10 +178,8 @@ async def create_library_agent(
                 user_id=user_id, file=image_file, use_file_name=True
             )
     except Exception as e:
-        logger.error(f"Error generating and uploading agent image: {e}")
-        raise store_exceptions.DatabaseError(
-            "Failed to generate and upload agent image"
-        ) from e
+        logger.warning(f"Error generating and uploading agent image: {e}")
+        image_url = None
 
     try:
         return await prisma.models.LibraryAgent.prisma().create(

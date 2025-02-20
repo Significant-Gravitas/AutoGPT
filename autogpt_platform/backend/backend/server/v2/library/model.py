@@ -68,7 +68,7 @@ class LibraryAgent(pydantic.BaseModel):
     agent_id: str
     agent_version: int
 
-    image_url: str
+    image_url: str | None
 
     creator_name: str
     creator_image_url: str
@@ -143,7 +143,7 @@ class LibraryAgent(pydantic.BaseModel):
             id=agent.id,
             agent_id=agent.agentId,
             agent_version=agent.agentVersion,
-            image_url=agent.image_url or "",
+            image_url=agent.image_url,
             creator_name=creator_name,
             creator_image_url=creator_image_url,
             status=status,
