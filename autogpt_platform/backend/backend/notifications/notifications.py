@@ -4,7 +4,6 @@ from typing import Callable
 
 import aio_pika
 from aio_pika.exceptions import QueueEmpty
-from postmarker.exceptions import ClientError
 from prisma.enums import NotificationType
 from pydantic import BaseModel
 
@@ -169,13 +168,9 @@ class NotificationManager(AppService):
             self.email_sender.send_templated(event.type, recipient_email, model)
             logger.info(f"Processing notification: {model}")
             return True
-        except ClientError as e:
-            skip_retry = not (500 <= e.error_code < 600)
-            logger.exception(f"Postmark error: {e}, skip retry: {skip_retry}")
-            return skip_retry
         except Exception as e:
             logger.exception(f"Error processing notification: {e}")
-            return True  # Never allow unknown retry unless we have a retry limit.
+            return False
 
     def _run_queue(
         self,
