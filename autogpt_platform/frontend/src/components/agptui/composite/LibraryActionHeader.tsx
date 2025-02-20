@@ -1,4 +1,3 @@
-"use client";
 import { LibrarySearchBar } from "@/components/agptui/LibrarySearchBar";
 import LibraryNotificationDropdown from "../LibraryNotificationDropdown";
 import { LibraryUploadAgent } from "../LibraryUploadAgent";
