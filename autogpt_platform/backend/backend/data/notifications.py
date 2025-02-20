@@ -130,6 +130,7 @@ class NotificationEventDTO(BaseModel):
     data: dict
     created_at: datetime = Field(default_factory=datetime.now)
     recipient_email: Optional[str] = None
+    retry_count: int = 0
 
 
 class NotificationEventModel(BaseModel, Generic[T_co]):
@@ -232,8 +233,8 @@ class NotificationTypeOverride:
             NotificationType.DAILY_SUMMARY: "Here's your daily summary!",
             NotificationType.WEEKLY_SUMMARY: "Look at all the cool stuff you did last week!",
             NotificationType.MONTHLY_SUMMARY: "We did a lot this month!",
-            NotificationType.REFUND_REQUEST: "[ACTION REQUIRED] You got a ${{amount / 100}} refund request from {{user_name}}",
-            NotificationType.REFUND_PROCESSED: "Refund for ${{amount / 100}} to {{user_name}} has been processed",
+            NotificationType.REFUND_REQUEST: "[ACTION REQUIRED] You got a ${{data.amount / 100}} refund request from {{data.user_name}}",
+            NotificationType.REFUND_PROCESSED: "Refund for ${{data.amount / 100}} to {{data.user_name}} has been processed",
         }[self.notification_type]
 
 

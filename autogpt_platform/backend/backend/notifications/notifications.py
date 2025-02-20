@@ -2,6 +2,7 @@ import logging
 import time
 
 from aio_pika.exceptions import QueueEmpty
+from postmarker.exceptions import ClientError
 
 from backend.data.notifications import (
     BatchingStrategy,
@@ -146,34 +147,41 @@ class NotificationManager(AppService):
             logger.exception(f"Error queueing notification: {e}")
             return NotificationResult(success=False, message=str(e))
 
-    async def _process_immediate(self, message: str) -> bool:
+    def _process_immediate(self, message: str) -> bool:
         """Process a single notification immediately, returning whether to put into the failed queue"""
         try:
             event = NotificationEventDTO.model_validate_json(message)
             parsed_event = NotificationEventModel[
                 get_data_type(event.type)
             ].model_validate_json(message)
+
             if event.recipient_email:
                 recipient_email = event.recipient_email
             else:
                 recipient_email = self.run_and_wait(get_user_email_by_id(event.user_id))
-            should_send = self.run_and_wait(
-                get_user_notification_preference(event.user_id)
-            ).preferences[event.type]
             if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
-                return False
+                return True
+
+            should_send = self.run_and_wait(
+                get_user_notification_preference(event.user_id)
+            ).preferences.get(event.type, True)
             if not should_send:
                 logger.debug(
                     f"User {event.user_id} does not want to receive {event.type} notifications"
                 )
                 return True
+
             self.email_sender.send_templated(event.type, recipient_email, parsed_event)
             logger.info(f"Processing notification: {parsed_event}")
             return True
+        except ClientError as e:
+            skip_retry = not (500 <= e.error_code < 600)
+            logger.exception(f"Postmark error: {e}, skip retry: {skip_retry}")
+            return skip_retry
         except Exception as e:
-            logger.error(f"Error processing notification: {e}")
-            return False
+            logger.exception(f"Error processing notification: {e}")
+            return True  # Never allow unknown retry unless we have a retry limit.
 
     def run_service(self):
         logger.info(f"[{self.service_name}] Started notification service")
@@ -192,9 +200,7 @@ class NotificationManager(AppService):
                     message = self.run_and_wait(immediate_queue.get())
 
                     if message:
-                        success = self.run_and_wait(
-                            self._process_immediate(message.body.decode())
-                        )
+                        success = self._process_immediate(message.body.decode())
                         if success:
                             self.run_and_wait(message.ack())
                         else:
