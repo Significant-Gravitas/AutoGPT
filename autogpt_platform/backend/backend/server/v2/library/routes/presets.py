@@ -23,7 +23,7 @@ def execution_manager_client() -> backend.executor.ExecutionManager:
 
 @router.get(
     "/presets",
-    response_model=models.LibraryAgentPresetResponse,  # Replace with your actual response model
+    response_model=models.LibraryAgentPresetResponse,
     summary="List presets",
     description="Retrieve a paginated list of presets for the current user.",
 )
@@ -55,7 +55,7 @@ async def get_presets(
 
 @router.get(
     "/presets/{preset_id}",
-    response_model=models.LibraryAgentPreset,  # Replace with your actual response model
+    response_model=models.LibraryAgentPreset,
     summary="Get a specific preset",
     description="Retrieve details for a specific preset by its ID.",
 )
@@ -94,7 +94,7 @@ async def get_preset(
 
 @router.post(
     "/presets",
-    response_model=models.LibraryAgentPreset,  # Replace with your actual response model
+    response_model=models.LibraryAgentPreset,
     summary="Create a new preset",
     description="Create a new preset for the current user.",
 )
@@ -127,7 +127,7 @@ async def create_preset(
 
 @router.put(
     "/presets/{preset_id}",
-    response_model=models.LibraryAgentPreset,  # Replace with your actual response model
+    response_model=models.LibraryAgentPreset,
     summary="Update an existing preset",
     description="Update an existing preset by its ID.",
 )
