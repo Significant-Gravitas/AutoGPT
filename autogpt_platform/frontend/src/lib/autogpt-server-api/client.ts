@@ -14,10 +14,12 @@ import {
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
   GraphExecution,
+  GraphExecutionMeta,
   Graph,
   GraphCreatable,
   GraphMeta,
   GraphUpdateable,
+  LibraryAgent,
   MyAgentsResponse,
   NodeExecutionResult,
   ProfileDetails,
@@ -32,7 +34,9 @@ import {
   StoreReview,
   TransactionHistory,
   User,
+  NotificationPreferenceDTO,
   UserPasswordCredentials,
+  NotificationPreference,
   RefundRequest,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
@@ -83,12 +87,26 @@ export default class BackendAPI {
     return this._request("POST", "/auth/user", {});
   }
 
+  updateUserEmail(email: string): Promise<{ email: string }> {
+    return this._request("POST", "/auth/user/email", { email });
+  }
+
   getUserCredit(page?: string): Promise<{ credits: number }> {
     try {
       return this._get(`/credits`, undefined, page);
     } catch (error) {
       return Promise.resolve({ credits: 0 });
     }
+  }
+
+  getUserPreferences(): Promise<NotificationPreferenceDTO> {
+    return this._get("/auth/user/preferences");
+  }
+
+  updateUserPreferences(
+    preferences: NotificationPreferenceDTO,
+  ): Promise<NotificationPreference> {
+    return this._request("POST", "/auth/user/preferences", preferences);
   }
 
   getAutoTopUpConfig(): Promise<{ amount: number; threshold: number }> {
@@ -144,10 +162,6 @@ export default class BackendAPI {
     return this._get(`/graphs`);
   }
 
-  getExecutions(): Promise<GraphExecution[]> {
-    return this._get(`/executions`);
-  }
-
   getGraph(
     id: string,
     version?: number,
@@ -195,22 +209,37 @@ export default class BackendAPI {
     return this._request("POST", `/graphs/${id}/execute/${version}`, inputData);
   }
 
+  getExecutions(): Promise<GraphExecutionMeta[]> {
+    return this._get(`/executions`);
+  }
+
+  getGraphExecutions(graphID: string): Promise<GraphExecutionMeta[]> {
+    return this._get(`/graphs/${graphID}/executions`);
+  }
+
   async getGraphExecutionInfo(
     graphID: string,
     runID: string,
-  ): Promise<NodeExecutionResult[]> {
-    return (await this._get(`/graphs/${graphID}/executions/${runID}`)).map(
+  ): Promise<GraphExecution> {
+    const result = await this._get(`/graphs/${graphID}/executions/${runID}`);
+    result.node_executions = result.node_executions.map(
       parseNodeExecutionResultTimestamps,
     );
+    return result;
   }
 
   async stopGraphExecution(
     graphID: string,
     runID: string,
-  ): Promise<NodeExecutionResult[]> {
-    return (
-      await this._request("POST", `/graphs/${graphID}/executions/${runID}/stop`)
-    ).map(parseNodeExecutionResultTimestamps);
+  ): Promise<GraphExecution> {
+    const result = await this._request(
+      "POST",
+      `/graphs/${graphID}/executions/${runID}/stop`,
+    );
+    result.node_executions = result.node_executions.map(
+      parseNodeExecutionResultTimestamps,
+    );
+    return result;
   }
 
   oAuthLogin(
@@ -450,7 +479,7 @@ export default class BackendAPI {
   /////////// V2 LIBRARY API //////////////
   /////////////////////////////////////////
 
-  async listLibraryAgents(): Promise<GraphMeta[]> {
+  async listLibraryAgents(): Promise<LibraryAgent[]> {
     return this._get("/library/agents");
   }
 
@@ -467,15 +496,19 @@ export default class BackendAPI {
   }
 
   async createSchedule(schedule: ScheduleCreatable): Promise<Schedule> {
-    return this._request("POST", `/schedules`, schedule);
+    return this._request("POST", `/schedules`, schedule).then(
+      parseScheduleTimestamp,
+    );
   }
 
-  async deleteSchedule(scheduleId: string): Promise<Schedule> {
+  async deleteSchedule(scheduleId: string): Promise<{ id: string }> {
     return this._request("DELETE", `/schedules/${scheduleId}`);
   }
 
   async listSchedules(): Promise<Schedule[]> {
-    return this._get(`/schedules`);
+    return this._get(`/schedules`).then((schedules) =>
+      schedules.map(parseScheduleTimestamp),
+    );
   }
 
   private async _uploadFile(path: string, file: File): Promise<string> {
@@ -805,5 +838,12 @@ function parseNodeExecutionResultTimestamps(result: any): NodeExecutionResult {
     queue_time: result.queue_time ? new Date(result.queue_time) : undefined,
     start_time: result.start_time ? new Date(result.start_time) : undefined,
     end_time: result.end_time ? new Date(result.end_time) : undefined,
+  };
+}
+
+function parseScheduleTimestamp(result: any): Schedule {
+  return {
+    ...result,
+    next_run_time: new Date(result.next_run_time),
   };
 }

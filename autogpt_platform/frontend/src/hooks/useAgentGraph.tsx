@@ -6,6 +6,7 @@ import BackendAPI, {
   BlockUIType,
   formatEdgeID,
   Graph,
+  GraphID,
   NodeExecutionResult,
 } from "@/lib/autogpt-server-api";
 import {
@@ -26,7 +27,7 @@ import { default as NextLink } from "next/link";
 const ajv = new Ajv({ strict: false, allErrors: true });
 
 export default function useAgentGraph(
-  flowID?: string,
+  flowID?: GraphID,
   flowVersion?: number,
   flowExecutionID?: string,
   passDataToBeads?: boolean,
@@ -605,8 +606,11 @@ export default function useAgentGraph(
     }
 
     const fetchExecutions = async () => {
-      const results = await api.getGraphExecutionInfo(flowID, flowExecutionID);
-      setUpdateQueue((prev) => [...prev, ...results]);
+      const execution = await api.getGraphExecutionInfo(
+        flowID,
+        flowExecutionID,
+      );
+      setUpdateQueue((prev) => [...prev, ...execution.node_executions]);
 
       // Track execution until completed
       const pendingNodeExecutions: Set<string> = new Set();

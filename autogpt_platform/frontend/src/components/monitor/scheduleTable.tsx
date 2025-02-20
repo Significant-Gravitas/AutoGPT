@@ -1,4 +1,4 @@
-import { Schedule } from "@/lib/autogpt-server-api";
+import { LibraryAgent, Schedule } from "@/lib/autogpt-server-api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -21,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { GraphMeta } from "@/lib/autogpt-server-api";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
@@ -36,7 +35,7 @@ import { Label } from "../ui/label";
 
 interface SchedulesTableProps {
   schedules: Schedule[];
-  agents: GraphMeta[];
+  agents: LibraryAgent[];
   onRemoveSchedule: (scheduleId: string, enabled: boolean) => void;
   sortColumn: keyof Schedule;
   sortDirection: "asc" | "desc";
@@ -54,12 +53,12 @@ export const SchedulesTable = ({
   const { toast } = useToast();
   const router = useRouter();
   const cron_manager = new CronExpressionManager();
-  const [selectedAgent, setSelectedAgent] = useState<string>("");
-  const [selectedVersion, setSelectedVersion] = useState<number>(0);
+  const [selectedAgent, setSelectedAgent] = useState<string>(""); // Library Agent ID
+  const [selectedVersion, setSelectedVersion] = useState<number>(0); // Graph version
   const [maxVersion, setMaxVersion] = useState<number>(0);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedFilter, setSelectedFilter] = useState<string>("");
+  const [selectedFilter, setSelectedFilter] = useState<string>(""); // Graph ID
 
   const filteredAndSortedSchedules = [...schedules]
     .filter(
@@ -91,8 +90,8 @@ export const SchedulesTable = ({
   const handleAgentSelect = (agentId: string) => {
     setSelectedAgent(agentId);
     const agent = agents.find((a) => a.id === agentId);
-    setMaxVersion(agent!.version);
-    setSelectedVersion(agent!.version);
+    setMaxVersion(agent!.agent_version);
+    setSelectedVersion(agent!.agent_version);
   };
 
   const handleVersionSelect = (version: string) => {
@@ -117,10 +116,11 @@ export const SchedulesTable = ({
       return;
     }
     setIsLoading(true);
+    const agent = agents.find((a) => a.id == selectedAgent)!;
     try {
       await new Promise((resolve) => setTimeout(resolve, 100));
       router.push(
-        `/build?flowID=${selectedAgent}&flowVersion=${selectedVersion}&open_scheduling=true`,
+        `/build?flowID=${agent.agent_id}&flowVersion=${agent.agent_version}&open_scheduling=true`,
       );
     } catch (error) {
       console.error("Navigation error:", error);
@@ -184,7 +184,7 @@ export const SchedulesTable = ({
             </SelectTrigger>
             <SelectContent className="text-xs">
               {agents.map((agent) => (
-                <SelectItem key={agent.id} value={agent.id}>
+                <SelectItem key={agent.id} value={agent.agent_id}>
                   {agent.name}
                 </SelectItem>
               ))}
@@ -237,12 +237,12 @@ export const SchedulesTable = ({
               filteredAndSortedSchedules.map((schedule) => (
                 <TableRow key={schedule.id}>
                   <TableCell className="font-medium">
-                    {agents.find((a) => a.id === schedule.graph_id)?.name ||
-                      schedule.graph_id}
+                    {agents.find((a) => a.agent_id === schedule.graph_id)
+                      ?.name || schedule.graph_id}
                   </TableCell>
                   <TableCell>{schedule.graph_version}</TableCell>
                   <TableCell>
-                    {new Date(schedule.next_run_time).toLocaleString()}
+                    {schedule.next_run_time.toLocaleString()}
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">

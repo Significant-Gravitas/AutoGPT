@@ -1,7 +1,11 @@
 "use client";
 import React, { useCallback, useEffect, useState } from "react";
 
-import { GraphExecution, Schedule, GraphMeta } from "@/lib/autogpt-server-api";
+import {
+  GraphExecutionMeta,
+  Schedule,
+  LibraryAgent,
+} from "@/lib/autogpt-server-api";
 
 import { Card } from "@/components/ui/card";
 import {
@@ -15,11 +19,13 @@ import { SchedulesTable } from "@/components/monitor/scheduleTable";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 const Monitor = () => {
-  const [flows, setFlows] = useState<GraphMeta[]>([]);
-  const [executions, setExecutions] = useState<GraphExecution[]>([]);
+  const [flows, setFlows] = useState<LibraryAgent[]>([]);
+  const [executions, setExecutions] = useState<GraphExecutionMeta[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
-  const [selectedFlow, setSelectedFlow] = useState<GraphMeta | null>(null);
-  const [selectedRun, setSelectedRun] = useState<GraphExecution | null>(null);
+  const [selectedFlow, setSelectedFlow] = useState<LibraryAgent | null>(null);
+  const [selectedRun, setSelectedRun] = useState<GraphExecutionMeta | null>(
+    null,
+  );
   const [sortColumn, setSortColumn] = useState<keyof Schedule>("id");
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const api = useBackendAPI();
@@ -83,7 +89,7 @@ const Monitor = () => {
         selectedFlow={selectedFlow}
         onSelectFlow={(f) => {
           setSelectedRun(null);
-          setSelectedFlow(f.id == selectedFlow?.id ? null : (f as GraphMeta));
+          setSelectedFlow(f.id == selectedFlow?.id ? null : f);
         }}
       />
       <FlowRunsList
@@ -91,7 +97,7 @@ const Monitor = () => {
         flows={flows}
         executions={[
           ...(selectedFlow
-            ? executions.filter((v) => v.graph_id == selectedFlow.id)
+            ? executions.filter((v) => v.graph_id == selectedFlow.agent_id)
             : executions),
         ].sort((a, b) => Number(b.started_at) - Number(a.started_at))}
         selectedRun={selectedRun}
@@ -102,7 +108,8 @@ const Monitor = () => {
       {(selectedRun && (
         <FlowRunInfo
           flow={
-            selectedFlow || flows.find((f) => f.id == selectedRun.graph_id)!
+            selectedFlow ||
+            flows.find((f) => f.agent_id == selectedRun.graph_id)!
           }
           execution={selectedRun}
           className={column3}
@@ -111,7 +118,9 @@ const Monitor = () => {
         (selectedFlow && (
           <FlowInfo
             flow={selectedFlow}
-            executions={executions.filter((e) => e.graph_id == selectedFlow.id)}
+            executions={executions.filter(
+              (e) => e.graph_id == selectedFlow.agent_id,
+            )}
             className={column3}
             refresh={() => {
               fetchAgents();
