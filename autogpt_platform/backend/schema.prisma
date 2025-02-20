@@ -133,6 +133,8 @@ enum NotificationType {
   DAILY_SUMMARY
   WEEKLY_SUMMARY
   MONTHLY_SUMMARY
+  REFUND_REQUEST
+  REFUND_PROCESSED
 }
 
 model NotificationEvent {

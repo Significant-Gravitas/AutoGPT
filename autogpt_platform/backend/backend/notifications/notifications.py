@@ -1,10 +1,9 @@
 import logging
 import time
-from typing import TYPE_CHECKING, Any, Callable, Coroutine
+from typing import Callable
 
 import aio_pika
 from aio_pika.exceptions import QueueEmpty
-from autogpt_libs.utils.cache import thread_cached
 from prisma.enums import NotificationType
 from pydantic import BaseModel
 
@@ -16,13 +15,10 @@ from backend.data.notifications import (
     get_data_type,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.executor.database import DatabaseManager
+from backend.data.user import get_user_email_by_id, get_user_notification_preference
 from backend.notifications.email import EmailSender
-from backend.util.service import AppService, expose, get_service_client
+from backend.util.service import AppService, expose
 from backend.util.settings import Settings
-
-if TYPE_CHECKING:
-    from backend.executor import DatabaseManager
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -93,15 +89,15 @@ class NotificationManager(AppService):
     def queue_notification(self, event: NotificationEventDTO) -> NotificationResult:
         """Queue a notification - exposed method for other services to call"""
         try:
-            logger.info(f"Recieved Request to queue {event=}")
-            # Workaround for not being able to seralize generics over the expose bus
+            logger.info(f"Received Request to queue {event=}")
+            # Workaround for not being able to serialize generics over the expose bus
             parsed_event = NotificationEventModel[
                 get_data_type(event.type)
             ].model_validate(event.model_dump())
             routing_key = self.get_routing_key(parsed_event)
             message = parsed_event.model_dump_json()
 
-            logger.info(f"Recieved Request to queue {message=}")
+            logger.info(f"Received Request to queue {message=}")
 
             exchange = "notifications"
 
@@ -118,21 +114,19 @@ class NotificationManager(AppService):
 
             return NotificationResult(
                 success=True,
-                message=(f"Notification queued with routing key: {routing_key}"),
+                message=f"Notification queued with routing key: {routing_key}",
             )
 
         except Exception as e:
-            logger.error(f"Error queueing notification: {e}")
+            logger.exception(f"Error queueing notification: {e}")
             return NotificationResult(success=False, message=str(e))
 
-    async def _should_email_user_based_on_preference(
+    def _should_email_user_based_on_preference(
         self, user_id: str, event_type: NotificationType
     ) -> bool:
-        return (
-            get_db_client()
-            .get_user_notification_preference(user_id)
-            .preferences[event_type]
-        )
+        return self.run_and_wait(
+            get_user_notification_preference(user_id)
+        ).preferences.get(event_type, True)
 
     def _parse_message(self, message: str) -> NotificationEvent | None:
         try:
@@ -145,7 +139,7 @@ class NotificationManager(AppService):
             logger.error(f"Error parsing message due to non matching schema {e}")
             return None
 
-    async def _process_immediate(self, message: str) -> bool:
+    def _process_immediate(self, message: str) -> bool:
         """Process a single notification immediately, returning whether to put into the failed queue"""
         try:
             parsed = self._parse_message(message)
@@ -153,36 +147,42 @@ class NotificationManager(AppService):
                 return False
             event = parsed.event
             model = parsed.model
-            user_email = get_db_client().get_user_email_by_id(event.user_id)
-            should_send = await self._should_email_user_based_on_preference(
-                event.user_id, event.type
-            )
-            if not user_email:
+
+            if event.recipient_email:
+                recipient_email = event.recipient_email
+            else:
+                recipient_email = self.run_and_wait(get_user_email_by_id(event.user_id))
+            if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False
+
+            should_send = self._should_email_user_based_on_preference(
+                event.user_id, event.type
+            )
             if not should_send:
                 logger.debug(
                     f"User {event.user_id} does not want to receive {event.type} notifications"
                 )
                 return True
-            self.email_sender.send_templated(event.type, user_email, model)
+
+            self.email_sender.send_templated(event.type, recipient_email, model)
             logger.info(f"Processing notification: {model}")
             return True
         except Exception as e:
-            logger.error(f"Error processing notification: {e}")
+            logger.exception(f"Error processing notification: {e}")
             return False
 
     def _run_queue(
         self,
         queue: aio_pika.abc.AbstractQueue,
-        process_func: Callable[[str], Coroutine[Any, Any, bool]],
+        process_func: Callable[[str], bool],
         error_queue_name: str,
     ):
         message: aio_pika.abc.AbstractMessage | None = None
         try:
             # This parameter "no_ack" is named like shit, think of it as "auto_ack"
             message = self.run_and_wait(queue.get(timeout=1.0, no_ack=False))
-            result = self.run_and_wait(process_func(message.body.decode()))
+            result = process_func(message.body.decode())
             if result:
                 self.run_and_wait(message.ack())
             else:
@@ -230,12 +230,3 @@ class NotificationManager(AppService):
         """Cleanup service resources"""
         self.running = False
         super().cleanup()
-
-    # ------- UTILITIES ------- #
-
-
-@thread_cached
-def get_db_client() -> "DatabaseManager":
-    from backend.executor import DatabaseManager
-
-    return get_service_client(DatabaseManager)
