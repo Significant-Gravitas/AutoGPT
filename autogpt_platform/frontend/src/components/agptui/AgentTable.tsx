@@ -109,7 +109,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({
           ))}
         </div>
       ) : (
-        <div className="py-4 text-center font-['Geist'] text-base text-neutral-600 dark:text-neutral-400">
+        <div className="py-4 text-center font-sans text-base text-neutral-600 dark:text-neutral-400">
           No agents available. Create your first agent to get started!
         </div>
       )}
