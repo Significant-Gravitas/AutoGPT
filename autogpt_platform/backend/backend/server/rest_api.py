@@ -17,6 +17,8 @@ import backend.data.db
 import backend.data.graph
 import backend.data.user
 import backend.server.routers.v1
+import backend.server.v2.library.db
+import backend.server.v2.library.model
 import backend.server.v2.library.routes
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
@@ -123,15 +125,15 @@ class AgentServer(backend.util.service.AppProcess):
     @staticmethod
     async def test_execute_graph(
         graph_id: str,
-        node_input: dict[str, Any],
         user_id: str,
         graph_version: Optional[int] = None,
+        node_input: Optional[dict[str, Any]] = None,
     ):
         return backend.server.routers.v1.execute_graph(
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph_version,
-            node_input=node_input,
+            node_input=node_input or {},
         )
 
     @staticmethod
@@ -153,7 +155,7 @@ class AgentServer(backend.util.service.AppProcess):
 
     @staticmethod
     async def test_get_graph_run_status(graph_exec_id: str, user_id: str):
-        execution = await backend.data.graph.get_execution(
+        execution = await backend.data.graph.get_execution_meta(
             user_id=user_id, execution_id=graph_exec_id
         )
         if not execution:
@@ -161,16 +163,72 @@ class AgentServer(backend.util.service.AppProcess):
         return execution.status
 
     @staticmethod
-    async def test_get_graph_run_node_execution_results(
+    async def test_get_graph_run_results(
         graph_id: str, graph_exec_id: str, user_id: str
     ):
-        return await backend.server.routers.v1.get_graph_run_node_execution_results(
+        return await backend.server.routers.v1.get_graph_execution(
             graph_id, graph_exec_id, user_id
         )
 
     @staticmethod
     async def test_delete_graph(graph_id: str, user_id: str):
+        await backend.server.v2.library.db.delete_library_agent_by_graph_id(
+            graph_id=graph_id, user_id=user_id
+        )
         return await backend.server.routers.v1.delete_graph(graph_id, user_id)
+
+    @staticmethod
+    async def test_get_presets(user_id: str, page: int = 1, page_size: int = 10):
+        return await backend.server.v2.library.routes.presets.get_presets(
+            user_id=user_id, page=page, page_size=page_size
+        )
+
+    @staticmethod
+    async def test_get_preset(preset_id: str, user_id: str):
+        return await backend.server.v2.library.routes.presets.get_preset(
+            preset_id=preset_id, user_id=user_id
+        )
+
+    @staticmethod
+    async def test_create_preset(
+        preset: backend.server.v2.library.model.CreateLibraryAgentPresetRequest,
+        user_id: str,
+    ):
+        return await backend.server.v2.library.routes.presets.create_preset(
+            preset=preset, user_id=user_id
+        )
+
+    @staticmethod
+    async def test_update_preset(
+        preset_id: str,
+        preset: backend.server.v2.library.model.CreateLibraryAgentPresetRequest,
+        user_id: str,
+    ):
+        return await backend.server.v2.library.routes.presets.update_preset(
+            preset_id=preset_id, preset=preset, user_id=user_id
+        )
+
+    @staticmethod
+    async def test_delete_preset(preset_id: str, user_id: str):
+        return await backend.server.v2.library.routes.presets.delete_preset(
+            preset_id=preset_id, user_id=user_id
+        )
+
+    @staticmethod
+    async def test_execute_preset(
+        graph_id: str,
+        graph_version: int,
+        preset_id: str,
+        user_id: str,
+        node_input: Optional[dict[str, Any]] = None,
+    ):
+        return await backend.server.v2.library.routes.presets.execute_preset(
+            graph_id=graph_id,
+            graph_version=graph_version,
+            preset_id=preset_id,
+            node_input=node_input or {},
+            user_id=user_id,
+        )
 
     @staticmethod
     async def test_create_store_listing(

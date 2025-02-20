@@ -9,6 +9,7 @@ from backend.data.execution import ExecutionResult, ExecutionStatus
 from backend.data.model import _BaseCredentials
 from backend.data.user import create_default_user
 from backend.executor import DatabaseManager, ExecutionManager, ExecutionScheduler
+from backend.notifications.notifications import NotificationManager
 from backend.server.rest_api import AgentServer
 from backend.server.utils import get_user_id
 
@@ -21,6 +22,7 @@ class SpinTestServer:
         self.exec_manager = ExecutionManager()
         self.agent_server = AgentServer()
         self.scheduler = ExecutionScheduler()
+        self.notif_manager = NotificationManager()
 
     @staticmethod
     def test_get_user_id():
@@ -32,6 +34,7 @@ class SpinTestServer:
         self.agent_server.__enter__()
         self.exec_manager.__enter__()
         self.scheduler.__enter__()
+        self.notif_manager.__enter__()
 
         await db.connect()
         await initialize_blocks()
@@ -46,6 +49,7 @@ class SpinTestServer:
         self.exec_manager.__exit__(exc_type, exc_val, exc_tb)
         self.agent_server.__exit__(exc_type, exc_val, exc_tb)
         self.db_api.__exit__(exc_type, exc_val, exc_tb)
+        self.notif_manager.__exit__(exc_type, exc_val, exc_tb)
 
     def setup_dependency_overrides(self):
         # Override get_user_id for testing
@@ -74,9 +78,10 @@ async def wait_execution(
     # Wait for the executions to complete
     for i in range(timeout):
         if await is_execution_completed():
-            return await AgentServer().test_get_graph_run_node_execution_results(
+            graph_exec = await AgentServer().test_get_graph_run_results(
                 graph_id, graph_exec_id, user_id
             )
+            return graph_exec.node_executions
         time.sleep(1)
 
     assert False, "Execution did not complete in time."

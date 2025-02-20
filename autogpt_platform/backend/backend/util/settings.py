@@ -93,7 +93,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=1500,
         description="Number of credits to refill for each user",
     )
-    # Add more configuration fields as needed
+    refund_credit_tolerance_threshold: int = Field(
+        default=500,
+        description="Maximum number of credits above the balance to be auto-approved.",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -140,6 +143,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for agent server API to run on",
     )
 
+    notification_service_port: int = Field(
+        default=8007,
+        description="The port for notification service daemon to run on",
+    )
+
     platform_base_url: str = Field(
         default="",
         description="Must be set so the application knows where it's hosted at. "
@@ -165,6 +173,25 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     scheduler_db_pool_size: int = Field(
         default=3,
         description="The pool size for the scheduler database connection pool",
+    )
+
+    rabbitmq_host: str = Field(
+        default="localhost",
+        description="The host for the RabbitMQ server",
+    )
+    rabbitmq_port: int = Field(
+        default=5672,
+        description="The port for the RabbitMQ server",
+    )
+
+    rabbitmq_vhost: str = Field(
+        default="/",
+        description="The vhost for the RabbitMQ server",
+    )
+
+    postmark_sender_email: str = Field(
+        default="invalid@invalid.com",
+        description="The email address to use for sending emails",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")
@@ -258,6 +285,15 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     encryption_key: str = Field(default="", description="Encryption key")
 
+    rabbitmq_default_user: str = Field(default="", description="RabbitMQ default user")
+    rabbitmq_default_pass: str = Field(
+        default="", description="RabbitMQ default password"
+    )
+
+    postmark_server_api_token: str = Field(
+        default="", description="Postmark server API token used for sending emails"
+    )
+
     # OAuth server credentials for integrations
     # --8<-- [start:OAuthServerCredentialsExample]
     github_client_id: str = Field(default="", description="GitHub OAuth client ID")
@@ -327,6 +363,10 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     stripe_webhook_secret: str = Field(default="", description="Stripe Webhook Secret")
 
     screenshotone_api_key: str = Field(default="", description="ScreenshotOne API Key")
+
+    apollo_api_key: str = Field(default="", description="Apollo API Key")
+    smartlead_api_key: str = Field(default="", description="SmartLead API Key")
+    zerobounce_api_key: str = Field(default="", description="ZeroBounce API Key")
 
     # Add more secret fields as needed
 
