@@ -492,7 +492,6 @@ export default class BackendAPI {
   }
 
   async addAgentToLibrary(storeListingVersionId: string): Promise<void> {
-    console.log("Adding to the library");
     await this._request("POST", `/library/agents/${storeListingVersionId}`);
   }
 
