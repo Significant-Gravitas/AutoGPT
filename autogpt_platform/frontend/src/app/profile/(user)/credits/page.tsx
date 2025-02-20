@@ -260,7 +260,6 @@ export default function CreditsPage() {
           </p>
           <Button
             type="submit"
-            variant="default"
             className="w-full"
             onClick={() => openBillingPortal()}
           >

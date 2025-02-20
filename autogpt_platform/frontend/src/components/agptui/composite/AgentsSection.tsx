@@ -65,7 +65,7 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
             >
               <CarouselContent>
                 {displayedAgents.map((agent, index) => (
-                  <CarouselItem key={index} className="min-w-64 max-w-68">
+                  <CarouselItem key={index} className="min-w-64 max-w-71">
                     <StoreCard
                       agentName={agent.agent_name}
                       agentImage={agent.agent_image}
