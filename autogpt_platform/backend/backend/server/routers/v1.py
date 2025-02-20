@@ -610,24 +610,6 @@ async def get_graph_executions(
 
 
 @v1_router.get(
-    path="executions/{graph_exec_id}",
-    tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
-)
-async def get_execution(
-    graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
-) -> graph_db.GraphExecution:
-    if not (
-        exec := await graph_db.get_execution(
-            user_id=user_id, execution_id=graph_exec_id
-        )
-    ):
-        raise HTTPException(404, detail=f"Agent execution #{graph_exec_id} not found")
-
-    return exec
-
-
-@v1_router.get(
     path="/graphs/{graph_id}/executions/{graph_exec_id}",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
