@@ -50,10 +50,10 @@ async def get_user_by_id(user_id: str) -> User:
     return User.model_validate(user)
 
 
-async def get_user_email_by_id(user_id: str) -> str:
+async def get_user_email_by_id(user_id: str) -> Optional[str]:
     try:
-        user = await prisma.user.find_unique_or_raise(where={"id": user_id})
-        return user.email
+        user = await prisma.user.find_unique(where={"id": user_id})
+        return user.email if user else None
     except Exception as e:
         raise DatabaseError(f"Failed to get user email for user {user_id}: {e}") from e
 
