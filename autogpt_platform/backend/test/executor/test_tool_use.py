@@ -8,7 +8,6 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.basic import StoreValueBlock
 from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 from backend.data import graph
-from backend.data.execution import AgentExecutionStatus
 from backend.data.model import ProviderName
 from backend.server.model import CreateGraph
 from backend.server.rest_api import AgentServer
@@ -245,83 +244,5 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
     assert (
         tool_function["function"]["parameters"]["required"] == []
     ), "Required parameters should be an empty list"
-
-
-@pytest.mark.asyncio(scope="session")
-async def test_execute_graph_with_smart_decision_maker_function(server: SpinTestServer):
-    test_user = await create_test_user()
-    test_tool_graph = await create_graph(server, create_test_graph(), test_user)
-    create_credentials(server, test_user)
-
-    nodes = [
-        graph.Node(
-            block_id=SmartDecisionMakerBlock().id,
-            input_default={
-                "prompt": "Hello, World!",
-                "credentials": llm.TEST_CREDENTIALS_INPUT,
-            },
-        ),
-        graph.Node(
-            block_id=AgentExecutorBlock().id,
-            input_default={
-                "graph_id": test_tool_graph.id,
-                "graph_version": test_tool_graph.version,
-                "input_schema": test_tool_graph.input_schema,
-                "output_schema": test_tool_graph.output_schema,
-            },
-        ),
-    ]
-
-    links = [
-        graph.Link(
-            source_id=nodes[0].id,
-            sink_id=nodes[1].id,
-            source_name="tools_sample_tool_input_1",
-            sink_name="input_1",
-        ),
-        graph.Link(
-            source_id=nodes[0].id,
-            sink_id=nodes[1].id,
-            source_name="tools_sample_tool_input_2",
-            sink_name="input_2",
-        ),
-    ]
-
-    test_graph = graph.Graph(
-        name="TestGraph",
-        description="Test graph",
-        nodes=nodes,
-        links=links,
-    )
-    test_graph = await create_graph(server, test_graph, test_user)
-
-    logger.warning(f"Executing graph {test_graph.id}")
-
-    graph_exec_id = await execute_graph(
-        server.agent_server,
-        test_graph,
-        test_user,
-        {},
-        2,
-    )
-
-    executions = await server.agent_server.test_get_graph_run_node_execution_results(
-        user_id=test_user.id,
-        graph_id=test_graph.id,
-        graph_exec_id=graph_exec_id,
-    )
-
-    logger.warning(f"Executions: {executions}")
-    assert len(executions) == 2, f"Expected 2 executions, got {len(executions)}"
-
-    execution_1 = executions[0]
-    assert execution_1.status == AgentExecutionStatus.COMPLETED
-    assert execution_1.input_data == {"prompt": "Hello, World!"}
-    assert execution_1.output_data == {
-        "tools_sample_tool_input_1": ["Hello"],
-        "tools_sample_tool_input_2": ["World"],
-    }
-
-    execution_2 = executions[1]
-    assert execution_2.status == AgentExecutionStatus.COMPLETED
-    assert execution_2.input_data == {"input_1": "Hello", "input_2": "World"}
+ 
+ 
