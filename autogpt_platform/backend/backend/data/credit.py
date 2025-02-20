@@ -1,11 +1,17 @@
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timezone
 
 import stripe
+from autogpt_libs.utils.cache import thread_cached
 from prisma import Json
-from prisma.enums import CreditRefundRequestStatus, CreditTransactionType
+from prisma.enums import (
+    CreditRefundRequestStatus,
+    CreditTransactionType,
+    NotificationType,
+)
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditRefundRequest, CreditTransaction, User
 from prisma.types import CreditTransactionCreateInput, CreditTransactionWhereInput
@@ -23,7 +29,10 @@ from backend.data.model import (
     TransactionHistory,
     UserTransaction,
 )
+from backend.data.notifications import NotificationEventDTO, RefundRequestData
 from backend.data.user import get_user_by_id
+from backend.notifications import NotificationManager
+from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -338,6 +347,26 @@ class UsageTransactionMetadata(BaseModel):
 
 class UserCredit(UserCreditBase):
 
+    @thread_cached
+    def notification_client(self) -> NotificationManager:
+        return get_service_client(NotificationManager)
+
+    async def _send_refund_notification(
+        self,
+        notification_request: RefundRequestData,
+        notification_type: NotificationType,
+    ):
+        await asyncio.to_thread(
+            lambda: self.notification_client().queue_notification(
+                NotificationEventDTO(
+                    recipient_email=settings.config.refund_notification_email,
+                    user_id=notification_request.user_id,
+                    type=notification_type,
+                    data=notification_request.model_dump(),
+                )
+            )
+        )
+
     def _block_usage_cost(
         self,
         block: Block,
@@ -457,10 +486,11 @@ class UserCredit(UserCreditBase):
         )
         balance = await self.get_credits(user_id)
         amount = transaction.amount
-        refund_key = f"{transaction.createdAt.strftime('%Y-%W')}-{user_id}"
+        refund_key_format = settings.config.refund_request_time_key_format
+        refund_key = f"{transaction.createdAt.strftime(refund_key_format)}-{user_id}"
 
         try:
-            await CreditRefundRequest.prisma().create(
+            refund_request = await CreditRefundRequest.prisma().create(
                 data={
                     "id": refund_key,
                     "transactionKey": transaction_key,
@@ -477,7 +507,20 @@ class UserCredit(UserCreditBase):
             )
 
         if amount - balance > settings.config.refund_credit_tolerance_threshold:
-            # TODO: add a notification for the platform administrator.
+            user_data = await get_user_by_id(user_id)
+            await self._send_refund_notification(
+                RefundRequestData(
+                    user_id=user_id,
+                    user_name=user_data.name or "AutoGPT Platform User",
+                    user_email=user_data.email,
+                    transaction_id=transaction_key,
+                    refund_request_id=refund_request.id,
+                    reason=refund_request.reason,
+                    amount=amount,
+                    balance=balance,
+                ),
+                NotificationType.REFUND_REQUEST,
+            )
             return 0  # Register the refund request for manual approval.
 
         # Auto refund the top-up.
@@ -509,7 +552,7 @@ class UserCredit(UserCreditBase):
                 f"Invalid amount to deduct ${request.amount/100} from ${transaction.amount/100} top-up"
             )
 
-        await self._add_transaction(
+        balance, _ = await self._add_transaction(
             user_id=transaction.userId,
             amount=-request.amount,
             transaction_type=CreditTransactionType.REFUND,
@@ -529,6 +572,21 @@ class UserCredit(UserCreditBase):
                 "status": CreditRefundRequestStatus.APPROVED,
                 "result": "The refund request has been approved, the amount will be credited back to your account.",
             },
+        )
+
+        user_data = await get_user_by_id(transaction.userId)
+        await self._send_refund_notification(
+            RefundRequestData(
+                user_id=user_data.id,
+                user_name=user_data.name or "AutoGPT Platform User",
+                user_email=user_data.email,
+                transaction_id=transaction.transactionKey,
+                refund_request_id=request.id,
+                reason=str(request.reason or "-"),
+                amount=transaction.amount,
+                balance=balance,
+            ),
+            NotificationType.REFUND_PROCESSED,
         )
 
     async def handle_dispute(self, dispute: stripe.Dispute):
