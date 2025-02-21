@@ -4,7 +4,7 @@ from abc import ABC
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, List, Literal, NamedTuple
+from typing import TYPE_CHECKING, Any, List, Literal, NamedTuple, Optional
 
 from pydantic import BaseModel, SecretStr
 
@@ -245,7 +245,7 @@ class Message(BlockSchema):
 class LLMResponse(BaseModel):
     prompt: str
     response: str
-    tool_calls: List[ChatCompletionMessageToolCall] | None
+    tool_calls: Optional[List[ChatCompletionMessageToolCall]] | None
     prompt_tokens: int
     completion_tokens: int
 

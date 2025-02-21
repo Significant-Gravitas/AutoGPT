@@ -21,7 +21,9 @@ def get_database_manager_client():
 
 
 class SmartDecisionMakerBlock(Block):
-    # Note: Currently proving out the concept of determining the inputs a tool takes
+    """
+    A block that uses a language model to make smart decisions based on a given prompt.
+    """
 
     class Input(BlockSchema):
         prompt: str = SchemaField(
@@ -72,9 +74,7 @@ class SmartDecisionMakerBlock(Block):
         function_signatures: list[dict[str, Any]] = SchemaField(
             description="The function signatures that are sent to the language model."
         )
-        tools: dict[str, dict[str, Any]] = SchemaField(
-            description="The tools that are available to use."
-        )
+        tools: Any = SchemaField(description="The tools that are available to use.")
         finished: str = SchemaField(
             description="The finished message to display to the user."
         )
@@ -183,8 +183,6 @@ class SmartDecisionMakerBlock(Block):
 
         for link in tool_links:
             grouped_tool_links.setdefault(link.sink_id, []).append(link)
-
-        logger.warning(f"Grouped tool links: {grouped_tool_links}")
 
         for tool_name, links in grouped_tool_links.items():
             sink_node = next(
@@ -295,7 +293,6 @@ class SmartDecisionMakerBlock(Block):
             tools=tool_functions,
             ollama_host=input_data.ollama_host,
         )
-        logger.warning(f"Response: {response}")
 
         if not response.tool_calls:
 
