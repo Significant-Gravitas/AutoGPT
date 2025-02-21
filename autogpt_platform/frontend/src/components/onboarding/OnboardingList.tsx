@@ -35,7 +35,8 @@ export function OnboardingListElement({
     <button
       onClick={() => onClick(content)}
       className={cn(
-        "relative flex h-[78px] w-[530px] items-center rounded-xl border border-transparent px-5 py-4 transition-all duration-200 ease-in-out",
+        "relative flex h-[78px] w-[530px] items-center rounded-xl border border-transparent px-5 py-4",
+        "transition-all duration-200 ease-in-out",
         selected ? "bg-[#F5F3FF80]" : "bg-white hover:border-zinc-400",
       )}
     >
