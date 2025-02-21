@@ -20,6 +20,7 @@ import {
   GraphExecutionMeta,
   GraphMeta,
   GraphUpdateable,
+  LibraryAgent,
   LibraryAgentPreset,
   LibraryAgentPresetResponse,
   LibraryAgentResponse,
@@ -482,7 +483,7 @@ export default class BackendAPI {
   /////////// V2 LIBRARY API //////////////
   /////////////////////////////////////////
 
-  async listLibraryAgents(params?: {
+  listLibraryAgents(params?: {
     search_term?: string;
     sort_by?: LibraryAgentSortEnum;
     page?: number;
@@ -491,8 +492,8 @@ export default class BackendAPI {
     return this._get("/library/agents", params);
   }
 
-  async addAgentToLibrary(storeListingVersionId: string): Promise<void> {
-    await this._request("POST", `/library/agents/${storeListingVersionId}`);
+  addAgentToLibrary(storeListingVersionId: string): Promise<LibraryAgent> {
+    return this._request("POST", `/library/agents/${storeListingVersionId}`);
   }
 
   async updateLibraryAgent(
@@ -507,24 +508,24 @@ export default class BackendAPI {
     await this._request("PUT", `/library/agents/${libraryAgentId}`, params);
   }
 
-  async listLibraryAgentPresets(params?: {
+  listLibraryAgentPresets(params?: {
     page?: number;
     page_size?: number;
   }): Promise<LibraryAgentPresetResponse> {
     return this._get("/library/presets", params);
   }
 
-  async getLibraryAgentPreset(presetId: string): Promise<LibraryAgentPreset> {
+  getLibraryAgentPreset(presetId: string): Promise<LibraryAgentPreset> {
     return this._get(`/library/presets/${presetId}`);
   }
 
-  async createLibraryAgentPreset(
+  createLibraryAgentPreset(
     preset: CreateLibraryAgentPresetRequest,
   ): Promise<LibraryAgentPreset> {
     return this._request("POST", "/library/presets", preset);
   }
 
-  async updateLibraryAgentPreset(
+  updateLibraryAgentPreset(
     presetId: string,
     preset: CreateLibraryAgentPresetRequest,
   ): Promise<LibraryAgentPreset> {
@@ -535,7 +536,7 @@ export default class BackendAPI {
     await this._request("DELETE", `/library/presets/${presetId}`);
   }
 
-  async executeLibraryAgentPreset(
+  executeLibraryAgentPreset(
     presetId: string,
     graphId: string,
     graphVersion: number,

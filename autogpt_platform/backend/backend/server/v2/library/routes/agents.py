@@ -90,7 +90,7 @@ async def get_library_agents(
 async def add_agent_to_library(
     store_listing_version_id: str,
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
-) -> JSONResponse:
+) -> library_model.LibraryAgent:
     """
     Add an agent from the store to the user's library.
 
@@ -106,13 +106,9 @@ async def add_agent_to_library(
         HTTPException(500): If a server/database error occurs.
     """
     try:
-        await library_db.add_store_agent_to_library(
+        return await library_db.add_store_agent_to_library(
             store_listing_version_id=store_listing_version_id,
             user_id=user_id,
-        )
-        return JSONResponse(
-            status_code=status.HTTP_201_CREATED,
-            content={"message": "Agent added to library successfully"},
         )
 
     except store_exceptions.AgentNotFoundError:

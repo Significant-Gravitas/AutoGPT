@@ -1,3 +1,10 @@
+import Link from "next/link";
+
+import {
+  ArrowBottomRightIcon,
+  QuestionMarkCircledIcon,
+} from "@radix-ui/react-icons";
+
 import { LibraryActionSubHeader } from "@/components/agptui/composite/LibraryActionSubHeader";
 import LibraryAgentListContainer from "@/components/agptui/composite/LibraryAgentListContainer";
 import LibraryActionHeader from "@/components/agptui/composite/LibraryActionHeader";
@@ -18,6 +25,16 @@ export default function LibraryPage() {
 
       {/* Content section displaying agent list with counter and filtering options */}
       <LibraryAgentListContainer />
+
+      <p className="w-full p-4 text-center text-gray-500">
+        Prefer the old experience? Click{" "}
+        <Link href="/monitoring" className="underline">
+          here
+        </Link>{" "}
+        to go to it. Please do let us know why by clicking the{" "}
+        <QuestionMarkCircledIcon className="inline-block size-6 rounded-full bg-[rgba(65,65,64,1)] p-1 text-neutral-50" />{" "}
+        in the bottom right corner <ArrowBottomRightIcon className="inline" />
+      </p>
     </main>
   );
 }
