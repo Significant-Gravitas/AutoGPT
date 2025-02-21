@@ -244,5 +244,3 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
     assert (
         tool_function["function"]["parameters"]["required"] == []
     ), "Required parameters should be an empty list"
- 
- 

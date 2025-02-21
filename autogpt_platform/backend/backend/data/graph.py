@@ -378,6 +378,7 @@ class GraphModel(Graph):
                         or block.block_type == BlockType.INPUT
                         or block.block_type == BlockType.OUTPUT
                         or block.block_type == BlockType.AGENT
+                        or block.block_type == BlockType.AI
                     )
                 ):
                     raise ValueError(
@@ -447,13 +448,13 @@ class GraphModel(Graph):
                 if i == 0:
                     fields = (
                         block.output_schema.get_fields()
-                        if block.block_type != BlockType.AGENT
+                        if block.block_type not in [BlockType.AGENT, BlockType.AI]
                         else vals.get("output_schema", {}).get("properties", {}).keys()
                     )
                 else:
                     fields = (
                         block.input_schema.get_fields()
-                        if block.block_type != BlockType.AGENT
+                        if block.block_type not in [BlockType.AGENT, BlockType.AI]
                         else vals.get("input_schema", {}).get("properties", {}).keys()
                     )
                 if sanitized_name not in fields and not name.startswith("tools_"):

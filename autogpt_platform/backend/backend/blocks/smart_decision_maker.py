@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from typing import Any, List
 
 from autogpt_libs.utils.cache import thread_cached
@@ -74,13 +75,16 @@ class SmartDecisionMakerBlock(Block):
         tools: dict[str, dict[str, Any]] = SchemaField(
             description="The tools that are available to use."
         )
+        finished: str = SchemaField(
+            description="The finished message to display to the user."
+        )
 
     def __init__(self):
         super().__init__(
             id="3b191d9f-356f-482d-8238-ba04b6d18381",
             description="Uses AI to intelligently decide what tool to use.",
-            categories={BlockCategory.BASIC},
-            block_type=BlockType.AGENT,
+            categories={BlockCategory.AI},
+            block_type=BlockType.AI,
             input_schema=SmartDecisionMakerBlock.Input,
             output_schema=SmartDecisionMakerBlock.Output,
             test_input={
@@ -208,7 +212,7 @@ class SmartDecisionMakerBlock(Block):
                 )
 
             tool_function: dict[str, Any] = {
-                "name": sink_graph_meta.name,
+                "name": re.sub(r"[^a-zA-Z0-9_-]", "_", sink_graph_meta.name).lower(),
                 "description": sink_graph_meta.description,
             }
 
@@ -223,7 +227,7 @@ class SmartDecisionMakerBlock(Block):
                     in sink_block_input_schema["properties"][link.sink_name]
                     else f"The {link.sink_name} of the tool"
                 )
-                properties[link.sink_name] = {
+                properties[link.sink_name.lower()] = {
                     "type": "string",
                     "description": description,
                 }
@@ -291,10 +295,11 @@ class SmartDecisionMakerBlock(Block):
             tools=tool_functions,
             ollama_host=input_data.ollama_host,
         )
+        logger.warning(f"Response: {response}")
 
         if not response.tool_calls:
 
-            yield "error", f"No Decision Made: {response.response}"
+            yield "finished", f"No Decision Made finishing task: {response.response}"
 
         if response.tool_calls:
             for tool_call in response.tool_calls:
@@ -302,4 +307,4 @@ class SmartDecisionMakerBlock(Block):
                 tool_args = json.loads(tool_call.function.arguments)
 
                 for arg_name, arg_value in tool_args.items():
-                    yield f"tools_{tool_name}_{arg_name}", arg_value
+                    yield f"tools_{tool_name}_{arg_name}".lower(), arg_value
