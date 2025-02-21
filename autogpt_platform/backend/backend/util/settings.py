@@ -93,7 +93,18 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=1500,
         description="Number of credits to refill for each user",
     )
-    # Add more configuration fields as needed
+    refund_credit_tolerance_threshold: int = Field(
+        default=500,
+        description="Maximum number of credits above the balance to be auto-approved.",
+    )
+    refund_notification_email: str = Field(
+        default="refund@agpt.co",
+        description="Email address to send refund notifications to.",
+    )
+    refund_request_time_key_format: str = Field(
+        default="%Y-%W",  # This will allow for weekly refunds per user.
+        description="Time key format for refund requests.",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -360,6 +371,10 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     stripe_webhook_secret: str = Field(default="", description="Stripe Webhook Secret")
 
     screenshotone_api_key: str = Field(default="", description="ScreenshotOne API Key")
+
+    apollo_api_key: str = Field(default="", description="Apollo API Key")
+    smartlead_api_key: str = Field(default="", description="SmartLead API Key")
+    zerobounce_api_key: str = Field(default="", description="ZeroBounce API Key")
 
     # Add more secret fields as needed
 

@@ -100,6 +100,17 @@ class MonthlySummaryData(BaseSummaryData):
     year: int
 
 
+class RefundRequestData(BaseNotificationData):
+    user_id: str
+    user_name: str
+    user_email: str
+    transaction_id: str
+    refund_request_id: str
+    reason: str
+    amount: float
+    balance: int
+
+
 NotificationData = Annotated[
     Union[
         AgentRunData,
@@ -118,6 +129,8 @@ class NotificationEventDTO(BaseModel):
     type: NotificationType
     data: dict
     created_at: datetime = Field(default_factory=datetime.now)
+    recipient_email: Optional[str] = None
+    retry_count: int = 0
 
 
 class NotificationEventModel(BaseModel, Generic[T_co]):
@@ -153,6 +166,8 @@ def get_data_type(
         NotificationType.DAILY_SUMMARY: DailySummaryData,
         NotificationType.WEEKLY_SUMMARY: WeeklySummaryData,
         NotificationType.MONTHLY_SUMMARY: MonthlySummaryData,
+        NotificationType.REFUND_REQUEST: RefundRequestData,
+        NotificationType.REFUND_PROCESSED: RefundRequestData,
     }[notification_type]
 
 
@@ -186,6 +201,8 @@ class NotificationTypeOverride:
             NotificationType.DAILY_SUMMARY: BatchingStrategy.IMMEDIATE,
             NotificationType.WEEKLY_SUMMARY: BatchingStrategy.IMMEDIATE,
             NotificationType.MONTHLY_SUMMARY: BatchingStrategy.IMMEDIATE,
+            NotificationType.REFUND_REQUEST: BatchingStrategy.IMMEDIATE,
+            NotificationType.REFUND_PROCESSED: BatchingStrategy.IMMEDIATE,
         }
         return BATCHING_RULES.get(self.notification_type, BatchingStrategy.HOURLY)
 
@@ -201,6 +218,8 @@ class NotificationTypeOverride:
             NotificationType.DAILY_SUMMARY: "daily_summary.html",
             NotificationType.WEEKLY_SUMMARY: "weekly_summary.html",
             NotificationType.MONTHLY_SUMMARY: "monthly_summary.html",
+            NotificationType.REFUND_REQUEST: "refund_request.html",
+            NotificationType.REFUND_PROCESSED: "refund_processed.html",
         }[self.notification_type]
 
     @property
@@ -214,7 +233,17 @@ class NotificationTypeOverride:
             NotificationType.DAILY_SUMMARY: "Here's your daily summary!",
             NotificationType.WEEKLY_SUMMARY: "Look at all the cool stuff you did last week!",
             NotificationType.MONTHLY_SUMMARY: "We did a lot this month!",
+            NotificationType.REFUND_REQUEST: "[ACTION REQUIRED] You got a ${{data.amount / 100}} refund request from {{data.user_name}}",
+            NotificationType.REFUND_PROCESSED: "Refund for ${{data.amount / 100}} to {{data.user_name}} has been processed",
         }[self.notification_type]
+
+
+class NotificationPreferenceDTO(BaseModel):
+    email: EmailStr = Field(..., description="User's email address")
+    preferences: dict[NotificationType, bool] = Field(
+        ..., description="Which notifications the user wants"
+    )
+    daily_limit: int = Field(..., description="Max emails per day")
 
 
 class NotificationPreference(BaseModel):

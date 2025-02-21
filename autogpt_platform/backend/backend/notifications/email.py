@@ -41,6 +41,7 @@ class EmailSender:
             logger.warning(
                 "Postmark server API token not found, email sending disabled"
             )
+            self.postmark = None
         self.formatter = TextFormatter()
 
     def send_templated(
@@ -90,6 +91,9 @@ class EmailSender:
         )
 
     def _send_email(self, user_email: str, subject: str, body: str):
+        if not self.postmark:
+            logger.warning("Email tried to send without postmark configured")
+            return
         logger.debug(f"Sending email to {user_email} with subject {subject}")
         self.postmark.emails.send(
             From=settings.config.postmark_sender_email,
