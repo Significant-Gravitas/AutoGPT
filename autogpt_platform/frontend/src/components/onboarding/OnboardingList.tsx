@@ -77,7 +77,8 @@ export function OnboardingListElement({
       )}
       <div
         className={cn(
-          "pointer-events-none absolute inset-0 rounded-xl border-2 transition-all duration-200 ease-in-out",
+          "pointer-events-none absolute inset-0 rounded-xl border-2",
+          "transition-all duration-200 ease-in-out",
           selected ? "border-violet-700" : "border-transparent",
         )}
       />
@@ -96,7 +97,7 @@ type OnboardingListProps = {
   onSelect: (id: string) => void;
 };
 
-function OnboardingList({
+export default function OnboardingList({
   className,
   elements,
   selectedId,
@@ -132,5 +133,3 @@ function OnboardingList({
     </div>
   );
 }
-
-export default OnboardingList;
