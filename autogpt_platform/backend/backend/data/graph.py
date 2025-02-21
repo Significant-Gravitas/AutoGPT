@@ -321,13 +321,21 @@ class GraphModel(Graph):
         smart_decision_maker_nodes = set()
         smd_unique_tool_links = {}
         agent_nodes = set()
+        nodes_block = {
+            node.id: block
+            for node in self.nodes
+            if (block := get_block(node.block_id)) is not None
+        }
 
         for node in self.nodes:
+            if (block := nodes_block.get(node.id)) is None:
+                raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
+
             # Smart decision maker nodes
-            if node.block_id == "3b191d9f-356f-482d-8238-ba04b6d18381":
+            if block.block_type == BlockType.AI:
                 smart_decision_maker_nodes.add(node.id)
             # Agent nodes
-            elif node.block_id == "e189baac-8c20-45a1-94a7-55177ea42565":
+            elif block.block_type == BlockType.AGENT:
                 agent_nodes.add(node.id)
 
         input_links = defaultdict(list)
@@ -357,8 +365,7 @@ class GraphModel(Graph):
 
         # Nodes: required fields are filled or connected and dependencies are satisfied
         for node in self.nodes:
-            block = get_block(node.block_id)
-            if block is None:
+            if (block := nodes_block.get(node.id)) is None:
                 raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
 
             provided_inputs = set(
