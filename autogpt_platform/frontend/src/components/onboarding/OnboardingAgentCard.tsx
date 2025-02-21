@@ -1,25 +1,19 @@
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import StarRating from "./StarRating";
+import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 
-interface OnboardingAgentCardProps {
-  id: string;
-  image: string;
-  name: string;
-  description: string;
-  author: string;
-  runs: number;
-  rating: number;
+type OnboardingAgentCardProps = StoreAgentDetails & {
   selected?: boolean;
   onClick: () => void;
 }
 
 export default function OnboardingAgentCard({
-  id,
-  image,
-  name,
+  agent_image,
+  creator_avatar,
+  agent_name,
   description,
-  author,
+  creator,
   runs,
   rating,
   selected,
@@ -37,7 +31,7 @@ export default function OnboardingAgentCard({
       {/* Image container */}
       <div className="relative">
         <Image
-          src={image}
+          src={agent_image[0]}
           alt="Agent cover"
           className="m-2 h-[196px] w-[350px] rounded-xl object-cover"
           width={350}
@@ -46,7 +40,7 @@ export default function OnboardingAgentCard({
         {/* Profile picture overlay */}
         <div className="absolute bottom-2 left-4">
           <Image
-            src={image}
+            src={creator_avatar}
             alt="Profile picture"
             className="h-[50px] w-[50px] rounded-full border border-white object-cover object-center"
             width={50}
@@ -61,12 +55,12 @@ export default function OnboardingAgentCard({
         <div>
           {/* Title - 2 lines max */}
           <p className="text-md line-clamp-2 max-h-[50px] font-sans text-base font-medium leading-normal text-zinc-800">
-            {name}
+            {agent_name}
           </p>
 
           {/* Author - single line with truncate */}
           <p className="truncate text-sm font-normal leading-normal text-zinc-600">
-            by {author}
+            by {creator}
           </p>
 
           {/* Description - 3 lines max */}

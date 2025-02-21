@@ -64,6 +64,30 @@ async def get_library_agents(
         raise store_exceptions.DatabaseError("Unable to fetch library agents.")
 
 
+async def get_library_agent(
+    library_agent_id: str, user_id: str
+) -> library_model.LibraryAgent:
+    try:
+        library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
+            where={"id": library_agent_id, "userId": user_id},
+            include={
+                "Agent": {
+                    "include": {
+                        "AgentNodes": {"include": {"Input": True, "Output": True}}
+                    }
+                }
+            },
+        )
+        if not library_agent:
+            raise store_exceptions.AgentNotFoundError(
+                f"Agent {library_agent_id} not found in library"
+            )
+        return library_model.LibraryAgent.from_db(library_agent)
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error fetching library agent: {e}")
+        raise store_exceptions.DatabaseError("Unable to fetch library agent.")
+
+
 async def create_library_agent(
     agent_id: str, agent_version: int, user_id: str
 ) -> prisma.models.LibraryAgent:
@@ -158,7 +182,7 @@ async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
 
 async def add_store_agent_to_library(
     store_listing_version_id: str, user_id: str
-) -> None:
+) -> library_model.LibraryAgent:
     """
     Finds the agent from the store listing version and adds it to the user's library (LibraryAgent table)
     if they don't already have it
@@ -204,10 +228,10 @@ async def add_store_agent_to_library(
             logger.debug(
                 f"User {user_id} already has agent {agent.id} in their library"
             )
-            return
+            return library_model.LibraryAgent.from_db(existing_user_agent)
 
         # Create LibraryAgent entry
-        await prisma.models.LibraryAgent.prisma().create(
+        new_agent = await prisma.models.LibraryAgent.prisma().create(
             data={
                 "userId": user_id,
                 "agentId": agent.id,
@@ -216,6 +240,7 @@ async def add_store_agent_to_library(
             }
         )
         logger.debug(f"Added agent {agent.id} to library for user {user_id}")
+        return library_model.LibraryAgent.from_db(new_agent)
 
     except store_exceptions.AgentNotFoundError:
         raise

@@ -461,12 +461,16 @@ export default class BackendAPI {
   /////////// V2 LIBRARY API //////////////
   /////////////////////////////////////////
 
-  async listLibraryAgents(): Promise<GraphMeta[]> {
+  listLibraryAgents(): Promise<GraphMeta[]> {
     return this._get("/library/agents");
   }
 
-  async addAgentToLibrary(storeListingVersionId: string): Promise<void> {
-    await this._request("POST", `/library/agents/${storeListingVersionId}`);
+  getLibraryAgent(libraryAgentId: string): Promise<GraphMeta> {
+    return this._get(`/library/agents/${libraryAgentId}`);
+  }
+
+  addAgentToLibrary(storeListingVersionId: string): Promise<GraphMeta> {
+    return this._request("POST", `/library/agents/${storeListingVersionId}`);
   }
 
   ///////////////////////////////////////////

@@ -8,28 +8,15 @@ import {
 } from "@/components/onboarding/OnboardingStep";
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
 import OnboardingAgentCard from "@/components/onboarding/OnboardingAgentCard";
+import { useEffect, useState } from "react";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 
-const agents = [
+const storeAgents = [
   {
-    id: "0",
-    image: "/placeholder.png",
-    name: "Viral News Video Creator: AI TikTok Shorts",
-    description:
-      "Description of what the agent does. Written by the creator. Example of text that's longer than two lines. Lorem ipsum set dolor amet bacon ipsum dolor amet kielbasa chicken ullamco frankfurter cupim nisi. Esse jerky turkey pancetta lorem officia ad qui ut ham hock venison ut pig mollit ball tip. Tempor chicken eiusmod tongue tail pork belly labore kielbasa consequat culpa cow aliqua. Ea tail dolore sausage flank.",
-    author: "Pwuts",
-    runs: 1539,
-    rating: 4.1,
-  },
-  {
-    id: "1",
-    image: "/placeholder.png",
-    name: "Financial Analysis Agent: Your Personalized Financial Insights Tool",
-    description:
-      "Description of what the agent does. Written by the creator. Example of text that's longer than two lines. Lorem ipsum set dolor amet bacon ipsum dolor amet kielbasa chicken ullamco frankfurter cupim nisi. Esse jerky turkey pancetta lorem officia ad qui ut ham hock venison ut pig mollit ball tip. Tempor chicken eiusmod tongue tail pork belly labore kielbasa consequat culpa cow aliqua. Ea tail dolore sausage flank.",
-    author: "John Ababseh",
-    runs: 824,
-    rating: 4.5,
-  },
+    username: "",
+    agentName: ""
+  }
 ];
 
 function isEmptyOrWhitespace(str: string | undefined | null): boolean {
@@ -38,6 +25,13 @@ function isEmptyOrWhitespace(str: string | undefined | null): boolean {
 
 export default function Page() {
   const { state, setState } = useOnboarding(4);
+  const [agents, setAgents] = useState<StoreAgentDetails[]>([]);
+  const api = useBackendAPI();
+
+  useEffect(() => {
+    api.getStoreAgent(storeAgents[0].username, storeAgents[0].agentName)
+      .then((agent) => setAgents([agent]));
+  }, [api, setAgents]);
 
   return (
     <OnboardingStep>

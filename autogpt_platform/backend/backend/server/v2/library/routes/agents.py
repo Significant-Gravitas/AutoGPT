@@ -32,6 +32,31 @@ async def get_library_agents(
         raise fastapi.HTTPException(
             status_code=500, detail="Failed to get library agents"
         )
+    
+
+@router.get(
+    "/agents/{library_agent_id}",
+    tags=["library", "private"],
+    dependencies=[fastapi.Depends(autogpt_auth_lib.auth_middleware)],
+)
+async def get_library_agent(
+    library_agent_id: str,
+    user_id: Annotated[str, fastapi.Depends(autogpt_auth_lib.depends.get_user_id)]
+) -> library_model.LibraryAgent:
+    """
+    Get the agent with the given ID from the user's library.
+    """
+    try:
+        return await library_db.get_library_agent(library_agent_id, user_id)
+    except store_exceptions.AgentNotFoundError:
+        raise fastapi.HTTPException(
+            status_code=404, detail=f"Library agent {library_agent_id} not found"
+        )
+    except Exception as e:
+        logger.exception(f"Exception occurred whilst getting library agent: {e}")
+        raise fastapi.HTTPException(
+            status_code=500, detail="Failed to get library agent"
+        )
 
 
 @router.post(
@@ -43,7 +68,7 @@ async def get_library_agents(
 async def add_agent_to_library(
     store_listing_version_id: str,
     user_id: Annotated[str, fastapi.Depends(autogpt_auth_lib.depends.get_user_id)],
-) -> fastapi.Response:
+) -> library_model.LibraryAgent:
     """
     Add an agent from the store to the user's library.
 
@@ -52,15 +77,14 @@ async def add_agent_to_library(
         user_id (str): ID of the authenticated user
 
     Returns:
-        fastapi.Response: 201 status code on success
+        library_model.LibraryAgent: Agent added to the library
 
     Raises:
         HTTPException: If there is an error adding the agent to the library
     """
     try:
         # Use the database function to add the agent to the library
-        await library_db.add_store_agent_to_library(store_listing_version_id, user_id)
-        return fastapi.Response(status_code=201)
+        return await library_db.add_store_agent_to_library(store_listing_version_id, user_id)
 
     except store_exceptions.AgentNotFoundError:
         raise fastapi.HTTPException(
