@@ -2,7 +2,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { LibraryAgentCard } from "../LibraryAgentCard";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { GraphMeta } from "@/lib/autogpt-server-api";
 import { useThreshold } from "@/hooks/useThreshold";
 import { useLibraryPageContext } from "../providers/LibraryAgentProvider";
 
@@ -91,23 +90,7 @@ const LibraryAgentListContainer: React.FC<
         <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4">
             {agents?.map((agent) => (
-              <LibraryAgentCard
-                key={agent.id}
-                id={agent.id}
-                can_access_graph={agent.can_access_graph}
-                creator_name={agent.creator_name}
-                creator_image_url={agent.creator_image_url}
-                image_url={agent.image_url}
-                name={agent.name}
-                description={agent.description}
-                input_schema={agent.input_schema}
-                agent_id={agent.agent_id}
-                agent_version={agent.agent_version}
-                status={agent.status}
-                updated_at={agent.updated_at}
-                new_output={agent.new_output}
-                is_latest_version={agent.is_latest_version}
-              />
+              <LibraryAgentCard key={agent.id} agent={agent} />
             ))}
           </div>
           {loadingMore && hasMore && (

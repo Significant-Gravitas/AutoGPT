@@ -1,17 +1,20 @@
-import { cn } from "@/lib/utils";
 import Link from "next/link";
 import Image from "next/image";
 import { LibraryAgent } from "@/lib/autogpt-server-api";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export const LibraryAgentCard = ({
-  id,
-  name,
-  can_access_graph,
-  description,
-  creator_image_url,
-  image_url,
-}: LibraryAgent) => {
+  agent: {
+    id,
+    name,
+    can_access_graph,
+    description,
+    creator_image_url,
+    image_url,
+  },
+}: {
+  agent: LibraryAgent;
+}) => {
   return (
     <div className="inline-flex w-full max-w-[434px] cursor-pointer flex-col items-start justify-start gap-2.5 rounded-[26px] bg-white transition-all duration-300 hover:shadow-lg dark:bg-transparent dark:hover:shadow-gray-700">
       <div className="relative h-[200px] w-full overflow-hidden rounded-[20px]">
@@ -73,7 +76,7 @@ export const LibraryAgentCard = ({
               See runs
             </Link>
 
-            {!can_access_graph && (
+            {can_access_graph && (
               <Link
                 href={`/build?flowID=${id}`}
                 className="font-geist text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
