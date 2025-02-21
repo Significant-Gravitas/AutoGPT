@@ -226,13 +226,13 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
     ), f"Expected 1 tool function, got {len(tool_functions)}"
 
     tool_function = next(
-        filter(lambda x: x["function"]["name"] == "TestGraph", tool_functions),
+        filter(lambda x: x["function"]["name"] == "testgraph", tool_functions),
         None,
     )
-    assert tool_function is not None, "TestGraph function not found"
+    assert tool_function is not None, f"testgraph function not found: {tool_functions}"
     assert (
-        tool_function["function"]["name"] == "TestGraph"
-    ), "Incorrect function name for TestGraph"
+        tool_function["function"]["name"] == "testgraph"
+    ), "Incorrect function name for testgraph"
     assert (
         tool_function["function"]["parameters"]["properties"]["input_1"]["type"]
         == "string"
