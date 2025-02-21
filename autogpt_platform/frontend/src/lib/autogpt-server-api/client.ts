@@ -41,7 +41,6 @@ import {
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
-import { filter } from "../../../test-runner-jest.config";
 
 const isClient = typeof window !== "undefined";
 
