@@ -10,7 +10,18 @@ type OnboardingListElementProps = {
   onClick: (content: string) => void;
 };
 
-export function OnboardingListElement({
+type OnboardingListProps = {
+  className?: string;
+  elements: Array<{
+    label: string;
+    text: string;
+    id: string;
+  }>;
+  selectedId?: string;
+  onSelect: (id: string) => void;
+};
+
+function OnboardingListElement({
   label,
   text,
   selected,
@@ -86,17 +97,6 @@ export function OnboardingListElement({
     </button>
   );
 }
-
-type OnboardingListProps = {
-  className?: string;
-  elements: Array<{
-    label: string;
-    text: string;
-    id: string;
-  }>;
-  selectedId?: string;
-  onSelect: (id: string) => void;
-};
 
 export default function OnboardingList({
   className,
