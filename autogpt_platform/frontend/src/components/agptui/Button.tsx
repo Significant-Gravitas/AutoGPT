@@ -19,6 +19,9 @@ const buttonVariants = cva(
         ghost:
           "hover:bg-neutral-100 text-[#272727] dark:text-neutral-100 dark:hover:bg-neutral-700",
         link: "text-[#272727] underline-offset-4 hover:underline dark:text-neutral-100",
+        library_outline:
+          "rounded-[52px] hover:bg-[#262626] border border-zinc-700 hover:text-white font-sans",
+        library_primary: "rounded-[52px] bg-[#262626] text-white font-sans",
       },
       size: {
         default: "h-10 px-4 py-2 rounded-full text-sm",
@@ -28,6 +31,7 @@ const buttonVariants = cva(
           "h-10 w-28 rounded-full sm:h-12 sm:w-32 md:h-[4.375rem] md:w-[11rem] lg:h-[3.125rem] lg:w-[7rem]",
         icon: "h-10 w-10",
         card: "h-12 p-5 agpt-rounded-card justify-center text-lg",
+        library: "py-2 px-[14px] h-10 text-[14px] font-medium leading-6 ",
       },
     },
     defaultVariants: {
@@ -47,8 +51,11 @@ export interface ButtonProps
     | "outline"
     | "secondary"
     | "ghost"
-    | "link";
-  size?: "default" | "sm" | "lg" | "primary" | "icon" | "card";
+    | "link"
+    | "library_outline"
+    | "library_primary";
+
+  size?: "default" | "sm" | "lg" | "primary" | "icon" | "card" | "library";
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
