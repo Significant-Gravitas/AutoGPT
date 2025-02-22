@@ -302,6 +302,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="", description="Postmark server API token used for sending emails"
     )
 
+    postmark_webhook_token: str = Field(
+        default="",
+        description="The token to use for the Postmark webhook",
+    )
+
     # OAuth server credentials for integrations
     # --8<-- [start:OAuthServerCredentialsExample]
     github_client_id: str = Field(default="", description="GitHub OAuth client ID")
