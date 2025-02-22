@@ -133,8 +133,7 @@ async def update_user_email_route(
 async def get_preferences(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> NotificationPreference:
-    preferences = await get_user_notification_preference(user_id)
-    return preferences
+    return await get_user_notification_preference(user_id)
 
 
 @v1_router.post(
