@@ -22,6 +22,7 @@ import backend.server.v2.library.model
 import backend.server.v2.library.routes
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
+import backend.server.v2.system_webhooks.postmark
 import backend.util.service
 import backend.util.settings
 from backend.server.external.api import external_app
@@ -97,6 +98,11 @@ app.include_router(
 )
 app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
+)
+app.include_router(
+    backend.server.v2.system_webhooks.postmark.router,
+    tags=["v2", "system-webhooks"],
+    prefix="/api/system-webhooks/postmark",
 )
 
 app.mount("/external-api", external_app)
