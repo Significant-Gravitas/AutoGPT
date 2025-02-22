@@ -26,12 +26,12 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
       <div className="left-0 top-0 h-px w-full bg-gray-200 dark:bg-gray-700" />
 
       {/* Title */}
-      <h2 className="underline-from-font decoration-skip-ink-none mb-[77px] mt-[25px] text-left font-poppins text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
+      <h2 className="underline-from-font decoration-skip-ink-none mt-[25px] text-left font-poppins text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
         {title}
       </h2>
 
       {/* Content Container */}
-      <div className="absolute left-1/2 top-1/2 w-full max-w-[900px] -translate-x-1/2 -translate-y-1/2 px-4 pt-16 text-center md:px-6 lg:px-0">
+      <div className="m-auto w-full max-w-[900px] px-4 py-16 text-center md:px-6 lg:px-0">
         <h2 className="underline-from-font decoration-skip-ink-none mb-6 text-center font-poppins text-[48px] font-semibold leading-[54px] tracking-[-0.012em] text-neutral-950 dark:text-neutral-50 md:mb-8 lg:mb-12">
           Build AI agents and share
           <br />
