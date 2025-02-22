@@ -1,4 +1,3 @@
-from functools import wraps
 from typing import Any, Callable, Concatenate, Coroutine, ParamSpec, TypeVar, cast
 
 from backend.data.credit import get_user_credit_model
@@ -23,7 +22,7 @@ from backend.data.user import (
     update_user_integrations,
     update_user_metadata,
 )
-from backend.util.service import AppService, expose, register_pydantic_serializers
+from backend.util.service import AppService, expose
 from backend.util.settings import Config
 
 P = ParamSpec("P")
@@ -50,17 +49,7 @@ class DatabaseManager(AppService):
     def exposed_run_and_wait(
         f: Callable[P, Coroutine[None, None, R]]
     ) -> Callable[Concatenate[object, P], R]:
-        @expose
-        @wraps(f)
-        def wrapper(self, *args: P.args, **kwargs: P.kwargs) -> R:
-            coroutine = f(*args, **kwargs)
-            res = self.run_and_wait(coroutine)
-            return res
-
-        # Register serializers for annotations on bare function
-        register_pydantic_serializers(f)
-
-        return wrapper
+        return expose(cast(Callable[Concatenate[object, P], R], f))
 
     # Executions
     create_graph_execution = exposed_run_and_wait(create_graph_execution)
