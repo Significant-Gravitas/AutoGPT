@@ -16,7 +16,6 @@ import backend.data.block
 import backend.server.integrations.router
 import backend.server.routers.analytics
 import backend.server.v2.library.db as library_db
-from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.api_key import (
     APIKeyError,
@@ -33,6 +32,7 @@ from backend.data.api_key import (
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.credit import (
     AutoTopUpConfig,
+    RefundRequest,
     TransactionHistory,
     get_auto_top_up,
     get_block_costs,
@@ -40,7 +40,13 @@ from backend.data.credit import (
     get_user_credit_model,
     set_auto_top_up,
 )
-from backend.data.user import get_or_create_user
+from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
+from backend.data.user import (
+    get_or_create_user,
+    get_user_notification_preference,
+    update_user_email,
+    update_user_notification_preference,
+)
 from backend.executor import ExecutionManager, ExecutionScheduler, scheduler
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
@@ -108,6 +114,42 @@ async def get_or_create_user_route(user_data: dict = Depends(auth_middleware)):
     return user.model_dump()
 
 
+@v1_router.post(
+    "/auth/user/email", tags=["auth"], dependencies=[Depends(auth_middleware)]
+)
+async def update_user_email_route(
+    user_id: Annotated[str, Depends(get_user_id)], email: str = Body(...)
+) -> dict[str, str]:
+    await update_user_email(user_id, email)
+
+    return {"email": email}
+
+
+@v1_router.get(
+    "/auth/user/preferences",
+    tags=["auth"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def get_preferences(
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> NotificationPreference:
+    preferences = await get_user_notification_preference(user_id)
+    return preferences
+
+
+@v1_router.post(
+    "/auth/user/preferences",
+    tags=["auth"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def update_preferences(
+    user_id: Annotated[str, Depends(get_user_id)],
+    preferences: NotificationPreferenceDTO = Body(...),
+) -> NotificationPreference:
+    output = await update_user_notification_preference(user_id, preferences)
+    return output
+
+
 ########################################################
 ##################### Blocks ###########################
 ########################################################
@@ -145,8 +187,7 @@ def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput
 async def get_user_credits(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, int]:
-    # Credits can go negative, so ensure it's at least 0 for user to see.
-    return {"credits": max(await _user_credit_model.get_credits(user_id), 0)}
+    return {"credits": await _user_credit_model.get_credits(user_id)}
 
 
 @v1_router.post(
@@ -159,6 +200,19 @@ async def request_top_up(
         user_id, request.credit_amount
     )
     return {"checkout_url": checkout_url}
+
+
+@v1_router.post(
+    path="/credits/{transaction_key}/refund",
+    tags=["credits"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def refund_top_up(
+    user_id: Annotated[str, Depends(get_user_id)],
+    transaction_key: str,
+    metadata: dict[str, str],
+) -> int:
+    return await _user_credit_model.top_up_refund(user_id, transaction_key, metadata)
 
 
 @v1_router.patch(
@@ -234,6 +288,12 @@ async def stripe_webhook(request: Request):
             session_id=event["data"]["object"]["id"]
         )
 
+    if event["type"] == "charge.dispute.created":
+        await _user_credit_model.handle_dispute(event["data"]["object"])
+
+    if event["type"] == "refund.created" or event["type"] == "charge.dispute.closed":
+        await _user_credit_model.deduct_credits(event["data"]["object"])
+
     return Response(status_code=200)
 
 
@@ -243,7 +303,7 @@ async def manage_payment_method(
 ) -> dict[str, str]:
     session = stripe.billing_portal.Session.create(
         customer=await get_stripe_customer_id(user_id),
-        return_url=settings.config.frontend_base_url + "/marketplace/credits",
+        return_url=settings.config.frontend_base_url + "/profile/credits",
     )
     if not session:
         raise HTTPException(
@@ -256,6 +316,7 @@ async def manage_payment_method(
 async def get_credit_history(
     user_id: Annotated[str, Depends(get_user_id)],
     transaction_time: datetime | None = None,
+    transaction_type: str | None = None,
     transaction_count_limit: int = 100,
 ) -> TransactionHistory:
     if transaction_count_limit < 1 or transaction_count_limit > 1000:
@@ -263,9 +324,17 @@ async def get_credit_history(
 
     return await _user_credit_model.get_transaction_history(
         user_id=user_id,
-        transaction_time=transaction_time or datetime.max,
+        transaction_time_ceiling=transaction_time,
         transaction_count_limit=transaction_count_limit,
+        transaction_type=transaction_type,
     )
+
+
+@v1_router.get(path="/credits/refunds", dependencies=[Depends(auth_middleware)])
+async def get_refund_requests(
+    user_id: Annotated[str, Depends(get_user_id)]
+) -> list[RefundRequest]:
+    return await _user_credit_model.get_refund_requests(user_id)
 
 
 ########################################################
@@ -476,7 +545,7 @@ async def set_graph_active_version(
 )
 def execute_graph(
     graph_id: str,
-    node_input: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
+    node_input: Annotated[dict[str, Any], Body(..., default_factory=dict)],
     user_id: Annotated[str, Depends(get_user_id)],
     graph_version: Optional[int] = None,
 ) -> ExecuteGraphResponse:
@@ -497,8 +566,10 @@ def execute_graph(
 )
 async def stop_graph_run(
     graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
-) -> Sequence[execution_db.ExecutionResult]:
-    if not await graph_db.get_execution(user_id=user_id, execution_id=graph_exec_id):
+) -> graph_db.GraphExecution:
+    if not await graph_db.get_execution_meta(
+        user_id=user_id, execution_id=graph_exec_id
+    ):
         raise HTTPException(404, detail=f"Agent execution #{graph_exec_id} not found")
 
     await asyncio.to_thread(
@@ -506,7 +577,13 @@ async def stop_graph_run(
     )
 
     # Retrieve & return canceled graph execution in its final state
-    return await execution_db.get_execution_results(graph_exec_id)
+    result = await graph_db.get_execution(execution_id=graph_exec_id, user_id=user_id)
+    if not result:
+        raise HTTPException(
+            500,
+            detail=f"Could not fetch graph execution #{graph_exec_id} after stopping",
+        )
+    return result
 
 
 @v1_router.get(
@@ -514,10 +591,22 @@ async def stop_graph_run(
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
-async def get_executions(
+async def get_graphs_executions(
     user_id: Annotated[str, Depends(get_user_id)],
-) -> list[graph_db.GraphExecution]:
-    return await graph_db.get_executions(user_id=user_id)
+) -> list[graph_db.GraphExecutionMeta]:
+    return await graph_db.get_graphs_executions(user_id=user_id)
+
+
+@v1_router.get(
+    path="/graphs/{graph_id}/executions",
+    tags=["graphs"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def get_graph_executions(
+    graph_id: str,
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> list[graph_db.GraphExecutionMeta]:
+    return await graph_db.get_graph_executions(graph_id=graph_id, user_id=user_id)
 
 
 @v1_router.get(
@@ -525,16 +614,20 @@ async def get_executions(
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
-async def get_graph_run_node_execution_results(
+async def get_graph_execution(
     graph_id: str,
     graph_exec_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
-) -> Sequence[execution_db.ExecutionResult]:
+) -> graph_db.GraphExecution:
     graph = await graph_db.get_graph(graph_id, user_id=user_id)
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
-    return await execution_db.get_execution_results(graph_exec_id)
+    result = await graph_db.get_execution(execution_id=graph_exec_id, user_id=user_id)
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+
+    return result
 
 
 ########################################################

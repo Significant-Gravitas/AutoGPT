@@ -41,6 +41,8 @@ export type BlockIOSubSchema =
   | BlockIOSimpleTypeSubSchema
   | BlockIOCombinedTypeSubSchema;
 
+export type BlockIOSubType = BlockIOSimpleTypeSubSchema["type"];
+
 export type BlockIOSimpleTypeSubSchema =
   | BlockIOObjectSubSchema
   | BlockIOCredentialsSubSchema
@@ -112,6 +114,7 @@ export type Credentials =
 // --8<-- [start:BlockIOCredentialsSubSchema]
 export const PROVIDER_NAMES = {
   ANTHROPIC: "anthropic",
+  APOLLO: "apollo",
   D_ID: "d_id",
   DISCORD: "discord",
   E2B: "e2b",
@@ -134,8 +137,9 @@ export const PROVIDER_NAMES = {
   OPENWEATHERMAP: "openweathermap",
   OPEN_ROUTER: "open_router",
   PINECONE: "pinecone",
-  SLANT3D: "slant3d",
   SCREENSHOTONE: "screenshotone",
+  SLANT3D: "slant3d",
+  SMARTLEAD: "smartlead",
   SMTP: "smtp",
   TWITTER: "twitter",
   REPLICATE: "replicate",
@@ -143,14 +147,14 @@ export const PROVIDER_NAMES = {
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
   TODOIST: "todoist",
+  ZEROBOUNCE: "zerobounce",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
 
 export type CredentialsProviderName =
   (typeof PROVIDER_NAMES)[keyof typeof PROVIDER_NAMES];
 
-export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
-  type: "object";
+export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   /* Mirror of backend/data/model.py:CredentialsFieldSchemaExtra */
   credentials_provider: CredentialsProviderName[];
   credentials_scopes?: string[];
@@ -167,21 +171,17 @@ export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
 
 // At the time of writing, combined schemas only occur on the first nested level in a
 // block schema. It is typed this way to make the use of these objects less tedious.
-type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta &
-  (
+type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta & { type: never } & (
     | {
-        type: "allOf";
         allOf: [BlockIOSimpleTypeSubSchema];
         secret?: boolean;
       }
     | {
-        type: "anyOf";
         anyOf: BlockIOSimpleTypeSubSchema[];
         default?: string | number | boolean | null;
         secret?: boolean;
       }
     | {
-        type: "oneOf";
         oneOf: BlockIOSimpleTypeSubSchema[];
         default?: string | number | boolean | null;
         secret?: boolean;
@@ -216,26 +216,51 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
   id?: string;
 };
 
-/* Mirror of backend/data/graph.py:GraphExecution */
-export type GraphExecution = {
+/* Mirror of backend/data/graph.py:GraphExecutionMeta */
+export type GraphExecutionMeta = {
   execution_id: string;
   started_at: number;
   ended_at: number;
   duration: number;
   total_run_time: number;
   status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
-  graph_id: string;
+  graph_id: GraphID;
   graph_version: number;
+  preset_id?: string;
+};
+
+/* Mirror of backend/data/graph.py:GraphExecution */
+export type GraphExecution = GraphExecutionMeta & {
+  inputs: Record<string, any>;
+  outputs: Record<string, Array<any>>;
+  node_executions: NodeExecutionResult[];
 };
 
 export type GraphMeta = {
-  id: string;
+  id: GraphID;
   version: number;
   is_active: boolean;
   name: string;
   description: string;
-  input_schema: BlockIOObjectSubSchema;
-  output_schema: BlockIOObjectSubSchema;
+  input_schema: GraphIOSchema;
+  output_schema: GraphIOSchema;
+};
+
+export type GraphID = Brand<string, "GraphID">;
+
+/* Derived from backend/data/graph.py:Graph._generate_schema() */
+export type GraphIOSchema = {
+  type: "object";
+  properties: { [key: string]: GraphIOSubSchema };
+  required: (keyof BlockIORootSchema["properties"])[];
+};
+export type GraphIOSubSchema = Omit<
+  BlockIOSubSchemaMeta,
+  "placeholder" | "depends_on" | "hidden"
+> & {
+  type: never; // bodge to avoid type checking hell; doesn't exist at runtime
+  default?: string;
+  secret: boolean;
 };
 
 /* Mirror of backend/data/graph.py:Graph */
@@ -251,15 +276,15 @@ export type GraphUpdateable = Omit<
   version?: number;
   is_active?: boolean;
   links: Array<LinkCreatable>;
-  input_schema?: BlockIOObjectSubSchema;
-  output_schema?: BlockIOObjectSubSchema;
+  input_schema?: GraphIOSchema;
+  output_schema?: GraphIOSchema;
 };
 
 export type GraphCreatable = Omit<GraphUpdateable, "id"> & { id?: string };
 
 /* Mirror of backend/data/execution.py:ExecutionResult */
 export type NodeExecutionResult = {
-  graph_id: string;
+  graph_id: GraphID;
   graph_version: number;
   graph_exec_id: string;
   node_exec_id: string;
@@ -279,6 +304,24 @@ export type NodeExecutionResult = {
   start_time?: Date;
   end_time?: Date;
 };
+
+/* Mirror of backend/server/v2/library/model.py:LibraryAgent */
+export type LibraryAgent = {
+  id: LibraryAgentID;
+  agent_id: GraphID;
+  agent_version: number;
+  preset_id: string | null;
+  updated_at: Date;
+  name: string;
+  description: string;
+  input_schema: BlockIOObjectSubSchema;
+  output_schema: BlockIOObjectSubSchema;
+  is_favorite: boolean;
+  is_created_by_user: boolean;
+  is_latest_version: boolean;
+};
+
+export type LibraryAgentID = Brand<string, "LibraryAgentID">;
 
 /* Mirror of backend/server/integrations/router.py:CredentialsMetaResponse */
 export type CredentialsMetaResponse = {
@@ -344,6 +387,30 @@ export type UserPasswordCredentials = BaseCredentials & {
   title: string;
   username: string;
   password: string;
+};
+
+// Mirror of backend/backend/data/notifications.py:NotificationType
+export type NotificationType =
+  | "AGENT_RUN"
+  | "ZERO_BALANCE"
+  | "LOW_BALANCE"
+  | "BLOCK_EXECUTION_FAILED"
+  | "CONTINUOUS_AGENT_ERROR"
+  | "DAILY_SUMMARY"
+  | "WEEKLY_SUMMARY"
+  | "MONTHLY_SUMMARY";
+
+// Mirror of backend/backend/data/notifications.py:NotificationPreference
+export type NotificationPreferenceDTO = {
+  email: string;
+  preferences: { [key in NotificationType]: boolean };
+  daily_limit: number;
+};
+
+export type NotificationPreference = NotificationPreferenceDTO & {
+  user_id: string;
+  emails_sent_today: number;
+  last_reset_date: Date;
 };
 
 /* Mirror of backend/data/integrations.py:Webhook */
@@ -503,15 +570,15 @@ export type Schedule = {
   name: string;
   cron: string;
   user_id: string;
-  graph_id: string;
+  graph_id: GraphID;
   graph_version: number;
   input_data: { [key: string]: any };
-  next_run_time: string;
+  next_run_time: Date;
 };
 
 export type ScheduleCreatable = {
   cron: string;
-  graph_id: string;
+  graph_id: GraphID;
   graph_version: number;
   input_data: { [key: string]: any };
 };
@@ -574,12 +641,13 @@ export interface CreateAPIKeyResponse {
 }
 
 export interface CreditTransaction {
+  transaction_key: string;
   transaction_time: Date;
   transaction_type: string;
   amount: number;
   balance: number;
   description: string;
-  usage_graph_id: string;
+  usage_graph_id: GraphID;
   usage_execution_id: string;
   usage_node_count: number;
   usage_starting_time: Date;
@@ -589,3 +657,22 @@ export interface TransactionHistory {
   transactions: CreditTransaction[];
   next_transaction_time: Date | null;
 }
+
+export interface RefundRequest {
+  id: string;
+  user_id: string;
+  transaction_key: string;
+  amount: number;
+  reason: string;
+  result: string | null;
+  status: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+/* *** UTILITIES *** */
+
+/** Use branded types for IDs -> deny mixing IDs between different object classes */
+export type Brand<T, Brand extends string> = T & {
+  readonly [B in Brand as `__${B}_brand`]: never;
+};
