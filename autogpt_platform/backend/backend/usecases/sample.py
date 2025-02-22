@@ -40,7 +40,10 @@ def create_test_graph() -> graph.Graph:
         ),
         graph.Node(
             block_id=AgentInputBlock().id,
-            input_default={"name": "input_2"},
+            input_default={
+                "name": "input_2",
+                "description": "This is my description of this parameter",
+            },
         ),
         graph.Node(
             block_id=FillTextTemplateBlock().id,
@@ -74,7 +77,7 @@ def create_test_graph() -> graph.Graph:
 
     return graph.Graph(
         name="TestGraph",
-        description="Test graph",
+        description="Test graph description",
         nodes=nodes,
         links=links,
     )
