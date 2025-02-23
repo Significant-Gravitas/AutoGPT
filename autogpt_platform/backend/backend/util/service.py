@@ -7,11 +7,13 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Coroutine, Optional, Type, TypeVar, cast
 
+import httpx
 import uvicorn
-from fastapi import FastAPI
-from pydantic import BaseModel, create_model
+from fastapi import FastAPI, responses
+from pydantic import TypeAdapter, create_model
 
 from backend.data import db, rabbitmq, redis
+from backend.util.json import to_dict
 from backend.util.process import AppProcess
 from backend.util.settings import Config, Secrets
 
@@ -32,9 +34,6 @@ def expose(func: C) -> C:
 # --------------------------------------------------
 # AppService for IPC service based on HTTP request through FastAPI
 # --------------------------------------------------
-APP_SERVICES: dict[str, "AppService"] = {}
-
-
 class AppService(AppProcess, ABC):
     shared_event_loop: asyncio.AbstractEventLoop
     use_db: bool = False
@@ -84,7 +83,6 @@ class AppService(AppProcess, ABC):
         sig = inspect.signature(func)
         fields = {}
 
-        # Build fields by skipping 'self' or 'cls' and checking for defaults
         is_bounded_method = False
         for name, param in sig.parameters.items():
             if name in ("self", "cls"):
@@ -108,13 +106,29 @@ class AppService(AppProcess, ABC):
         if asyncio.iscoroutinefunction(f):
 
             async def async_endpoint(body: RequestBodyModel):  # type: ignore
-                return await f(**body.model_dump())
+                try:
+                    return await f(
+                        **{name: getattr(body, name) for name in body.model_fields}
+                    )
+                except Exception as e:
+                    logger.exception(f"Error in {func.__name__}: {e}")
+                    return responses.JSONResponse(
+                        status_code=500, content={"error": str(e)}
+                    )
 
             return async_endpoint
         else:
 
             def sync_endpoint(body: RequestBodyModel):  # type: ignore
-                return f(**body.model_dump())
+                try:
+                    return f(
+                        **{name: getattr(body, name) for name in body.model_fields}
+                    )
+                except Exception as e:
+                    logger.exception(f"Error in {func.__name__}: {e}")
+                    return responses.JSONResponse(
+                        status_code=500, content={"error": str(e)}
+                    )
 
             return sync_endpoint
 
@@ -187,15 +201,19 @@ class HttpClient:
 
     def __init__(self, base_url: str):
         self.base_url = base_url.rstrip("/")
-        import httpx
-
         self.client = httpx.Client()
 
     def call_method(self, method_name: str, **kwargs) -> Any:
-        url = f"{self.base_url}/{method_name}"
-        response = self.client.post(url, json=kwargs)
-        response.raise_for_status()
-        return response.json()
+        try:
+            url = f"{self.base_url}/{method_name}"
+            response = self.client.post(url, json=to_dict(kwargs))
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPStatusError as e:
+            # try to get from "error" key in response if fails, use response.text
+            error_msg = e.response.json().get("error", e.response.text)
+            logger.error(f"HTTP error in {method_name}: {error_msg}")
+            raise Exception(error_msg) from e
 
 
 def close_service_client(client: Any) -> None:
@@ -218,21 +236,25 @@ def get_service_client(service_type: Type[AS]) -> AS:
         def __getattr__(self, name: str) -> Callable[..., Any]:
             # Try to get the original function from the service type.
             orig_func = getattr(service_type, name, None)
-            expected_return = None
-            if orig_func is not None:
-                sig = inspect.signature(orig_func)
-                ret_ann = sig.return_annotation
-                if (
-                    ret_ann != inspect.Signature.empty
-                    and isinstance(ret_ann, type)
-                    and issubclass(ret_ann, BaseModel)
-                ):
-                    expected_return = ret_ann
+            if orig_func is None:
+                raise AttributeError(f"Method {name} not found in {service_type}")
 
-            def method(**kwargs) -> Any:
+            sig = inspect.signature(orig_func)
+            ret_ann = sig.return_annotation
+            if ret_ann != inspect.Signature.empty:
+                expected_return = TypeAdapter(ret_ann)
+            else:
+                expected_return = None
+
+            def method(*args, **kwargs) -> Any:
+                if args:
+                    arg_names = list(sig.parameters.keys())
+                    if arg_names[0] in ("self", "cls"):
+                        arg_names = arg_names[1:]
+                    kwargs.update(dict(zip(arg_names, args)))
                 result = self.http_client.call_method(name, **kwargs)
-                if expected_return is not None and isinstance(result, dict):
-                    return expected_return.model_validate(result)
+                if expected_return:
+                    return expected_return.validate_python(result)
                 return result
 
             return method

@@ -1,4 +1,4 @@
-from typing import Any, Callable, Concatenate, Coroutine, ParamSpec, TypeVar, cast
+from typing import Callable, Concatenate, Coroutine, ParamSpec, TypeVar, cast
 
 from backend.data.credit import get_user_credit_model
 from backend.data.execution import (
@@ -28,6 +28,11 @@ from backend.util.settings import Config
 P = ParamSpec("P")
 R = TypeVar("R")
 config = Config()
+_user_credit_model = get_user_credit_model()
+
+
+async def _spend_credits(entry: NodeExecutionEntry) -> int:
+    return await _user_credit_model.spend_credits(entry, 0, 0)
 
 
 class DatabaseManager(AppService):
@@ -49,6 +54,10 @@ class DatabaseManager(AppService):
     def exposed_run_and_wait(
         f: Callable[P, Coroutine[None, None, R]]
     ) -> Callable[Concatenate[object, P], R]:
+        # TODO:
+        #  This function lies about its return type to make the DynamicClient
+        #  call the function synchronously, fix this when DynamicClient can choose
+        #  to call a function synchronously or asynchronously.
         return expose(cast(Callable[Concatenate[object, P], R], f))
 
     # Executions
@@ -67,11 +76,7 @@ class DatabaseManager(AppService):
     get_graph = exposed_run_and_wait(get_graph)
 
     # Credits
-    user_credit_model = get_user_credit_model()
-    spend_credits = cast(
-        Callable[[Any, NodeExecutionEntry, float, float], int],
-        exposed_run_and_wait(user_credit_model.spend_credits),
-    )
+    spend_credits = exposed_run_and_wait(_spend_credits)
 
     # User + User Metadata + User Integrations
     get_user_metadata = exposed_run_and_wait(get_user_metadata)
