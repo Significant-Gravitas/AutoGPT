@@ -112,9 +112,7 @@ class AppService(AppProcess, ABC):
                     )
                 except Exception as e:
                     logger.exception(f"Error in {func.__name__}: {e}")
-                    return responses.JSONResponse(
-                        status_code=500, content={"error": str(e)}
-                    )
+                    return responses.JSONResponse(status_code=500, content=e)
 
             return async_endpoint
         else:
@@ -126,9 +124,7 @@ class AppService(AppProcess, ABC):
                     )
                 except Exception as e:
                     logger.exception(f"Error in {func.__name__}: {e}")
-                    return responses.JSONResponse(
-                        status_code=500, content={"error": str(e)}
-                    )
+                    return responses.JSONResponse(status_code=500, content=e)
 
             return sync_endpoint
 
@@ -210,10 +206,8 @@ class HttpClient:
             response.raise_for_status()
             return response.json()
         except httpx.HTTPStatusError as e:
-            # try to get from "error" key in response if fails, use response.text
-            error_msg = e.response.json().get("error", e.response.text)
-            logger.error(f"HTTP error in {method_name}: {error_msg}")
-            raise Exception(error_msg) from e
+            logger.error(f"HTTP error in {method_name}: {e.response.text}")
+            raise Exception(e.response.text) from e
 
 
 def close_service_client(client: Any) -> None:
