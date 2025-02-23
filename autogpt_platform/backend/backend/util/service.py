@@ -15,6 +15,7 @@ from pydantic import TypeAdapter, create_model
 from backend.data import db, rabbitmq, redis
 from backend.util.json import to_dict
 from backend.util.process import AppProcess
+from backend.util.retry import conn_retry
 from backend.util.settings import Config, Secrets
 
 logger = logging.getLogger(__name__)
@@ -139,6 +140,9 @@ class AppService(AppProcess, ABC):
                     self._create_fastapi_endpoint(attr),
                     methods=["POST"],
                 )
+        self.fastapi_app.add_api_route(
+            "/health_check", self.health_check, methods=["POST"]
+        )
 
         self.shared_event_loop = asyncio.get_event_loop()
         if self.use_db:
@@ -174,6 +178,7 @@ class AppService(AppProcess, ABC):
         if self.rabbitmq_config:
             logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting RabbitMQ...")
 
+    @conn_retry("FastAPI server", "Starting FastAPI server")
     def __start_fastapi(self):
         port = self.get_port()
         host = self.get_host()
@@ -217,6 +222,7 @@ def close_service_client(client: Any) -> None:
         raise RuntimeError(f"Client {client.__class__} is not a valid HTTP client.")
 
 
+@conn_retry("FastAPI client", "Creating service client")
 def get_service_client(service_type: Type[AS]) -> AS:
     service_name = service_type.service_name
 
@@ -252,5 +258,9 @@ def get_service_client(service_type: Type[AS]) -> AS:
                 return result
 
             return method
+
+    client = cast(AS, DynamicClient())
+    if client.health_check() != "OK":
+        raise RuntimeError(f"Health check failed for {service_name}")
 
     return cast(AS, DynamicClient())
