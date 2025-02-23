@@ -216,10 +216,10 @@ class HttpClient:
 
 
 def close_service_client(client: Any) -> None:
-    if hasattr(client, "client") and hasattr(client.client, "close"):
-        client.client.close()
+    if hasattr(client, "close"):
+        client.close()
     else:
-        raise RuntimeError(f"Client {client.__class__} is not a valid HTTP client.")
+        logger.warning(f"Client {client} is not closable")
 
 
 @conn_retry("FastAPI client", "Creating service client")
@@ -231,7 +231,10 @@ def get_service_client(service_type: Type[AS]) -> AS:
             host = os.environ.get(f"{service_name.upper()}_HOST", api_host)
             port = service_type.get_port()
             self.base_url = f"http://{host}:{port}"
-            self.http_client = HttpClient(self.base_url)
+            self.client = HttpClient(self.base_url)
+
+        def close(self):
+            self.client.client.close()
 
         def __getattr__(self, name: str) -> Callable[..., Any]:
             # Try to get the original function from the service type.
@@ -252,7 +255,7 @@ def get_service_client(service_type: Type[AS]) -> AS:
                     if arg_names[0] in ("self", "cls"):
                         arg_names = arg_names[1:]
                     kwargs.update(dict(zip(arg_names, args)))
-                result = self.http_client.call_method(name, **kwargs)
+                result = self.client.call_method(name, **kwargs)
                 if expected_return:
                     return expected_return.validate_python(result)
                 return result
