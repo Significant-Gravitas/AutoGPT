@@ -87,7 +87,7 @@ const PopoutMenuItem: React.FC<{
       {getIcon(icon)}
       <div className="relative">
         <div
-          className={`font-['Inter'] text-base font-normal leading-7 text-[#474747] dark:text-[#cfcfcf] ${isActive ? "font-semibold text-[#272727] dark:text-[#ffffff]" : "text-[#474747] dark:text-[#cfcfcf]"}`}
+          className={`font-inter text-base font-normal leading-7 text-[#474747] dark:text-[#cfcfcf] ${isActive ? "font-semibold text-[#272727] dark:text-[#ffffff]" : "text-[#474747] dark:text-[#cfcfcf]"}`}
         >
           {text}
         </div>
@@ -150,7 +150,7 @@ export const MobileNavBar: React.FC<MobileNavBarProps> = ({
                 exit={{ opacity: 0, y: -32, transition: { duration: 0.2 } }}
                 className="w-screen rounded-b-2xl bg-white dark:bg-neutral-900"
               >
-                <div className="mb-4 inline-flex items-end justify-start gap-4">
+                <div className="mb-4 inline-flex w-full items-end justify-start gap-4">
                   <Avatar className="h-14 w-14 border border-[#474747] dark:border-[#cfcfcf]">
                     <AvatarImage
                       src={avatarSrc}
@@ -160,11 +160,11 @@ export const MobileNavBar: React.FC<MobileNavBarProps> = ({
                       {userName?.charAt(0) || "U"}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="relative h-14 w-[153px]">
-                    <div className="absolute left-0 top-0 font-['Inter'] text-lg font-semibold leading-7 text-[#474747] dark:text-[#cfcfcf]">
+                  <div className="relative h-14 w-full">
+                    <div className="absolute left-0 top-0 text-lg font-semibold leading-7 text-[#474747] dark:text-[#cfcfcf]">
                       {userName || "Unknown User"}
                     </div>
-                    <div className="absolute left-0 top-6 font-['Inter'] text-base font-normal leading-7 text-[#474747] dark:text-[#cfcfcf]">
+                    <div className="absolute left-0 top-6 font-inter text-base font-normal leading-7 text-[#474747] dark:text-[#cfcfcf]">
                       {userEmail || "No Email Set"}
                     </div>
                   </div>

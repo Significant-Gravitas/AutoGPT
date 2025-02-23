@@ -48,7 +48,7 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
 
   return (
     <>
-      <nav className="sticky top-0 z-50 mx-[16px] hidden h-16 max-w-[1600px] items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] dark:border-gray-700 dark:bg-gray-900 md:inline-flex">
+      <nav className="sticky top-0 z-50 mx-[16px] hidden h-16 items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] dark:border-gray-700 dark:bg-gray-900 md:inline-flex">
         <div className="flex items-center gap-11">
           <div className="relative h-10 w-[88.87px]">
             <IconAutoGPTLogo className="h-full w-full" />
@@ -72,7 +72,6 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
           ) : (
             <Link href="/login">
               <Button
-                variant="default"
                 size="sm"
                 className="flex items-center justify-end space-x-2"
               >
@@ -119,11 +118,7 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
             href="/login"
             className="fixed right-4 top-4 z-50 mt-4 inline-flex h-8 items-center justify-end rounded-lg pr-4 md:hidden"
           >
-            <Button
-              variant="default"
-              size="sm"
-              className="flex items-center space-x-2"
-            >
+            <Button size="sm" className="flex items-center space-x-2">
               <IconLogIn className="h-5 w-5" />
               <span>Log In</span>
             </Button>
