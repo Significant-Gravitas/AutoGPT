@@ -150,7 +150,7 @@ class LibraryAgent(pydantic.BaseModel):
             id=agent.id,
             agent_id=agent.agentId,
             agent_version=agent.agentVersion,
-            image_url=agent.image_url,
+            image_url=agent.imageUrl,
             creator_name=creator_name,
             creator_image_url=creator_image_url,
             status=status,

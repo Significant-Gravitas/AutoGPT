@@ -176,7 +176,7 @@ model LibraryAgent {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  image_url   String?
+  imageUrl   String?
 
   agentId      String
   agentVersion Int
