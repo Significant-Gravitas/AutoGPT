@@ -59,6 +59,7 @@ async def execute_graph(
     logger.info(f"Execution completed with {len(result)} results")
     return graph_exec_id
 
+
 @pytest.mark.skip()
 @pytest.mark.asyncio(scope="session")
 async def test_graph_validation_with_tool_nodes_correct(server: SpinTestServer):
@@ -107,6 +108,7 @@ async def test_graph_validation_with_tool_nodes_correct(server: SpinTestServer):
         links=links,
     )
     test_graph = await create_graph(server, test_graph, test_user)
+
 
 @pytest.mark.skip()
 @pytest.mark.asyncio(scope="session")
