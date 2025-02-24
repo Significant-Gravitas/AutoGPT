@@ -35,7 +35,6 @@ export default async function RootLayout({
 }>) {
   const pathname = headers().get("x-current-path");
   const isOnboarding = pathname?.startsWith("/onboarding");
-  console.log("pathname:", pathname);
 
   return (
     <html
