@@ -15,7 +15,7 @@ generator client {
 model User {
   id               String   @id // This should match the Supabase user ID
   email            String   @unique
-  emailVerified    Boolean  @default(false)
+  emailVerified    Boolean  @default(true)
   name             String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
