@@ -38,7 +38,7 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
 
   return (
     <div className="absolute bottom-0 left-1/2 z-50 flex w-fit -translate-x-1/2 transform select-none items-center justify-center p-4">
-      <div className={`flex gap-4`}>
+      <div className={`flex gap-1 md:gap-4`}>
         <Tooltip key="ViewOutputs" delayDuration={500}>
           <TooltipTrigger asChild>
             <Button
