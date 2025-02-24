@@ -165,7 +165,7 @@ async def test_graph_validation_with_tool_nodes_raises_error(server: SpinTestSer
         nodes=nodes,
         links=links,
     )
-    with pytest.raises(Exception):
+    with pytest.raises(ValueError):
         test_graph = await create_graph(server, test_graph, test_user)
 
 
