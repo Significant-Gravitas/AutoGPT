@@ -1,25 +1,16 @@
 "use client";
 import { useEffect, useState, useCallback } from "react";
-import { LibraryAgentCard } from "../LibraryAgentCard";
+
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useThreshold } from "@/hooks/useThreshold";
-import { useLibraryPageContext } from "../providers/LibraryAgentProvider";
 
-interface LibraryAgentListContainerProps {}
-
-export type AgentStatus =
-  | "healthy"
-  | "something wrong"
-  | "waiting for trigger"
-  | "Nothing running";
+import LibraryAgentCard from "@/components/agptui/LibraryAgentCard";
+import { useScrollThreshold } from "@/hooks/useScrollThreshold";
+import { useLibraryPageContext } from "@/components/providers/LibraryAgentProvider";
 
 /**
  * LibraryAgentListContainer is a React component that displays a grid of library agents with infinite scroll functionality.
  */
-
-const LibraryAgentListContainer: React.FC<
-  LibraryAgentListContainerProps
-> = ({}) => {
+export default function LibraryAgentListContainer(): React.ReactNode {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
@@ -74,7 +65,7 @@ const LibraryAgentListContainer: React.FC<
     [currentPage, hasMore, loadingMore, fetchAgents],
   );
 
-  useThreshold(handleInfiniteScroll, 50);
+  useScrollThreshold(handleInfiniteScroll, 50);
 
   const LoadingSpinner = () => (
     <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-t-2 border-neutral-800" />
@@ -89,7 +80,7 @@ const LibraryAgentListContainer: React.FC<
       ) : (
         <>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4">
-            {agents?.map((agent) => (
+            {agents.map((agent) => (
               <LibraryAgentCard key={agent.id} agent={agent} />
             ))}
           </div>
@@ -102,6 +93,4 @@ const LibraryAgentListContainer: React.FC<
       )}
     </div>
   );
-};
-
-export default LibraryAgentListContainer;
+}

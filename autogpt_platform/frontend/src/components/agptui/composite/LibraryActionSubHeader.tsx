@@ -1,7 +1,7 @@
 "use client";
 
-import LibraryAgentFilter from "../LibraryAgentFilter";
-import { useLibraryPageContext } from "../providers/LibraryAgentProvider";
+import LibraryAgentFilter from "@/components/agptui/LibraryAgentFilter";
+import { useLibraryPageContext } from "@/components/providers/LibraryAgentProvider";
 
 export const LibraryActionSubHeader = () => {
   const { agents } = useLibraryPageContext();

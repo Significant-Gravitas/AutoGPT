@@ -4,7 +4,7 @@ interface ThresholdCallback<T> {
   (value: T): void;
 }
 
-export const useThreshold = <T>(
+export const useScrollThreshold = <T>(
   callback: ThresholdCallback<T>,
   threshold: number,
 ): boolean => {

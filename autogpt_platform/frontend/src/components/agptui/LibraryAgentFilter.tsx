@@ -6,10 +6,10 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../ui/select";
+} from "@/components/ui/select";
 import { Filter } from "lucide-react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useLibraryPageContext } from "./providers/LibraryAgentProvider";
+import { useLibraryPageContext } from "@/components/providers/LibraryAgentProvider";
 
 const LibraryAgentFilter = ({}: {}) => {
   const api = useBackendAPI();

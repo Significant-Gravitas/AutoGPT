@@ -1,4 +1,4 @@
-import { LibraryAgent, LibraryAgentSortEnum } from "@/lib/autogpt-server-api";
+"use client";
 import {
   createContext,
   useState,
@@ -7,6 +7,7 @@ import {
   Dispatch,
   SetStateAction,
 } from "react";
+import { LibraryAgent, LibraryAgentSortEnum } from "@/lib/autogpt-server-api";
 
 interface LibraryPageContextType {
   agents: LibraryAgent[];

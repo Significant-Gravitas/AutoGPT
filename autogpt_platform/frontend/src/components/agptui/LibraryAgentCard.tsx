@@ -3,18 +3,19 @@ import Image from "next/image";
 import { LibraryAgent } from "@/lib/autogpt-server-api";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
-export const LibraryAgentCard = ({
+export default function LibraryAgentCard({
   agent: {
     id,
     name,
-    can_access_graph,
     description,
+    agent_id,
+    can_access_graph,
     creator_image_url,
     image_url,
   },
 }: {
   agent: LibraryAgent;
-}) => {
+}): React.ReactNode {
   return (
     <div className="inline-flex w-full max-w-[434px] cursor-pointer flex-col items-start justify-start gap-2.5 rounded-[26px] bg-white transition-all duration-300 hover:shadow-lg dark:bg-transparent dark:hover:shadow-gray-700">
       <div className="relative h-[200px] w-full overflow-hidden rounded-[20px]">
@@ -27,7 +28,7 @@ export const LibraryAgentCard = ({
                 "bg-gradient-to-r from-yellow-200 to-orange-200",
                 "bg-gradient-to-r from-blue-200 to-cyan-200",
                 "bg-gradient-to-r from-indigo-200 to-purple-200",
-              ][Math.floor(Math.random() * 5)]
+              ][parseInt(id.slice(0, 8), 16) % 5]
             }`}
             style={{
               backgroundSize: "200% 200%",
@@ -67,26 +68,24 @@ export const LibraryAgentCard = ({
           {description}
         </p>
 
-        <div className="items-between mt-4 flex w-full justify-between">
-          <div className="flex gap-3">
+        <div className="items-between mt-4 flex w-full justify-between gap-3">
+          <Link
+            href={`/library/agents/${id}`}
+            className="font-geist text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
+          >
+            See runs
+          </Link>
+
+          {can_access_graph && (
             <Link
-              href={`/library/agents/${id}`}
+              href={`/build?flowID=${agent_id}`}
               className="font-geist text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
             >
-              See runs
+              Open in builder
             </Link>
-
-            {can_access_graph && (
-              <Link
-                href={`/build?flowID=${id}`}
-                className="font-geist text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
-              >
-                Open in builder
-              </Link>
-            )}
-          </div>
+          )}
         </div>
       </div>
     </div>
   );
-};
+}

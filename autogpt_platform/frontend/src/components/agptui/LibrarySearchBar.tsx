@@ -1,11 +1,11 @@
 "use client";
-import { Search, X } from "lucide-react";
-import { Input } from "../ui/input";
 import { useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import debounce from "lodash/debounce";
+import { Input } from "@/components/ui/input";
+import { Search, X } from "lucide-react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useLibraryPageContext } from "./providers/LibraryAgentProvider";
+import { useLibraryPageContext } from "@/components/providers/LibraryAgentProvider";
+import { motion, AnimatePresence } from "framer-motion";
 
 export const LibrarySearchBar = () => {
   const inputRef = useRef<HTMLInputElement>(null);
