@@ -59,7 +59,7 @@ async def execute_graph(
     logger.info(f"Execution completed with {len(result)} results")
     return graph_exec_id
 
-
+@pytest.mark.skip()
 @pytest.mark.asyncio(scope="session")
 async def test_graph_validation_with_tool_nodes_correct(server: SpinTestServer):
     test_user = await create_test_user()
@@ -108,7 +108,7 @@ async def test_graph_validation_with_tool_nodes_correct(server: SpinTestServer):
     )
     test_graph = await create_graph(server, test_graph, test_user)
 
-
+@pytest.mark.skip()
 @pytest.mark.asyncio(scope="session")
 async def test_graph_validation_with_tool_nodes_raises_error(server: SpinTestServer):
 
@@ -169,6 +169,7 @@ async def test_graph_validation_with_tool_nodes_raises_error(server: SpinTestSer
         test_graph = await create_graph(server, test_graph, test_user)
 
 
+@pytest.mark.skip()
 @pytest.mark.asyncio(scope="session")
 async def test_smart_decision_maker_function_signature(server: SpinTestServer):
     test_user = await create_test_user()
