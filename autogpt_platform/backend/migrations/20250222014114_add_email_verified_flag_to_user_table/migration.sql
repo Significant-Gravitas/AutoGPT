@@ -6,5 +6,5 @@ UPDATE "User" SET "emailVerified" = true;
 
 -- Now make it NOT NULL and set the default
 ALTER TABLE "User" ALTER COLUMN "emailVerified" SET NOT NULL;
-ALTER TABLE "User" ALTER COLUMN "emailVerified" SET DEFAULT false;
+ALTER TABLE "User" ALTER COLUMN "emailVerified" SET DEFAULT true;
 
