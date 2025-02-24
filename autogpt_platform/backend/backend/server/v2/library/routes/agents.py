@@ -20,7 +20,6 @@ router = APIRouter(
 
 @router.get(
     "",
-    response_model=library_model.LibraryAgentResponse,
     responses={
         500: {"description": "Server error", "content": {"application/json": {}}},
     },
