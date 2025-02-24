@@ -1,4 +1,7 @@
-import { LibraryAgentSortEnum } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { LibraryAgentSortEnum } from "@/lib/autogpt-server-api/types";
+import { useLibraryPageContext } from "@/components/providers/LibraryAgentProvider";
+import { ArrowDownNarrowWideIcon } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -7,9 +10,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Filter } from "lucide-react";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useLibraryPageContext } from "@/components/providers/LibraryAgentProvider";
 
 const LibraryAgentFilter = ({}: {}) => {
   const api = useBackendAPI();
@@ -30,23 +30,14 @@ const LibraryAgentFilter = ({}: {}) => {
 
   return (
     <div className="flex items-center">
-      <span className="hidden sm:inline">sort by</span>
+      <span className="hidden whitespace-nowrap sm:inline">sort by</span>
       <Select onValueChange={handleSortChange}>
-        <SelectTrigger className="ml-1 w-fit space-x-1 border-none pl-2 shadow-md">
-          <Filter className="h-4 w-4 sm:hidden" />
-          <SelectValue
-            placeholder="Last Modified"
-            className={
-              "font-sans text-[14px] font-[500] leading-[24px] text-neutral-600"
-            }
-          />
+        <SelectTrigger className="ml-1 w-fit space-x-1 border-none px-0 text-base underline underline-offset-4 shadow-none">
+          <ArrowDownNarrowWideIcon className="h-4 w-4 sm:hidden" />
+          <SelectValue placeholder="Last Modified" />
         </SelectTrigger>
         <SelectContent>
-          <SelectGroup
-            className={
-              "font-sans text-[14px] font-[500] leading-[24px] text-neutral-600"
-            }
-          >
+          <SelectGroup>
             <SelectItem value={LibraryAgentSortEnum.CREATED_AT}>
               Creation Date
             </SelectItem>
