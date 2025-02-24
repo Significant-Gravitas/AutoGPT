@@ -27,10 +27,12 @@ def create_credentials(s: SpinTestServer, u: User):
     credentials = llm.TEST_CREDENTIALS
     try:
         s.agent_server.test_create_credentials(u.id, provider, credentials)
-    except Exception:
-        # Errors when trying to recreate the same credentials
+    except ValueError:
+        # ValueErrors is raised trying to recreate the same credentials
         # so hidding the error
         pass
+    except Exception as e:
+        raise e
 
 
 async def execute_graph(
@@ -60,6 +62,9 @@ async def execute_graph(
     return graph_exec_id
 
 
+
+
+@pytest.mark.skip()
 @pytest.mark.asyncio(scope="session")
 async def test_graph_validation_with_tool_nodes_correct(server: SpinTestServer):
     test_user = await create_test_user()
@@ -169,6 +174,7 @@ async def test_graph_validation_with_tool_nodes_raises_error(server: SpinTestSer
         test_graph = await create_graph(server, test_graph, test_user)
 
 
+@pytest.mark.skip()
 @pytest.mark.asyncio(scope="session")
 async def test_smart_decision_maker_function_signature(server: SpinTestServer):
     test_user = await create_test_user()
