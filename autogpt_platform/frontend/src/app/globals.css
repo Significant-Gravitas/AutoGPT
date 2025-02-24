@@ -145,11 +145,6 @@
   }
 }
 
-.scroll-none {
-  scrollbar-width: thin; /* For Firefox (sets a thin scrollbar) */
-  scrollbar-color: transparent transparent; /* For Firefox (thumb and track colors) */
-}
-
 body {
   overflow-x: hidden;
 }

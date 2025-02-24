@@ -95,9 +95,9 @@ export default class BackendAPI {
     return this._request("POST", "/auth/user/email", { email });
   }
 
-  getUserCredit(page?: string): Promise<{ credits: number }> {
+  getUserCredit(): Promise<{ credits: number }> {
     try {
-      return this._get(`/credits`, undefined, page);
+      return this._get("/credits");
     } catch (error) {
       return Promise.resolve({ credits: 0 });
     }
@@ -362,10 +362,9 @@ export default class BackendAPI {
   /////////// V2 STORE API /////////////////
   /////////////////////////////////////////
 
-  getStoreProfile(page?: string): Promise<ProfileDetails | null> {
+  getStoreProfile(): Promise<ProfileDetails | null> {
     try {
-      console.log("+++ Making API from: ", page);
-      const result = this._get("/store/profile", undefined, page);
+      const result = this._get("/store/profile");
       return result;
     } catch (error) {
       console.error("Error fetching store profile:", error);
@@ -553,8 +552,8 @@ export default class BackendAPI {
   /////////// INTERNAL FUNCTIONS ////////////
   //////////////////////////////??///////////
 
-  private async _get(path: string, query?: Record<string, any>, page?: string) {
-    return this._request("GET", path, query, page);
+  private _get(path: string, query?: Record<string, any>) {
+    return this._request("GET", path, query);
   }
 
   async createSchedule(schedule: ScheduleCreatable): Promise<Schedule> {
@@ -622,7 +621,6 @@ export default class BackendAPI {
     method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
     payload?: Record<string, any>,
-    page?: string,
   ) {
     if (method !== "GET") {
       console.debug(`${method} ${path} payload:`, payload);

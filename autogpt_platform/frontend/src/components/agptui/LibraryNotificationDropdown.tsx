@@ -6,16 +6,15 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Button } from "./Button";
+import { Button } from "@/components/agptui/Button";
 import { BellIcon, X } from "lucide-react";
 import { motion, useAnimationControls } from "framer-motion";
-import { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import LibraryNotificationCard, {
   NotificationCardData,
-} from "./LibraryNotificationCard";
-import { cn } from "@/lib/utils";
+} from "@/components/agptui/LibraryNotificationCard";
 
-const LibraryNotificationDropdown = () => {
+export default function LibraryNotificationDropdown(): React.ReactNode {
   const controls = useAnimationControls();
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState<
@@ -26,24 +25,24 @@ const LibraryNotificationDropdown = () => {
     () =>
       [
         {
-          type: "audio" as "audio",
+          type: "audio",
           title: "Audio Processing Complete",
           id: "4",
         },
         {
-          type: "text" as "text",
+          type: "text",
           title: "LinkedIn Post Generator: YouTube to Professional Content",
           id: "1",
           content:
             "As artificial intelligence (AI) continues to evolve, it's increasingly clear that AI isn't just a trend—it's reshaping the way we work, innovate, and solve complex problems. However, for many professionals, the question remains: How can I leverage AI to drive meaningful results in my own field? In this article, we'll explore how AI can empower businesses and individuals alike to be more efficient, make better decisions, and unlock new opportunities. Whether you're in tech, finance, healthcare, or any other industry, understanding the potential of AI can set you apart.",
         },
         {
-          type: "image" as "image",
+          type: "image",
           title: "New Image Upload",
           id: "2",
         },
         {
-          type: "video" as "video",
+          type: "video",
           title: "Video Processing Complete",
           id: "3",
         },
@@ -95,7 +94,7 @@ const LibraryNotificationDropdown = () => {
       </DropdownMenuTrigger>
       <DropdownMenuContent
         sideOffset={22}
-        className="scroll-none relative left-[16px] h-[80vh] w-fit overflow-y-auto rounded-[26px] bg-[#C5C5CA] p-5"
+        className="relative left-[16px] h-[80vh] w-fit overflow-y-auto rounded-[26px] bg-[#C5C5CA] p-5"
       >
         <DropdownMenuLabel className="z-10 mb-4 font-sans text-[18px] text-white">
           Agent run updates
@@ -111,8 +110,13 @@ const LibraryNotificationDropdown = () => {
             notifications.map((notification) => (
               <DropdownMenuItem key={notification.id} className="p-0">
                 <LibraryNotificationCard
-                  {...notification}
-                  setNotifications={setNotifications}
+                  notification={notification}
+                  onClose={() =>
+                    setNotifications((prev) => {
+                      if (!prev) return null;
+                      return prev.filter((n) => n.id !== notification.id);
+                    })
+                  }
                 />
               </DropdownMenuItem>
             ))
@@ -125,6 +129,4 @@ const LibraryNotificationDropdown = () => {
       </DropdownMenuContent>
     </DropdownMenu>
   );
-};
-
-export default LibraryNotificationDropdown;
+}

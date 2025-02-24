@@ -1,16 +1,14 @@
-import { Button } from "../ui/button";
 import Image from "next/image";
-import { Separator } from "../ui/separator";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import {
   CirclePlayIcon,
   ClipboardCopy,
   ImageIcon,
-  Play,
   PlayCircle,
   Share2,
   X,
 } from "lucide-react";
-import { Dispatch, SetStateAction } from "react";
 
 export interface NotificationCardData {
   type: "text" | "image" | "video" | "audio";
@@ -20,17 +18,14 @@ export interface NotificationCardData {
   mediaUrl?: string;
 }
 
-interface NotificationCardProps extends NotificationCardData {
-  setNotifications: Dispatch<SetStateAction<NotificationCardData[] | null>>;
+interface NotificationCardProps {
+  notification: NotificationCardData;
+  onClose: () => void;
 }
 
 const NotificationCard = ({
-  type,
-  title,
-  id,
-  content,
-  mediaUrl,
-  setNotifications,
+  notification: { id, type, title, content, mediaUrl },
+  onClose,
 }: NotificationCardProps) => {
   const barHeights = Array.from({ length: 60 }, () =>
     Math.floor(Math.random() * (34 - 20 + 1) + 20),
@@ -38,10 +33,7 @@ const NotificationCard = ({
 
   const handleClose = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
-    setNotifications((prev) => {
-      if (!prev) return null;
-      return prev.filter((notification) => notification.id !== id);
-    });
+    onClose();
   };
 
   return (
