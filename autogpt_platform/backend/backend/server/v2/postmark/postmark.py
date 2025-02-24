@@ -2,9 +2,9 @@ import logging
 from typing import Annotated
 
 from autogpt_libs.auth.middleware import APIKeyValidator
-from backend.data.user import get_user_by_email, set_user_email_verification
 from fastapi import APIRouter, Body, Depends
 
+from backend.data.user import get_user_by_email, set_user_email_verification
 from backend.server.v2.postmark.models import (
     PostmarkBounceWebhook,
     PostmarkClickWebhook,
@@ -63,7 +63,7 @@ async def bounce_handler(event: PostmarkBounceWebhook):
         logger.error(f"User not found for email: {event.Email}")
         return
     await set_user_email_verification(user.id, False)
-    logger.debug("Setting email verification to false for user: {user.id}")
+    logger.debug(f"Setting email verification to false for user: {user.id}")
 
 
 def spam_handler(event: PostmarkSpamComplaintWebhook):
