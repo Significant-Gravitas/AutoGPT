@@ -527,162 +527,6 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         )
         self.prompt = ""
 
-    def llm_call(
-        self,
-        credentials: APIKeyCredentials,
-        llm_model: LlmModel,
-        prompt: list[dict],
-        json_format: bool,
-        max_tokens: int | None,
-        ollama_host: str = "localhost:11434",
-    ) -> tuple[str, int, int]:
-        """
-        Args:
-            credentials: The API key credentials to use.
-            llm_model: The LLM model to use.
-            prompt: The prompt to send to the LLM.
-            json_format: Whether the response should be in JSON format.
-            max_tokens: The maximum number of tokens to generate in the chat completion.
-            ollama_host: The host for ollama to use
-
-        Returns:
-            The response from the LLM.
-            The number of tokens used in the prompt.
-            The number of tokens used in the completion.
-        """
-        provider = llm_model.metadata.provider
-        max_tokens = max_tokens or llm_model.max_output_tokens or 4096
-
-        if provider == "openai":
-            oai_client = openai.OpenAI(api_key=credentials.api_key.get_secret_value())
-            response_format = None
-
-            if llm_model in [LlmModel.O1_MINI, LlmModel.O1_PREVIEW]:
-                sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
-                usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
-                prompt = [
-                    {"role": "user", "content": "\n".join(sys_messages)},
-                    {"role": "user", "content": "\n".join(usr_messages)},
-                ]
-            elif json_format:
-                response_format = {"type": "json_object"}
-
-            response = oai_client.chat.completions.create(
-                model=llm_model.value,
-                messages=prompt,  # type: ignore
-                response_format=response_format,  # type: ignore
-                max_completion_tokens=max_tokens,
-            )
-            self.prompt = json.dumps(prompt)
-
-            return (
-                response.choices[0].message.content or "",
-                response.usage.prompt_tokens if response.usage else 0,
-                response.usage.completion_tokens if response.usage else 0,
-            )
-        elif provider == "anthropic":
-            system_messages = [p["content"] for p in prompt if p["role"] == "system"]
-            sysprompt = " ".join(system_messages)
-
-            messages = []
-            last_role = None
-            for p in prompt:
-                if p["role"] in ["user", "assistant"]:
-                    if p["role"] != last_role:
-                        messages.append({"role": p["role"], "content": p["content"]})
-                        last_role = p["role"]
-                    else:
-                        # If the role is the same as the last one, combine the content
-                        messages[-1]["content"] += "\n" + p["content"]
-
-            client = anthropic.Anthropic(api_key=credentials.api_key.get_secret_value())
-            try:
-                resp = client.messages.create(
-                    model=llm_model.value,
-                    system=sysprompt,
-                    messages=messages,
-                    max_tokens=max_tokens,
-                )
-                self.prompt = json.dumps(prompt)
-
-                if not resp.content:
-                    raise ValueError("No content returned from Anthropic.")
-
-                return (
-                    (
-                        resp.content[0].name
-                        if isinstance(resp.content[0], anthropic.types.ToolUseBlock)
-                        else resp.content[0].text
-                    ),
-                    resp.usage.input_tokens,
-                    resp.usage.output_tokens,
-                )
-            except anthropic.APIError as e:
-                error_message = f"Anthropic API error: {str(e)}"
-                logger.error(error_message)
-                raise ValueError(error_message)
-        elif provider == "groq":
-            client = Groq(api_key=credentials.api_key.get_secret_value())
-            response_format = {"type": "json_object"} if json_format else None
-            response = client.chat.completions.create(
-                model=llm_model.value,
-                messages=prompt,  # type: ignore
-                response_format=response_format,  # type: ignore
-                max_tokens=max_tokens,
-            )
-            self.prompt = json.dumps(prompt)
-            return (
-                response.choices[0].message.content or "",
-                response.usage.prompt_tokens if response.usage else 0,
-                response.usage.completion_tokens if response.usage else 0,
-            )
-        elif provider == "ollama":
-            client = ollama.Client(host=ollama_host)
-            sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
-            usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
-            response = client.generate(
-                model=llm_model.value,
-                prompt=f"{sys_messages}\n\n{usr_messages}",
-                stream=False,
-            )
-            self.prompt = json.dumps(prompt)
-            return (
-                response.get("response") or "",
-                response.get("prompt_eval_count") or 0,
-                response.get("eval_count") or 0,
-            )
-        elif provider == "open_router":
-            client = openai.OpenAI(
-                base_url="https://openrouter.ai/api/v1",
-                api_key=credentials.api_key.get_secret_value(),
-            )
-
-            response = client.chat.completions.create(
-                extra_headers={
-                    "HTTP-Referer": "https://agpt.co",
-                    "X-Title": "AutoGPT",
-                },
-                model=llm_model.value,
-                messages=prompt,  # type: ignore
-                max_tokens=max_tokens,
-            )
-            self.prompt = json.dumps(prompt)
-
-            # If there's no response, raise an error
-            if not response.choices:
-                if response:
-                    raise ValueError(f"OpenRouter error: {response}")
-                else:
-                    raise ValueError("No response from OpenRouter.")
-
-            return (
-                response.choices[0].message.content or "",
-                response.usage.prompt_tokens if response.usage else 0,
-                response.usage.completion_tokens if response.usage else 0,
-            )
-        else:
-            raise ValueError(f"Unsupported LLM provider: {provider}")
-
     def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
@@ -737,7 +581,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
         for retry_count in range(input_data.retry):
             try:
-                response_text, input_token, output_token = self.llm_call(
+                llm_response = llm_call(
                     credentials=credentials,
                     llm_model=llm_model,
                     prompt=prompt,
@@ -745,10 +589,11 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     ollama_host=input_data.ollama_host,
                     max_tokens=input_data.max_tokens,
                 )
+                response_text = llm_response.response
                 self.merge_stats(
                     {
-                        "input_token_count": input_token,
-                        "output_token_count": output_token,
+                        "input_token_count": llm_response.prompt_tokens,
+                        "output_token_count": llm_response.completion_tokens,
                     }
                 )
                 logger.info(f"LLM attempt-{retry_count} response: {response_text}")
