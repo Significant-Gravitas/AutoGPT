@@ -15,7 +15,11 @@ from backend.data.notifications import (
     get_data_type,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.data.user import get_user_email_by_id, get_user_notification_preference
+from backend.data.user import (
+    get_user_email_by_id,
+    get_user_email_verification,
+    get_user_notification_preference,
+)
 from backend.notifications.email import EmailSender
 from backend.util.service import AppService, expose
 from backend.util.settings import Settings
@@ -124,9 +128,13 @@ class NotificationManager(AppService):
     def _should_email_user_based_on_preference(
         self, user_id: str, event_type: NotificationType
     ) -> bool:
-        return self.run_and_wait(
+        """Check if a user wants to receive a notification based on their preferences and email verification status"""
+        validated_email = self.run_and_wait(get_user_email_verification(user_id))
+        preference = self.run_and_wait(
             get_user_notification_preference(user_id)
         ).preferences.get(event_type, True)
+        # only if both are true, should we email this person
+        return validated_email and preference
 
     def _parse_message(self, message: str) -> NotificationEvent | None:
         try:
