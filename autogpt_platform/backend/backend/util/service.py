@@ -252,10 +252,10 @@ class FastApiAppService(BaseAppService, ABC):
         sig = inspect.signature(func)
         fields = {}
 
-        is_bounded_method = False
+        is_bound_method = False
         for name, param in sig.parameters.items():
             if name in ("self", "cls"):
-                is_bounded_method = True
+                is_bound_method = True
                 continue
 
             # Use the provided annotation or fallback to str if not specified
@@ -270,7 +270,7 @@ class FastApiAppService(BaseAppService, ABC):
 
         # Dynamically create a Pydantic model for the request body
         RequestBodyModel = create_model("RequestBodyModel", **fields)
-        f = func.__get__(self) if is_bounded_method else func
+        f = func.__get__(self) if is_bound_method else func
 
         if asyncio.iscoroutinefunction(f):
 
