@@ -29,15 +29,17 @@ export default function LibraryPage() {
         <LibraryAgentListContainer />
       </LibraryPageProvider>
 
-      <p className="w-full p-4 text-center text-gray-500">
-        Prefer the old experience? Click{" "}
-        <Link href="/monitoring" className="underline">
-          here
-        </Link>{" "}
-        to go to it. Please do let us know why by clicking the{" "}
-        <QuestionMarkCircledIcon className="inline-block size-6 rounded-full bg-[rgba(65,65,64,1)] p-1 text-neutral-50" />{" "}
-        in the bottom right corner <ArrowBottomRightIcon className="inline" />
-      </p>
+      <div className="!mb-8 !mt-12 flex w-full justify-center">
+        <p className="rounded-xl bg-white p-4 text-neutral-600">
+          Prefer the old experience? Click{" "}
+          <Link href="/monitoring" className="underline">
+            here
+          </Link>{" "}
+          to go to it. Please do let us know why by clicking the{" "}
+          <QuestionMarkCircledIcon className="inline-block size-6 rounded-full bg-[rgba(65,65,64,1)] p-1 align-bottom text-neutral-50" />{" "}
+          in the bottom right corner <ArrowBottomRightIcon className="inline" />
+        </p>
+      </div>
     </main>
   );
 }
