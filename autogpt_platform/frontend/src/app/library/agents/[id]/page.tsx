@@ -6,6 +6,7 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   GraphExecution,
   GraphExecutionMeta,
+  GraphID,
   GraphMeta,
   Schedule,
 } from "@/lib/autogpt-server-api";
@@ -16,7 +17,7 @@ import AgentRunsSelectorList from "@/components/agents/agent-runs-selector-list"
 import AgentScheduleDetailsView from "@/components/agents/agent-schedule-details-view";
 
 export default function AgentRunsPage(): React.ReactElement {
-  const { id: agentID }: { id: string } = useParams();
+  const { id: agentID }: { id: GraphID } = useParams();
   const router = useRouter();
   const api = useBackendAPI();
 

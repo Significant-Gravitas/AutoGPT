@@ -70,7 +70,7 @@ export default function LibraryAgentCard({
 
         <div className="items-between mt-4 flex w-full justify-between gap-3">
           <Link
-            href={`/library/agents/${id}`}
+            href={`/library/agents/${agent_id}`}
             className="font-geist text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
           >
             See runs
