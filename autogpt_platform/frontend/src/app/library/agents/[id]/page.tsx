@@ -153,22 +153,20 @@ export default function AgentRunsPage(): React.ReactElement {
         </div>
 
         {/* Run / Schedule views */}
-        {(selectedView.type == "run" ? (
-          selectedView.id ? (
-            selectedRun && (
-              <AgentRunDetailsView
-                agent={agent}
-                run={selectedRun}
-                agentActions={agentActions}
-              />
-            )
-          ) : (
-            <AgentRunDraftView
+        {(selectedView.type == "run" && selectedView.id ? (
+          selectedRun && (
+            <AgentRunDetailsView
               agent={agent}
-              onRun={(runID) => selectRun(runID)}
+              run={selectedRun}
               agentActions={agentActions}
             />
           )
+        ) : selectedView.type == "run" ? (
+          <AgentRunDraftView
+            agent={agent}
+            onRun={(runID) => selectRun(runID)}
+            agentActions={agentActions}
+          />
         ) : selectedView.type == "schedule" ? (
           selectedSchedule && (
             <AgentScheduleDetailsView
