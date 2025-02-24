@@ -191,7 +191,7 @@ export default function useAgentGraph(
         });
         setEdges(() =>
           graph.links.map((link) => {
-            const adjustedSourceName = link.source_name?.startsWith("tools_")
+            const adjustedSourceName = link.source_name?.startsWith("tools_^_")
               ? "tools"
               : link.source_name;
             return {
@@ -796,7 +796,7 @@ export default function useAgentGraph(
           ? sinkNode.data.title.toLowerCase().replace(/ /g, "_")
           : "";
         sourceName =
-          `tools_${sinkNodeName}_${edge.targetHandle || ""}`.toLowerCase();
+          `tools_^_${sinkNodeName}_${edge.targetHandle || ""}`.toLowerCase();
       }
       return {
         source_id: edge.source,

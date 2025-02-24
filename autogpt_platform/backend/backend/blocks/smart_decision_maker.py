@@ -116,7 +116,7 @@ class SmartDecisionMakerBlock(Block):
         tool_links = {
             link.sink_id
             for link in graph.links
-            if link.source_name.startswith("tools_") and link.source_id == node_id
+            if link.source_name.startswith("tools_^_") and link.source_id == node_id
         }
 
         for link_id in tool_links:
@@ -169,7 +169,7 @@ class SmartDecisionMakerBlock(Block):
             #         include={"AgentNode": {"include": AGENT_NODE_INCLUDE}},
             #     )
             #     return [NodeModel.from_db(link.AgentNodeSink) for link in links]
-            if link.source_name.startswith("tools_") and link.source_id == node_id
+            if link.source_name.startswith("tools_^_") and link.source_id == node_id
         ]
 
         if not tool_links:
@@ -304,4 +304,4 @@ class SmartDecisionMakerBlock(Block):
                 tool_args = json.loads(tool_call.function.arguments)
 
                 for arg_name, arg_value in tool_args.items():
-                    yield f"tools_{tool_name}_{arg_name}".lower(), arg_value
+                    yield f"tools_^_{tool_name}_{arg_name}".lower(), arg_value

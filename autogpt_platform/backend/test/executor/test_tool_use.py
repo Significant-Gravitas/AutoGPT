@@ -89,13 +89,13 @@ async def test_graph_validation_with_tool_nodes_correct(server: SpinTestServer):
         graph.Link(
             source_id=nodes[0].id,
             sink_id=nodes[1].id,
-            source_name="tools_sample_tool_#_input_1",
+            source_name="tools_^_sample_tool_#_input_1",
             sink_name="input_1",
         ),
         graph.Link(
             source_id=nodes[0].id,
             sink_id=nodes[1].id,
-            source_name="tools_sample_tool_#_input_2",
+            source_name="tools_^_sample_tool_#_input_2",
             sink_name="input_2",
         ),
     ]
@@ -142,19 +142,19 @@ async def test_graph_validation_with_tool_nodes_raises_error(server: SpinTestSer
         graph.Link(
             source_id=nodes[0].id,
             sink_id=nodes[1].id,
-            source_name="tools_sample_tool_#_input_1",
+            source_name="tools_^_sample_tool_#_input_1",
             sink_name="input_1",
         ),
         graph.Link(
             source_id=nodes[0].id,
             sink_id=nodes[1].id,
-            source_name="tools_sample_tool_#_input_2",
+            source_name="tools_^_sample_tool_#_input_2",
             sink_name="input_2",
         ),
         graph.Link(
             source_id=nodes[0].id,
             sink_id=nodes[2].id,
-            source_name="tools_store_value_#_input",
+            source_name="tools_^_store_value_#_input",
             sink_name="input",
         ),
     ]
@@ -198,13 +198,13 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
         graph.Link(
             source_id=nodes[0].id,
             sink_id=nodes[1].id,
-            source_name="tools_sample_tool_#_input_1",
+            source_name="tools_^_sample_tool_input_1",
             sink_name="input_1",
         ),
         graph.Link(
             source_id=nodes[0].id,
             sink_id=nodes[1].id,
-            source_name="tools_sample_tool_#_input_2",
+            source_name="tools_^_sample_tool_input_2",
             sink_name="input_2",
         ),
     ]
