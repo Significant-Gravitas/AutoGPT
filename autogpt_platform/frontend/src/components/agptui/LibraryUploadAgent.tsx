@@ -142,11 +142,7 @@ export const LibraryUploadAgent = () => {
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button
-          variant="library_primary"
-          size="library"
-          className="w-fit sm:w-[177px]"
-        >
+        <Button variant="primary" className="w-fit sm:w-[177px]">
           <Upload className="h-5 w-5 sm:mr-2" />
           <span className="hidden items-center sm:inline-flex">
             Upload an agent
@@ -202,7 +198,6 @@ export const LibraryUploadAgent = () => {
                             form.setValue("agentFile", undefined as any)
                           }
                           className="absolute left-[-10px] top-[-16px] mt-2 h-fit border-none bg-red-200 p-1"
-                          size="library"
                         >
                           <X
                             className="m-0 h-[12px] w-[12px] text-red-600"
@@ -263,8 +258,7 @@ export const LibraryUploadAgent = () => {
 
             <Button
               type="submit"
-              variant="library_primary"
-              size="library"
+              variant="primary"
               className="mt-2 self-end"
               disabled={!agentObject || isLoading}
             >

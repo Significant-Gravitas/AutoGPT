@@ -67,8 +67,7 @@ export default function LibraryNotificationDropdown(): React.ReactNode {
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger className="sm:flex-1" asChild>
         <Button
-          variant={open ? "library_primary" : "library_outline"}
-          size="library"
+          variant={open ? "primary" : "outline"}
           onMouseEnter={handleHoverStart}
           onMouseLeave={handleHoverStart}
           className="w-fit max-w-[161px] transition-all duration-200 ease-in-out sm:w-[161px]"
