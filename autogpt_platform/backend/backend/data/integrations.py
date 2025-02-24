@@ -12,11 +12,11 @@ from backend.integrations.webhooks.utils import webhook_ingress_url
 
 from .db import BaseDbModel
 
-
 if TYPE_CHECKING:
     from .graph import NodeModel
 
 logger = logging.getLogger(__name__)
+
 
 class Webhook(BaseDbModel):
     user_id: str

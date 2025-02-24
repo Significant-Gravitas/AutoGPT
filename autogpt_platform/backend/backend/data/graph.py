@@ -319,7 +319,6 @@ class GraphModel(Graph):
 
         # Validate smart decision maker nodes
         smart_decision_maker_nodes = set()
-        smd_unique_tool_links = {}
         agent_nodes = set()
         nodes_block = {
             node.id: block
@@ -339,29 +338,19 @@ class GraphModel(Graph):
                 agent_nodes.add(node.id)
 
         input_links = defaultdict(list)
-        tool_name_to_node = {}
 
         for link in self.links:
             input_links[link.sink_id].append(link)
 
+            # Check if the link is a tool link from a smart decision maker to a non-agent node
             if (
                 link.source_id in smart_decision_maker_nodes
-                and link.source_name.startswith("tools_")
+                and link.source_name.startswith("tools_^_")
+                and link.sink_id not in agent_nodes
             ):
-                tool_name = link.source_name.split("_#_")[0]
-                if tool_name in tool_name_to_node:
-                    if tool_name_to_node[tool_name] != link.sink_id:
-                        raise ValueError(
-                            f"Tool name {tool_name} links to multiple nodes: {tool_name_to_node[tool_name]} and {link.sink_id}"
-                        )
-                else:
-                    tool_name_to_node[tool_name] = link.sink_id
-
-                smd_unique_tool_links[link.source_id] = set(link.sink_id)
-                if link.sink_id not in agent_nodes:
-                    raise ValueError(
-                        f"Smart decision maker node {link.source_id} cannot link to non-agent node {link.sink_id}"
-                    )
+                raise ValueError(
+                    f"Smart decision maker node {link.source_id} cannot link to non-agent node {link.sink_id}"
+                )
 
         # Nodes: required fields are filled or connected and dependencies are satisfied
         for node in self.nodes:
