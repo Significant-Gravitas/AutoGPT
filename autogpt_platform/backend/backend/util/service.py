@@ -274,7 +274,7 @@ class FastApiAppService(BaseAppService, ABC):
 
         if asyncio.iscoroutinefunction(f):
 
-            async def async_endpoint(body: RequestBodyModel):  # type: ignore
+            async def async_endpoint(body: RequestBodyModel):  # type: ignore #RequestBodyModel being variable
                 try:
                     return await f(
                         **{name: getattr(body, name) for name in body.model_fields}
@@ -286,7 +286,7 @@ class FastApiAppService(BaseAppService, ABC):
             return async_endpoint
         else:
 
-            def sync_endpoint(body: RequestBodyModel):  # type: ignore
+            def sync_endpoint(body: RequestBodyModel):  # type: ignore #RequestBodyModel being variable
                 try:
                     return f(
                         **{name: getattr(body, name) for name in body.model_fields}
@@ -369,7 +369,7 @@ class PyroAppService(BaseAppService, ABC):
 
 if config.use_http_based_rpc:
 
-    class AppService(FastApiAppService, ABC):  # type: ignore
+    class AppService(FastApiAppService, ABC):  # type: ignore #AppService defined twice
         pass
 
 else:
