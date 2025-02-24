@@ -60,6 +60,7 @@ export type BlockIOSubSchemaMeta = {
   advanced?: boolean;
   depends_on?: string[];
   hidden?: boolean;
+  default?: any;
 };
 
 export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
@@ -675,7 +676,8 @@ export interface UserOnboarding {
   usageReason?: string;
   integrations: string[];
   otherIntegrations?: string;
-  chosenAgentId?: string;
+  selectedAgentCreator?: string;
+  selectedAgentSlug?: string;
   agentInput?: { [key: string]: string };
   isCompleted: boolean;
 }

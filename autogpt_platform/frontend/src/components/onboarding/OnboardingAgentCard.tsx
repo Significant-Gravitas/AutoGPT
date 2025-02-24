@@ -6,7 +6,7 @@ import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 type OnboardingAgentCardProps = StoreAgentDetails & {
   selected?: boolean;
   onClick: () => void;
-}
+};
 
 export default function OnboardingAgentCard({
   agent_image,
@@ -31,7 +31,7 @@ export default function OnboardingAgentCard({
       {/* Image container */}
       <div className="relative">
         <Image
-          src={agent_image[0]}
+          src={agent_image?.[0] || ""}
           alt="Agent cover"
           className="m-2 h-[196px] w-[350px] rounded-xl object-cover"
           width={350}
@@ -77,7 +77,7 @@ export default function OnboardingAgentCard({
         {/* Bottom stats */}
         <div className="flex w-full items-center justify-between">
           <span className="mt-1 font-sans text-sm font-medium text-zinc-800">
-            {runs.toLocaleString("en-US")} runs
+            {runs?.toLocaleString("en-US")} runs
           </span>
           <StarRating rating={rating} />
         </div>

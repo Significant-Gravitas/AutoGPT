@@ -61,13 +61,14 @@ model UserOnboarding {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
 
-  step              Int      @default(0)
-  usageReason       String?
-  integrations      String[] @default([])
-  otherIntegrations String?
-  chosenAgentId     String?
-  agentInput        Json?
-  isCompleted       Boolean  @default(false)
+  step                 Int      @default(0)
+  usageReason          String?
+  integrations         String[] @default([])
+  otherIntegrations    String?
+  selectedAgentCreator String?
+  selectedAgentSlug    String?
+  agentInput           Json?
+  isCompleted          Boolean  @default(false)
 
   userId String @unique
   user   User   @relation(fields: [userId], references: [id])

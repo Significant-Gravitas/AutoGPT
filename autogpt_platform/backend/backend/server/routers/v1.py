@@ -41,8 +41,8 @@ from backend.data.credit import (
     get_user_credit_model,
     set_auto_top_up,
 )
-from backend.data.onboarding import get_user_onboarding, update_user_onboarding
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
+from backend.data.onboarding import get_user_onboarding, update_user_onboarding
 from backend.data.user import (
     get_or_create_user,
     get_user_notification_preference,

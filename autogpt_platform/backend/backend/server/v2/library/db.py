@@ -209,19 +209,16 @@ async def add_store_agent_to_library(
 
         agent = store_listing_version.Agent
 
-        if agent.userId == user_id:
-            logger.warning(
-                f"User {user_id} cannot add their own agent to their library"
-            )
-            raise store_exceptions.DatabaseError("Cannot add own agent to library")
-
         # Check if user already has this agent
         existing_user_agent = await prisma.models.LibraryAgent.prisma().find_first(
             where={
                 "userId": user_id,
                 "agentId": agent.id,
                 "agentVersion": agent.version,
-            }
+            },
+            include={
+                "Agent": {"include": {"AgentNodes": {"include": {"Input": True}}}}
+            },
         )
 
         if existing_user_agent:
@@ -237,7 +234,10 @@ async def add_store_agent_to_library(
                 "agentId": agent.id,
                 "agentVersion": agent.version,
                 "isCreatedByUser": False,
-            }
+            },
+            include={
+                "Agent": {"include": {"AgentNodes": {"include": {"Input": True}}}}
+            },
         )
         logger.debug(f"Added agent {agent.id} to library for user {user_id}")
         return library_model.LibraryAgent.from_db(new_agent)

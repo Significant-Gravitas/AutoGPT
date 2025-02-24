@@ -6,7 +6,7 @@ async def get_user_onboarding(user_id: str):
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
         data={
-            "create": {"userId": user_id}, #type: ignore
+            "create": {"userId": user_id},  # type: ignore
             "update": {},
         },
     )
@@ -18,7 +18,7 @@ async def update_user_onboarding(
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
         data={
-            "create": {"userId": user_id, **data}, #type: ignore
+            "create": {"userId": user_id, **data},  # type: ignore
             "update": data,
         },
     )

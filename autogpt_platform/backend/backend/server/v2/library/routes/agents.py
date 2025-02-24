@@ -32,7 +32,7 @@ async def get_library_agents(
         raise fastapi.HTTPException(
             status_code=500, detail="Failed to get library agents"
         )
-    
+
 
 @router.get(
     "/agents/{library_agent_id}",
@@ -41,7 +41,7 @@ async def get_library_agents(
 )
 async def get_library_agent(
     library_agent_id: str,
-    user_id: Annotated[str, fastapi.Depends(autogpt_auth_lib.depends.get_user_id)]
+    user_id: Annotated[str, fastapi.Depends(autogpt_auth_lib.depends.get_user_id)],
 ) -> library_model.LibraryAgent:
     """
     Get the agent with the given ID from the user's library.
@@ -84,7 +84,9 @@ async def add_agent_to_library(
     """
     try:
         # Use the database function to add the agent to the library
-        return await library_db.add_store_agent_to_library(store_listing_version_id, user_id)
+        return await library_db.add_store_agent_to_library(
+            store_listing_version_id, user_id
+        )
 
     except store_exceptions.AgentNotFoundError:
         raise fastapi.HTTPException(

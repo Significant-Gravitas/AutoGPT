@@ -14,9 +14,13 @@ import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 
 const storeAgents = [
   {
-    username: "",
-    agentName: ""
-  }
+    username: "bright-eagle-40613",
+    slug: "subtractor",
+  },
+  {
+    username: "bright-eagle-40613",
+    slug: "power",
+  },
 ];
 
 function isEmptyOrWhitespace(str: string | undefined | null): boolean {
@@ -29,8 +33,13 @@ export default function Page() {
   const api = useBackendAPI();
 
   useEffect(() => {
-    api.getStoreAgent(storeAgents[0].username, storeAgents[0].agentName)
-      .then((agent) => setAgents([agent]));
+    Promise.all([
+      api.getStoreAgent(storeAgents[0]?.username, storeAgents[0]?.slug),
+      api.getStoreAgent(storeAgents[1]?.username, storeAgents[1]?.slug),
+    ]).then((agents) => {
+      console.log(agents);
+      setAgents(agents);
+    });
   }, [api, setAgents]);
 
   return (
@@ -46,21 +55,39 @@ export default function Page() {
 
       <div className="my-12 flex items-center justify-between gap-5">
         <OnboardingAgentCard
-          {...agents[0]}
-          selected={state?.chosenAgentId == "0"}
-          onClick={() => setState({ chosenAgentId: "0" })}
+          {...(agents[0] || {})}
+          selected={
+            agents[0] !== undefined
+              ? state?.selectedAgentSlug == agents[0]?.slug
+              : false
+          }
+          onClick={() =>
+            setState({
+              selectedAgentSlug: agents[0].slug,
+              selectedAgentCreator: agents[0].creator,
+            })
+          }
         />
         <OnboardingAgentCard
-          {...agents[1]}
-          selected={state?.chosenAgentId == "1"}
-          onClick={() => setState({ chosenAgentId: "1" })}
+          {...(agents[1] || {})}
+          selected={
+            agents[1] !== undefined
+              ? state?.selectedAgentSlug == agents[1]?.slug
+              : false
+          }
+          onClick={() =>
+            setState({
+              selectedAgentSlug: agents[1].slug,
+              selectedAgentCreator: agents[1].creator,
+            })
+          }
         />
       </div>
 
       <OnboardingFooter>
         <OnboardingButton
           href="/onboarding/5-run"
-          disabled={isEmptyOrWhitespace(state?.chosenAgentId)}
+          disabled={isEmptyOrWhitespace(state?.selectedAgentSlug)}
         >
           Next
         </OnboardingButton>

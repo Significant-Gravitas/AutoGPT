@@ -165,7 +165,15 @@ export default class BackendAPI {
   }
 
   updateUserOnboarding(onboarding: Partial<UserOnboarding>): Promise<void> {
-    return this._request("PATCH", "/onboarding", onboarding);
+    // `agentInput` needs to be encoded as a string
+    const input = onboarding.agentInput
+      ? JSON.stringify(onboarding.agentInput)
+      : undefined;
+    console.log(`agentInput: ${input}`);
+    return this._request("PATCH", "/onboarding", {
+      ...onboarding,
+      agentInput: input,
+    });
   }
 
   ////////////////////////////////////////
@@ -500,11 +508,11 @@ export default class BackendAPI {
     return this._get("/library/agents");
   }
 
-  getLibraryAgent(libraryAgentId: string): Promise<GraphMeta> {
+  getLibraryAgent(libraryAgentId: string): Promise<LibraryAgent> {
     return this._get(`/library/agents/${libraryAgentId}`);
   }
 
-  addAgentToLibrary(storeListingVersionId: string): Promise<GraphMeta> {
+  addAgentToLibrary(storeListingVersionId: string): Promise<LibraryAgent> {
     return this._request("POST", `/library/agents/${storeListingVersionId}`);
   }
 
