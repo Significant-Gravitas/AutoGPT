@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, Depends
 
 from backend.data.user import get_user_by_email, set_user_email_verification
 from backend.server.v2.postmark.models import (
+    PostmarkBounceEnum,
     PostmarkBounceWebhook,
     PostmarkClickWebhook,
     PostmarkDeliveryWebhook,
@@ -35,8 +36,7 @@ async def postmark_webhook_handler(
         Body(discriminator="RecordType"),
     ]
 ):
-    logger.info(webhook)
-    logger.info(type(webhook))
+    logger.info(f"Received webhook from Postmark: {webhook}")
     match webhook:
         case PostmarkDeliveryWebhook():
             delivery_handler(webhook)
@@ -57,6 +57,15 @@ async def postmark_webhook_handler(
 
 async def bounce_handler(event: PostmarkBounceWebhook):
     logger.info(f"Bounce handler {event=}")
+    if event.TypeCode in [
+        PostmarkBounceEnum.Transient,
+        PostmarkBounceEnum.SoftBounce,
+        PostmarkBounceEnum.DnsError,
+    ]:
+        logger.info(
+            f"Softish bounce: {event.TypeCode} for {event.Email}, not setting email verification to false"
+        )
+        return
     logger.info(f"{event.Email=}")
     user = await get_user_by_email(event.Email)
     if not user:
