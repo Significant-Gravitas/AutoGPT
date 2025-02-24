@@ -184,7 +184,7 @@ async def create_library_agent(
     try:
         return await prisma.models.LibraryAgent.prisma().create(
             data={
-                "image_url": image_url,
+                "imageUrl": image_url,
                 "isCreatedByUser": (user_id == agent.userId),
                 "useGraphIsActiveVersion": True,
                 "User": {"connect": {"id": user_id}},
