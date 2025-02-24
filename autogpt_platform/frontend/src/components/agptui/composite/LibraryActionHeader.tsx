@@ -1,5 +1,5 @@
 import { LibrarySearchBar } from "@/components/agptui/LibrarySearchBar";
-import LibraryNotificationDropdown from "../LibraryNotificationDropdown";
+// import LibraryNotificationDropdown from "../LibraryNotificationDropdown";
 import { LibraryUploadAgent } from "../LibraryUploadAgent";
 
 interface LibraryActionHeaderProps {}
@@ -11,7 +11,7 @@ const LibraryActionHeader: React.FC<LibraryActionHeaderProps> = ({}) => {
   return (
     <>
       <div className="mb-[32px] hidden items-start justify-between bg-neutral-50 md:flex">
-        <LibraryNotificationDropdown />
+        {/* <LibraryNotificationDropdown /> */}
         <LibrarySearchBar />
         <LibraryUploadAgent />
       </div>
@@ -19,7 +19,7 @@ const LibraryActionHeader: React.FC<LibraryActionHeaderProps> = ({}) => {
       {/* Mobile and tablet */}
       <div className="flex flex-col gap-4 bg-neutral-50 p-4 pt-[52px] md:hidden">
         <div className="flex w-full justify-between">
-          <LibraryNotificationDropdown />
+          {/* <LibraryNotificationDropdown /> */}
           <LibraryUploadAgent />
         </div>
 
