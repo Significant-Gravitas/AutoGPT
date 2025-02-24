@@ -1,17 +1,19 @@
 import React from "react";
 import type { Metadata } from "next";
 import { Inter, Poppins } from "next/font/google";
-import { Providers } from "@/app/providers";
-import { cn } from "@/lib/utils";
-import { Navbar } from "@/components/agptui/Navbar";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
+import { headers } from "next/headers";
 
+import { cn } from "@/lib/utils";
 import "./globals.css";
-import TallyPopupSimple from "@/components/TallyPopup";
-import { GoogleAnalytics } from "@next/third-parties/google";
+
+import { Navbar } from "@/components/agptui/Navbar";
 import { Toaster } from "@/components/ui/toaster";
 import { IconType } from "@/components/ui/icons";
+import { Providers } from "@/app/providers";
+import TallyPopupSimple from "@/components/TallyPopup";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -31,6 +33,10 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const pathname = headers().get("x-current-path");
+  const isOnboarding = pathname?.startsWith("/onboarding");
+  console.log("pathname:", pathname);
+
   return (
     <html
       lang="en"
@@ -50,63 +56,65 @@ export default async function RootLayout({
           disableTransitionOnChange
         >
           <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
-            <Navbar
-              links={[
-                {
-                  name: "Marketplace",
-                  href: "/marketplace",
-                },
-                {
-                  name: "Library",
-                  href: "/library",
-                },
-                {
-                  name: "Build",
-                  href: "/build",
-                },
-              ]}
-              menuItemGroups={[
-                {
-                  items: [
-                    {
-                      icon: IconType.Edit,
-                      text: "Edit profile",
-                      href: "/profile",
-                    },
-                  ],
-                },
-                {
-                  items: [
-                    {
-                      icon: IconType.LayoutDashboard,
-                      text: "Creator Dashboard",
-                      href: "/profile/dashboard",
-                    },
-                    {
-                      icon: IconType.UploadCloud,
-                      text: "Publish an agent",
-                    },
-                  ],
-                },
-                {
-                  items: [
-                    {
-                      icon: IconType.Settings,
-                      text: "Settings",
-                      href: "/profile/settings",
-                    },
-                  ],
-                },
-                {
-                  items: [
-                    {
-                      icon: IconType.LogOut,
-                      text: "Log out",
-                    },
-                  ],
-                },
-              ]}
-            />
+            {!isOnboarding && (
+              <Navbar
+                links={[
+                  {
+                    name: "Marketplace",
+                    href: "/marketplace",
+                  },
+                  {
+                    name: "Library",
+                    href: "/library",
+                  },
+                  {
+                    name: "Build",
+                    href: "/build",
+                  },
+                ]}
+                menuItemGroups={[
+                  {
+                    items: [
+                      {
+                        icon: IconType.Edit,
+                        text: "Edit profile",
+                        href: "/profile",
+                      },
+                    ],
+                  },
+                  {
+                    items: [
+                      {
+                        icon: IconType.LayoutDashboard,
+                        text: "Creator Dashboard",
+                        href: "/profile/dashboard",
+                      },
+                      {
+                        icon: IconType.UploadCloud,
+                        text: "Publish an agent",
+                      },
+                    ],
+                  },
+                  {
+                    items: [
+                      {
+                        icon: IconType.Settings,
+                        text: "Settings",
+                        href: "/profile/settings",
+                      },
+                    ],
+                  },
+                  {
+                    items: [
+                      {
+                        icon: IconType.LogOut,
+                        text: "Log out",
+                      },
+                    ],
+                  },
+                ]}
+              />
+            )}
             <main className="w-full flex-grow">{children}</main>
             <TallyPopupSimple />
           </div>
