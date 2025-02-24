@@ -2,9 +2,10 @@ import logging
 from typing import Annotated
 
 from autogpt_libs.auth.middleware import APIKeyValidator
+from backend.data.user import get_user_by_email, set_user_email_verification
 from fastapi import APIRouter, Body, Depends
 
-from backend.server.v2.system_webhooks.models import (
+from backend.server.v2.postmark.models import (
     PostmarkBounceWebhook,
     PostmarkClickWebhook,
     PostmarkDeliveryWebhook,
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/")
-def postmark_webhook_handler(
+async def postmark_webhook_handler(
     webhook: Annotated[
         PostmarkWebhook,
         Body(discriminator="RecordType"),
@@ -40,7 +41,7 @@ def postmark_webhook_handler(
         case PostmarkDeliveryWebhook():
             delivery_handler(webhook)
         case PostmarkBounceWebhook():
-            bounce_handler(webhook)
+            await bounce_handler(webhook)
         case PostmarkSpamComplaintWebhook():
             spam_handler(webhook)
         case PostmarkOpenWebhook():
@@ -54,9 +55,15 @@ def postmark_webhook_handler(
             return
 
 
-def bounce_handler(event: PostmarkBounceWebhook):
+async def bounce_handler(event: PostmarkBounceWebhook):
     logger.info(f"Bounce handler {event=}")
-    pass
+    logger.info(f"{event.Email=}")
+    user = await get_user_by_email(event.Email)
+    if not user:
+        logger.error(f"User not found for email: {event.Email}")
+        return
+    await set_user_email_verification(user.id, False)
+    logger.debug("Setting email verification to false for user: {user.id}")
 
 
 def spam_handler(event: PostmarkSpamComplaintWebhook):
