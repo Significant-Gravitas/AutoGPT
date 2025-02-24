@@ -65,6 +65,18 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=1000,
         description="Maximum number of workers to use for node execution within a single graph.",
     )
+    use_http_based_rpc: bool = Field(
+        default=True,
+        description="Whether to use HTTP-based RPC for communication between services.",
+    )
+    pyro_client_comm_timeout: float = Field(
+        default=15,
+        description="The default timeout in seconds, for Pyro client connections.",
+    )
+    pyro_client_comm_retry: int = Field(
+        default=3,
+        description="The default number of retries for Pyro client connections.",
+    )
     pyro_host: str = Field(
         default="localhost",
         description="The default hostname of the Pyro server.",
