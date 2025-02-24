@@ -82,6 +82,7 @@ def fastapi_exposed_run_and_wait(
 def pyro_expose(func: C) -> C:
     """
     Decorator to mark a method or class to be exposed for remote calls.
+
     ## ⚠️ Gotcha
     Aside from "simple" types, only Pydantic models are passed unscathed *if annotated*.
     Any other passed or returned class objects are converted to dictionaries by Pyro.
