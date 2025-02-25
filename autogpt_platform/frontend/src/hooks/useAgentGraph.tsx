@@ -802,9 +802,21 @@ export default function useAgentGraph(
       let sourceName = edge.sourceHandle || "";
       if (sourceName.toLowerCase() === "tools") {
         const sinkNode = nodes.find((node) => node.id === edge.target);
+
         const sinkNodeName = sinkNode
-          ? sinkNode.data.title.toLowerCase().replace(/ /g, "_")
+          ? sinkNode.data.block_id === "e189baac-8c20-45a1-94a7-55177ea42565" // AgentExecutorBlock ID
+            ? sinkNode.data.hardcodedValues?.graph_id
+              ? availableFlows
+                  .find(
+                    (flow) =>
+                      flow.id === sinkNode.data.hardcodedValues.graph_id,
+                  )
+                  ?.name?.toLowerCase()
+                  .replace(/ /g, "_") || "agentexecutorblock"
+              : "agentexecutorblock"
+            : sinkNode.data.title.toLowerCase().replace(/ /g, "_")
           : "";
+
         sourceName =
           `tools_^_${sinkNodeName}_${edge.targetHandle || ""}`.toLowerCase();
       }

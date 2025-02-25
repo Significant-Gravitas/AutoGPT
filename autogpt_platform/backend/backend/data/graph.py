@@ -313,8 +313,8 @@ class GraphModel(Graph):
     def validate_graph(self, for_run: bool = False):
         def sanitize(name):
             sanitized_name = name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
-            if sanitized_name.startswith("tools_"):
-                return sanitized_name.split("_")[0]
+            if sanitized_name.startswith("tools_^_"):
+                return sanitized_name.split("_^_")[0]
             return sanitized_name
 
         # Validate smart decision maker nodes
