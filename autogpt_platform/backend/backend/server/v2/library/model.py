@@ -11,56 +11,11 @@ import backend.data.graph as graph_model
 import backend.server.model as server_model
 
 
-class AgentStatus(str, Enum):
-    """Various statuses an agent can have."""
-
+class LibraryAgentStatus(str, Enum):
     COMPLETED = "COMPLETED"  # All runs completed
     HEALTHY = "HEALTHY"  # Agent is running (not all runs have completed)
     WAITING = "WAITING"  # Agent is queued or waiting to start
     ERROR = "ERROR"  # Agent is in an error state
-
-
-class AgentStatusResult(pydantic.BaseModel):
-    status: AgentStatus
-    new_output: bool
-
-
-def _calculate_agent_status(
-    executions: list[prisma.models.AgentGraphExecution],
-    recent_threshold: datetime.datetime,
-) -> AgentStatusResult:
-    """
-    Helper function to determine the overall agent status and whether there
-    is new output (i.e., completed runs within the recent threshold).
-
-    :param executions: A list of AgentGraphExecution objects.
-    :param recent_threshold: A datetime; any execution after this indicates new output.
-    :return: (AgentStatus, new_output_flag)
-    """
-
-    if not executions:
-        return AgentStatusResult(status=AgentStatus.COMPLETED, new_output=False)
-
-    # Track how many times each execution status appears
-    status_counts = {status: 0 for status in prisma.enums.AgentExecutionStatus}
-    new_output = False
-
-    for execution in executions:
-        # Check if there's a completed run more recent than `recent_threshold`
-        if execution.createdAt >= recent_threshold:
-            if execution.executionStatus == prisma.enums.AgentExecutionStatus.COMPLETED:
-                new_output = True
-        status_counts[execution.executionStatus] += 1
-
-    # Determine the final status based on counts
-    if status_counts[prisma.enums.AgentExecutionStatus.FAILED] > 0:
-        return AgentStatusResult(status=AgentStatus.ERROR, new_output=new_output)
-    elif status_counts[prisma.enums.AgentExecutionStatus.QUEUED] > 0:
-        return AgentStatusResult(status=AgentStatus.WAITING, new_output=new_output)
-    elif status_counts[prisma.enums.AgentExecutionStatus.RUNNING] > 0:
-        return AgentStatusResult(status=AgentStatus.HEALTHY, new_output=new_output)
-    else:
-        return AgentStatusResult(status=AgentStatus.COMPLETED, new_output=new_output)
 
 
 class LibraryAgent(pydantic.BaseModel):
@@ -78,7 +33,7 @@ class LibraryAgent(pydantic.BaseModel):
     creator_name: str
     creator_image_url: str
 
-    status: AgentStatus
+    status: LibraryAgentStatus
 
     updated_at: datetime.datetime
 
@@ -96,13 +51,6 @@ class LibraryAgent(pydantic.BaseModel):
 
     # Indicates if this agent is the latest version
     is_latest_version: bool
-
-    class Config:
-        """Pydantic model configuration."""
-
-        orm_mode = True
-        allow_population_by_field_name = True
-        # Any additional config options you need
 
     @staticmethod
     def from_db(agent: prisma.models.LibraryAgent) -> "LibraryAgent":
@@ -161,6 +109,55 @@ class LibraryAgent(pydantic.BaseModel):
             new_output=new_output,
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,
+        )
+
+
+class AgentStatusResult(pydantic.BaseModel):
+    status: LibraryAgentStatus
+    new_output: bool
+
+
+def _calculate_agent_status(
+    executions: list[prisma.models.AgentGraphExecution],
+    recent_threshold: datetime.datetime,
+) -> AgentStatusResult:
+    """
+    Helper function to determine the overall agent status and whether there
+    is new output (i.e., completed runs within the recent threshold).
+
+    :param executions: A list of AgentGraphExecution objects.
+    :param recent_threshold: A datetime; any execution after this indicates new output.
+    :return: (AgentStatus, new_output_flag)
+    """
+
+    if not executions:
+        return AgentStatusResult(status=LibraryAgentStatus.COMPLETED, new_output=False)
+
+    # Track how many times each execution status appears
+    status_counts = {status: 0 for status in prisma.enums.AgentExecutionStatus}
+    new_output = False
+
+    for execution in executions:
+        # Check if there's a completed run more recent than `recent_threshold`
+        if execution.createdAt >= recent_threshold:
+            if execution.executionStatus == prisma.enums.AgentExecutionStatus.COMPLETED:
+                new_output = True
+        status_counts[execution.executionStatus] += 1
+
+    # Determine the final status based on counts
+    if status_counts[prisma.enums.AgentExecutionStatus.FAILED] > 0:
+        return AgentStatusResult(status=LibraryAgentStatus.ERROR, new_output=new_output)
+    elif status_counts[prisma.enums.AgentExecutionStatus.QUEUED] > 0:
+        return AgentStatusResult(
+            status=LibraryAgentStatus.WAITING, new_output=new_output
+        )
+    elif status_counts[prisma.enums.AgentExecutionStatus.RUNNING] > 0:
+        return AgentStatusResult(
+            status=LibraryAgentStatus.HEALTHY, new_output=new_output
+        )
+    else:
+        return AgentStatusResult(
+            status=LibraryAgentStatus.COMPLETED, new_output=new_output
         )
 
 
