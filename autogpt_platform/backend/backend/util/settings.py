@@ -65,6 +65,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=1000,
         description="Maximum number of workers to use for node execution within a single graph.",
     )
+    use_http_based_rpc: bool = Field(
+        default=True,
+        description="Whether to use HTTP-based RPC for communication between services.",
+    )
     pyro_host: str = Field(
         default="localhost",
         description="The default hostname of the Pyro server.",

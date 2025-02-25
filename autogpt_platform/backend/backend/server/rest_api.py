@@ -16,6 +16,7 @@ import backend.data.block
 import backend.data.db
 import backend.data.graph
 import backend.data.user
+import backend.server.integrations.router
 import backend.server.routers.v1
 import backend.server.v2.library.db
 import backend.server.v2.library.model
@@ -25,6 +26,8 @@ import backend.server.v2.store.model
 import backend.server.v2.store.routes
 import backend.util.service
 import backend.util.settings
+from backend.data.model import Credentials
+from backend.integrations.providers import ProviderName
 from backend.server.external.api import external_app
 
 settings = backend.util.settings.Settings()
@@ -248,6 +251,16 @@ class AgentServer(backend.util.service.AppProcess):
         user: autogpt_libs.auth.models.User,
     ):
         return await backend.server.v2.store.routes.review_submission(request, user)
+
+    @staticmethod
+    def test_create_credentials(
+        user_id: str,
+        provider: ProviderName,
+        credentials: Credentials,
+    ) -> Credentials:
+        return backend.server.integrations.router.create_credentials(
+            user_id=user_id, provider=provider, credentials=credentials
+        )
 
     def set_test_dependency_overrides(self, overrides: dict):
         app.dependency_overrides.update(overrides)
