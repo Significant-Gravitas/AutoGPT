@@ -434,16 +434,16 @@ class GraphModel(Graph):
                 if i == 0:
                     fields = (
                         block.output_schema.get_fields()
-                        if block.block_type not in [BlockType.AGENT, BlockType.AI]
+                        if block.block_type not in [BlockType.AGENT]
                         else vals.get("output_schema", {}).get("properties", {}).keys()
                     )
                 else:
                     fields = (
                         block.input_schema.get_fields()
-                        if block.block_type not in [BlockType.AGENT, BlockType.AI]
+                        if block.block_type not in [BlockType.AGENT]
                         else vals.get("input_schema", {}).get("properties", {}).keys()
                     )
-                if sanitized_name not in fields and not name.startswith("tools_"):
+                if sanitized_name not in fields and not name.startswith("tools_^_"):
                     fields_msg = f"Allowed fields: {fields}"
                     raise ValueError(f"{suffix}, `{name}` invalid, {fields_msg}")
 
