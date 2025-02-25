@@ -8,10 +8,10 @@ from prisma.enums import NotificationType
 from pydantic import BaseModel
 
 from backend.data.notifications import (
-    QueueType,
     NotificationEventDTO,
     NotificationEventModel,
     NotificationResult,
+    QueueType,
     get_data_type,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
@@ -170,9 +170,9 @@ class NotificationManager(AppService):
                 return False
             event = parsed.event
             model = parsed.model
+            logger.debug(f"Processing notification for admin: {model}")
             recipient_email = settings.config.refund_notification_email
             self.email_sender.send_templated(event.type, recipient_email, model)
-            logger.info(f"Processing notification: {model}")
             return True
         except Exception as e:
             logger.exception(f"Error processing notification: {e}")
@@ -186,6 +186,7 @@ class NotificationManager(AppService):
                 return False
             event = parsed.event
             model = parsed.model
+            logger.debug(f"Processing immediate notification: {model}")
 
             recipient_email = self.run_and_wait(get_user_email_by_id(event.user_id))
             if not recipient_email:
@@ -202,7 +203,6 @@ class NotificationManager(AppService):
                 return True
 
             self.email_sender.send_templated(event.type, recipient_email, model)
-            logger.info(f"Processing notification: {model}")
             return True
         except Exception as e:
             logger.exception(f"Error processing notification: {e}")
