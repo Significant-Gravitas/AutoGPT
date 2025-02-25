@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 import anthropic
 import ollama
 import openai
-import openai.types
 from anthropic._types import NotGiven
 from anthropic.types import ToolParam
 from groq import Groq

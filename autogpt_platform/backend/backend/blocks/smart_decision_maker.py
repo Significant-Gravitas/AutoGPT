@@ -184,7 +184,7 @@ class SmartDecisionMakerBlock(Block):
         for link in tool_links:
             grouped_tool_links.setdefault(link.sink_id, []).append(link)
 
-        for tool_name, links in grouped_tool_links.items():
+        for _, links in grouped_tool_links.items():
             sink_node = next(
                 (node for node in graph.nodes if node.id == links[0].sink_id), None
             )

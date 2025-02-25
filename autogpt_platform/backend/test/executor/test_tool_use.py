@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 async def create_graph(s: SpinTestServer, g: graph.Graph, u: User) -> graph.Graph:
-    logger.info(f"Creating graph for user {u.id}")
+    logger.info("Creating graph for user %s", u.id)
     return await s.agent_server.test_create_graph(CreateGraph(graph=g), u.id)
 
 
@@ -40,8 +40,8 @@ async def execute_graph(
     input_data: dict,
     num_execs: int = 4,
 ) -> str:
-    logger.info(f"Executing graph {test_graph.id} for user {test_user.id}")
-    logger.info(f"Input data: {input_data}")
+    logger.info("Executing graph %s for user %s", test_graph.id, test_user.id)
+    logger.info("Input data: %s", input_data)
 
     # --- Test adding new executions --- #
     response = await agent_server.test_execute_graph(
@@ -51,12 +51,12 @@ async def execute_graph(
         node_input=input_data,
     )
     graph_exec_id = response.graph_exec_id
-    logger.info(f"Created execution with ID: {graph_exec_id}")
+    logger.info("Created execution with ID: %s", graph_exec_id)
 
     # Execution queue should be empty
     logger.info("Waiting for execution to complete...")
     result = await wait_execution(test_user.id, test_graph.id, graph_exec_id, 30)
-    logger.info(f"Execution completed with {len(result)} results")
+    logger.info("Execution completed with %d results", len(result))
     return graph_exec_id
 
 
