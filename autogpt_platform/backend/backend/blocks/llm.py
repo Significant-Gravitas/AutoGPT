@@ -513,19 +513,44 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 ("prompt", str),
             ],
             test_mock={
-                "llm_call": lambda *args, **kwargs: (
-                    json.dumps(
+                "llm_call": lambda *args, **kwargs: LLMResponse(
+                    prompt="",
+                    response=json.dumps(
                         {
                             "key1": "key1Value",
                             "key2": "key2Value",
                         }
                     ),
-                    0,
-                    0,
+                    tool_calls=None,
+                    prompt_tokens=0,
+                    completion_tokens=0,
                 )
             },
         )
-        self.prompt = ""
+
+    def llm_call(
+        self,
+        credentials: APIKeyCredentials,
+        llm_model: LlmModel,
+        prompt: list[dict],
+        json_format: bool,
+        max_tokens: int | None,
+        tools: list[dict] | None = None,
+        ollama_host: str = "localhost:11434",
+    ) -> LLMResponse:
+        """
+        Test mocks work only on class functions, this wraps the llm_call function
+        so that it can be mocked withing the block testing framework.
+        """
+        return llm_call(
+            credentials=credentials,
+            llm_model=llm_model,
+            prompt=prompt,
+            json_format=json_format,
+            max_tokens=max_tokens,
+            tools=tools,
+            ollama_host=ollama_host,
+        )
 
     def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
@@ -581,7 +606,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
         for retry_count in range(input_data.retry):
             try:
-                llm_response = llm_call(
+                llm_response = self.llm_call(
                     credentials=credentials,
                     llm_model=llm_model,
                     prompt=prompt,
