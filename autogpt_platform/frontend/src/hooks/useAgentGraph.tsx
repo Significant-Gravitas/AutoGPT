@@ -613,6 +613,16 @@ export default function useAgentGraph(
         flowID,
         flowExecutionID,
       );
+      if (
+        (execution.status === "QUEUED" || execution.status === "RUNNING") &&
+        saveRunRequest.request === "none"
+      ) {
+        setSaveRunRequest({
+          request: "run",
+          state: "running",
+          activeExecutionID: flowExecutionID,
+        });
+      }
       setUpdateQueue((prev) => [...prev, ...execution.node_executions]);
 
       // Track execution until completed
