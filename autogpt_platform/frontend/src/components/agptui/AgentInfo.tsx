@@ -44,7 +44,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
 
   const handleAddToLibrary = async () => {
     try {
-      const newLibraryAgent = await api.addAgentToLibrary(
+      const newLibraryAgent = await api.addMarketplaceAgentToLibrary(
         storeListingVersionId,
       );
       console.log("Agent added to library successfully");

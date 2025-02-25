@@ -2,7 +2,7 @@ import logging
 from typing import Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 
 import backend.server.v2.library.db as library_db
@@ -78,7 +78,7 @@ async def get_library_agents(
 
 
 @router.post(
-    "/{store_listing_version_id}",
+    "",
     status_code=status.HTTP_201_CREATED,
     responses={
         201: {"description": "Agent added successfully"},
@@ -86,12 +86,12 @@ async def get_library_agents(
         500: {"description": "Server error"},
     },
 )
-async def add_agent_to_library(
-    store_listing_version_id: str,
+async def add_marketplace_agent_to_library(
+    store_listing_version_id: str = Body(embed=True),
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
 ) -> library_model.LibraryAgent:
     """
-    Add an agent from the store to the user's library.
+    Add an agent from the marketplace to the user's library.
 
     Args:
         store_listing_version_id: ID of the store listing version to add.
