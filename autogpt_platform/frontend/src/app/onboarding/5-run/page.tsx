@@ -14,32 +14,17 @@ import OnboardingAgentInput from "@/components/onboarding/OnboardingAgentInput";
 import Image from "next/image";
 import { LibraryAgent, StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-
-function isEmptyOrWhitespace(str: string | undefined | null): boolean {
-  return !str || str.trim().length === 0;
-}
+import { useRouter } from "next/navigation";
+import { revalidatePath } from "next/cache";
+import { runGraph } from "./actions";
 
 export default function Page() {
   const { state, setState } = useOnboarding(5);
   const [showInput, setShowInput] = useState(false);
   const [storeAgent, setStoreAgent] = useState<StoreAgentDetails | null>(null);
   const [agent, setAgent] = useState<LibraryAgent | null>(null);
+  const router = useRouter();
   const api = useBackendAPI();
-
-  console.log(state?.agentInput);
-
-  const setAgentInput = useCallback(
-    (key: string, value: string) => {
-      setState({
-        ...state,
-        agentInput: {
-          ...state?.agentInput,
-          [key]: value,
-        },
-      });
-    },
-    [state, setState],
-  );
 
   useEffect(() => {
     if (!state?.selectedAgentCreator || !state?.selectedAgentSlug) {
@@ -85,6 +70,26 @@ export default function Page() {
     state?.selectedAgentCreator,
     state?.selectedAgentSlug,
   ]);
+
+  const setAgentInput = useCallback(
+    (key: string, value: string) => {
+      setState({
+        ...state,
+        agentInput: {
+          ...state?.agentInput,
+          [key]: value,
+        },
+      });
+    },
+    [state, setState],
+  );
+
+  const runAgent = useCallback(() => {
+    if (!agent) {
+      return;
+    }
+    runGraph(agent.agent_id, agent.agent_version, state?.agentInput);
+  }, [api, agent, router]);
 
   const runYourAgent = (
     <div className="ml-[54px] w-[481px] pl-5">
@@ -211,7 +216,8 @@ export default function Page() {
                 className="mt-8 w-[136px]"
                 disabled={Object.values(state?.agentInput || {}).some(
                   (value) => value.trim() === "",
-                )}
+                ) || !agent}
+                onClick={runAgent}
               >
                 <Play className="" size={18} />
                 Run agent
