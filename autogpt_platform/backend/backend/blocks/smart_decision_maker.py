@@ -1,22 +1,24 @@
 import json
 import logging
 import re
-from typing import Any, List
+from typing import TYPE_CHECKING, Any, List
 
 from autogpt_libs.utils.cache import thread_cached
 
 import backend.blocks.llm as llm
 from backend.blocks.agent import AgentExecutorBlock
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    BlockType,
+    get_blocks,
+)
 from backend.data.model import SchemaField
 
-
-# Import AVAILABLE_BLOCKS only when needed to prevent circular imports
-def get_available_blocks():
-    from backend.blocks import AVAILABLE_BLOCKS
-
-    return AVAILABLE_BLOCKS
-
+if TYPE_CHECKING:
+    from backend.data.graph import Graph, Link, Node
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +107,7 @@ class SmartDecisionMakerBlock(Block):
         )
 
     # If I import Graph here, it will break with a circular import.
-    def _get_tool_graph_metadata(self, node_id: str, graph: Any) -> List[Any]:
+    def _get_tool_graph_metadata(self, node_id: str, graph: "Graph") -> List["Graph"]:
         """
         Retrieves metadata for tool graphs linked to a specified node within a graph.
 
@@ -141,7 +143,7 @@ class SmartDecisionMakerBlock(Block):
 
     @staticmethod
     def _create_block_function_signature(
-        sink_node: Any, links: list[Any]
+        sink_node: "Node", links: list["Link"]
     ) -> dict[str, Any]:
         """
         Creates a function signature for a block node.
@@ -156,7 +158,7 @@ class SmartDecisionMakerBlock(Block):
         Raises:
             ValueError: If the block specified by sink_node.block_id is not found.
         """
-        block = get_available_blocks()[sink_node.block_id]
+        block = get_blocks()[sink_node.block_id]
         if not block:
             raise ValueError(f"Block not found: {sink_node.block_id}")
 
@@ -193,9 +195,9 @@ class SmartDecisionMakerBlock(Block):
 
     @staticmethod
     def _create_agent_function_signature(
-        sink_node: Any, links: list[Any], tool_graph_metadata: list[Any]
+        sink_node: "Node", links: list["Link"], tool_graph_metadata: list["Graph"]
     ) -> dict[str, Any]:
-        """s∫
+        """
         Creates a function signature for an agent node.
 
         Args:
@@ -261,8 +263,8 @@ class SmartDecisionMakerBlock(Block):
     def _create_function_signature(
         # If I import Graph here, it will break with a circular import.
         node_id: str,
-        graph: Any,
-        tool_graph_metadata: List[Any],
+        graph: "Graph",
+        tool_graph_metadata: List["Graph"],
     ) -> list[dict[str, Any]]:
         """
         Creates function signatures for tools linked to a specified node within a graph.
