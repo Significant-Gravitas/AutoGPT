@@ -28,7 +28,8 @@ test.describe("Monitor", () => {
       basicBlock,
     );
     await buildPage.runAgent();
-    await monitorPage.navbar.clickMonitorLink();
+    // await monitorPage.navbar.clickMonitorLink();
+    await page.goto("/monitoring"); // Library link now points to /library
     await monitorPage.waitForPageLoad();
     await test.expect(monitorPage.isLoaded()).resolves.toBeTruthy();
     testInfo.attach("agent-id", { body: id });

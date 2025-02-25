@@ -800,7 +800,13 @@ export default function useAgentGraph(
 
     const links = edges.map((edge) => {
       let sourceName = edge.sourceHandle || "";
-      if (sourceName.toLowerCase() === "tools") {
+      const sourceNode = nodes.find((node) => node.id === edge.source);
+
+      // Special case for SmartDecisionMakerBlock
+      if (
+        sourceNode?.data.block_id === "3b191d9f-356f-482d-8238-ba04b6d18381" &&
+        sourceName.toLowerCase() === "tools"
+      ) {
         const sinkNode = nodes.find((node) => node.id === edge.target);
 
         const sinkNodeName = sinkNode
@@ -814,7 +820,7 @@ export default function useAgentGraph(
                   ?.name?.toLowerCase()
                   .replace(/ /g, "_") || "agentexecutorblock"
               : "agentexecutorblock"
-            : sinkNode.data.title.toLowerCase().replace(/ /g, "_")
+            : sinkNode.data.title.toLowerCase().replace(/ /g, "_").split("_")[0]
           : "";
 
         sourceName =

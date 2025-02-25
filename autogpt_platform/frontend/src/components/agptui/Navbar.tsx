@@ -33,7 +33,7 @@ interface NavbarProps {
 
 async function getProfileData() {
   const api = new BackendAPI();
-  const profile = await Promise.resolve(api.getStoreProfile("navbar"));
+  const profile = await Promise.resolve(api.getStoreProfile());
 
   return profile;
 }
