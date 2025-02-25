@@ -342,6 +342,16 @@ class GraphModel(Graph):
         for link in self.links:
             input_links[link.sink_id].append(link)
 
+            # Check if the link is a tool link from a smart decision maker to a non-agent node
+            if (
+                link.source_id in smart_decision_maker_nodes
+                and link.source_name.startswith("tools_^_")
+                and link.sink_id not in agent_nodes
+            ):
+                raise ValueError(
+                    f"Smart decision maker node {link.source_id} cannot link to non-agent node {link.sink_id}"
+                )
+
         # Nodes: required fields are filled or connected and dependencies are satisfied
         for node in self.nodes:
             if (block := nodes_block.get(node.id)) is None:
