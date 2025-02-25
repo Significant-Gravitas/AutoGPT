@@ -4,10 +4,10 @@ import debounce from "lodash/debounce";
 import { Input } from "@/components/ui/input";
 import { Search, X } from "lucide-react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useLibraryPageContext } from "@/components/providers/LibraryAgentProvider";
+import { useLibraryPageContext } from "@/app/library/state-provider";
 import { motion, AnimatePresence } from "framer-motion";
 
-export const LibrarySearchBar = () => {
+export default function LibrarySearchBar(): React.ReactNode {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isFocused, setIsFocused] = useState(false);
   const api = useBackendAPI();
@@ -98,4 +98,4 @@ export const LibrarySearchBar = () => {
       />
     </div>
   );
-};
+}

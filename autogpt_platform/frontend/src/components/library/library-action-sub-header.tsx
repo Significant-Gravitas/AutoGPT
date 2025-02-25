@@ -1,9 +1,9 @@
 "use client";
 
-import LibraryAgentFilter from "@/components/agptui/LibraryAgentFilter";
-import { useLibraryPageContext } from "@/components/providers/LibraryAgentProvider";
+import { useLibraryPageContext } from "@/app/library/state-provider";
+import LibrarySortMenu from "./library-sort-menu";
 
-export const LibraryActionSubHeader = () => {
+export default function LibraryActionSubHeader(): React.ReactNode {
   const { agents } = useLibraryPageContext();
 
   return (
@@ -16,7 +16,7 @@ export const LibraryActionSubHeader = () => {
           {agents.length} agents
         </span>
       </div>
-      <LibraryAgentFilter />
+      <LibrarySortMenu />
     </div>
   );
-};
+}

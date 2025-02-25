@@ -3,14 +3,14 @@ import { useEffect, useState, useCallback } from "react";
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
-import LibraryAgentCard from "@/components/agptui/LibraryAgentCard";
+import { useLibraryPageContext } from "@/app/library/state-provider";
 import { useScrollThreshold } from "@/hooks/useScrollThreshold";
-import { useLibraryPageContext } from "@/components/providers/LibraryAgentProvider";
+import LibraryAgentCard from "./library-agent-card";
 
 /**
- * LibraryAgentListContainer is a React component that displays a grid of library agents with infinite scroll functionality.
+ * Displays a grid of library agents with infinite scroll functionality.
  */
-export default function LibraryAgentListContainer(): React.ReactNode {
+export default function LibraryAgentList(): React.ReactNode {
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);

@@ -1,4 +1,9 @@
 "use client";
+import React, { useState, useEffect, useMemo } from "react";
+
+import { motion, useAnimationControls } from "framer-motion";
+import { BellIcon, X } from "lucide-react";
+import { Button } from "@/components/agptui/Button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -6,13 +11,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/agptui/Button";
-import { BellIcon, X } from "lucide-react";
-import { motion, useAnimationControls } from "framer-motion";
-import React, { useState, useEffect, useMemo } from "react";
 import LibraryNotificationCard, {
   NotificationCardData,
-} from "@/components/agptui/LibraryNotificationCard";
+} from "./library-notification-card";
 
 export default function LibraryNotificationDropdown(): React.ReactNode {
   const controls = useAnimationControls();

@@ -305,6 +305,81 @@ export type NodeExecutionResult = {
   end_time?: Date;
 };
 
+/* *** LIBRARY *** */
+
+/* Mirror of backend/server/v2/library/model.py:LibraryAgent */
+export type LibraryAgent = {
+  id: LibraryAgentID;
+  agent_id: GraphID;
+  agent_version: number;
+  image_url?: string;
+  creator_name: string;
+  creator_image_url: string;
+  status: AgentStatus;
+  updated_at: Date;
+  name: string;
+  description: string;
+  input_schema: BlockIOObjectSubSchema;
+  new_output: boolean;
+  can_access_graph: boolean;
+  is_latest_version: boolean;
+};
+
+export type LibraryAgentID = Brand<string, "LibraryAgentID">;
+
+export enum AgentStatus {
+  COMPLETED = "COMPLETED",
+  HEALTHY = "HEALTHY",
+  WAITING = "WAITING",
+  ERROR = "ERROR",
+}
+
+export interface LibraryAgentResponse {
+  agents: LibraryAgent[];
+  pagination: {
+    current_page: number;
+    page_size: number;
+    total_items: number;
+    total_pages: number;
+  };
+}
+
+export interface LibraryAgentPreset {
+  id: string;
+  updated_at: Date;
+  agent_id: string;
+  agent_version: number;
+  name: string;
+  description: string;
+  is_active: boolean;
+  inputs: { [key: string]: any };
+}
+
+export interface LibraryAgentPresetResponse {
+  presets: LibraryAgentPreset[];
+  pagination: {
+    total: number;
+    page: number;
+    size: number;
+  };
+}
+
+export interface CreateLibraryAgentPresetRequest {
+  name: string;
+  description: string;
+  inputs: { [key: string]: any };
+  agent_id: string;
+  agent_version: number;
+  is_active: boolean;
+}
+
+export enum LibraryAgentSortEnum {
+  CREATED_AT = "createdAt",
+  UPDATED_AT = "updatedAt",
+}
+
+/* *** CREDENTIALS *** */
+
 /* Mirror of backend/server/integrations/router.py:CredentialsMetaResponse */
 export type CredentialsMetaResponse = {
   id: string;
@@ -638,79 +713,6 @@ export interface CreditTransaction {
 export interface TransactionHistory {
   transactions: CreditTransaction[];
   next_transaction_time: Date | null;
-}
-
-/* *** LIBRARY *** */
-
-/* Mirror of backend/server/v2/library/model.py:LibraryAgent */
-export type LibraryAgent = {
-  id: LibraryAgentID;
-  agent_id: GraphID;
-  agent_version: number;
-  image_url?: string;
-  creator_name: string;
-  creator_image_url: string;
-  status: AgentStatus;
-  updated_at: Date;
-  name: string;
-  description: string;
-  input_schema: BlockIOObjectSubSchema;
-  new_output: boolean;
-  can_access_graph: boolean;
-  is_latest_version: boolean;
-};
-
-export type LibraryAgentID = Brand<string, "LibraryAgentID">;
-
-export enum AgentStatus {
-  COMPLETED = "COMPLETED",
-  HEALTHY = "HEALTHY",
-  WAITING = "WAITING",
-  ERROR = "ERROR",
-}
-
-export interface LibraryAgentResponse {
-  agents: LibraryAgent[];
-  pagination: {
-    current_page: number;
-    page_size: number;
-    total_items: number;
-    total_pages: number;
-  };
-}
-
-export interface LibraryAgentPreset {
-  id: string;
-  updated_at: Date;
-  agent_id: string;
-  agent_version: number;
-  name: string;
-  description: string;
-  is_active: boolean;
-  inputs: { [key: string]: any };
-}
-
-export interface LibraryAgentPresetResponse {
-  presets: LibraryAgentPreset[];
-  pagination: {
-    total: number;
-    page: number;
-    size: number;
-  };
-}
-
-export interface CreateLibraryAgentPresetRequest {
-  name: string;
-  description: string;
-  inputs: { [key: string]: any };
-  agent_id: string;
-  agent_version: number;
-  is_active: boolean;
-}
-
-export enum LibraryAgentSortEnum {
-  CREATED_AT = "createdAt",
-  UPDATED_AT = "updatedAt",
 }
 
 export interface RefundRequest {

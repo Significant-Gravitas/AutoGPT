@@ -27,11 +27,11 @@ export const LibraryPageContext = createContext<LibraryPageContextType>(
   {} as LibraryPageContextType,
 );
 
-interface LibraryPageProviderProps {
+export function LibraryPageStateProvider({
+  children,
+}: {
   children: ReactNode;
-}
-
-export function LibraryPageProvider({ children }: LibraryPageProviderProps) {
+}) {
   const [agents, setAgents] = useState<LibraryAgent[]>([]);
   const [agentLoading, setAgentLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string | undefined>("");

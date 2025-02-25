@@ -1,19 +1,19 @@
 "use client";
-import { Upload, X } from "lucide-react";
-import { Button } from "./Button";
 import { useState } from "react";
-import { motion, useAnimation } from "framer-motion";
-import { cn, removeCredentials } from "@/lib/utils";
+import { Upload, X } from "lucide-react";
+import { removeCredentials } from "@/lib/utils";
+import { Button } from "@/components/agptui/Button";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "../ui/dialog";
+} from "@/components/ui/dialog";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { FileUploader } from "react-drag-drop-files";
 import {
   Form,
   FormControl,
@@ -22,13 +22,12 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "../ui/input";
-import { FileUploader } from "react-drag-drop-files";
-import { Graph, GraphCreatable } from "@/lib/autogpt-server-api";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Graph, GraphCreatable } from "@/lib/autogpt-server-api";
+import { updatedBlockIDMap } from "@/components/agent-import-form";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useToast } from "@/components/ui/use-toast";
-import { updatedBlockIDMap } from "../agent-import-form";
 
 const fileTypes = ["JSON"];
 
@@ -51,11 +50,10 @@ function updateBlockIDs(graph: Graph) {
   return graph;
 }
 
-export const LibraryUploadAgent = () => {
+export default function LibraryUploadAgentDialog(): React.ReactNode {
   const [isDroped, setisDroped] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
-  const controls = useAnimation();
   const api = useBackendAPI();
   const { toast } = useToast();
   const [agentObject, setAgentObject] = useState<GraphCreatable | null>(null);
@@ -276,4 +274,4 @@ export const LibraryUploadAgent = () => {
       </DialogContent>
     </Dialog>
   );
-};
+}

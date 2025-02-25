@@ -5,10 +5,10 @@ import {
   QuestionMarkCircledIcon,
 } from "@radix-ui/react-icons";
 
-import { LibraryPageProvider } from "@/components/providers/LibraryAgentProvider";
-import { LibraryActionSubHeader } from "@/components/agptui/composite/LibraryActionSubHeader";
-import LibraryAgentListContainer from "@/components/agptui/composite/LibraryAgentListContainer";
-import LibraryActionHeader from "@/components/agptui/composite/LibraryActionHeader";
+import { LibraryPageStateProvider } from "./state-provider";
+import LibraryActionSubHeader from "@/components/library/library-action-sub-header";
+import LibraryActionHeader from "@/components/library/library-action-header";
+import LibraryAgentList from "@/components/library/library-agent-list";
 
 /**
  * LibraryPage Component
@@ -18,7 +18,7 @@ import LibraryActionHeader from "@/components/agptui/composite/LibraryActionHead
 export default function LibraryPage() {
   return (
     <main className="mx-auto w-screen max-w-[1600px] space-y-4 bg-neutral-50 p-4 px-2 dark:bg-neutral-900 sm:px-8 md:px-12">
-      <LibraryPageProvider>
+      <LibraryPageStateProvider>
         {/* Header section containing notifications, search functionality and upload mechanism */}
         <LibraryActionHeader />
 
@@ -26,8 +26,8 @@ export default function LibraryPage() {
         <LibraryActionSubHeader />
 
         {/* Content section displaying agent list with counter and filtering options */}
-        <LibraryAgentListContainer />
-      </LibraryPageProvider>
+        <LibraryAgentList />
+      </LibraryPageStateProvider>
 
       <div className="!mb-8 !mt-12 flex w-full justify-center">
         <p className="rounded-xl bg-white p-4 text-neutral-600">

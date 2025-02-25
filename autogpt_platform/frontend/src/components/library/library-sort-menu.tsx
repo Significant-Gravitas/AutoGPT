@@ -1,6 +1,6 @@
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { LibraryAgentSortEnum } from "@/lib/autogpt-server-api/types";
-import { useLibraryPageContext } from "@/components/providers/LibraryAgentProvider";
+import { useLibraryPageContext } from "@/app/library/state-provider";
 import { ArrowDownNarrowWideIcon } from "lucide-react";
 import {
   Select,
@@ -11,7 +11,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const LibraryAgentFilter = ({}: {}) => {
+export default function LibrarySortMenu(): React.ReactNode {
   const api = useBackendAPI();
   const { setAgentLoading, setAgents, setLibrarySort, searchTerm } =
     useLibraryPageContext();
@@ -49,6 +49,4 @@ const LibraryAgentFilter = ({}: {}) => {
       </Select>
     </div>
   );
-};
-
-export default LibraryAgentFilter;
+}
