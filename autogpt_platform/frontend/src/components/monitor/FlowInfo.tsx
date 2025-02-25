@@ -18,11 +18,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { ClockIcon, ExitIcon, Pencil2Icon } from "@radix-ui/react-icons";
+import {
+  ClockIcon,
+  ExitIcon,
+  Pencil2Icon,
+  PlayIcon,
+  TrashIcon,
+} from "@radix-ui/react-icons";
 import Link from "next/link";
 import { exportAsJSONFile, filterBlocksByType } from "@/lib/utils";
 import { FlowRunsStats } from "@/components/monitor/index";
-import { Trash2Icon } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -180,14 +185,11 @@ export const FlowInfo: React.FC<
 
   return (
     <Card {...props}>
-      <CardHeader className="flex-row justify-between space-x-3 space-y-0">
-        <div>
-          <CardTitle>
-            {flow.name}{" "}
-            <span className="font-light">v{flow.agent_version}</span>
-          </CardTitle>
-        </div>
-        <div className="flex items-start space-x-2">
+      <CardHeader className="">
+        <CardTitle>
+          {flow.name} <span className="font-light">v{flow.agent_version}</span>
+        </CardTitle>
+        <div className="flex flex-col space-y-2 py-6">
           {(flowVersions?.length ?? 0) > 1 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -258,14 +260,16 @@ export const FlowInfo: React.FC<
             disabled={isDisabled}
             title={!isRunning ? "Run Agent" : "Stop Agent"}
           >
+            <PlayIcon className="mr-2" />
             {isRunning ? "Stop Agent" : "Run Agent"}
           </Button>
           <Button
-            variant="outline"
+            variant="destructive"
             onClick={() => setIsDeleteModalOpen(true)}
             data-testid="delete-button"
           >
-            <Trash2Icon className="h-full" />
+            <TrashIcon className="mr-2" />
+            Delete Agent
           </Button>
         </div>
       </CardHeader>
