@@ -20,9 +20,6 @@ import openai.types
 from anthropic._types import NotGiven
 from anthropic.types import ToolParam
 from groq import Groq
-from openai.types.chat.chat_completion_message_tool_call import (
-    ChatCompletionMessageToolCall,
-)
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import (
@@ -244,10 +241,21 @@ class Message(BlockSchema):
     content: str
 
 
+class ToolCall(BaseModel):
+    name: str
+    arguments: str
+
+
+class ToolContentBlock(BaseModel):
+    id: str
+    type: str
+    function: ToolCall
+
+
 class LLMResponse(BaseModel):
     prompt: str
     response: str
-    tool_calls: Optional[List[ChatCompletionMessageToolCall]] | None
+    tool_calls: Optional[List[ToolContentBlock]] | None
     prompt_tokens: int
     completion_tokens: int
 
@@ -334,10 +342,25 @@ def llm_call(
             tools=tools_param,  # type: ignore
         )
 
+        if response.choices[0].message.tool_calls:
+            tool_calls = [
+                ToolContentBlock(
+                    id=tool.id,
+                    type=tool.type,
+                    function=ToolCall(
+                        name=tool.function.name,
+                        arguments=tool.function.arguments,
+                    ),
+                )
+                for tool in response.choices[0].message.tool_calls
+            ]
+        else:
+            tool_calls = None
+
         return LLMResponse(
             prompt=json.dumps(prompt),
             response=response.choices[0].message.content or "",
-            tool_calls=response.choices[0].message.tool_calls,
+            tool_calls=tool_calls,
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
         )
@@ -372,6 +395,20 @@ def llm_call(
             if not resp.content:
                 raise ValueError("No content returned from Anthropic.")
 
+            if resp.content[0].type == "tool_use":
+                tool_calls = [
+                    ToolContentBlock(
+                        id=resp.content[0].id,
+                        type=resp.content[0].type,
+                        function=ToolCall(
+                            name=resp.content[0].name,
+                            arguments=json.dumps(resp.content[0].input),
+                        ),
+                    )
+                ]
+            else:
+                tool_calls = None
+
             return LLMResponse(
                 prompt=json.dumps(prompt),
                 response=(
@@ -379,7 +416,7 @@ def llm_call(
                     if isinstance(resp.content[0], anthropic.types.ToolUseBlock)
                     else resp.content[0].text
                 ),
-                tool_calls=None,
+                tool_calls=tool_calls,
                 prompt_tokens=resp.usage.input_tokens,
                 completion_tokens=resp.usage.output_tokens,
             )
@@ -450,10 +487,24 @@ def llm_call(
             else:
                 raise ValueError("No response from OpenRouter.")
 
+        if response.choices[0].message.tool_calls:
+            tool_calls = [
+                ToolContentBlock(
+                    id=tool.id,
+                    type=tool.type,
+                    function=ToolCall(
+                        name=tool.function.name, arguments=tool.function.arguments
+                    ),
+                )
+                for tool in response.choices[0].message.tool_calls
+            ]
+        else:
+            tool_calls = None
+
         return LLMResponse(
             prompt=json.dumps(prompt),
             response=response.choices[0].message.content or "",
-            tool_calls=response.choices[0].message.tool_calls,
+            tool_calls=tool_calls,
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
         )
