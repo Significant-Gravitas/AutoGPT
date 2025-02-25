@@ -126,6 +126,7 @@ def execute_node(
     Args:
         db_client: The client to send execution updates to the server.
         creds_manager: The manager to acquire and release credentials.
+        notification_service: The service to send notifications.
         data: The execution data for executing the current node.
         execution_stats: The execution statistics to be updated.
 
