@@ -195,6 +195,9 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
                 "output_schema": test_tool_graph.output_schema,
             },
         ),
+        graph.Node(
+            block_id=StoreValueBlock().id,
+        ),
     ]
 
     links = [
@@ -210,6 +213,12 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
             source_name="tools_^_sample_tool_input_2",
             sink_name="input_2",
         ),
+        graph.Link(
+            source_id=nodes[0].id,
+            sink_id=nodes[2].id,
+            source_name="tools_^_store_value_input",
+            sink_name="input",
+        ),
     ]
 
     test_graph = graph.Graph(
@@ -224,26 +233,25 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
         test_graph.nodes[0].id, test_graph, [test_tool_graph]
     )
     assert tool_functions is not None, "Tool functions should not be None"
-    assert (
-        len(tool_functions) == 1
-    ), f"Expected 1 tool function, got {len(tool_functions)}"
 
-    tool_function = next(
-        filter(lambda x: x["function"]["name"] == "testgraph", tool_functions),
-        None,
+    assert (
+        len(tool_functions) == 2
+    ), f"Expected 2 tool functions, got {len(tool_functions)}"
+
+    # Check the first tool function (testgraph)
+    assert tool_functions[0]["type"] == "function"
+    assert tool_functions[0]["function"]["name"] == "testgraph"
+    assert tool_functions[0]["function"]["description"] == "Test graph description"
+    assert "input_1" in tool_functions[0]["function"]["parameters"]["properties"]
+    assert "input_2" in tool_functions[0]["function"]["parameters"]["properties"]
+
+    # Check the second tool function (storevalueblock)
+    assert tool_functions[1]["type"] == "function"
+    assert tool_functions[1]["function"]["name"] == "storevalueblock"
+    assert "input" in tool_functions[1]["function"]["parameters"]["properties"]
+    assert (
+        tool_functions[1]["function"]["parameters"]["properties"]["input"][
+            "description"
+        ]
+        == "Trigger the block to produce the output. The value is only used when `data` is None."
     )
-    assert tool_function is not None, f"testgraph function not found: {tool_functions}"
-    assert (
-        tool_function["function"]["name"] == "testgraph"
-    ), "Incorrect function name for testgraph"
-    assert (
-        tool_function["function"]["parameters"]["properties"]["input_1"]["type"]
-        == "string"
-    ), "Input type for input_1 should be 'string'"
-    assert (
-        tool_function["function"]["parameters"]["properties"]["input_2"]["type"]
-        == "string"
-    ), "Input type for input_2 should be 'string'"
-    assert (
-        tool_function["function"]["parameters"]["required"] == []
-    ), "Required parameters should be an empty list"
