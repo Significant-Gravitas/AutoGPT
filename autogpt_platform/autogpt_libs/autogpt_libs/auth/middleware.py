@@ -81,7 +81,7 @@ class APIKeyValidator:
         self,
         header_name: str,
         expected_token: Optional[str] = None,
-        validate_fn: Optional[Callable] = None,
+        validate_fn: Optional[Callable[[str], bool]] = None,
         error_status: int = HTTP_401_UNAUTHORIZED,
         error_message: str = "Invalid API key",
     ):
