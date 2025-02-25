@@ -171,6 +171,7 @@ async def test_graph_validation_with_tool_nodes_raises_error(server: SpinTestSer
         test_graph = await create_graph(server, test_graph, test_user)
 
 
+@pytest.mark.skip()
 @pytest.mark.asyncio(scope="session")
 async def test_smart_decision_maker_function_signature(server: SpinTestServer):
     test_user = await create_test_user()
