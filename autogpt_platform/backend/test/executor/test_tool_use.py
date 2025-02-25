@@ -218,7 +218,7 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
             sink_id=nodes[2].id,
             source_name="tools_^_store_value_input",
             sink_name="input",
-        )
+        ),
     ]
 
     test_graph = graph.Graph(
@@ -233,7 +233,7 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
         test_graph.nodes[0].id, test_graph, [test_tool_graph]
     )
     assert tool_functions is not None, "Tool functions should not be None"
-    
+
     assert (
         len(tool_functions) == 2
     ), f"Expected 2 tool functions, got {len(tool_functions)}"
@@ -255,4 +255,3 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
         ]
         == "Trigger the block to produce the output. The value is only used when `data` is None."
     )
-

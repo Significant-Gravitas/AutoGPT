@@ -342,7 +342,6 @@ class GraphModel(Graph):
         for link in self.links:
             input_links[link.sink_id].append(link)
 
-
         # Nodes: required fields are filled or connected and dependencies are satisfied
         for node in self.nodes:
             if (block := nodes_block.get(node.id)) is None:

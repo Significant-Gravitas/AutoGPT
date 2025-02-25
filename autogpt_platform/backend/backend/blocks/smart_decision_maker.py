@@ -3,7 +3,6 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any, List
 
-
 from autogpt_libs.utils.cache import thread_cached
 
 import backend.blocks.llm as llm
@@ -20,7 +19,7 @@ from backend.data.model import SchemaField
 
 if TYPE_CHECKING:
     from backend.data.graph import Graph, Link, Node
-    
+
 logger = logging.getLogger(__name__)
 
 
