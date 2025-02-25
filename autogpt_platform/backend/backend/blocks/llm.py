@@ -4,7 +4,7 @@ from abc import ABC
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, List, Literal, NamedTuple, Optional
+from typing import TYPE_CHECKING, Any, Iterable, List, Literal, NamedTuple, Optional
 
 from pydantic import BaseModel, SecretStr
 
@@ -17,6 +17,8 @@ import anthropic
 import ollama
 import openai
 import openai.types
+from anthropic._types import NotGiven
+from anthropic.types import ToolParam
 from groq import Groq
 from openai.types.chat.chat_completion_message_tool_call import (
     ChatCompletionMessageToolCall,
@@ -250,6 +252,38 @@ class LLMResponse(BaseModel):
     completion_tokens: int
 
 
+def convert_openai_tool_fmt_to_anthropic(
+    openai_tools: list[dict] | None = None,
+) -> Iterable[ToolParam] | NotGiven:
+    """
+    Convert OpenAI tool format to Anthropic tool format.
+    """
+    if not openai_tools or len(openai_tools) == 0:
+        return anthropic.NOT_GIVEN
+
+    anthropic_tools = []
+    for tool in openai_tools:
+        if "function" in tool:
+            # Handle case where tool is already in OpenAI format with "type" and "function"
+            function_data = tool["function"]
+        else:
+            # Handle case where tool is just the function definition
+            function_data = tool
+
+        anthropic_tool: anthropic.types.ToolParam = {
+            "name": function_data["name"],
+            "description": function_data.get("description", ""),
+            "input_schema": {
+                "type": "object",
+                "properties": function_data.get("parameters", {}).get("properties", {}),
+                "required": function_data.get("parameters", {}).get("required", []),
+            },
+        }
+        anthropic_tools.append(anthropic_tool)
+
+    return anthropic_tools
+
+
 def llm_call(
     credentials: APIKeyCredentials,
     llm_model: LlmModel,
@@ -308,8 +342,8 @@ def llm_call(
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
         )
     elif provider == "anthropic":
-        if tools:
-            raise ValueError("Anthropic does not support tools.")
+
+        an_tools = convert_openai_tool_fmt_to_anthropic(tools)
 
         system_messages = [p["content"] for p in prompt if p["role"] == "system"]
         sysprompt = " ".join(system_messages)
@@ -332,6 +366,7 @@ def llm_call(
                 system=sysprompt,
                 messages=messages,
                 max_tokens=max_tokens,
+                tools=an_tools,
             )
 
             if not resp.content:
