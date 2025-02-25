@@ -511,7 +511,7 @@ model Profile {
 
   isFeatured Boolean @default(false)
 
-  LibraryAgent LibraryAgent[]
+  LibraryAgents LibraryAgent[]
 
   @@index([username])
   @@index([userId])

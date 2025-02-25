@@ -43,8 +43,8 @@ const Monitor = () => {
   );
 
   const fetchAgents = useCallback(() => {
-    api.listLibraryAgents().then((agent) => {
-      setFlows(agent.agents);
+    api.listLibraryAgents().then((response) => {
+      setFlows(response.agents);
     });
     api.getExecutions().then((executions) => {
       setExecutions(executions);
