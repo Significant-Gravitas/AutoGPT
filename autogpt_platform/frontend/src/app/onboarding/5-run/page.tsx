@@ -42,6 +42,9 @@ export default function Page() {
   );
 
   useEffect(() => {
+    if (!state?.selectedAgentCreator || !state?.selectedAgentSlug) {
+      return;
+    }
     api
       .getStoreAgent(state?.selectedAgentCreator!, state?.selectedAgentSlug!)
       .then((agent) => {
@@ -74,7 +77,14 @@ export default function Page() {
             });
           });
       });
-  }, [api, setAgent]);
+  }, [
+    api,
+    setAgent,
+    setStoreAgent,
+    setState,
+    state?.selectedAgentCreator,
+    state?.selectedAgentSlug,
+  ]);
 
   const runYourAgent = (
     <div className="ml-[54px] w-[481px] pl-5">

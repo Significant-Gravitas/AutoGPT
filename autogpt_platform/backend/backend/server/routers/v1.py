@@ -10,7 +10,6 @@ from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.feature_flag.client import feature_flag
 from autogpt_libs.utils.cache import thread_cached
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
-from prisma.types import UserOnboardingUpdateInput
 from typing_extensions import Optional, TypedDict
 
 import backend.data.block
@@ -42,7 +41,11 @@ from backend.data.credit import (
     set_auto_top_up,
 )
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
-from backend.data.onboarding import get_user_onboarding, update_user_onboarding
+from backend.data.onboarding import (
+    UserOnboardingUpdate,
+    get_user_onboarding,
+    update_user_onboarding,
+)
 from backend.data.user import (
     get_or_create_user,
     get_user_notification_preference,
@@ -168,7 +171,7 @@ async def get_onboarding(user_id: Annotated[str, Depends(get_user_id)]):
     "/onboarding", tags=["onboarding"], dependencies=[Depends(auth_middleware)]
 )
 async def update_onboarding(
-    user_id: Annotated[str, Depends(get_user_id)], data: UserOnboardingUpdateInput
+    user_id: Annotated[str, Depends(get_user_id)], data: UserOnboardingUpdate
 ):
     return await update_user_onboarding(user_id, data)
 

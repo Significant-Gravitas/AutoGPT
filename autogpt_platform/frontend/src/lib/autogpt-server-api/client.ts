@@ -165,15 +165,7 @@ export default class BackendAPI {
   }
 
   updateUserOnboarding(onboarding: Partial<UserOnboarding>): Promise<void> {
-    // `agentInput` needs to be encoded as a string
-    const input = onboarding.agentInput
-      ? JSON.stringify(onboarding.agentInput)
-      : undefined;
-    console.log(`agentInput: ${input}`);
-    return this._request("PATCH", "/onboarding", {
-      ...onboarding,
-      agentInput: input,
-    });
+    return this._request("PATCH", "/onboarding", onboarding);
   }
 
   ////////////////////////////////////////
