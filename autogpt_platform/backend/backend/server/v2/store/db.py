@@ -601,7 +601,7 @@ async def get_user_profile(
             avatar_url=profile.avatarUrl,
         )
     except Exception as e:
-        logger.error("Error getting user profile: %s", e)
+        logger.error(f"Error getting user profile: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to get user profile"
         ) from e
@@ -620,7 +620,7 @@ async def update_profile(
     Raises:
         DatabaseError: If there's an issue updating or creating the profile
     """
-    logger.info("Updating profile for user %s with data: %s", user_id, profile)
+    logger.info(f"Updating profile for user {user_id} with data: {profile}")
     try:
         # Sanitize username to allow only letters, numbers, and hyphens
         username = "".join(
@@ -639,15 +639,13 @@ async def update_profile(
         # Verify that the user is authorized to update this profile
         if existing_profile.userId != user_id:
             logger.error(
-                "Unauthorized update attempt for profile %s by user %s",
-                existing_profile.userId,
-                user_id,
+                f"Unauthorized update attempt for profile {existing_profile.id} by user {user_id}"
             )
             raise backend.server.v2.store.exceptions.DatabaseError(
                 f"Unauthorized update attempt for profile {existing_profile.id} by user {user_id}"
             )
 
-        logger.debug("Updating existing profile for user %s", user_id)
+        logger.debug(f"Updating existing profile for user {user_id}")
         # Prepare update data, only including non-None values
         update_data = {}
         if profile.name is not None:
@@ -667,7 +665,7 @@ async def update_profile(
             data=prisma.types.ProfileUpdateInput(**update_data),
         )
         if updated_profile is None:
-            logger.error("Failed to update profile for user %s", user_id)
+            logger.error(f"Failed to update profile for user {user_id}")
             raise backend.server.v2.store.exceptions.DatabaseError(
                 "Failed to update profile"
             )
@@ -684,7 +682,7 @@ async def update_profile(
         )
 
     except prisma.errors.PrismaError as e:
-        logger.error("Database error updating profile: %s", e)
+        logger.error(f"Database error updating profile: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to update profile"
         ) from e
