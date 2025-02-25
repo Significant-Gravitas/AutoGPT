@@ -807,7 +807,6 @@ export default function useAgentGraph(
         sourceNode?.data.block_id === "3b191d9f-356f-482d-8238-ba04b6d18381" &&
         sourceName.toLowerCase() === "tools"
       ) {
-
         const sinkNode = nodes.find((node) => node.id === edge.target);
 
         const sinkNodeName = sinkNode

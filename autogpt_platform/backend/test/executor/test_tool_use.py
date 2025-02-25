@@ -218,6 +218,7 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
             sink_id=nodes[2].id,
             source_name="tools_^_store_value_input",
             sink_name="input",
+        )
     ]
 
     test_graph = graph.Graph(
