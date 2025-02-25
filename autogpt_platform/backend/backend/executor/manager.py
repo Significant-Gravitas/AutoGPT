@@ -202,9 +202,7 @@ def execute_node(
     output_size = 0
     try:
         # Charge the user for the execution before running the block.
-        # TODO: We assume the block is executed within 0 seconds.
-        #       This is fine because for now, there is no block that is charged by time.
-        cost = db_client.spend_credits(data, input_size + output_size, 0)
+        cost = db_client.spend_credits(data)
 
         outputs: dict[str, Any] = {}
         for output_name, output_data in node_block.execute(
@@ -263,7 +261,7 @@ def execute_node(
         raise e
     finally:
         # Ensure credentials are released even if execution fails
-        if creds_lock:
+        if creds_lock and creds_lock.locked():
             try:
                 creds_lock.release()
             except Exception as e:
