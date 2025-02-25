@@ -814,7 +814,7 @@ export default function useAgentGraph(
                   ?.name?.toLowerCase()
                   .replace(/ /g, "_") || "agentexecutorblock"
               : "agentexecutorblock"
-            : sinkNode.data.title.toLowerCase().replace(/ /g, "_")
+            : sinkNode.data.title.toLowerCase().replace(/ /g, "_").split("_")[0]
           : "";
 
         sourceName =

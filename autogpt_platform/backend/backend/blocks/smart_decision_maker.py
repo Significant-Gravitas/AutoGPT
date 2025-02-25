@@ -6,8 +6,17 @@ from typing import Any, List
 from autogpt_libs.utils.cache import thread_cached
 
 import backend.blocks.llm as llm
+from backend.blocks.agent import AgentExecutorBlock
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
+
+
+# Import AVAILABLE_BLOCKS only when needed to prevent circular imports
+def get_available_blocks():
+    from backend.blocks import AVAILABLE_BLOCKS
+
+    return AVAILABLE_BLOCKS
+
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +130,7 @@ class SmartDecisionMakerBlock(Block):
 
         for link_id in tool_links:
             node = next((node for node in graph.nodes if node.id == link_id), None)
-            if node:
+            if node and node.block_id == AgentExecutorBlock().id:
                 node_graph_meta = db_client.get_graph_metadata(
                     node.input_default["graph_id"], node.input_default["graph_version"]
                 )
@@ -129,6 +138,124 @@ class SmartDecisionMakerBlock(Block):
                     graph_meta.append(node_graph_meta)
 
         return graph_meta
+
+    @staticmethod
+    def _create_block_function_signature(
+        sink_node: Any, links: list[Any]
+    ) -> dict[str, Any]:
+        """
+        Creates a function signature for a block node.
+
+        Args:
+            sink_node: The node for which to create a function signature.
+            links: The list of links connected to the sink node.
+
+        Returns:
+            A dictionary representing the function signature in the format expected by LLM tools.
+
+        Raises:
+            ValueError: If the block specified by sink_node.block_id is not found.
+        """
+        block = get_available_blocks()[sink_node.block_id]
+        if not block:
+            raise ValueError(f"Block not found: {sink_node.block_id}")
+
+        tool_function: dict[str, Any] = {
+            "name": re.sub(r"[^a-zA-Z0-9_-]", "_", block().name).lower(),
+            "description": block().description,
+        }
+
+        properties = {}
+        required = []
+
+        for link in links:
+            sink_block_input_schema = block().input_schema
+            description = (
+                sink_block_input_schema.model_fields[link.sink_name].description
+                if link.sink_name in sink_block_input_schema.model_fields
+                and sink_block_input_schema.model_fields[link.sink_name].description
+                else f"The {link.sink_name} of the tool"
+            )
+            properties[link.sink_name.lower()] = {
+                "type": "string",
+                "description": description,
+            }
+
+        tool_function["parameters"] = {
+            "type": "object",
+            "properties": properties,
+            "required": required,
+            "additionalProperties": False,
+            "strict": True,
+        }
+
+        return {"type": "function", "function": tool_function}
+
+    @staticmethod
+    def _create_agent_function_signature(
+        sink_node: Any, links: list[Any], tool_graph_metadata: list[Any]
+    ) -> dict[str, Any]:
+        """s∫
+        Creates a function signature for an agent node.
+
+        Args:
+            sink_node: The agent node for which to create a function signature.
+            links: The list of links connected to the sink node.
+            tool_graph_metadata: List of metadata for available tool graphs.
+
+        Returns:
+            A dictionary representing the function signature in the format expected by LLM tools.
+
+        Raises:
+            ValueError: If the graph metadata for the specified graph_id and graph_version is not found.
+        """
+        graph_id = sink_node.input_default["graph_id"]
+        graph_version = sink_node.input_default["graph_version"]
+
+        sink_graph_meta = next(
+            (
+                meta
+                for meta in tool_graph_metadata
+                if meta.id == graph_id and meta.version == graph_version
+            ),
+            None,
+        )
+
+        if not sink_graph_meta:
+            raise ValueError(
+                f"Sink graph metadata not found: {graph_id} {graph_version}"
+            )
+
+        tool_function: dict[str, Any] = {
+            "name": re.sub(r"[^a-zA-Z0-9_-]", "_", sink_graph_meta.name).lower(),
+            "description": sink_graph_meta.description,
+        }
+
+        properties = {}
+        required = []
+
+        for link in links:
+            sink_block_input_schema = sink_node.input_default["input_schema"]
+            description = (
+                sink_block_input_schema["properties"][link.sink_name]["description"]
+                if "description"
+                in sink_block_input_schema["properties"][link.sink_name]
+                else f"The {link.sink_name} of the tool"
+            )
+            properties[link.sink_name.lower()] = {
+                "type": "string",
+                "description": description,
+            }
+
+        tool_function["parameters"] = {
+            "type": "object",
+            "properties": properties,
+            "required": required,
+            "additionalProperties": False,
+            "strict": True,
+        }
+
+        return {"type": "function", "function": tool_function}
 
     @staticmethod
     def _create_function_signature(
@@ -192,55 +319,21 @@ class SmartDecisionMakerBlock(Block):
             if not sink_node:
                 raise ValueError(f"Sink node not found: {links[0].sink_id}")
 
-            graph_id = sink_node.input_default["graph_id"]
-            graph_version = sink_node.input_default["graph_version"]
-
-            sink_graph_meta = next(
-                (
-                    meta
-                    for meta in tool_graph_metadata
-                    if meta.id == graph_id and meta.version == graph_version
-                ),
-                None,
-            )
-
-            if not sink_graph_meta:
-                raise ValueError(
-                    f"Sink graph metadata not found: {graph_id} {graph_version}"
+            if sink_node.block_id == AgentExecutorBlock().id:
+                return_tool_functions.append(
+                    SmartDecisionMakerBlock._create_agent_function_signature(
+                        sink_node, links, tool_graph_metadata
+                    )
+                )
+            else:
+                return_tool_functions.append(
+                    SmartDecisionMakerBlock._create_block_function_signature(
+                        sink_node, links
+                    )
                 )
 
-            tool_function: dict[str, Any] = {
-                "name": re.sub(r"[^a-zA-Z0-9_-]", "_", sink_graph_meta.name).lower(),
-                "description": sink_graph_meta.description,
-            }
+        logger.warning(f"return_tool_functions: {return_tool_functions}")
 
-            properties = {}
-            required = []
-
-            for link in links:
-                sink_block_input_schema = sink_node.input_default["input_schema"]
-                description = (
-                    sink_block_input_schema["properties"][link.sink_name]["description"]
-                    if "description"
-                    in sink_block_input_schema["properties"][link.sink_name]
-                    else f"The {link.sink_name} of the tool"
-                )
-                properties[link.sink_name.lower()] = {
-                    "type": "string",
-                    "description": description,
-                }
-
-            tool_function["parameters"] = {
-                "type": "object",
-                "properties": properties,
-                "required": required,
-                "additionalProperties": False,
-                "strict": True,
-            }
-
-            return_tool_functions.append(
-                {"type": "function", "function": tool_function}
-            )
         return return_tool_functions
 
     def run(
