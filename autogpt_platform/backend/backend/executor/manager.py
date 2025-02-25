@@ -201,6 +201,7 @@ def execute_node(
         extra_exec_kwargs[field_name] = credentials
 
     output_size = 0
+    cost = 0
     try:
         # Charge the user for the execution before running the block.
         cost = db_client.spend_credits(data)
@@ -273,6 +274,7 @@ def execute_node(
             execution_stats.update(node_block.execution_stats)
             execution_stats["input_size"] = input_size
             execution_stats["output_size"] = output_size
+            execution_stats["cost"] = cost
 
 
 def _enqueue_next_nodes(
@@ -676,6 +678,7 @@ class Executor:
             "nodes_walltime": 0,
             "nodes_cputime": 0,
             "node_count": 0,
+            "cost": 0,
         }
         error = None
         finished = False
@@ -713,6 +716,7 @@ class Executor:
                         exec_stats["node_count"] += 1
                         exec_stats["nodes_cputime"] += result.get("cputime", 0)
                         exec_stats["nodes_walltime"] += result.get("walltime", 0)
+                        exec_stats["cost"] += result.get("cost", 0)
 
                 return callback
 
