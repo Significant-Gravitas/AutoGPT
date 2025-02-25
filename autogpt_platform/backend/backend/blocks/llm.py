@@ -302,19 +302,24 @@ def llm_call(
     ollama_host: str = "localhost:11434",
 ) -> LLMResponse:
     """
+    Make a call to a language model.
+
     Args:
         credentials: The API key credentials to use.
         llm_model: The LLM model to use.
         prompt: The prompt to send to the LLM.
         json_format: Whether the response should be in JSON format.
         max_tokens: The maximum number of tokens to generate in the chat completion.
-        ollama_host: The host for ollama to use
+        tools: The tools to use in the chat completion.
+        ollama_host: The host for ollama to use.
 
     Returns:
-        The prompt sent to the LLM.
-        The response from the LLM.
-        The number of tokens used in the prompt.
-        The number of tokens used in the completion.
+        LLMResponse object containing:
+            - prompt: The prompt sent to the LLM.
+            - response: The text response from the LLM.
+            - tool_calls: Any tool calls the model made, if applicable.
+            - prompt_tokens: The number of tokens used in the prompt.
+            - completion_tokens: The number of tokens used in the completion.
     """
     provider = llm_model.metadata.provider
     max_tokens = max_tokens or llm_model.max_output_tokens or 4096
