@@ -399,19 +399,28 @@ def llm_call(
             if not resp.content:
                 raise ValueError("No content returned from Anthropic.")
 
-            if resp.content[0].type == "tool_use":
-                tool_calls = [
-                    ToolContentBlock(
-                        id=resp.content[0].id,
-                        type=resp.content[0].type,
-                        function=ToolCall(
-                            name=resp.content[0].name,
-                            arguments=json.dumps(resp.content[0].input),
-                        ),
+            tool_calls = None
+            for content_block in resp.content:
+                # Antropic is different to openai, need to iterate through
+                # the content blocks to find the tool calls
+                if content_block.type == "tool_use":
+                    if tool_calls is None:
+                        tool_calls = []
+                    tool_calls.append(
+                        ToolContentBlock(
+                            id=content_block.id,
+                            type=content_block.type,
+                            function=ToolCall(
+                                name=content_block.name,
+                                arguments=json.dumps(content_block.input),
+                            ),
+                        )
                     )
-                ]
-            else:
-                tool_calls = None
+
+            if not tool_calls and resp.stop_reason == "tool_use":
+                logger.warning(
+                    "Tool use stop reason but no tool calls found in content. %s", resp
+                )
 
             return LLMResponse(
                 prompt=json.dumps(prompt),
