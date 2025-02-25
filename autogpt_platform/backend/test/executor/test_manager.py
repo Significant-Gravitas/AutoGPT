@@ -73,6 +73,7 @@ async def assert_sample_graph_executions(
         {
             "name": "input_2",
             "value": "World",
+            "description": "This is my description of this parameter",
         },
     ]
 

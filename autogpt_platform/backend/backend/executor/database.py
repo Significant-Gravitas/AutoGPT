@@ -1,6 +1,3 @@
-from functools import wraps
-from typing import Any, Callable, Concatenate, Coroutine, ParamSpec, TypeVar, cast
-
 from backend.data.credit import get_user_credit_model
 from backend.data.execution import (
     ExecutionResult,
@@ -16,19 +13,22 @@ from backend.data.execution import (
     upsert_execution_input,
     upsert_execution_output,
 )
-from backend.data.graph import get_graph, get_node
+from backend.data.graph import get_graph, get_graph_metadata, get_node
 from backend.data.user import (
     get_user_integrations,
     get_user_metadata,
     update_user_integrations,
     update_user_metadata,
 )
-from backend.util.service import AppService, expose, register_pydantic_serializers
+from backend.util.service import AppService, expose, exposed_run_and_wait
 from backend.util.settings import Config
 
-P = ParamSpec("P")
-R = TypeVar("R")
 config = Config()
+_user_credit_model = get_user_credit_model()
+
+
+async def _spend_credits(entry: NodeExecutionEntry) -> int:
+    return await _user_credit_model.spend_credits(entry, 0, 0)
 
 
 class DatabaseManager(AppService):
@@ -46,22 +46,6 @@ class DatabaseManager(AppService):
     def send_execution_update(self, execution_result: ExecutionResult):
         self.event_queue.publish(execution_result)
 
-    @staticmethod
-    def exposed_run_and_wait(
-        f: Callable[P, Coroutine[None, None, R]]
-    ) -> Callable[Concatenate[object, P], R]:
-        @expose
-        @wraps(f)
-        def wrapper(self, *args: P.args, **kwargs: P.kwargs) -> R:
-            coroutine = f(*args, **kwargs)
-            res = self.run_and_wait(coroutine)
-            return res
-
-        # Register serializers for annotations on bare function
-        register_pydantic_serializers(f)
-
-        return wrapper
-
     # Executions
     create_graph_execution = exposed_run_and_wait(create_graph_execution)
     get_execution_results = exposed_run_and_wait(get_execution_results)
@@ -76,13 +60,10 @@ class DatabaseManager(AppService):
     # Graphs
     get_node = exposed_run_and_wait(get_node)
     get_graph = exposed_run_and_wait(get_graph)
+    get_graph_metadata = exposed_run_and_wait(get_graph_metadata)
 
     # Credits
-    user_credit_model = get_user_credit_model()
-    spend_credits = cast(
-        Callable[[Any, NodeExecutionEntry, float, float], int],
-        exposed_run_and_wait(user_credit_model.spend_credits),
-    )
+    spend_credits = exposed_run_and_wait(_spend_credits)
 
     # User + User Metadata + User Integrations
     get_user_metadata = exposed_run_and_wait(get_user_metadata)
