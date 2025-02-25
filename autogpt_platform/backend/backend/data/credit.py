@@ -359,7 +359,6 @@ class UserCredit(UserCreditBase):
         await asyncio.to_thread(
             lambda: self.notification_client().queue_notification(
                 NotificationEventDTO(
-                    recipient_email=settings.config.refund_notification_email,
                     user_id=notification_request.user_id,
                     type=notification_type,
                     data=notification_request.model_dump(),

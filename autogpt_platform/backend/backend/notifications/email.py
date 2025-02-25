@@ -62,7 +62,7 @@ class EmailSender:
                 subject_template=template.subject_template,
                 content_template=template.body_template,
                 data=data,
-                unsubscribe_link="https://autogpt.com/unsubscribe",
+                unsubscribe_link="https://platform.agpt.co/profile/settings",
             )
 
         except Exception as e:
