@@ -52,7 +52,6 @@ T = TypeVar("T")
 C = TypeVar("C", bound=Callable)
 
 config = Config()
-pyro_host = config.pyro_host
 pyro_config.MAX_RETRIES = config.pyro_client_comm_retry  # type: ignore
 pyro_config.COMMTIMEOUT = config.pyro_client_comm_timeout  # type: ignore
 api_host = config.pyro_host
@@ -299,12 +298,12 @@ class FastApiAppService(BaseAppService, ABC):
 
     @conn_retry("FastAPI server", "Starting FastAPI server")
     def __start_fastapi(self):
-        port = self.get_port()
-        host = self.get_host()
         logger.info(
-            f"[{self.service_name}] Starting RPC server at http://{host}:{port}"
+            f"[{self.service_name}] Starting RPC server at http://{api_host}:{self.get_port()}"
         )
-        server = uvicorn.Server(uvicorn.Config(self.fastapi_app, host=host, port=port))
+        server = uvicorn.Server(
+            uvicorn.Config(self.fastapi_app, host=api_host, port=self.get_port())
+        )
         self.shared_event_loop.run_until_complete(server.serve())
 
     def run(self):
@@ -345,7 +344,7 @@ class PyroAppService(BaseAppService, ABC):
         )
 
         Pyro5.config.THREADPOOL_SIZE = maximum_connection_thread_count  # type: ignore
-        daemon = Pyro5.api.Daemon(host=config.pyro_host, port=self.get_port())
+        daemon = Pyro5.api.Daemon(host=api_host, port=self.get_port())
         self.uri = daemon.register(self, objectId=self.service_name)
         logger.info(f"[{self.service_name}] Connected to Pyro; URI = {self.uri}")
         daemon.requestLoop()
@@ -396,11 +395,9 @@ def fastapi_close_service_client(client: Any) -> None:
 
 @conn_retry("FastAPI client", "Creating service client")
 def fastapi_get_service_client(service_type: Type[AS]) -> AS:
-    service_name = service_type.service_name
-
     class DynamicClient:
         def __init__(self):
-            host = os.environ.get(f"{service_name.upper()}_HOST", api_host)
+            host = service_type.get_host()
             port = service_type.get_port()
             self.base_url = f"http://{host}:{port}".rstrip("/")
             self.client = httpx.Client()
@@ -468,8 +465,7 @@ def pyro_get_service_client(service_type: Type[AS]) -> AS:
     class DynamicClient(PyroClient):
         @conn_retry("Pyro", f"Connecting to [{service_name}]")
         def __init__(self):
-            host = os.environ.get(f"{service_name.upper()}_HOST", pyro_host)
-            uri = f"PYRO:{service_type.service_name}@{host}:{service_type.get_port()}"
+            uri = f"PYRO:{service_type.service_name}@{service_type.get_host()}:{service_type.get_port()}"
             logger.debug(f"Connecting to service [{service_name}]. URI = {uri}")
             self.proxy = Pyro5.api.Proxy(uri)
             # Attempt to bind to ensure the connection is established
