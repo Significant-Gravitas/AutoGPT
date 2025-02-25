@@ -5,7 +5,7 @@ import { CreatorDetails } from "@/lib/autogpt-server-api/types";
 
 async function getProfileData(api: BackendAPI) {
   try {
-    const profile = await api.getStoreProfile("profile");
+    const profile = await api.getStoreProfile();
     return {
       profile,
     };
