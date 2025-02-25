@@ -332,8 +332,6 @@ class SmartDecisionMakerBlock(Block):
                     )
                 )
 
-        logger.warning(f"return_tool_functions: {return_tool_functions}")
-
         return return_tool_functions
 
     def run(
