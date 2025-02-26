@@ -4,9 +4,11 @@ import { Plus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
+  GraphExecutionID,
   GraphExecutionMeta,
   GraphMeta,
   Schedule,
+  ScheduleID,
 } from "@/lib/autogpt-server-api";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -21,10 +23,11 @@ interface AgentRunsSelectorListProps {
   agentRuns: GraphExecutionMeta[];
   schedules: Schedule[];
   selectedView: { type: "run" | "schedule"; id?: string };
-  onSelectRun: (id: string) => void;
+  onSelectRun: (id: GraphExecutionID) => void;
   onSelectSchedule: (schedule: Schedule) => void;
   onSelectDraftNewRun: () => void;
-  onDeleteSchedule: (id: string) => void;
+  onDeleteRun: (id: GraphExecutionID) => void;
+  onDeleteSchedule: (id: ScheduleID) => void;
   className?: string;
 }
 

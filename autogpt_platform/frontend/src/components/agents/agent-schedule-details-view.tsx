@@ -1,7 +1,11 @@
 "use client";
 import React, { useCallback, useMemo } from "react";
 
-import { BlockIOSubType, GraphMeta, Schedule } from "@/lib/autogpt-server-api";
+import {
+  GraphExecutionID,
+  GraphMeta,
+  Schedule,
+} from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,7 +21,7 @@ export default function AgentScheduleDetailsView({
 }: {
   agent: GraphMeta;
   schedule: Schedule;
-  onForcedRun: (runID: string) => void;
+  onForcedRun: (runID: GraphExecutionID) => void;
   agentActions: { label: string; callback: () => void }[];
 }): React.ReactNode {
   const api = useBackendAPI();

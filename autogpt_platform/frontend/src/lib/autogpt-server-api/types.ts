@@ -218,7 +218,7 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
 
 /* Mirror of backend/data/graph.py:GraphExecutionMeta */
 export type GraphExecutionMeta = {
-  execution_id: string;
+  execution_id: GraphExecutionID;
   started_at: number;
   ended_at: number;
   duration: number;
@@ -228,6 +228,8 @@ export type GraphExecutionMeta = {
   graph_version: number;
   preset_id?: string;
 };
+
+export type GraphExecutionID = Brand<string, "GraphExecutionID">;
 
 /* Mirror of backend/data/graph.py:GraphExecution */
 export type GraphExecution = GraphExecutionMeta & {
@@ -286,7 +288,7 @@ export type GraphCreatable = Omit<GraphUpdateable, "id"> & { id?: string };
 export type NodeExecutionResult = {
   graph_id: GraphID;
   graph_version: number;
-  graph_exec_id: string;
+  graph_exec_id: GraphExecutionID;
   node_exec_id: string;
   node_id: string;
   block_id: string;
@@ -623,7 +625,7 @@ export type ProfileDetails = {
 };
 
 export type Schedule = {
-  id: string;
+  id: ScheduleID;
   name: string;
   cron: string;
   user_id: string;
@@ -633,6 +635,8 @@ export type Schedule = {
   next_run_time: Date;
 };
 
+export type ScheduleID = Brand<string, "ScheduleID">;
+
 export type ScheduleCreatable = {
   cron: string;
   graph_id: GraphID;
@@ -641,7 +645,7 @@ export type ScheduleCreatable = {
 };
 
 export type MyAgent = {
-  agent_id: string;
+  agent_id: GraphID;
   agent_version: number;
   agent_name: string;
   last_edited: string;
@@ -705,7 +709,7 @@ export interface CreditTransaction {
   balance: number;
   description: string;
   usage_graph_id: GraphID;
-  usage_execution_id: string;
+  usage_execution_id: GraphExecutionID;
   usage_node_count: number;
   usage_starting_time: Date;
 }
