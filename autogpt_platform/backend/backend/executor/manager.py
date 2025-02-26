@@ -644,6 +644,7 @@ class Executor:
             node_eid="*",
             block_name="-",
         )
+        cls.db_client.update_graph_execution_start_time(graph_exec.graph_exec_id)
         timing_info, (exec_stats, status, error) = cls._on_graph_execution(
             graph_exec, cancel, log_metadata
         )
