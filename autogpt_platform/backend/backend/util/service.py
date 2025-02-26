@@ -36,7 +36,7 @@ from typing import (
 import httpx
 import Pyro5.api
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request, responses
 from pydantic import BaseModel, TypeAdapter, create_model
 from Pyro5 import api as pyro
 from Pyro5 import config as pyro_config
@@ -241,6 +241,18 @@ class BaseAppService(AppProcess, ABC):
 class FastApiAppService(BaseAppService, ABC):
     fastapi_app: FastAPI
 
+    @staticmethod
+    def _handle_internal_http_error(status_code: int = 500, log_error: bool = True):
+        def handler(request: Request, exc: Exception):
+            if log_error:
+                logger.exception(f"{request.method} {request.url.path} failed: {exc}")
+            return responses.Response(
+                content=str(exc),
+                status_code=status_code,
+            )
+
+        return handler
+
     def _create_fastapi_endpoint(self, func: Callable) -> Callable:
         """
         Generates a FastAPI endpoint for the given function, handling default and optional parameters.
@@ -274,25 +286,15 @@ class FastApiAppService(BaseAppService, ABC):
         if asyncio.iscoroutinefunction(f):
 
             async def async_endpoint(body: RequestBodyModel):  # type: ignore #RequestBodyModel being variable
-                try:
-                    return await f(
-                        **{name: getattr(body, name) for name in body.model_fields}
-                    )
-                except Exception as e:
-                    logger.exception(f"Error in {func.__name__}: {e}")
-                    raise HTTPException(status_code=500, detail=e)
+                return await f(
+                    **{name: getattr(body, name) for name in body.model_fields}
+                )
 
             return async_endpoint
         else:
 
             def sync_endpoint(body: RequestBodyModel):  # type: ignore #RequestBodyModel being variable
-                try:
-                    return f(
-                        **{name: getattr(body, name) for name in body.model_fields}
-                    )
-                except Exception as e:
-                    logger.exception(f"Error in {func.__name__}: {e}")
-                    raise HTTPException(status_code=500, detail=e)
+                return f(**{name: getattr(body, name) for name in body.model_fields})
 
             return sync_endpoint
 
@@ -321,6 +323,12 @@ class FastApiAppService(BaseAppService, ABC):
                 )
         self.fastapi_app.add_api_route(
             "/health_check", self.health_check, methods=["POST"]
+        )
+        self.fastapi_app.add_exception_handler(
+            ValueError, self._handle_internal_http_error(400)
+        )
+        self.fastapi_app.add_exception_handler(
+            Exception, self._handle_internal_http_error(500)
         )
 
         # Start the FastAPI server in a separate thread.
