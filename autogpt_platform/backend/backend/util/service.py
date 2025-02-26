@@ -52,9 +52,11 @@ T = TypeVar("T")
 C = TypeVar("C", bound=Callable)
 
 config = Config()
-pyro_config.MAX_RETRIES = config.pyro_client_comm_retry  # type: ignore
-pyro_config.COMMTIMEOUT = config.pyro_client_comm_timeout  # type: ignore
 api_host = config.pyro_host
+api_comm_retry = config.pyro_client_comm_retry
+api_comm_timeout = config.pyro_client_comm_timeout
+pyro_config.MAX_RETRIES = api_comm_retry  # type: ignore
+pyro_config.COMMTIMEOUT = api_comm_timeout  # type: ignore
 
 
 P = ParamSpec("P")
@@ -401,19 +403,21 @@ def fastapi_close_service_client(client: Any) -> None:
         logger.warning(f"Client {client} is not closable")
 
 
-@conn_retry("FastAPI client", "Creating service client")
+@conn_retry("FastAPI client", "Creating service client", max_retry=api_comm_retry)
 def fastapi_get_service_client(service_type: Type[AS]) -> AS:
     class DynamicClient:
         def __init__(self):
             host = service_type.get_host()
             port = service_type.get_port()
             self.base_url = f"http://{host}:{port}".rstrip("/")
-            self.client = httpx.Client()
+            self.client = httpx.Client(
+                base_url=self.base_url,
+                timeout=api_comm_timeout,
+            )
 
         def _call_method(self, method_name: str, **kwargs) -> Any:
             try:
-                url = f"{self.base_url}/{method_name}"
-                response = self.client.post(url, json=to_dict(kwargs))
+                response = self.client.post(method_name, json=to_dict(kwargs))
                 response.raise_for_status()
                 return response.json()
             except httpx.HTTPStatusError as e:
