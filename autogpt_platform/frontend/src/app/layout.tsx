@@ -11,8 +11,6 @@ import "./globals.css";
 
 import { Navbar } from "@/components/agptui/Navbar";
 
-import "./globals.css";
-import { GoogleAnalytics } from "@next/third-parties/google";
 import { Toaster } from "@/components/ui/toaster";
 import { IconType } from "@/components/ui/icons";
 import { Providers } from "@/app/providers";
