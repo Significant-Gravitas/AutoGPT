@@ -246,6 +246,10 @@ export default class BackendAPI {
     return result;
   }
 
+  async deleteGraphExecution(runID: string): Promise<void> {
+    await this._request("DELETE", `/executions/${runID}`);
+  }
+
   oAuthLogin(
     provider: string,
     scopes?: string[],

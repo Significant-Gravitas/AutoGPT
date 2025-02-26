@@ -23,7 +23,8 @@ interface AgentRunsSelectorListProps {
   selectedView: { type: "run" | "schedule"; id?: string };
   onSelectRun: (id: string) => void;
   onSelectSchedule: (schedule: Schedule) => void;
-  onDraftNewRun: () => void;
+  onSelectDraftNewRun: () => void;
+  onDeleteSchedule: (id: string) => void;
   className?: string;
 }
 
@@ -34,7 +35,9 @@ export default function AgentRunsSelectorList({
   selectedView,
   onSelectRun,
   onSelectSchedule,
-  onDraftNewRun,
+  onSelectDraftNewRun,
+  onDeleteRun,
+  onDeleteSchedule,
   className,
 }: AgentRunsSelectorListProps): React.ReactElement {
   const [activeListTab, setActiveListTab] = useState<"runs" | "scheduled">(
@@ -51,7 +54,7 @@ export default function AgentRunsSelectorList({
             ? "agpt-card-selected text-accent"
             : "")
         }
-        onClick={onDraftNewRun}
+        onClick={onSelectDraftNewRun}
       >
         <Plus className="h-6 w-6" />
         <span>New run</span>
@@ -91,7 +94,7 @@ export default function AgentRunsSelectorList({
                 ? "agpt-card-selected text-accent"
                 : "")
             }
-            onClick={onDraftNewRun}
+            onClick={onSelectDraftNewRun}
           >
             <Plus className="h-6 w-6" />
             <span>New run</span>
@@ -102,13 +105,12 @@ export default function AgentRunsSelectorList({
                 <AgentRunSummaryCard
                   className="h-28 w-72 lg:h-32 xl:w-80"
                   key={i}
-                  agentID={run.graph_id}
-                  agentRunID={run.execution_id}
                   status={agentRunStatusMap[run.status]}
                   title={agent.name}
                   timestamp={run.started_at}
                   selected={selectedView.id === run.execution_id}
                   onClick={() => onSelectRun(run.execution_id)}
+                  onDelete={() => onDeleteRun(run.execution_id)}
                 />
               ))
             : schedules
@@ -117,13 +119,12 @@ export default function AgentRunsSelectorList({
                   <AgentRunSummaryCard
                     className="h-28 w-72 lg:h-32 xl:w-80"
                     key={i}
-                    agentID={schedule.graph_id}
-                    agentRunID={schedule.id}
                     status="scheduled"
                     title={schedule.name}
                     timestamp={schedule.next_run_time}
                     selected={selectedView.id === schedule.id}
                     onClick={() => onSelectSchedule(schedule)}
+                    onDelete={() => onDeleteSchedule(schedule.id)}
                   />
                 ))}
         </div>
