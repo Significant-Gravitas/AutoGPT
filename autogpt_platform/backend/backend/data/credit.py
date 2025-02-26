@@ -249,7 +249,6 @@ class UserCreditBase(ABC):
         metadata: Json,
         new_transaction_key: str | None = None,
     ):
-
         transaction = await CreditTransaction.prisma().find_first_or_raise(
             where={"transactionKey": transaction_key, "userId": user_id}
         )
@@ -346,7 +345,6 @@ class UsageTransactionMetadata(BaseModel):
 
 
 class UserCredit(UserCreditBase):
-
     @thread_cached
     def notification_client(self) -> NotificationManager:
         return get_service_client(NotificationManager)
@@ -840,7 +838,6 @@ class UserCredit(UserCreditBase):
         transaction_time_ceiling: datetime | None = None,
         transaction_type: str | None = None,
     ) -> TransactionHistory:
-
         transactions_filter: CreditTransactionWhereInput = {
             "userId": user_id,
             "isActive": True,
@@ -1023,3 +1020,26 @@ async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
         return AutoTopUpConfig(threshold=0, amount=0)
 
     return AutoTopUpConfig.model_validate(user.topUpConfig)
+
+
+async def get_graph_execution_cost(graph_exec_id: str) -> int | None:
+    """
+    Get the total cost of a graph execution.
+
+    Params:
+        graph_exec_id (str): The graph execution ID.
+
+    Returns:
+        int | None: The total cost in credits, or None if unknown.
+    """
+    transactions = await CreditTransaction.prisma().find_many(
+        where={
+            "metadata": {  # type: ignore
+                "path": ["graph_exec_id"],
+                "equals": graph_exec_id,
+            },
+            "type": CreditTransactionType.USAGE,
+        }
+    )
+
+    return sum(t.amount for t in transactions) if transactions else None

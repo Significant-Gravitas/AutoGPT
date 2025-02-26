@@ -221,6 +221,7 @@ export type GraphExecutionMeta = {
   execution_id: string;
   started_at: number;
   ended_at: number;
+  cost?: number;
   duration: number;
   total_run_time: number;
   status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";

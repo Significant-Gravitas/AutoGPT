@@ -15,10 +15,11 @@ from prisma.models import (
     StoreListingVersion,
 )
 from prisma.types import AgentGraphWhereInput
-from pydantic.fields import computed_field
+from pydantic.fields import Field, computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
+from backend.data.credit import get_graph_execution_cost
 from backend.util import type
 
 from .block import BlockInput, BlockType, get_block, get_blocks
@@ -112,6 +113,7 @@ class GraphExecutionMeta(BaseDbModel):
     execution_id: str
     started_at: datetime
     ended_at: datetime
+    cost: Optional[int] = Field(..., description="Execution cost in credits")
     duration: float
     total_run_time: float
     status: ExecutionStatus
@@ -120,7 +122,7 @@ class GraphExecutionMeta(BaseDbModel):
     preset_id: Optional[str]
 
     @staticmethod
-    def from_db(_graph_exec: AgentGraphExecution):
+    def from_db(_graph_exec: AgentGraphExecution, cost: Optional[int] = None):
         now = datetime.now(timezone.utc)
         start_time = _graph_exec.startedAt or _graph_exec.createdAt
         end_time = _graph_exec.updatedAt or now
@@ -140,6 +142,7 @@ class GraphExecutionMeta(BaseDbModel):
             execution_id=_graph_exec.id,
             started_at=start_time,
             ended_at=end_time,
+            cost=cost,
             duration=duration,
             total_run_time=total_run_time,
             status=ExecutionStatus(_graph_exec.executionStatus),
@@ -155,11 +158,11 @@ class GraphExecution(GraphExecutionMeta):
     node_executions: list[ExecutionResult]
 
     @staticmethod
-    def from_db(_graph_exec: AgentGraphExecution):
+    def from_db(_graph_exec: AgentGraphExecution, cost: Optional[int] = None):
         if _graph_exec.AgentNodeExecutions is None:
             raise ValueError("Node executions must be included in query")
 
-        graph_exec = GraphExecutionMeta.from_db(_graph_exec)
+        graph_exec = GraphExecutionMeta.from_db(_graph_exec, cost)
 
         node_executions = [
             ExecutionResult.from_db(ne) for ne in _graph_exec.AgentNodeExecutions
@@ -596,7 +599,12 @@ async def get_graphs_executions(user_id: str) -> list[GraphExecutionMeta]:
         where={"userId": user_id},
         order={"createdAt": "desc"},
     )
-    return [GraphExecutionMeta.from_db(execution) for execution in executions]
+    return [
+        GraphExecutionMeta.from_db(
+            execution, await get_graph_execution_cost(execution.id)
+        )
+        for execution in executions
+    ]
 
 
 async def get_graph_executions(graph_id: str, user_id: str) -> list[GraphExecutionMeta]:
@@ -604,7 +612,12 @@ async def get_graph_executions(graph_id: str, user_id: str) -> list[GraphExecuti
         where={"agentGraphId": graph_id, "userId": user_id},
         order={"createdAt": "desc"},
     )
-    return [GraphExecutionMeta.from_db(execution) for execution in executions]
+    return [
+        GraphExecutionMeta.from_db(
+            execution, await get_graph_execution_cost(execution.id)
+        )
+        for execution in executions
+    ]
 
 
 async def get_execution_meta(
@@ -613,7 +626,13 @@ async def get_execution_meta(
     execution = await AgentGraphExecution.prisma().find_first(
         where={"id": execution_id, "userId": user_id}
     )
-    return GraphExecutionMeta.from_db(execution) if execution else None
+    return (
+        GraphExecutionMeta.from_db(
+            execution, await get_graph_execution_cost(execution.id)
+        )
+        if execution
+        else None
+    )
 
 
 async def get_execution(user_id: str, execution_id: str) -> GraphExecution | None:
@@ -631,7 +650,11 @@ async def get_execution(user_id: str, execution_id: str) -> GraphExecution | Non
             },
         },
     )
-    return GraphExecution.from_db(execution) if execution else None
+    return (
+        GraphExecution.from_db(execution, await get_graph_execution_cost(execution.id))
+        if execution
+        else None
+    )
 
 
 async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph | None:
