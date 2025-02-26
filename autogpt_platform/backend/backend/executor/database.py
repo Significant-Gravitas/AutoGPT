@@ -8,6 +8,7 @@ from backend.data.execution import (
     get_incomplete_executions,
     get_latest_execution,
     update_execution_status,
+    update_graph_execution_start_time,
     update_graph_execution_stats,
     update_node_execution_stats,
     upsert_execution_input,
@@ -52,6 +53,9 @@ class DatabaseManager(AppService):
     get_incomplete_executions = exposed_run_and_wait(get_incomplete_executions)
     get_latest_execution = exposed_run_and_wait(get_latest_execution)
     update_execution_status = exposed_run_and_wait(update_execution_status)
+    update_graph_execution_start_time = exposed_run_and_wait(
+        update_graph_execution_start_time
+    )
     update_graph_execution_stats = exposed_run_and_wait(update_graph_execution_stats)
     update_node_execution_stats = exposed_run_and_wait(update_node_execution_stats)
     upsert_execution_input = exposed_run_and_wait(upsert_execution_input)
