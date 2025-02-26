@@ -46,10 +46,18 @@ data.outputs: the dict[str, Any] of outputs of the agent
     margin-bottom: 10px;
   ">
   It output the following:
-  {# jinja2 list iteration thorugh data.outputs #}
-  {% for key, value in data.outputs.items() %}
-  <li>{{ key }}: {{ value }}</li>
-  {% endfor %}
+{# jinja2 list iteration through data.outputs #}
+{% for output in data.outputs %}
+  <li>{{ output.name }}:
+    <ul>
+    {% for key, value in output.items() %}
+      {% if key != 'name' %}
+      <li>{{ key }}: {{ value }}</li>
+      {% endif %}
+    {% endfor %}
+    </ul>
+  </li>
+{% endfor %}
 </ul>
 <p style="
     font-family: 'Poppins', sans-serif;

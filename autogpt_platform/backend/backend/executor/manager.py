@@ -115,7 +115,6 @@ ExecutionStream = Generator[NodeExecutionEntry, None, None]
 def execute_node(
     db_client: "DatabaseManager",
     creds_manager: IntegrationCredentialsManager,
-    notification_service: "NotificationManager",
     data: NodeExecutionEntry,
     execution_stats: dict[str, Any] | None = None,
 ) -> ExecutionStream:
@@ -228,21 +227,6 @@ def execute_node(
 
         # Update execution status and spend credits
         update_execution(ExecutionStatus.COMPLETED)
-        event = NotificationEventDTO(
-            user_id=user_id,
-            type=NotificationType.AGENT_RUN,
-            data=AgentRunData(
-                outputs=outputs,
-                agent_name=node_block.name,
-                credits_used=cost,
-                execution_time=0,
-                graph_id=graph_id,
-                node_count=1,
-            ).model_dump(),
-        )
-
-        logger.info(f"Sending notification for {event}")
-        notification_service.queue_notification(event)
 
     except Exception as e:
         error_msg = str(e)
@@ -584,7 +568,6 @@ class Executor:
             for execution in execute_node(
                 db_client=cls.db_client,
                 creds_manager=cls.creds_manager,
-                notification_service=cls.notification_service,
                 data=node_exec,
                 execution_stats=stats,
             ):
@@ -658,6 +641,52 @@ class Executor:
             stats=exec_stats,
         )
         cls.db_client.send_execution_update(result)
+
+        metadata = cls.db_client.get_graph_metadata(
+            graph_exec.graph_id, graph_exec.graph_version
+        )
+        assert metadata is not None
+        outputs = cls.db_client.get_execution_results(graph_exec.graph_exec_id)
+        logger.info(f"{outputs=}")
+
+        # Collect named outputs as a list of dictionaries
+        named_outputs = []
+        for output in outputs:
+            if output.output_data and "name" in output.output_data:
+                # Create a dictionary for this named output
+                named_output = {
+                    # Include the name as a field in each output
+                    "name": (
+                        output.output_data["name"][0]
+                        if isinstance(output.output_data["name"], list)
+                        else output.output_data["name"]
+                    )
+                }
+
+                # Add all other fields
+                for key, value in output.output_data.items():
+                    if key != "name":
+                        named_output[key] = value
+
+                named_outputs.append(named_output)
+
+        logger.info(f"named_outputs={named_outputs}")
+
+        event = NotificationEventDTO(
+            user_id=graph_exec.user_id,
+            type=NotificationType.AGENT_RUN,
+            data=AgentRunData(
+                outputs=named_outputs,
+                agent_name=metadata.name,
+                credits_used=exec_stats["cost"],
+                execution_time=timing_info.wall_time,
+                graph_id=graph_exec.graph_id,
+                node_count=exec_stats["node_count"],
+            ).model_dump(),
+        )
+
+        logger.info(f"Sending notification for {event}")
+        get_notification_service().queue_notification(event)
 
     @classmethod
     @time_measured
