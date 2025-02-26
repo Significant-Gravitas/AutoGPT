@@ -1036,7 +1036,7 @@ async def get_graph_execution_cost(graph_exec_id: str) -> int | None:
         where={
             "metadata": {  # type: ignore
                 "path": ["graph_exec_id"],
-                "equals": graph_exec_id,
+                "equals": Json(graph_exec_id),
             },
             "type": CreditTransactionType.USAGE,
         }

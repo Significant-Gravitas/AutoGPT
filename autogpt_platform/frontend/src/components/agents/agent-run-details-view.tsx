@@ -49,7 +49,7 @@ export default function AgentRunDetailsView({
         label: "Duration",
         value: moment.duration(run.duration, "seconds").humanize(),
       },
-      { label: "Cost", value: `${run.cost} credits` },
+      ...(run.cost ? [{ label: "Cost", value: `${run.cost} credits` }] : []),
     ];
   }, [run, runStatus]);
 
