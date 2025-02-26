@@ -1,11 +1,12 @@
 import logging
+
 import bleach
-from jinja2 import BaseLoader
-from jinja2.sandbox import SandboxedEnvironment
-from markupsafe import Markup
 
 # Import the CSS sanitizer
 from bleach.css_sanitizer import CSSSanitizer
+from jinja2 import BaseLoader
+from jinja2.sandbox import SandboxedEnvironment
+from markupsafe import Markup
 
 logger = logging.getLogger(__name__)
 
