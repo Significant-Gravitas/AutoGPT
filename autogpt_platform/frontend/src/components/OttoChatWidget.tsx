@@ -6,6 +6,7 @@ import { useToast } from "@/components/ui/use-toast";
 import useSupabase from "../hooks/useSupabase";
 import useAgentGraph from "../hooks/useAgentGraph";
 import ReactMarkdown, { Components } from "react-markdown";
+import { GraphID } from "@/lib/autogpt-server-api/types";
 
 interface Document {
   url: string;
@@ -34,7 +35,7 @@ const OttoChatWidget = () => {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const flowID = searchParams.get("flowID");
-  const { nodes, edges } = useAgentGraph(flowID || undefined);
+  const { nodes, edges } = useAgentGraph((flowID as GraphID) || undefined);
   const { toast } = useToast();
 
   useEffect(() => {
