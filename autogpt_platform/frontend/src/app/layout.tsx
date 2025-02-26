@@ -10,7 +10,6 @@ import { cn } from "@/lib/utils";
 import "./globals.css";
 
 import { Navbar } from "@/components/agptui/Navbar";
-
 import { Toaster } from "@/components/ui/toaster";
 import { IconType } from "@/components/ui/icons";
 import { Providers } from "@/app/providers";
