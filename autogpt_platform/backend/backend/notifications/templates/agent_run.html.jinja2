@@ -15,28 +15,21 @@ data.outputs: the list of outputs of the agent
     margin-top: 0;
     margin-bottom: 10px;
   ">
-  Hi,
+  Your agent, <strong>{{ data.agent_name }}</strong>, has completed its run!
 </p>
-<p style="
-    font-family: 'Poppins', sans-serif;
-    color: #070629;
-    font-size: 16px;
-    line-height: 165%;
-    margin-top: 0;
-    margin-bottom: 10px;
-  ">
-  We've run your agent {{ data.agent_name }} and it took {{ data.execution_time | int }} seconds to complete.
-</p>
-<p style="
+<ul style="
     font-family: 'Poppins', sans-serif;
     color: #070629;
     font-size: 16px;
     line-height: 165%;
     margin-top: 0;
     margin-bottom: 20px;
+    padding-left: 20px;
   ">
-  It ran on {{ data.node_count }} nodes and used ${{ "{:.2f}".format((data.credits_used|float)/100) }}.
-</p>
+  <li>Time Taken: {{ data.execution_time | int }} seconds</li>
+  <li>Nodes Used: {{ data.node_count }}</li>
+  <li>Cost: ${{ "{:.2f}".format((data.credits_used|float)/100) }}</li>
+</ul>
 <div style="
     margin-left: 15px;
     margin-bottom: 20px;
@@ -71,35 +64,28 @@ data.outputs: the list of outputs of the agent
       {% if key != 'name' %}
       <div style="
         margin-left: 15px;
-        font-family: 'Poppins', sans-serif;
-        color: #070629;
-        font-size: 16px;
+        background-color: #f5f5ff;
+        padding: 8px 12px;
+        border-radius: 4px;
+        font-family: 'Roboto Mono', monospace;
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-wrap: break-word;
+        max-width: 100%;
+        overflow-x: auto;
+        margin-top: 5px;
         margin-bottom: 10px;
+        line-height: 1.4;
       ">
-        <span style="font-weight: 500;">{{ key }}:</span> 
-        <div style="
-          background-color: #f5f5ff;
-          padding: 8px 12px;
-          border-radius: 4px;
-          font-family: 'Roboto Mono', monospace;
-          white-space: pre-wrap;
-          word-break: break-word;
-          overflow-wrap: break-word;
-          max-width: 100%;
-          overflow-x: auto;
-          margin-top: 5px;
-          line-height: 1.4;
-        ">
-        {% if value is iterable and value is not string %}
-          {% if value|length == 1 %}
-            {{ value[0] }}
-          {% else %}
-            [{% for item in value %}{{ item }}{% if not loop.last %}, {% endif %}{% endfor %}]
-          {% endif %}
+      {% if value is iterable and value is not string %}
+        {% if value|length == 1 %}
+          {{ value[0] }}
         {% else %}
-          {{ value }}
+          [{% for item in value %}{{ item }}{% if not loop.last %}, {% endif %}{% endfor %}]
         {% endif %}
-        </div>
+      {% else %}
+        {{ value }}
+      {% endif %}
       </div>
       {% endif %}
     {% endfor %}
