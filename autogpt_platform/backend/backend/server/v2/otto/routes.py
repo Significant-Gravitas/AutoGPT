@@ -14,7 +14,7 @@ settings = Settings()
 
 OTTO_API_URL = settings.config.otto_api_url
 
-otto_router = APIRouter(prefix="/otto", tags=["otto"])
+router = APIRouter()
 
 
 class Document(BaseModel):
@@ -47,7 +47,7 @@ class ChatRequest(BaseModel):
     graph_id: Optional[str] = None
 
 
-@otto_router.post("/ask", response_model=ApiResponse)
+@router.post("/ask", response_model=ApiResponse)
 async def proxy_otto_request(request: ChatRequest) -> ApiResponse:
     """
     Proxy requests to Otto API while adding necessary security headers and logging.
