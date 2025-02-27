@@ -240,6 +240,21 @@ class BaseAppService(AppProcess, ABC):
             logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting RabbitMQ...")
 
 
+class RemoteCallError(BaseModel):
+    type: str = "RemoteCallError"
+    args: Optional[Tuple[Any]] = None
+
+
+EXCEPTION_MAPPING = {
+    e.__name__: e
+    for e in [
+        ValueError,
+        TimeoutError,
+        ConnectionError,
+    ]
+}
+
+
 class FastApiAppService(BaseAppService, ABC):
     fastapi_app: FastAPI
 
@@ -248,9 +263,12 @@ class FastApiAppService(BaseAppService, ABC):
         def handler(request: Request, exc: Exception):
             if log_error:
                 logger.exception(f"{request.method} {request.url.path} failed: {exc}")
-            return responses.Response(
-                content=str(exc),
+            return responses.JSONResponse(
                 status_code=status_code,
+                content=RemoteCallError(
+                    type=str(exc.__class__.__name__),
+                    args=exc.args or (str(exc),),
+                ).model_dump(),
             )
 
         return handler
@@ -421,8 +439,8 @@ def fastapi_get_service_client(service_type: Type[AS]) -> AS:
                 response.raise_for_status()
                 return response.json()
             except httpx.HTTPStatusError as e:
-                logger.error(f"HTTP error in {method_name}: {e.response.text}")
-                raise Exception(e.response.text) from e
+                error = RemoteCallError.model_validate(e.response.json(), strict=False)
+                raise EXCEPTION_MAPPING.get(error.type, Exception)(*error.args)
 
         def close(self):
             self.client.close()
