@@ -191,12 +191,15 @@ export default function useAgentGraph(
         });
         setEdges(() =>
           graph.links.map((link) => {
+            const adjustedSourceName = link.source_name?.startsWith("tools_^_")
+              ? "tools"
+              : link.source_name;
             return {
               id: formatEdgeID(link),
               type: "custom",
               data: {
                 edgeColor: getTypeColor(
-                  getOutputType(newNodes, link.source_id, link.source_name!),
+                  getOutputType(newNodes, link.source_id, adjustedSourceName!),
                 ),
                 sourcePos: newNodes.find((node) => node.id === link.source_id)
                   ?.position,
@@ -209,12 +212,12 @@ export default function useAgentGraph(
                 type: MarkerType.ArrowClosed,
                 strokeWidth: 2,
                 color: getTypeColor(
-                  getOutputType(newNodes, link.source_id, link.source_name!),
+                  getOutputType(newNodes, link.source_id, adjustedSourceName!),
                 ),
               },
               source: link.source_id,
               target: link.sink_id,
-              sourceHandle: link.source_name || undefined,
+              sourceHandle: adjustedSourceName || undefined,
               targetHandle: link.sink_name || undefined,
             };
           }),
@@ -795,12 +798,41 @@ export default function useAgentGraph(
       };
     });
 
-    const links = edges.map((edge) => ({
-      source_id: edge.source,
-      sink_id: edge.target,
-      source_name: edge.sourceHandle || "",
-      sink_name: edge.targetHandle || "",
-    }));
+    const links = edges.map((edge) => {
+      let sourceName = edge.sourceHandle || "";
+      const sourceNode = nodes.find((node) => node.id === edge.source);
+
+      // Special case for SmartDecisionMakerBlock
+      if (
+        sourceNode?.data.block_id === "3b191d9f-356f-482d-8238-ba04b6d18381" &&
+        sourceName.toLowerCase() === "tools"
+      ) {
+        const sinkNode = nodes.find((node) => node.id === edge.target);
+
+        const sinkNodeName = sinkNode
+          ? sinkNode.data.block_id === "e189baac-8c20-45a1-94a7-55177ea42565" // AgentExecutorBlock ID
+            ? sinkNode.data.hardcodedValues?.graph_id
+              ? availableFlows
+                  .find(
+                    (flow) =>
+                      flow.id === sinkNode.data.hardcodedValues.graph_id,
+                  )
+                  ?.name?.toLowerCase()
+                  .replace(/ /g, "_") || "agentexecutorblock"
+              : "agentexecutorblock"
+            : sinkNode.data.title.toLowerCase().replace(/ /g, "_").split("_")[0]
+          : "";
+
+        sourceName =
+          `tools_^_${sinkNodeName}_${edge.targetHandle || ""}`.toLowerCase();
+      }
+      return {
+        source_id: edge.source,
+        sink_id: edge.target,
+        source_name: sourceName,
+        sink_name: edge.targetHandle || "",
+      };
+    });
 
     const payload = {
       id: savedAgent?.id!,

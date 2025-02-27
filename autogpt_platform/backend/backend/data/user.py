@@ -58,6 +58,14 @@ async def get_user_email_by_id(user_id: str) -> Optional[str]:
         raise DatabaseError(f"Failed to get user email for user {user_id}: {e}") from e
 
 
+async def get_user_by_email(email: str) -> Optional[User]:
+    try:
+        user = await prisma.user.find_unique(where={"email": email})
+        return User.model_validate(user) if user else None
+    except Exception as e:
+        raise DatabaseError(f"Failed to get user by email {email}: {e}") from e
+
+
 async def update_user_email(user_id: str, email: str):
     try:
         await prisma.user.update(where={"id": user_id}, data={"email": email})
@@ -299,4 +307,30 @@ async def update_user_notification_preference(
     except Exception as e:
         raise DatabaseError(
             f"Failed to update user notification preference for user {user_id}: {e}"
+        ) from e
+
+
+async def set_user_email_verification(user_id: str, verified: bool) -> None:
+    """Set the email verification status for a user."""
+    try:
+        await User.prisma().update(
+            where={"id": user_id},
+            data={"emailVerified": verified},
+        )
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to set email verification status for user {user_id}: {e}"
+        ) from e
+
+
+async def get_user_email_verification(user_id: str) -> bool:
+    """Get the email verification status for a user."""
+    try:
+        user = await User.prisma().find_unique_or_raise(
+            where={"id": user_id},
+        )
+        return user.emailVerified
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to get email verification status for user {user_id}: {e}"
         ) from e

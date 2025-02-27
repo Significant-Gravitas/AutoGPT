@@ -33,7 +33,7 @@ export default function Page() {
       .then((agent) => {
         setStoreAgent(agent);
         api
-          .addAgentToLibrary(agent?.store_listing_version_id!)
+          .addMarketplaceAgentToLibrary(agent?.store_listing_version_id!)
           .then((agent) => {
             setAgent(agent);
             const update: { [key: string]: string } = {};

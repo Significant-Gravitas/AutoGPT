@@ -15,6 +15,7 @@ generator client {
 model User {
   id               String   @id // This should match the Supabase user ID
   email            String   @unique
+  emailVerified    Boolean  @default(true)
   name             String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -85,6 +86,7 @@ model AgentGraph {
 
   name        String?
   description String?
+
   isActive    Boolean @default(true)
   isTemplate  Boolean @default(false)
 
@@ -195,12 +197,17 @@ model LibraryAgent {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  imageUrl   String?
+
   agentId      String
   agentVersion Int
   Agent        AgentGraph @relation(fields: [agentId, agentVersion], references: [id, version])
 
   agentPresetId String?
   AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
+
+  creatorId String?
+  Creator   Profile? @relation(fields: [creatorId], references: [id])
 
   useGraphIsActiveVersion Boolean @default(false)
 
@@ -524,6 +531,8 @@ model Profile {
   avatarUrl String?
 
   isFeatured Boolean @default(false)
+
+  LibraryAgents LibraryAgent[]
 
   @@index([username])
   @@index([userId])

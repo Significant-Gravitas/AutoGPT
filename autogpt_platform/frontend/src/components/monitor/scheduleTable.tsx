@@ -177,7 +177,7 @@ export const SchedulesTable = ({
 
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-lg font-semibold">Schedules</h3>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Select onValueChange={setSelectedFilter}>
             <SelectTrigger className="h-8 w-[180px] rounded-md px-3 text-xs">
               <SelectValue placeholder="Filter by graph" />

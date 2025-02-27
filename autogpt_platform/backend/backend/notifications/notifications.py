@@ -8,14 +8,18 @@ from prisma.enums import NotificationType
 from pydantic import BaseModel
 
 from backend.data.notifications import (
-    BatchingStrategy,
     NotificationEventDTO,
     NotificationEventModel,
     NotificationResult,
+    QueueType,
     get_data_type,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.data.user import get_user_email_by_id, get_user_notification_preference
+from backend.data.user import (
+    get_user_email_by_id,
+    get_user_email_verification,
+    get_user_notification_preference,
+)
 from backend.notifications.email import EmailSender
 from backend.util.service import AppService, expose
 from backend.util.settings import Settings
@@ -44,6 +48,15 @@ def create_notification_config() -> RabbitMQConfig:
             arguments={
                 "x-dead-letter-exchange": dead_letter_exchange.name,
                 "x-dead-letter-routing-key": "failed.immediate",
+            },
+        ),
+        Queue(
+            name="admin_notifications",
+            exchange=notification_exchange,
+            routing_key="notification.admin.#",
+            arguments={
+                "x-dead-letter-exchange": dead_letter_exchange.name,
+                "x-dead-letter-routing-key": "failed.admin",
             },
         ),
         # Failed notifications queue
@@ -79,10 +92,16 @@ class NotificationManager(AppService):
 
     def get_routing_key(self, event: NotificationEventModel) -> str:
         """Get the appropriate routing key for an event"""
-        if event.strategy == BatchingStrategy.IMMEDIATE:
+        if event.strategy == QueueType.IMMEDIATE:
             return f"notification.immediate.{event.type.value}"
-        elif event.strategy == BatchingStrategy.BACKOFF:
+        elif event.strategy == QueueType.BACKOFF:
             return f"notification.backoff.{event.type.value}"
+        elif event.strategy == QueueType.ADMIN:
+            return f"notification.admin.{event.type.value}"
+        elif event.strategy == QueueType.HOURLY:
+            return f"notification.hourly.{event.type.value}"
+        elif event.strategy == QueueType.DAILY:
+            return f"notification.daily.{event.type.value}"
         return f"notification.{event.type.value}"
 
     @expose
@@ -124,9 +143,13 @@ class NotificationManager(AppService):
     def _should_email_user_based_on_preference(
         self, user_id: str, event_type: NotificationType
     ) -> bool:
-        return self.run_and_wait(
+        """Check if a user wants to receive a notification based on their preferences and email verification status"""
+        validated_email = self.run_and_wait(get_user_email_verification(user_id))
+        preference = self.run_and_wait(
             get_user_notification_preference(user_id)
         ).preferences.get(event_type, True)
+        # only if both are true, should we email this person
+        return validated_email and preference
 
     def _parse_message(self, message: str) -> NotificationEvent | None:
         try:
@@ -139,6 +162,22 @@ class NotificationManager(AppService):
             logger.error(f"Error parsing message due to non matching schema {e}")
             return None
 
+    def _process_admin_message(self, message: str) -> bool:
+        """Process a single notification, sending to an admin, returning whether to put into the failed queue"""
+        try:
+            parsed = self._parse_message(message)
+            if not parsed:
+                return False
+            event = parsed.event
+            model = parsed.model
+            logger.debug(f"Processing notification for admin: {model}")
+            recipient_email = settings.config.refund_notification_email
+            self.email_sender.send_templated(event.type, recipient_email, model)
+            return True
+        except Exception as e:
+            logger.exception(f"Error processing notification: {e}")
+            return False
+
     def _process_immediate(self, message: str) -> bool:
         """Process a single notification immediately, returning whether to put into the failed queue"""
         try:
@@ -147,11 +186,9 @@ class NotificationManager(AppService):
                 return False
             event = parsed.event
             model = parsed.model
+            logger.debug(f"Processing immediate notification: {model}")
 
-            if event.recipient_email:
-                recipient_email = event.recipient_email
-            else:
-                recipient_email = self.run_and_wait(get_user_email_by_id(event.user_id))
+            recipient_email = self.run_and_wait(get_user_email_by_id(event.user_id))
             if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False
@@ -166,7 +203,6 @@ class NotificationManager(AppService):
                 return True
 
             self.email_sender.send_templated(event.type, recipient_email, model)
-            logger.info(f"Processing notification: {model}")
             return True
         except Exception as e:
             logger.exception(f"Error processing notification: {e}")
@@ -211,12 +247,19 @@ class NotificationManager(AppService):
             channel.get_queue("immediate_notifications")
         )
 
+        admin_queue = self.run_and_wait(channel.get_queue("admin_notifications"))
+
         while self.running:
             try:
                 self._run_queue(
                     queue=immediate_queue,
                     process_func=self._process_immediate,
                     error_queue_name="immediate_notifications",
+                )
+                self._run_queue(
+                    queue=admin_queue,
+                    process_func=self._process_admin_message,
+                    error_queue_name="admin_notifications",
                 )
 
                 time.sleep(0.1)

@@ -36,7 +36,7 @@ export const FlowRunsStatus: React.FC<{
     <div className={className}>
       <div className="flex flex-row items-center justify-between">
         <CardTitle>{title || "Stats"}</CardTitle>
-        <div className="flex space-x-2">
+        <div className="flex flex-wrap space-x-2">
           <Button
             variant="outline"
             size="sm"
