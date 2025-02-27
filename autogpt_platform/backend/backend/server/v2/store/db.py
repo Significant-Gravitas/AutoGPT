@@ -959,17 +959,17 @@ async def get_my_agents(
     try:
         search_filter: prisma.types.LibraryAgentWhereInput = {
             "userId": user_id,
-            "Agent": {"is": {"StoreListing": {"none": {"isDeleted": False}}}},
+            "AgentGraph": {"is": {"StoreListing": {"none": {"isDeleted": False}}}},
             "isArchived": False,
             "isDeleted": False,
         }
 
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=search_filter,
-            order=[{"agentVersion": "desc"}],
+            order=[{"agentGraphVersion": "desc"}],
             skip=(page - 1) * page_size,
             take=page_size,
-            include={"Agent": True},
+            include={"AgentGraph": True},
         )
 
         total = await prisma.models.LibraryAgent.prisma().count(where=search_filter)
@@ -985,7 +985,7 @@ async def get_my_agents(
                 agent_image=library_agent.imageUrl,
             )
             for library_agent in library_agents
-            if (graph := library_agent.Agent)
+            if (graph := library_agent.AgentGraph)
         ]
 
         return backend.server.v2.store.model.MyAgentsResponse(

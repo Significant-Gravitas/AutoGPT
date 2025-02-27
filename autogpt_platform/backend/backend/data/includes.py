@@ -62,10 +62,10 @@ INTEGRATION_WEBHOOK_INCLUDE: prisma.types.IntegrationWebhookInclude = {
 
 def library_agent_include(user_id: str) -> prisma.types.LibraryAgentInclude:
     return {
-        "Agent": {
+        "AgentGraph": {
             "include": {
                 **AGENT_GRAPH_INCLUDE,
-                "AgentGraphExecution": {"where": {"userId": user_id}},
+                "AgentGraphExecutions": {"where": {"userId": user_id}},
             }
         },
         "Creator": True,

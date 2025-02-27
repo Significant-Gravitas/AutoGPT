@@ -356,8 +356,8 @@ export type NodeExecutionResult = {
 /* Mirror of backend/server/v2/library/model.py:LibraryAgent */
 export type LibraryAgent = {
   id: LibraryAgentID;
-  agent_id: GraphID;
-  agent_version: number;
+  graph_id: GraphID;
+  graph_version: number;
   image_url?: string;
   creator_name: string;
   creator_image_url: string;
@@ -393,8 +393,8 @@ export interface LibraryAgentResponse {
 export interface LibraryAgentPreset {
   id: string;
   updated_at: Date;
-  agent_id: string;
-  agent_version: number;
+  graph_id: GraphID;
+  graph_version: number;
   name: string;
   description: string;
   is_active: boolean;
@@ -414,8 +414,8 @@ export interface CreateLibraryAgentPresetRequest {
   name: string;
   description: string;
   inputs: { [key: string]: any };
-  agent_id: string;
-  agent_version: number;
+  graph_id: GraphID;
+  graph_version: number;
   is_active: boolean;
 }
 
