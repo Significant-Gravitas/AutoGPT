@@ -1,10 +1,10 @@
 {# Low Balance Notification Email Template #}
 {# Template variables:
+data.agent_name: the name of the agent
 data.current_balance: the current balance of the user
-data.threshold_amount: the threshold amount for the notification (usually 0)
 data.top_up_link: the link to the top-up page
+data.top_up_amount: the amount to top up
 data.shortfall: the shortfall amount
-data.recent_usage: the recent usage history
 #}
 
 <p style="
@@ -26,7 +26,7 @@ data.recent_usage: the recent usage history
     margin-top: 0;
     margin-bottom: 20px;
   ">
-  Your agent run has been paused due to insufficient balance.
+  Your agent "<strong>{{ data.agent_name }}</strong>" has been paused due to insufficient balance.
 </p>
 
 <div style="
@@ -52,16 +52,16 @@ data.recent_usage: the recent usage history
     margin-top: 0;
     margin-bottom: 10px;
   ">
-    <strong>Threshold Amount:</strong> ${{ "{:.2f}".format((data.threshold_amount|float)/100) }}
+    <strong>Shortfall:</strong> ${{ "{:.2f}".format((data.shortfall|float)/100) }}
   </p>
   <p style="
     font-family: 'Poppins', sans-serif;
     color: #070629;
     font-size: 16px;
     margin-top: 0;
-    margin-bottom: 10px;
+    margin-bottom: 0;
   ">
-    <strong>Shortfall:</strong> ${{ "{:.2f}".format((data.shortfall|float)/100) }}
+    <strong>Recommended Top-up:</strong> ${{ "{:.2f}".format((data.top_up_amount|float)/100) }}
   </p>
 </div>
 
@@ -80,7 +80,7 @@ data.recent_usage: the recent usage history
     margin-top: 0;
     margin-bottom: 10px;
   ">
-    <strong>Transaction Details:</strong>
+    <strong>Block Execution Failed:</strong>
   </p>
   <p style="
     font-family: 'Poppins', sans-serif;
@@ -89,44 +89,9 @@ data.recent_usage: the recent usage history
     margin-top: 0;
     margin-bottom: 5px;
   ">
-    Your agent run requires additional credits to complete.
+    Your agent "<strong>{{ data.agent_name }}</strong>" requires additional credits to continue running. The current operation has been canceled until your balance is topped up.
   </p>
 </div>
-
-{% if data.recent_usage and data.recent_usage|length > 0 %}
-<div style="
-    margin-bottom: 20px;
-  ">
-  <p style="
-    font-family: 'Poppins', sans-serif;
-    color: #070629;
-    font-weight: 600;
-    font-size: 16px;
-    margin-bottom: 10px;
-  ">
-    Recent Usage:
-  </p>
-
-  <div style="
-      margin-left: 15px;
-      background-color: #f5f5ff;
-      padding: 12px;
-      border-radius: 4px;
-      font-family: 'Roboto Mono', monospace;
-      white-space: pre-wrap;
-      word-break: break-word;
-      overflow-wrap: break-word;
-      max-width: 100%;
-      overflow-x: auto;
-    ">
-    {% for usage in data.recent_usage %}
-      <p style="margin: 5px 0;">
-        {{ usage.date }} - {{ usage.agent_name }}: ${{ "{:.2f}".format((usage.credits_used|float)/100) }}
-      </p>
-    {% endfor %}
-  </div>
-</div>
-{% endif %}
 
 <div style="
     text-align: center;
@@ -142,7 +107,7 @@ data.recent_usage: the recent usage history
     font-weight: 500;
     display: inline-block;
   ">
-    Top Up Balance
+    Top Up Balance by ${{ "{:.2f}".format((data.top_up_amount|float)/100) }}
   </a>
 </div>
 
@@ -155,5 +120,5 @@ data.recent_usage: the recent usage history
     margin-bottom: 10px;
     font-style: italic;
   ">
-  This is an automated notification. Your agent will resume running after you top up your balance.
+  This is an automated notification. Your agent is stopped and will need manually restarted unless set to trigger automatically.
 </p>

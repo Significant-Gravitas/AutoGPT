@@ -586,19 +586,8 @@ class Executor:
                     and "type" in e.args[1]
                     and e.args[1]["type"] == "low_balance"
                 ):
-
-                    cls.notification_service.queue_notification(
-                        NotificationEventDTO(
-                            user_id=node_exec.user_id,
-                            type=NotificationType.LOW_BALANCE,
-                            data=LowBalanceData(
-                                current_balance=stats["cost"] if stats else 0,
-                                threshold_amount=0,
-                                top_up_link="test",
-                                recent_usage=0,
-                                shortfall=e.args[1]["balance"] - e.args[1]["amount"],
-                            ).model_dump(),
-                        )
+                    cls._handle_low_balance_notif(
+                        node_exec.user_id, node_exec.graph_id, stats or {}, e
                     )
             else:
                 log_metadata.exception(
@@ -664,48 +653,7 @@ class Executor:
         )
         cls.db_client.send_execution_update(result)
 
-        metadata = cls.db_client.get_graph_metadata(
-            graph_exec.graph_id, graph_exec.graph_version
-        )
-        assert metadata is not None
-        outputs = cls.db_client.get_execution_results(graph_exec.graph_exec_id)
-
-        # Collect named outputs as a list of dictionaries
-        named_outputs = []
-        for output in outputs:
-            if output.block_id == AgentOutputBlock().id:
-                # Create a dictionary for this named output
-                named_output = {
-                    # Include the name as a field in each output
-                    "name": (
-                        output.output_data["name"][0]
-                        if isinstance(output.output_data["name"], list)
-                        else output.output_data["name"]
-                    )
-                }
-
-                # Add all other fields
-                for key, value in output.output_data.items():
-                    if key != "name":
-                        named_output[key] = value
-
-                named_outputs.append(named_output)
-
-        event = NotificationEventDTO(
-            user_id=graph_exec.user_id,
-            type=NotificationType.AGENT_RUN,
-            data=AgentRunData(
-                outputs=named_outputs,
-                agent_name=metadata.name,
-                credits_used=exec_stats["cost"],
-                execution_time=timing_info.wall_time,
-                graph_id=graph_exec.graph_id,
-                node_count=exec_stats["node_count"],
-            ).model_dump(),
-        )
-
-        logger.info(f"Sending notification for {event}")
-        get_notification_service().queue_notification(event)
+        cls._handle_agent_run_notif(graph_exec, timing_info.wall_time, exec_stats)
 
     @classmethod
     @time_measured
@@ -814,6 +762,14 @@ class Executor:
                 f"Failed graph execution {graph_exec.graph_exec_id}: {e}"
             )
             error = e
+            if (
+                len(e.args) == 2
+                and "type" in e.args[1]
+                and e.args[1]["type"] == "low_balance"
+            ):
+                cls._handle_low_balance_notif(
+                    graph_exec.user_id, graph_exec.graph_id, exec_stats, e
+                )
         finally:
             if not cancel.is_set():
                 finished = True
@@ -825,6 +781,81 @@ class Executor:
             exec_stats,
             ExecutionStatus.FAILED if error else ExecutionStatus.COMPLETED,
             error,
+        )
+
+    @classmethod
+    def _handle_agent_run_notif(
+        cls,
+        graph_exec: GraphExecutionEntry,
+        wall_time: float,
+        exec_stats: dict[str, Any],
+    ):
+        metadata = cls.db_client.get_graph_metadata(
+            graph_exec.graph_id, graph_exec.graph_version
+        )
+        assert metadata is not None
+        outputs = cls.db_client.get_execution_results(graph_exec.graph_exec_id)
+
+        # Collect named outputs as a list of dictionaries
+        named_outputs = []
+        for output in outputs:
+            if output.block_id == AgentOutputBlock().id:
+                # Create a dictionary for this named output
+                named_output = {
+                    # Include the name as a field in each output
+                    "name": (
+                        output.output_data["name"][0]
+                        if isinstance(output.output_data["name"], list)
+                        else output.output_data["name"]
+                    )
+                }
+
+                # Add all other fields
+                for key, value in output.output_data.items():
+                    if key != "name":
+                        named_output[key] = value
+
+                named_outputs.append(named_output)
+
+        event = NotificationEventDTO(
+            user_id=graph_exec.user_id,
+            type=NotificationType.AGENT_RUN,
+            data=AgentRunData(
+                outputs=named_outputs,
+                agent_name=metadata.name,
+                credits_used=exec_stats["cost"],
+                execution_time=wall_time,
+                graph_id=graph_exec.graph_id,
+                node_count=exec_stats["node_count"],
+            ).model_dump(),
+        )
+
+        logger.info(
+            f"Sending Agent Run Notification for {graph_exec.user_id}, {metadata.name}"
+        )
+        get_notification_service().queue_notification(event)
+
+    @classmethod
+    def _handle_low_balance_notif(
+        cls, user_id: str, graph_id: str, exec_stats: dict, e: Exception
+    ):
+        shortfall = e.args[1]["balance"] - e.args[1]["amount"]
+        metadata = cls.db_client.get_graph_metadata(graph_id)
+        top_up_amount = max(shortfall, 500)
+        top_up_link = cls.db_client.top_up_intent(user_id, top_up_amount)
+        logger.info(f"Sending low balance notification for user {user_id}")
+        cls.notification_service.queue_notification(
+            NotificationEventDTO(
+                user_id=user_id,
+                type=NotificationType.LOW_BALANCE,
+                data=LowBalanceData(
+                    current_balance=exec_stats["cost"] if exec_stats else 0,
+                    top_up_link=top_up_link,
+                    top_up_amount=top_up_amount,
+                    shortfall=shortfall,
+                    agent_name=metadata.name if metadata else "Unknown",
+                ).model_dump(),
+            )
         )
 
 
