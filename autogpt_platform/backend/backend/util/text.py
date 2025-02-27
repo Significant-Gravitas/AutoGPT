@@ -1,8 +1,6 @@
 import logging
 
 import bleach
-
-# Import the CSS sanitizer
 from bleach.css_sanitizer import CSSSanitizer
 from jinja2 import BaseLoader
 from jinja2.sandbox import SandboxedEnvironment
@@ -11,7 +9,7 @@ from markupsafe import Markup
 logger = logging.getLogger(__name__)
 
 
-def format_filter(value, format_string=None):
+def format_filter_for_jinja2(value, format_string=None):
     if format_string:
         return format_string % float(value)
     return value
@@ -28,7 +26,7 @@ class TextFormatter:
             if f in self.env.filters:
                 del self.env.filters[f]
 
-        self.env.filters["format"] = format_filter
+        self.env.filters["format"] = format_filter_for_jinja2
 
         # Define allowed CSS properties
         allowed_css_properties = [

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
 
 from redis.lock import Lock as RedisLock
 
+from backend.blocks.basic import AgentOutputBlock
 from backend.data.notifications import (
     AgentRunData,
     NotificationEventDTO,
@@ -647,12 +648,11 @@ class Executor:
         )
         assert metadata is not None
         outputs = cls.db_client.get_execution_results(graph_exec.graph_exec_id)
-        logger.info(f"{outputs=}")
 
         # Collect named outputs as a list of dictionaries
         named_outputs = []
         for output in outputs:
-            if output.output_data and "name" in output.output_data:
+            if output.block_id == AgentOutputBlock().id:
                 # Create a dictionary for this named output
                 named_output = {
                     # Include the name as a field in each output
