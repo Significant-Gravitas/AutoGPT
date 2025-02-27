@@ -314,8 +314,9 @@ class UserCreditBase(ABC):
 
             if amount < 0 and user_balance + amount < 0:
                 if fail_insufficient_credits:
-                    raise ValueError(
-                        f"Insufficient balance of ${user_balance/100}, where this will cost ${abs(amount)/100}"
+                    return ValueError(
+                        f"Insufficient balance of ${user_balance/100}, where this will cost ${abs(amount)/100}",
+                        {"user_id": user_id, "balance": user_balance, "amount": amount},
                     )
                 amount = min(-user_balance, 0)
 
