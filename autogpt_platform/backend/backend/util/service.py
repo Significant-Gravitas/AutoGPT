@@ -36,7 +36,7 @@ from typing import (
 import httpx
 import Pyro5.api
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Request, responses
 from pydantic import BaseModel, TypeAdapter, create_model
 from Pyro5 import api as pyro
 from Pyro5 import config as pyro_config
@@ -52,9 +52,11 @@ T = TypeVar("T")
 C = TypeVar("C", bound=Callable)
 
 config = Config()
-pyro_config.MAX_RETRIES = config.pyro_client_comm_retry  # type: ignore
-pyro_config.COMMTIMEOUT = config.pyro_client_comm_timeout  # type: ignore
 api_host = config.pyro_host
+api_comm_retry = config.pyro_client_comm_retry
+api_comm_timeout = config.pyro_client_comm_timeout
+pyro_config.MAX_RETRIES = api_comm_retry  # type: ignore
+pyro_config.COMMTIMEOUT = api_comm_timeout  # type: ignore
 
 
 P = ParamSpec("P")
@@ -238,8 +240,38 @@ class BaseAppService(AppProcess, ABC):
             logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting RabbitMQ...")
 
 
+class RemoteCallError(BaseModel):
+    type: str = "RemoteCallError"
+    args: Optional[Tuple[Any]] = None
+
+
+EXCEPTION_MAPPING = {
+    e.__name__: e
+    for e in [
+        ValueError,
+        TimeoutError,
+        ConnectionError,
+    ]
+}
+
+
 class FastApiAppService(BaseAppService, ABC):
     fastapi_app: FastAPI
+
+    @staticmethod
+    def _handle_internal_http_error(status_code: int = 500, log_error: bool = True):
+        def handler(request: Request, exc: Exception):
+            if log_error:
+                logger.exception(f"{request.method} {request.url.path} failed: {exc}")
+            return responses.JSONResponse(
+                status_code=status_code,
+                content=RemoteCallError(
+                    type=str(exc.__class__.__name__),
+                    args=exc.args or (str(exc),),
+                ).model_dump(),
+            )
+
+        return handler
 
     def _create_fastapi_endpoint(self, func: Callable) -> Callable:
         """
@@ -274,25 +306,15 @@ class FastApiAppService(BaseAppService, ABC):
         if asyncio.iscoroutinefunction(f):
 
             async def async_endpoint(body: RequestBodyModel):  # type: ignore #RequestBodyModel being variable
-                try:
-                    return await f(
-                        **{name: getattr(body, name) for name in body.model_fields}
-                    )
-                except Exception as e:
-                    logger.exception(f"Error in {func.__name__}: {e}")
-                    raise HTTPException(status_code=500, detail=e)
+                return await f(
+                    **{name: getattr(body, name) for name in body.model_fields}
+                )
 
             return async_endpoint
         else:
 
             def sync_endpoint(body: RequestBodyModel):  # type: ignore #RequestBodyModel being variable
-                try:
-                    return f(
-                        **{name: getattr(body, name) for name in body.model_fields}
-                    )
-                except Exception as e:
-                    logger.exception(f"Error in {func.__name__}: {e}")
-                    raise HTTPException(status_code=500, detail=e)
+                return f(**{name: getattr(body, name) for name in body.model_fields})
 
             return sync_endpoint
 
@@ -321,6 +343,12 @@ class FastApiAppService(BaseAppService, ABC):
                 )
         self.fastapi_app.add_api_route(
             "/health_check", self.health_check, methods=["POST"]
+        )
+        self.fastapi_app.add_exception_handler(
+            ValueError, self._handle_internal_http_error(400)
+        )
+        self.fastapi_app.add_exception_handler(
+            Exception, self._handle_internal_http_error(500)
         )
 
         # Start the FastAPI server in a separate thread.
@@ -393,24 +421,27 @@ def fastapi_close_service_client(client: Any) -> None:
         logger.warning(f"Client {client} is not closable")
 
 
-@conn_retry("FastAPI client", "Creating service client")
+@conn_retry("FastAPI client", "Creating service client", max_retry=api_comm_retry)
 def fastapi_get_service_client(service_type: Type[AS]) -> AS:
     class DynamicClient:
         def __init__(self):
             host = service_type.get_host()
             port = service_type.get_port()
             self.base_url = f"http://{host}:{port}".rstrip("/")
-            self.client = httpx.Client()
+            self.client = httpx.Client(
+                base_url=self.base_url,
+                timeout=api_comm_timeout,
+            )
 
         def _call_method(self, method_name: str, **kwargs) -> Any:
             try:
-                url = f"{self.base_url}/{method_name}"
-                response = self.client.post(url, json=to_dict(kwargs))
+                response = self.client.post(method_name, json=to_dict(kwargs))
                 response.raise_for_status()
                 return response.json()
             except httpx.HTTPStatusError as e:
                 logger.error(f"HTTP error in {method_name}: {e.response.text}")
-                raise Exception(e.response.text) from e
+                error = RemoteCallError.model_validate(e.response.json(), strict=False)
+                raise EXCEPTION_MAPPING.get(error.type, Exception)(*error.args)
 
         def close(self):
             self.client.close()
