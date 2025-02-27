@@ -45,7 +45,6 @@ class TextFormatter:
             "text-align",
         ]
 
-        # Create a CSS sanitizer
         self.css_sanitizer = CSSSanitizer(allowed_css_properties=allowed_css_properties)
 
         self.allowed_tags = [
@@ -82,12 +81,12 @@ class TextFormatter:
         # First render the content template
         content = self.format_string(content_template, data, **kwargs)
 
-        # Clean the HTML but don't escape it - now with CSS sanitizer
+        # Clean the HTML + CSS but don't escape it
         clean_content = bleach.clean(
             content,
             tags=self.allowed_tags,
             attributes=self.allowed_attributes,
-            css_sanitizer=self.css_sanitizer,  # Add the CSS sanitizer here
+            css_sanitizer=self.css_sanitizer,
             strip=True,
         )
 
