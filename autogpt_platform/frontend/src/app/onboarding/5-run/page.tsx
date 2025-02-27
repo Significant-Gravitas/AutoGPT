@@ -15,7 +15,6 @@ import Image from "next/image";
 import { LibraryAgent, StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useRouter } from "next/navigation";
-import { runGraph } from "./actions";
 
 export default function Page() {
   const { state, setState } = useOnboarding(5);
@@ -87,7 +86,8 @@ export default function Page() {
     if (!agent) {
       return;
     }
-    runGraph(agent.agent_id, agent.agent_version, state?.agentInput);
+    api.executeGraph(agent.agent_id, agent.agent_version, state?.agentInput);
+    router.push("/onboarding/6-congrats");
   }, [api, agent, router]);
 
   const runYourAgent = (

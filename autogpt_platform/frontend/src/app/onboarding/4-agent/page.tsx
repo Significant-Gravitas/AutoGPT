@@ -40,6 +40,17 @@ export default function Page() {
       console.log(agents);
       setAgents(agents);
     });
+    // Deselect agent if it's not in the list of agents
+    if (
+      state?.selectedAgentSlug &&
+      !storeAgents.some((agent) => agent.slug === state.selectedAgentSlug)
+    ) {
+      setState({
+        selectedAgentSlug: undefined,
+        selectedAgentCreator: undefined,
+        agentInput: undefined,
+      });
+    }
   }, [api, setAgents]);
 
   return (
