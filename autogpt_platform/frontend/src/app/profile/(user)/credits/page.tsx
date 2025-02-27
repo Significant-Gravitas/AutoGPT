@@ -34,7 +34,6 @@ export default function CreditsPage() {
     fetchInitialAutoTopUpConfig: true,
     fetchInitialRefundRequests: true,
     fetchInitialTransactionHistory: true,
-    fetchTopUpLibrary: true,
   });
   const router = useRouter();
   const searchParams = useSearchParams();
