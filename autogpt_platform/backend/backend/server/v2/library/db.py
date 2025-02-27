@@ -64,30 +64,6 @@ async def get_library_agents(
         raise store_exceptions.DatabaseError("Unable to fetch library agents.")
 
 
-async def get_library_agent(
-    library_agent_id: str, user_id: str
-) -> library_model.LibraryAgent:
-    try:
-        library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
-            where={"id": library_agent_id, "userId": user_id},
-            include={
-                "Agent": {
-                    "include": {
-                        "AgentNodes": {"include": {"Input": True, "Output": True}}
-                    }
-                }
-            },
-        )
-        if not library_agent:
-            raise store_exceptions.AgentNotFoundError(
-                f"Agent {library_agent_id} not found in library"
-            )
-        return library_model.LibraryAgent.from_db(library_agent)
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error fetching library agent: {e}")
-        raise store_exceptions.DatabaseError("Unable to fetch library agent.")
-
-
 async def create_library_agent(
     agent_id: str, agent_version: int, user_id: str
 ) -> prisma.models.LibraryAgent:

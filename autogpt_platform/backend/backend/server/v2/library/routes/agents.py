@@ -34,31 +34,6 @@ async def get_library_agents(
         )
 
 
-@router.get(
-    "/agents/{library_agent_id}",
-    tags=["library", "private"],
-    dependencies=[fastapi.Depends(autogpt_auth_lib.auth_middleware)],
-)
-async def get_library_agent(
-    library_agent_id: str,
-    user_id: Annotated[str, fastapi.Depends(autogpt_auth_lib.depends.get_user_id)],
-) -> library_model.LibraryAgent:
-    """
-    Get the agent with the given ID from the user's library.
-    """
-    try:
-        return await library_db.get_library_agent(library_agent_id, user_id)
-    except store_exceptions.AgentNotFoundError:
-        raise fastapi.HTTPException(
-            status_code=404, detail=f"Library agent {library_agent_id} not found"
-        )
-    except Exception as e:
-        logger.exception(f"Exception occurred whilst getting library agent: {e}")
-        raise fastapi.HTTPException(
-            status_code=500, detail="Failed to get library agent"
-        )
-
-
 @router.post(
     "/agents/{store_listing_version_id}",
     tags=["library", "private"],

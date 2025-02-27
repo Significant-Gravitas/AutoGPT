@@ -500,10 +500,6 @@ export default class BackendAPI {
     return this._get("/library/agents");
   }
 
-  getLibraryAgent(libraryAgentId: string): Promise<LibraryAgent> {
-    return this._get(`/library/agents/${libraryAgentId}`);
-  }
-
   addAgentToLibrary(storeListingVersionId: string): Promise<LibraryAgent> {
     return this._request("POST", `/library/agents/${storeListingVersionId}`);
   }
