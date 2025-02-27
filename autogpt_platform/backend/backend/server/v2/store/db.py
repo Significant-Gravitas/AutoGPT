@@ -697,9 +697,10 @@ async def get_my_agents(
 
     try:
         agents_with_max_version = await prisma.models.AgentGraph.prisma().find_many(
-            where=prisma.types.AgentGraphWhereInput(
-                userId=user_id, StoreListing={"none": {"isDeleted": False}}
-            ),
+            where={
+                "userId": user_id,
+                "StoreListings": {"none": {"isDeleted": False}},
+            },
             order=[{"version": "desc"}],
             distinct=["id"],
             skip=(page - 1) * page_size,
@@ -714,9 +715,10 @@ async def get_my_agents(
 
         total = len(
             await prisma.models.AgentGraph.prisma().find_many(
-                where=prisma.types.AgentGraphWhereInput(
-                    userId=user_id, StoreListing={"none": {"isDeleted": False}}
-                ),
+                where={
+                    "userId": user_id,
+                    "StoreListings": {"none": {"isDeleted": False}},
+                },
                 order=[{"version": "desc"}],
                 distinct=["id"],
             )

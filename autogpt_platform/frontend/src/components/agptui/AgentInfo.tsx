@@ -48,7 +48,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
         storeListingVersionId,
       );
       console.log("Agent added to library successfully");
-      router.push(`/library/agents/${newLibraryAgent.agent_id}`);
+      router.push(`/library/agents/${newLibraryAgent.graph_id}`);
     } catch (error) {
       console.error("Failed to add agent to library:", error);
     }

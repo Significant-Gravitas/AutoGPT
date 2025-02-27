@@ -33,7 +33,7 @@ def test_agent_preset_from_db():
     agent = library_model.LibraryAgentPreset.from_db(db_agent)
 
     assert agent.id == "test-agent-123"
-    assert agent.agent_version == 1
+    assert agent.graph_version == 1
     assert agent.is_active is True
     assert agent.name == "Test Agent"
     assert agent.description == "Test agent description"
