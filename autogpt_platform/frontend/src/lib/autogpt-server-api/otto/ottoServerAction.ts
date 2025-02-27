@@ -1,8 +1,8 @@
-'use server';
+"use server";
 
-import { revalidatePath } from 'next/cache';
-import BackendAPI from '../client';
-import { OttoQuery, OttoResponse } from '../types';
+import { revalidatePath } from "next/cache";
+import BackendAPI from "../client";
+import { OttoQuery, OttoResponse } from "../types";
 
 const api = new BackendAPI();
 
@@ -26,10 +26,10 @@ export async function askOtto(
 
   try {
     const response = await api.askOtto(ottoQuery);
-    revalidatePath('/build');
+    revalidatePath("/build");
     return response;
   } catch (error) {
-    console.error('Error in askOtto server action:', error);
+    console.error("Error in askOtto server action:", error);
     throw error;
   }
-} 
+}
