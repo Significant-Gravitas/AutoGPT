@@ -1,6 +1,7 @@
 import logging
 
 import bleach
+from bleach.css_sanitizer import CSSSanitizer
 from jinja2 import BaseLoader
 from jinja2.sandbox import SandboxedEnvironment
 from markupsafe import Markup
@@ -8,14 +9,57 @@ from markupsafe import Markup
 logger = logging.getLogger(__name__)
 
 
+def format_filter_for_jinja2(value, format_string=None):
+    if format_string:
+        return format_string % float(value)
+    return value
+
+
 class TextFormatter:
     def __init__(self):
         self.env = SandboxedEnvironment(loader=BaseLoader(), autoescape=True)
-        self.env.filters.clear()
-        self.env.tests.clear()
         self.env.globals.clear()
 
-        self.allowed_tags = ["p", "b", "i", "u", "ul", "li", "br", "strong", "em"]
+        # Instead of clearing all filters, just remove potentially unsafe ones
+        unsafe_filters = ["pprint", "urlize", "xmlattr", "tojson"]
+        for f in unsafe_filters:
+            if f in self.env.filters:
+                del self.env.filters[f]
+
+        self.env.filters["format"] = format_filter_for_jinja2
+
+        # Define allowed CSS properties
+        allowed_css_properties = [
+            "font-family",
+            "color",
+            "font-size",
+            "line-height",
+            "margin-top",
+            "margin-bottom",
+            "margin-left",
+            "margin-right",
+            "background-color",
+            "padding",
+            "border-radius",
+            "font-weight",
+            "text-align",
+        ]
+
+        self.css_sanitizer = CSSSanitizer(allowed_css_properties=allowed_css_properties)
+
+        self.allowed_tags = [
+            "p",
+            "b",
+            "i",
+            "u",
+            "ul",
+            "li",
+            "br",
+            "strong",
+            "em",
+            "div",
+            "span",
+        ]
         self.allowed_attributes = {"*": ["style", "class"]}
 
     def format_string(self, template_str: str, values=None, **kwargs) -> str:
@@ -37,17 +81,19 @@ class TextFormatter:
         # First render the content template
         content = self.format_string(content_template, data, **kwargs)
 
-        # Clean the HTML but don't escape it
+        # Clean the HTML + CSS but don't escape it
         clean_content = bleach.clean(
             content,
             tags=self.allowed_tags,
             attributes=self.allowed_attributes,
+            css_sanitizer=self.css_sanitizer,
             strip=True,
         )
 
         # Mark the cleaned HTML as safe using Markup
         safe_content = Markup(clean_content)
 
+        # Render subject
         rendered_subject_template = self.format_string(subject_template, data, **kwargs)
 
         # Create new env just for HTML template
