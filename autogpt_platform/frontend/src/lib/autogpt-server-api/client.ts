@@ -43,6 +43,8 @@ import {
   TransactionHistory,
   User,
   UserPasswordCredentials,
+  OttoQuery,
+  OttoResponse,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -864,6 +866,10 @@ export default class BackendAPI {
       graph_id: graphId,
       graph_version: graphVersion,
     });
+  }
+
+  async askOtto(query: OttoQuery): Promise<OttoResponse> {
+    return this._request("POST", "/otto/ask", query);
   }
 }
 

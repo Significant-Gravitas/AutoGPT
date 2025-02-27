@@ -5,19 +5,9 @@ import { useSearchParams, usePathname } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
 import useSupabase from "../hooks/useSupabase";
 import useAgentGraph from "../hooks/useAgentGraph";
-import ReactMarkdown, { Components } from "react-markdown";
+import ReactMarkdown from "react-markdown";
 import { GraphID } from "@/lib/autogpt-server-api/types";
-
-interface Document {
-  url: string;
-  relevance_score: number;
-}
-
-interface ApiResponse {
-  answer: string;
-  documents: Document[];
-  success: boolean;
-}
+import { askOtto } from "@/lib/autogpt-server-api/otto/ottoServerAction";
 
 interface Message {
   type: "user" | "assistant";
@@ -81,64 +71,35 @@ const OttoChatWidget = () => {
         throw new Error("No active session");
       }
 
-      const messageId = `${Date.now()}-web`;
-
-      const payload = {
-        query: userMessage,
-        conversation_history: messages.reduce<
-          { query: string; response: string }[]
-        >((acc, msg, i, arr) => {
-          if (
-            msg.type === "user" &&
-            i + 1 < arr.length &&
-            arr[i + 1].type === "assistant"
-          ) {
-            acc.push({
-              query: msg.content,
-              response: arr[i + 1].content,
-            });
-          }
-          return acc;
-        }, []),
-        user_id: user?.id || "anonymous",
-        message_id: messageId,
-        include_graph_data: includeGraphData,
-        graph_id: flowID || undefined,
-      };
-
-      setIncludeGraphData(false);
-
       // Add temporary processing message
       setMessages((prev) => [
         ...prev,
         { type: "assistant", content: "Processing your question..." },
       ]);
 
-      const BACKEND_URL =
-        process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8006";
-      const response = await fetch(`${BACKEND_URL}/api/otto/ask`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        if (response.status === 401) {
-          toast({
-            title: "Authentication Error",
-            description: "Please sign in to use the chat feature.",
-            variant: "destructive",
+      const conversationHistory = messages.reduce<
+        { query: string; response: string }[]
+      >((acc, msg, i, arr) => {
+        if (
+          msg.type === "user" &&
+          i + 1 < arr.length &&
+          arr[i + 1].type === "assistant"
+        ) {
+          acc.push({
+            query: msg.content,
+            response: arr[i + 1].content,
           });
-          throw new Error("Authentication required");
         }
-        throw new Error(`API request failed with status ${response.status}`);
-      }
+        return acc;
+      }, []);
 
-      const data: ApiResponse = await response.json();
+      const data = await askOtto(
+        userMessage,
+        conversationHistory,
+        user?.id || "anonymous",
+        includeGraphData,
+        flowID || undefined
+      );
 
       // Remove processing message and add actual response
       setMessages((prev) => [
@@ -159,6 +120,7 @@ const OttoChatWidget = () => {
       ]);
     } finally {
       setIsProcessing(false);
+      setIncludeGraphData(false);
     }
   };
 
