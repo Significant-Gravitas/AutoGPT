@@ -36,7 +36,7 @@ const OttoChatWidget = () => {
   const pathname = usePathname();
   const flowID = searchParams.get("flowID");
   const { nodes, edges } = useAgentGraph(
-    flowID ? (flowID as GraphID) : undefined
+    flowID ? (flowID as GraphID) : undefined,
   );
   const { toast } = useToast();
 
