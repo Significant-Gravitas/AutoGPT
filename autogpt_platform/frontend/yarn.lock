@@ -3281,11 +3281,6 @@
   resolved "https://registry.yarnpkg.com/@storybook/theming/-/theming-8.5.3.tgz#44462cc59a0ce66d2e714330399fae4672afda2e"
   integrity sha512-Jvzw+gT1HNarkJo21WZBq5pU89qDN8u/pD3woSh/1c2h5RS6UylWjQHotPFpcBIQiUSrDFtvCU9xugJm4MD0+w==
 
-"@stripe/stripe-js@^5.6.0":
-  version "5.6.0"
-  resolved "https://registry.yarnpkg.com/@stripe/stripe-js/-/stripe-js-5.6.0.tgz#cbb5b5f6110f870ca7de7e8ea3d189e9525a1019"
-  integrity sha512-w8CEY73X/7tw2KKlL3iOk679V9bWseE4GzNz3zlaYxcTjmcmWOathRb0emgo/QQ3eoNzmq68+2Y2gxluAv3xGw==
-
 "@supabase/auth-js@2.67.3":
   version "2.67.3"
   resolved "https://registry.yarnpkg.com/@supabase/auth-js/-/auth-js-2.67.3.tgz#a1f5eb22440b0cdbf87fe2ecae662a8dd8bb2028"
