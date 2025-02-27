@@ -671,8 +671,6 @@ class Executor:
 
                 named_outputs.append(named_output)
 
-        logger.info(f"named_outputs={named_outputs}")
-
         event = NotificationEventDTO(
             user_id=graph_exec.user_id,
             type=NotificationType.AGENT_RUN,
