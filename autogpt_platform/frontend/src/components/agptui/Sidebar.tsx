@@ -23,10 +23,6 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
-  const stripeAvailable = Boolean(
-    process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
-  );
-
   return (
     <>
       <Sheet>
@@ -54,17 +50,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
                   Creator dashboard
                 </div>
               </Link>
-              {stripeAvailable && (
-                <Link
-                  href="/profile/credits"
-                  className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
-                >
-                  <IconCoin className="h-6 w-6" />
-                  <div className="p-ui-medium text-base font-medium leading-normal">
-                    Billing
-                  </div>
-                </Link>
-              )}
+              <Link
+                href="/profile/credits"
+                className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+              >
+                <IconCoin className="h-6 w-6" />
+                <div className="p-ui-medium text-base font-medium leading-normal">
+                  Billing
+                </div>
+              </Link>
               <Link
                 href="/profile/integrations"
                 className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
@@ -118,17 +112,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
                 Agent dashboard
               </div>
             </Link>
-            {stripeAvailable && (
-              <Link
-                href="/profile/credits"
-                className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
-              >
-                <IconCoin className="h-6 w-6" />
-                <div className="p-ui-medium text-base font-medium leading-normal">
-                  Billing
-                </div>
-              </Link>
-            )}
+            <Link
+              href="/profile/credits"
+              className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+            >
+              <IconCoin className="h-6 w-6" />
+              <div className="p-ui-medium text-base font-medium leading-normal">
+                Billing
+              </div>
+            </Link>
             <Link
               href="/profile/integrations"
               className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
