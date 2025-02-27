@@ -39,7 +39,7 @@ class AgentRunData(BaseNotificationData):
     execution_time: float
     node_count: int = Field(..., description="Number of nodes executed")
     graph_id: str
-    outputs: dict[str, Any] = Field(..., description="Outputs of the agent")
+    outputs: list[dict[str, Any]] = Field(..., description="Outputs of the agent")
 
 
 class ZeroBalanceData(BaseNotificationData):
