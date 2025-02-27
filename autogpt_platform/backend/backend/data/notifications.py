@@ -53,6 +53,7 @@ class LowBalanceData(BaseNotificationData):
     threshold_amount: float
     top_up_link: str
     recent_usage: float = Field(..., description="Usage in the last 24 hours")
+    shortfall: float = Field(..., description="Amount of credits needed to continue")
 
 
 class BlockExecutionFailedData(BaseNotificationData):

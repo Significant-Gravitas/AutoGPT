@@ -3,6 +3,7 @@
 data.current_balance: the current balance of the user
 data.threshold_amount: the threshold amount for the notification (usually 0)
 data.top_up_link: the link to the top-up page
+data.shortfall: the shortfall amount
 data.recent_usage: the recent usage history
 #}
 
@@ -52,6 +53,15 @@ data.recent_usage: the recent usage history
     margin-bottom: 10px;
   ">
     <strong>Threshold Amount:</strong> ${{ "{:.2f}".format((data.threshold_amount|float)/100) }}
+  </p>
+  <p style="
+    font-family: 'Poppins', sans-serif;
+    color: #070629;
+    font-size: 16px;
+    margin-top: 0;
+    margin-bottom: 10px;
+  ">
+    <strong>Shortfall:</strong> ${{ "{:.2f}".format((data.shortfall|float)/100) }}
   </p>
 </div>
 
