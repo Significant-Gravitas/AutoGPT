@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
 
 from redis.lock import Lock as RedisLock
 
+from backend.blocks.basic import AgentOutputBlock
 from backend.data.notifications import (
     AgentRunData,
     NotificationEventDTO,
@@ -115,7 +116,6 @@ ExecutionStream = Generator[NodeExecutionEntry, None, None]
 def execute_node(
     db_client: "DatabaseManager",
     creds_manager: IntegrationCredentialsManager,
-    notification_service: "NotificationManager",
     data: NodeExecutionEntry,
     execution_stats: dict[str, Any] | None = None,
 ) -> ExecutionStream:
@@ -201,6 +201,7 @@ def execute_node(
         extra_exec_kwargs[field_name] = credentials
 
     output_size = 0
+    cost = 0
     try:
         # Charge the user for the execution before running the block.
         cost = db_client.spend_credits(data)
@@ -227,21 +228,6 @@ def execute_node(
 
         # Update execution status and spend credits
         update_execution(ExecutionStatus.COMPLETED)
-        event = NotificationEventDTO(
-            user_id=user_id,
-            type=NotificationType.AGENT_RUN,
-            data=AgentRunData(
-                outputs=outputs,
-                agent_name=node_block.name,
-                credits_used=cost,
-                execution_time=0,
-                graph_id=graph_id,
-                node_count=1,
-            ).model_dump(),
-        )
-
-        logger.info(f"Sending notification for {event}")
-        notification_service.queue_notification(event)
 
     except Exception as e:
         error_msg = str(e)
@@ -273,6 +259,7 @@ def execute_node(
             execution_stats.update(node_block.execution_stats)
             execution_stats["input_size"] = input_size
             execution_stats["output_size"] = output_size
+            execution_stats["cost"] = cost
 
 
 def _enqueue_next_nodes(
@@ -582,7 +569,6 @@ class Executor:
             for execution in execute_node(
                 db_client=cls.db_client,
                 creds_manager=cls.creds_manager,
-                notification_service=cls.notification_service,
                 data=node_exec,
                 execution_stats=stats,
             ):
@@ -658,6 +644,49 @@ class Executor:
         )
         cls.db_client.send_execution_update(result)
 
+        metadata = cls.db_client.get_graph_metadata(
+            graph_exec.graph_id, graph_exec.graph_version
+        )
+        assert metadata is not None
+        outputs = cls.db_client.get_execution_results(graph_exec.graph_exec_id)
+
+        # Collect named outputs as a list of dictionaries
+        named_outputs = []
+        for output in outputs:
+            if output.block_id == AgentOutputBlock().id:
+                # Create a dictionary for this named output
+                named_output = {
+                    # Include the name as a field in each output
+                    "name": (
+                        output.output_data["name"][0]
+                        if isinstance(output.output_data["name"], list)
+                        else output.output_data["name"]
+                    )
+                }
+
+                # Add all other fields
+                for key, value in output.output_data.items():
+                    if key != "name":
+                        named_output[key] = value
+
+                named_outputs.append(named_output)
+
+        event = NotificationEventDTO(
+            user_id=graph_exec.user_id,
+            type=NotificationType.AGENT_RUN,
+            data=AgentRunData(
+                outputs=named_outputs,
+                agent_name=metadata.name,
+                credits_used=exec_stats["cost"],
+                execution_time=timing_info.wall_time,
+                graph_id=graph_exec.graph_id,
+                node_count=exec_stats["node_count"],
+            ).model_dump(),
+        )
+
+        logger.info(f"Sending notification for {event}")
+        get_notification_service().queue_notification(event)
+
     @classmethod
     @time_measured
     def _on_graph_execution(
@@ -677,6 +706,7 @@ class Executor:
             "nodes_walltime": 0,
             "nodes_cputime": 0,
             "node_count": 0,
+            "cost": 0,
         }
         error = None
         finished = False
@@ -714,6 +744,7 @@ class Executor:
                         exec_stats["node_count"] += 1
                         exec_stats["nodes_cputime"] += result.get("cputime", 0)
                         exec_stats["nodes_walltime"] += result.get("walltime", 0)
+                        exec_stats["cost"] += result.get("cost", 0)
 
                 return callback
 
