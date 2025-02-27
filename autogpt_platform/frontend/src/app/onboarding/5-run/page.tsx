@@ -15,7 +15,6 @@ import Image from "next/image";
 import { LibraryAgent, StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useRouter } from "next/navigation";
-import { revalidatePath } from "next/cache";
 import { runGraph } from "./actions";
 
 export default function Page() {
@@ -214,9 +213,11 @@ export default function Page() {
               <OnboardingButton
                 variant="violet"
                 className="mt-8 w-[136px]"
-                disabled={Object.values(state?.agentInput || {}).some(
-                  (value) => value.trim() === "",
-                ) || !agent}
+                disabled={
+                  Object.values(state?.agentInput || {}).some(
+                    (value) => value.trim() === "",
+                  ) || !agent
+                }
                 onClick={runAgent}
               >
                 <Play className="" size={18} />

@@ -39,14 +39,14 @@ export function OnboardingListElement({
         selected ? "bg-[#F5F3FF80]" : "bg-white hover:border-zinc-400",
       )}
     >
-      <div className="flex flex-col items-start gap-1">
+      <div className="flex w-full flex-col items-start gap-1">
         <span className="text-sm font-medium text-zinc-700">{label}</span>
         {custom && selected ? (
           <input
             ref={inputRef}
             className={cn(
               selected ? "text-zinc-600" : "text-zinc-400",
-              "font-poppin border-0 bg-[#F5F3FF80] text-sm focus:outline-none",
+              "font-poppin w-full border-0 bg-[#F5F3FF80] text-sm focus:outline-none",
             )}
             placeholder="Please specify"
             value={content}

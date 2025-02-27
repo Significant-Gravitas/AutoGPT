@@ -23,7 +23,7 @@ export default function OnboardingAgentCard({
     <div
       className={cn(
         "relative cursor-pointer transition-all duration-200 ease-in-out",
-        "h-[394px] w-[368px] rounded-xl border border-transparent bg-white",
+        "h-[394px] w-[368px] rounded-[20px] border border-transparent bg-white",
         selected ? "bg-[#F5F3FF80]" : "hover:border-zinc-400",
       )}
       onClick={onClick}
@@ -33,7 +33,7 @@ export default function OnboardingAgentCard({
         <Image
           src={agent_image?.[0] || ""}
           alt="Agent cover"
-          className="m-2 h-[196px] w-[350px] rounded-xl object-cover"
+          className="m-2 h-[196px] w-[350px] rounded-[16px] object-cover"
           width={350}
           height={196}
         />
@@ -84,7 +84,7 @@ export default function OnboardingAgentCard({
       </div>
       <div
         className={cn(
-          "pointer-events-none absolute inset-0 rounded-xl border-2 transition-all duration-200 ease-in-out",
+          "pointer-events-none absolute inset-0 rounded-[20px] border-2 transition-all duration-200 ease-in-out",
           selected ? "border-violet-700" : "border-transparent",
         )}
       />
