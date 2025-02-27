@@ -242,7 +242,7 @@ class BaseAppService(AppProcess, ABC):
 
 class RemoteCallError(BaseModel):
     type: str = "RemoteCallError"
-    args: Optional[Tuple[Any]] = None
+    args: Optional[Tuple[Any, ...]] = None
 
 
 EXCEPTION_MAPPING = {
