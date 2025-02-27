@@ -6,6 +6,6 @@ import { redirect } from "next/navigation";
 export async function finishOnboarding() {
   const api = new BackendAPI();
   await api.updateUserOnboarding({ step: 5, isCompleted: true });
-  revalidatePath("/monitoring", "layout");
-  redirect("/monitoring");
+  revalidatePath("/library", "layout");
+  redirect("/library");
 }

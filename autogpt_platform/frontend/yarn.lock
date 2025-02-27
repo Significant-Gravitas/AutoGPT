@@ -3237,10 +3237,10 @@
     "@storybook/react-dom-shim" "8.5.3"
     "@storybook/theming" "8.5.3"
 
-"@storybook/test-runner@^0.20.1":
-  version "0.20.1"
-  resolved "https://registry.yarnpkg.com/@storybook/test-runner/-/test-runner-0.20.1.tgz#e2efa6266d512312a6b810db376da2919008cccd"
-  integrity sha512-3WU/th/uncIR6vpQDK9hKjiZjmczsluoLbgkRV7ufxY9IgHCGcbIjvT5EPS+XZIaOrNGjaPsyB5cE1okKn9iSA==
+"@storybook/test-runner@^0.21.0":
+  version "0.21.3"
+  resolved "https://registry.yarnpkg.com/@storybook/test-runner/-/test-runner-0.21.3.tgz#20ad7a9ee20811c51f332557e362733df2c31c4b"
+  integrity sha512-tsorR0IVYElcaTZrT/ZrH/8YDw7c+wrLDN0e3qj1WdbqU8l2IU4+a32HLXaakzdDpuTn+d8xCk4VZMlzMrmToA==
   dependencies:
     "@babel/core" "^7.22.5"
     "@babel/generator" "^7.22.5"
