@@ -98,7 +98,7 @@ const OttoChatWidget = () => {
         conversationHistory,
         user?.id || "anonymous",
         includeGraphData,
-        flowID || undefined
+        flowID || undefined,
       );
 
       // Remove processing message and add actual response
