@@ -334,11 +334,18 @@ async def update_execution_status(
     return ExecutionResult.from_db(res)
 
 
-async def delete_execution(graph_exec_id: str, user_id: str) -> None:
-    delete_count = await AgentGraphExecution.prisma().delete_many(
-        where={"id": graph_exec_id, "userId": user_id}
-    )
-    if delete_count < 1:
+async def delete_execution(
+    graph_exec_id: str, user_id: str, soft_delete: bool = True
+) -> None:
+    if soft_delete:
+        deleted_count = await AgentGraphExecution.prisma().update_many(
+            where={"id": graph_exec_id, "userId": user_id}, data={"isDeleted": True}
+        )
+    else:
+        deleted_count = await AgentGraphExecution.prisma().delete_many(
+            where={"id": graph_exec_id, "userId": user_id}
+        )
+    if deleted_count < 1:
         raise DatabaseError(
             f"Could not delete graph execution #{graph_exec_id}: not found"
         )
@@ -363,15 +370,12 @@ async def get_executions_in_timerange(
     try:
         executions = await AgentGraphExecution.prisma().find_many(
             where={
-                "AND": [
-                    {
-                        "startedAt": {
-                            "gte": datetime.fromisoformat(start_time),
-                            "lte": datetime.fromisoformat(end_time),
-                        }
-                    },
-                    {"userId": user_id},
-                ]
+                "startedAt": {
+                    "gte": datetime.fromisoformat(start_time),
+                    "lte": datetime.fromisoformat(end_time),
+                },
+                "userId": user_id,
+                "isDeleted": False,
             },
             include=GRAPH_EXECUTION_INCLUDE,
         )
