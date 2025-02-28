@@ -3,7 +3,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useSearchParams, usePathname } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
-import useSupabase from "../hooks/useSupabase";
 import useAgentGraph from "../hooks/useAgentGraph";
 import ReactMarkdown from "react-markdown";
 import { GraphID } from "@/lib/autogpt-server-api/types";
@@ -21,7 +20,6 @@ const OttoChatWidget = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [includeGraphData, setIncludeGraphData] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { user, supabase } = useSupabase();
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const flowID = searchParams.get("flowID");
@@ -84,7 +82,6 @@ const OttoChatWidget = () => {
       const data = await askOtto(
         userMessage,
         conversationHistory,
-        user?.id || "anonymous",
         includeGraphData,
         flowID || undefined,
       );
@@ -107,7 +104,10 @@ const OttoChatWidget = () => {
         { type: "assistant", content: errorMessage },
       ]);
 
-      if (error instanceof Error && error.message === "Authentication required") {
+      if (
+        error instanceof Error &&
+        error.message === "Authentication required"
+      ) {
         toast({
           title: "Authentication Error",
           description: "Please sign in to use the chat feature.",
