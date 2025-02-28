@@ -127,7 +127,6 @@ def execute_node(
     Args:
         db_client: The client to send execution updates to the server.
         creds_manager: The manager to acquire and release credentials.
-        notification_service: The service to send notifications.
         data: The execution data for executing the current node.
         execution_stats: The execution statistics to be updated.
 
@@ -493,7 +492,6 @@ class Executor:
         cls.pid = os.getpid()
         cls.db_client = get_db_client()
         cls.creds_manager = IntegrationCredentialsManager()
-        cls.notification_service = get_notification_service()
 
         # Set up shutdown handlers
         cls.shutdown_lock = threading.Lock()
@@ -581,18 +579,13 @@ class Executor:
                 log_metadata.info(
                     f"Failed node execution {node_exec.node_exec_id}: {e}"
                 )
-                if (
-                    len(e.args) == 2
-                    and "type" in e.args[1]
-                    and e.args[1]["type"] == "low_balance"
-                ):
-                    cls._handle_low_balance_notif(
-                        node_exec.user_id, node_exec.graph_id, stats or {}, e
-                    )
             else:
                 log_metadata.exception(
                     f"Failed node execution {node_exec.node_exec_id}: {e}"
                 )
+
+            if stats is not None:
+                stats["error"] = e
 
     @classmethod
     def on_graph_executor_start(cls):
@@ -602,6 +595,7 @@ class Executor:
         cls.db_client = get_db_client()
         cls.pool_size = settings.config.num_node_workers
         cls.pid = os.getpid()
+        cls.notification_service = get_notification_service()
         cls._init_node_executor_pool()
         logger.info(
             f"Graph executor {cls.pid} started with {cls.pool_size} node workers"
@@ -652,8 +646,7 @@ class Executor:
             stats=exec_stats,
         )
         cls.db_client.send_execution_update(result)
-
-        cls._handle_agent_run_notif(graph_exec, timing_info.wall_time, exec_stats)
+        cls._handle_agent_run_notif(graph_exec, exec_stats)
 
     @classmethod
     @time_measured
@@ -674,6 +667,7 @@ class Executor:
             "nodes_walltime": 0,
             "nodes_cputime": 0,
             "node_count": 0,
+            "node_error_count": 0,
             "cost": 0,
         }
         error = None
@@ -701,18 +695,30 @@ class Executor:
                 queue.add(node_exec)
 
             running_executions: dict[str, AsyncResult] = {}
+            low_balance_error = None
 
             def make_exec_callback(exec_data: NodeExecutionEntry):
-                node_id = exec_data.node_id
 
                 def callback(result: object):
-                    running_executions.pop(node_id)
-                    nonlocal exec_stats
-                    if isinstance(result, dict):
-                        exec_stats["node_count"] += 1
-                        exec_stats["nodes_cputime"] += result.get("cputime", 0)
-                        exec_stats["nodes_walltime"] += result.get("walltime", 0)
-                        exec_stats["cost"] += result.get("cost", 0)
+                    running_executions.pop(exec_data.node_id)
+
+                    if not isinstance(result, dict):
+                        return
+
+                    nonlocal exec_stats, low_balance_error
+                    exec_stats["node_count"] += 1
+                    exec_stats["nodes_cputime"] += result.get("cputime", 0)
+                    exec_stats["nodes_walltime"] += result.get("walltime", 0)
+                    exec_stats["cost"] += result.get("cost", 0)
+                    if (err := result.get("error")) and isinstance(err, Exception):
+                        exec_stats["node_error_count"] += 1
+
+                        if (
+                            len(err.args) == 2
+                            and "type" in err.args[1]
+                            and err.args[1]["type"] == "low_balance"
+                        ):
+                            low_balance_error = err
 
                 return callback
 
@@ -757,19 +763,21 @@ class Executor:
                         execution.wait(3)
 
             log_metadata.info(f"Finished graph execution {graph_exec.graph_exec_id}")
+
+            if isinstance(low_balance_error, Exception):
+                cls._handle_low_balance_notif(
+                    graph_exec.user_id,
+                    graph_exec.graph_id,
+                    exec_stats,
+                    low_balance_error,
+                )
+                raise low_balance_error
+
         except Exception as e:
             log_metadata.exception(
                 f"Failed graph execution {graph_exec.graph_exec_id}: {e}"
             )
             error = e
-            if (
-                len(e.args) == 2
-                and "type" in e.args[1]
-                and e.args[1]["type"] == "low_balance"
-            ):
-                cls._handle_low_balance_notif(
-                    graph_exec.user_id, graph_exec.graph_id, exec_stats, e
-                )
         finally:
             if not cancel.is_set():
                 finished = True
@@ -787,7 +795,6 @@ class Executor:
     def _handle_agent_run_notif(
         cls,
         graph_exec: GraphExecutionEntry,
-        wall_time: float,
         exec_stats: dict[str, Any],
     ):
         metadata = cls.db_client.get_graph_metadata(
@@ -796,26 +803,14 @@ class Executor:
         assert metadata is not None
         outputs = cls.db_client.get_execution_results(graph_exec.graph_exec_id)
 
-        # Collect named outputs as a list of dictionaries
-        named_outputs = []
-        for output in outputs:
-            if output.block_id == AgentOutputBlock().id:
-                # Create a dictionary for this named output
-                named_output = {
-                    # Include the name as a field in each output
-                    "name": (
-                        output.output_data["name"][0]
-                        if isinstance(output.output_data["name"], list)
-                        else output.output_data["name"]
-                    )
-                }
-
-                # Add all other fields
-                for key, value in output.output_data.items():
-                    if key != "name":
-                        named_output[key] = value
-
-                named_outputs.append(named_output)
+        named_outputs = [
+            {
+                key: value[0] if key == "name" else value
+                for key, value in output.output_data.items()
+            }
+            for output in outputs
+            if output.block_id == AgentOutputBlock().id
+        ]
 
         event = NotificationEventDTO(
             user_id=graph_exec.user_id,
@@ -823,17 +818,17 @@ class Executor:
             data=AgentRunData(
                 outputs=named_outputs,
                 agent_name=metadata.name,
-                credits_used=exec_stats["cost"],
-                execution_time=wall_time,
+                credits_used=exec_stats.get("cost", 0),
+                execution_time=exec_stats.get("walltime", 0),
                 graph_id=graph_exec.graph_id,
-                node_count=exec_stats["node_count"],
+                node_count=exec_stats.get("node_count", 0),
             ).model_dump(),
         )
 
         logger.info(
             f"Sending Agent Run Notification for {graph_exec.user_id}, {metadata.name}"
         )
-        get_notification_service().queue_notification(event)
+        cls.notification_service.queue_notification(event)
 
     @classmethod
     def _handle_low_balance_notif(
