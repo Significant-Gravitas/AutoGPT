@@ -8,11 +8,32 @@ import {
 } from "@/components/onboarding/OnboardingStep";
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
 import OnboardingAgentCard from "@/components/onboarding/OnboardingAgentCard";
-import { useEffect, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 
-const storeAgents = [
+// Will try to use the two first available agents
+const fallbackAgents = [
+  // Prod
+  {
+    username: "autogpt",
+    slug: "domain-drop-catcher",
+  },
+  {
+    username: "autogpt",
+    slug: "personalized-morning-coffee-newsletter",
+  },
+  // Dev
+  {
+    username: "autogpt",
+    slug: "business-owner-finder",
+  },
+  {
+    username: "autogpt",
+    slug: "financial-analysis-agent-your-personalized-financial-insights-tool",
+  },
+  // Temp
+  //todo kcze remove
   {
     username: "bright-eagle-40613",
     slug: "subtractor",
@@ -33,17 +54,24 @@ export default function Page() {
   const api = useBackendAPI();
 
   useEffect(() => {
-    Promise.all([
-      api.getStoreAgent(storeAgents[0]?.username, storeAgents[0]?.slug),
-      api.getStoreAgent(storeAgents[1]?.username, storeAgents[1]?.slug),
-    ]).then((agents) => {
+    Promise.allSettled(
+      fallbackAgents.map((agent) =>
+        api.getStoreAgent(agent.username, agent.slug),
+      ),
+    ).then((agents) => {
       console.log(agents);
-      setAgents(agents);
+      // Set only two fulfilled agents
+      setAgents(
+        agents
+          .filter((agent) => agent.status === "fulfilled")
+          .map((agent) => agent.value)
+          .slice(0, 2),
+      );
     });
     // Deselect agent if it's not in the list of agents
     if (
       state?.selectedAgentSlug &&
-      !storeAgents.some((agent) => agent.slug === state.selectedAgentSlug)
+      !fallbackAgents.some((agent) => agent.slug === state.selectedAgentSlug)
     ) {
       setState({
         selectedAgentSlug: undefined,
