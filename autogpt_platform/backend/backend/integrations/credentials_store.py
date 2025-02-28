@@ -178,6 +178,7 @@ example_credentials = APIKeyCredentials(
 )
 
 DEFAULT_CREDENTIALS = [
+    example_credentials,
     ollama_credentials,
     revid_credentials,
     ideogram_credentials,
