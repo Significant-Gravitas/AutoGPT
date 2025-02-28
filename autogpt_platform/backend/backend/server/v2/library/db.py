@@ -249,10 +249,10 @@ async def update_agent_version_in_library(
 async def update_library_agent(
     library_agent_id: str,
     user_id: str,
-    auto_update_version: bool = False,
-    is_favorite: bool = False,
-    is_archived: bool = False,
-    is_deleted: bool = False,
+    auto_update_version: Optional[bool] = None,
+    is_favorite: Optional[bool] = None,
+    is_archived: Optional[bool] = None,
+    is_deleted: Optional[bool] = None,
 ) -> None:
     """
     Updates the specified LibraryAgent record.
@@ -273,15 +273,19 @@ async def update_library_agent(
         f"auto_update_version={auto_update_version}, is_favorite={is_favorite}, "
         f"is_archived={is_archived}, is_deleted={is_deleted}"
     )
+    update_fields: prisma.types.LibraryAgentUpdateManyMutationInput = {}
+    if auto_update_version is not None:
+        update_fields["useGraphIsActiveVersion"] = auto_update_version
+    if is_favorite is not None:
+        update_fields["isFavorite"] = is_favorite
+    if is_archived is not None:
+        update_fields["isArchived"] = is_archived
+    if is_deleted is not None:
+        update_fields["isDeleted"] = is_deleted
+
     try:
         await prisma.models.LibraryAgent.prisma().update_many(
-            where={"id": library_agent_id, "userId": user_id},
-            data={
-                "useGraphIsActiveVersion": auto_update_version,
-                "isFavorite": is_favorite,
-                "isArchived": is_archived,
-                "isDeleted": is_deleted,
-            },
+            where={"id": library_agent_id, "userId": user_id}, data=update_fields
         )
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating library agent: {str(e)}")
