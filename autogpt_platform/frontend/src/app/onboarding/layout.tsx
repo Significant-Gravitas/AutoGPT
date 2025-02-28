@@ -1,6 +1,7 @@
 "use client";
 import { UserOnboarding } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
   ReactNode,
@@ -21,7 +22,7 @@ const OnboardingContext = createContext<
 export function useOnboarding(step?: number) {
   const context = useContext(OnboardingContext);
   if (!context)
-    throw new Error("useOnboarding must be used within OnboardingLayout");
+    throw new Error("useOnboarding must be used within /onboarding pages");
 
   useEffect(() => {
     if (!step) return;
@@ -39,12 +40,19 @@ export default function OnboardingLayout({
 }) {
   const [state, setStateRaw] = useState<UserOnboarding | null>(null);
   const api = useBackendAPI();
+  const pathname = usePathname();
+  const router = useRouter();
 
   useEffect(() => {
     const fetchOnboarding = async () => {
       const onboarding = await api.getUserOnboarding();
       setStateRaw(onboarding);
       console.log("userOnboarding", onboarding);
+
+      // Redirect outside onboarding if completed
+      if (onboarding.isCompleted && !pathname.startsWith("/onboarding/reset")) {
+        router.push("/library");
+      }
     };
     fetchOnboarding();
   }, [api]);
@@ -65,8 +73,7 @@ export default function OnboardingLayout({
       };
 
       setStateRaw((prev) => {
-        //todo save state when step changes
-        if (newState.step && prev?.step !== newState.step) {
+        if (newState.step && prev && prev?.step !== newState.step) {
           updateState(removeNullFields({ ...prev, ...newState }));
         }
 
@@ -77,7 +84,7 @@ export default function OnboardingLayout({
             integrations: [],
             isCompleted: false,
             ...newState,
-          } as UserOnboarding;
+          };
         }
         return { ...prev, ...newState };
       });
