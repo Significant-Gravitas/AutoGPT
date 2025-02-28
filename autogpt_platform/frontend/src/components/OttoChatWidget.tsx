@@ -59,18 +59,6 @@ const OttoChatWidget = () => {
     setMessages((prev) => [...prev, { type: "user", content: userMessage }]);
 
     try {
-      if (!supabase) {
-        throw new Error("Supabase client not initialized");
-      }
-
-      // Get the current session
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error("No active session");
-      }
-
       // Add temporary processing message
       setMessages((prev) => [
         ...prev,
@@ -110,7 +98,7 @@ const OttoChatWidget = () => {
       console.error("Error calling API:", error);
       // Remove processing message and add error message
       const errorMessage =
-        error instanceof Error && error.message === "No active session"
+        error instanceof Error && error.message === "Authentication required"
           ? "Please sign in to use the chat feature."
           : "Sorry, there was an error processing your message. Please try again.";
 
@@ -118,6 +106,14 @@ const OttoChatWidget = () => {
         ...prev.slice(0, -1),
         { type: "assistant", content: errorMessage },
       ]);
+
+      if (error instanceof Error && error.message === "Authentication required") {
+        toast({
+          title: "Authentication Error",
+          description: "Please sign in to use the chat feature.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setIsProcessing(false);
       setIncludeGraphData(false);
