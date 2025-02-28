@@ -378,6 +378,38 @@ async def add_store_agent_to_library(
         raise store_exceptions.DatabaseError("Failed to add agent to library") from e
 
 
+async def remove_agent_from_library(
+    user_id: str, agent_id: str, agent_version: int
+) -> None:
+    """
+    Removes an agent from the user's library.
+
+    Args:
+        user_id: The user's library from which the agent is being removed.
+        agent_id: The ID of the agent to remove.
+        agent_version: The version of the agent to remove.
+
+    Raises:
+        DatabaseError: If there's an issue deleting the LibraryAgent record.
+    """
+    logger.debug(
+        f"Removing agent {agent_id} v{agent_version} from library for user {user_id}"
+    )
+    try:
+        await prisma.models.LibraryAgent.prisma().delete(
+            where={
+                "userId": user_id,
+                "agentId": agent_id,
+                "agentVersion": agent_version,
+            }
+        )
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error removing agent from library: {e}")
+        raise store_exceptions.DatabaseError(
+            "Failed to remove agent from library"
+        ) from e
+
+
 ##############################################
 ########### Presets DB Functions #############
 ##############################################
