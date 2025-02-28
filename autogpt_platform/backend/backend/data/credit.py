@@ -1020,26 +1020,3 @@ async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
         return AutoTopUpConfig(threshold=0, amount=0)
 
     return AutoTopUpConfig.model_validate(user.topUpConfig)
-
-
-async def get_graph_execution_cost(graph_exec_id: str) -> int | None:
-    """
-    Get the total cost of a graph execution.
-
-    Params:
-        graph_exec_id (str): The graph execution ID.
-
-    Returns:
-        int | None: The total cost in credits, or None if unknown.
-    """
-    transactions = await CreditTransaction.prisma().find_many(
-        where={
-            "metadata": {  # type: ignore
-                "path": ["graph_exec_id"],
-                "equals": Json(graph_exec_id),
-            },
-            "type": CreditTransactionType.USAGE,
-        }
-    )
-
-    return sum(t.amount for t in transactions) if transactions else None
