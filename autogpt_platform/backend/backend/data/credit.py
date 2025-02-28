@@ -249,7 +249,6 @@ class UserCreditBase(ABC):
         metadata: Json,
         new_transaction_key: str | None = None,
     ):
-
         transaction = await CreditTransaction.prisma().find_first_or_raise(
             where={"transactionKey": transaction_key, "userId": user_id}
         )
@@ -346,7 +345,6 @@ class UsageTransactionMetadata(BaseModel):
 
 
 class UserCredit(UserCreditBase):
-
     @thread_cached
     def notification_client(self) -> NotificationManager:
         return get_service_client(NotificationManager)
@@ -840,7 +838,6 @@ class UserCredit(UserCreditBase):
         transaction_time_ceiling: datetime | None = None,
         transaction_type: str | None = None,
     ) -> TransactionHistory:
-
         transactions_filter: CreditTransactionWhereInput = {
             "userId": user_id,
             "isActive": True,

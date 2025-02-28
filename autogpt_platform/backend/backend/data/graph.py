@@ -15,7 +15,7 @@ from prisma.models import (
     StoreListingVersion,
 )
 from prisma.types import AgentGraphWhereInput
-from pydantic.fields import computed_field
+from pydantic.fields import Field, computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
@@ -112,6 +112,7 @@ class GraphExecutionMeta(BaseDbModel):
     execution_id: str
     started_at: datetime
     ended_at: datetime
+    cost: Optional[int] = Field(..., description="Execution cost in credits")
     duration: float
     total_run_time: float
     status: ExecutionStatus
@@ -140,6 +141,7 @@ class GraphExecutionMeta(BaseDbModel):
             execution_id=_graph_exec.id,
             started_at=start_time,
             ended_at=end_time,
+            cost=stats.get("cost", None),
             duration=duration,
             total_run_time=total_run_time,
             status=ExecutionStatus(_graph_exec.executionStatus),
