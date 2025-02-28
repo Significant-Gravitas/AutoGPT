@@ -11,7 +11,7 @@ from prisma.models import (
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 
 from backend.data.block import BlockData, BlockInput, CompletedBlockOutput
 from backend.data.includes import EXECUTION_RESULT_INCLUDE, GRAPH_EXECUTION_INCLUDE
@@ -19,6 +19,22 @@ from backend.data.queue import AsyncRedisEventBus, RedisEventBus
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util import mock, type
 from backend.util.settings import Config
+
+
+class ExecutionStats(BaseModel):
+    """Execution statistics for a graph execution."""
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    error: Optional[Exception] = None
+    walltime: float = 0
+    cputime: float = 0
+    nodes_walltime: float = 0
+    nodes_cputime: float = 0
+    node_count: int = 0
+    node_error_count: int = 0
+    cost: float = 0
 
 
 class GraphExecutionEntry(BaseModel):
@@ -282,13 +298,16 @@ async def update_graph_execution_start_time(graph_exec_id: str) -> ExecutionResu
 async def update_graph_execution_stats(
     graph_exec_id: str,
     status: ExecutionStatus,
-    stats: dict[str, Any],
+    stats: ExecutionStats,
 ) -> ExecutionResult:
+    data = stats.model_dump()
+    if data["error"]:
+        data["error"] = str(data["error"])
     res = await AgentGraphExecution.prisma().update(
         where={"id": graph_exec_id},
         data={
             "executionStatus": status,
-            "stats": Json(stats),
+            "stats": Json(data),
         },
     )
     if not res:

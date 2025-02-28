@@ -13,12 +13,14 @@ from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
 from redis.lock import Lock as RedisLock
 
 from backend.blocks.basic import AgentOutputBlock
+from backend.data.execution import ExecutionStats
 from backend.data.notifications import (
     AgentRunData,
     LowBalanceData,
     NotificationEventDTO,
     NotificationType,
 )
+from backend.util.exceptions import InsufficientBalanceError
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManager
@@ -637,9 +639,9 @@ class Executor:
         timing_info, (exec_stats, status, error) = cls._on_graph_execution(
             graph_exec, cancel, log_metadata
         )
-        exec_stats["walltime"] = timing_info.wall_time
-        exec_stats["cputime"] = timing_info.cpu_time
-        exec_stats["error"] = str(error) if error else None
+        exec_stats.walltime = timing_info.wall_time
+        exec_stats.cputime = timing_info.cpu_time
+        exec_stats.error = error
         result = cls.db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
             status=status,
@@ -655,7 +657,7 @@ class Executor:
         graph_exec: GraphExecutionEntry,
         cancel: threading.Event,
         log_metadata: LogMetadata,
-    ) -> tuple[dict[str, Any], ExecutionStatus, Exception | None]:
+    ) -> tuple[ExecutionStats, ExecutionStatus, Exception | None]:
         """
         Returns:
             dict: The execution statistics of the graph execution.
@@ -663,13 +665,7 @@ class Executor:
             Exception | None: The error that occurred during the execution, if any.
         """
         log_metadata.info(f"Start graph execution {graph_exec.graph_exec_id}")
-        exec_stats = {
-            "nodes_walltime": 0,
-            "nodes_cputime": 0,
-            "node_count": 0,
-            "node_error_count": 0,
-            "cost": 0,
-        }
+        exec_stats = ExecutionStats()
         error = None
         finished = False
 
@@ -695,7 +691,7 @@ class Executor:
                 queue.add(node_exec)
 
             running_executions: dict[str, AsyncResult] = {}
-            low_balance_error = None
+            low_balance_error: Optional[InsufficientBalanceError] = None
 
             def make_exec_callback(exec_data: NodeExecutionEntry):
 
@@ -706,18 +702,14 @@ class Executor:
                         return
 
                     nonlocal exec_stats, low_balance_error
-                    exec_stats["node_count"] += 1
-                    exec_stats["nodes_cputime"] += result.get("cputime", 0)
-                    exec_stats["nodes_walltime"] += result.get("walltime", 0)
-                    exec_stats["cost"] += result.get("cost", 0)
+                    exec_stats.node_count += 1
+                    exec_stats.nodes_cputime += result.get("cputime", 0)
+                    exec_stats.nodes_walltime += result.get("walltime", 0)
+                    exec_stats.cost += result.get("cost", 0)
                     if (err := result.get("error")) and isinstance(err, Exception):
-                        exec_stats["node_error_count"] += 1
+                        exec_stats.node_error_count += 1
 
-                        if (
-                            len(err.args) == 2
-                            and "type" in err.args[1]
-                            and err.args[1]["type"] == "low_balance"
-                        ):
+                        if isinstance(err, InsufficientBalanceError):
                             low_balance_error = err
 
                 return callback
@@ -764,7 +756,7 @@ class Executor:
 
             log_metadata.info(f"Finished graph execution {graph_exec.graph_exec_id}")
 
-            if isinstance(low_balance_error, Exception):
+            if isinstance(low_balance_error, InsufficientBalanceError):
                 cls._handle_low_balance_notif(
                     graph_exec.user_id,
                     graph_exec.graph_id,
@@ -795,7 +787,7 @@ class Executor:
     def _handle_agent_run_notif(
         cls,
         graph_exec: GraphExecutionEntry,
-        exec_stats: dict[str, Any],
+        exec_stats: ExecutionStats,
     ):
         metadata = cls.db_client.get_graph_metadata(
             graph_exec.graph_id, graph_exec.graph_version
@@ -818,10 +810,10 @@ class Executor:
             data=AgentRunData(
                 outputs=named_outputs,
                 agent_name=metadata.name,
-                credits_used=exec_stats.get("cost", 0),
-                execution_time=exec_stats.get("walltime", 0),
+                credits_used=exec_stats.cost,
+                execution_time=exec_stats.walltime,
                 graph_id=graph_exec.graph_id,
-                node_count=exec_stats.get("node_count", 0),
+                node_count=exec_stats.node_count,
             ).model_dump(),
         )
 
@@ -832,11 +824,15 @@ class Executor:
 
     @classmethod
     def _handle_low_balance_notif(
-        cls, user_id: str, graph_id: str, exec_stats: dict, e: Exception
+        cls,
+        user_id: str,
+        graph_id: str,
+        exec_stats: ExecutionStats,
+        e: InsufficientBalanceError,
     ):
-        shortfall = e.args[1]["balance"] - e.args[1]["amount"]
+        shortfall = e.balance - e.amount
         metadata = cls.db_client.get_graph_metadata(graph_id)
-        top_up_amount = max(shortfall, 500)
+        top_up_amount = round(max(shortfall, 500))
         top_up_link = cls.db_client.top_up_intent(user_id, top_up_amount)
         logger.info(f"Sending low balance notification for user {user_id}")
         cls.notification_service.queue_notification(
@@ -844,7 +840,7 @@ class Executor:
                 user_id=user_id,
                 type=NotificationType.LOW_BALANCE,
                 data=LowBalanceData(
-                    current_balance=exec_stats["cost"] if exec_stats else 0,
+                    current_balance=exec_stats.cost,
                     top_up_link=top_up_link,
                     top_up_amount=top_up_amount,
                     shortfall=shortfall,
