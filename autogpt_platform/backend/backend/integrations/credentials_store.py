@@ -172,7 +172,7 @@ zerobounce_credentials = APIKeyCredentials(
 example_credentials = APIKeyCredentials(
     id="a2b7f68f-aa6a-4995-99ec-b45b40d33498",
     provider="example-provider",
-    api_key=SecretStr("mock-example-api-key"),
+    api_key=SecretStr(settings.secrets.example_api_key),
     title="Use Credits for Example",
     expires_at=None,
 )
@@ -234,6 +234,8 @@ class IntegrationCredentialsStore:
         all_credentials.append(ollama_credentials)
 
         # These will only be added if the API key is set
+        if settings.secrets.example_api_key:
+            all_credentials.append(example_credentials)
         if settings.secrets.revid_api_key:
             all_credentials.append(revid_credentials)
         if settings.secrets.ideogram_api_key:
