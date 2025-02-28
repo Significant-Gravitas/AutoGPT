@@ -748,7 +748,6 @@ export interface OttoResponse {
 export interface OttoQuery {
   query: string;
   conversation_history: { query: string; response: string }[];
-  user_id: string;
   message_id: string;
   include_graph_data: boolean;
   graph_id?: string;
