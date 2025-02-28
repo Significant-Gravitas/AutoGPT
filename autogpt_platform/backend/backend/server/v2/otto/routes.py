@@ -44,10 +44,50 @@ class Message(BaseModel):
 class ChatRequest(BaseModel):
     query: str
     conversation_history: list[Message]
-    user_id: str
     message_id: str
     include_graph_data: bool = False
     graph_id: Optional[str] = None
+
+
+async def fetch_graph_data(request, user_id):
+    """Fetch graph data if requested and available."""
+    if not (request.include_graph_data and request.graph_id):
+        return None
+
+    try:
+        graph = await graph_db.get_graph(request.graph_id, user_id=user_id)
+        if not graph:
+            return None
+
+        nodes_data = []
+        for node in graph.nodes:
+            block = get_block(node.block_id)
+            if not block:
+                continue
+
+            node_data = {
+                "id": node.id,
+                "block_id": node.block_id,
+                "block_name": block.name,
+                "block_type": (
+                    block.block_type.value if hasattr(block, "block_type") else None
+                ),
+                "data": {
+                    k: v
+                    for k, v in (node.input_default or {}).items()
+                    if k not in ["credentials"]  # Exclude sensitive data
+                },
+            }
+            nodes_data.append(node_data)
+
+        return {
+            "nodes": nodes_data,
+            "graph_name": graph.name,
+            "graph_description": graph.description,
+        }
+    except Exception as e:
+        logger.error(f"Failed to fetch graph data: {str(e)}")
+        return None
 
 
 @router.post(
@@ -61,11 +101,6 @@ async def proxy_otto_request(
     Requires an authenticated user.
     """
     try:
-        # Verify if the user ID exists in the Supabase database
-        user = await get_user_by_id(user_id)
-        if not user:
-            raise HTTPException(status_code=401, detail="Invalid user ID")
-
         async with aiohttp.ClientSession() as session:
             headers = {
                 "Content-Type": "application/json",
@@ -73,40 +108,7 @@ async def proxy_otto_request(
             }
 
             # If graph data is requested, fetch it
-            graph_data = None
-            if request.include_graph_data and request.graph_id:
-                try:
-                    graph = await graph_db.get_graph(request.graph_id, user_id=user_id)
-                    if graph:
-                        nodes_data = []
-                        for node in graph.nodes:
-                            block = get_block(node.block_id)
-                            if block:
-                                node_data = {
-                                    "id": node.id,
-                                    "block_id": node.block_id,
-                                    "block_name": block.name,
-                                    "block_type": (
-                                        block.block_type.value
-                                        if hasattr(block, "block_type")
-                                        else None
-                                    ),
-                                    "data": {
-                                        k: v
-                                        for k, v in (node.input_default or {}).items()
-                                        if k
-                                        not in ["credentials"]  # Exclude sensitive data
-                                    },
-                                }
-                                nodes_data.append(node_data)
-
-                        graph_data = {
-                            "nodes": nodes_data,
-                            "graph_name": graph.name,
-                            "graph_description": graph.description,
-                        }
-                except Exception as e:
-                    logger.error(f"Failed to fetch graph data: {str(e)}")
+            graph_data = await fetch_graph_data(request, user_id)
 
             # Prepare the payload with optional graph data
             payload = {

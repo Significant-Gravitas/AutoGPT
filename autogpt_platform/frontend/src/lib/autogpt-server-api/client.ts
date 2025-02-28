@@ -616,6 +616,10 @@ export default class BackendAPI {
     return this._request("GET", path, query);
   }
 
+  async askOtto(query: OttoQuery): Promise<OttoResponse> {
+    return this._request("POST", "/otto/ask", query);
+  }
+
   private async _uploadFile(path: string, file: File): Promise<string> {
     // Get session with retry logic
     let token = "no-token-found";
@@ -906,9 +910,6 @@ export default class BackendAPI {
     });
   }
 
-  async askOtto(query: OttoQuery): Promise<OttoResponse> {
-    return this._request("POST", "/otto/ask", query);
-  }
 }
 
 /* *** UTILITY TYPES *** */
