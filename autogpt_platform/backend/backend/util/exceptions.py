@@ -1,8 +1,3 @@
-from typing import Any
-
-from pydantic import model_serializer
-
-
 class MissingConfigError(Exception):
     """The attempted operation requires configuration which is not available"""
 
