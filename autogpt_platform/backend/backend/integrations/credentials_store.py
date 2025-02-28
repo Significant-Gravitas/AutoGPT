@@ -169,6 +169,14 @@ zerobounce_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+example_credentials = APIKeyCredentials(
+    id="a2b7f68f-aa6a-4995-99ec-b45b40d33498",
+    provider="example-provider",
+    api_key=SecretStr("mock-example-api-key"),
+    title="Use Credits for Example",
+    expires_at=None,
+)
+
 DEFAULT_CREDENTIALS = [
     ollama_credentials,
     revid_credentials,
