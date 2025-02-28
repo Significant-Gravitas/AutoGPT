@@ -290,8 +290,16 @@ async def test_access_store_listing_graph(server: SpinTestServer):
         ),
     )
 
-    # Now we check the graph can be accessed by a user that does not own the graph
+    # Now we check the graph still can't be accessed by a user other than the owner
     got_graph = await server.agent_server.test_get_graph(
-        created_graph.id, created_graph.version, "3e53486c-cf57-477e-ba2a-cb02dc828e1b"
+        created_graph.id, created_graph.version, DEFAULT_USER_ID
     )
     assert got_graph is not None
+
+    with pytest.raises(fastapi.exceptions.HTTPException) as exc_info:
+        await server.agent_server.test_get_graph(
+            created_graph.id,
+            created_graph.version,
+            "3e53486c-cf57-477e-ba2a-cb02dc828e1b",
+        )
+    assert exc_info.value.status_code == 404
