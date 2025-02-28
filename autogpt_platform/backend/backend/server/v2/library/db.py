@@ -388,8 +388,8 @@ async def add_store_agent_to_library(
 ##############################################
 
 
-async def get_presets(
-    user_id: str, page: int, page_size: int
+async def list_presets(
+    user_id: str, page: int, page_size: int, graph_id: Optional[str] = None
 ) -> library_model.LibraryAgentPresetResponse:
     """
     Retrieves a paginated list of AgentPresets for the specified user.
@@ -398,6 +398,7 @@ async def get_presets(
         user_id: The user ID whose presets are being retrieved.
         page: The current page index (0-based or 1-based, clarify in your domain).
         page_size: Number of items to retrieve per page.
+        graph_id: Agent Graph ID to filter by.
 
     Returns:
         A LibraryAgentPresetResponse containing a list of presets and pagination info.
@@ -415,15 +416,17 @@ async def get_presets(
         )
         raise store_exceptions.DatabaseError("Invalid pagination parameters")
 
+    query_filter: prisma.types.AgentPresetWhereInput = {"userId": user_id}
+    if graph_id:
+        query_filter["agentGraphId"] = graph_id
+
     try:
         presets_records = await prisma.models.AgentPreset.prisma().find_many(
-            where={"userId": user_id},
+            where=query_filter,
             skip=page * page_size,
             take=page_size,
         )
-        total_items = await prisma.models.AgentPreset.prisma().count(
-            where={"userId": user_id}
-        )
+        total_items = await prisma.models.AgentPreset.prisma().count(where=query_filter)
         total_pages = (total_items + page_size - 1) // page_size
 
         presets = [

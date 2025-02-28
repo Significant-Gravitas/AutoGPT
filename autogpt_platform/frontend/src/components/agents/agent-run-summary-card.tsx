@@ -23,6 +23,7 @@ export type AgentRunSummaryProps = {
   timestamp: number | Date;
   selected?: boolean;
   onClick?: () => void;
+  onPinAsPreset?: () => void;
   // onRename: () => void;
   onDelete: () => void;
   className?: string;
@@ -34,6 +35,7 @@ export default function AgentRunSummaryCard({
   timestamp,
   selected = false,
   onClick,
+  onPinAsPreset,
   // onRename,
   onDelete,
   className,
@@ -62,11 +64,11 @@ export default function AgentRunSummaryCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              {/* {onPinAsPreset && (
+              {onPinAsPreset && (
                 <DropdownMenuItem onClick={onPinAsPreset}>
                   Pin as a preset
-              </DropdownMenuItem>
-              )} */}
+                </DropdownMenuItem>
+              )}
 
               {/* <DropdownMenuItem onClick={onRename}>Rename</DropdownMenuItem> */}
 

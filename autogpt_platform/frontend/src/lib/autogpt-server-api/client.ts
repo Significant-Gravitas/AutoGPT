@@ -520,6 +520,7 @@ export default class BackendAPI {
   }
 
   listLibraryAgentPresets(params?: {
+    graph_id?: GraphID;
     page?: number;
     page_size?: number;
   }): Promise<LibraryAgentPresetResponse> {

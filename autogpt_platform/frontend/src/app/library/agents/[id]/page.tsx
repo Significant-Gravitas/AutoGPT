@@ -9,6 +9,8 @@ import {
   GraphExecutionMeta,
   GraphID,
   GraphMeta,
+  LibraryAgentPreset,
+  LibraryAgentPresetID,
   Schedule,
   ScheduleID,
 } from "@/lib/autogpt-server-api";
@@ -17,6 +19,20 @@ import AgentRunDraftView from "@/components/agents/agent-run-draft-view";
 import AgentRunDetailsView from "@/components/agents/agent-run-details-view";
 import AgentRunsSelectorList from "@/components/agents/agent-runs-selector-list";
 import AgentScheduleDetailsView from "@/components/agents/agent-schedule-details-view";
+
+export type AgentRunsViewSelection =
+  | {
+      type: "run";
+      id?: GraphExecutionID;
+    }
+  | {
+      type: "preset";
+      id: LibraryAgentPresetID;
+    }
+  | {
+      type: "schedule";
+      id: ScheduleID;
+    };
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: GraphID } = useParams();
@@ -27,11 +43,11 @@ export default function AgentRunsPage(): React.ReactElement {
 
   const [agent, setAgent] = useState<GraphMeta | null>(null);
   const [agentRuns, setAgentRuns] = useState<GraphExecutionMeta[]>([]);
+  const [agentPresets, setAgentPresets] = useState<LibraryAgentPreset[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
-  const [selectedView, selectView] = useState<
-    | { type: "run"; id?: GraphExecutionID }
-    | { type: "schedule"; id: ScheduleID }
-  >({ type: "run" });
+  const [selectedView, selectView] = useState<AgentRunsViewSelection>({
+    type: "run",
+  });
   const [selectedRun, setSelectedRun] = useState<
     GraphExecution | GraphExecutionMeta | null
   >(null);
@@ -46,6 +62,10 @@ export default function AgentRunsPage(): React.ReactElement {
 
   const selectRun = useCallback((id: GraphExecutionID) => {
     selectView({ type: "run", id });
+  }, []);
+
+  const selectPreset = useCallback((id: LibraryAgentPresetID) => {
+    selectView({ type: "preset", id });
   }, []);
 
   const selectSchedule = useCallback((schedule: Schedule) => {
@@ -76,6 +96,19 @@ export default function AgentRunsPage(): React.ReactElement {
   useEffect(() => {
     fetchAgents();
   }, []);
+
+  const fetchPresets = useCallback(async () => {
+    await api
+      .listLibraryAgentPresets({ graph_id: agentID })
+      .then(
+        (response) =>
+          setAgentPresets(response.presets) /* TODO: handle pagination */,
+      );
+  }, [api, agentID]);
+
+  useEffect(() => {
+    fetchPresets();
+  }, [fetchPresets]);
 
   // load selectedRun based on selectedView
   useEffect(() => {
@@ -126,6 +159,26 @@ export default function AgentRunsPage(): React.ReactElement {
     [schedules, api],
   );
 
+  const createPresetFromRun = useCallback(
+    async (run: GraphExecutionMeta) => {
+      const execution = await api.getGraphExecutionInfo(
+        run.graph_id,
+        run.execution_id,
+      );
+      const createdPreset = await api.createLibraryAgentPreset({
+        /* FIXME: add dialog to enter name and description */
+        name: agent!.name,
+        description: agent!.description,
+        graph_id: execution.graph_id,
+        graph_version: execution.graph_version,
+        inputs: execution.inputs,
+        is_active: true,
+      });
+      setAgentPresets((prev) => [...prev, createdPreset]);
+    },
+    [agent, api],
+  );
+
   const agentActions: { label: string; callback: () => void }[] = useMemo(
     () => [
       {
@@ -149,13 +202,16 @@ export default function AgentRunsPage(): React.ReactElement {
         className="agpt-div w-full border-b lg:w-auto lg:border-b-0 lg:border-r"
         agent={agent}
         agentRuns={agentRuns}
+        agentPresets={agentPresets}
         schedules={schedules}
         selectedView={selectedView}
         onSelectRun={selectRun}
+        onSelectPreset={selectPreset}
         onSelectSchedule={selectSchedule}
         onSelectDraftNewRun={openRunDraftView}
         onDeleteRun={(id) => deleteRun(id)}
         onDeleteSchedule={(id) => deleteSchedule(id)}
+        onPinAsPreset={(run) => createPresetFromRun(run)}
       />
 
       <div className="flex-1">

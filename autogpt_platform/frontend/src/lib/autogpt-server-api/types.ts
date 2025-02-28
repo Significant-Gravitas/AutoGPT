@@ -226,7 +226,7 @@ export type GraphExecutionMeta = {
   status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
   graph_id: GraphID;
   graph_version: number;
-  preset_id?: string;
+  preset_id?: LibraryAgentPresetID;
 };
 
 export type GraphExecutionID = Brand<string, "GraphExecutionID">;
@@ -336,7 +336,7 @@ export enum AgentStatus {
   ERROR = "ERROR",
 }
 
-export interface LibraryAgentResponse {
+export type LibraryAgentResponse = {
   agents: LibraryAgent[];
   pagination: {
     current_page: number;
@@ -344,10 +344,10 @@ export interface LibraryAgentResponse {
     total_items: number;
     total_pages: number;
   };
-}
+};
 
-export interface LibraryAgentPreset {
-  id: string;
+export type LibraryAgentPreset = {
+  id: LibraryAgentPresetID;
   updated_at: Date;
   graph_id: GraphID;
   graph_version: number;
@@ -355,25 +355,27 @@ export interface LibraryAgentPreset {
   description: string;
   is_active: boolean;
   inputs: { [key: string]: any };
-}
+};
 
-export interface LibraryAgentPresetResponse {
+export type LibraryAgentPresetID = Brand<string, "LibraryAgentPresetID">;
+
+export type LibraryAgentPresetResponse = {
   presets: LibraryAgentPreset[];
   pagination: {
     total: number;
     page: number;
     size: number;
   };
-}
+};
 
-export interface CreateLibraryAgentPresetRequest {
+export type CreateLibraryAgentPresetRequest = {
   name: string;
   description: string;
   inputs: { [key: string]: any };
   graph_id: GraphID;
   graph_version: number;
   is_active: boolean;
-}
+};
 
 export enum LibraryAgentSortEnum {
   CREATED_AT = "createdAt",

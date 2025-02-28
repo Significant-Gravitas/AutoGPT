@@ -1,9 +1,9 @@
 import logging
-from typing import Annotated, Any
+from typing import Annotated, Any, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
 import autogpt_libs.utils.cache
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 
 import backend.executor
 import backend.server.v2.library.db as db
@@ -26,10 +26,13 @@ def execution_manager_client() -> backend.executor.ExecutionManager:
     summary="List presets",
     description="Retrieve a paginated list of presets for the current user.",
 )
-async def get_presets(
+async def list_presets(
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
-    page: int = 1,
-    page_size: int = 10,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1),
+    graph_id: Optional[str] = Query(
+        description="Allows to filter presets by a specific agent graph"
+    ),
 ) -> models.LibraryAgentPresetResponse:
     """
     Retrieve a paginated list of presets for the current user.
@@ -38,12 +41,18 @@ async def get_presets(
         user_id (str): ID of the authenticated user.
         page (int): Page number for pagination.
         page_size (int): Number of items per page.
+        graph_id: Allows to filter presets by a specific agent graph.
 
     Returns:
         models.LibraryAgentPresetResponse: A response containing the list of presets.
     """
     try:
-        return await db.get_presets(user_id, page, page_size)
+        return await db.list_presets(
+            user_id=user_id,
+            graph_id=graph_id,
+            page=page,
+            page_size=page_size,
+        )
     except Exception as e:
         logger.exception(f"Exception occurred while getting presets: {e}")
         raise HTTPException(
