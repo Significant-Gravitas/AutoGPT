@@ -72,7 +72,7 @@ class NodeModel(Node):
     webhook: Optional[Webhook] = None
 
     @staticmethod
-    def from_db(node: AgentNode):
+    def from_db(node: AgentNode) -> "NodeModel":
         obj = NodeModel(
             id=node.id,
             block_id=node.agentBlockId,
@@ -707,6 +707,18 @@ async def get_graph(
         return None
 
     return GraphModel.from_db(graph, for_export)
+
+
+async def get_connected_output_nodes(node_id: str) -> list[tuple[Link, Node]]:
+    links = await AgentNodeLink.prisma().find_many(
+        where={"agentNodeSourceId": node_id},
+        include={"AgentNodeSink": {"include": AGENT_NODE_INCLUDE}},  # type: ignore
+    )
+    return [
+        (Link.from_db(link), NodeModel.from_db(link.AgentNodeSink))
+        for link in links
+        if link.AgentNodeSink
+    ]
 
 
 async def set_graph_active_version(graph_id: str, version: int, user_id: str) -> None:
