@@ -2,12 +2,15 @@ import logging
 from typing import Any, Dict, Optional
 
 import aiohttp
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
+from autogpt_libs.auth.middleware import auth_middleware
+from backend.server.utils import get_user_id
 
 from backend.data import graph as graph_db
 from backend.data.block import get_block
 from backend.util.settings import Settings
+from backend.data.user import get_user_by_id
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -47,13 +50,18 @@ class ChatRequest(BaseModel):
     graph_id: Optional[str] = None
 
 
-@router.post("/ask", response_model=ApiResponse)
-async def proxy_otto_request(request: ChatRequest) -> ApiResponse:
+@router.post("/ask", response_model=ApiResponse, dependencies=[Depends(auth_middleware)])
+async def proxy_otto_request(request: ChatRequest, user_id: str = Depends(get_user_id)) -> ApiResponse:
     """
     Proxy requests to Otto API while adding necessary security headers and logging.
     Requires an authenticated user.
     """
     try:
+        # Verify if the user ID exists in the Supabase database
+        user = await get_user_by_id(user_id)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid user ID")
+
         async with aiohttp.ClientSession() as session:
             headers = {
                 "Content-Type": "application/json",
@@ -65,7 +73,7 @@ async def proxy_otto_request(request: ChatRequest) -> ApiResponse:
             if request.include_graph_data and request.graph_id:
                 try:
                     graph = await graph_db.get_graph(
-                        request.graph_id, user_id=request.user_id
+                        request.graph_id, user_id=user_id
                     )
                     if graph:
                         nodes_data = []
@@ -104,14 +112,14 @@ async def proxy_otto_request(request: ChatRequest) -> ApiResponse:
                 "conversation_history": [
                     msg.dict() for msg in request.conversation_history
                 ],
-                "user_id": request.user_id,
+                "user_id": user_id,
                 "message_id": request.message_id,
             }
 
             if graph_data:
                 payload["graph_data"] = graph_data
 
-            logger.info(f"Sending request to Otto API for user {request.user_id}")
+            logger.info(f"Sending request to Otto API for user {user_id}")
             logger.debug(f"Request payload: {payload}")
 
             async with session.post(
@@ -127,7 +135,7 @@ async def proxy_otto_request(request: ChatRequest) -> ApiResponse:
 
                 data = await response.json()
                 logger.info(
-                    f"Successfully received response from Otto API for user {request.user_id}"
+                    f"Successfully received response from Otto API for user {user_id}"
                 )
                 return ApiResponse(**data)
 
