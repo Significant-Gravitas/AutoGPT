@@ -395,6 +395,7 @@ files = [
 ]
 
 [package.dependencies]
+tinycss2 = {version = ">=1.1.0,<1.5", optional = true, markers = "extra == \"css\""}
 webencodings = "*"
 
 [package.extras]
@@ -5074,6 +5075,25 @@ doc = ["reno", "sphinx"]
 test = ["pytest", "tornado (>=4.5)", "typeguard"]
 
 [[package]]
+name = "tinycss2"
+version = "1.4.0"
+description = "A tiny CSS parser"
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "tinycss2-1.4.0-py3-none-any.whl", hash = "sha256:3a49cf47b7675da0b15d0c6e1df8df4ebd96e9394bb905a5775adb0d884c5289"},
+    {file = "tinycss2-1.4.0.tar.gz", hash = "sha256:10c0972f6fc0fbee87c3edb76549357415e94548c1ae10ebccdea16fb404a9b7"},
+]
+
+[package.dependencies]
+webencodings = ">=0.4"
+
+[package.extras]
+doc = ["sphinx", "sphinx_rtd_theme"]
+test = ["pytest", "ruff"]
+
+[[package]]
 name = "todoist-api-python"
 version = "2.1.7"
 description = "Official Python SDK for the Todoist REST API."
@@ -6070,4 +6090,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "a903827e644f4e8973e8d07a7f4e69cd57d1567523e24b92bc7bffa3d6f045d7"
+content-hash = "7d52ef1c6567900f7f1e079b2d317b861330bef797573221277f04b1981d0e05"

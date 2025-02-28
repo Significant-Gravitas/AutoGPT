@@ -8,12 +8,18 @@ from backend.data.execution import (
     get_incomplete_executions,
     get_latest_execution,
     update_execution_status,
+    update_graph_execution_start_time,
     update_graph_execution_stats,
     update_node_execution_stats,
     upsert_execution_input,
     upsert_execution_output,
 )
-from backend.data.graph import get_graph, get_graph_metadata, get_node
+from backend.data.graph import (
+    get_connected_output_nodes,
+    get_graph,
+    get_graph_metadata,
+    get_node,
+)
 from backend.data.user import (
     get_user_integrations,
     get_user_metadata,
@@ -52,6 +58,9 @@ class DatabaseManager(AppService):
     get_incomplete_executions = exposed_run_and_wait(get_incomplete_executions)
     get_latest_execution = exposed_run_and_wait(get_latest_execution)
     update_execution_status = exposed_run_and_wait(update_execution_status)
+    update_graph_execution_start_time = exposed_run_and_wait(
+        update_graph_execution_start_time
+    )
     update_graph_execution_stats = exposed_run_and_wait(update_graph_execution_stats)
     update_node_execution_stats = exposed_run_and_wait(update_node_execution_stats)
     upsert_execution_input = exposed_run_and_wait(upsert_execution_input)
@@ -60,6 +69,7 @@ class DatabaseManager(AppService):
     # Graphs
     get_node = exposed_run_and_wait(get_node)
     get_graph = exposed_run_and_wait(get_graph)
+    get_connected_output_nodes = exposed_run_and_wait(get_connected_output_nodes)
     get_graph_metadata = exposed_run_and_wait(get_graph_metadata)
 
     # Credits
