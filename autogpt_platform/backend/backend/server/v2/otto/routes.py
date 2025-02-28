@@ -5,11 +5,11 @@ import aiohttp
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from autogpt_libs.auth.middleware import auth_middleware
-from backend.server.utils import get_user_id
 
 from backend.data import graph as graph_db
 from backend.data.block import get_block
 from backend.util.settings import Settings
+from backend.server.utils import get_user_id
 from backend.data.user import get_user_by_id
 
 logger = logging.getLogger(__name__)
