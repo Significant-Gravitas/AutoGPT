@@ -772,7 +772,9 @@ async def get_agent(
 
         graph_id = store_listing_version.agentId
         graph_version = store_listing_version.agentVersion
-        graph = await backend.data.graph.get_graph(graph_id, graph_version)
+        graph = await backend.data.graph.get_graph(
+            graph_id, graph_version, ignore_ownership_if_listed_in_marketplace=True
+        )
 
         if not graph:
             raise fastapi.HTTPException(

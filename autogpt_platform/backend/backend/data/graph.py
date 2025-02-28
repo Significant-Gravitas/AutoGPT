@@ -667,6 +667,7 @@ async def get_graph(
     template: bool = False,  # note: currently not in use; TODO: remove from DB entirely
     user_id: str | None = None,
     for_export: bool = False,
+    ignore_ownership_if_listed_in_marketplace: bool = False,
 ) -> GraphModel | None:
     """
     Retrieves a graph from the DB.
@@ -694,7 +695,8 @@ async def get_graph(
     if graph is None or (
         graph.userId != user_id
         and not (
-            await StoreListingVersion.prisma().find_first(
+            ignore_ownership_if_listed_in_marketplace
+            and await StoreListingVersion.prisma().find_first(
                 where={
                     "agentId": graph_id,
                     "agentVersion": version or graph.version,

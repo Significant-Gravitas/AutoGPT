@@ -868,7 +868,10 @@ class ExecutionManager(AppService):
         preset_id: str | None = None,
     ) -> GraphExecutionEntry:
         graph: GraphModel | None = self.db_client.get_graph(
-            graph_id=graph_id, user_id=user_id, version=graph_version
+            graph_id=graph_id,
+            version=graph_version,
+            user_id=user_id,
+            ignore_ownership_if_listed_in_marketplace=True,
         )
         if not graph:
             raise ValueError(f"Graph #{graph_id} not found.")

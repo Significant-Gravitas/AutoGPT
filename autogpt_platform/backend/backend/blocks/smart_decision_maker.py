@@ -79,7 +79,6 @@ class SmartDecisionMakerBlock(Block):
         )
 
     class Output(BlockSchema):
-
         prompt: str = SchemaField(description="The prompt sent to the language model.")
         error: str = SchemaField(description="Error message if the API call failed.")
         function_signatures: list[dict[str, Any]] = SchemaField(
@@ -351,7 +350,11 @@ class SmartDecisionMakerBlock(Block):
         db_client = get_database_manager_client()
 
         # Retrieve the current graph and node details
-        graph = db_client.get_graph(graph_id=graph_id, user_id=user_id)
+        graph = db_client.get_graph(
+            graph_id=graph_id,
+            user_id=user_id,
+            ignore_ownership_if_listed_in_marketplace=True,
+        )
 
         if not graph:
             raise ValueError(
@@ -388,7 +391,6 @@ class SmartDecisionMakerBlock(Block):
         )
 
         if not response.tool_calls:
-
             yield "finished", f"No Decision Made finishing task: {response.response}"
 
         if response.tool_calls:

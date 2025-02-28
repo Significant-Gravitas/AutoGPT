@@ -126,7 +126,11 @@ async def get_graph_execution_results(
     graph_exec_id: str,
     api_key: APIKey = Depends(require_permission(APIKeyPermission.READ_GRAPH)),
 ) -> GraphExecutionResult:
-    graph = await graph_db.get_graph(graph_id, user_id=api_key.user_id)
+    graph = await graph_db.get_graph(
+        graph_id,
+        user_id=api_key.user_id,
+        ignore_ownership_if_listed_in_marketplace=True,
+    )
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
