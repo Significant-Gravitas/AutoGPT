@@ -4,7 +4,6 @@ import moment from "moment";
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
-  BlockIOSubType,
   GraphExecution,
   GraphExecutionMeta,
   GraphMeta,
@@ -30,7 +29,7 @@ export default function AgentRunDetailsView({
 }): React.ReactNode {
   const api = useBackendAPI();
 
-  const selectedRunStatus: AgentRunStatus = useMemo(
+  const runStatus: AgentRunStatus = useMemo(
     () => agentRunStatusMap[run.status],
     [run],
   );
@@ -40,9 +39,7 @@ export default function AgentRunDetailsView({
     return [
       {
         label: "Status",
-        value:
-          selectedRunStatus.charAt(0).toUpperCase() +
-          selectedRunStatus.slice(1),
+        value: runStatus.charAt(0).toUpperCase() + runStatus.slice(1),
       },
       {
         label: "Started",
@@ -50,11 +47,11 @@ export default function AgentRunDetailsView({
       },
       {
         label: "Duration",
-        value: `${moment.duration(run.duration, "seconds").humanize()}`,
+        value: moment.duration(run.duration, "seconds").humanize(),
       },
-      // { label: "Cost", value: selectedRun.cost },  // TODO: implement cost - https://github.com/Significant-Gravitas/AutoGPT/issues/9181
+      ...(run.cost ? [{ label: "Cost", value: `${run.cost} credits` }] : []),
     ];
-  }, [run, selectedRunStatus]);
+  }, [run, runStatus]);
 
   const agentRunInputs:
     | Record<string, { title?: string; /* type: BlockIOSubType; */ value: any }>
@@ -96,8 +93,7 @@ export default function AgentRunDetailsView({
     | null
     | undefined = useMemo(() => {
     if (!("outputs" in run)) return undefined;
-    if (!["running", "success", "failed"].includes(selectedRunStatus))
-      return null;
+    if (!["running", "success", "failed"].includes(runStatus)) return null;
 
     // Add type info from agent input schema
     return Object.fromEntries(
@@ -110,7 +106,7 @@ export default function AgentRunDetailsView({
         },
       ]),
     );
-  }, [agent, run, selectedRunStatus]);
+  }, [agent, run, runStatus]);
 
   const runActions: { label: string; callback: () => void }[] = useMemo(
     () => [{ label: "Run again", callback: () => runAgain() }],
