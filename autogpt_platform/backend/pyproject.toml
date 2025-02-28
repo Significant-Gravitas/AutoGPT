@@ -13,7 +13,7 @@ aio-pika = "^9.5.4"
 anthropic = "^0.45.2"
 apscheduler = "^3.11.0"
 autogpt-libs = { path = "../autogpt_libs", develop = true }
-bleach = "^6.2.0"
+bleach = {extras = ["css"], version = "^6.2.0"}
 click = "^8.1.7"
 cryptography = "^43.0"
 discord-py = "^2.4.0"
@@ -61,7 +61,7 @@ tenacity = "^9.0.0"
 todoist-api-python = "^2.1.7"
 tweepy = "^4.14.0"
 uvicorn = { extras = ["standard"], version = "^0.34.0" }
-websockets = "^13.1"
+websockets = "^14.2"
 youtube-transcript-api = "^0.6.2"
 zerobouncesdk = "^1.1.1"
 # NOTE: please insert new dependencies in their alphabetical location

@@ -12,13 +12,14 @@ const buttonVariants = cva(
         destructive:
           "bg-red-600 text-neutral-50 border border-red-500/50 hover:bg-red-500/90 dark:bg-red-700 dark:text-neutral-50 dark:hover:bg-red-600",
         accent: "bg-accent text-accent-foreground hover:bg-violet-500",
+        primary: "bg-neutral-800 text-white hover:bg-black/60",
         outline:
-          "border border-black/50 text-[#272727] hover:bg-neutral-100 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700",
+          "border border-black/50 text-neutral-800 hover:bg-neutral-100 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700",
         secondary:
-          "bg-neutral-100 text-[#272727] border border-neutral-200 hover:bg-neutral-100/80 dark:bg-neutral-700 dark:text-neutral-100 dark:border-neutral-600 dark:hover:bg-neutral-600",
+          "bg-neutral-100 text-neutral-800 border border-neutral-200 hover:bg-neutral-100/80 dark:bg-neutral-700 dark:text-neutral-100 dark:border-neutral-600 dark:hover:bg-neutral-600",
         ghost:
-          "hover:bg-neutral-100 text-[#272727] dark:text-neutral-100 dark:hover:bg-neutral-700",
-        link: "text-[#272727] underline-offset-4 hover:underline dark:text-neutral-100",
+          "hover:bg-neutral-100 text-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700",
+        link: "text-neutral-800 underline-offset-4 hover:underline dark:text-neutral-100",
       },
       size: {
         default: "h-10 px-4 py-2 rounded-full text-sm",
@@ -44,10 +45,12 @@ export interface ButtonProps
   variant?:
     | "destructive"
     | "accent"
+    | "primary"
     | "outline"
     | "secondary"
     | "ghost"
     | "link";
+
   size?: "default" | "sm" | "lg" | "primary" | "icon" | "card";
 }
 

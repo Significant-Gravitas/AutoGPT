@@ -1,11 +1,11 @@
 {# Agent Run #}
 {# Template variables:
-data.name: the name of the agent
+data.agent_name: the name of the agent
 data.credits_used: the number of credits used by the agent
 data.node_count: the number of nodes the agent ran on
 data.execution_time: the time it took to run the agent
 data.graph_id: the id of the graph the agent ran on
-data.outputs: the dict[str, Any] of outputs of the agent
+data.outputs: the list of outputs of the agent
 #}
 <p style="
     font-family: 'Poppins', sans-serif;
@@ -15,7 +15,7 @@ data.outputs: the dict[str, Any] of outputs of the agent
     margin-top: 0;
     margin-bottom: 10px;
   ">
-  Hi,
+  Your agent, <strong>{{ data.agent_name }}</strong>, has completed its run!
 </p>
 <p style="
     font-family: 'Poppins', sans-serif;
@@ -23,53 +23,74 @@ data.outputs: the dict[str, Any] of outputs of the agent
     font-size: 16px;
     line-height: 165%;
     margin-top: 0;
-    margin-bottom: 10px;
+    margin-bottom: 20px;
+    padding-left: 20px;
   ">
-  We've run your agent {{ data.name }} and it took {{ data.execution_time }} seconds to complete.
+  <p style="margin-bottom: 10px;"><strong>Time Taken:</strong> {{ data.execution_time | int }} seconds</p>
+  <p style="margin-bottom: 10px;"><strong>Nodes Used:</strong> {{ data.node_count }}</p>
+  <p style="margin-bottom: 10px;"><strong>Cost:</strong> ${{ "{:.2f}".format((data.credits_used|float)/100) }}</p>
 </p>
-<p style="
+{% if data.outputs and data.outputs|length > 0 %}
+<div style="
+    margin-left: 15px;
+    margin-bottom: 20px;
+  ">
+  <p style="
     font-family: 'Poppins', sans-serif;
     color: #070629;
+    font-weight: 600;
     font-size: 16px;
-    line-height: 165%;
-    margin-top: 0;
     margin-bottom: 10px;
   ">
-  It ran on {{ data.node_count }} nodes and used {{ data.credits_used }} credits.
-</p>
-<ul style="
-    font-family: 'Poppins', sans-serif;
-    color: #070629;
-    font-size: 16px;
-    line-height: 165%;
-    margin-top: 0;
-    margin-bottom: 10px;
-  ">
-  It output the following:
-  {# jinja2 list iteration thorugh data.outputs #}
-  {% for key, value in data.outputs.items() %}
-  <li>{{ key }}: {{ value }}</li>
+    Results:
+  </p>
+
+  {% for output in data.outputs %}
+  <div style="
+      margin-left: 15px;
+      margin-bottom: 15px;
+    ">
+    <p style="
+      font-family: 'Poppins', sans-serif;
+      color: #5D23BB;
+      font-weight: 500;
+      font-size: 16px;
+      margin-top: 0;
+      margin-bottom: 8px;
+    ">
+      {{ output.name }}
+    </p>
+    
+    {% for key, value in output.items() %}
+      {% if key != 'name' %}
+      <div style="
+        margin-left: 15px;
+        background-color: #f5f5ff;
+        padding: 8px 12px;
+        border-radius: 4px;
+        font-family: 'Roboto Mono', monospace;
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-wrap: break-word;
+        max-width: 100%;
+        overflow-x: auto;
+        margin-top: 5px;
+        margin-bottom: 10px;
+        line-height: 1.4;
+      ">
+      {% if value is iterable and value is not string %}
+        {% if value|length == 1 %}
+          {{ value[0] }}
+        {% else %}
+          [{% for item in value %}{{ item }}{% if not loop.last %}, {% endif %}{% endfor %}]
+        {% endif %}
+      {% else %}
+        {{ value }}
+      {% endif %}
+      </div>
+      {% endif %}
+    {% endfor %}
+  </div>
   {% endfor %}
-</ul>
-<p style="
-    font-family: 'Poppins', sans-serif;
-    color: #070629;
-    font-size: 16px;
-    line-height: 165%;
-    margin-top: 0;
-    margin-bottom: 10px;
-  ">
-  Your feedback has been instrumental in shaping AutoGPT, and we couldn't have
-  done it without you. We look forward to continuing this journey together as we
-  bring AI-powered automation to the world.
-</p>
-<p style="
-    font-family: 'Poppins', sans-serif;
-    color: #070629;
-    font-size: 16px;
-    line-height: 165%;
-    margin-top: 0;
-    margin-bottom: 0;
-  ">
-  Thank you again for your time and support.
-</p>
+</div>
+{% endif %}

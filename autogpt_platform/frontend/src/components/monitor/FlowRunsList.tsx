@@ -61,7 +61,10 @@ export const FlowRunsList: React.FC<{
                 {moment(execution.started_at).format("HH:mm")}
               </TableCell>
               <TableCell>
-                <FlowRunStatusBadge status={execution.status} />
+                <FlowRunStatusBadge
+                  status={execution.status}
+                  className="w-full justify-center"
+                />
               </TableCell>
               <TableCell>{formatDuration(execution.duration)}</TableCell>
             </TableRow>

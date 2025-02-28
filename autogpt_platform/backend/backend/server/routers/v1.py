@@ -549,14 +549,10 @@ def execute_graph(
     user_id: Annotated[str, Depends(get_user_id)],
     graph_version: Optional[int] = None,
 ) -> ExecuteGraphResponse:
-    try:
-        graph_exec = execution_manager_client().add_execution(
-            graph_id, node_input, user_id=user_id, graph_version=graph_version
-        )
-        return ExecuteGraphResponse(graph_exec_id=graph_exec.graph_exec_id)
-    except Exception as e:
-        msg = str(e).encode().decode("unicode_escape")
-        raise HTTPException(status_code=400, detail=msg)
+    graph_exec = execution_manager_client().add_execution(
+        graph_id, node_input, user_id=user_id, graph_version=graph_version
+    )
+    return ExecuteGraphResponse(graph_exec_id=graph_exec.graph_exec_id)
 
 
 @v1_router.post(

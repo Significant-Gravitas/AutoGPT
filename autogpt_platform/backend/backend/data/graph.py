@@ -15,7 +15,7 @@ from prisma.models import (
     StoreListingVersion,
 )
 from prisma.types import AgentGraphWhereInput
-from pydantic.fields import computed_field
+from pydantic.fields import Field, computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
@@ -72,7 +72,7 @@ class NodeModel(Node):
     webhook: Optional[Webhook] = None
 
     @staticmethod
-    def from_db(node: AgentNode):
+    def from_db(node: AgentNode) -> "NodeModel":
         obj = NodeModel(
             id=node.id,
             block_id=node.agentBlockId,
@@ -112,6 +112,7 @@ class GraphExecutionMeta(BaseDbModel):
     execution_id: str
     started_at: datetime
     ended_at: datetime
+    cost: Optional[int] = Field(..., description="Execution cost in credits")
     duration: float
     total_run_time: float
     status: ExecutionStatus
@@ -140,6 +141,7 @@ class GraphExecutionMeta(BaseDbModel):
             execution_id=_graph_exec.id,
             started_at=start_time,
             ended_at=end_time,
+            cost=stats.get("cost", None),
             duration=duration,
             total_run_time=total_run_time,
             status=ExecutionStatus(_graph_exec.executionStatus),
@@ -312,16 +314,39 @@ class GraphModel(Graph):
 
     def validate_graph(self, for_run: bool = False):
         def sanitize(name):
-            return name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
+            sanitized_name = name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
+            if sanitized_name.startswith("tools_^_"):
+                return sanitized_name.split("_^_")[0]
+            return sanitized_name
+
+        # Validate smart decision maker nodes
+        smart_decision_maker_nodes = set()
+        agent_nodes = set()
+        nodes_block = {
+            node.id: block
+            for node in self.nodes
+            if (block := get_block(node.block_id)) is not None
+        }
+
+        for node in self.nodes:
+            if (block := nodes_block.get(node.id)) is None:
+                raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
+
+            # Smart decision maker nodes
+            if block.block_type == BlockType.AI:
+                smart_decision_maker_nodes.add(node.id)
+            # Agent nodes
+            elif block.block_type == BlockType.AGENT:
+                agent_nodes.add(node.id)
 
         input_links = defaultdict(list)
+
         for link in self.links:
             input_links[link.sink_id].append(link)
 
         # Nodes: required fields are filled or connected and dependencies are satisfied
         for node in self.nodes:
-            block = get_block(node.block_id)
-            if block is None:
+            if (block := nodes_block.get(node.id)) is None:
                 raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
 
             provided_inputs = set(
@@ -341,6 +366,7 @@ class GraphModel(Graph):
                         or block.block_type == BlockType.INPUT
                         or block.block_type == BlockType.OUTPUT
                         or block.block_type == BlockType.AGENT
+                        or block.block_type == BlockType.AI
                     )
                 ):
                     raise ValueError(
@@ -410,16 +436,16 @@ class GraphModel(Graph):
                 if i == 0:
                     fields = (
                         block.output_schema.get_fields()
-                        if block.block_type != BlockType.AGENT
+                        if block.block_type not in [BlockType.AGENT]
                         else vals.get("output_schema", {}).get("properties", {}).keys()
                     )
                 else:
                     fields = (
                         block.input_schema.get_fields()
-                        if block.block_type != BlockType.AGENT
+                        if block.block_type not in [BlockType.AGENT]
                         else vals.get("input_schema", {}).get("properties", {}).keys()
                     )
-                if sanitized_name not in fields:
+                if sanitized_name not in fields and not name.startswith("tools_^_"):
                     fields_msg = f"Allowed fields: {fields}"
                     raise ValueError(f"{suffix}, `{name}` invalid, {fields_msg}")
 
@@ -610,6 +636,33 @@ async def get_execution(user_id: str, execution_id: str) -> GraphExecution | Non
     return GraphExecution.from_db(execution) if execution else None
 
 
+async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph | None:
+    where_clause: AgentGraphWhereInput = {
+        "id": graph_id,
+    }
+
+    if version is not None:
+        where_clause["version"] = version
+
+    graph = await AgentGraph.prisma().find_first(
+        where=where_clause,
+        include=AGENT_GRAPH_INCLUDE,
+        order={"version": "desc"},
+    )
+
+    if not graph:
+        return None
+
+    return Graph(
+        id=graph.id,
+        name=graph.name or "",
+        description=graph.description or "",
+        version=graph.version,
+        is_active=graph.isActive,
+        is_template=graph.isTemplate,
+    )
+
+
 async def get_graph(
     graph_id: str,
     version: int | None = None,
@@ -656,6 +709,18 @@ async def get_graph(
         return None
 
     return GraphModel.from_db(graph, for_export)
+
+
+async def get_connected_output_nodes(node_id: str) -> list[tuple[Link, Node]]:
+    links = await AgentNodeLink.prisma().find_many(
+        where={"agentNodeSourceId": node_id},
+        include={"AgentNodeSink": {"include": AGENT_NODE_INCLUDE}},  # type: ignore
+    )
+    return [
+        (Link.from_db(link), NodeModel.from_db(link.AgentNodeSink))
+        for link in links
+        if link.AgentNodeSink
+    ]
 
 
 async def set_graph_active_version(graph_id: str, version: int, user_id: str) -> None:

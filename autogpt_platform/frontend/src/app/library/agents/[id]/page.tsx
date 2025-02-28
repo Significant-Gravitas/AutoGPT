@@ -6,6 +6,7 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   GraphExecution,
   GraphExecutionMeta,
+  GraphID,
   GraphMeta,
   Schedule,
 } from "@/lib/autogpt-server-api";
@@ -16,7 +17,7 @@ import AgentRunsSelectorList from "@/components/agents/agent-runs-selector-list"
 import AgentScheduleDetailsView from "@/components/agents/agent-schedule-details-view";
 
 export default function AgentRunsPage(): React.ReactElement {
-  const { id: agentID }: { id: string } = useParams();
+  const { id: agentID }: { id: GraphID } = useParams();
   const router = useRouter();
   const api = useBackendAPI();
 
@@ -152,22 +153,20 @@ export default function AgentRunsPage(): React.ReactElement {
         </div>
 
         {/* Run / Schedule views */}
-        {(selectedView.type == "run" ? (
-          selectedView.id ? (
-            selectedRun && (
-              <AgentRunDetailsView
-                agent={agent}
-                run={selectedRun}
-                agentActions={agentActions}
-              />
-            )
-          ) : (
-            <AgentRunDraftView
+        {(selectedView.type == "run" && selectedView.id ? (
+          selectedRun && (
+            <AgentRunDetailsView
               agent={agent}
-              onRun={(runID) => selectRun(runID)}
+              run={selectedRun}
               agentActions={agentActions}
             />
           )
+        ) : selectedView.type == "run" ? (
+          <AgentRunDraftView
+            agent={agent}
+            onRun={(runID) => selectRun(runID)}
+            agentActions={agentActions}
+          />
         ) : selectedView.type == "schedule" ? (
           selectedSchedule && (
             <AgentScheduleDetailsView
