@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING
 
 from .compass import CompassWebhookManager
+from .example import ExampleWebhookManager
 from .github import GithubWebhooksManager
 from .slant3d import Slant3DWebhooksManager
 
@@ -15,6 +16,7 @@ WEBHOOK_MANAGERS_BY_NAME: dict["ProviderName", type["BaseWebhooksManager"]] = {
         CompassWebhookManager,
         GithubWebhooksManager,
         Slant3DWebhooksManager,
+        ExampleWebhookManager,
     ]
 }
 # --8<-- [end:WEBHOOK_MANAGERS_BY_NAME]
