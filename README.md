@@ -65,7 +65,7 @@ Here are two examples of what you can do with AutoGPT:
 These examples show just a glimpse of what you can achieve with AutoGPT! You can create customized workflows to build agents for any use case.
 
 ---
-### Mission and Licencing
+### Mission and Licensing
 Our mission is to provide the tools, so that you can focus on what matters:
 
 - 🏗️ **Building** - Lay the foundation for something amazing.
@@ -82,7 +82,7 @@ Be part of the revolution! **AutoGPT** is here to stay, at the forefront of AI i
 
 MIT License: The majority of the AutoGPT repository is under the MIT License.
 
-Polyform Shield License: This license applies to the autogpt_platform folder. 
+Polyform Shield License: This license applies to the **autogpt_platform** folder. 
 
 For more information, see https://agpt.co/blog/introducing-the-autogpt-platform
 
