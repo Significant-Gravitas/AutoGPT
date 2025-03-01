@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import (
@@ -9,7 +9,7 @@ from backend.data.model import (
     SchemaField,
 )
 
-from ._api import ExampleAPIException, ExampleClient
+from ._api import ExampleClient
 from ._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, ExampleCredentialsInput
 
 logger = logging.getLogger(__name__)
@@ -79,9 +79,6 @@ class ExampleBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             # The type of the block, which is an instance of BlockType Enum.
             block_type=BlockType.STANDARD,
-            # The webhook configuration for the block, if any.
-            # This can be an instance of BlockWebhookConfig or BlockManualWebhookConfig.
-            webhook_config=None,
         )
 
     @staticmethod
@@ -90,26 +87,22 @@ class ExampleBlock(Block):
         return f"Hello, {input}!"
 
     def my_function_that_can_be_mocked(
-        self, input: str, credentials: Optional[APIKeyCredentials] = None
+        self, input: str, credentials: APIKeyCredentials
     ) -> str:
         logger.info("my_function_that_can_be_mocked called with input: %s", input)
 
-        if credentials:
-            # Use the ExampleClient from _api.py to make an API call
-            client = ExampleClient(credentials=credentials)
-            try:
-                # Create a sample resource using the client
-                resource_data = {"name": input, "type": "greeting"}
-                response = client.create_resource(resource_data)
-                return f"API response: {response.get('message', 'Hello, world!')}"
-            except ExampleAPIException as e:
-                logger.error("API call failed: %s", str(e))
-                return f"API error: {str(e)}"
+        # Use the ExampleClient from _api.py to make an API call
+        client = ExampleClient(credentials=credentials)
 
-        # Fallback if no credentials provided
-        return "Hello, world!"
+        # Create a sample resource using the client
+        resource_data = {"name": input, "type": "greeting"}
+        response = client.create_resource(resource_data)
+        return f"API response: {response.get('message', 'Hello, world!')}"
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
         greeting = ExampleBlock.my_static_method(input_data.greeting)
-        message = self.my_function_that_can_be_mocked(greeting)
+        message = self.my_function_that_can_be_mocked(greeting, credentials)
         yield "response", {"message": message}
