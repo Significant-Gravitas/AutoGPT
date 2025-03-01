@@ -651,7 +651,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         logger.debug(f"Calling LLM with input data: {input_data}")
-        prompt = [p.model_dump() for p in input_data.conversation_history]
+        prompt = [json.to_dict(p) for p in input_data.conversation_history]
 
         def trim_prompt(s: str) -> str:
             lines = s.strip().split("\n")

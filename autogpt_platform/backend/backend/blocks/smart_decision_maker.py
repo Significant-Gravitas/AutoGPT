@@ -1,4 +1,3 @@
-import json
 import logging
 import re
 from typing import TYPE_CHECKING, Any
@@ -16,6 +15,7 @@ from backend.data.block import (
     get_block,
 )
 from backend.data.model import SchemaField
+from backend.util import json
 
 if TYPE_CHECKING:
     from backend.data.graph import Link, Node
@@ -287,7 +287,7 @@ class SmartDecisionMakerBlock(Block):
     ) -> BlockOutput:
         tool_functions = self._create_function_signature(node_id)
 
-        prompt = [p.model_dump() for p in input_data.conversation_history]
+        prompt = [json.to_dict(p) for p in input_data.conversation_history]
 
         values = input_data.prompt_values
         if values:
