@@ -118,13 +118,17 @@ export default function Page() {
 
   const switchIntegration = useCallback(
     (name: string) => {
+      if (!state) {
+        return;
+      }
+
       const integrations = state.integrations.includes(name)
         ? state.integrations.filter((i) => i !== name)
         : [...state.integrations, name];
 
       setState({ integrations });
     },
-    [state.integrations, setState],
+    [state?.integrations, setState],
   );
 
   return (
@@ -144,7 +148,7 @@ export default function Page() {
         </OnboardingText>
         <OnboardingGrid
           elements={services}
-          selected={state.integrations}
+          selected={state?.integrations}
           onSelect={switchIntegration}
         />
         <OnboardingText className="mt-12" variant="subheader">
@@ -156,7 +160,7 @@ export default function Page() {
         <OnboardingInput
           className="mb-4"
           placeholder="Others (please specify)"
-          value={state.otherIntegrations || ""}
+          value={state?.otherIntegrations || ""}
           onChange={(otherIntegrations) => setState({ otherIntegrations })}
         />
       </div>
@@ -166,7 +170,7 @@ export default function Page() {
           className="mb-2"
           href="/onboarding/4-agent"
           disabled={
-            state.integrations.length === 0 &&
+            state?.integrations.length === 0 &&
             isEmptyOrWhitespace(state.otherIntegrations)
           }
         >

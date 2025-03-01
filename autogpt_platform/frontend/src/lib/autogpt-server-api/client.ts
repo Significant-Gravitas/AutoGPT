@@ -43,6 +43,7 @@ import {
   TransactionHistory,
   User,
   UserPasswordCredentials,
+  UserOnboarding,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -95,6 +96,9 @@ export default class BackendAPI {
     return this._request("POST", "/auth/user/email", { email });
   }
 
+  ////////////////////////////////////////
+  ///////////// CREDITS //////////////////
+  ////////////////////////////////////////
   getUserCredit(): Promise<{ credits: number }> {
     try {
       return this._get("/credits");
@@ -158,6 +162,20 @@ export default class BackendAPI {
     return this._request("PATCH", "/credits");
   }
 
+  ////////////////////////////////////////
+  /////////// ONBOARDING /////////////////
+  ////////////////////////////////////////
+  getUserOnboarding(): Promise<UserOnboarding> {
+    return this._get("/onboarding");
+  }
+
+  updateUserOnboarding(onboarding: Partial<UserOnboarding>): Promise<void> {
+    return this._request("PATCH", "/onboarding", onboarding);
+  }
+
+  ////////////////////////////////////////
+  /////////// GRAPHS /////////////////////
+  ////////////////////////////////////////
   getBlocks(): Promise<Block[]> {
     return this._get("/blocks");
   }

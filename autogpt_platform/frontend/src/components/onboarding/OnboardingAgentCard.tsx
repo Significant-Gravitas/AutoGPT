@@ -1,25 +1,19 @@
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import StarRating from "./StarRating";
+import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 
-interface OnboardingAgentCardProps {
-  id: string;
-  image: string;
-  name: string;
-  description: string;
-  author: string;
-  runs: number;
-  rating: number;
+type OnboardingAgentCardProps = StoreAgentDetails & {
   selected?: boolean;
   onClick: () => void;
-}
+};
 
 export default function OnboardingAgentCard({
-  id,
-  image,
-  name,
+  agent_image,
+  creator_avatar,
+  agent_name,
   description,
-  author,
+  creator,
   runs,
   rating,
   selected,
@@ -29,7 +23,7 @@ export default function OnboardingAgentCard({
     <div
       className={cn(
         "relative cursor-pointer transition-all duration-200 ease-in-out",
-        "h-[394px] w-[368px] rounded-xl border border-transparent bg-white",
+        "h-[394px] w-[368px] rounded-[20px] border border-transparent bg-white",
         selected ? "bg-[#F5F3FF80]" : "hover:border-zinc-400",
       )}
       onClick={onClick}
@@ -37,16 +31,16 @@ export default function OnboardingAgentCard({
       {/* Image container */}
       <div className="relative">
         <Image
-          src={image}
+          src={agent_image?.[0] || ""}
           alt="Agent cover"
-          className="m-2 h-[196px] w-[350px] rounded-xl object-cover"
+          className="m-2 h-[196px] w-[350px] rounded-[16px] object-cover"
           width={350}
           height={196}
         />
         {/* Profile picture overlay */}
         <div className="absolute bottom-2 left-4">
           <Image
-            src={image}
+            src={creator_avatar}
             alt="Profile picture"
             className="h-[50px] w-[50px] rounded-full border border-white object-cover object-center"
             width={50}
@@ -61,12 +55,12 @@ export default function OnboardingAgentCard({
         <div>
           {/* Title - 2 lines max */}
           <p className="text-md line-clamp-2 max-h-[50px] font-sans text-base font-medium leading-normal text-zinc-800">
-            {name}
+            {agent_name}
           </p>
 
           {/* Author - single line with truncate */}
           <p className="truncate text-sm font-normal leading-normal text-zinc-600">
-            by {author}
+            by {creator}
           </p>
 
           {/* Description - 3 lines max */}
@@ -83,14 +77,14 @@ export default function OnboardingAgentCard({
         {/* Bottom stats */}
         <div className="flex w-full items-center justify-between">
           <span className="mt-1 font-sans text-sm font-medium text-zinc-800">
-            {runs.toLocaleString("en-US")} runs
+            {runs?.toLocaleString("en-US")} runs
           </span>
           <StarRating rating={rating} />
         </div>
       </div>
       <div
         className={cn(
-          "pointer-events-none absolute inset-0 rounded-xl border-2 transition-all duration-200 ease-in-out",
+          "pointer-events-none absolute inset-0 rounded-[20px] border-2 transition-all duration-200 ease-in-out",
           selected ? "border-violet-700" : "border-transparent",
         )}
       />

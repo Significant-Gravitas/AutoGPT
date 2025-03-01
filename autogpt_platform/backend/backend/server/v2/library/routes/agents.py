@@ -98,7 +98,7 @@ async def add_marketplace_agent_to_library(
         user_id: ID of the authenticated user.
 
     Returns:
-        201 (Created) on success.
+        library_model.LibraryAgent: Agent added to the library
 
     Raises:
         HTTPException(404): If the listing version is not found.

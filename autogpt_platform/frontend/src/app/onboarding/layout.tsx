@@ -1,25 +1,19 @@
 "use client";
+import { UserOnboarding } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   createContext,
   ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useState,
 } from "react";
 
-type OnboardingState = {
-  step: number;
-  usageReason?: string;
-  integrations: string[];
-  otherIntegrations?: string;
-  chosenAgentId?: string;
-  agentInput?: { [key: string]: string };
-};
-
 const OnboardingContext = createContext<
   | {
-      state: OnboardingState;
-      setState: (state: Partial<OnboardingState>) => void;
+      state: UserOnboarding | null;
+      setState: (state: Partial<UserOnboarding>) => void;
     }
   | undefined
 >(undefined);
@@ -43,14 +37,53 @@ export default function OnboardingLayout({
 }: {
   children: ReactNode;
 }) {
-  const [state, setStateRaw] = useState<OnboardingState>({
-    step: 0,
-    integrations: [],
-  });
+  const [state, setStateRaw] = useState<UserOnboarding | null>(null);
+  const api = useBackendAPI();
 
-  const setState = (newState: Partial<OnboardingState>) => {
-    setStateRaw((prev) => ({ ...prev, ...newState }));
-  };
+  useEffect(() => {
+    const fetchOnboarding = async () => {
+      const onboarding = await api.getUserOnboarding();
+      setStateRaw(onboarding);
+      console.log("userOnboarding", onboarding);
+    };
+    fetchOnboarding();
+  }, [api]);
+
+  const setState = useCallback(
+    (newState: Partial<UserOnboarding>) => {
+      function removeNullFields<T extends object>(obj: T): Partial<T> {
+        return Object.fromEntries(
+          Object.entries(obj).filter(([_, value]) => value != null),
+        ) as Partial<T>;
+      }
+
+      const updateState = (state: Partial<UserOnboarding>) => {
+        if (!state) return;
+
+        api.updateUserOnboarding(state);
+        console.log("updateState", state);
+      };
+
+      setStateRaw((prev) => {
+        //todo save state when step changes
+        if (newState.step && prev?.step !== newState.step) {
+          updateState(removeNullFields({ ...prev, ...newState }));
+        }
+
+        if (!prev) {
+          // Handle initial state
+          return {
+            step: 1,
+            integrations: [],
+            isCompleted: false,
+            ...newState,
+          } as UserOnboarding;
+        }
+        return { ...prev, ...newState };
+      });
+    },
+    [api, setStateRaw],
+  );
 
   return (
     <OnboardingContext.Provider value={{ state, setState }}>

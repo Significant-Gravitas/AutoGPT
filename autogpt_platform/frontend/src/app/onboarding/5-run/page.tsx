@@ -9,56 +9,86 @@ import { useOnboarding } from "../layout";
 import StarRating from "@/components/onboarding/StarRating";
 import { Play } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import OnboardingAgentInput from "@/components/onboarding/OnboardingAgentInput";
 import Image from "next/image";
-
-const agents = [
-  {
-    id: "0",
-    image: "/placeholder.png",
-    name: "Viral News Video Creator: AI TikTok Shorts",
-    description:
-      "Description of what the agent does. Written by the creator. Example of text that's longer than two lines. Lorem ipsum set dolor amet bacon ipsum dolor amet kielbasa chicken ullamco frankfurter cupim nisi. Esse jerky turkey pancetta lorem officia ad qui ut ham hock venison ut pig mollit ball tip. Tempor chicken eiusmod tongue tail pork belly labore kielbasa consequat culpa cow aliqua. Ea tail dolore sausage flank.",
-    author: "Pwuts",
-    runs: 1539,
-    rating: 4.1,
-  },
-  {
-    id: "1",
-    image: "/placeholder.png",
-    name: "Financial Analysis Agent: Your Personalized Financial Insights Tool",
-    description:
-      "Description of what the agent does. Written by the creator. Example of text that's longer than two lines. Lorem ipsum set dolor amet bacon ipsum dolor amet kielbasa chicken ullamco frankfurter cupim nisi. Esse jerky turkey pancetta lorem officia ad qui ut ham hock venison ut pig mollit ball tip. Tempor chicken eiusmod tongue tail pork belly labore kielbasa consequat culpa cow aliqua. Ea tail dolore sausage flank.",
-    author: "John Ababseh",
-    runs: 824,
-    rating: 4.5,
-  },
-];
-
-function isEmptyOrWhitespace(str: string | undefined | null): boolean {
-  return !str || str.trim().length === 0;
-}
+import { LibraryAgent, StoreAgentDetails } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { useRouter } from "next/navigation";
 
 export default function Page() {
   const { state, setState } = useOnboarding(5);
   const [showInput, setShowInput] = useState(false);
-  const selectedAgent = agents.find(
-    (agent) => agent.id === state.chosenAgentId,
-  );
+  const [storeAgent, setStoreAgent] = useState<StoreAgentDetails | null>(null);
+  const [agent, setAgent] = useState<LibraryAgent | null>(null);
+  const router = useRouter();
+  const api = useBackendAPI();
+
+  useEffect(() => {
+    if (!state?.selectedAgentCreator || !state?.selectedAgentSlug) {
+      return;
+    }
+    api
+      .getStoreAgent(state?.selectedAgentCreator!, state?.selectedAgentSlug!)
+      .then((agent) => {
+        setStoreAgent(agent);
+        api
+          .addMarketplaceAgentToLibrary(agent?.store_listing_version_id!)
+          .then((agent) => {
+            setAgent(agent);
+            const update: { [key: string]: string } = {};
+            // Set default values from schema
+            Object.entries(agent?.input_schema?.properties || {}).forEach(
+              ([key, value]) => {
+                console.log(`key: ${key}`);
+                // Skip if already set
+                if (state?.agentInput && state?.agentInput[key]) {
+                  update[key] = state?.agentInput[key];
+                  return;
+                }
+                console.log({
+                  agentInput: {
+                    ...state?.agentInput,
+                    [key]: value.default || "",
+                  },
+                });
+                update[key] = value.default || "";
+              },
+            );
+            setState({
+              agentInput: update,
+            });
+          });
+      });
+  }, [
+    api,
+    setAgent,
+    setStoreAgent,
+    setState,
+    state?.selectedAgentCreator,
+    state?.selectedAgentSlug,
+  ]);
 
   const setAgentInput = useCallback(
     (key: string, value: string) => {
       setState({
         ...state,
         agentInput: {
-          ...state.agentInput,
+          ...state?.agentInput,
           [key]: value,
         },
       });
     },
     [state, setState],
   );
+
+  const runAgent = useCallback(() => {
+    if (!agent) {
+      return;
+    }
+    api.executeGraph(agent.agent_id, agent.agent_version, state?.agentInput);
+    router.push("/onboarding/6-congrats");
+  }, [api, agent, router]);
 
   const runYourAgent = (
     <div className="ml-[54px] w-[481px] pl-5">
@@ -115,11 +145,10 @@ export default function Page() {
             <span className="font-sans text-xs font-medium tracking-wide text-zinc-500">
               SELECTED AGENT
             </span>
-
             <div className="mt-4 flex h-20 rounded-lg bg-violet-50 p-2">
               {/* Left image */}
               <Image
-                src="/placeholder.png"
+                src={storeAgent?.agent_image[0] || ""}
                 alt="Description"
                 width={350}
                 height={196}
@@ -129,26 +158,25 @@ export default function Page() {
               {/* Right content */}
               <div className="ml-2 flex flex-1 flex-col">
                 <span className="w-[292px] truncate font-sans text-[14px] font-medium leading-normal text-zinc-800">
-                  {selectedAgent?.name}
+                  {agent?.name}
                 </span>
                 <span className="mt-[5px] w-[292px] truncate font-sans text-xs font-normal leading-tight text-zinc-600">
-                  by {selectedAgent?.author}
+                  by {storeAgent?.creator}
                 </span>
                 <div className="mt-auto flex w-[292px] justify-between">
                   <span className="mt-1 truncate font-sans text-xs font-normal leading-tight text-zinc-600">
-                    {selectedAgent?.runs.toLocaleString("en-US")} runs
+                    {storeAgent?.runs.toLocaleString("en-US")} runs
                   </span>
                   <StarRating
                     className="font-sans text-xs font-normal leading-tight text-zinc-600"
                     starSize={12}
-                    rating={selectedAgent?.rating || 0}
+                    rating={storeAgent?.rating || 0}
                   />
                 </div>
               </div>
             </div>
           </div>
         </div>
-
         {/* Right side */}
         {!showInput ? (
           runYourAgent
@@ -169,28 +197,28 @@ export default function Page() {
                 <OnboardingText className="mb-3 font-semibold" variant="header">
                   Input
                 </OnboardingText>
-                <OnboardingAgentInput
-                  name={"Video Count"}
-                  description={"The number of videos you'd like to generate"}
-                  placeholder={"eg. 1"}
-                  value={state.agentInput?.videoCount || ""}
-                  onChange={(v) => setAgentInput("videoCount", v)}
-                />
-                <OnboardingAgentInput
-                  name={"Source Website"}
-                  description={"The website to source the stories from"}
-                  placeholder={"eg. youtube URL"}
-                  value={state.agentInput?.sourceWebsite || ""}
-                  onChange={(v) => setAgentInput("sourceWebsite", v)}
-                />
+                {Object.entries(agent?.input_schema?.properties || {}).map(
+                  ([key, value]) => (
+                    <OnboardingAgentInput
+                      key={key}
+                      name={value.title!}
+                      description={value.description || ""}
+                      placeholder={value.placeholder || ""}
+                      value={state?.agentInput?.[key] || ""}
+                      onChange={(v) => setAgentInput(key, v)}
+                    />
+                  ),
+                )}
               </div>
               <OnboardingButton
                 variant="violet"
                 className="mt-8 w-[136px]"
                 disabled={
-                  isEmptyOrWhitespace(state.agentInput?.videoCount) ||
-                  isEmptyOrWhitespace(state.agentInput?.sourceWebsite)
+                  Object.values(state?.agentInput || {}).some(
+                    (value) => value.trim() === "",
+                  ) || !agent
                 }
+                onClick={runAgent}
               >
                 <Play className="" size={18} />
                 Run agent
