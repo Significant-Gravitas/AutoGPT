@@ -79,12 +79,7 @@ class SmartDecisionMakerBlock(Block):
         )
 
     class Output(BlockSchema):
-
-        prompt: str = SchemaField(description="The prompt sent to the language model.")
         error: str = SchemaField(description="Error message if the API call failed.")
-        function_signatures: list[dict[str, Any]] = SchemaField(
-            description="The function signatures that are sent to the language model."
-        )
         tools: Any = SchemaField(description="The tools that are available to use.")
         finished: str = SchemaField(
             description="The finished message to display to the user."
@@ -331,6 +326,9 @@ class SmartDecisionMakerBlock(Block):
                 for c in response.tool_calls
             )
 
+        input_data.conversation_history.append(
+            llm.Message(role=llm.MessageRole.USER, content=response.prompt)
+        )
         input_data.conversation_history.append(
             llm.Message(role=llm.MessageRole.ASSISTANT, content=assistant_response)
         )
