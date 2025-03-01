@@ -116,6 +116,7 @@ async def proxy_otto_request(
                 "conversation_history": [
                     msg.dict() for msg in request.conversation_history
                 ],
+                "user_id": user_id,
                 "message_id": request.message_id,
             }
 
