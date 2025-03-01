@@ -21,6 +21,7 @@ import {
   GraphMeta,
   GraphUpdateable,
   LibraryAgent,
+  LibraryAgentID,
   LibraryAgentPreset,
   LibraryAgentPresetResponse,
   LibraryAgentResponse,
@@ -500,7 +501,7 @@ export default class BackendAPI {
   }
 
   async updateLibraryAgent(
-    libraryAgentId: string,
+    libraryAgentId: LibraryAgentID,
     params: {
       auto_update_version?: boolean;
       is_favorite?: boolean;
