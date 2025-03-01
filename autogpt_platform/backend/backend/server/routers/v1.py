@@ -10,12 +10,14 @@ from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.feature_flag.client import feature_flag
 from autogpt_libs.utils.cache import thread_cached
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
+from starlette.status import HTTP_204_NO_CONTENT
 from typing_extensions import Optional, TypedDict
 
 import backend.data.block
 import backend.server.integrations.router
 import backend.server.routers.analytics
 import backend.server.v2.library.db as library_db
+from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.api_key import (
     APIKeyError,
@@ -624,6 +626,19 @@ async def get_graph_execution(
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
     return result
+
+
+@v1_router.delete(
+    path="/executions/{graph_exec_id}",
+    tags=["graphs"],
+    dependencies=[Depends(auth_middleware)],
+    status_code=HTTP_204_NO_CONTENT,
+)
+async def delete_graph_execution(
+    graph_exec_id: str,
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> None:
+    await execution_db.delete_execution(graph_exec_id=graph_exec_id, user_id=user_id)
 
 
 ########################################################

@@ -109,7 +109,7 @@ export const AgentFlowList = ({
                   lastRun: GraphExecutionMeta | null = null;
                 if (executions) {
                   const _flowRuns = executions.filter(
-                    (r) => r.graph_id == flow.agent_id,
+                    (r) => r.graph_id == flow.graph_id,
                   );
                   runCount = _flowRuns.length;
                   lastRun =

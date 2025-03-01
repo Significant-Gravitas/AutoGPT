@@ -17,10 +17,13 @@ import {
   Graph,
   GraphCreatable,
   GraphExecution,
+  GraphExecutionID,
   GraphExecutionMeta,
+  GraphID,
   GraphMeta,
   GraphUpdateable,
   LibraryAgent,
+  LibraryAgentID,
   LibraryAgentPreset,
   LibraryAgentPresetResponse,
   LibraryAgentResponse,
@@ -33,6 +36,7 @@ import {
   RefundRequest,
   Schedule,
   ScheduleCreatable,
+  ScheduleID,
   StoreAgentDetails,
   StoreAgentsResponse,
   StoreReview,
@@ -167,7 +171,7 @@ export default class BackendAPI {
   }
 
   getGraph(
-    id: string,
+    id: GraphID,
     version?: number,
     hide_credentials?: boolean,
   ): Promise<Graph> {
@@ -181,7 +185,7 @@ export default class BackendAPI {
     return this._get(`/graphs/${id}`, query);
   }
 
-  getGraphAllVersions(id: string): Promise<Graph[]> {
+  getGraphAllVersions(id: GraphID): Promise<Graph[]> {
     return this._get(`/graphs/${id}/versions`);
   }
 
@@ -191,25 +195,25 @@ export default class BackendAPI {
     return this._request("POST", "/graphs", requestBody);
   }
 
-  updateGraph(id: string, graph: GraphUpdateable): Promise<Graph> {
+  updateGraph(id: GraphID, graph: GraphUpdateable): Promise<Graph> {
     return this._request("PUT", `/graphs/${id}`, graph);
   }
 
-  deleteGraph(id: string): Promise<void> {
+  deleteGraph(id: GraphID): Promise<void> {
     return this._request("DELETE", `/graphs/${id}`);
   }
 
-  setGraphActiveVersion(id: string, version: number): Promise<Graph> {
+  setGraphActiveVersion(id: GraphID, version: number): Promise<Graph> {
     return this._request("PUT", `/graphs/${id}/versions/active`, {
       active_graph_version: version,
     });
   }
 
   executeGraph(
-    id: string,
+    id: GraphID,
     version: number,
     inputData: { [key: string]: any } = {},
-  ): Promise<{ graph_exec_id: string }> {
+  ): Promise<{ graph_exec_id: GraphExecutionID }> {
     return this._request("POST", `/graphs/${id}/execute/${version}`, inputData);
   }
 
@@ -217,13 +221,13 @@ export default class BackendAPI {
     return this._get(`/executions`);
   }
 
-  getGraphExecutions(graphID: string): Promise<GraphExecutionMeta[]> {
+  getGraphExecutions(graphID: GraphID): Promise<GraphExecutionMeta[]> {
     return this._get(`/graphs/${graphID}/executions`);
   }
 
   async getGraphExecutionInfo(
-    graphID: string,
-    runID: string,
+    graphID: GraphID,
+    runID: GraphExecutionID,
   ): Promise<GraphExecution> {
     const result = await this._get(`/graphs/${graphID}/executions/${runID}`);
     result.node_executions = result.node_executions.map(
@@ -233,8 +237,8 @@ export default class BackendAPI {
   }
 
   async stopGraphExecution(
-    graphID: string,
-    runID: string,
+    graphID: GraphID,
+    runID: GraphExecutionID,
   ): Promise<GraphExecution> {
     const result = await this._request(
       "POST",
@@ -244,6 +248,10 @@ export default class BackendAPI {
       parseNodeExecutionResultTimestamps,
     );
     return result;
+  }
+
+  async deleteGraphExecution(runID: GraphExecutionID): Promise<void> {
+    await this._request("DELETE", `/executions/${runID}`);
   }
 
   oAuthLogin(
@@ -500,7 +508,7 @@ export default class BackendAPI {
   }
 
   async updateLibraryAgent(
-    libraryAgentId: string,
+    libraryAgentId: LibraryAgentID,
     params: {
       auto_update_version?: boolean;
       is_favorite?: boolean;
@@ -512,6 +520,7 @@ export default class BackendAPI {
   }
 
   listLibraryAgentPresets(params?: {
+    graph_id?: GraphID;
     page?: number;
     page_size?: number;
   }): Promise<LibraryAgentPresetResponse> {
@@ -541,7 +550,7 @@ export default class BackendAPI {
 
   executeLibraryAgentPreset(
     presetId: string,
-    graphId: string,
+    graphId: GraphID,
     graphVersion: number,
     nodeInput: { [key: string]: any },
   ): Promise<{ id: string }> {
@@ -552,13 +561,7 @@ export default class BackendAPI {
     });
   }
 
-  ///////////////////////////////////////////
-  /////////// INTERNAL FUNCTIONS ////////////
-  //////////////////////////////??///////////
-
-  private _get(path: string, query?: Record<string, any>) {
-    return this._request("GET", path, query);
-  }
+  /////////////////////// SCHEDULES ////////////////////////
 
   async createSchedule(schedule: ScheduleCreatable): Promise<Schedule> {
     return this._request("POST", `/schedules`, schedule).then(
@@ -566,7 +569,7 @@ export default class BackendAPI {
     );
   }
 
-  async deleteSchedule(scheduleId: string): Promise<{ id: string }> {
+  async deleteSchedule(scheduleId: ScheduleID): Promise<{ id: string }> {
     return this._request("DELETE", `/schedules/${scheduleId}`);
   }
 
@@ -574,6 +577,14 @@ export default class BackendAPI {
     return this._get(`/schedules`).then((schedules) =>
       schedules.map(parseScheduleTimestamp),
     );
+  }
+
+  ///////////////////////////////////////////
+  /////////// INTERNAL FUNCTIONS ////////////
+  //////////////////////////////??///////////
+
+  private _get(path: string, query?: Record<string, any>) {
+    return this._request("GET", path, query);
   }
 
   private async _uploadFile(path: string, file: File): Promise<string> {

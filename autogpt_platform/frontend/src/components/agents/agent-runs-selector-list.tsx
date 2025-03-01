@@ -4,37 +4,52 @@ import { Plus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import {
+  GraphExecutionID,
   GraphExecutionMeta,
   GraphMeta,
+  LibraryAgentPreset,
+  LibraryAgentPresetID,
   Schedule,
+  ScheduleID,
 } from "@/lib/autogpt-server-api";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/agptui/Button";
 import { Badge } from "@/components/ui/badge";
 
+import { AgentRunsViewSelection } from "@/app/library/agents/[id]/page";
 import { agentRunStatusMap } from "@/components/agents/agent-run-status-chip";
 import AgentRunSummaryCard from "@/components/agents/agent-run-summary-card";
 
 interface AgentRunsSelectorListProps {
   agent: GraphMeta;
   agentRuns: GraphExecutionMeta[];
+  agentPresets: LibraryAgentPreset[];
   schedules: Schedule[];
-  selectedView: { type: "run" | "schedule"; id?: string };
-  onSelectRun: (id: string) => void;
+  selectedView: AgentRunsViewSelection;
+  onSelectRun: (id: GraphExecutionID) => void;
+  onSelectPreset: (id: LibraryAgentPresetID) => void;
   onSelectSchedule: (schedule: Schedule) => void;
-  onDraftNewRun: () => void;
+  onSelectDraftNewRun: () => void;
+  onDeleteRun: (id: GraphExecutionID) => void;
+  onDeleteSchedule: (id: ScheduleID) => void;
+  onPinAsPreset: (run: GraphExecutionMeta) => void;
   className?: string;
 }
 
 export default function AgentRunsSelectorList({
   agent,
   agentRuns,
+  agentPresets,
   schedules,
   selectedView,
   onSelectRun,
+  onSelectPreset,
   onSelectSchedule,
-  onDraftNewRun,
+  onSelectDraftNewRun,
+  onDeleteRun,
+  onDeleteSchedule,
+  onPinAsPreset,
   className,
 }: AgentRunsSelectorListProps): React.ReactElement {
   const [activeListTab, setActiveListTab] = useState<"runs" | "scheduled">(
@@ -51,7 +66,7 @@ export default function AgentRunsSelectorList({
             ? "agpt-card-selected text-accent"
             : "")
         }
-        onClick={onDraftNewRun}
+        onClick={onSelectDraftNewRun}
       >
         <Plus className="h-6 w-6" />
         <span>New run</span>
@@ -91,24 +106,24 @@ export default function AgentRunsSelectorList({
                 ? "agpt-card-selected text-accent"
                 : "")
             }
-            onClick={onDraftNewRun}
+            onClick={onSelectDraftNewRun}
           >
             <Plus className="h-6 w-6" />
             <span>New run</span>
           </Button>
 
           {activeListTab === "runs"
-            ? agentRuns.map((run, i) => (
+            ? /* FIXME: list presets at the top */ agentRuns.map((run, i) => (
                 <AgentRunSummaryCard
                   className="h-28 w-72 lg:h-32 xl:w-80"
                   key={i}
-                  agentID={run.graph_id}
-                  agentRunID={run.execution_id}
                   status={agentRunStatusMap[run.status]}
                   title={agent.name}
                   timestamp={run.started_at}
                   selected={selectedView.id === run.execution_id}
                   onClick={() => onSelectRun(run.execution_id)}
+                  onDelete={() => onDeleteRun(run.execution_id)}
+                  onPinAsPreset={() => onPinAsPreset(run)}
                 />
               ))
             : schedules
@@ -117,13 +132,12 @@ export default function AgentRunsSelectorList({
                   <AgentRunSummaryCard
                     className="h-28 w-72 lg:h-32 xl:w-80"
                     key={i}
-                    agentID={schedule.graph_id}
-                    agentRunID={schedule.id}
                     status="scheduled"
                     title={schedule.name}
                     timestamp={schedule.next_run_time}
                     selected={selectedView.id === schedule.id}
                     onClick={() => onSelectSchedule(schedule)}
+                    onDelete={() => onDeleteSchedule(schedule.id)}
                   />
                 ))}
         </div>

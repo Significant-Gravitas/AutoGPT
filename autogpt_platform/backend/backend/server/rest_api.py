@@ -188,7 +188,7 @@ class AgentServer(backend.util.service.AppProcess):
 
     @staticmethod
     async def test_get_presets(user_id: str, page: int = 1, page_size: int = 10):
-        return await backend.server.v2.library.routes.presets.get_presets(
+        return await backend.server.v2.library.routes.presets.list_presets(
             user_id=user_id, page=page, page_size=page_size
         )
 

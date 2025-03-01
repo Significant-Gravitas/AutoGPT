@@ -64,12 +64,12 @@ async def get_library_agents(
     if search_term:
         where_clause["OR"] = [
             {
-                "Agent": {
+                "AgentGraph": {
                     "is": {"name": {"contains": search_term, "mode": "insensitive"}}
                 }
             },
             {
-                "Agent": {
+                "AgentGraph": {
                     "is": {
                         "description": {"contains": search_term, "mode": "insensitive"}
                     }
@@ -89,10 +89,10 @@ async def get_library_agents(
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=where_clause,
             include={
-                "Agent": {
+                "AgentGraph": {
                     "include": {
                         **backend.data.includes.AGENT_GRAPH_INCLUDE,
-                        "AgentGraphExecution": {"where": {"userId": user_id}},
+                        "AgentGraphExecutions": {"where": {"userId": user_id}},
                     }
                 },
                 "Creator": True,
@@ -189,7 +189,7 @@ async def create_library_agent(
                 "useGraphIsActiveVersion": True,
                 "User": {"connect": {"id": user_id}},
                 # "Creator": {"connect": {"id": agent.userId}},
-                "Agent": {
+                "AgentGraph": {
                     "connect": {
                         "graphVersionId": {"id": agent_id, "version": agent_version}
                     }
@@ -203,38 +203,41 @@ async def create_library_agent(
 
 async def update_agent_version_in_library(
     user_id: str,
-    agent_id: str,
-    agent_version: int,
+    agent_graph_id: str,
+    agent_graph_version: int,
 ) -> None:
     """
     Updates the agent version in the library if useGraphIsActiveVersion is True.
 
     Args:
         user_id: Owner of the LibraryAgent.
-        agent_id: The agent's ID to update.
-        agent_version: The new version of the agent.
+        agent_graph_id: The agent graph's ID to update.
+        agent_graph_version: The new version of the agent graph.
 
     Raises:
         DatabaseError: If there's an error with the update.
     """
     logger.debug(
         f"Updating agent version in library for user #{user_id}, "
-        f"agent #{agent_id} v{agent_version}"
+        f"agent #{agent_graph_id} v{agent_graph_version}"
     )
     try:
         library_agent = await prisma.models.LibraryAgent.prisma().find_first_or_raise(
             where={
                 "userId": user_id,
-                "agentId": agent_id,
+                "agentGraphId": agent_graph_id,
                 "useGraphIsActiveVersion": True,
             },
         )
         await prisma.models.LibraryAgent.prisma().update(
             where={"id": library_agent.id},
             data={
-                "Agent": {
+                "AgentGraph": {
                     "connect": {
-                        "graphVersionId": {"id": agent_id, "version": agent_version}
+                        "graphVersionId": {
+                            "id": agent_graph_id,
+                            "version": agent_graph_version,
+                        }
                     },
                 },
             },
@@ -294,7 +297,7 @@ async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
     """
     try:
         await prisma.models.LibraryAgent.prisma().delete_many(
-            where={"agentId": graph_id, "userId": user_id}
+            where={"agentGraphId": graph_id, "userId": user_id}
         )
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error deleting library agent: {e}")
@@ -345,11 +348,13 @@ async def add_store_agent_to_library(
             raise store_exceptions.DatabaseError("Cannot add own agent to library")
 
         # Check if user already has this agent
-        existing_library_agent = await prisma.models.LibraryAgent.prisma().find_first(
+        existing_library_agent = await prisma.models.LibraryAgent.prisma().find_unique(
             where={
-                "userId": user_id,
-                "agentId": store_agent.id,
-                "agentVersion": store_agent.version,
+                "userId_agentGraphId_agentGraphVersion": {
+                    "userId": user_id,
+                    "agentGraphId": store_agent.id,
+                    "agentGraphVersion": store_agent.version,
+                }
             }
         )
         if existing_library_agent:
@@ -362,8 +367,8 @@ async def add_store_agent_to_library(
         added_agent = await prisma.models.LibraryAgent.prisma().create(
             data={
                 "userId": user_id,
-                "agentId": store_agent.id,
-                "agentVersion": store_agent.version,
+                "agentGraphId": store_agent.id,
+                "agentGraphVersion": store_agent.version,
                 "isCreatedByUser": False,
             }
         )
@@ -383,8 +388,8 @@ async def add_store_agent_to_library(
 ##############################################
 
 
-async def get_presets(
-    user_id: str, page: int, page_size: int
+async def list_presets(
+    user_id: str, page: int, page_size: int, graph_id: Optional[str] = None
 ) -> library_model.LibraryAgentPresetResponse:
     """
     Retrieves a paginated list of AgentPresets for the specified user.
@@ -393,6 +398,7 @@ async def get_presets(
         user_id: The user ID whose presets are being retrieved.
         page: The current page index (0-based or 1-based, clarify in your domain).
         page_size: Number of items to retrieve per page.
+        graph_id: Agent Graph ID to filter by.
 
     Returns:
         A LibraryAgentPresetResponse containing a list of presets and pagination info.
@@ -410,15 +416,17 @@ async def get_presets(
         )
         raise store_exceptions.DatabaseError("Invalid pagination parameters")
 
+    query_filter: prisma.types.AgentPresetWhereInput = {"userId": user_id}
+    if graph_id:
+        query_filter["agentGraphId"] = graph_id
+
     try:
         presets_records = await prisma.models.AgentPreset.prisma().find_many(
-            where={"userId": user_id},
+            where=query_filter,
             skip=page * page_size,
             take=page_size,
         )
-        total_items = await prisma.models.AgentPreset.prisma().count(
-            where={"userId": user_id}
-        )
+        total_items = await prisma.models.AgentPreset.prisma().count(where=query_filter)
         total_pages = (total_items + page_size - 1) // page_size
 
         presets = [
@@ -522,8 +530,8 @@ async def upsert_preset(
                     "userId": user_id,
                     "name": preset.name,
                     "description": preset.description,
-                    "agentId": preset.agent_id,
-                    "agentVersion": preset.agent_version,
+                    "agentGraphId": preset.graph_id,
+                    "agentGraphVersion": preset.graph_version,
                     "isActive": preset.is_active,
                     "InputPresets": {
                         "create": [

@@ -2,7 +2,7 @@
 import React, { useCallback, useMemo, useState } from "react";
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { GraphMeta } from "@/lib/autogpt-server-api";
+import { GraphExecutionID, GraphMeta } from "@/lib/autogpt-server-api";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button, ButtonProps } from "@/components/agptui/Button";
@@ -14,7 +14,7 @@ export default function AgentRunDraftView({
   agentActions,
 }: {
   agent: GraphMeta;
-  onRun: (runID: string) => void;
+  onRun: (runID: GraphExecutionID) => void;
   agentActions: { label: string; callback: () => void }[];
 }): React.ReactNode {
   const api = useBackendAPI();

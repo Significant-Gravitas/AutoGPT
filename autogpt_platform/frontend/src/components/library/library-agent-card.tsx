@@ -8,7 +8,7 @@ export default function LibraryAgentCard({
     id,
     name,
     description,
-    agent_id,
+    graph_id: agent_id,
     can_access_graph,
     creator_image_url,
     image_url,

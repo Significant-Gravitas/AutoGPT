@@ -593,6 +593,7 @@ async def get_graphs(
     return graph_models
 
 
+# TODO: move execution stuff to .execution
 async def get_graphs_executions(user_id: str) -> list[GraphExecutionMeta]:
     executions = await AgentGraphExecution.prisma().find_many(
         where={"userId": user_id},

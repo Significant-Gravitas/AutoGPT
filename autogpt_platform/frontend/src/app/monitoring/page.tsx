@@ -5,6 +5,7 @@ import {
   GraphExecutionMeta,
   Schedule,
   LibraryAgent,
+  ScheduleID,
 } from "@/lib/autogpt-server-api";
 
 import { Card } from "@/components/ui/card";
@@ -35,7 +36,7 @@ const Monitor = () => {
   }, [api]);
 
   const removeSchedule = useCallback(
-    async (scheduleId: string) => {
+    async (scheduleId: ScheduleID) => {
       const removedSchedule = await api.deleteSchedule(scheduleId);
       setSchedules(schedules.filter((s) => s.id !== removedSchedule.id));
     },
@@ -97,7 +98,7 @@ const Monitor = () => {
         flows={flows}
         executions={[
           ...(selectedFlow
-            ? executions.filter((v) => v.graph_id == selectedFlow.agent_id)
+            ? executions.filter((v) => v.graph_id == selectedFlow.graph_id)
             : executions),
         ].sort((a, b) => Number(b.started_at) - Number(a.started_at))}
         selectedRun={selectedRun}
@@ -109,7 +110,7 @@ const Monitor = () => {
         <FlowRunInfo
           flow={
             selectedFlow ||
-            flows.find((f) => f.agent_id == selectedRun.graph_id)!
+            flows.find((f) => f.graph_id == selectedRun.graph_id)!
           }
           execution={selectedRun}
           className={column3}
@@ -119,7 +120,7 @@ const Monitor = () => {
           <FlowInfo
             flow={selectedFlow}
             executions={executions.filter(
-              (e) => e.graph_id == selectedFlow.agent_id,
+              (e) => e.graph_id == selectedFlow.graph_id,
             )}
             className={column3}
             refresh={() => {
