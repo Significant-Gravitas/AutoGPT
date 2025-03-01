@@ -53,7 +53,7 @@ class SmartDecisionMakerBlock(Block):
             default="Thinking carefully step by step decide which function to call. Always choose a function call from the list of function signatures.",
             description="The system prompt to provide additional context to the model.",
         )
-        conversation_history: list[llm.Message] = SchemaField(
+        conversation_history: list[Any] = SchemaField(
             default=[],
             description="The conversation history to provide context for the prompt.",
         )
@@ -84,7 +84,7 @@ class SmartDecisionMakerBlock(Block):
         finished: str = SchemaField(
             description="The finished message to display to the user."
         )
-        conversations: list[llm.Message] = SchemaField(
+        conversations: list[Any] = SchemaField(
             description="The conversation history to provide context for the prompt."
         )
 
@@ -312,7 +312,6 @@ class SmartDecisionMakerBlock(Block):
 
         if not response.tool_calls:
             yield "finished", f"No Decision Made finishing task: {response.response}"
-            assistant_response = response.response
         else:
             for tool_call in response.tool_calls:
                 tool_name = tool_call.function.name
@@ -321,15 +320,6 @@ class SmartDecisionMakerBlock(Block):
                 for arg_name, arg_value in tool_args.items():
                     yield f"tools_^_{tool_name}_{arg_name}".lower(), arg_value
 
-            assistant_response = "\n".join(
-                f"[{c.function.name}] called with arguments: {c.function.arguments}"
-                for c in response.tool_calls
-            )
-
-        input_data.conversation_history.append(
-            llm.Message(role=llm.MessageRole.USER, content=response.prompt)
-        )
-        input_data.conversation_history.append(
-            llm.Message(role=llm.MessageRole.ASSISTANT, content=assistant_response)
-        )
+        input_data.conversation_history.extend(response.prompt)
+        input_data.conversation_history.append(response.raw_response)
         yield "conversations", input_data.conversation_history
