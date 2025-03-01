@@ -184,7 +184,7 @@ class SmartDecisionMakerBlock(Block):
             raise ValueError("Graph ID or Graph Version not found in sink node.")
 
         db_client = get_database_manager_client()
-        sink_graph_meta = db_client.get_graph_metadata(graph_id.graph_version)
+        sink_graph_meta = db_client.get_graph_metadata(graph_id, graph_version)
         if not sink_graph_meta:
             raise ValueError(
                 f"Sink graph metadata not found: {graph_id} {graph_version}"
