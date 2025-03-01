@@ -2,6 +2,7 @@ from typing import Type
 
 from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
 from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
+from backend.blocks.example.example import ExampleBlock
 from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
 from backend.blocks.jina.search import ExtractWebsiteContentBlock, SearchTheWebBlock
@@ -23,6 +24,7 @@ from backend.data.cost import BlockCost, BlockCostType
 from backend.integrations.credentials_store import (
     anthropic_credentials,
     did_credentials,
+    example_credentials,
     groq_credentials,
     ideogram_credentials,
     jina_credentials,
@@ -267,4 +269,16 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         )
     ],
     SmartDecisionMakerBlock: LLM_COST,
+    ExampleBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": example_credentials.id,
+                    "provider": example_credentials.provider,
+                    "type": example_credentials.type,
+                }
+            },
+        )
+    ],
 }
