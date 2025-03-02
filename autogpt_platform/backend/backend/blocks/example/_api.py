@@ -4,6 +4,7 @@ from json import JSONDecodeError
 from typing import Any, Dict, Optional
 
 from backend.data.model import APIKeyCredentials
+
 # This is a wrapper around the requests library that is used to make API requests.
 from backend.util.request import Requests
 
