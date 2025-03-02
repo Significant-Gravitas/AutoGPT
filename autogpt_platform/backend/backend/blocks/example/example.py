@@ -99,20 +99,20 @@ class ExampleBlock(Block):
         )
 
     @staticmethod
-    def my_static_method(input: str) -> str:
-        logger.info("my_static_method called with input: %s", input)
-        return f"Hello, {input}!"
+    def my_static_method(post_greeting: str) -> str:
+        logger.info("my_static_method called with input: %s", post_greeting)
+        return f"Hello, {post_greeting}!"
 
     def my_function_that_can_be_mocked(
-        self, input: str, credentials: APIKeyCredentials
+        self, name: str, credentials: APIKeyCredentials
     ) -> str:
-        logger.info("my_function_that_can_be_mocked called with input: %s", input)
+        logger.info("my_function_that_can_be_mocked called with input: %s", name)
 
         # Use the ExampleClient from _api.py to make an API call
         client = ExampleClient(credentials=credentials)
 
         # Create a sample resource using the client
-        resource_data = {"name": input, "type": "greeting"}
+        resource_data = {"name": name, "type": "greeting"}
         response = client.create_resource(resource_data)
         return f"API response: {response.get('message', 'Hello, world!')}"
 
