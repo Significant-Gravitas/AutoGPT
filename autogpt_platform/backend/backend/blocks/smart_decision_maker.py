@@ -396,4 +396,3 @@ class SmartDecisionMakerBlock(Block):
 
         response.prompt.append(response.raw_response)
         yield "conversations", response.prompt
-        yield "length", len(response.prompt)

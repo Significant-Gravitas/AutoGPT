@@ -58,7 +58,7 @@ class AgentExecutorBlock(Block):
             return set(required_fields) - set(data)
 
         @classmethod
-        def validate_data(cls, data: BlockInput) -> str | None:
+        def get_mismatch_error(cls, data: BlockInput) -> str | None:
             return json.validate_with_jsonschema(cls.get_input_schema(data), data)
 
     class Output(BlockSchema):
