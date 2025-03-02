@@ -13,9 +13,9 @@ from ._manual_base import ManualWebhookManagerBase
 logger = logging.getLogger(__name__)
 
 
-class ExampleWebhookType(StrEnum):
-    EXAMPLE = "example"
-    EXAMPLE_2 = "example_2"
+class ExampleWebhookEventType(StrEnum):
+    EXAMPLE_EVENT = "example_event"
+    ANOTHER_EXAMPLE_EVENT = "another_example_event"
 
 
 # ExampleWebhookManager is a class that manages webhooks for a hypothetical provider.
@@ -24,7 +24,7 @@ class ExampleWebhookManager(ManualWebhookManagerBase):
     # Define the provider name for this webhook manager.
     PROVIDER_NAME = ProviderName.EXAMPLE_PROVIDER
     # Define the types of webhooks this manager can handle.
-    WebhookType = ExampleWebhookType
+    WebhookEventType = ExampleWebhookEventType
 
     BASE_URL = "https://api.example.com"
 
@@ -45,7 +45,7 @@ class ExampleWebhookManager(ManualWebhookManagerBase):
         # Extract the JSON payload from the request.
         payload = await request.json()
         # Set the event type based on the webhook type in the payload.
-        event_type = payload.get("webhook_type", ExampleWebhookType.EXAMPLE)
+        event_type = payload.get("webhook_type", ExampleWebhookEventType.EXAMPLE_EVENT)
 
         return payload, event_type
 

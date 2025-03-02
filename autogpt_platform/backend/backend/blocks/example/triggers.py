@@ -8,7 +8,7 @@ from backend.data.block import (
     BlockSchema,
 )
 from backend.data.model import SchemaField
-from backend.integrations.webhooks.example import ExampleWebhookType
+from backend.integrations.webhooks.example import ExampleWebhookEventType
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class ExampleTriggerBlock(Block):
             # It defines which external service can trigger this block and what type of events it responds to
             webhook_config=BlockManualWebhookConfig(
                 provider="example_provider",  # The external service that will send webhook events
-                webhook_type=ExampleWebhookType.EXAMPLE,  # The specific event type this block responds to
+                webhook_type=ExampleWebhookEventType.EXAMPLE_EVENT,  # The specific event type this block responds to
             ),
             # Test input for trigger blocks should mimic the payload structure that would be received from the webhook
             test_input=[
@@ -53,9 +53,13 @@ class ExampleTriggerBlock(Block):
                     }
                 }
             ],
+            test_output=[
+                ("event_data", {"event_type": "example", "data": "Sample webhook data"})
+            ],
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         # For trigger blocks, the run method is called automatically when a webhook event is received
         # The payload from the webhook is passed in as input_data.payload
+        logger.info("Example trigger block run with payload: %s", input_data.payload)
         yield "event_data", input_data.payload
