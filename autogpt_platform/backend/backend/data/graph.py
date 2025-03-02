@@ -415,20 +415,20 @@ class GraphModel(Graph):
         for link in self.links:
             source = (link.source_id, link.source_name)
             sink = (link.sink_id, link.sink_name)
-            suffix = f"Link {source} <-> {sink}"
+            prefix = f"Link {source} <-> {sink}"
 
             for i, (node_id, name) in enumerate([source, sink]):
                 node = node_map.get(node_id)
                 if not node:
                     raise ValueError(
-                        f"{suffix}, {node_id} is invalid node id, available nodes: {node_map.keys()}"
+                        f"{prefix}, {node_id} is invalid node id, available nodes: {node_map.keys()}"
                     )
 
                 block = get_block(node.block_id)
                 if not block:
                     blocks = {v().id: v().name for v in get_blocks().values()}
                     raise ValueError(
-                        f"{suffix}, {node.block_id} is invalid block id, available blocks: {blocks}"
+                        f"{prefix}, {node.block_id} is invalid block id, available blocks: {blocks}"
                     )
 
                 sanitized_name = sanitize(name)
@@ -447,7 +447,7 @@ class GraphModel(Graph):
                     )
                 if sanitized_name not in fields and not name.startswith("tools_^_"):
                     fields_msg = f"Allowed fields: {fields}"
-                    raise ValueError(f"{suffix}, `{name}` invalid, {fields_msg}")
+                    raise ValueError(f"{prefix}, `{name}` invalid, {fields_msg}")
 
             if is_static_output_block(link.source_id):
                 link.is_static = True  # Each value block output should be static.

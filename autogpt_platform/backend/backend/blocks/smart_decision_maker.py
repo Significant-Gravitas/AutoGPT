@@ -1,5 +1,6 @@
 import logging
 import re
+from collections import Counter
 from typing import TYPE_CHECKING, Any
 
 from autogpt_libs.utils.cache import thread_cached
@@ -9,6 +10,7 @@ from backend.blocks.agent import AgentExecutorBlock
 from backend.data.block import (
     Block,
     BlockCategory,
+    BlockInput,
     BlockOutput,
     BlockSchema,
     BlockType,
@@ -29,6 +31,24 @@ def get_database_manager_client():
     from backend.util.service import get_service_client
 
     return get_service_client(DatabaseManager)
+
+
+def get_pending_tool_calls(conversation_history: list[Any]) -> dict[str, int]:
+    """
+    All the tool calls entry in the conversation history requires a response.
+    This function returns the pending tool calls that has not generated an output yet.
+
+    Return: dict[str, int] - A dictionary of pending tool call IDs with their count.
+    """
+    pending_calls = Counter()
+    for history in conversation_history:
+        for call in history.get("tool_calls") or []:
+            pending_calls[call.get("id")] += 1
+
+        if call_id := history.get("tool_call_id"):
+            pending_calls[call_id] -= 1
+
+    return {call_id: count for call_id, count in pending_calls.items() if count > 0}
 
 
 class SmartDecisionMakerBlock(Block):
@@ -57,6 +77,10 @@ class SmartDecisionMakerBlock(Block):
             default=[],
             description="The conversation history to provide context for the prompt.",
         )
+        last_tool_output: Any = SchemaField(
+            default=None,
+            description="The output of the last tool that was called.",
+        )
         retry: int = SchemaField(
             title="Retry Count",
             default=3,
@@ -77,6 +101,32 @@ class SmartDecisionMakerBlock(Block):
             default="localhost:11434",
             description="Ollama host for local  models",
         )
+
+        @classmethod
+        def get_missing_links(cls, data: BlockInput, links: list["Link"]) -> set[str]:
+            # conversation_history & last_tool_output validation is handled differently
+            return super().get_missing_links(
+                data,
+                [
+                    link
+                    for link in links
+                    if link.sink_name
+                    not in ["conversation_history", "last_tool_output"]
+                ],
+            )
+
+        @classmethod
+        def get_missing_input(cls, data: BlockInput) -> set[str]:
+            if missing_input := super().get_missing_input(data):
+                return missing_input
+
+            conversation_history = data.get("conversation_history", [])
+            pending_tool_calls = get_pending_tool_calls(conversation_history)
+
+            last_tool_output = data.get("last_tool_output")
+            if not last_tool_output and pending_tool_calls:
+                return {"last_tool_output"}
+            return set()
 
     class Output(BlockSchema):
         error: str = SchemaField(description="Error message if the API call failed.")
@@ -287,7 +337,30 @@ class SmartDecisionMakerBlock(Block):
     ) -> BlockOutput:
         tool_functions = self._create_function_signature(node_id)
 
+        input_data.conversation_history = input_data.conversation_history or []
         prompt = [json.to_dict(p) for p in input_data.conversation_history]
+
+        pending_tool_calls = get_pending_tool_calls(input_data.conversation_history)
+        if pending_tool_calls and not input_data.last_tool_output:
+            raise ValueError(f"Tool call requires an output for {pending_tool_calls}")
+
+        # Prefill all missing tool calls with the last tool output/
+        # TODO: we need a better way to handle this.
+        tool_output = [
+            {
+                "role": "tool",
+                "content": input_data.last_tool_output,
+                "tool_call_id": pending_call_id,
+            }
+            for pending_call_id, count in pending_tool_calls.items()
+            for _ in range(count)
+        ]
+        if len(tool_output) > 1:
+            logger.warning(
+                f"[node_exec_id={node_exec_id}] Multiple pending tool calls are prefilled using a single output. Execution may not be accurate."
+            )
+
+        prompt.extend(tool_output)
 
         values = input_data.prompt_values
         if values:
@@ -312,14 +385,15 @@ class SmartDecisionMakerBlock(Block):
 
         if not response.tool_calls:
             yield "finished", f"No Decision Made finishing task: {response.response}"
-        else:
-            for tool_call in response.tool_calls:
-                tool_name = tool_call.function.name
-                tool_args = json.loads(tool_call.function.arguments)
+            return
 
-                for arg_name, arg_value in tool_args.items():
-                    yield f"tools_^_{tool_name}_{arg_name}".lower(), arg_value
+        for tool_call in response.tool_calls:
+            tool_name = tool_call.function.name
+            tool_args = json.loads(tool_call.function.arguments)
 
-        input_data.conversation_history.extend(response.prompt)
-        input_data.conversation_history.append(response.raw_response)
-        yield "conversations", input_data.conversation_history
+            for arg_name, arg_value in tool_args.items():
+                yield f"tools_^_{tool_name}_{arg_name}".lower(), arg_value
+
+        response.prompt.append(response.raw_response)
+        yield "conversations", response.prompt
+        yield "length", len(response.prompt)
