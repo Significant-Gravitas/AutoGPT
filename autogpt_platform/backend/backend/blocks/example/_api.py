@@ -1,5 +1,10 @@
-from __future__ import annotations
+"""
+API module for Example API integration.
 
+This module provides a example of how to create a client for an API.
+"""
+
+# We also have a Json Wrapper library available in backend.util.json
 from json import JSONDecodeError
 from typing import Any, Dict, Optional
 
@@ -20,23 +25,6 @@ def _get_headers(credentials: APIKeyCredentials) -> dict[str, str]:
         "Authorization": credentials.api_key.get_secret_value(),
         "Content-Type": "application/json",
     }
-
-
-def get_api(credentials: APIKeyCredentials) -> Requests:
-    """
-    Creates a configured Requests instance for the Example API.
-
-    Args:
-        credentials: The Example API credentials to use for authentication.
-
-    Returns:
-        A Requests instance configured with the appropriate headers and trusted origins.
-    """
-    return Requests(
-        trusted_origins=["https://api.example.com"],
-        extra_headers=_get_headers(credentials),
-        raise_for_status=False,
-    )
 
 
 class ExampleClient:

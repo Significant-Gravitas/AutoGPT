@@ -84,6 +84,7 @@ class ExampleBlock(Block):
                         {"message": "Hello, world!"},
                     ],
                 ),
+                ("greeting_count", 3),
             ],
             # Function names on the block implementation to mock on test run.
             # Each mock is a dictionary with function names as keys and mock implementations as values.
