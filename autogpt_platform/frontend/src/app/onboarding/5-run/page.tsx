@@ -40,18 +40,11 @@ export default function Page() {
             // Set default values from schema
             Object.entries(agent?.input_schema?.properties || {}).forEach(
               ([key, value]) => {
-                console.log(`key: ${key}`);
                 // Skip if already set
                 if (state?.agentInput && state?.agentInput[key]) {
                   update[key] = state?.agentInput[key];
                   return;
                 }
-                console.log({
-                  agentInput: {
-                    ...state?.agentInput,
-                    [key]: value.default || "",
-                  },
-                });
                 update[key] = value.default || "";
               },
             );
@@ -79,7 +72,7 @@ export default function Page() {
         },
       });
     },
-    [state, setState],
+    [state, state?.agentInput, setState],
   );
 
   const runAgent = useCallback(() => {

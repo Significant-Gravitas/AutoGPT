@@ -128,7 +128,7 @@ export default function Page() {
 
       setState({ integrations });
     },
-    [state?.integrations, setState],
+    [state, setState],
   );
 
   return (

@@ -28,7 +28,7 @@ export function useOnboarding(step?: number) {
     if (!step) return;
 
     context.setState({ step });
-  }, [step]);
+  }, [step, context]);
 
   return context;
 }
@@ -47,7 +47,6 @@ export default function OnboardingLayout({
     const fetchOnboarding = async () => {
       const onboarding = await api.getUserOnboarding();
       setStateRaw(onboarding);
-      console.log("userOnboarding", onboarding);
 
       // Redirect outside onboarding if completed
       if (onboarding.isCompleted && !pathname.startsWith("/onboarding/reset")) {
@@ -55,7 +54,7 @@ export default function OnboardingLayout({
       }
     };
     fetchOnboarding();
-  }, [api]);
+  }, [api, pathname, router]);
 
   const setState = useCallback(
     (newState: Partial<UserOnboarding>) => {
@@ -69,7 +68,6 @@ export default function OnboardingLayout({
         if (!state) return;
 
         api.updateUserOnboarding(state);
-        console.log("updateState", state);
       };
 
       setStateRaw((prev) => {

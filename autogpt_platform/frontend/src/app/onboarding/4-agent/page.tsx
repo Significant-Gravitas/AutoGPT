@@ -8,7 +8,7 @@ import {
 } from "@/components/onboarding/OnboardingStep";
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
 import OnboardingAgentCard from "@/components/onboarding/OnboardingAgentCard";
-import { use, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 
@@ -55,11 +55,21 @@ export default function Page() {
 
   useEffect(() => {
     Promise.allSettled(
-      fallbackAgents.map((agent) =>
-        api.getStoreAgent(agent.username, agent.slug),
-      ),
+      fallbackAgents
+        .map((agent) => {
+          try {
+            return api.getStoreAgent(agent.username, agent.slug);
+          } catch {
+            //todo kcze: supressing errors for now as some are expected
+            // until proper agent choosing logic is implemented
+            console.debug(
+              `Failed to fetch agent ${agent.username}/${agent.slug}`,
+            );
+            return null;
+          }
+        })
+        .filter((agent) => agent !== null),
     ).then((agents) => {
-      console.log(agents);
       // Set only two fulfilled agents
       setAgents(
         agents
@@ -68,6 +78,9 @@ export default function Page() {
           .slice(0, 2),
       );
     });
+  }, [api, setAgents]);
+
+  useEffect(() => {
     // Deselect agent if it's not in the list of agents
     if (
       state?.selectedAgentSlug &&
@@ -79,7 +92,7 @@ export default function Page() {
         agentInput: undefined,
       });
     }
-  }, [api, setAgents]);
+  }, [state?.selectedAgentSlug, setState]);
 
   return (
     <OnboardingStep>
