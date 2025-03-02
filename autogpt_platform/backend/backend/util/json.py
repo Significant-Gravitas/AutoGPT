@@ -11,10 +11,6 @@ from .type import type_match
 def to_dict(data) -> dict:
     if isinstance(data, BaseModel):
         data = data.model_dump()
-
-    elif isinstance(data, str):
-        data = loads(data)
-
     return jsonable_encoder(data)
 
 
