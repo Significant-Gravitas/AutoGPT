@@ -552,7 +552,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             default="",
             description="The system prompt to provide additional context to the model.",
         )
-        conversation_history: list[Any] = SchemaField(
+        conversation_history: list[dict] = SchemaField(
             default=[],
             description="The conversation history to provide context for the prompt.",
         )

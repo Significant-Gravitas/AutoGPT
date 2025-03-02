@@ -53,7 +53,7 @@ class SmartDecisionMakerBlock(Block):
             default="Thinking carefully step by step decide which function to call. Always choose a function call from the list of function signatures.",
             description="The system prompt to provide additional context to the model.",
         )
-        conversation_history: list[Any] = SchemaField(
+        conversation_history: list[dict] = SchemaField(
             default=[],
             description="The conversation history to provide context for the prompt.",
         )
