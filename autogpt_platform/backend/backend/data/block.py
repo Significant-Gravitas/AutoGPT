@@ -115,6 +115,10 @@ class BlockSchema(BaseModel):
         return json.validate_with_jsonschema(schema=cls.jsonschema(), data=data)
 
     @classmethod
+    def get_mismatch_error(cls, data: BlockInput) -> str | None:
+        return cls.validate_data(data)
+
+    @classmethod
     def validate_field(cls, field_name: str, data: BlockInput) -> str | None:
         """
         Validate the data against a specific property (one of the input/output name).
