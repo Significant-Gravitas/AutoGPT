@@ -394,6 +394,6 @@ class SmartDecisionMakerBlock(Block):
             for arg_name, arg_value in tool_args.items():
                 yield f"tools_^_{tool_name}_{arg_name}".lower(), arg_value
 
-        input_data.conversation_history.extend(response.prompt)
-        input_data.conversation_history.append(response.raw_response)
-        yield "conversations", input_data.conversation_history
+        response.prompt.append(response.raw_response)
+        yield "conversations", response.prompt
+        yield "length", len(response.prompt)
