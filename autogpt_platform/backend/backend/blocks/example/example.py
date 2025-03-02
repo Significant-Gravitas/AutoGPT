@@ -99,7 +99,6 @@ class ExampleBlock(Block):
         response = client.create_resource(resource_data)
         return f"API response: {response.get('message', 'Hello, world!')}"
 
-
     def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
