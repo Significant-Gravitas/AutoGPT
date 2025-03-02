@@ -36,7 +36,7 @@ export default function Page() {
           .addMarketplaceAgentToLibrary(agent?.store_listing_version_id!)
           .then((agent) => {
             setAgent(agent);
-            const update: { [key: string]: string } = {};
+            const update: { [key: string]: any } = {};
             // Set default values from schema
             Object.entries(agent?.input_schema?.properties || {}).forEach(
               ([key, value]) => {
@@ -45,7 +45,7 @@ export default function Page() {
                   update[key] = state?.agentInput[key];
                   return;
                 }
-                update[key] = value.default || "";
+                update[key] = value.type !== "null" ? value.default : "";
               },
             );
             setState({
