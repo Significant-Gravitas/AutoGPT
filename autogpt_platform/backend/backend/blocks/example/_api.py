@@ -20,13 +20,6 @@ class ExampleAPIException(Exception):
         self.status_code = status_code
 
 
-def _get_headers(credentials: APIKeyCredentials) -> dict[str, str]:
-    return {
-        "Authorization": credentials.api_key.get_secret_value(),
-        "Content-Type": "application/json",
-    }
-
-
 class ExampleClient:
     """Client for the Example API"""
 
@@ -52,7 +45,8 @@ class ExampleClient:
                 raise_for_status=False,
             )
 
-    def _handle_response(self, response) -> Any:
+    @staticmethod
+    def _handle_response(response) -> Any:
         """
         Handles API response and checks for errors.
 
