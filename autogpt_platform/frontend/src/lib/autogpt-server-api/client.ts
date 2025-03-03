@@ -18,9 +18,11 @@ import {
   GraphCreatable,
   GraphExecution,
   GraphExecutionMeta,
+  GraphID,
   GraphMeta,
   GraphUpdateable,
   LibraryAgent,
+  LibraryAgentID,
   LibraryAgentPreset,
   LibraryAgentPresetResponse,
   LibraryAgentResponse,
@@ -167,7 +169,7 @@ export default class BackendAPI {
   }
 
   getGraph(
-    id: string,
+    id: GraphID,
     version?: number,
     hide_credentials?: boolean,
   ): Promise<Graph> {
@@ -181,7 +183,7 @@ export default class BackendAPI {
     return this._get(`/graphs/${id}`, query);
   }
 
-  getGraphAllVersions(id: string): Promise<Graph[]> {
+  getGraphAllVersions(id: GraphID): Promise<Graph[]> {
     return this._get(`/graphs/${id}/versions`);
   }
 
@@ -191,22 +193,22 @@ export default class BackendAPI {
     return this._request("POST", "/graphs", requestBody);
   }
 
-  updateGraph(id: string, graph: GraphUpdateable): Promise<Graph> {
+  updateGraph(id: GraphID, graph: GraphUpdateable): Promise<Graph> {
     return this._request("PUT", `/graphs/${id}`, graph);
   }
 
-  deleteGraph(id: string): Promise<void> {
+  deleteGraph(id: GraphID): Promise<void> {
     return this._request("DELETE", `/graphs/${id}`);
   }
 
-  setGraphActiveVersion(id: string, version: number): Promise<Graph> {
+  setGraphActiveVersion(id: GraphID, version: number): Promise<Graph> {
     return this._request("PUT", `/graphs/${id}/versions/active`, {
       active_graph_version: version,
     });
   }
 
   executeGraph(
-    id: string,
+    id: GraphID,
     version: number,
     inputData: { [key: string]: any } = {},
   ): Promise<{ graph_exec_id: string }> {
@@ -217,12 +219,12 @@ export default class BackendAPI {
     return this._get(`/executions`);
   }
 
-  getGraphExecutions(graphID: string): Promise<GraphExecutionMeta[]> {
+  getGraphExecutions(graphID: GraphID): Promise<GraphExecutionMeta[]> {
     return this._get(`/graphs/${graphID}/executions`);
   }
 
   async getGraphExecutionInfo(
-    graphID: string,
+    graphID: GraphID,
     runID: string,
   ): Promise<GraphExecution> {
     const result = await this._get(`/graphs/${graphID}/executions/${runID}`);
@@ -233,7 +235,7 @@ export default class BackendAPI {
   }
 
   async stopGraphExecution(
-    graphID: string,
+    graphID: GraphID,
     runID: string,
   ): Promise<GraphExecution> {
     const result = await this._request(
@@ -491,6 +493,10 @@ export default class BackendAPI {
     return this._get("/library/agents", params);
   }
 
+  getLibraryAgent(id: LibraryAgentID): Promise<LibraryAgent> {
+    return this._get(`/library/agents/${id}`);
+  }
+
   addMarketplaceAgentToLibrary(
     storeListingVersionID: string,
   ): Promise<LibraryAgent> {
@@ -500,7 +506,7 @@ export default class BackendAPI {
   }
 
   async updateLibraryAgent(
-    libraryAgentId: string,
+    libraryAgentId: LibraryAgentID,
     params: {
       auto_update_version?: boolean;
       is_favorite?: boolean;
@@ -541,7 +547,7 @@ export default class BackendAPI {
 
   executeLibraryAgentPreset(
     presetId: string,
-    graphId: string,
+    graphId: GraphID,
     graphVersion: number,
     nodeInput: { [key: string]: any },
   ): Promise<{ id: string }> {
