@@ -37,6 +37,10 @@ async def _spend_credits(entry: NodeExecutionEntry) -> int:
     return await _user_credit_model.spend_credits(entry, 0, 0)
 
 
+async def _top_up_intent(user_id: str, amount: int) -> str:
+    return await _user_credit_model.top_up_intent(user_id, amount)
+
+
 class DatabaseManager(AppService):
     def __init__(self):
         super().__init__()
@@ -74,6 +78,7 @@ class DatabaseManager(AppService):
 
     # Credits
     spend_credits = exposed_run_and_wait(_spend_credits)
+    top_up_intent = exposed_run_and_wait(_top_up_intent)
 
     # User + User Metadata + User Integrations
     get_user_metadata = exposed_run_and_wait(get_user_metadata)
