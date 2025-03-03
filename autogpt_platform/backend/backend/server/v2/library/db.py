@@ -17,7 +17,7 @@ import backend.server.v2.store.media as store_media
 logger = logging.getLogger(__name__)
 
 
-async def get_library_agents(
+async def list_library_agents(
     user_id: str,
     search_term: Optional[str] = None,
     sort_by: library_model.LibraryAgentSort = library_model.LibraryAgentSort.UPDATED_AT,
@@ -123,6 +123,49 @@ async def get_library_agents(
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error fetching library agents: {e}")
         raise store_exceptions.DatabaseError("Failed to fetch library agents") from e
+
+
+async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent:
+    """
+    Get a specific agent from the user's library.
+
+    Args:
+        library_agent_id: ID of the library agent to retrieve.
+        user_id: ID of the authenticated user.
+
+    Returns:
+        The requested LibraryAgent.
+
+    Raises:
+        AgentNotFoundError: If the specified agent does not exist.
+        DatabaseError: If there's an error during retrieval.
+    """
+    try:
+        library_agent = await prisma.models.LibraryAgent.prisma().find_first(
+            where={
+                "id": id,
+                "userId": user_id,
+                "isDeleted": False,
+            },
+            include={
+                "Agent": {
+                    "include": {
+                        **backend.data.includes.AGENT_GRAPH_INCLUDE,
+                        "AgentGraphExecution": {"where": {"userId": user_id}},
+                    }
+                },
+                "Creator": True,
+            },
+        )
+
+        if not library_agent:
+            raise store_exceptions.AgentNotFoundError(f"Library agent #{id} not found")
+
+        return library_model.LibraryAgent.from_db(library_agent)
+
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error fetching library agent: {e}")
+        raise store_exceptions.DatabaseError("Failed to fetch library agent") from e
 
 
 async def create_library_agent(
@@ -249,10 +292,10 @@ async def update_agent_version_in_library(
 async def update_library_agent(
     library_agent_id: str,
     user_id: str,
-    auto_update_version: bool = False,
-    is_favorite: bool = False,
-    is_archived: bool = False,
-    is_deleted: bool = False,
+    auto_update_version: Optional[bool] = None,
+    is_favorite: Optional[bool] = None,
+    is_archived: Optional[bool] = None,
+    is_deleted: Optional[bool] = None,
 ) -> None:
     """
     Updates the specified LibraryAgent record.
@@ -273,15 +316,19 @@ async def update_library_agent(
         f"auto_update_version={auto_update_version}, is_favorite={is_favorite}, "
         f"is_archived={is_archived}, is_deleted={is_deleted}"
     )
+    update_fields: prisma.types.LibraryAgentUpdateManyMutationInput = {}
+    if auto_update_version is not None:
+        update_fields["useGraphIsActiveVersion"] = auto_update_version
+    if is_favorite is not None:
+        update_fields["isFavorite"] = is_favorite
+    if is_archived is not None:
+        update_fields["isArchived"] = is_archived
+    if is_deleted is not None:
+        update_fields["isDeleted"] = is_deleted
+
     try:
         await prisma.models.LibraryAgent.prisma().update_many(
-            where={"id": library_agent_id, "userId": user_id},
-            data={
-                "useGraphIsActiveVersion": auto_update_version,
-                "isFavorite": is_favorite,
-                "isArchived": is_archived,
-                "isDeleted": is_deleted,
-            },
+            where={"id": library_agent_id, "userId": user_id}, data=update_fields
         )
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating library agent: {str(e)}")
