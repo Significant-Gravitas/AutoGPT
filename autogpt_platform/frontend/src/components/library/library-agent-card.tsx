@@ -17,7 +17,7 @@ export default function LibraryAgentCard({
   agent: LibraryAgent;
 }): React.ReactNode {
   return (
-    <Link href={`/library/agents/${agent_id}`}>
+    <Link href={`/library/agents/${id}`}>
       <div className="inline-flex w-full max-w-[434px] cursor-pointer flex-col items-start justify-start gap-2.5 rounded-[26px] bg-white transition-all duration-300 hover:shadow-lg dark:bg-transparent dark:hover:shadow-gray-700">
         <div className="relative h-[200px] w-full overflow-hidden rounded-[20px]">
           {!image_url ? (
