@@ -17,7 +17,7 @@ import backend.server.v2.store.media as store_media
 logger = logging.getLogger(__name__)
 
 
-async def get_library_agents(
+async def list_library_agents(
     user_id: str,
     search_term: Optional[str] = None,
     sort_by: library_model.LibraryAgentSort = library_model.LibraryAgentSort.UPDATED_AT,
@@ -123,6 +123,49 @@ async def get_library_agents(
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error fetching library agents: {e}")
         raise store_exceptions.DatabaseError("Failed to fetch library agents") from e
+
+
+async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent:
+    """
+    Get a specific agent from the user's library.
+
+    Args:
+        library_agent_id: ID of the library agent to retrieve.
+        user_id: ID of the authenticated user.
+
+    Returns:
+        The requested LibraryAgent.
+
+    Raises:
+        AgentNotFoundError: If the specified agent does not exist.
+        DatabaseError: If there's an error during retrieval.
+    """
+    try:
+        library_agent = await prisma.models.LibraryAgent.prisma().find_first(
+            where={
+                "id": id,
+                "userId": user_id,
+                "isDeleted": False,
+            },
+            include={
+                "Agent": {
+                    "include": {
+                        **backend.data.includes.AGENT_GRAPH_INCLUDE,
+                        "AgentGraphExecution": {"where": {"userId": user_id}},
+                    }
+                },
+                "Creator": True,
+            },
+        )
+
+        if not library_agent:
+            raise store_exceptions.AgentNotFoundError(f"Library agent #{id} not found")
+
+        return library_model.LibraryAgent.from_db(library_agent)
+
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error fetching library agent: {e}")
+        raise store_exceptions.DatabaseError("Failed to fetch library agent") from e
 
 
 async def create_library_agent(
