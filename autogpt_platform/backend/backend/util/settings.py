@@ -385,6 +385,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     smartlead_api_key: str = Field(default="", description="SmartLead API Key")
     zerobounce_api_key: str = Field(default="", description="ZeroBounce API Key")
 
+    example_api_key: str = Field(default="", description="Example API Key")
     # Add more secret fields as needed
 
     model_config = SettingsConfigDict(
