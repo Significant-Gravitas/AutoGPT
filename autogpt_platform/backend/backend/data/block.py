@@ -2,6 +2,7 @@ import inspect
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import (
+    TYPE_CHECKING,
     Any,
     ClassVar,
     Generator,
@@ -27,6 +28,9 @@ from .model import (
     CredentialsMetaInput,
     is_credentials_field_name,
 )
+
+if TYPE_CHECKING:
+    from .graph import Link
 
 app_config = Config()
 
@@ -111,6 +115,10 @@ class BlockSchema(BaseModel):
         return json.validate_with_jsonschema(schema=cls.jsonschema(), data=data)
 
     @classmethod
+    def get_mismatch_error(cls, data: BlockInput) -> str | None:
+        return cls.validate_data(data)
+
+    @classmethod
     def validate_field(cls, field_name: str, data: BlockInput) -> str | None:
         """
         Validate the data against a specific property (one of the input/output name).
@@ -186,6 +194,19 @@ class BlockSchema(BaseModel):
                 )
             )
         }
+
+    @classmethod
+    def get_input_defaults(cls, data: BlockInput) -> BlockInput:
+        return data  # Return as is, by default.
+
+    @classmethod
+    def get_missing_links(cls, data: BlockInput, links: list["Link"]) -> set[str]:
+        input_fields_from_nodes = {link.sink_name for link in links}
+        return input_fields_from_nodes - set(data)
+
+    @classmethod
+    def get_missing_input(cls, data: BlockInput) -> set[str]:
+        return cls.get_required_fields() - set(data)
 
 
 BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchema)
@@ -407,7 +428,6 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         }
 
     def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
-        # Merge the input data with the extra execution arguments, preferring the args for security
         if error := self.input_schema.validate_data(input_data):
             raise ValueError(
                 f"Unable to execute block with invalid input data: {error}"

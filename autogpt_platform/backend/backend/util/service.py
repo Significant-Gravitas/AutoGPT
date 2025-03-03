@@ -441,7 +441,9 @@ def fastapi_get_service_client(service_type: Type[AS]) -> AS:
             except httpx.HTTPStatusError as e:
                 logger.error(f"HTTP error in {method_name}: {e.response.text}")
                 error = RemoteCallError.model_validate(e.response.json(), strict=False)
-                raise EXCEPTION_MAPPING.get(error.type, Exception)(*error.args)
+                raise EXCEPTION_MAPPING.get(error.type, Exception)(
+                    *(error.args or [str(e)])
+                )
 
         def close(self):
             self.client.close()

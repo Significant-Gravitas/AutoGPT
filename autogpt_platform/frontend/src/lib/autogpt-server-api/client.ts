@@ -499,6 +499,10 @@ export default class BackendAPI {
     return this._get("/library/agents", params);
   }
 
+  getLibraryAgent(id: LibraryAgentID): Promise<LibraryAgent> {
+    return this._get(`/library/agents/${id}`);
+  }
+
   addMarketplaceAgentToLibrary(
     storeListingVersionID: string,
   ): Promise<LibraryAgent> {
