@@ -99,7 +99,7 @@ export default function AgentRunsPage(): React.ReactElement {
     api
       .getGraphExecutionInfo(agent.agent_id, selectedView.id)
       .then(setSelectedRun);
-  }, [api, selectedView, agentRuns, agentID]);
+  }, [api, selectedView, agentID]);
 
   const fetchSchedules = useCallback(async () => {
     if (!agent) return;
