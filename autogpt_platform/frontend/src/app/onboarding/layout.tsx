@@ -28,7 +28,7 @@ export function useOnboarding(step?: number) {
     if (!step) return;
 
     context.setState({ step });
-  }, [step, context]);
+  }, [step]);
 
   return context;
 }

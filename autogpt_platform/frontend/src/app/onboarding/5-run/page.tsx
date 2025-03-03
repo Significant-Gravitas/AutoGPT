@@ -45,7 +45,7 @@ export default function Page() {
                   update[key] = state?.agentInput[key];
                   return;
                 }
-                update[key] = value.type !== "null" ? value.default : "";
+                update[key] = value.type !== "null" ? value.default || "" : "";
               },
             );
             setState({

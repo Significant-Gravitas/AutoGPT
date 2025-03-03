@@ -8,7 +8,7 @@ from prisma.models import (
     StoreListingVersion,
     UserOnboarding,
 )
-from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
+from prisma.types import UserOnboardingUpdateInput
 
 from backend.server.v2.library.db import set_is_deleted_for_library_agent
 from backend.server.v2.store.db import get_store_agent_details
@@ -38,7 +38,7 @@ async def get_user_onboarding(user_id: str):
 async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     # Get the user onboarding data
     user_onboarding = await get_user_onboarding(user_id)
-    update: UserOnboardingCreateInput | UserOnboardingUpdateInput = {
+    update: UserOnboardingUpdateInput = {
         "step": data.step,
         "isCompleted": data.isCompleted,
     }
