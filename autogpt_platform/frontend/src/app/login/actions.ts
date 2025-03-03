@@ -49,11 +49,14 @@ export async function login(values: z.infer<typeof loginFormSchema>) {
     }
 
     await api.createUser();
+    if (!(await api.getUserOnboarding()).isCompleted) {
+      revalidatePath("/onboarding", "layout");
+      redirect("/onboarding");
+    }
 
     if (data.session) {
       await supabase.auth.setSession(data.session);
     }
-    console.log("Logged in");
     revalidatePath("/", "layout");
     redirect("/");
   });
@@ -86,7 +89,10 @@ export async function providerLogin(provider: LoginProvider) {
       }
 
       await api.createUser();
-      console.log("Logged in");
+      if (!(await api.getUserOnboarding()).isCompleted) {
+        revalidatePath("/onboarding", "layout");
+        redirect("/onboarding");
+      }
     },
   );
 }

@@ -41,6 +41,11 @@ from backend.data.credit import (
     set_auto_top_up,
 )
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
+from backend.data.onboarding import (
+    UserOnboardingUpdate,
+    get_user_onboarding,
+    update_user_onboarding,
+)
 from backend.data.user import (
     get_or_create_user,
     get_user_notification_preference,
@@ -148,6 +153,27 @@ async def update_preferences(
 ) -> NotificationPreference:
     output = await update_user_notification_preference(user_id, preferences)
     return output
+
+
+########################################################
+##################### Onboarding #######################
+########################################################
+
+
+@v1_router.get(
+    "/onboarding", tags=["onboarding"], dependencies=[Depends(auth_middleware)]
+)
+async def get_onboarding(user_id: Annotated[str, Depends(get_user_id)]):
+    return await get_user_onboarding(user_id)
+
+
+@v1_router.patch(
+    "/onboarding", tags=["onboarding"], dependencies=[Depends(auth_middleware)]
+)
+async def update_onboarding(
+    user_id: Annotated[str, Depends(get_user_id)], data: UserOnboardingUpdate
+):
+    return await update_user_onboarding(user_id, data)
 
 
 ########################################################

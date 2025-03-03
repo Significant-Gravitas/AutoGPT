@@ -8,27 +8,39 @@ import {
 } from "@/components/onboarding/OnboardingStep";
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
 import OnboardingAgentCard from "@/components/onboarding/OnboardingAgentCard";
+import { useEffect, useState } from "react";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 
-const agents = [
+// Will try to use the two first available agents
+const fallbackAgents = [
+  // Prod
   {
-    id: "0",
-    image: "/placeholder.png",
-    name: "Viral News Video Creator: AI TikTok Shorts",
-    description:
-      "Description of what the agent does. Written by the creator. Example of text that's longer than two lines. Lorem ipsum set dolor amet bacon ipsum dolor amet kielbasa chicken ullamco frankfurter cupim nisi. Esse jerky turkey pancetta lorem officia ad qui ut ham hock venison ut pig mollit ball tip. Tempor chicken eiusmod tongue tail pork belly labore kielbasa consequat culpa cow aliqua. Ea tail dolore sausage flank.",
-    author: "Pwuts",
-    runs: 1539,
-    rating: 4.1,
+    username: "autogpt",
+    slug: "domain-drop-catcher",
   },
   {
-    id: "1",
-    image: "/placeholder.png",
-    name: "Financial Analysis Agent: Your Personalized Financial Insights Tool",
-    description:
-      "Description of what the agent does. Written by the creator. Example of text that's longer than two lines. Lorem ipsum set dolor amet bacon ipsum dolor amet kielbasa chicken ullamco frankfurter cupim nisi. Esse jerky turkey pancetta lorem officia ad qui ut ham hock venison ut pig mollit ball tip. Tempor chicken eiusmod tongue tail pork belly labore kielbasa consequat culpa cow aliqua. Ea tail dolore sausage flank.",
-    author: "John Ababseh",
-    runs: 824,
-    rating: 4.5,
+    username: "autogpt",
+    slug: "personalized-morning-coffee-newsletter",
+  },
+  // Dev
+  {
+    username: "autogpt",
+    slug: "business-owner-finder",
+  },
+  {
+    username: "autogpt",
+    slug: "financial-analysis-agent-your-personalized-financial-insights-tool",
+  },
+  // Temp
+  //todo kcze remove
+  {
+    username: "bright-eagle-40613",
+    slug: "subtractor",
+  },
+  {
+    username: "bright-eagle-40613",
+    slug: "power",
   },
 ];
 
@@ -38,6 +50,49 @@ function isEmptyOrWhitespace(str: string | undefined | null): boolean {
 
 export default function Page() {
   const { state, setState } = useOnboarding(4);
+  const [agents, setAgents] = useState<StoreAgentDetails[]>([]);
+  const api = useBackendAPI();
+
+  useEffect(() => {
+    Promise.allSettled(
+      fallbackAgents
+        .map((agent) => {
+          try {
+            return api.getStoreAgent(agent.username, agent.slug);
+          } catch {
+            //todo kcze: supressing errors for now as some are expected
+            // until proper agent choosing logic is implemented
+            console.debug(
+              `Failed to fetch agent ${agent.username}/${agent.slug}`,
+            );
+            return null;
+          }
+        })
+        .filter((agent) => agent !== null),
+    ).then((agents) => {
+      // Set only two fulfilled agents
+      setAgents(
+        agents
+          .filter((agent) => agent.status === "fulfilled")
+          .map((agent) => agent.value)
+          .slice(0, 2),
+      );
+    });
+  }, [api, setAgents]);
+
+  useEffect(() => {
+    // Deselect agent if it's not in the list of agents
+    if (
+      state?.selectedAgentSlug &&
+      !fallbackAgents.some((agent) => agent.slug === state.selectedAgentSlug)
+    ) {
+      setState({
+        selectedAgentSlug: undefined,
+        selectedAgentCreator: undefined,
+        agentInput: undefined,
+      });
+    }
+  }, [state?.selectedAgentSlug, setState]);
 
   return (
     <OnboardingStep>
@@ -52,21 +107,39 @@ export default function Page() {
 
       <div className="my-12 flex items-center justify-between gap-5">
         <OnboardingAgentCard
-          {...agents[0]}
-          selected={state.chosenAgentId == "0"}
-          onClick={() => setState({ chosenAgentId: "0" })}
+          {...(agents[0] || {})}
+          selected={
+            agents[0] !== undefined
+              ? state?.selectedAgentSlug == agents[0]?.slug
+              : false
+          }
+          onClick={() =>
+            setState({
+              selectedAgentSlug: agents[0].slug,
+              selectedAgentCreator: agents[0].creator,
+            })
+          }
         />
         <OnboardingAgentCard
-          {...agents[1]}
-          selected={state.chosenAgentId == "1"}
-          onClick={() => setState({ chosenAgentId: "1" })}
+          {...(agents[1] || {})}
+          selected={
+            agents[1] !== undefined
+              ? state?.selectedAgentSlug == agents[1]?.slug
+              : false
+          }
+          onClick={() =>
+            setState({
+              selectedAgentSlug: agents[1].slug,
+              selectedAgentCreator: agents[1].creator,
+            })
+          }
         />
       </div>
 
       <OnboardingFooter>
         <OnboardingButton
           href="/onboarding/5-run"
-          disabled={isEmptyOrWhitespace(state.chosenAgentId)}
+          disabled={isEmptyOrWhitespace(state?.selectedAgentSlug)}
         >
           Next
         </OnboardingButton>

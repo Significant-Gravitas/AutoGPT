@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { useMemo } from "react";
 import { FaRegStar, FaStar, FaStarHalfAlt } from "react-icons/fa";
 
 export default function StarRating({
@@ -15,23 +16,27 @@ export default function StarRating({
   starSize ??= 15;
 
   // Generate array of 5 star values
-  const stars = Array(5)
-    .fill(0)
-    .map((_, index) => {
-      const difference = roundedRating - index;
+  const stars = useMemo(
+    () =>
+      Array(5)
+        .fill(0)
+        .map((_, index) => {
+          const difference = roundedRating - index;
 
-      if (difference >= 1) {
-        return "full";
-      } else if (difference > 0) {
-        // Half star for values between 0.2 and 0.8
-        return difference >= 0.8
-          ? "full"
-          : difference >= 0.2
-            ? "half"
-            : "empty";
-      }
-      return "empty";
-    });
+          if (difference >= 1) {
+            return "full";
+          } else if (difference > 0) {
+            // Half star for values between 0.2 and 0.8
+            return difference >= 0.8
+              ? "full"
+              : difference >= 0.2
+                ? "half"
+                : "empty";
+          }
+          return "empty";
+        }),
+    [roundedRating],
+  );
 
   return (
     <div

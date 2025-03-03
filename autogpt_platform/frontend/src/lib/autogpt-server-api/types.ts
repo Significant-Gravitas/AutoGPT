@@ -728,6 +728,17 @@ export interface RefundRequest {
   updated_at: Date;
 }
 
+export interface UserOnboarding {
+  step: number;
+  usageReason?: string;
+  integrations: string[];
+  otherIntegrations?: string;
+  selectedAgentCreator?: string;
+  selectedAgentSlug?: string;
+  agentInput?: { [key: string]: string };
+  isCompleted: boolean;
+}
+
 /* *** UTILITIES *** */
 
 /** Use branded types for IDs -> deny mixing IDs between different object classes */
