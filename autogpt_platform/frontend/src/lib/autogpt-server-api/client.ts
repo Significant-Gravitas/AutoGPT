@@ -45,6 +45,8 @@ import {
   TransactionHistory,
   User,
   UserPasswordCredentials,
+  OttoQuery,
+  OttoResponse,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -582,6 +584,10 @@ export default class BackendAPI {
     );
   }
 
+  async askOtto(query: OttoQuery): Promise<OttoResponse> {
+    return this._request("POST", "/otto/ask", query);
+  }
+
   private async _uploadFile(path: string, file: File): Promise<string> {
     // Get session with retry logic
     let token = "no-token-found";
@@ -871,6 +877,7 @@ export default class BackendAPI {
       graph_version: graphVersion,
     });
   }
+
 }
 
 /* *** UTILITY TYPES *** */
