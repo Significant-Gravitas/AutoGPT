@@ -14,7 +14,12 @@ from backend.data.execution import (
     upsert_execution_input,
     upsert_execution_output,
 )
-from backend.data.graph import get_graph, get_graph_metadata, get_node
+from backend.data.graph import (
+    get_connected_output_nodes,
+    get_graph,
+    get_graph_metadata,
+    get_node,
+)
 from backend.data.user import (
     get_user_integrations,
     get_user_metadata,
@@ -64,6 +69,7 @@ class DatabaseManager(AppService):
     # Graphs
     get_node = exposed_run_and_wait(get_node)
     get_graph = exposed_run_and_wait(get_graph)
+    get_connected_output_nodes = exposed_run_and_wait(get_connected_output_nodes)
     get_graph_metadata = exposed_run_and_wait(get_graph_metadata)
 
     # Credits

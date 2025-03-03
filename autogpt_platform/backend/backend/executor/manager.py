@@ -412,46 +412,30 @@ def validate_exec(
     node_block: Block | None = get_block(node.block_id)
     if not node_block:
         return None, f"Block for {node.block_id} not found."
+    schema = node_block.input_schema
 
-    if isinstance(node_block, AgentExecutorBlock):
-        # Validate the execution metadata for the agent executor block.
-        try:
-            exec_data = AgentExecutorBlock.Input(**node.input_default)
-        except Exception as e:
-            return None, f"Input data doesn't match {node_block.name}: {str(e)}"
-
-        # Validation input
-        input_schema = exec_data.input_schema
-        required_fields = set(input_schema["required"])
-        input_default = exec_data.data
-    else:
-        # Convert non-matching data types to the expected input schema.
-        for name, data_type in node_block.input_schema.__annotations__.items():
-            if (value := data.get(name)) and (type(value) is not data_type):
-                data[name] = convert(value, data_type)
-
-        # Validation input
-        input_schema = node_block.input_schema.jsonschema()
-        required_fields = node_block.input_schema.get_required_fields()
-        input_default = node.input_default
+    # Convert non-matching data types to the expected input schema.
+    for name, data_type in schema.__annotations__.items():
+        if (value := data.get(name)) and (type(value) is not data_type):
+            data[name] = convert(value, data_type)
 
     # Input data (without default values) should contain all required fields.
     error_prefix = f"Input data missing or mismatch for `{node_block.name}`:"
-    input_fields_from_nodes = {link.sink_name for link in node.input_links}
-    if not input_fields_from_nodes.issubset(data):
-        return None, f"{error_prefix} {input_fields_from_nodes - set(data)}"
+    if missing_links := schema.get_missing_links(data, node.input_links):
+        return None, f"{error_prefix} unpopulated links {missing_links}"
 
     # Merge input data with default values and resolve dynamic dict/list/object pins.
+    input_default = schema.get_input_defaults(node.input_default)
     data = {**input_default, **data}
     if resolve_input:
         data = merge_execution_input(data)
 
     # Input data post-merge should contain all required fields from the schema.
-    if not required_fields.issubset(data):
-        return None, f"{error_prefix} {required_fields - set(data)}"
+    if missing_input := schema.get_missing_input(data):
+        return None, f"{error_prefix} missing input {missing_input}"
 
     # Last validation: Validate the input values against the schema.
-    if error := json.validate_with_jsonschema(schema=input_schema, data=data):
+    if error := schema.get_mismatch_error(data):
         error_message = f"{error_prefix} {error}"
         logger.error(error_message)
         return None, error_message

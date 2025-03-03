@@ -15,7 +15,7 @@ from prisma.models import (
     StoreListingVersion,
 )
 from prisma.types import AgentGraphWhereInput
-from pydantic.fields import computed_field
+from pydantic.fields import Field, computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
@@ -72,7 +72,7 @@ class NodeModel(Node):
     webhook: Optional[Webhook] = None
 
     @staticmethod
-    def from_db(node: AgentNode):
+    def from_db(node: AgentNode) -> "NodeModel":
         obj = NodeModel(
             id=node.id,
             block_id=node.agentBlockId,
@@ -112,6 +112,7 @@ class GraphExecutionMeta(BaseDbModel):
     execution_id: str
     started_at: datetime
     ended_at: datetime
+    cost: Optional[int] = Field(..., description="Execution cost in credits")
     duration: float
     total_run_time: float
     status: ExecutionStatus
@@ -140,6 +141,7 @@ class GraphExecutionMeta(BaseDbModel):
             execution_id=_graph_exec.id,
             started_at=start_time,
             ended_at=end_time,
+            cost=stats.get("cost", None),
             duration=duration,
             total_run_time=total_run_time,
             status=ExecutionStatus(_graph_exec.executionStatus),
@@ -413,20 +415,20 @@ class GraphModel(Graph):
         for link in self.links:
             source = (link.source_id, link.source_name)
             sink = (link.sink_id, link.sink_name)
-            suffix = f"Link {source} <-> {sink}"
+            prefix = f"Link {source} <-> {sink}"
 
             for i, (node_id, name) in enumerate([source, sink]):
                 node = node_map.get(node_id)
                 if not node:
                     raise ValueError(
-                        f"{suffix}, {node_id} is invalid node id, available nodes: {node_map.keys()}"
+                        f"{prefix}, {node_id} is invalid node id, available nodes: {node_map.keys()}"
                     )
 
                 block = get_block(node.block_id)
                 if not block:
                     blocks = {v().id: v().name for v in get_blocks().values()}
                     raise ValueError(
-                        f"{suffix}, {node.block_id} is invalid block id, available blocks: {blocks}"
+                        f"{prefix}, {node.block_id} is invalid block id, available blocks: {blocks}"
                     )
 
                 sanitized_name = sanitize(name)
@@ -445,7 +447,7 @@ class GraphModel(Graph):
                     )
                 if sanitized_name not in fields and not name.startswith("tools_^_"):
                     fields_msg = f"Allowed fields: {fields}"
-                    raise ValueError(f"{suffix}, `{name}` invalid, {fields_msg}")
+                    raise ValueError(f"{prefix}, `{name}` invalid, {fields_msg}")
 
             if is_static_output_block(link.source_id):
                 link.is_static = True  # Each value block output should be static.
@@ -707,6 +709,18 @@ async def get_graph(
         return None
 
     return GraphModel.from_db(graph, for_export)
+
+
+async def get_connected_output_nodes(node_id: str) -> list[tuple[Link, Node]]:
+    links = await AgentNodeLink.prisma().find_many(
+        where={"agentNodeSourceId": node_id},
+        include={"AgentNodeSink": {"include": AGENT_NODE_INCLUDE}},  # type: ignore
+    )
+    return [
+        (Link.from_db(link), NodeModel.from_db(link.AgentNodeSink))
+        for link in links
+        if link.AgentNodeSink
+    ]
 
 
 async def set_graph_active_version(graph_id: str, version: int, user_id: str) -> None:

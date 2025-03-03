@@ -229,17 +229,6 @@ for model in LlmModel:
         raise ValueError(f"Missing MODEL_METADATA metadata for model: {model}")
 
 
-class MessageRole(str, Enum):
-    SYSTEM = "system"
-    USER = "user"
-    ASSISTANT = "assistant"
-
-
-class Message(BlockSchema):
-    role: MessageRole
-    content: str
-
-
 class ToolCall(BaseModel):
     name: str
     arguments: str
@@ -252,7 +241,8 @@ class ToolContentBlock(BaseModel):
 
 
 class LLMResponse(BaseModel):
-    prompt: str
+    raw_response: Any
+    prompt: List[Any]
     response: str
     tool_calls: Optional[List[ToolContentBlock]] | None
     prompt_tokens: int
@@ -362,7 +352,8 @@ def llm_call(
             tool_calls = None
 
         return LLMResponse(
-            prompt=json.dumps(prompt),
+            raw_response=response.choices[0].message,
+            prompt=prompt,
             response=response.choices[0].message.content or "",
             tool_calls=tool_calls,
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
@@ -423,7 +414,8 @@ def llm_call(
                 )
 
             return LLMResponse(
-                prompt=json.dumps(prompt),
+                raw_response=resp.content[0],
+                prompt=prompt,
                 response=(
                     resp.content[0].name
                     if isinstance(resp.content[0], anthropic.types.ToolUseBlock)
@@ -450,7 +442,8 @@ def llm_call(
             max_tokens=max_tokens,
         )
         return LLMResponse(
-            prompt=json.dumps(prompt),
+            raw_response=response.choices[0].message,
+            prompt=prompt,
             response=response.choices[0].message.content or "",
             tool_calls=None,
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
@@ -469,7 +462,8 @@ def llm_call(
             stream=False,
         )
         return LLMResponse(
-            prompt=json.dumps(prompt),
+            raw_response=response.get("response") or "",
+            prompt=prompt,
             response=response.get("response") or "",
             tool_calls=None,
             prompt_tokens=response.get("prompt_eval_count") or 0,
@@ -515,7 +509,8 @@ def llm_call(
             tool_calls = None
 
         return LLMResponse(
-            prompt=json.dumps(prompt),
+            raw_response=response.choices[0].message,
+            prompt=prompt,
             response=response.choices[0].message.content or "",
             tool_calls=tool_calls,
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
@@ -557,7 +552,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             default="",
             description="The system prompt to provide additional context to the model.",
         )
-        conversation_history: list[Message] = SchemaField(
+        conversation_history: list[dict] = SchemaField(
             default=[],
             description="The conversation history to provide context for the prompt.",
         )
@@ -613,7 +608,8 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             ],
             test_mock={
                 "llm_call": lambda *args, **kwargs: LLMResponse(
-                    prompt="",
+                    raw_response="",
+                    prompt=[""],
                     response=json.dumps(
                         {
                             "key1": "key1Value",
@@ -655,7 +651,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         logger.debug(f"Calling LLM with input data: {input_data}")
-        prompt = [p.model_dump() for p in input_data.conversation_history]
+        prompt = [json.to_dict(p) for p in input_data.conversation_history]
 
         def trim_prompt(s: str) -> str:
             lines = s.strip().split("\n")
@@ -1032,7 +1028,7 @@ class AITextSummarizerBlock(AIBlockBase):
 
 class AIConversationBlock(AIBlockBase):
     class Input(BlockSchema):
-        messages: List[Message] = SchemaField(
+        messages: List[Any] = SchemaField(
             description="List of messages in the conversation.", min_length=1
         )
         model: LlmModel = SchemaField(
