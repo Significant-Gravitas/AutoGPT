@@ -154,7 +154,7 @@ export default function AgentRunsPage(): React.ReactElement {
       {/* TODO: render this below header in sm and md layouts */}
       <AgentRunsSelectorList
         className="agpt-div w-full border-b lg:w-auto lg:border-b-0 lg:border-r"
-        agent={graph}
+        agent={agent}
         agentRuns={agentRuns}
         schedules={schedules}
         selectedView={selectedView}
@@ -168,7 +168,7 @@ export default function AgentRunsPage(): React.ReactElement {
         <div className="agpt-div w-full border-b">
           <h1 className="font-poppins text-3xl font-medium">
             {
-              graph.name /* TODO: use dynamic/custom run title - https://github.com/Significant-Gravitas/AutoGPT/issues/9184 */
+              agent.name /* TODO: use dynamic/custom run title - https://github.com/Significant-Gravitas/AutoGPT/issues/9184 */
             }
           </h1>
         </div>
@@ -177,21 +177,21 @@ export default function AgentRunsPage(): React.ReactElement {
         {(selectedView.type == "run" && selectedView.id ? (
           selectedRun && (
             <AgentRunDetailsView
-              agent={graph}
+              graph={graph}
               run={selectedRun}
               agentActions={agentActions}
             />
           )
         ) : selectedView.type == "run" ? (
           <AgentRunDraftView
-            agent={graph}
+            graph={graph}
             onRun={(runID) => selectRun(runID)}
             agentActions={agentActions}
           />
         ) : selectedView.type == "schedule" ? (
           selectedSchedule && (
             <AgentScheduleDetailsView
-              agent={graph}
+              graph={graph}
               schedule={selectedSchedule}
               onForcedRun={(runID) => selectRun(runID)}
               agentActions={agentActions}

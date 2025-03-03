@@ -10,25 +10,25 @@ import { Button, ButtonProps } from "@/components/agptui/Button";
 import { Input } from "@/components/ui/input";
 
 export default function AgentRunDraftView({
-  agent,
+  graph,
   onRun,
   agentActions,
 }: {
-  agent: GraphMeta;
+  graph: GraphMeta;
   onRun: (runID: string) => void;
   agentActions: ButtonAction[];
 }): React.ReactNode {
   const api = useBackendAPI();
 
-  const agentInputs = agent.input_schema.properties;
+  const agentInputs = graph.input_schema.properties;
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
 
   const doRun = useCallback(
     () =>
       api
-        .executeGraph(agent.id, agent.version, inputValues)
+        .executeGraph(graph.id, graph.version, inputValues)
         .then((newRun) => onRun(newRun.graph_exec_id)),
-    [api, agent, inputValues, onRun],
+    [api, graph, inputValues, onRun],
   );
 
   const runActions: {

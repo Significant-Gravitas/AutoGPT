@@ -11,12 +11,12 @@ import { Button } from "@/components/agptui/Button";
 import { Input } from "@/components/ui/input";
 
 export default function AgentScheduleDetailsView({
-  agent,
+  graph,
   schedule,
   onForcedRun,
   agentActions,
 }: {
-  agent: GraphMeta;
+  graph: GraphMeta;
   schedule: Schedule;
   onForcedRun: (runID: string) => void;
   agentActions: ButtonAction[];
@@ -51,20 +51,20 @@ export default function AgentScheduleDetailsView({
       Object.entries(schedule.input_data).map(([k, v]) => [
         k,
         {
-          title: agent.input_schema.properties[k].title,
+          title: graph.input_schema.properties[k].title,
           /* TODO: type: agent.input_schema.properties[k].type */
           value: v,
         },
       ]),
     );
-  }, [agent, schedule]);
+  }, [graph, schedule]);
 
   const runNow = useCallback(
     () =>
       api
-        .executeGraph(agent.id, agent.version, schedule.input_data)
+        .executeGraph(graph.id, graph.version, schedule.input_data)
         .then((run) => onForcedRun(run.graph_exec_id)),
-    [api, agent, schedule, onForcedRun],
+    [api, graph, schedule, onForcedRun],
   );
 
   const runActions: { label: string; callback: () => void }[] = useMemo(
