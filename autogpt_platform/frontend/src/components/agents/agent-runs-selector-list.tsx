@@ -5,7 +5,7 @@ import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   GraphExecutionMeta,
-  GraphMeta,
+  LibraryAgent,
   Schedule,
 } from "@/lib/autogpt-server-api";
 
@@ -17,7 +17,7 @@ import { agentRunStatusMap } from "@/components/agents/agent-run-status-chip";
 import AgentRunSummaryCard from "@/components/agents/agent-run-summary-card";
 
 interface AgentRunsSelectorListProps {
-  agent: GraphMeta;
+  agent: LibraryAgent;
   agentRuns: GraphExecutionMeta[];
   schedules: Schedule[];
   selectedView: { type: "run" | "schedule"; id?: string };
@@ -74,7 +74,7 @@ export default function AgentRunsSelectorList({
         >
           <span>Scheduled</span>
           <span className="text-neutral-600">
-            {schedules.filter((s) => s.graph_id === agent.id).length}
+            {schedules.filter((s) => s.graph_id === agent.agent_id).length}
           </span>
         </Badge>
       </div>
@@ -112,7 +112,7 @@ export default function AgentRunsSelectorList({
                 />
               ))
             : schedules
-                .filter((schedule) => schedule.graph_id === agent.id)
+                .filter((schedule) => schedule.graph_id === agent.agent_id)
                 .map((schedule, i) => (
                   <AgentRunSummaryCard
                     className="h-28 w-72 lg:h-32 xl:w-80"

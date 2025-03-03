@@ -4,12 +4,12 @@ import moment from "moment";
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
-  BlockIOSubType,
   GraphExecution,
   GraphExecutionMeta,
   GraphMeta,
 } from "@/lib/autogpt-server-api";
 
+import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/agptui/Button";
 import { Input } from "@/components/ui/input";
@@ -20,17 +20,17 @@ import {
 } from "@/components/agents/agent-run-status-chip";
 
 export default function AgentRunDetailsView({
-  agent,
+  graph,
   run,
   agentActions,
 }: {
-  agent: GraphMeta;
+  graph: GraphMeta;
   run: GraphExecution | GraphExecutionMeta;
-  agentActions: { label: string; callback: () => void }[];
+  agentActions: ButtonAction[];
 }): React.ReactNode {
   const api = useBackendAPI();
 
-  const selectedRunStatus: AgentRunStatus = useMemo(
+  const runStatus: AgentRunStatus = useMemo(
     () => agentRunStatusMap[run.status],
     [run],
   );
@@ -40,9 +40,7 @@ export default function AgentRunDetailsView({
     return [
       {
         label: "Status",
-        value:
-          selectedRunStatus.charAt(0).toUpperCase() +
-          selectedRunStatus.slice(1),
+        value: runStatus.charAt(0).toUpperCase() + runStatus.slice(1),
       },
       {
         label: "Started",
@@ -50,11 +48,11 @@ export default function AgentRunDetailsView({
       },
       {
         label: "Duration",
-        value: `${moment.duration(run.duration, "seconds").humanize()}`,
+        value: moment.duration(run.duration, "seconds").humanize(),
       },
-      // { label: "Cost", value: selectedRun.cost },  // TODO: implement cost - https://github.com/Significant-Gravitas/AutoGPT/issues/9181
+      ...(run.cost ? [{ label: "Cost", value: `${run.cost} credits` }] : []),
     ];
-  }, [run, selectedRunStatus]);
+  }, [run, runStatus]);
 
   const agentRunInputs:
     | Record<string, { title?: string; /* type: BlockIOSubType; */ value: any }>
@@ -67,25 +65,25 @@ export default function AgentRunDetailsView({
       Object.entries(run.inputs).map(([k, v]) => [
         k,
         {
-          title: agent.input_schema.properties[k].title,
-          // type: agent.input_schema.properties[k].type, // TODO: implement typed graph inputs
+          title: graph.input_schema.properties[k].title,
+          // type: graph.input_schema.properties[k].type, // TODO: implement typed graph inputs
           value: v,
         },
       ]),
     );
-  }, [agent, run]);
+  }, [graph, run]);
 
   const runAgain = useCallback(
     () =>
       agentRunInputs &&
       api.executeGraph(
-        agent.id,
-        agent.version,
+        graph.id,
+        graph.version,
         Object.fromEntries(
           Object.entries(agentRunInputs).map(([k, v]) => [k, v.value]),
         ),
       ),
-    [api, agent, agentRunInputs],
+    [api, graph, agentRunInputs],
   );
 
   const agentRunOutputs:
@@ -96,21 +94,20 @@ export default function AgentRunDetailsView({
     | null
     | undefined = useMemo(() => {
     if (!("outputs" in run)) return undefined;
-    if (!["running", "success", "failed"].includes(selectedRunStatus))
-      return null;
+    if (!["running", "success", "failed"].includes(runStatus)) return null;
 
     // Add type info from agent input schema
     return Object.fromEntries(
       Object.entries(run.outputs).map(([k, v]) => [
         k,
         {
-          title: agent.output_schema.properties[k].title,
+          title: graph.output_schema.properties[k].title,
           /* type: agent.output_schema.properties[k].type */
           values: v,
         },
       ]),
     );
-  }, [agent, run, selectedRunStatus]);
+  }, [graph, run, runStatus]);
 
   const runActions: { label: string; callback: () => void }[] = useMemo(
     () => [{ label: "Run again", callback: () => runAgain() }],
@@ -202,7 +199,11 @@ export default function AgentRunDetailsView({
           <div className="flex flex-col gap-3">
             <h3 className="text-sm font-medium">Agent actions</h3>
             {agentActions.map((action, i) => (
-              <Button key={i} variant="outline" onClick={action.callback}>
+              <Button
+                key={i}
+                variant={action.variant ?? "outline"}
+                onClick={action.callback}
+              >
                 {action.label}
               </Button>
             ))}

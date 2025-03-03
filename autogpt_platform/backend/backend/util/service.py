@@ -444,7 +444,9 @@ def fastapi_get_service_client(service_type: Type[AS]) -> AS:
                 logger.error(f"HTTP error in {method_name}: {e.response.text}")
                 error = RemoteCallError.model_validate(e.response.json(), strict=False)
                 # DEBUG HELP: if you made a custom exception, make sure you override self.args to be how to make your exception
-                raise EXCEPTION_MAPPING.get(error.type, Exception)(*error.args)
+                raise EXCEPTION_MAPPING.get(error.type, Exception)(
+                    *(error.args or [str(e)])
+                )
 
         def close(self):
             self.client.close()
