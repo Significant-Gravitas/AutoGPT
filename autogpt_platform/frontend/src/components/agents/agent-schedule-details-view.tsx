@@ -1,9 +1,10 @@
 "use client";
 import React, { useCallback, useMemo } from "react";
 
-import { BlockIOSubType, GraphMeta, Schedule } from "@/lib/autogpt-server-api";
+import { GraphMeta, Schedule } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
+import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AgentRunStatus } from "@/components/agents/agent-run-status-chip";
 import { Button } from "@/components/agptui/Button";
@@ -18,7 +19,7 @@ export default function AgentScheduleDetailsView({
   agent: GraphMeta;
   schedule: Schedule;
   onForcedRun: (runID: string) => void;
-  agentActions: { label: string; callback: () => void }[];
+  agentActions: ButtonAction[];
 }): React.ReactNode {
   const api = useBackendAPI();
 
@@ -129,7 +130,11 @@ export default function AgentScheduleDetailsView({
           <div className="flex flex-col gap-3">
             <h3 className="text-sm font-medium">Agent actions</h3>
             {agentActions.map((action, i) => (
-              <Button key={i} variant="outline" onClick={action.callback}>
+              <Button
+                key={i}
+                variant={action.variant ?? "outline"}
+                onClick={action.callback}
+              >
                 {action.label}
               </Button>
             ))}

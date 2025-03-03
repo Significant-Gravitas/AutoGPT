@@ -9,6 +9,7 @@ import {
   GraphMeta,
 } from "@/lib/autogpt-server-api";
 
+import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/agptui/Button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +26,7 @@ export default function AgentRunDetailsView({
 }: {
   agent: GraphMeta;
   run: GraphExecution | GraphExecutionMeta;
-  agentActions: { label: string; callback: () => void }[];
+  agentActions: ButtonAction[];
 }): React.ReactNode {
   const api = useBackendAPI();
 
@@ -198,7 +199,11 @@ export default function AgentRunDetailsView({
           <div className="flex flex-col gap-3">
             <h3 className="text-sm font-medium">Agent actions</h3>
             {agentActions.map((action, i) => (
-              <Button key={i} variant="outline" onClick={action.callback}>
+              <Button
+                key={i}
+                variant={action.variant ?? "outline"}
+                onClick={action.callback}
+              >
                 {action.label}
               </Button>
             ))}
