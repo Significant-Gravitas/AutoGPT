@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
 from redis.lock import Lock as RedisLock
 
 from backend.blocks.basic import AgentOutputBlock
-from backend.data.execution import ExecutionStats
+from backend.data.execution import ExecutionStats, ExecutionStatsStrErr
 from backend.data.notifications import (
     AgentRunData,
     LowBalanceData,
@@ -642,12 +642,17 @@ class Executor:
         exec_stats.walltime = timing_info.wall_time
         exec_stats.cputime = timing_info.cpu_time
         exec_stats.error = error
+        str_stats = exec_stats.model_dump()
+        str_stats["error"] = str(error) if error else None
+        str_stat_obj = ExecutionStatsStrErr(**str_stats)
+
         result = cls.db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
             status=status,
-            stats=exec_stats,
+            stats=str_stat_obj,
         )
         cls.db_client.send_execution_update(result)
+
         cls._handle_agent_run_notif(graph_exec, exec_stats)
 
     @classmethod

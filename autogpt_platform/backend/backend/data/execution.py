@@ -37,6 +37,19 @@ class ExecutionStats(BaseModel):
     cost: float = 0
 
 
+class ExecutionStatsStrErr(BaseModel):
+    """Execution statistics for a graph execution with the error stringified."""
+
+    error: Optional[str] = None
+    walltime: float = 0
+    cputime: float = 0
+    nodes_walltime: float = 0
+    nodes_cputime: float = 0
+    node_count: int = 0
+    node_error_count: int = 0
+    cost: float = 0
+
+
 class GraphExecutionEntry(BaseModel):
     user_id: str
     graph_exec_id: str
@@ -298,11 +311,9 @@ async def update_graph_execution_start_time(graph_exec_id: str) -> ExecutionResu
 async def update_graph_execution_stats(
     graph_exec_id: str,
     status: ExecutionStatus,
-    stats: ExecutionStats,
+    stats: ExecutionStatsStrErr,
 ) -> ExecutionResult:
     data = stats.model_dump()
-    if data["error"]:
-        data["error"] = str(data["error"])
     res = await AgentGraphExecution.prisma().update(
         where={"id": graph_exec_id},
         data={
