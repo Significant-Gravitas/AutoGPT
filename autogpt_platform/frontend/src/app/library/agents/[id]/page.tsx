@@ -5,11 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   GraphExecution,
+  GraphExecutionID,
   GraphExecutionMeta,
   GraphMeta,
   LibraryAgent,
   LibraryAgentID,
   Schedule,
+  ScheduleID,
 } from "@/lib/autogpt-server-api";
 
 import type { ButtonAction } from "@/components/agptui/types";
@@ -24,14 +26,16 @@ export default function AgentRunsPage(): React.ReactElement {
   const router = useRouter();
   const api = useBackendAPI();
 
+  // ============================ STATE =============================
+
   const [graph, setGraph] = useState<GraphMeta | null>(null);
   const [agent, setAgent] = useState<LibraryAgent | null>(null);
   const [agentRuns, setAgentRuns] = useState<GraphExecutionMeta[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
-  const [selectedView, selectView] = useState<{
-    type: "run" | "schedule";
-    id?: string;
-  }>({ type: "run" });
+  const [selectedView, selectView] = useState<
+    | { type: "run"; id?: GraphExecutionID }
+    | { type: "schedule"; id: ScheduleID }
+  >({ type: "run" });
   const [selectedRun, setSelectedRun] = useState<
     GraphExecution | GraphExecutionMeta | null
   >(null);
@@ -46,7 +50,7 @@ export default function AgentRunsPage(): React.ReactElement {
     selectView({ type: "run" });
   }, []);
 
-  const selectRun = useCallback((id: string) => {
+  const selectRun = useCallback((id: GraphExecutionID) => {
     selectView({ type: "run", id });
   }, []);
 
@@ -114,19 +118,29 @@ export default function AgentRunsPage(): React.ReactElement {
     fetchSchedules();
   }, [fetchSchedules]);
 
-  const removeSchedule = useCallback(
-    async (scheduleId: string) => {
-      const removedSchedule = await api.deleteSchedule(scheduleId);
-      setSchedules(schedules.filter((s) => s.id !== removedSchedule.id));
-    },
-    [schedules, api],
-  );
-
   /* TODO: use websockets instead of polling - https://github.com/Significant-Gravitas/AutoGPT/issues/8782 */
   useEffect(() => {
     const intervalId = setInterval(() => fetchAgents(), 5000);
     return () => clearInterval(intervalId);
   }, [fetchAgents]);
+
+  // =========================== ACTIONS ============================
+
+  const deleteRun = useCallback(
+    async (graphExecID: GraphExecutionID) => {
+      await api.deleteGraphExecution(graphExecID);
+      setAgentRuns(agentRuns.filter((r) => r.execution_id !== graphExecID));
+    },
+    [agentRuns, api],
+  );
+
+  const deleteSchedule = useCallback(
+    async (scheduleID: ScheduleID) => {
+      const removedSchedule = await api.deleteSchedule(scheduleID);
+      setSchedules(schedules.filter((s) => s.id !== removedSchedule.id));
+    },
+    [schedules, api],
+  );
 
   const agentActions: ButtonAction[] = useMemo(
     () => [
@@ -160,7 +174,9 @@ export default function AgentRunsPage(): React.ReactElement {
         selectedView={selectedView}
         onSelectRun={selectRun}
         onSelectSchedule={selectSchedule}
-        onDraftNewRun={openRunDraftView}
+        onSelectDraftNewRun={openRunDraftView}
+        onDeleteRun={(id) => deleteRun(id)}
+        onDeleteSchedule={(id) => deleteSchedule(id)}
       />
 
       <div className="flex-1">
