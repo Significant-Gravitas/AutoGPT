@@ -19,3 +19,7 @@ class InsufficientBalanceError(ValueError):
         self.user_id = user_id
         self.balance = balance
         self.amount = amount
+
+    def __str__(self):
+        """Used to display the error message in the frontend, because we str() the error when sending the execution update"""
+        return self.message
