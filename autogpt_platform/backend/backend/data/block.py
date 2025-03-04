@@ -19,7 +19,7 @@ import jsonschema
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 
-from backend.data.execution import NodeExecutionStats
+from backend.data.model import NodeExecutionStats
 from backend.util import json
 from backend.util.settings import Config
 

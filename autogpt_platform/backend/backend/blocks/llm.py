@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Iterable, List, Literal, NamedTuple, Opti
 
 from pydantic import BaseModel, SecretStr
 
-from backend.data.execution import NodeExecutionStats
+from backend.data.model import NodeExecutionStats
 from backend.integrations.providers import ProviderName
 
 if TYPE_CHECKING:

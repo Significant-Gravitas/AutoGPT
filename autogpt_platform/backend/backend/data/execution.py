@@ -15,103 +15,11 @@ from pydantic import BaseModel
 
 from backend.data.block import BlockData, BlockInput, CompletedBlockOutput
 from backend.data.includes import EXECUTION_RESULT_INCLUDE, GRAPH_EXECUTION_INCLUDE
+from backend.data.model import GraphExecutionStatsStrErr, NodeExecutionStatsStrError
 from backend.data.queue import AsyncRedisEventBus, RedisEventBus
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util import mock, type
 from backend.util.settings import Config
-
-
-class NodeExecutionStats(BaseModel):
-    """Execution statistics for a node execution."""
-
-    class Config:
-        arbitrary_types_allowed = True
-
-    error: Optional[Exception] = None
-    walltime: float = 0
-    cputime: float = 0
-    cost: float = 0
-    input_size: int = 0
-    output_size: int = 0
-    llm_call_count: int = 0
-    llm_retry_count: int = 0
-    input_token_count: int = 0
-    output_token_count: int = 0
-
-
-class NodeExecutionStatsStrError(BaseModel):
-    """Execution statistics for a node execution."""
-
-    class Config:
-        arbitrary_types_allowed = True
-
-    error: Optional[str] = None
-    walltime: float = 0
-    cputime: float = 0
-    cost: float = 0
-    input_size: int = 0
-    output_size: int = 0
-    llm_call_count: int = 0
-    llm_retry_count: int = 0
-    input_token_count: int = 0
-    output_token_count: int = 0
-
-
-def convert_node_exuction_stats(
-    stats: NodeExecutionStats,
-) -> NodeExecutionStatsStrError:
-    return NodeExecutionStatsStrError(
-        error=str(stats.error) if stats.error else None,
-        walltime=stats.walltime,
-        cputime=stats.cputime,
-        cost=stats.cost,
-        input_size=stats.input_size,
-        output_size=stats.output_size,
-    )
-
-
-class GraphExecutionStats(BaseModel):
-    """Execution statistics for a graph execution."""
-
-    class Config:
-        arbitrary_types_allowed = True
-
-    error: Optional[Exception] = None
-    walltime: float = 0
-    cputime: float = 0
-    nodes_walltime: float = 0
-    nodes_cputime: float = 0
-    node_count: int = 0
-    node_error_count: int = 0
-    cost: float = 0
-
-
-class GraphExecutionStatsStrErr(BaseModel):
-    """Execution statistics for a graph execution with the error stringified."""
-
-    error: Optional[str] = None
-    walltime: float = 0
-    cputime: float = 0
-    nodes_walltime: float = 0
-    nodes_cputime: float = 0
-    node_count: int = 0
-    node_error_count: int = 0
-    cost: float = 0
-
-
-def convert_graph_execution_stats(
-    stats: GraphExecutionStats,
-) -> GraphExecutionStatsStrErr:
-    return GraphExecutionStatsStrErr(
-        error=str(stats.error) if stats.error else None,
-        walltime=stats.walltime,
-        cputime=stats.cputime,
-        nodes_walltime=stats.nodes_walltime,
-        nodes_cputime=stats.nodes_cputime,
-        node_count=stats.node_count,
-        node_error_count=stats.node_error_count,
-        cost=stats.cost,
-    )
 
 
 class GraphExecutionEntry(BaseModel):
