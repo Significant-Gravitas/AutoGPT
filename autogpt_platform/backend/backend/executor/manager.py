@@ -13,7 +13,12 @@ from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
 from redis.lock import Lock as RedisLock
 
 from backend.blocks.basic import AgentOutputBlock
-from backend.data.execution import GraphExecutionStats, GraphExecutionStatsStrErr
+from backend.data.execution import (
+    GraphExecutionStats,
+    NodeExecutionStats,
+    convert_graph_execution_stats,
+    convert_node_exuction_stats,
+)
 from backend.data.notifications import (
     AgentRunData,
     LowBalanceData,
@@ -120,7 +125,7 @@ def execute_node(
     db_client: "DatabaseManager",
     creds_manager: IntegrationCredentialsManager,
     data: NodeExecutionEntry,
-    execution_stats: dict[str, Any] | None = None,
+    execution_stats: NodeExecutionStats | None = None,
 ) -> ExecutionStream:
     """
     Execute a node in the graph. This will trigger a block execution on a node,
@@ -258,10 +263,12 @@ def execute_node(
 
         # Update execution stats
         if execution_stats is not None:
-            execution_stats.update(node_block.execution_stats)
-            execution_stats["input_size"] = input_size
-            execution_stats["output_size"] = output_size
-            execution_stats["cost"] = cost
+            execution_stats = execution_stats.model_copy(
+                update=node_block.execution_stats.model_dump()
+            )
+            execution_stats.input_size = input_size
+            execution_stats.output_size = output_size
+            execution_stats.cost = cost
 
 
 def _enqueue_next_nodes(
@@ -518,7 +525,7 @@ class Executor:
         cls,
         q: ExecutionQueue[NodeExecutionEntry],
         node_exec: NodeExecutionEntry,
-    ) -> dict[str, Any]:
+    ) -> NodeExecutionStats:
         log_metadata = LogMetadata(
             user_id=node_exec.user_id,
             graph_eid=node_exec.graph_exec_id,
@@ -528,16 +535,16 @@ class Executor:
             block_name="-",
         )
 
-        execution_stats = {}
+        execution_stats = NodeExecutionStats()
         timing_info, _ = cls._on_node_execution(
             q, node_exec, log_metadata, execution_stats
         )
-        execution_stats["walltime"] = timing_info.wall_time
-        execution_stats["cputime"] = timing_info.cpu_time
+        execution_stats.walltime = timing_info.wall_time
+        execution_stats.cputime = timing_info.cpu_time
 
-        cls.db_client.update_node_execution_stats(
-            node_exec.node_exec_id, execution_stats
-        )
+        str_stats = convert_node_exuction_stats(execution_stats)
+
+        cls.db_client.update_node_execution_stats(node_exec.node_exec_id, str_stats)
         return execution_stats
 
     @classmethod
@@ -547,7 +554,7 @@ class Executor:
         q: ExecutionQueue[NodeExecutionEntry],
         node_exec: NodeExecutionEntry,
         log_metadata: LogMetadata,
-        stats: dict[str, Any] | None = None,
+        stats: NodeExecutionStats | None = None,
     ):
         try:
             log_metadata.info(f"Start node execution {node_exec.node_exec_id}")
@@ -571,7 +578,7 @@ class Executor:
                 )
 
             if stats is not None:
-                stats["error"] = e
+                stats.error = e
 
     @classmethod
     def on_graph_executor_start(cls):
@@ -626,14 +633,12 @@ class Executor:
         exec_stats.walltime = timing_info.wall_time
         exec_stats.cputime = timing_info.cpu_time
         exec_stats.error = error
-        str_stats = exec_stats.model_dump()
-        str_stats["error"] = str(error) if error else None
-        str_stat_obj = GraphExecutionStatsStrErr(**str_stats)
+        str_stats = convert_graph_execution_stats(exec_stats)
 
         result = cls.db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
             status=status,
-            stats=str_stat_obj,
+            stats=str_stats,
         )
         cls.db_client.send_execution_update(result)
 

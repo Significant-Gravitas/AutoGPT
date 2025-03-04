@@ -19,6 +19,7 @@ import jsonschema
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 
+from backend.data.execution import NodeExecutionStats
 from backend.util import json
 from backend.util.settings import Config
 
@@ -316,7 +317,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.static_output = static_output
         self.block_type = block_type
         self.webhook_config = webhook_config
-        self.execution_stats = {}
+        self.execution_stats: NodeExecutionStats = NodeExecutionStats()
 
         if self.webhook_config:
             if isinstance(self.webhook_config, BlockWebhookConfig):
@@ -394,18 +395,29 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 return data
         raise ValueError(f"{self.name} did not produce any output for {output}")
 
-    def merge_stats(self, stats: dict[str, Any]) -> dict[str, Any]:
-        for key, value in stats.items():
-            if isinstance(value, dict):
-                self.execution_stats.setdefault(key, {}).update(value)
-            elif isinstance(value, (int, float)):
-                self.execution_stats.setdefault(key, 0)
-                self.execution_stats[key] += value
-            elif isinstance(value, list):
-                self.execution_stats.setdefault(key, [])
-                self.execution_stats[key].extend(value)
+    def merge_stats(self, stats: NodeExecutionStats) -> NodeExecutionStats:
+        stats_dict = stats.model_dump()
+        current_stats = self.execution_stats.model_dump()
+
+        for key, value in stats_dict.items():
+            if key not in current_stats:
+                # Field doesn't exist yet, just set it, but this will probably
+                # not happen, just in case though so we throw for invalid when
+                # converting back in
+                current_stats[key] = value
+            elif isinstance(value, dict) and isinstance(current_stats[key], dict):
+                current_stats[key].update(value)
+            elif isinstance(value, (int, float)) and isinstance(
+                current_stats[key], (int, float)
+            ):
+                current_stats[key] += value
+            elif isinstance(value, list) and isinstance(current_stats[key], list):
+                current_stats[key].extend(value)
             else:
-                self.execution_stats[key] = value
+                current_stats[key] = value
+
+        self.execution_stats = NodeExecutionStats(**current_stats)
+
         return self.execution_stats
 
     @property
