@@ -21,7 +21,7 @@ from backend.util import mock, type
 from backend.util.settings import Config
 
 
-class ExecutionStats(BaseModel):
+class GraphExecutionStats(BaseModel):
     """Execution statistics for a graph execution."""
 
     class Config:
@@ -37,7 +37,7 @@ class ExecutionStats(BaseModel):
     cost: float = 0
 
 
-class ExecutionStatsStrErr(BaseModel):
+class GraphExecutionStatsStrErr(BaseModel):
     """Execution statistics for a graph execution with the error stringified."""
 
     error: Optional[str] = None
@@ -311,7 +311,7 @@ async def update_graph_execution_start_time(graph_exec_id: str) -> ExecutionResu
 async def update_graph_execution_stats(
     graph_exec_id: str,
     status: ExecutionStatus,
-    stats: ExecutionStatsStrErr,
+    stats: GraphExecutionStatsStrErr,
 ) -> ExecutionResult:
     data = stats.model_dump()
     res = await AgentGraphExecution.prisma().update(

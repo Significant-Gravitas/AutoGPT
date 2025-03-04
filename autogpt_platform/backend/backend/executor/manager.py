@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
 from redis.lock import Lock as RedisLock
 
 from backend.blocks.basic import AgentOutputBlock
-from backend.data.execution import ExecutionStats, ExecutionStatsStrErr
+from backend.data.execution import GraphExecutionStats, GraphExecutionStatsStrErr
 from backend.data.notifications import (
     AgentRunData,
     LowBalanceData,
@@ -628,7 +628,7 @@ class Executor:
         exec_stats.error = error
         str_stats = exec_stats.model_dump()
         str_stats["error"] = str(error) if error else None
-        str_stat_obj = ExecutionStatsStrErr(**str_stats)
+        str_stat_obj = GraphExecutionStatsStrErr(**str_stats)
 
         result = cls.db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
@@ -646,7 +646,7 @@ class Executor:
         graph_exec: GraphExecutionEntry,
         cancel: threading.Event,
         log_metadata: LogMetadata,
-    ) -> tuple[ExecutionStats, ExecutionStatus, Exception | None]:
+    ) -> tuple[GraphExecutionStats, ExecutionStatus, Exception | None]:
         """
         Returns:
             dict: The execution statistics of the graph execution.
@@ -654,7 +654,7 @@ class Executor:
             Exception | None: The error that occurred during the execution, if any.
         """
         log_metadata.info(f"Start graph execution {graph_exec.graph_exec_id}")
-        exec_stats = ExecutionStats()
+        exec_stats = GraphExecutionStats()
         error = None
         finished = False
 
@@ -776,7 +776,7 @@ class Executor:
     def _handle_agent_run_notif(
         cls,
         graph_exec: GraphExecutionEntry,
-        exec_stats: ExecutionStats,
+        exec_stats: GraphExecutionStats,
     ):
         metadata = cls.db_client.get_graph_metadata(
             graph_exec.graph_id, graph_exec.graph_version
@@ -812,7 +812,7 @@ class Executor:
         cls,
         user_id: str,
         graph_id: str,
-        exec_stats: ExecutionStats,
+        exec_stats: GraphExecutionStats,
         e: InsufficientBalanceError,
     ):
         shortfall = e.balance - e.amount
