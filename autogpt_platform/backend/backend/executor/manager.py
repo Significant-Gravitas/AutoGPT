@@ -821,17 +821,17 @@ class Executor:
     ):
         shortfall = e.balance - e.amount
         metadata = cls.db_client.get_graph_metadata(graph_id)
-        top_up_amount = round(max(shortfall, 500))
-        top_up_link = cls.db_client.top_up_intent(user_id, top_up_amount)
         logger.info(f"Sending low balance notification for user {user_id}")
+        base_url = (
+            settings.config.frontend_base_url or settings.config.platform_base_url
+        )
         cls.notification_service.queue_notification(
             NotificationEventDTO(
                 user_id=user_id,
                 type=NotificationType.LOW_BALANCE,
                 data=LowBalanceData(
                     current_balance=exec_stats.cost,
-                    top_up_link=top_up_link,
-                    top_up_amount=top_up_amount,
+                    billing_page_link=f"{base_url}/profile/credits",
                     shortfall=shortfall,
                     agent_name=metadata.name if metadata else "Unknown",
                 ).model_dump(),
