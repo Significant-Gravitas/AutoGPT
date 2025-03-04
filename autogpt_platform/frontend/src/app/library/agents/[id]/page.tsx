@@ -132,11 +132,14 @@ export default function AgentRunsPage(): React.ReactElement {
         await api.stopGraphExecution(run.graph_id, run.execution_id);
       }
       await api.deleteGraphExecution(run.execution_id);
+      if (selectedView.type == "run" && selectedView.id == run.execution_id) {
+        openRunDraftView();
+      }
       setAgentRuns(
         agentRuns.filter((r) => r.execution_id !== run.execution_id),
       );
     },
-    [agentRuns, api],
+    [agentRuns, api, selectedView, openRunDraftView],
   );
 
   const deleteSchedule = useCallback(
