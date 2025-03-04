@@ -909,7 +909,6 @@ export default class BackendAPI {
       graph_version: graphVersion,
     });
   }
-
 }
 
 /* *** UTILITY TYPES *** */
