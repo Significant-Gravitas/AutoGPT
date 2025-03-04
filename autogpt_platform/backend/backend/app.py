@@ -6,6 +6,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 def run_processes(*processes: "AppProcess", **kwargs):
     """
     Execute all processes in the app. The last process is run in the foreground.
@@ -20,13 +21,17 @@ def run_processes(*processes: "AppProcess", **kwargs):
                 active_processes.append(process)
                 process.health_check()
             except Exception as e:
-                logger.error(f"Failed to start process {process.service_name}: {str(e)}")
+                logger.error(
+                    f"Failed to start process {process.service_name}: {str(e)}"
+                )
                 # Cleanup already started processes
                 for p in active_processes:
                     try:
                         p.stop()
                     except Exception as cleanup_error:
-                        logger.error(f"Error during cleanup of {p.service_name}: {str(cleanup_error)}")
+                        logger.error(
+                            f"Error during cleanup of {p.service_name}: {str(cleanup_error)}"
+                        )
                 raise RuntimeError(f"Process startup failed: {str(e)}") from e
 
         # Run the last process in the foreground
@@ -46,7 +51,6 @@ def run_processes(*processes: "AppProcess", **kwargs):
                 logger.info(f"Successfully stopped process {process.service_name}")
             except Exception as e:
                 logger.error(f"Failed to stop process {process.service_name}: {str(e)}")
-
 
 
 def main(**kwargs):
