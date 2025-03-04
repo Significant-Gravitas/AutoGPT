@@ -623,7 +623,9 @@ async def get_graph_execution(
 
     result = await graph_db.get_execution(execution_id=graph_exec_id, user_id=user_id)
     if not result:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+        raise HTTPException(
+            status_code=404, detail=f"Graph execution #{graph_exec_id} not found."
+        )
 
     return result
 

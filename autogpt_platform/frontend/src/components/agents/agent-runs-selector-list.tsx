@@ -26,7 +26,7 @@ interface AgentRunsSelectorListProps {
   onSelectRun: (id: GraphExecutionID) => void;
   onSelectSchedule: (schedule: Schedule) => void;
   onSelectDraftNewRun: () => void;
-  onDeleteRun: (id: GraphExecutionID) => void;
+  onDeleteRun: (id: GraphExecutionMeta) => void;
   onDeleteSchedule: (id: ScheduleID) => void;
   className?: string;
 }
@@ -113,7 +113,7 @@ export default function AgentRunsSelectorList({
                   timestamp={run.started_at}
                   selected={selectedView.id === run.execution_id}
                   onClick={() => onSelectRun(run.execution_id)}
-                  onDelete={() => onDeleteRun(run.execution_id)}
+                  onDelete={() => onDeleteRun(run)}
                 />
               ))
             : schedules

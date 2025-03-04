@@ -127,9 +127,14 @@ export default function AgentRunsPage(): React.ReactElement {
   // =========================== ACTIONS ============================
 
   const deleteRun = useCallback(
-    async (graphExecID: GraphExecutionID) => {
-      await api.deleteGraphExecution(graphExecID);
-      setAgentRuns(agentRuns.filter((r) => r.execution_id !== graphExecID));
+    async (run: GraphExecutionMeta) => {
+      if (run.status == "RUNNING" || run.status == "QUEUED") {
+        await api.stopGraphExecution(run.graph_id, run.execution_id);
+      }
+      await api.deleteGraphExecution(run.execution_id);
+      setAgentRuns(
+        agentRuns.filter((r) => r.execution_id !== run.execution_id),
+      );
     },
     [agentRuns, api],
   );
@@ -175,7 +180,7 @@ export default function AgentRunsPage(): React.ReactElement {
         onSelectRun={selectRun}
         onSelectSchedule={selectSchedule}
         onSelectDraftNewRun={openRunDraftView}
-        onDeleteRun={(id) => deleteRun(id)}
+        onDeleteRun={deleteRun}
         onDeleteSchedule={(id) => deleteSchedule(id)}
       />
 
@@ -196,6 +201,7 @@ export default function AgentRunsPage(): React.ReactElement {
               graph={graph}
               run={selectedRun}
               agentActions={agentActions}
+              deleteRun={() => deleteRun(selectedRun)}
             />
           )
         ) : selectedView.type == "run" ? (
