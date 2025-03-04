@@ -34,20 +34,49 @@ class TextFormatter:
             "color",
             "font-size",
             "line-height",
+            "letter-spacing",
             "margin-top",
             "margin-bottom",
             "margin-left",
             "margin-right",
             "background-color",
             "padding",
-            "border-radius",
             "font-weight",
             "text-align",
+            "width",
+            "height",
+            "text-decoration",
+            "text-transform",
+            "text-shadow",
+            "box-shadow",
+            "border",
+            "border-top",
+            "border-bottom",
+            "border-left",
+            "border-right",
+            "border-style",
+            "border-width",
+            "border-color",
+            "border-radius",
+            "display",
+            "float",
+            "clear",
+            "position",
+            "top",
+            "right",
+            "bottom",
+            "left",
         ]
 
         self.css_sanitizer = CSSSanitizer(allowed_css_properties=allowed_css_properties)
 
         self.allowed_tags = [
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "a",
             "p",
             "b",
             "i",
@@ -59,8 +88,13 @@ class TextFormatter:
             "em",
             "div",
             "span",
+            "img",
         ]
-        self.allowed_attributes = {"*": ["style", "class"]}
+        self.allowed_attributes = {
+            "*": ["style", "class"],
+            "a": ["href"],
+            "img": ["src"],
+        }
 
     def format_string(self, template_str: str, values=None, **kwargs) -> str:
         """Regular template rendering with escaping"""
