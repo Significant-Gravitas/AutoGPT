@@ -2,8 +2,7 @@
 {# Template variables:
 data.agent_name: the name of the agent
 data.current_balance: the current balance of the user
-data.top_up_link: the link to the top-up page
-data.top_up_amount: the amount to top up
+data.billing_page_link: the link to the billing page
 data.shortfall: the shortfall amount
 #}
 
@@ -15,7 +14,7 @@ data.shortfall: the shortfall amount
     margin-top: 0;
     margin-bottom: 10px;
   ">
-  <strong>Insufficient Balance Alert</strong>
+  <strong>Low Balance Warning</strong>
 </p>
 
 <p style="
@@ -26,7 +25,7 @@ data.shortfall: the shortfall amount
     margin-top: 0;
     margin-bottom: 20px;
   ">
-  Your agent "<strong>{{ data.agent_name }}</strong>" has been stopped due to insufficient balance.
+  Your agent "<strong>{{ data.agent_name }}</strong>" has been stopped due to low balance.
 </p>
 
 <div style="
@@ -54,15 +53,6 @@ data.shortfall: the shortfall amount
   ">
     <strong>Shortfall:</strong> ${{ "{:.2f}".format((data.shortfall|float)/100) }}
   </p>
-  <p style="
-    font-family: 'Poppins', sans-serif;
-    color: #070629;
-    font-size: 16px;
-    margin-top: 0;
-    margin-bottom: 0;
-  ">
-    <strong>Recommended Top-up:</strong> ${{ "{:.2f}".format((data.top_up_amount|float)/100) }}
-  </p>
 </div>
 
 
@@ -80,7 +70,7 @@ data.shortfall: the shortfall amount
     margin-top: 0;
     margin-bottom: 10px;
   ">
-    <strong>Block Execution Failed:</strong>
+    <strong>Low Balance:</strong>
   </p>
   <p style="
     font-family: 'Poppins', sans-serif;
@@ -89,7 +79,7 @@ data.shortfall: the shortfall amount
     margin-top: 0;
     margin-bottom: 5px;
   ">
-    Your agent "<strong>{{ data.agent_name }}</strong>" requires additional credits to continue running. The current operation has been canceled until your balance is topped up.
+    Your agent "<strong>{{ data.agent_name }}</strong>" requires additional credits to continue running. The current operation has been canceled until your balance is replenished.
   </p>
 </div>
 
@@ -97,7 +87,7 @@ data.shortfall: the shortfall amount
     text-align: center;
     margin: 30px 0;
   ">
-  <a href="{{ data.top_up_link }}" style="
+  <a href="{{ data.billing_page_link }}" style="
     font-family: 'Poppins', sans-serif;
     background-color: #5D23BB;
     color: white;
@@ -107,14 +97,14 @@ data.shortfall: the shortfall amount
     font-weight: 500;
     display: inline-block;
   ">
-    Top Up Balance by ${{ "{:.2f}".format((data.top_up_amount|float)/100) }}
+    Manage Billing
   </a>
 </div>
 
 <p style="
     font-family: 'Poppins', sans-serif;
     color: #070629;
-    font-size: 14px;
+    font-size: 16px;
     line-height: 150%;
     margin-top: 30px;
     margin-bottom: 10px;
