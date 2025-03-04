@@ -15,11 +15,11 @@ import {
 } from "@/lib/autogpt-server-api";
 
 import type { ButtonAction } from "@/components/agptui/types";
+import DeleteConfirmDialog from "@/components/agptui/delete-confirm-dialog";
 import AgentRunDraftView from "@/components/agents/agent-run-draft-view";
 import AgentRunDetailsView from "@/components/agents/agent-run-details-view";
 import AgentRunsSelectorList from "@/components/agents/agent-runs-selector-list";
 import AgentScheduleDetailsView from "@/components/agents/agent-schedule-details-view";
-import AgentDeleteConfirmDialog from "@/components/agents/agent-delete-confirm-dialog";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
@@ -45,6 +45,8 @@ export default function AgentRunsPage(): React.ReactElement {
   const [isFirstLoad, setIsFirstLoad] = useState<boolean>(true);
   const [agentDeleteDialogOpen, setAgentDeleteDialogOpen] =
     useState<boolean>(false);
+  const [confirmingDeleteAgentRun, setConfirmingDeleteAgentRun] =
+    useState<GraphExecutionMeta | null>(null);
 
   const openRunDraftView = useCallback(() => {
     selectView({ type: "run" });
@@ -183,7 +185,7 @@ export default function AgentRunsPage(): React.ReactElement {
         onSelectRun={selectRun}
         onSelectSchedule={selectSchedule}
         onSelectDraftNewRun={openRunDraftView}
-        onDeleteRun={deleteRun}
+        onDeleteRun={setConfirmingDeleteAgentRun}
         onDeleteSchedule={(id) => deleteSchedule(id)}
       />
 
@@ -204,7 +206,7 @@ export default function AgentRunsPage(): React.ReactElement {
               graph={graph}
               run={selectedRun}
               agentActions={agentActions}
-              deleteRun={() => deleteRun(selectedRun)}
+              deleteRun={() => setConfirmingDeleteAgentRun(selectedRun)}
             />
           )
         ) : selectedView.type == "run" ? (
@@ -224,7 +226,8 @@ export default function AgentRunsPage(): React.ReactElement {
           )
         ) : null) || <p>Loading...</p>}
 
-        <AgentDeleteConfirmDialog
+        <DeleteConfirmDialog
+          entityType="agent"
           open={agentDeleteDialogOpen}
           onOpenChange={setAgentDeleteDialogOpen}
           onDoDelete={() =>
@@ -232,6 +235,15 @@ export default function AgentRunsPage(): React.ReactElement {
             api
               .updateLibraryAgent(agent.id, { is_deleted: true })
               .then(() => router.push("/library"))
+          }
+        />
+
+        <DeleteConfirmDialog
+          entityType="agent run"
+          open={!!confirmingDeleteAgentRun}
+          onOpenChange={(open) => !open && setConfirmingDeleteAgentRun(null)}
+          onDoDelete={() =>
+            confirmingDeleteAgentRun && deleteRun(confirmingDeleteAgentRun)
           }
         />
       </div>
