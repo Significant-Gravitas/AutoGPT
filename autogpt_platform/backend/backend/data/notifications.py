@@ -3,6 +3,11 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Annotated, Any, Generic, Optional, TypeVar, Union
 
+from backend.data.user import (
+    get_user_by_id,
+    set_user_email_verification,
+    update_user_notification_preference,
+)
 from prisma import Json
 from prisma.enums import NotificationType
 from prisma.models import NotificationEvent, UserNotificationBatch
@@ -404,4 +409,39 @@ async def get_user_notification_batch(
     except Exception as e:
         raise DatabaseError(
             f"Failed to get user notification batch for user {user_id} and type {notification_type}: {e}"
+        ) from e
+
+
+async def generate_unsubscribe_link(user_id: str) -> str:
+    """Generate a link to unsubscribe from all notifications"""
+    user_hash = user_id.encode("utf-8").decode("unicode_escape")
+    logger.info(f"Generating unsubscribe link for user {user_id}: {user_hash}")
+    return f"https://platform.agpt.co/profile/settings?unsubscribe={user_hash}"
+
+
+async def unsubscribe_user_by_hash(user_hash: str) -> None:
+    """Unsubscribe a user from all notifications"""
+    user_id = user_hash.encode("utf-8").decode("unicode_escape")
+    try:
+        user = await get_user_by_id(user_id)
+        await update_user_notification_preference(
+            user.id,
+            NotificationPreferenceDTO(
+                email=user.email,
+                daily_limit=0,
+                preferences={
+                    NotificationType.AGENT_RUN: False,
+                    NotificationType.ZERO_BALANCE: False,
+                    NotificationType.LOW_BALANCE: False,
+                    NotificationType.BLOCK_EXECUTION_FAILED: False,
+                    NotificationType.CONTINUOUS_AGENT_ERROR: False,
+                    NotificationType.DAILY_SUMMARY: False,
+                    NotificationType.WEEKLY_SUMMARY: False,
+                    NotificationType.MONTHLY_SUMMARY: False,
+                },
+            ),
+        )
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to unsubscribe user by hash {user_hash}: {e}"
         ) from e
