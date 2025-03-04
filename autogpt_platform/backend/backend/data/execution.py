@@ -1,11 +1,10 @@
 from collections import defaultdict
 from datetime import datetime, timezone
 from multiprocessing import Manager
-from typing import Any, AsyncGenerator, Generator, Generic, Optional, Type, TypeVar
+from typing import Any, AsyncGenerator, Generator, Generic, Type, TypeVar
 
 from prisma import Json
 from prisma.enums import AgentExecutionStatus
-from prisma.errors import PrismaError
 from prisma.models import (
     AgentGraphExecution,
     AgentNodeExecution,
@@ -335,28 +334,21 @@ async def update_execution_status(
     return ExecutionResult.from_db(res)
 
 
-async def get_execution(
-    execution_id: str, user_id: str
-) -> Optional[AgentNodeExecution]:
-    """
-    Get an execution by ID. Returns None if not found.
-
-    Args:
-        execution_id: The ID of the execution to retrieve
-
-    Returns:
-        The execution if found, None otherwise
-    """
-    try:
-        execution = await AgentNodeExecution.prisma().find_unique(
-            where={
-                "id": execution_id,
-                "userId": user_id,
-            }
+async def delete_execution(
+    graph_exec_id: str, user_id: str, soft_delete: bool = True
+) -> None:
+    if soft_delete:
+        deleted_count = await AgentGraphExecution.prisma().update_many(
+            where={"id": graph_exec_id, "userId": user_id}, data={"isDeleted": True}
         )
-        return execution
-    except PrismaError:
-        return None
+    else:
+        deleted_count = await AgentGraphExecution.prisma().delete_many(
+            where={"id": graph_exec_id, "userId": user_id}
+        )
+    if deleted_count < 1:
+        raise DatabaseError(
+            f"Could not delete graph execution #{graph_exec_id}: not found"
+        )
 
 
 async def get_execution_results(graph_exec_id: str) -> list[ExecutionResult]:
@@ -378,15 +370,12 @@ async def get_executions_in_timerange(
     try:
         executions = await AgentGraphExecution.prisma().find_many(
             where={
-                "AND": [
-                    {
-                        "startedAt": {
-                            "gte": datetime.fromisoformat(start_time),
-                            "lte": datetime.fromisoformat(end_time),
-                        }
-                    },
-                    {"userId": user_id},
-                ]
+                "startedAt": {
+                    "gte": datetime.fromisoformat(start_time),
+                    "lte": datetime.fromisoformat(end_time),
+                },
+                "userId": user_id,
+                "isDeleted": False,
             },
             include=GRAPH_EXECUTION_INCLUDE,
         )

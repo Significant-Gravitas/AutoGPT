@@ -6,6 +6,7 @@ import BackendAPI, {
   BlockUIType,
   formatEdgeID,
   Graph,
+  GraphExecutionID,
   GraphID,
   NodeExecutionResult,
 } from "@/lib/autogpt-server-api";
@@ -29,7 +30,7 @@ const ajv = new Ajv({ strict: false, allErrors: true });
 export default function useAgentGraph(
   flowID?: GraphID,
   flowVersion?: number,
-  flowExecutionID?: string,
+  flowExecutionID?: GraphExecutionID,
   passDataToBeads?: boolean,
 ) {
   const { toast } = useToast();
@@ -65,7 +66,7 @@ export default function useAgentGraph(
     | {
         request: "run" | "stop";
         state: "running" | "stopping" | "error";
-        activeExecutionID?: string;
+        activeExecutionID?: GraphExecutionID;
       }
   >({
     request: "none",

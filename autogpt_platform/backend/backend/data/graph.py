@@ -593,9 +593,10 @@ async def get_graphs(
     return graph_models
 
 
+# TODO: move execution stuff to .execution
 async def get_graphs_executions(user_id: str) -> list[GraphExecutionMeta]:
     executions = await AgentGraphExecution.prisma().find_many(
-        where={"userId": user_id},
+        where={"isDeleted": False, "userId": user_id},
         order={"createdAt": "desc"},
     )
     return [GraphExecutionMeta.from_db(execution) for execution in executions]
@@ -603,7 +604,7 @@ async def get_graphs_executions(user_id: str) -> list[GraphExecutionMeta]:
 
 async def get_graph_executions(graph_id: str, user_id: str) -> list[GraphExecutionMeta]:
     executions = await AgentGraphExecution.prisma().find_many(
-        where={"agentGraphId": graph_id, "userId": user_id},
+        where={"agentGraphId": graph_id, "isDeleted": False, "userId": user_id},
         order={"createdAt": "desc"},
     )
     return [GraphExecutionMeta.from_db(execution) for execution in executions]
@@ -613,14 +614,14 @@ async def get_execution_meta(
     user_id: str, execution_id: str
 ) -> GraphExecutionMeta | None:
     execution = await AgentGraphExecution.prisma().find_first(
-        where={"id": execution_id, "userId": user_id}
+        where={"id": execution_id, "isDeleted": False, "userId": user_id}
     )
     return GraphExecutionMeta.from_db(execution) if execution else None
 
 
 async def get_execution(user_id: str, execution_id: str) -> GraphExecution | None:
     execution = await AgentGraphExecution.prisma().find_first(
-        where={"id": execution_id, "userId": user_id},
+        where={"id": execution_id, "isDeleted": False, "userId": user_id},
         include={
             "AgentNodeExecutions": {
                 "include": {"AgentNode": True, "Input": True, "Output": True},
