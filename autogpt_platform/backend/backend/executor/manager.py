@@ -781,7 +781,6 @@ class Executor:
         metadata = cls.db_client.get_graph_metadata(
             graph_exec.graph_id, graph_exec.graph_version
         )
-        assert metadata is not None
         outputs = cls.db_client.get_execution_results(graph_exec.graph_exec_id)
 
         named_outputs = [
@@ -798,7 +797,7 @@ class Executor:
             type=NotificationType.AGENT_RUN,
             data=AgentRunData(
                 outputs=named_outputs,
-                agent_name=metadata.name,
+                agent_name=metadata.name if metadata else "Unknown Agent",
                 credits_used=exec_stats.cost,
                 execution_time=exec_stats.walltime,
                 graph_id=graph_exec.graph_id,
@@ -806,9 +805,6 @@ class Executor:
             ).model_dump(),
         )
 
-        logger.info(
-            f"Sending Agent Run Notification for {graph_exec.user_id}, {metadata.name}"
-        )
         cls.notification_service.queue_notification(event)
 
     @classmethod
@@ -821,7 +817,6 @@ class Executor:
     ):
         shortfall = e.balance - e.amount
         metadata = cls.db_client.get_graph_metadata(graph_id)
-        logger.info(f"Sending low balance notification for user {user_id}")
         base_url = (
             settings.config.frontend_base_url or settings.config.platform_base_url
         )
@@ -833,7 +828,7 @@ class Executor:
                     current_balance=exec_stats.cost,
                     billing_page_link=f"{base_url}/profile/credits",
                     shortfall=shortfall,
-                    agent_name=metadata.name if metadata else "Unknown",
+                    agent_name=metadata.name if metadata else "Unknown Agent",
                 ).model_dump(),
             )
         )
