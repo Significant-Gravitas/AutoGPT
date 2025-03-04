@@ -1,8 +1,10 @@
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from backend.util.process import AppProcess
 
+logger = logging.getLogger(__name__)
 
 def run_processes(*processes: "AppProcess", **kwargs):
     """
