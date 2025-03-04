@@ -134,6 +134,8 @@ export default function AgentRunsPage(): React.ReactElement {
         await api.stopGraphExecution(run.graph_id, run.execution_id);
       }
       await api.deleteGraphExecution(run.execution_id);
+
+      setConfirmingDeleteAgentRun(null);
       if (selectedView.type == "run" && selectedView.id == run.execution_id) {
         openRunDraftView();
       }
