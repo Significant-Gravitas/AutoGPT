@@ -440,7 +440,7 @@ class NodeExecutionStatsStrError(BaseModel):
     output_token_count: int = 0
 
 
-def convert_node_exuction_stats(
+def convert_node_execution_stats(
     stats: NodeExecutionStats,
 ) -> NodeExecutionStatsStrError:
     return NodeExecutionStatsStrError(
