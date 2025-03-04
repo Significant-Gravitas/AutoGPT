@@ -5,12 +5,12 @@ import { useState } from "react";
 
 import Image from "next/image";
 
-import { Button } from "./Button";
 import { IconPersonFill } from "@/components/ui/icons";
 import { CreatorDetails, ProfileDetails } from "@/lib/autogpt-server-api/types";
 import { Separator } from "@/components/ui/separator";
 import useSupabase from "@/hooks/useSupabase";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { Button } from "@/components/ui/button";
 
 export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -245,9 +245,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
 
           <div className="flex h-[50px] items-center justify-end gap-3 py-8">
             <Button
-              type="button"
               variant="secondary"
-              className="font-circular h-[50px] rounded-[35px] bg-neutral-200 px-6 py-3 text-base font-medium text-neutral-800 transition-colors hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-600 dark:hover:bg-neutral-600"
               onClick={() => {
                 setProfileData(profile);
               }}
@@ -257,7 +255,6 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
             <Button
               type="submit"
               disabled={isSubmitting}
-              className="font-circular h-[50px] rounded-[35px] bg-neutral-800 px-6 py-3 text-base font-medium text-white transition-colors hover:bg-neutral-900 dark:bg-neutral-200 dark:text-neutral-900 dark:hover:bg-neutral-100"
               onClick={submitForm}
             >
               {isSubmitting ? "Saving..." : "Save changes"}
