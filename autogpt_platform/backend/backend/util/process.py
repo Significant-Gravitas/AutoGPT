@@ -109,6 +109,8 @@ class AppProcess(ABC):
         )
         self.process.start()
         self.health_check()
+        logger.info(f"[{self.service_name}] started with PID {self.process.pid}")
+
         return self.process.pid or 0
 
     def stop(self):
@@ -120,4 +122,6 @@ class AppProcess(ABC):
 
         self.process.terminate()
         self.process.join()
+
+        logger.info(f"[{self.service_name}] with PID {self.process.pid} stopped")
         self.process = None

@@ -938,6 +938,11 @@ class ExecutionManager(AppService):
             else:
                 nodes_input.append((node.id, input_data))
 
+        if not nodes_input:
+            raise ValueError(
+                "No starting nodes found for the graph, make sure an AgentInput or blocks with no inbound links are present as starting nodes."
+            )
+
         graph_exec_id, node_execs = self.db_client.create_graph_execution(
             graph_id=graph_id,
             graph_version=graph.version,
