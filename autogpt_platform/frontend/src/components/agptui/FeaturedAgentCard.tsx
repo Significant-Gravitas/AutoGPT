@@ -53,7 +53,7 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
               isHovered ? "opacity-100" : "opacity-0"
             }`}
           >
-            <CardDescription className="line-clamp-[6] sm:line-clamp-[8] text-xs sm:text-sm">
+            <CardDescription className="line-clamp-[6] text-xs sm:line-clamp-[8] sm:text-sm">
               {agent.description}
             </CardDescription>
           </div>
