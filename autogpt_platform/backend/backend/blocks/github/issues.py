@@ -1,3 +1,4 @@
+import logging
 from urllib.parse import urlparse
 
 from typing_extensions import TypedDict
@@ -13,9 +14,6 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
-
-
-import logging
 
 logger = logging.getLogger(__name__)
 
