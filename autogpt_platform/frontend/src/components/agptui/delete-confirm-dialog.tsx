@@ -39,9 +39,9 @@ export default function DeleteConfirmDialog({
           <DialogDescription>
             Are you sure you want to delete this {entityType}?
             {isIrreversible && (
-              <>
+              <b>
                 <br /> This action cannot be undone.
-              </>
+              <b />
             )}
           </DialogDescription>
         </DialogHeader>

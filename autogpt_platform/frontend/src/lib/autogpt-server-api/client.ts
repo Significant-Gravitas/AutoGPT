@@ -564,7 +564,9 @@ export default class BackendAPI {
     });
   }
 
-  /////////////////////// SCHEDULES ////////////////////////
+//////////////////////////////////
+/////////// SCHEDULES ////////////
+//////////////////////////////////
 
   async createSchedule(schedule: ScheduleCreatable): Promise<Schedule> {
     return this._request("POST", `/schedules`, schedule).then(
