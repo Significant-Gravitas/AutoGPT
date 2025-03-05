@@ -338,7 +338,7 @@ class SmartDecisionMakerBlock(Block):
         tool_functions = self._create_function_signature(node_id)
 
         input_data.conversation_history = input_data.conversation_history or []
-        prompt = [json.to_dict(p) for p in input_data.conversation_history]
+        prompt = [json.to_dict(p) for p in input_data.conversation_history if p]
 
         pending_tool_calls = get_pending_tool_calls(input_data.conversation_history)
         if pending_tool_calls and not input_data.last_tool_output:
