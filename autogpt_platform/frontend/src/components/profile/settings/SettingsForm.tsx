@@ -382,7 +382,7 @@ export default function SettingsForm({ user, preferences }: SettingsFormProps) {
         {/* Form Actions */}
         <div className="flex justify-end gap-4">
           <Button
-            variant="outline"
+            variant="secondary"
             type="button"
             onClick={onCancel}
             disabled={form.formState.isSubmitting}
