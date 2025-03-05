@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Clock, LogOut, ChevronLeft } from "lucide-react";
+import React from "react";
+import { Clock, LogOut } from "lucide-react";
 import { IconPlay, IconSquare } from "@/components/ui/icons";
 import {
   Tooltip,
@@ -41,10 +41,7 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
       <div className={`flex gap-1 md:gap-4`}>
         <Tooltip key="ViewOutputs" delayDuration={500}>
           <TooltipTrigger asChild>
-            <Button
-              onClick={onClickAgentOutputs}
-              variant="outline"
-            >
+            <Button onClick={onClickAgentOutputs} variant="outline">
               <LogOut className="hidden h-5 w-5 md:flex" />
               <span className="text-sm font-medium md:text-lg">
                 Agent Outputs{" "}

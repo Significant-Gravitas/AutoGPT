@@ -252,11 +252,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
             >
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={isSubmitting}
-              onClick={submitForm}
-            >
+            <Button type="submit" disabled={isSubmitting} onClick={submitForm}>
               {isSubmitting ? "Saving..." : "Save changes"}
             </Button>
           </div>

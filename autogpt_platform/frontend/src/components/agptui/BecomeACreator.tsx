@@ -47,13 +47,7 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
         </p>
 
         <PublishAgentPopout
-          trigger={
-            <Button
-              onClick={handleButtonClick}
-            >
-              {buttonText}
-            </Button>
-          }
+          trigger={<Button onClick={handleButtonClick}>{buttonText}</Button>}
         />
       </div>
     </div>
