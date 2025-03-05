@@ -692,15 +692,15 @@ class Executor:
                 def callback(result: object):
                     running_executions.pop(exec_data.node_id)
 
-                    if not isinstance(result, dict):
+                    if not isinstance(result, NodeExecutionStats):
                         return
 
                     nonlocal exec_stats, low_balance_error
                     exec_stats.node_count += 1
-                    exec_stats.nodes_cputime += result.get("cputime", 0)
-                    exec_stats.nodes_walltime += result.get("walltime", 0)
-                    exec_stats.cost += result.get("cost", 0)
-                    if (err := result.get("error")) and isinstance(err, Exception):
+                    exec_stats.nodes_cputime += result.cputime
+                    exec_stats.nodes_walltime += result.walltime
+                    exec_stats.cost += result.cost
+                    if (err := result.error) and isinstance(err, Exception):
                         exec_stats.node_error_count += 1
 
                         if isinstance(err, InsufficientBalanceError):
