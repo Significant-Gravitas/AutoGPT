@@ -186,7 +186,9 @@ class GraphExecution(GraphExecutionMeta):
         outputs: dict[str, list] = defaultdict(list)
         for exec in node_executions:
             if exec.block_id == _OUTPUT_BLOCK_ID:
-                outputs[exec.input_data["name"]].append(exec.input_data["value"])
+                outputs[exec.input_data["name"]].append(
+                    exec.input_data.get("value", None)
+                )
 
         return GraphExecution(
             **{
@@ -363,10 +365,12 @@ class GraphModel(Graph):
                     )
                     and (
                         for_run  # Skip input completion validation, unless when executing.
-                        or block.block_type == BlockType.INPUT
-                        or block.block_type == BlockType.OUTPUT
-                        or block.block_type == BlockType.AGENT
-                        or block.block_type == BlockType.AI
+                        or block.block_type
+                        in [
+                            BlockType.INPUT,
+                            BlockType.OUTPUT,
+                            BlockType.AGENT,
+                        ]
                     )
                 ):
                     raise ValueError(

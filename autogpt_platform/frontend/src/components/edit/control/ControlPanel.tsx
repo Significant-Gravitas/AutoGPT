@@ -61,7 +61,6 @@ export const ControlPanel = ({
                     data-id={`control-button-${index}`}
                     data-testid={`blocks-control-${control.label.toLowerCase()}-button`}
                     disabled={control.disabled || false}
-                    className="dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800"
                   >
                     {control.icon}
                     <span className="sr-only">{control.label}</span>

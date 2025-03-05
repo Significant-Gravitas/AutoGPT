@@ -1,6 +1,5 @@
-import React, { useState } from "react";
-import { Button } from "./ui/button";
-import { Clock, LogOut, ChevronLeft } from "lucide-react";
+import React from "react";
+import { Clock, LogOut } from "lucide-react";
 import { IconPlay, IconSquare } from "@/components/ui/icons";
 import {
   Tooltip,
@@ -8,6 +7,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { FaSpinner } from "react-icons/fa";
+import { Button } from "@/components/ui/button";
 
 interface PrimaryActionBarProps {
   onClickAgentOutputs: () => void;
@@ -41,12 +41,7 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
       <div className={`flex gap-1 md:gap-4`}>
         <Tooltip key="ViewOutputs" delayDuration={500}>
           <TooltipTrigger asChild>
-            <Button
-              className="flex items-center gap-2"
-              onClick={onClickAgentOutputs}
-              size="primary"
-              variant="outline"
-            >
+            <Button onClick={onClickAgentOutputs} variant="outline">
               <LogOut className="hidden h-5 w-5 md:flex" />
               <span className="text-sm font-medium md:text-lg">
                 Agent Outputs{" "}
@@ -60,9 +55,7 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
         <Tooltip key="RunAgent" delayDuration={500}>
           <TooltipTrigger asChild>
             <Button
-              className="flex items-center gap-2"
               onClick={runButtonOnClick}
-              size="primary"
               style={{
                 background: isRunning ? "#DF4444" : "#7544DF",
                 opacity: isDisabled ? 0.5 : 1,
@@ -82,9 +75,7 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
         <Tooltip key="ScheduleAgent" delayDuration={500}>
           <TooltipTrigger asChild>
             <Button
-              className="flex items-center gap-2"
               onClick={onClickScheduleButton}
-              size="primary"
               disabled={isScheduling}
               variant="outline"
               data-id="primary-action-schedule-agent"

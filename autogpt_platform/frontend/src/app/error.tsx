@@ -30,7 +30,7 @@ export default function Error({
           again later or contact support if the issue persists.
         </p>
         <div className="mt-6 flex flex-row justify-center gap-4">
-          <Button onClick={reset} variant="outline">
+          <Button onClick={reset} variant="secondary">
             Retry
           </Button>
           <Button>
