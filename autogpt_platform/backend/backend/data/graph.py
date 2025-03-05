@@ -186,7 +186,9 @@ class GraphExecution(GraphExecutionMeta):
         outputs: dict[str, list] = defaultdict(list)
         for exec in node_executions:
             if exec.block_id == _OUTPUT_BLOCK_ID:
-                outputs[exec.input_data["name"]].append(exec.input_data["value"])
+                outputs[exec.input_data["name"]].append(
+                    exec.input_data.get("value", None)
+                )
 
         return GraphExecution(
             **{

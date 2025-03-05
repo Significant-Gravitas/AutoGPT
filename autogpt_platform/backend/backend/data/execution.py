@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from backend.data.block import BlockData, BlockInput, CompletedBlockOutput
 from backend.data.includes import EXECUTION_RESULT_INCLUDE, GRAPH_EXECUTION_INCLUDE
+from backend.data.model import GraphExecutionStats, NodeExecutionStats
 from backend.data.queue import AsyncRedisEventBus, RedisEventBus
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util import mock, type
@@ -282,13 +283,16 @@ async def update_graph_execution_start_time(graph_exec_id: str) -> ExecutionResu
 async def update_graph_execution_stats(
     graph_exec_id: str,
     status: ExecutionStatus,
-    stats: dict[str, Any],
+    stats: GraphExecutionStats,
 ) -> ExecutionResult:
+    data = stats.model_dump()
+    if isinstance(data["error"], Exception):
+        data["error"] = str(data["error"])
     res = await AgentGraphExecution.prisma().update(
         where={"id": graph_exec_id},
         data={
             "executionStatus": status,
-            "stats": Json(stats),
+            "stats": Json(data),
         },
     )
     if not res:
@@ -297,10 +301,13 @@ async def update_graph_execution_stats(
     return ExecutionResult.from_graph(res)
 
 
-async def update_node_execution_stats(node_exec_id: str, stats: dict[str, Any]):
+async def update_node_execution_stats(node_exec_id: str, stats: NodeExecutionStats):
+    data = stats.model_dump()
+    if isinstance(data["error"], Exception):
+        data["error"] = str(data["error"])
     await AgentNodeExecution.prisma().update(
         where={"id": node_exec_id},
-        data={"stats": Json(stats)},
+        data={"stats": Json(data)},
     )
 
 
