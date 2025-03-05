@@ -4,14 +4,26 @@ from enum import Enum
 
 import replicate
 import replicate.exceptions
-import requests
 from prisma.models import AgentGraph
 from replicate.helpers import FileOutput
 
+from backend.blocks.ideogram import (
+    AspectRatio,
+    ColorPalettePreset,
+    IdeogramModelBlock,
+    IdeogramModelName,
+    MagicPromptOption,
+    StyleType,
+    UpscaleOption,
+)
 from backend.data.graph import Graph
+from backend.data.model import CredentialsMetaInput, ProviderName
+from backend.integrations.credentials_store import ideogram_credentials
+from backend.util.request import requests
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
+settings = Settings()
 
 
 class ImageSize(str, Enum):
@@ -20,6 +32,61 @@ class ImageSize(str, Enum):
 
 class ImageStyle(str, Enum):
     DIGITAL_ART = "digital art"
+
+
+async def generate_agent_image_v2(agent: Graph | AgentGraph) -> io.BytesIO:
+    image_url = _generate_ideogram_agent_image(agent)
+    response = requests.get(image_url)
+    return io.BytesIO(response.content)
+
+
+def _generate_ideogram_agent_image(agent: Graph | AgentGraph) -> str:
+    if not ideogram_credentials.api_key:
+        raise ValueError("Missing Ideogram API key")
+
+    prompt = (
+        f"Create a visually striking retro-futuristic vector pop art illustration prominently featuring "
+        f'"{agent.name}" in bold typography. The image clearly and literally depicts a {agent.name}, along '
+        f"with recognizable objects directly associated with the primary function of a {agent.name}. "
+        f"Ensure the imagery is concrete, intuitive, and immediately understandable, clearly conveying the "
+        f"purpose of a {agent.name}. Maintain vibrant, limited-palette colors, sharp vector lines, geometric "
+        f"shapes, flat illustration techniques, and solid colors without gradients or shading. Preserve a "
+        f"retro-futuristic aesthetic influenced by mid-century futurism and 1960s psychedelia, "
+        f"prioritizing clear visual storytelling and thematic clarity above all else."
+    )
+
+    custom_colors = [
+        "#000030",
+        "#1C0C47",
+        "#9900FF",
+        "#4285F4",
+        "#FFFFFF",
+    ]
+
+    # Run the Ideogram model block with the specified parameters
+    result = IdeogramModelBlock().run_once(
+        IdeogramModelBlock.Input(
+            credentials=CredentialsMetaInput(
+                id=ideogram_credentials.id,
+                provider=ProviderName.IDEOGRAM,
+                title=ideogram_credentials.title,
+                type=ideogram_credentials.type,
+            ),
+            prompt=prompt,
+            ideogram_model_name=IdeogramModelName.V2,
+            aspect_ratio=AspectRatio.ASPECT_4_3,
+            magic_prompt_option=MagicPromptOption.OFF,
+            style_type=StyleType.AUTO,
+            upscale=UpscaleOption.NO_UPSCALE,
+            color_palette_name=ColorPalettePreset.NONE,
+            custom_color_palette=custom_colors,
+            seed=None,
+            negative_prompt=None,
+        ),
+        "result",
+        credentials=ideogram_credentials,
+    )
+    return result
 
 
 async def generate_agent_image(agent: Graph | AgentGraph) -> io.BytesIO:
@@ -33,8 +100,6 @@ async def generate_agent_image(agent: Graph | AgentGraph) -> io.BytesIO:
         io.BytesIO: The generated image as bytes
     """
     try:
-        settings = Settings()
-
         if not settings.secrets.replicate_api_key:
             raise ValueError("Missing Replicate API key in settings")
 
@@ -71,14 +136,12 @@ async def generate_agent_image(agent: Graph | AgentGraph) -> io.BytesIO:
                     # If it's a URL string, fetch the image bytes
                     result_url = output[0]
                     response = requests.get(result_url)
-                    response.raise_for_status()
                     image_bytes = response.content
             elif isinstance(output, FileOutput):
                 image_bytes = output.read()
             elif isinstance(output, str):
                 # Output is a URL
                 response = requests.get(output)
-                response.raise_for_status()
                 image_bytes = response.content
             else:
                 raise RuntimeError("Unexpected output format from the model.")

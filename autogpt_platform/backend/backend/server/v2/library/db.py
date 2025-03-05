@@ -169,7 +169,7 @@ async def create_library_agent(
     try:
         if not (image_url := await store_media.check_media_exists(user_id, filename)):
             # Generate agent image as JPEG
-            image = await store_image_gen.generate_agent_image(agent=agent)
+            image = await store_image_gen.generate_agent_image_v2(agent=agent)
 
             # Create UploadFile with the correct filename and content_type
             image_file = fastapi.UploadFile(file=image, filename=filename)
