@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Optional
 
@@ -7,6 +8,7 @@ import prisma.fields
 import prisma.models
 import prisma.types
 
+import backend.data.graph
 import backend.data.includes
 import backend.server.model
 import backend.server.v2.library.model as library_model
@@ -168,17 +170,50 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         raise store_exceptions.DatabaseError("Failed to fetch library agent") from e
 
 
+async def generate_agent_image(
+    agent: backend.data.graph.GraphModel,
+    library_agent_id: str,
+) -> Optional[prisma.models.LibraryAgent]:
+    """
+    Generates an image for the specified LibraryAgent and updates its record.
+    """
+    user_id = agent.user_id
+    agent_id = agent.id
+
+    # Use .jpeg here since we are generating JPEG images
+    filename = f"agent_{agent_id}.jpeg"
+    try:
+        if not (image_url := await store_media.check_media_exists(user_id, filename)):
+            # Generate agent image as JPEG
+            image = await asyncio.to_thread(
+                store_image_gen.generate_agent_image_v2, agent=agent
+            )
+
+            # Create UploadFile with the correct filename and content_type
+            image_file = fastapi.UploadFile(file=image, filename=filename)
+
+            image_url = await store_media.upload_media(
+                user_id=user_id, file=image_file, use_file_name=True
+            )
+    except Exception as e:
+        logger.warning(f"Error generating and uploading agent image: {e}")
+        return None
+
+    return await prisma.models.LibraryAgent.prisma().update(
+        where={"id": library_agent_id},
+        data={"imageUrl": image_url},
+    )
+
+
 async def create_library_agent(
-    agent_id: str,
-    agent_version: int,
+    agent: backend.data.graph.GraphModel,
     user_id: str,
 ) -> prisma.models.LibraryAgent:
     """
     Adds an agent to the user's library (LibraryAgent table).
 
     Args:
-        agent_id: The ID of the agent to add.
-        agent_version: The version of the agent to add.
+        agent: The agent/Graph to add to the library.
         user_id: The user to whom the agent will be added.
 
     Returns:
@@ -189,52 +224,19 @@ async def create_library_agent(
         DatabaseError: If there's an error during creation or if image generation fails.
     """
     logger.info(
-        f"Creating library agent for graph #{agent_id} v{agent_version}; "
+        f"Creating library agent for graph #{agent.id} v{agent.version}; "
         f"user #{user_id}"
     )
-
-    # Fetch agent graph
-    try:
-        agent = await prisma.models.AgentGraph.prisma().find_unique(
-            where={"graphVersionId": {"id": agent_id, "version": agent_version}}
-        )
-    except prisma.errors.PrismaError as e:
-        logger.exception("Database error fetching agent")
-        raise store_exceptions.DatabaseError("Failed to fetch agent") from e
-
-    if not agent:
-        raise store_exceptions.AgentNotFoundError(
-            f"Agent #{agent_id} v{agent_version} not found"
-        )
-
-    # Use .jpeg here since we are generating JPEG images
-    filename = f"agent_{agent_id}.jpeg"
-    try:
-        if not (image_url := await store_media.check_media_exists(user_id, filename)):
-            # Generate agent image as JPEG
-            image = await store_image_gen.generate_agent_image_v2(agent=agent)
-
-            # Create UploadFile with the correct filename and content_type
-            image_file = fastapi.UploadFile(file=image, filename=filename)
-
-            image_url = await store_media.upload_media(
-                user_id=user_id, file=image_file, use_file_name=True
-            )
-    except Exception as e:
-        logger.warning(f"Error generating and uploading agent image: {e}")
-        image_url = None
 
     try:
         return await prisma.models.LibraryAgent.prisma().create(
             data={
-                "imageUrl": image_url,
-                "isCreatedByUser": (user_id == agent.userId),
+                "isCreatedByUser": (user_id == agent.user_id),
                 "useGraphIsActiveVersion": True,
                 "User": {"connect": {"id": user_id}},
-                # "Creator": {"connect": {"id": agent.userId}},
                 "Agent": {
                     "connect": {
-                        "graphVersionId": {"id": agent_id, "version": agent_version}
+                        "graphVersionId": {"id": agent.id, "version": agent.version}
                     }
                 },
             }

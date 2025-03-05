@@ -1,4 +1,3 @@
-import asyncio
 import io
 import logging
 from enum import Enum
@@ -35,26 +34,24 @@ class ImageStyle(str, Enum):
     DIGITAL_ART = "digital art"
 
 
-async def generate_agent_image_v2(agent: Graph | AgentGraph) -> io.BytesIO:
-    # Avoid image generation blocking the event loop
-    return await asyncio.to_thread(_generate_ideogram_agent_image, agent)
-
-
-def _generate_ideogram_agent_image(agent: Graph | AgentGraph) -> io.BytesIO:
+def generate_agent_image_v2(agent: Graph | AgentGraph) -> io.BytesIO:
     """
     Generate an image for an agent using Ideogram model.
     Returns:
-        io.BytesIO: The generated image as bytes
+        str: The URL of the generated image
     """
     if not ideogram_credentials.api_key:
         raise ValueError("Missing Ideogram API key")
 
+    name = agent.name
+    description = f"{name} ({agent.description})" if agent.description else name
+
     prompt = (
         f"Create a visually striking retro-futuristic vector pop art illustration prominently featuring "
-        f'"{agent.name}" in bold typography. The image clearly and literally depicts a {agent.name}, along '
-        f"with recognizable objects directly associated with the primary function of a {agent.name}. "
+        f'"{name}" in bold typography. The image clearly and literally depicts a {description}, '
+        f"along with recognizable objects directly associated with the primary function of a {name}. "
         f"Ensure the imagery is concrete, intuitive, and immediately understandable, clearly conveying the "
-        f"purpose of a {agent.name}. Maintain vibrant, limited-palette colors, sharp vector lines, geometric "
+        f"purpose of a {name}. Maintain vibrant, limited-palette colors, sharp vector lines, geometric "
         f"shapes, flat illustration techniques, and solid colors without gradients or shading. Preserve a "
         f"retro-futuristic aesthetic influenced by mid-century futurism and 1960s psychedelia, "
         f"prioritizing clear visual storytelling and thematic clarity above all else."
@@ -69,7 +66,7 @@ def _generate_ideogram_agent_image(agent: Graph | AgentGraph) -> io.BytesIO:
     ]
 
     # Run the Ideogram model block with the specified parameters
-    image_url = IdeogramModelBlock().run_once(
+    url = IdeogramModelBlock().run_once(
         IdeogramModelBlock.Input(
             credentials=CredentialsMetaInput(
                 id=ideogram_credentials.id,
@@ -91,9 +88,7 @@ def _generate_ideogram_agent_image(agent: Graph | AgentGraph) -> io.BytesIO:
         "result",
         credentials=ideogram_credentials,
     )
-
-    response = requests.get(image_url)
-    return io.BytesIO(response.content)
+    return io.BytesIO(requests.get(url).content)
 
 
 async def generate_agent_image(agent: Graph | AgentGraph) -> io.BytesIO:

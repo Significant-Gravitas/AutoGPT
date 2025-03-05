@@ -393,7 +393,8 @@ async def get_graph_all_versions(
     path="/graphs", tags=["graphs"], dependencies=[Depends(auth_middleware)]
 )
 async def create_new_graph(
-    create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
+    create_graph: CreateGraph,
+    user_id: Annotated[str, Depends(get_user_id)],
 ) -> graph_db.GraphModel:
     graph = graph_db.make_graph_model(create_graph.graph, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
@@ -401,11 +402,8 @@ async def create_new_graph(
     graph = await graph_db.create_graph(graph, user_id=user_id)
 
     # Create a library agent for the new graph
-    await library_db.create_library_agent(
-        graph.id,
-        graph.version,
-        user_id,
-    )
+    library_agent = await library_db.create_library_agent(graph, user_id)
+    _ = asyncio.create_task(library_db.generate_agent_image(graph, library_agent.id))
 
     graph = await on_graph_activate(
         graph,
