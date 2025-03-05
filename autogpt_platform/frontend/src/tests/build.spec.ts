@@ -19,6 +19,8 @@ test.describe("Build", () => { //(1)!
     // Start each test with login using worker auth
     await page.goto("/login"); //(4)!
     await loginPage.login(testUser.email, testUser.password);
+    // Ignore onboarding
+    await page.goto("/");
     await test.expect(page).toHaveURL("/"); //(5)!
     await buildPage.navbar.clickBuildLink();
   });

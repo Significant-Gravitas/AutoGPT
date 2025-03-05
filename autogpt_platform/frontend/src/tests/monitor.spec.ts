@@ -17,6 +17,8 @@ test.describe("Monitor", () => {
     // Start each test with login using worker auth
     await page.goto("/login");
     await loginPage.login(testUser.email, testUser.password);
+    // Ignore onboarding
+    await page.goto("/");
     await test.expect(page).toHaveURL("/");
 
     // add a test agent
