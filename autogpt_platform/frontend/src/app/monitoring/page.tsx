@@ -5,6 +5,7 @@ import {
   GraphExecutionMeta,
   Schedule,
   LibraryAgent,
+  ScheduleID,
 } from "@/lib/autogpt-server-api";
 
 import { Card } from "@/components/ui/card";
@@ -35,7 +36,7 @@ const Monitor = () => {
   }, [api]);
 
   const removeSchedule = useCallback(
-    async (scheduleId: string) => {
+    async (scheduleId: ScheduleID) => {
       const removedSchedule = await api.deleteSchedule(scheduleId);
       setSchedules(schedules.filter((s) => s.id !== removedSchedule.id));
     },
