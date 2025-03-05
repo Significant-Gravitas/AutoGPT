@@ -18,8 +18,8 @@ test.describe("Monitor", () => {
     await page.goto("/login");
     await loginPage.login(testUser.email, testUser.password);
     // Ignore onboarding
-    await page.goto("/");
-    await test.expect(page).toHaveURL("/");
+    await page.goto("/marketplace");
+    await test.expect(page).toHaveURL("/marketplace");
 
     // add a test agent
     const basicBlock = await buildPage.getDictionaryBlockDetails();

@@ -20,8 +20,8 @@ test.describe("Build", () => { //(1)!
     await page.goto("/login"); //(4)!
     await loginPage.login(testUser.email, testUser.password);
     // Ignore onboarding
-    await page.goto("/");
-    await test.expect(page).toHaveURL("/"); //(5)!
+    await page.goto("/marketplace");
+    await test.expect(page).toHaveURL("/marketplace"); //(5)!
     await buildPage.navbar.clickBuildLink();
   });
 
