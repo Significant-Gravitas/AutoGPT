@@ -427,7 +427,7 @@ async def add_store_agent_to_library(
                 },
             )
             logger.debug(
-                f"Added agent #{store_agent.id} to library for user #{user_id}"
+                f"Added store agent #{store_agent.id} to library for user #{user_id}"
             )
             return library_model.LibraryAgent.from_db(added_agent)
 
