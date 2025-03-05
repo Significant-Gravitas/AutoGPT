@@ -5,6 +5,8 @@ test.describe("Authentication", () => {
   test("user can login successfully", async ({ page, loginPage, testUser }) => {
     await page.goto("/login");
     await loginPage.login(testUser.email, testUser.password);
+    // Ignore onboarding
+    await page.goto("/marketplace");
     await test.expect(page).toHaveURL("/marketplace");
     await test
       .expect(page.getByTestId("profile-popout-menu-trigger"))

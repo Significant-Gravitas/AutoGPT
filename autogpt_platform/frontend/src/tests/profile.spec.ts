@@ -10,6 +10,8 @@ test.describe("Profile", () => {
     // Start each test with login using worker auth
     await page.goto("/login");
     await loginPage.login(testUser.email, testUser.password);
+    // Ignore onboarding
+    await page.goto("/marketplace");
     await test.expect(page).toHaveURL("/marketplace");
   });
 
