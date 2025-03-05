@@ -309,6 +309,8 @@ model AgentGraphExecution {
   updatedAt DateTime? @updatedAt
   startedAt DateTime?
 
+  isDeleted Boolean @default(false)
+
   executionStatus AgentExecutionStatus @default(COMPLETED)
 
   agentGraphId      String
