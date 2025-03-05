@@ -34,7 +34,10 @@ export class LoginPage {
     await loginButton.waitFor({ state: "visible" });
 
     // Start waiting for navigation before clicking
-    const navigationPromise = this.page.waitForURL("/", { timeout: 10_000 });
+    const navigationPromise = Promise.race([
+      this.page.waitForURL("/", { timeout: 10_000 }), // Wait for home page
+      this.page.waitForURL("/onboarding", { timeout: 10_000 }), // Wait for onboarding page
+    ]);
 
     console.log("About to click login button"); // Debug log
     await loginButton.click();
