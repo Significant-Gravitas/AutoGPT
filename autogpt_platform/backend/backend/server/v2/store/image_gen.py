@@ -1,3 +1,4 @@
+import asyncio
 import io
 import logging
 from enum import Enum
@@ -35,12 +36,16 @@ class ImageStyle(str, Enum):
 
 
 async def generate_agent_image_v2(agent: Graph | AgentGraph) -> io.BytesIO:
-    image_url = _generate_ideogram_agent_image(agent)
-    response = requests.get(image_url)
-    return io.BytesIO(response.content)
+    # Avoid image generation blocking the event loop
+    return await asyncio.to_thread(_generate_ideogram_agent_image, agent)
 
 
-def _generate_ideogram_agent_image(agent: Graph | AgentGraph) -> str:
+def _generate_ideogram_agent_image(agent: Graph | AgentGraph) -> io.BytesIO:
+    """
+    Generate an image for an agent using Ideogram model.
+    Returns:
+        io.BytesIO: The generated image as bytes
+    """
     if not ideogram_credentials.api_key:
         raise ValueError("Missing Ideogram API key")
 
@@ -64,7 +69,7 @@ def _generate_ideogram_agent_image(agent: Graph | AgentGraph) -> str:
     ]
 
     # Run the Ideogram model block with the specified parameters
-    result = IdeogramModelBlock().run_once(
+    image_url = IdeogramModelBlock().run_once(
         IdeogramModelBlock.Input(
             credentials=CredentialsMetaInput(
                 id=ideogram_credentials.id,
@@ -86,7 +91,9 @@ def _generate_ideogram_agent_image(agent: Graph | AgentGraph) -> str:
         "result",
         credentials=ideogram_credentials,
     )
-    return result
+
+    response = requests.get(image_url)
+    return io.BytesIO(response.content)
 
 
 async def generate_agent_image(agent: Graph | AgentGraph) -> io.BytesIO:
