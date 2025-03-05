@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Iterable, List, Literal, NamedTuple, Opti
 
 from pydantic import BaseModel, SecretStr
 
+from backend.data.model import NodeExecutionStats
 from backend.integrations.providers import ProviderName
 
 if TYPE_CHECKING:
@@ -711,10 +712,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 )
                 response_text = llm_response.response
                 self.merge_stats(
-                    {
-                        "input_token_count": llm_response.prompt_tokens,
-                        "output_token_count": llm_response.completion_tokens,
-                    }
+                    NodeExecutionStats(
+                        input_token_count=llm_response.prompt_tokens,
+                        output_token_count=llm_response.completion_tokens,
+                    )
                 )
                 logger.info(f"LLM attempt-{retry_count} response: {response_text}")
 
@@ -757,10 +758,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 retry_prompt = f"Error calling LLM: {e}"
             finally:
                 self.merge_stats(
-                    {
-                        "llm_call_count": retry_count + 1,
-                        "llm_retry_count": retry_count,
-                    }
+                    NodeExecutionStats(
+                        llm_call_count=retry_count + 1,
+                        llm_retry_count=retry_count,
+                    )
                 )
 
         raise RuntimeError(retry_prompt)

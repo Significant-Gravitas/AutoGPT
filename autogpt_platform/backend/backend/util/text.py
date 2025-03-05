@@ -21,46 +21,83 @@ class TextFormatter:
         self.env.globals.clear()
 
         # Instead of clearing all filters, just remove potentially unsafe ones
-        unsafe_filters = ["pprint", "urlize", "xmlattr", "tojson"]
+        unsafe_filters = ["pprint", "tojson", "urlize", "xmlattr"]
         for f in unsafe_filters:
             if f in self.env.filters:
                 del self.env.filters[f]
 
         self.env.filters["format"] = format_filter_for_jinja2
 
-        # Define allowed CSS properties
+        # Define allowed CSS properties (sorted alphabetically, if you add more)
         allowed_css_properties = [
-            "font-family",
+            "background-color",
+            "border",
+            "border-bottom",
+            "border-color",
+            "border-left",
+            "border-radius",
+            "border-right",
+            "border-style",
+            "border-top",
+            "border-width",
+            "bottom",
+            "box-shadow",
+            "clear",
             "color",
+            "display",
+            "float",
+            "font-family",
             "font-size",
+            "font-weight",
+            "height",
+            "left",
+            "letter-spacing",
             "line-height",
-            "margin-top",
             "margin-bottom",
             "margin-left",
             "margin-right",
-            "background-color",
+            "margin-top",
             "padding",
-            "border-radius",
-            "font-weight",
+            "position",
+            "right",
             "text-align",
+            "text-decoration",
+            "text-shadow",
+            "text-transform",
+            "top",
+            "width",
         ]
 
         self.css_sanitizer = CSSSanitizer(allowed_css_properties=allowed_css_properties)
 
+        # Define allowed tags (sorted alphabetically, if you add more)
         self.allowed_tags = [
-            "p",
+            "a",
             "b",
+            "br",
+            "div",
+            "em",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
             "i",
+            "img",
+            "li",
+            "p",
+            "span",
+            "strong",
             "u",
             "ul",
-            "li",
-            "br",
-            "strong",
-            "em",
-            "div",
-            "span",
         ]
-        self.allowed_attributes = {"*": ["style", "class"]}
+
+        # Define allowed attributes to be used on specific tags
+        self.allowed_attributes = {
+            "*": ["class", "style"],
+            "a": ["href"],
+            "img": ["src"],
+        }
 
     def format_string(self, template_str: str, values=None, **kwargs) -> str:
         """Regular template rendering with escaping"""
