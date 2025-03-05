@@ -23,4 +23,4 @@ CREATE INDEX "UserOnboarding_userId_idx" ON "UserOnboarding"("userId");
 
 -- Add foreign key constraint
 ALTER TABLE "UserOnboarding" ADD CONSTRAINT "UserOnboarding_userId_fkey" 
-FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
