@@ -155,7 +155,6 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               data-id="blocks-control-popover-trigger"
               data-testid="blocks-control-blocks-button"
               name="Blocks"
-              className="dark:hover:bg-slate-800"
             >
               <IconToyBrick />
             </Button>
@@ -219,7 +218,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
           </CardHeader>
           <CardContent className="overflow-scroll border-t border-t-gray-200 p-0 dark:border-t-slate-700">
             <ScrollArea
-              className="h-[60vh] w-fit"
+              className="h-[60vh] w-full"
               data-id="blocks-control-scroll-area"
             >
               {filteredAvailableBlocks.map((block) => (

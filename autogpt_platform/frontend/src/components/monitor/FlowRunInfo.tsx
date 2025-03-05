@@ -106,7 +106,7 @@ export const FlowRunInfo: React.FC<
             <Button onClick={() => setIsOutputOpen(true)} variant="outline">
               <ExitIcon className="mr-2" /> View Outputs
             </Button>
-            {flow.is_created_by_user && (
+            {flow.can_access_graph && (
               <Link
                 className={buttonVariants({ variant: "default" })}
                 href={`/build?flowID=${execution.graph_id}&flowVersion=${execution.graph_version}&flowExecutionID=${execution.execution_id}`}

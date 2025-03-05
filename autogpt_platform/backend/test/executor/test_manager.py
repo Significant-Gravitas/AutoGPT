@@ -73,6 +73,7 @@ async def assert_sample_graph_executions(
         {
             "name": "input_2",
             "value": "World",
+            "description": "This is my description of this parameter",
         },
     ]
 
@@ -469,7 +470,7 @@ async def test_execute_preset_with_clash(server: SpinTestServer):
     )
 
     # Verify execution
-    assert result is not None
+    assert result is not None, "Result must not be None"
     graph_exec_id = result["id"]
 
     # Wait for execution to complete
