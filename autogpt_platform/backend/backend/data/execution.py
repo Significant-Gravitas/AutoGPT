@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from backend.data.block import BlockData, BlockInput, CompletedBlockOutput
 from backend.data.includes import EXECUTION_RESULT_INCLUDE, GRAPH_EXECUTION_INCLUDE
+from backend.data.model import GraphExecutionStats, NodeExecutionStats
 from backend.data.queue import AsyncRedisEventBus, RedisEventBus
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util import mock, type
@@ -265,26 +266,12 @@ async def upsert_execution_output(
     )
 
 
-async def update_graph_execution_start_time(graph_exec_id: str):
-    await AgentGraphExecution.prisma().update(
+async def update_graph_execution_start_time(graph_exec_id: str) -> ExecutionResult:
+    res = await AgentGraphExecution.prisma().update(
         where={"id": graph_exec_id},
         data={
             "executionStatus": ExecutionStatus.RUNNING,
             "startedAt": datetime.now(tz=timezone.utc),
-        },
-    )
-
-
-async def update_graph_execution_stats(
-    graph_exec_id: str,
-    status: ExecutionStatus,
-    stats: dict[str, Any],
-) -> ExecutionResult:
-    res = await AgentGraphExecution.prisma().update(
-        where={"id": graph_exec_id},
-        data={
-            "executionStatus": status,
-            "stats": Json(stats),
         },
     )
     if not res:
@@ -293,10 +280,34 @@ async def update_graph_execution_stats(
     return ExecutionResult.from_graph(res)
 
 
-async def update_node_execution_stats(node_exec_id: str, stats: dict[str, Any]):
+async def update_graph_execution_stats(
+    graph_exec_id: str,
+    status: ExecutionStatus,
+    stats: GraphExecutionStats,
+) -> ExecutionResult:
+    data = stats.model_dump()
+    if isinstance(data["error"], Exception):
+        data["error"] = str(data["error"])
+    res = await AgentGraphExecution.prisma().update(
+        where={"id": graph_exec_id},
+        data={
+            "executionStatus": status,
+            "stats": Json(data),
+        },
+    )
+    if not res:
+        raise ValueError(f"Execution {graph_exec_id} not found.")
+
+    return ExecutionResult.from_graph(res)
+
+
+async def update_node_execution_stats(node_exec_id: str, stats: NodeExecutionStats):
+    data = stats.model_dump()
+    if isinstance(data["error"], Exception):
+        data["error"] = str(data["error"])
     await AgentNodeExecution.prisma().update(
         where={"id": node_exec_id},
-        data={"stats": Json(stats)},
+        data={"stats": Json(data)},
     )
 
 
@@ -399,7 +410,38 @@ OBJC_SPLIT = "_@_"
 
 
 def parse_execution_output(output: BlockData, name: str) -> Any | None:
-    # Allow extracting partial output data by name.
+    """
+    Extracts partial output data by name from a given BlockData.
+
+    The function supports extracting data from lists, dictionaries, and objects
+    using specific naming conventions:
+    - For lists: <output_name>_$_<index>
+    - For dictionaries: <output_name>_#_<key>
+    - For objects: <output_name>_@_<attribute>
+
+    Args:
+        output (BlockData): A tuple containing the output name and data.
+        name (str): The name used to extract specific data from the output.
+
+    Returns:
+        Any | None: The extracted data if found, otherwise None.
+
+    Examples:
+        >>> output = ("result", [10, 20, 30])
+        >>> parse_execution_output(output, "result_$_1")
+        20
+
+        >>> output = ("config", {"key1": "value1", "key2": "value2"})
+        >>> parse_execution_output(output, "config_#_key1")
+        'value1'
+
+        >>> class Sample:
+        ...     attr1 = "value1"
+        ...     attr2 = "value2"
+        >>> output = ("object", Sample())
+        >>> parse_execution_output(output, "object_@_attr1")
+        'value1'
+    """
     output_name, output_data = output
 
     if name == output_name:
@@ -428,11 +470,37 @@ def parse_execution_output(output: BlockData, name: str) -> Any | None:
 
 def merge_execution_input(data: BlockInput) -> BlockInput:
     """
-    Merge all dynamic input pins which described by the following pattern:
-    - <input_name>_$_<index> for list input.
-    - <input_name>_#_<index> for dict input.
-    - <input_name>_@_<index> for object input.
-    This function will construct pins with the same name into a single list/dict/object.
+    Merges dynamic input pins into a single list, dictionary, or object based on naming patterns.
+
+    This function processes input keys that follow specific patterns to merge them into a unified structure:
+    - `<input_name>_$_<index>` for list inputs.
+    - `<input_name>_#_<index>` for dictionary inputs.
+    - `<input_name>_@_<index>` for object inputs.
+
+    Args:
+        data (BlockInput): A dictionary containing input keys and their corresponding values.
+
+    Returns:
+        BlockInput: A dictionary with merged inputs.
+
+    Raises:
+        ValueError: If a list index is not an integer.
+
+    Examples:
+        >>> data = {
+        ...     "list_$_0": "a",
+        ...     "list_$_1": "b",
+        ...     "dict_#_key1": "value1",
+        ...     "dict_#_key2": "value2",
+        ...     "object_@_attr1": "value1",
+        ...     "object_@_attr2": "value2"
+        ... }
+        >>> merge_execution_input(data)
+        {
+            "list": ["a", "b"],
+            "dict": {"key1": "value1", "key2": "value2"},
+            "object": <MockObject attr1="value1" attr2="value2">
+        }
     """
 
     # Merge all input with <input_name>_$_<index> into a single list.

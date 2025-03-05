@@ -1,38 +1,43 @@
 import logging
 import time
-from typing import TYPE_CHECKING
+from typing import Callable
 
+import aio_pika
 from aio_pika.exceptions import QueueEmpty
-from autogpt_libs.utils.cache import thread_cached
+from prisma.enums import NotificationType
+from pydantic import BaseModel
 
 from backend.data.notifications import (
-    BatchingStrategy,
     NotificationEventDTO,
     NotificationEventModel,
     NotificationResult,
+    QueueType,
     get_data_type,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.executor.database import DatabaseManager
+from backend.data.user import (
+    get_user_email_by_id,
+    get_user_email_verification,
+    get_user_notification_preference,
+)
 from backend.notifications.email import EmailSender
-from backend.util.service import AppService, expose, get_service_client
+from backend.util.service import AppService, expose
 from backend.util.settings import Settings
-
-if TYPE_CHECKING:
-    from backend.executor import DatabaseManager
 
 logger = logging.getLogger(__name__)
 settings = Settings()
+
+
+class NotificationEvent(BaseModel):
+    event: NotificationEventDTO
+    model: NotificationEventModel
 
 
 def create_notification_config() -> RabbitMQConfig:
     """Create RabbitMQ configuration for notifications"""
     notification_exchange = Exchange(name="notifications", type=ExchangeType.TOPIC)
 
-    summary_exchange = Exchange(name="summaries", type=ExchangeType.TOPIC)
-
-    dead_letter_exchange = Exchange(name="dead_letter", type=ExchangeType.DIRECT)
-    delay_exchange = Exchange(name="delay", type=ExchangeType.DIRECT)
+    dead_letter_exchange = Exchange(name="dead_letter", type=ExchangeType.TOPIC)
 
     queues = [
         # Main notification queues
@@ -46,32 +51,13 @@ def create_notification_config() -> RabbitMQConfig:
             },
         ),
         Queue(
-            name="backoff_notifications",
+            name="admin_notifications",
             exchange=notification_exchange,
-            routing_key="notification.backoff.#",
+            routing_key="notification.admin.#",
             arguments={
                 "x-dead-letter-exchange": dead_letter_exchange.name,
-                "x-dead-letter-routing-key": "failed.backoff",
+                "x-dead-letter-routing-key": "failed.admin",
             },
-        ),
-        # Summary queues
-        Queue(
-            name="daily_summary_trigger",
-            exchange=summary_exchange,
-            routing_key="summary.daily",
-            arguments={"x-message-ttl": 86400000},  # 24 hours
-        ),
-        Queue(
-            name="weekly_summary_trigger",
-            exchange=summary_exchange,
-            routing_key="summary.weekly",
-            arguments={"x-message-ttl": 604800000},  # 7 days
-        ),
-        Queue(
-            name="monthly_summary_trigger",
-            exchange=summary_exchange,
-            routing_key="summary.monthly",
-            arguments={"x-message-ttl": 2592000000},  # 30 days
         ),
         # Failed notifications queue
         Queue(
@@ -84,10 +70,7 @@ def create_notification_config() -> RabbitMQConfig:
     return RabbitMQConfig(
         exchanges=[
             notification_exchange,
-            # batch_exchange,
-            summary_exchange,
             dead_letter_exchange,
-            delay_exchange,
         ],
         queues=queues,
     )
@@ -109,25 +92,31 @@ class NotificationManager(AppService):
 
     def get_routing_key(self, event: NotificationEventModel) -> str:
         """Get the appropriate routing key for an event"""
-        if event.strategy == BatchingStrategy.IMMEDIATE:
+        if event.strategy == QueueType.IMMEDIATE:
             return f"notification.immediate.{event.type.value}"
-        elif event.strategy == BatchingStrategy.BACKOFF:
+        elif event.strategy == QueueType.BACKOFF:
             return f"notification.backoff.{event.type.value}"
+        elif event.strategy == QueueType.ADMIN:
+            return f"notification.admin.{event.type.value}"
+        elif event.strategy == QueueType.HOURLY:
+            return f"notification.hourly.{event.type.value}"
+        elif event.strategy == QueueType.DAILY:
+            return f"notification.daily.{event.type.value}"
         return f"notification.{event.type.value}"
 
     @expose
     def queue_notification(self, event: NotificationEventDTO) -> NotificationResult:
         """Queue a notification - exposed method for other services to call"""
         try:
-            logger.info(f"Recieved Request to queue {event=}")
-            # Workaround for not being able to seralize generics over the expose bus
+            logger.info(f"Received Request to queue {event=}")
+            # Workaround for not being able to serialize generics over the expose bus
             parsed_event = NotificationEventModel[
                 get_data_type(event.type)
             ].model_validate(event.model_dump())
             routing_key = self.get_routing_key(parsed_event)
             message = parsed_event.model_dump_json()
 
-            logger.info(f"Recieved Request to queue {message=}")
+            logger.info(f"Received Request to queue {message=}")
 
             exchange = "notifications"
 
@@ -144,40 +133,109 @@ class NotificationManager(AppService):
 
             return NotificationResult(
                 success=True,
-                message=(f"Notification queued with routing key: {routing_key}"),
+                message=f"Notification queued with routing key: {routing_key}",
             )
 
         except Exception as e:
-            logger.error(f"Error queueing notification: {e}")
+            logger.exception(f"Error queueing notification: {e}")
             return NotificationResult(success=False, message=str(e))
 
-    async def _process_immediate(self, message: str) -> bool:
-        """Process a single notification immediately, returning whether to put into the failed queue"""
+    def _should_email_user_based_on_preference(
+        self, user_id: str, event_type: NotificationType
+    ) -> bool:
+        """Check if a user wants to receive a notification based on their preferences and email verification status"""
+        validated_email = self.run_and_wait(get_user_email_verification(user_id))
+        preference = self.run_and_wait(
+            get_user_notification_preference(user_id)
+        ).preferences.get(event_type, True)
+        # only if both are true, should we email this person
+        return validated_email and preference
+
+    def _parse_message(self, message: str) -> NotificationEvent | None:
         try:
             event = NotificationEventDTO.model_validate_json(message)
-            parsed_event = NotificationEventModel[
+            model = NotificationEventModel[
                 get_data_type(event.type)
             ].model_validate_json(message)
-            user_email = get_db_client().get_user_email_by_id(event.user_id)
-            should_send = (
-                get_db_client()
-                .get_user_notification_preference(event.user_id)
-                .preferences[event.type]
-            )
-            if not user_email:
+            return NotificationEvent(event=event, model=model)
+        except Exception as e:
+            logger.error(f"Error parsing message due to non matching schema {e}")
+            return None
+
+    def _process_admin_message(self, message: str) -> bool:
+        """Process a single notification, sending to an admin, returning whether to put into the failed queue"""
+        try:
+            parsed = self._parse_message(message)
+            if not parsed:
+                return False
+            event = parsed.event
+            model = parsed.model
+            logger.debug(f"Processing notification for admin: {model}")
+            recipient_email = settings.config.refund_notification_email
+            self.email_sender.send_templated(event.type, recipient_email, model)
+            return True
+        except Exception as e:
+            logger.exception(f"Error processing notification: {e}")
+            return False
+
+    def _process_immediate(self, message: str) -> bool:
+        """Process a single notification immediately, returning whether to put into the failed queue"""
+        try:
+            parsed = self._parse_message(message)
+            if not parsed:
+                return False
+            event = parsed.event
+            model = parsed.model
+            logger.debug(f"Processing immediate notification: {model}")
+
+            recipient_email = self.run_and_wait(get_user_email_by_id(event.user_id))
+            if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False
+
+            should_send = self._should_email_user_based_on_preference(
+                event.user_id, event.type
+            )
             if not should_send:
                 logger.debug(
                     f"User {event.user_id} does not want to receive {event.type} notifications"
                 )
                 return True
-            self.email_sender.send_templated(event.type, user_email, parsed_event)
-            logger.info(f"Processing notification: {parsed_event}")
+
+            self.email_sender.send_templated(event.type, recipient_email, model)
             return True
         except Exception as e:
-            logger.error(f"Error processing notification: {e}")
+            logger.exception(f"Error processing notification: {e}")
             return False
+
+    def _run_queue(
+        self,
+        queue: aio_pika.abc.AbstractQueue,
+        process_func: Callable[[str], bool],
+        error_queue_name: str,
+    ):
+        message: aio_pika.abc.AbstractMessage | None = None
+        try:
+            # This parameter "no_ack" is named like shit, think of it as "auto_ack"
+            message = self.run_and_wait(queue.get(timeout=1.0, no_ack=False))
+            result = process_func(message.body.decode())
+            if result:
+                self.run_and_wait(message.ack())
+            else:
+                self.run_and_wait(message.reject(requeue=False))
+
+        except QueueEmpty:
+            logger.debug(f"Queue {error_queue_name} empty")
+        except Exception as e:
+            if message:
+                logger.error(
+                    f"Error in notification service loop, message rejected {e}"
+                )
+                self.run_and_wait(message.reject(requeue=False))
+            else:
+                logger.error(
+                    f"Error in notification service loop, message unable to be rejected, and will have to be manually removed to free space in the queue: {e}"
+                )
 
     def run_service(self):
         logger.info(f"[{self.service_name}] Started notification service")
@@ -189,22 +247,20 @@ class NotificationManager(AppService):
             channel.get_queue("immediate_notifications")
         )
 
+        admin_queue = self.run_and_wait(channel.get_queue("admin_notifications"))
+
         while self.running:
             try:
-                # Process immediate notifications
-                try:
-                    message = self.run_and_wait(immediate_queue.get())
-
-                    if message:
-                        success = self.run_and_wait(
-                            self._process_immediate(message.body.decode())
-                        )
-                        if success:
-                            self.run_and_wait(message.ack())
-                        else:
-                            self.run_and_wait(message.reject(requeue=True))
-                except QueueEmpty:
-                    logger.debug("Immediate queue empty")
+                self._run_queue(
+                    queue=immediate_queue,
+                    process_func=self._process_immediate,
+                    error_queue_name="immediate_notifications",
+                )
+                self._run_queue(
+                    queue=admin_queue,
+                    process_func=self._process_admin_message,
+                    error_queue_name="admin_notifications",
+                )
 
                 time.sleep(0.1)
 
@@ -217,12 +273,3 @@ class NotificationManager(AppService):
         """Cleanup service resources"""
         self.running = False
         super().cleanup()
-
-    # ------- UTILITIES ------- #
-
-
-@thread_cached
-def get_db_client() -> "DatabaseManager":
-    from backend.executor import DatabaseManager
-
-    return get_service_client(DatabaseManager)

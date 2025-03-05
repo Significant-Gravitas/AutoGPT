@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from autogpt_libs.utils.cache import thread_cached
 
@@ -13,6 +14,7 @@ from backend.data.block import (
 )
 from backend.data.execution import ExecutionStatus
 from backend.data.model import SchemaField
+from backend.util import json
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +43,23 @@ class AgentExecutorBlock(Block):
         data: BlockInput = SchemaField(description="Input data for the graph")
         input_schema: dict = SchemaField(description="Input schema for the graph")
         output_schema: dict = SchemaField(description="Output schema for the graph")
+
+        @classmethod
+        def get_input_schema(cls, data: BlockInput) -> dict[str, Any]:
+            return data.get("input_schema", {})
+
+        @classmethod
+        def get_input_defaults(cls, data: BlockInput) -> BlockInput:
+            return data.get("data", {})
+
+        @classmethod
+        def get_missing_input(cls, data: BlockInput) -> set[str]:
+            required_fields = cls.get_input_schema(data).get("required", [])
+            return set(required_fields) - set(data)
+
+        @classmethod
+        def get_mismatch_error(cls, data: BlockInput) -> str | None:
+            return json.validate_with_jsonschema(cls.get_input_schema(data), data)
 
     class Output(BlockSchema):
         pass

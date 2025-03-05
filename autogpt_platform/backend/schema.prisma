@@ -15,6 +15,7 @@ generator client {
 model User {
   id               String   @id // This should match the Supabase user ID
   email            String   @unique
+  emailVerified    Boolean  @default(true)
   name             String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -65,6 +66,7 @@ model AgentGraph {
 
   name        String?
   description String?
+
   isActive    Boolean @default(true)
   isTemplate  Boolean @default(false)
 
@@ -133,6 +135,8 @@ enum NotificationType {
   DAILY_SUMMARY
   WEEKLY_SUMMARY
   MONTHLY_SUMMARY
+  REFUND_REQUEST
+  REFUND_PROCESSED
 }
 
 model NotificationEvent {
@@ -173,12 +177,17 @@ model LibraryAgent {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  imageUrl   String?
+
   agentId      String
   agentVersion Int
   Agent        AgentGraph @relation(fields: [agentId, agentVersion], references: [id, version])
 
   agentPresetId String?
   AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
+
+  creatorId String?
+  Creator   Profile? @relation(fields: [creatorId], references: [id])
 
   useGraphIsActiveVersion Boolean @default(false)
 
@@ -422,16 +431,20 @@ model AnalyticsMetrics {
   @@index([userId])
 }
 
-enum CreditTransactionType {
-  TOP_UP
-  USAGE
-}
-
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
 ////////   ACCOUNTING AND CREDIT SYSTEM TABLES    //////////
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
+
+enum CreditTransactionType {
+  TOP_UP
+  USAGE
+  GRANT
+  REFUND
+  CARD_CHECK
+}
+
 model CreditTransaction {
   transactionKey String   @default(uuid())
   createdAt      DateTime @default(now())
@@ -449,6 +462,28 @@ model CreditTransaction {
 
   @@id(name: "creditTransactionIdentifier", [transactionKey, userId])
   @@index([userId, createdAt])
+}
+
+enum CreditRefundRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model CreditRefundRequest {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId         String
+  transactionKey String
+
+  amount Int
+  reason String
+  result String?
+  status CreditRefundRequestStatus @default(PENDING)
+
+  @@index([userId, transactionKey])
 }
 
 ////////////////////////////////////////////////////////////
@@ -476,6 +511,8 @@ model Profile {
   avatarUrl String?
 
   isFeatured Boolean @default(false)
+
+  LibraryAgents LibraryAgent[]
 
   @@index([username])
   @@index([userId])

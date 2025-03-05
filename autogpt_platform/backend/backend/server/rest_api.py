@@ -16,14 +16,18 @@ import backend.data.block
 import backend.data.db
 import backend.data.graph
 import backend.data.user
+import backend.server.integrations.router
 import backend.server.routers.v1
 import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
+import backend.server.v2.postmark.postmark
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
 import backend.util.service
 import backend.util.settings
+from backend.data.model import Credentials
+from backend.integrations.providers import ProviderName
 from backend.server.external.api import external_app
 
 settings = backend.util.settings.Settings()
@@ -98,6 +102,11 @@ app.include_router(
 app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
 )
+app.include_router(
+    backend.server.v2.postmark.postmark.router,
+    tags=["v2", "email"],
+    prefix="/api/email",
+)
 
 app.mount("/external-api", external_app)
 
@@ -155,7 +164,7 @@ class AgentServer(backend.util.service.AppProcess):
 
     @staticmethod
     async def test_get_graph_run_status(graph_exec_id: str, user_id: str):
-        execution = await backend.data.graph.get_execution(
+        execution = await backend.data.graph.get_execution_meta(
             user_id=user_id, execution_id=graph_exec_id
         )
         if not execution:
@@ -163,10 +172,10 @@ class AgentServer(backend.util.service.AppProcess):
         return execution.status
 
     @staticmethod
-    async def test_get_graph_run_node_execution_results(
+    async def test_get_graph_run_results(
         graph_id: str, graph_exec_id: str, user_id: str
     ):
-        return await backend.server.routers.v1.get_graph_run_node_execution_results(
+        return await backend.server.routers.v1.get_graph_execution(
             graph_id, graph_exec_id, user_id
         )
 
@@ -242,6 +251,16 @@ class AgentServer(backend.util.service.AppProcess):
         user: autogpt_libs.auth.models.User,
     ):
         return await backend.server.v2.store.routes.review_submission(request, user)
+
+    @staticmethod
+    def test_create_credentials(
+        user_id: str,
+        provider: ProviderName,
+        credentials: Credentials,
+    ) -> Credentials:
+        return backend.server.integrations.router.create_credentials(
+            user_id=user_id, provider=provider, credentials=credentials
+        )
 
     def set_test_dependency_overrides(self, overrides: dict):
         app.dependency_overrides.update(overrides)

@@ -26,7 +26,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import { CustomNode } from "./CustomNode";
 import "./flow.css";
-import { BlockUIType, formatEdgeID } from "@/lib/autogpt-server-api";
+import { BlockUIType, formatEdgeID, GraphID } from "@/lib/autogpt-server-api";
 import { getTypeColor, findNewlyAddedBlockCoordinates } from "@/lib/utils";
 import { history } from "./history";
 import { CustomEdge } from "./CustomEdge";
@@ -69,7 +69,7 @@ export type NodeDimension = {
 export const FlowContext = createContext<FlowContextType | null>(null);
 
 const FlowEditor: React.FC<{
-  flowID?: string;
+  flowID?: GraphID;
   flowVersion?: string;
   className?: string;
 }> = ({ flowID, flowVersion, className }) => {
