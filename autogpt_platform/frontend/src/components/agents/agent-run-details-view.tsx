@@ -130,7 +130,7 @@ export default function AgentRunDetailsView({
       ...(["success", "failed", "stopped"].includes(runStatus)
         ? [{ label: "Run again", callback: runAgain }]
         : []),
-      { label: "Delete run", variant: "destructive", callback: deleteRun },
+      { label: "Delete run", variant: "secondary", callback: deleteRun },
     ],
     [runStatus, runAgain, stopRun, deleteRun],
   );
