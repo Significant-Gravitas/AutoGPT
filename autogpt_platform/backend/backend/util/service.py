@@ -326,7 +326,12 @@ class FastApiAppService(BaseAppService, ABC):
             f"[{self.service_name}] Starting RPC server at http://{api_host}:{self.get_port()}"
         )
         server = uvicorn.Server(
-            uvicorn.Config(self.fastapi_app, host=api_host, port=self.get_port())
+            uvicorn.Config(
+                self.fastapi_app,
+                host=api_host,
+                port=self.get_port(),
+                log_level="debug",
+            )
         )
         self.shared_event_loop.run_until_complete(server.serve())
 
