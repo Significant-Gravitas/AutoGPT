@@ -15,10 +15,10 @@ import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
 import backend.server.v2.store.image_gen as store_image_gen
 import backend.server.v2.store.media as store_media
-import backend.util.settings
+from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
-config = backend.util.settings.Settings().config
+config = Config()
 
 
 async def list_library_agents(
@@ -173,26 +173,26 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
 
 
 async def add_generated_agent_image(
-    agent: backend.data.graph.GraphModel,
+    graph: backend.data.graph.GraphModel,
     library_agent_id: str,
 ) -> Optional[prisma.models.LibraryAgent]:
     """
     Generates an image for the specified LibraryAgent and updates its record.
     """
-    user_id = agent.user_id
-    agent_id = agent.id
+    user_id = graph.user_id
+    graph_id = graph.id
 
     # Use .jpeg here since we are generating JPEG images
-    filename = f"agent_{agent_id}.jpeg"
+    filename = f"agent_{graph_id}.jpeg"
     try:
         if not (image_url := await store_media.check_media_exists(user_id, filename)):
             # Generate agent image as JPEG
             if config.use_agent_image_generation_v2:
                 image = await asyncio.to_thread(
-                    store_image_gen.generate_agent_image_v2, agent=agent
+                    store_image_gen.generate_agent_image_v2, graph=graph
                 )
             else:
-                image = await store_image_gen.generate_agent_image(agent=agent)
+                image = await store_image_gen.generate_agent_image(agent=graph)
 
             # Create UploadFile with the correct filename and content_type
             image_file = fastapi.UploadFile(file=image, filename=filename)
@@ -211,7 +211,7 @@ async def add_generated_agent_image(
 
 
 async def create_library_agent(
-    agent: backend.data.graph.GraphModel,
+    graph: backend.data.graph.GraphModel,
     user_id: str,
 ) -> prisma.models.LibraryAgent:
     """
@@ -229,19 +229,19 @@ async def create_library_agent(
         DatabaseError: If there's an error during creation or if image generation fails.
     """
     logger.info(
-        f"Creating library agent for graph #{agent.id} v{agent.version}; "
+        f"Creating library agent for graph #{graph.id} v{graph.version}; "
         f"user #{user_id}"
     )
 
     try:
         return await prisma.models.LibraryAgent.prisma().create(
             data={
-                "isCreatedByUser": (user_id == agent.user_id),
+                "isCreatedByUser": (user_id == graph.user_id),
                 "useGraphIsActiveVersion": True,
                 "User": {"connect": {"id": user_id}},
                 "Agent": {
                     "connect": {
-                        "graphVersionId": {"id": agent.id, "version": agent.version}
+                        "graphVersionId": {"id": graph.id, "version": graph.version}
                     }
                 },
             }

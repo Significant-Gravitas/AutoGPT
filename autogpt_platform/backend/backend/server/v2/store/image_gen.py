@@ -34,7 +34,7 @@ class ImageStyle(str, Enum):
     DIGITAL_ART = "digital art"
 
 
-def generate_agent_image_v2(agent: Graph | AgentGraph) -> io.BytesIO:
+def generate_agent_image_v2(graph: Graph | AgentGraph) -> io.BytesIO:
     """
     Generate an image for an agent using Ideogram model.
     Returns:
@@ -43,8 +43,8 @@ def generate_agent_image_v2(agent: Graph | AgentGraph) -> io.BytesIO:
     if not ideogram_credentials.api_key:
         raise ValueError("Missing Ideogram API key")
 
-    name = agent.name
-    description = f"{name} ({agent.description})" if agent.description else name
+    name = graph.name
+    description = f"{name} ({graph.description})" if graph.description else name
 
     prompt = (
         f"Create a visually striking retro-futuristic vector pop art illustration prominently featuring "
