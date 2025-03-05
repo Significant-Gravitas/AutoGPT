@@ -30,7 +30,7 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
       className={`flex h-full flex-col ${backgroundColor}`}
     >
       <CardHeader>
-        <CardTitle className="text-xl leading-tight">
+        <CardTitle className="line-clamp-2 text-base sm:text-xl">
           {agent.agent_name}
         </CardTitle>
         <CardDescription className="text-sm">
@@ -53,7 +53,7 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
               isHovered ? "opacity-100" : "opacity-0"
             }`}
           >
-            <CardDescription className="line-clamp-[11] text-sm leading-relaxed text-muted-foreground">
+            <CardDescription className="line-clamp-[6] sm:line-clamp-[8] text-xs sm:text-sm">
               {agent.description}
             </CardDescription>
           </div>
