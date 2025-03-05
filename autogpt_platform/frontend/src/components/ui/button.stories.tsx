@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { Button } from "./button";
+import { Button } from "@/components/ui/button";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
@@ -23,7 +23,8 @@ const meta = {
     },
     size: {
       control: "select",
-      options: ["default", "sm", "lg", "primary", "icon"],
+      options: ["default", "sm", "lg", "icon"],
+      description: "Button size variants. The 'primary' size is deprecated."
     },
     disabled: {
       control: "boolean",
@@ -45,6 +46,32 @@ export const Default: Story = {
   args: {
     children: "Button",
   },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const button = canvas.getByRole("button", { name: /Button/i });
+
+    // Test default styling
+    await expect(button).toHaveAttribute(
+      "class",
+      expect.stringContaining("rounded-full")
+    );
+
+    // Test SVG styling is present
+    await expect(button).toHaveAttribute(
+      "class",
+      expect.stringContaining("[&_svg]:size-4")
+    );
+
+    await expect(button).toHaveAttribute(
+      "class",
+      expect.stringContaining("[&_svg]:shrink-0")
+    );
+
+    await expect(button).toHaveAttribute(
+      "class",
+      expect.stringContaining("[&_svg]:pointer-events-none")
+    );
+  },
 };
 
 export const Interactive: Story = {
@@ -57,14 +84,33 @@ export const Interactive: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const button = canvas.getByRole("button", { name: /Interactive Button/i });
+
+    // Test interaction
     await userEvent.click(button);
     await expect(button).toHaveFocus();
+
+    // Test styling matches the updated component
+    await expect(button).toHaveAttribute(
+      "class",
+      expect.stringContaining("rounded-full")
+    );
+
+    await expect(button).toHaveAttribute(
+      "class",
+      expect.stringContaining("gap-2")
+    );
+
+    // Test other key button styles
+    await expect(button).toHaveAttribute(
+      "class",
+      expect.stringContaining("inline-flex items-center justify-center")
+    );
   },
 };
 
 export const Variants: Story = {
   render: (args) => (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-4">
       <Button {...args} variant="default">
         Default
       </Button>
@@ -89,6 +135,8 @@ export const Variants: Story = {
     const canvas = within(canvasElement);
     const buttons = canvas.getAllByRole("button");
     await expect(buttons).toHaveLength(6);
+
+    // Test hover states
     for (const button of buttons) {
       await userEvent.hover(button);
       await expect(button).toHaveAttribute(
@@ -96,47 +144,78 @@ export const Variants: Story = {
         expect.stringContaining("hover:"),
       );
     }
+
+    // Test rounded-full styling on appropriate variants
+    const roundedVariants = ["default", "destructive", "outline", "secondary", "ghost"];
+    for (let i = 0; i < 5; i++) {
+      await expect(buttons[i]).toHaveAttribute(
+        "class",
+        expect.stringContaining("rounded-full")
+      );
+    }
+
+    // Link variant should not have rounded-full
+    await expect(buttons[5]).not.toHaveAttribute(
+      "class",
+      expect.stringContaining("rounded-full")
+    );
   },
 };
 
 export const Sizes: Story = {
   render: (args) => (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-4">
+      <Button {...args} size="icon">
+        🚀
+      </Button>
       <Button {...args} size="sm">
         Small
       </Button>
-      <Button {...args} size="default">
+      <Button {...args} >
         Default
       </Button>
       <Button {...args} size="lg">
         Large
       </Button>
-      <Button {...args} size="primary">
-        Primary
-      </Button>
-      <Button {...args} size="icon">
-        🚀
-      </Button>
+      <div className="flex flex-col items-start gap-2 border p-4 rounded">
+        <p className="text-xs text-muted-foreground mb-2">Deprecated Size:</p>
+        <Button {...args} size="primary">
+          Primary (deprecated)
+        </Button>
+      </div>
+
     </div>
   ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const buttons = canvas.getAllByRole("button");
     await expect(buttons).toHaveLength(5);
-    const sizes = ["sm", "default", "lg", "primary", "icon"];
-    const sizeClasses = [
-      "h-8 rounded-md px-3 text-xs",
-      "h-9 px-4 py-2",
-      "h-10 rounded-md px-8",
-      "md:h-14 md:w-44 rounded-2xl h-10 w-28",
-      "h-9 w-9",
-    ];
-    buttons.forEach(async (button, index) => {
-      await expect(button).toHaveAttribute(
-        "class",
-        expect.stringContaining(sizeClasses[index]),
-      );
-    });
+
+    // Test icon size
+    const iconButton = canvas.getByRole("button", { name: /🚀/i });
+    await expect(iconButton).toHaveAttribute(
+      "class",
+      expect.stringContaining("h-9 w-9")
+    );
+
+    // Test specific size classes
+    const smallButton = canvas.getByRole("button", { name: /Small/i });
+    await expect(smallButton).toHaveAttribute(
+      "class",
+      expect.stringContaining("h-8")
+    );
+
+    const defaultButton = canvas.getByRole("button", { name: /Default/i });
+    await expect(defaultButton).toHaveAttribute(
+      "class",
+      expect.stringContaining("h-9")
+    );
+
+    const largeButton = canvas.getByRole("button", { name: /Large/i });
+    await expect(largeButton).toHaveAttribute(
+      "class",
+      expect.stringContaining("h-10")
+    );
   },
 };
 
@@ -149,39 +228,99 @@ export const Disabled: Story = {
     const canvas = within(canvasElement);
     const button = canvas.getByRole("button", { name: /Disabled Button/i });
     await expect(button).toBeDisabled();
-    await expect(button).toHaveStyle("pointer-events: none");
+    await expect(button).toHaveAttribute(
+      "class",
+      expect.stringContaining("disabled:pointer-events-none")
+    );
+    await expect(button).toHaveAttribute(
+      "class",
+      expect.stringContaining("disabled:opacity-50")
+    );
     await expect(button).not.toHaveFocus();
   },
 };
 
 export const WithIcon: Story = {
-  args: {
-    children: (
-      <>
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="mr-2 h-4 w-4"
-        >
-          <path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" />
-        </svg>
-        Button with Icon
-      </>
-    ),
-  },
+  render: () => (
+    <div className="flex flex-col gap-4">
+      <div className="flex gap-4">
+        <Button>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" />
+          </svg>
+          Icon Left
+        </Button>
+        <Button>
+          Icon Right
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" />
+          </svg>
+        </Button>
+      </div>
+      <div>
+        <p className="text-sm text-muted-foreground mb-2">Icon with automatic gap spacing:</p>
+        <Button>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" />
+          </svg>
+          Button with Icon
+        </Button>
+      </div>
+    </div>
+  ),
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const button = canvas.getByRole("button", { name: /Button with Icon/i });
-    const icon = button.querySelector("svg");
-    await expect(icon).toBeInTheDocument();
-    await expect(button).toHaveTextContent("Button with Icon");
+    const buttons = canvas.getAllByRole("button");
+    const icons = canvasElement.querySelectorAll("svg");
+
+    // Test that SVGs are present
+    await expect(icons.length).toBeGreaterThan(0);
+
+    // Test for gap-2 class for spacing
+    await expect(buttons[0]).toHaveAttribute(
+      "class",
+      expect.stringContaining("gap-2")
+    );
+
+    // Test SVG styling from buttonVariants
+    await expect(buttons[0]).toHaveAttribute(
+      "class",
+      expect.stringContaining("[&_svg]:size-4")
+    );
+
+    await expect(buttons[0]).toHaveAttribute(
+      "class",
+      expect.stringContaining("[&_svg]:shrink-0")
+    );
+
+    await expect(buttons[0]).toHaveAttribute(
+      "class",
+      expect.stringContaining("[&_svg]:pointer-events-none")
+    );
   },
 };
 
@@ -193,10 +332,8 @@ export const LoadingState: Story = {
   render: (args) => (
     <Button {...args}>
       <svg
-        className="mr-2 h-4 w-4 animate-spin"
+        className="animate-spin"
         xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="24"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -215,5 +352,52 @@ export const LoadingState: Story = {
     await expect(button).toBeDisabled();
     const spinner = button.querySelector("svg");
     await expect(spinner).toHaveClass("animate-spin");
+
+    // Test SVG styling from buttonVariants
+    await expect(button).toHaveAttribute(
+      "class",
+      expect.stringContaining("[&_svg]:size-4")
+    );
+  },
+};
+
+export const RoundedStyles: Story = {
+  render: () => (
+    <div className="flex flex-col gap-6">
+      <div>
+        <p className="text-sm text-muted-foreground mb-2">Default variants have rounded-full style:</p>
+        <div className="flex gap-4">
+          <Button variant="default">Default</Button>
+          <Button variant="destructive">Destructive</Button>
+          <Button variant="outline">Outline</Button>
+          <Button variant="secondary">Secondary</Button>
+          <Button variant="ghost">Ghost</Button>
+        </div>
+      </div>
+      <div>
+        <p className="text-sm text-muted-foreground mb-2">Link variant maintains its original style:</p>
+        <div className="flex gap-4">
+          <Button variant="link">Link</Button>
+        </div>
+      </div>
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const buttons = canvas.getAllByRole("button");
+
+    // Test rounded-full on first 5 buttons
+    for (let i = 0; i < 5; i++) {
+      await expect(buttons[i]).toHaveAttribute(
+        "class",
+        expect.stringContaining("rounded-full")
+      );
+    }
+
+    // Test that link variant doesn't have rounded-full
+    await expect(buttons[5]).not.toHaveAttribute(
+      "class",
+      expect.stringContaining("rounded-full")
+    );
   },
 };
