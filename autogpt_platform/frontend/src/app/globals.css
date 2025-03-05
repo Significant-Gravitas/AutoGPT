@@ -62,11 +62,7 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
-  }
-
-  .font-neue {
-    font-family: "PP Neue Montreal TT", sans-serif;
+    @apply bg-background font-inter text-foreground antialiased transition-colors;
   }
 }
 

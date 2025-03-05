@@ -41,12 +41,7 @@ export default async function RootLayout({
       lang="en"
       className={`${poppins.variable} ${GeistSans.variable} ${GeistMono.variable} ${inter.variable}`}
     >
-      <body
-        className={cn(
-          "bg-neutral-50 antialiased transition-colors",
-          inter.className,
-        )}
-      >
+      <body className={inter.className}>
         <Providers
           attribute="class"
           defaultTheme="light"
