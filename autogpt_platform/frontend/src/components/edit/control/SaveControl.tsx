@@ -93,7 +93,7 @@ export const SaveControl = ({
               data-testid="blocks-control-save-button"
               name="Save"
             >
-              <IconSave className="dark:text-gray-300" />
+              <IconSave />
             </Button>
           </PopoverTrigger>
         </TooltipTrigger>
@@ -153,7 +153,6 @@ export const SaveControl = ({
           </CardContent>
           <CardFooter className="flex flex-col items-stretch gap-2">
             <Button
-              className="w-full dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-800"
               onClick={handleSave}
               data-id="save-control-save-agent"
               data-testid="save-control-save-agent-button"
