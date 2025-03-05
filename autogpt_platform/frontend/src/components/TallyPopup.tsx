@@ -57,23 +57,14 @@ const TallyPopupSimple = () => {
 
   return (
     <div className="fixed bottom-1 right-6 z-50 hidden select-none items-center gap-4 p-3 transition-all duration-300 ease-in-out md:flex">
-      {show_tutorial && (
-        <Button
-          variant="default"
-          onClick={resetTutorial}
-          className="mb-0 h-14 w-28 rounded-2xl bg-[rgba(65,65,64,1)] text-left font-inter text-lg font-medium leading-6"
-        >
-          Tutorial
-        </Button>
-      )}
+      {show_tutorial && <Button onClick={resetTutorial}>Tutorial</Button>}
       <Button
-        className="h-14 w-14 rounded-full bg-[rgba(65,65,64,1)]"
-        variant="default"
+        size="icon"
         data-tally-open="3yx2L0"
         data-tally-emoji-text="👋"
         data-tally-emoji-animation="wave"
       >
-        <QuestionMarkCircledIcon className="h-14 w-14" />
+        <QuestionMarkCircledIcon />
         <span className="sr-only">Reach Out</span>
       </Button>
     </div>
