@@ -2,10 +2,13 @@ import logging
 from typing import Annotated
 
 from autogpt_libs.auth.middleware import APIKeyValidator
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, Path, Query
 
-from backend.data.notifications import unsubscribe_user_by_hash
-from backend.data.user import get_user_by_email, set_user_email_verification
+from backend.data.user import (
+    get_user_by_email,
+    set_user_email_verification,
+    unsubscribe_user_by_hash,
+)
 from backend.server.v2.postmark.models import (
     PostmarkBounceEnum,
     PostmarkBounceWebhook,
@@ -17,6 +20,7 @@ from backend.server.v2.postmark.models import (
     PostmarkWebhook,
 )
 from backend.util.settings import Settings
+from fastapi.responses import JSONResponse
 
 settings = Settings()
 postmark_validator = APIKeyValidator(
@@ -31,14 +35,14 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/unsubscribe")
-async def unsubscribe_via_one_click(user_hash: Annotated[str, Body()]):
+async def unsubscribe_via_one_click(user_hash: Annotated[str, Query()]):
     logger.info(f"Received unsubscribe request from One Click Unsubscribe: {user_hash}")
     try:
         await unsubscribe_user_by_hash(user_hash)
     except Exception as e:
         logger.error(f"Failed to unsubscribe user: {e}")
         raise e
-    return
+    return JSONResponse(status_code=200, content={"status": "ok"})
 
 
 @router.post("/", dependencies=[Depends(postmark_validator.get_dependency())])

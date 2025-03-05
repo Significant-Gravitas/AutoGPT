@@ -19,6 +19,7 @@ from backend.data.user import (
     get_user_email_by_id,
     get_user_email_verification,
     get_user_notification_preference,
+    generate_unsubscribe_link,
 )
 from backend.notifications.email import EmailSender
 from backend.util.service import AppService, expose
@@ -175,7 +176,7 @@ class NotificationManager(AppService):
             self.email_sender.send_templated(event.type, recipient_email, model)
             return True
         except Exception as e:
-            logger.exception(f"Error processing notification: {e}")
+            logger.exception(f"Error processing notification for admin queue: {e}")
             return False
 
     def _process_immediate(self, message: str) -> bool:
@@ -202,10 +203,17 @@ class NotificationManager(AppService):
                 )
                 return True
 
-            self.email_sender.send_templated(event.type, recipient_email, model)
+            unsub_link = generate_unsubscribe_link(event.user_id)
+
+            self.email_sender.send_templated(
+                notification=event.type,
+                user_email=recipient_email,
+                data=model,
+                user_unsub_link=unsub_link,
+            )
             return True
         except Exception as e:
-            logger.exception(f"Error processing notification: {e}")
+            logger.exception(f"Error processing notification for immediate queue: {e}")
             return False
 
     def _run_queue(
