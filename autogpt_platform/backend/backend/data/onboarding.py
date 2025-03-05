@@ -105,7 +105,8 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
 
 def clean_and_split(text: str) -> list[str]:
     """
-    Removes all special characters from a string and splits it by whitespace and commas.
+    Removes all special characters from a string, truncates it to 100 characters,
+    and splits it by whitespace and commas.
 
     Args:
         text (str): The input string.

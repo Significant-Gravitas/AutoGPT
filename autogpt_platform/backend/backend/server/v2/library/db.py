@@ -403,13 +403,15 @@ async def add_store_agent_to_library(
                 )
             )
             if existing_library_agent:
-                logger.debug(
-                    f"User #{user_id} already has agent #{store_agent.id} in their library"
-                )
-                # Even if agent exists it needs to be marked as not deleted
-                await set_is_deleted_for_library_agent(
-                    user_id, store_agent.id, store_agent.version, False
-                )
+                if existing_library_agent.isDeleted:
+                    # Even if agent exists it needs to be marked as not deleted
+                    await set_is_deleted_for_library_agent(
+                        user_id, store_agent.id, store_agent.version, False
+                    )
+                else:
+                    logger.debug(
+                        f"User #{user_id} already has agent #{store_agent.id} in their library"
+                    )
                 return library_model.LibraryAgent.from_db(existing_library_agent)
 
             # Create LibraryAgent entry
