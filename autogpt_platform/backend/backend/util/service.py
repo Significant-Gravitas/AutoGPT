@@ -330,7 +330,7 @@ class FastApiAppService(BaseAppService, ABC):
                 self.fastapi_app,
                 host=api_host,
                 port=self.get_port(),
-                log_level="debug",
+                log_level="warning",
             )
         )
         self.shared_event_loop.run_until_complete(server.serve())
