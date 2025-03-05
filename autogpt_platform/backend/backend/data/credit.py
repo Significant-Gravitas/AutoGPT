@@ -32,6 +32,7 @@ from backend.data.model import (
 from backend.data.notifications import NotificationEventDTO, RefundRequestData
 from backend.data.user import get_user_by_id
 from backend.notifications import NotificationManager
+from backend.util.exceptions import InsufficientBalanceError
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
@@ -313,9 +314,13 @@ class UserCreditBase(ABC):
 
             if amount < 0 and user_balance + amount < 0:
                 if fail_insufficient_credits:
-                    raise ValueError(
-                        f"Insufficient balance of ${user_balance/100}, where this will cost ${abs(amount)/100}"
+                    raise InsufficientBalanceError(
+                        message=f"Insufficient balance of ${user_balance/100}, where this will cost ${abs(amount)/100}",
+                        user_id=user_id,
+                        balance=user_balance,
+                        amount=amount,
                     )
+
                 amount = min(-user_balance, 0)
 
             # Create the transaction
