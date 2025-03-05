@@ -18,19 +18,22 @@ import LibraryAgentList from "@/components/library/library-agent-list";
 
 export default function LibraryPage() {
   return (
-      <main className="container min-h-screen space-y-4 sm:px-8 md:px-12">
-        <LibraryPageStateProvider>
-          {/* Header section containing notifications, search functionality and upload mechanism */}
-          <LibraryActionHeader />
+    <main className="container min-h-screen space-y-4 sm:px-8 md:px-12">
+      <LibraryPageStateProvider>
+        {/* Header section containing notifications, search functionality and upload mechanism */}
+        <LibraryActionHeader />
 
-          {/* Subheader section containing agent counts and filtering options */}
-          <LibraryActionSubHeader />
+        {/* Subheader section containing agent counts and filtering options */}
+        <LibraryActionSubHeader />
 
-          {/* Content section displaying agent list with counter and filtering options */}
-          <LibraryAgentList />
-        </LibraryPageStateProvider>
+        {/* Content section displaying agent list with counter and filtering options */}
+        <LibraryAgentList />
+      </LibraryPageStateProvider>
 
-      <Alert variant="default" className="fixed bottom-2 left-1/2 -translate-x-1/2 max-w-4xl hidden md:block">
+      <Alert
+        variant="default"
+        className="fixed bottom-2 left-1/2 hidden max-w-4xl -translate-x-1/2 md:block"
+      >
         <AlertDescription className="text-center">
           Prefer the old experience? Click{" "}
           <Link href="/monitoring" className="underline">
@@ -41,6 +44,6 @@ export default function LibraryPage() {
           in the bottom right corner <ArrowBottomRightIcon className="inline" />
         </AlertDescription>
       </Alert>
-      </main>
+    </main>
   );
 }
