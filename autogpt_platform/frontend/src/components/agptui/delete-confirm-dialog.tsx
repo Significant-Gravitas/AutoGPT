@@ -41,7 +41,7 @@ export default function DeleteConfirmDialog({
             {isIrreversible && (
               <b>
                 <br /> This action cannot be undone.
-              <b />
+              </b>
             )}
           </DialogDescription>
         </DialogHeader>
