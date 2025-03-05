@@ -27,9 +27,9 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
       data-testid="featured-store-card"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`flex h-[482px] w-[440px] flex-col ${backgroundColor}`}
+      className={`flex h-full flex-col ${backgroundColor}`}
     >
-      <CardHeader className="flex-none space-y-3 pb-2">
+      <CardHeader>
         <CardTitle className="text-xl leading-tight">
           {agent.agent_name}
         </CardTitle>
@@ -37,19 +37,17 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
           By {agent.creator}
         </CardDescription>
       </CardHeader>
-      <CardContent className="relative flex-1 p-4">
-        <div className="absolute inset-0 m-4 overflow-hidden rounded-xl">
-          <div
-            className={`h-full w-full transition-opacity duration-200 ${isHovered ? "opacity-0" : "opacity-100"}`}
-          >
-            <Image
-              src={agent.agent_image || "/AUTOgpt_Logo_dark.png"}
-              alt={`${agent.agent_name} preview`}
-              fill
-              sizes="100%"
-              className="rounded-xl object-cover"
-            />
-          </div>
+      <CardContent className="flex-1 p-4">
+        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl">
+          <Image
+            src={agent.agent_image || "/AUTOgpt_Logo_dark.png"}
+            alt={`${agent.agent_name} preview`}
+            fill
+            sizes="100%"
+            className={`object-cover transition-opacity duration-200 ${
+              isHovered ? "opacity-0" : "opacity-100"
+            }`}
+          />
           <div
             className={`absolute inset-0 overflow-y-auto p-4 transition-opacity duration-200 ${
               isHovered ? "opacity-100" : "opacity-0"
@@ -61,19 +59,13 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
           </div>
         </div>
       </CardContent>
-      <CardFooter className="flex h-[60px] flex-none items-center justify-between">
+      <CardFooter className="flex items-center justify-between">
         <div className="font-semibold">
           {agent.runs?.toLocaleString() ?? "0"} runs
         </div>
         <div className="flex items-center gap-1.5">
           <p>{agent.rating.toFixed(1) ?? "0.0"}</p>
-          <div
-            className="inline-flex items-center justify-start gap-px"
-            role="img"
-            aria-label={`Rating: ${agent.rating.toFixed(1)} out of 5 stars`}
-          >
-            {StarRatingIcons(agent.rating)}
-          </div>
+          {StarRatingIcons(agent.rating)}
         </div>
       </CardFooter>
     </Card>
