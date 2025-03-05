@@ -404,31 +404,13 @@ class RefundRequest(BaseModel):
     updated_at: datetime
 
 
-class NodeExecutionStatsStrError(BaseModel):
-    """Execution statistics for a node execution."""
-
-    class Config:
-        arbitrary_types_allowed = True
-
-    error: Optional[str] = None
-    walltime: float = 0
-    cputime: float = 0
-    cost: float = 0
-    input_size: int = 0
-    output_size: int = 0
-    llm_call_count: int = 0
-    llm_retry_count: int = 0
-    input_token_count: int = 0
-    output_token_count: int = 0
-
-
 class NodeExecutionStats(BaseModel):
     """Execution statistics for a node execution."""
 
     class Config:
         arbitrary_types_allowed = True
 
-    error: Optional[Exception] = None
+    error: Optional[Exception | str] = None
     walltime: float = 0
     cputime: float = 0
     cost: float = 0
@@ -438,29 +420,6 @@ class NodeExecutionStats(BaseModel):
     llm_retry_count: int = 0
     input_token_count: int = 0
     output_token_count: int = 0
-
-    def convert_node_execution_stats(self) -> NodeExecutionStatsStrError:
-        return NodeExecutionStatsStrError(
-            error=str(self.error) if self.error else None,
-            walltime=self.walltime,
-            cputime=self.cputime,
-            cost=self.cost,
-            input_size=self.input_size,
-            output_size=self.output_size,
-        )
-
-
-class GraphExecutionStatsStrErr(BaseModel):
-    """Execution statistics for a graph execution with the error stringified."""
-
-    error: Optional[str] = None
-    walltime: float = 0
-    cputime: float = 0
-    nodes_walltime: float = 0
-    nodes_cputime: float = 0
-    node_count: int = 0
-    node_error_count: int = 0
-    cost: float = 0
 
 
 class GraphExecutionStats(BaseModel):
@@ -469,7 +428,7 @@ class GraphExecutionStats(BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
-    error: Optional[Exception] = None
+    error: Optional[Exception | str] = None
     walltime: float = 0
     cputime: float = 0
     nodes_walltime: float = 0
@@ -477,15 +436,3 @@ class GraphExecutionStats(BaseModel):
     node_count: int = 0
     node_error_count: int = 0
     cost: float = 0
-
-    def convert_graph_execution_stats(self) -> GraphExecutionStatsStrErr:
-        return GraphExecutionStatsStrErr(
-            error=str(self.error) if self.error else None,
-            walltime=self.walltime,
-            cputime=self.cputime,
-            nodes_walltime=self.nodes_walltime,
-            nodes_cputime=self.nodes_cputime,
-            node_count=self.node_count,
-            node_error_count=self.node_error_count,
-            cost=self.cost,
-        )

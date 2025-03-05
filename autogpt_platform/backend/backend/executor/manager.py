@@ -13,10 +13,7 @@ from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
 from redis.lock import Lock as RedisLock
 
 from backend.blocks.basic import AgentOutputBlock
-from backend.data.model import (
-    GraphExecutionStats,
-    NodeExecutionStats,
-)
+from backend.data.model import GraphExecutionStats, NodeExecutionStats
 from backend.data.notifications import (
     AgentRunData,
     LowBalanceData,
@@ -540,9 +537,11 @@ class Executor:
         execution_stats.walltime = timing_info.wall_time
         execution_stats.cputime = timing_info.cpu_time
 
-        str_stats = execution_stats.convert_node_execution_stats()
-
-        cls.db_client.update_node_execution_stats(node_exec.node_exec_id, str_stats)
+        if isinstance(execution_stats.error, Exception):
+            execution_stats.error = str(execution_stats.error)
+        cls.db_client.update_node_execution_stats(
+            node_exec.node_exec_id, execution_stats
+        )
         return execution_stats
 
     @classmethod
@@ -631,12 +630,13 @@ class Executor:
         exec_stats.walltime = timing_info.wall_time
         exec_stats.cputime = timing_info.cpu_time
         exec_stats.error = error
-        str_stats = exec_stats.convert_graph_execution_stats()
 
+        if isinstance(exec_stats.error, Exception):
+            exec_stats.error = str(exec_stats.error)
         result = cls.db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
             status=status,
-            stats=str_stats,
+            stats=exec_stats,
         )
         cls.db_client.send_execution_update(result)
 
