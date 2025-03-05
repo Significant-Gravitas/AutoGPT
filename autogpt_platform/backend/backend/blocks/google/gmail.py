@@ -2,6 +2,7 @@ import base64
 from email.utils import parseaddr
 from typing import List
 
+from backend.util.settings import Settings
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from pydantic import BaseModel
@@ -150,8 +151,8 @@ class GmailReadBlock(Block):
                 else None
             ),
             token_uri="https://oauth2.googleapis.com/token",
-            client_id=kwargs.get("client_id"),
-            client_secret=kwargs.get("client_secret"),
+            client_id=Settings().secrets.google_client_id,
+            client_secret=Settings().secrets.google_client_secret,
             scopes=credentials.scopes,
         )
         return build("gmail", "v1", credentials=creds)
