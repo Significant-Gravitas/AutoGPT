@@ -840,7 +840,7 @@ export const CustomNode = React.memo(
                     <Button
                       variant="ghost"
                       onClick={handleOutputClick}
-                      className="border border-gray-300"
+
                     >
                       View More
                     </Button>
