@@ -173,9 +173,7 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
     user_onboarding = await get_user_onboarding(user_id)
     categories = REASON_MAPPING.get(user_onboarding.usageReason or "", [])
 
-    where_clause: dict[str, Any] = {
-        "isDeleted": False,
-    }
+    where_clause: dict[str, Any] = {}
 
     custom = clean_and_split((user_onboarding.usageReason or "").lower())
 
@@ -202,6 +200,19 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
             {"rating": "desc"},
         ],
     )
+
+    if len(agents) < 2:
+        agents += await prisma.models.StoreAgent.prisma().find_many(
+            where={
+                "listing_id": {"notIn": [agent.listing_id for agent in agents]},
+            },
+            order=[
+                {"featured": "desc"},
+                {"runs": "desc"},
+                {"rating": "desc"},
+            ],
+            take=2 - len(agents),
+        )
 
     # Calculate points for the first 30 agents and choose the top 2
     agent_points = []

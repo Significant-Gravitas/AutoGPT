@@ -173,6 +173,10 @@ export default class BackendAPI {
     return this._request("PATCH", "/onboarding", onboarding);
   }
 
+  getOnboardingAgents(): Promise<StoreAgentDetails[]> {
+    return this._get("/onboarding/agents");
+  }
+
   ////////////////////////////////////////
   /////////// GRAPHS /////////////////////
   ////////////////////////////////////////

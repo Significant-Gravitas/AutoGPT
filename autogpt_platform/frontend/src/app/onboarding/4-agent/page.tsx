@@ -12,38 +12,6 @@ import { useEffect, useState } from "react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 
-// Will try to use the two first available agents
-const fallbackAgents = [
-  // Prod
-  {
-    username: "autogpt",
-    slug: "domain-drop-catcher",
-  },
-  {
-    username: "autogpt",
-    slug: "personalized-morning-coffee-newsletter",
-  },
-  // Dev
-  {
-    username: "autogpt",
-    slug: "business-owner-finder",
-  },
-  {
-    username: "autogpt",
-    slug: "financial-analysis-agent-your-personalized-financial-insights-tool",
-  },
-  // Temp
-  //todo kcze remove
-  {
-    username: "bright-eagle-40613",
-    slug: "subtractor",
-  },
-  {
-    username: "bright-eagle-40613",
-    slug: "power",
-  },
-];
-
 function isEmptyOrWhitespace(str: string | undefined | null): boolean {
   return !str || str.trim().length === 0;
 }
@@ -54,29 +22,9 @@ export default function Page() {
   const api = useBackendAPI();
 
   useEffect(() => {
-    Promise.allSettled(
-      fallbackAgents
-        .map((agent) => {
-          try {
-            return api.getStoreAgent(agent.username, agent.slug);
-          } catch {
-            //todo kcze: supressing errors for now as some are expected
-            // until proper agent choosing logic is implemented
-            console.debug(
-              `Failed to fetch agent ${agent.username}/${agent.slug}`,
-            );
-            return null;
-          }
-        })
-        .filter((agent) => agent !== null),
-    ).then((agents) => {
-      // Set only two fulfilled agents
-      setAgents(
-        agents
-          .filter((agent) => agent.status === "fulfilled")
-          .map((agent) => agent.value)
-          .slice(0, 2),
-      );
+    api.getOnboardingAgents().then((agents) => {
+      console.log(agents);
+      setAgents(agents);
     });
   }, [api, setAgents]);
 
@@ -84,7 +32,7 @@ export default function Page() {
     // Deselect agent if it's not in the list of agents
     if (
       state?.selectedAgentSlug &&
-      !fallbackAgents.some((agent) => agent.slug === state.selectedAgentSlug)
+      !agents.some((agent) => agent.slug === state.selectedAgentSlug)
     ) {
       setState({
         selectedAgentSlug: undefined,
@@ -92,7 +40,7 @@ export default function Page() {
         agentInput: undefined,
       });
     }
-  }, [state?.selectedAgentSlug, setState]);
+  }, [state?.selectedAgentSlug, setState, agents]);
 
   return (
     <OnboardingStep>

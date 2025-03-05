@@ -43,6 +43,7 @@ from backend.data.credit import (
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
     UserOnboardingUpdate,
+    get_recommended_agents,
     get_user_onboarding,
     update_user_onboarding,
 )
@@ -174,6 +175,17 @@ async def update_onboarding(
     user_id: Annotated[str, Depends(get_user_id)], data: UserOnboardingUpdate
 ):
     return await update_user_onboarding(user_id, data)
+
+
+@v1_router.get(
+    "/onboarding/agents",
+    tags=["onboarding"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def get_onboarding_agents(
+    user_id: Annotated[str, Depends(get_user_id)],
+):
+    return await get_recommended_agents(user_id)
 
 
 ########################################################
