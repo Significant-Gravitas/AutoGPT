@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 from pydantic import SecretStr
 from requests.exceptions import RequestException
@@ -142,7 +142,7 @@ class IdeogramModelBlock(Block):
             title="Color Palette Preset",
             advanced=True,
         )
-        custom_color_palette: Optional[List[str]] = SchemaField(
+        custom_color_palette: Optional[list[str]] = SchemaField(
             description=(
                 "Only available for model version V_2 or V_2_TURBO. Provide one or more color hex codes "
                 "(e.g., ['#000030', '#1C0C47', '#9900FF', '#4285F4', '#FFFFFF']) to define a custom color "
@@ -235,7 +235,7 @@ class IdeogramModelBlock(Block):
         style_type: str,
         negative_prompt: Optional[str],
         color_palette_name: str,
-        custom_colors: Optional[List[str]],
+        custom_colors: Optional[list[str]],
     ):
         url = "https://api.ideogram.ai/generate"
         headers = {

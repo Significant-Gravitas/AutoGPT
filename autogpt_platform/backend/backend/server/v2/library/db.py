@@ -15,8 +15,10 @@ import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
 import backend.server.v2.store.image_gen as store_image_gen
 import backend.server.v2.store.media as store_media
+import backend.util.settings
 
 logger = logging.getLogger(__name__)
+config = backend.util.settings.Settings().config
 
 
 async def list_library_agents(
@@ -170,7 +172,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         raise store_exceptions.DatabaseError("Failed to fetch library agent") from e
 
 
-async def generate_agent_image(
+async def add_generated_agent_image(
     agent: backend.data.graph.GraphModel,
     library_agent_id: str,
 ) -> Optional[prisma.models.LibraryAgent]:
@@ -185,9 +187,12 @@ async def generate_agent_image(
     try:
         if not (image_url := await store_media.check_media_exists(user_id, filename)):
             # Generate agent image as JPEG
-            image = await asyncio.to_thread(
-                store_image_gen.generate_agent_image_v2, agent=agent
-            )
+            if config.use_agent_image_generation_v2:
+                image = await asyncio.to_thread(
+                    store_image_gen.generate_agent_image_v2, agent=agent
+                )
+            else:
+                image = await store_image_gen.generate_agent_image(agent=agent)
 
             # Create UploadFile with the correct filename and content_type
             image_file = fastapi.UploadFile(file=image, filename=filename)
