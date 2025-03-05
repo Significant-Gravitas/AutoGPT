@@ -16,8 +16,6 @@ from backend.blocks.basic import AgentOutputBlock
 from backend.data.model import (
     GraphExecutionStats,
     NodeExecutionStats,
-    convert_graph_execution_stats,
-    convert_node_execution_stats,
 )
 from backend.data.notifications import (
     AgentRunData,
@@ -542,7 +540,7 @@ class Executor:
         execution_stats.walltime = timing_info.wall_time
         execution_stats.cputime = timing_info.cpu_time
 
-        str_stats = convert_node_execution_stats(execution_stats)
+        str_stats = execution_stats.convert_node_execution_stats()
 
         cls.db_client.update_node_execution_stats(node_exec.node_exec_id, str_stats)
         return execution_stats
@@ -633,7 +631,7 @@ class Executor:
         exec_stats.walltime = timing_info.wall_time
         exec_stats.cputime = timing_info.cpu_time
         exec_stats.error = error
-        str_stats = convert_graph_execution_stats(exec_stats)
+        str_stats = exec_stats.convert_graph_execution_stats()
 
         result = cls.db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
