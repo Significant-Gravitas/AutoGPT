@@ -59,16 +59,19 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
       >
         <CarouselContent>
           {featuredAgents.map((agent, index) => (
-            <CarouselItem key={index} className="md:basis-1/2 lg:basis-1/3 h-[480px] ">
-                <Link
-                  href={`/marketplace/agent/${encodeURIComponent(agent.creator)}/${encodeURIComponent(agent.slug)}`}
-                  className="block h-full"
-                >
-                  <FeaturedAgentCard
-                    agent={agent}
-                    backgroundColor={getBackgroundColor(index)}
-                  />
-                </Link>
+            <CarouselItem
+              key={index}
+              className="h-[480px] md:basis-1/2 lg:basis-1/3"
+            >
+              <Link
+                href={`/marketplace/agent/${encodeURIComponent(agent.creator)}/${encodeURIComponent(agent.slug)}`}
+                className="block h-full"
+              >
+                <FeaturedAgentCard
+                  agent={agent}
+                  backgroundColor={getBackgroundColor(index)}
+                />
+              </Link>
             </CarouselItem>
           ))}
         </CarouselContent>
