@@ -411,6 +411,15 @@ export class BuildPage extends BasePage {
     };
   }
 
+  async getSmartDecisionMakerBlockDetails(): Promise<Block> {
+    return {
+      id: "3b191d9f-356f-482d-8238-ba04b6d18381",
+      name: "Smart Decision Maker",
+      description:
+        "This block is used to make a decision based on the input and the available tools.",
+    };
+  }
+
   async nextTutorialStep(): Promise<void> {
     console.log(`clicking next tutorial step`);
     await this.page.getByRole("button", { name: "Next" }).click();
@@ -487,6 +496,7 @@ export class BuildPage extends BasePage {
       (await this.getAgentInputBlockDetails()).id,
       (await this.getAgentOutputBlockDetails()).id,
       (await this.getGithubTriggerBlockDetails()).id,
+      (await this.getSmartDecisionMakerBlockDetails()).id,
     ];
   }
 

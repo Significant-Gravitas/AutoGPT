@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
@@ -5,20 +7,21 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50 dark:focus-visible:ring-neutral-300 font-neue leading-9 tracking-tight",
+  "inline-flex items-center whitespace-nowrap overflow-hidden font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50 dark:focus-visible:ring-neutral-300 font-neue leading-9 tracking-tight",
   {
     variants: {
       variant: {
         destructive:
           "bg-red-600 text-neutral-50 border border-red-500/50 hover:bg-red-500/90 dark:bg-red-700 dark:text-neutral-50 dark:hover:bg-red-600",
         accent: "bg-accent text-accent-foreground hover:bg-violet-500",
+        primary: "bg-neutral-800 text-white hover:bg-black/60",
         outline:
-          "border border-black/50 text-[#272727] hover:bg-neutral-100 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700",
+          "border border-black/50 text-neutral-800 hover:bg-neutral-100 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700",
         secondary:
-          "bg-neutral-100 text-[#272727] border border-neutral-200 hover:bg-neutral-100/80 dark:bg-neutral-700 dark:text-neutral-100 dark:border-neutral-600 dark:hover:bg-neutral-600",
+          "bg-neutral-100 text-neutral-800 border border-neutral-200 hover:bg-neutral-100/80 dark:bg-neutral-700 dark:text-neutral-100 dark:border-neutral-600 dark:hover:bg-neutral-600",
         ghost:
-          "hover:bg-neutral-100 text-[#272727] dark:text-neutral-100 dark:hover:bg-neutral-700",
-        link: "text-[#272727] underline-offset-4 hover:underline dark:text-neutral-100",
+          "hover:bg-neutral-100 text-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700",
+        link: "text-neutral-800 underline-offset-4 hover:underline dark:text-neutral-100",
       },
       size: {
         default: "h-10 px-4 py-2 rounded-full text-sm",
@@ -44,22 +47,49 @@ export interface ButtonProps
   variant?:
     | "destructive"
     | "accent"
+    | "primary"
     | "outline"
     | "secondary"
     | "ghost"
     | "link";
+
   size?: "default" | "sm" | "lg" | "primary" | "icon" | "card";
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant, size, asChild = false, onClick, ...props }, ref) => {
+    const [isLoading, setIsLoading] = React.useState(false);
     const Comp = asChild ? Slot : "button";
+
+    const handleClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
+      if (!onClick) return;
+
+      try {
+        setIsLoading(true);
+        const result: any = onClick(e);
+        if (result instanceof Promise) {
+          await result;
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
     return (
       <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
+        className={cn("relative", buttonVariants({ variant, size, className }))}
         ref={ref}
+        onClick={handleClick}
+        disabled={props.disabled}
         {...props}
-      />
+      >
+        {props.children}
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/60">
+            <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+          </div>
+        )}
+      </Comp>
     );
   },
 );

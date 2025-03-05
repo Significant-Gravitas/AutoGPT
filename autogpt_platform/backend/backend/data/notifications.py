@@ -21,11 +21,12 @@ logger = logging.getLogger(__name__)
 T_co = TypeVar("T_co", bound="BaseNotificationData", covariant=True)
 
 
-class BatchingStrategy(Enum):
+class QueueType(Enum):
     IMMEDIATE = "immediate"  # Send right away (errors, critical notifications)
     HOURLY = "hourly"  # Batch for up to an hour (usage reports)
     DAILY = "daily"  # Daily digest (summary notifications)
     BACKOFF = "backoff"  # Backoff strategy (exponential backoff)
+    ADMIN = "admin"  # Admin notifications (errors, critical notifications)
 
 
 class BaseNotificationData(BaseModel):
@@ -38,7 +39,7 @@ class AgentRunData(BaseNotificationData):
     execution_time: float
     node_count: int = Field(..., description="Number of nodes executed")
     graph_id: str
-    outputs: dict[str, Any] = Field(..., description="Outputs of the agent")
+    outputs: list[dict[str, Any]] = Field(..., description="Outputs of the agent")
 
 
 class ZeroBalanceData(BaseNotificationData):
@@ -48,10 +49,12 @@ class ZeroBalanceData(BaseNotificationData):
 
 
 class LowBalanceData(BaseNotificationData):
-    current_balance: float
-    threshold_amount: float
-    top_up_link: str
-    recent_usage: float = Field(..., description="Usage in the last 24 hours")
+    agent_name: str = Field(..., description="Name of the agent")
+    current_balance: float = Field(
+        ..., description="Current balance in credits (100 = $1)"
+    )
+    billing_page_link: str = Field(..., description="Link to billing page")
+    shortfall: float = Field(..., description="Amount of credits needed to continue")
 
 
 class BlockExecutionFailedData(BaseNotificationData):
@@ -119,6 +122,9 @@ NotificationData = Annotated[
         BlockExecutionFailedData,
         ContinuousAgentErrorData,
         MonthlySummaryData,
+        WeeklySummaryData,
+        DailySummaryData,
+        RefundRequestData,
     ],
     Field(discriminator="type"),
 ]
@@ -129,7 +135,6 @@ class NotificationEventDTO(BaseModel):
     type: NotificationType
     data: dict
     created_at: datetime = Field(default_factory=datetime.now)
-    recipient_email: Optional[str] = None
     retry_count: int = 0
 
 
@@ -140,7 +145,7 @@ class NotificationEventModel(BaseModel, Generic[T_co]):
     created_at: datetime = Field(default_factory=datetime.now)
 
     @property
-    def strategy(self) -> BatchingStrategy:
+    def strategy(self) -> QueueType:
         return NotificationTypeOverride(self.type).strategy
 
     @field_validator("type", mode="before")
@@ -174,7 +179,7 @@ def get_data_type(
 class NotificationBatch(BaseModel):
     user_id: str
     events: list[NotificationEvent]
-    strategy: BatchingStrategy
+    strategy: QueueType
     last_update: datetime = datetime.now()
 
 
@@ -188,23 +193,22 @@ class NotificationTypeOverride:
         self.notification_type = notification_type
 
     @property
-    def strategy(self) -> BatchingStrategy:
+    def strategy(self) -> QueueType:
         BATCHING_RULES = {
             # These are batched by the notification service
-            NotificationType.AGENT_RUN: BatchingStrategy.IMMEDIATE,
+            NotificationType.AGENT_RUN: QueueType.IMMEDIATE,
             # These are batched by the notification service, but with a backoff strategy
-            NotificationType.ZERO_BALANCE: BatchingStrategy.BACKOFF,
-            NotificationType.LOW_BALANCE: BatchingStrategy.BACKOFF,
-            NotificationType.BLOCK_EXECUTION_FAILED: BatchingStrategy.BACKOFF,
-            NotificationType.CONTINUOUS_AGENT_ERROR: BatchingStrategy.BACKOFF,
-            # These aren't batched by the notification service, so we send them right away
-            NotificationType.DAILY_SUMMARY: BatchingStrategy.IMMEDIATE,
-            NotificationType.WEEKLY_SUMMARY: BatchingStrategy.IMMEDIATE,
-            NotificationType.MONTHLY_SUMMARY: BatchingStrategy.IMMEDIATE,
-            NotificationType.REFUND_REQUEST: BatchingStrategy.IMMEDIATE,
-            NotificationType.REFUND_PROCESSED: BatchingStrategy.IMMEDIATE,
+            NotificationType.ZERO_BALANCE: QueueType.BACKOFF,
+            NotificationType.LOW_BALANCE: QueueType.IMMEDIATE,
+            NotificationType.BLOCK_EXECUTION_FAILED: QueueType.BACKOFF,
+            NotificationType.CONTINUOUS_AGENT_ERROR: QueueType.BACKOFF,
+            NotificationType.DAILY_SUMMARY: QueueType.DAILY,
+            NotificationType.WEEKLY_SUMMARY: QueueType.DAILY,
+            NotificationType.MONTHLY_SUMMARY: QueueType.DAILY,
+            NotificationType.REFUND_REQUEST: QueueType.ADMIN,
+            NotificationType.REFUND_PROCESSED: QueueType.ADMIN,
         }
-        return BATCHING_RULES.get(self.notification_type, BatchingStrategy.HOURLY)
+        return BATCHING_RULES.get(self.notification_type, QueueType.IMMEDIATE)
 
     @property
     def template(self) -> str:

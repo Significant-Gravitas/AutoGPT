@@ -5,6 +5,7 @@ import {
   GraphExecutionMeta,
   Schedule,
   LibraryAgent,
+  ScheduleID,
 } from "@/lib/autogpt-server-api";
 
 import { Card } from "@/components/ui/card";
@@ -35,7 +36,7 @@ const Monitor = () => {
   }, [api]);
 
   const removeSchedule = useCallback(
-    async (scheduleId: string) => {
+    async (scheduleId: ScheduleID) => {
       const removedSchedule = await api.deleteSchedule(scheduleId);
       setSchedules(schedules.filter((s) => s.id !== removedSchedule.id));
     },
@@ -43,8 +44,8 @@ const Monitor = () => {
   );
 
   const fetchAgents = useCallback(() => {
-    api.listLibraryAgents().then((agents) => {
-      setFlows(agents);
+    api.listLibraryAgents().then((response) => {
+      setFlows(response.agents);
     });
     api.getExecutions().then((executions) => {
       setExecutions(executions);

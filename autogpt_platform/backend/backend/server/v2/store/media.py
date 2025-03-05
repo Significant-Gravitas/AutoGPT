@@ -6,6 +6,7 @@ import fastapi
 from google.cloud import storage
 
 import backend.server.v2.store.exceptions
+from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -27,34 +28,32 @@ async def check_media_exists(user_id: str, filename: str) -> str | None:
     Returns:
         str | None: URL of the blob if it exists, None otherwise
     """
-    try:
-        settings = Settings()
-        storage_client = storage.Client()
-        bucket = storage_client.bucket(settings.config.media_gcs_bucket_name)
+    settings = Settings()
+    if not settings.config.media_gcs_bucket_name:
+        raise MissingConfigError("GCS media bucket is not configured")
 
-        # Check images
-        image_path = f"users/{user_id}/images/{filename}"
-        image_blob = bucket.blob(image_path)
-        if image_blob.exists():
-            return image_blob.public_url
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(settings.config.media_gcs_bucket_name)
 
-        # Check videos
-        video_path = f"users/{user_id}/videos/{filename}"
+    # Check images
+    image_path = f"users/{user_id}/images/{filename}"
+    image_blob = bucket.blob(image_path)
+    if image_blob.exists():
+        return image_blob.public_url
 
-        video_blob = bucket.blob(video_path)
-        if video_blob.exists():
-            return video_blob.public_url
+    # Check videos
+    video_path = f"users/{user_id}/videos/{filename}"
 
-        return None
-    except Exception as e:
-        logger.error(f"Error checking if media file exists: {str(e)}")
-        return None
+    video_blob = bucket.blob(video_path)
+    if video_blob.exists():
+        return video_blob.public_url
+
+    return None
 
 
 async def upload_media(
     user_id: str, file: fastapi.UploadFile, use_file_name: bool = False
 ) -> str:
-
     # Get file content for deeper validation
     try:
         content = await file.read(1024)  # Read first 1KB for validation

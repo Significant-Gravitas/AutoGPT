@@ -6,42 +6,50 @@ import {
   APIKeyCredentials,
   APIKeyPermission,
   Block,
-  CreatorsResponse,
-  CreatorDetails,
   CreateAPIKeyResponse,
+  CreateLibraryAgentPresetRequest,
+  CreatorDetails,
+  CreatorsResponse,
   Credentials,
   CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
-  GraphExecution,
-  GraphExecutionMeta,
   Graph,
   GraphCreatable,
+  GraphExecution,
+  GraphExecutionID,
+  GraphExecutionMeta,
+  GraphID,
   GraphMeta,
   GraphUpdateable,
   LibraryAgent,
+  LibraryAgentID,
+  LibraryAgentPreset,
+  LibraryAgentPresetResponse,
+  LibraryAgentResponse,
+  LibraryAgentSortEnum,
   MyAgentsResponse,
   NodeExecutionResult,
+  NotificationPreference,
+  NotificationPreferenceDTO,
   ProfileDetails,
+  RefundRequest,
   Schedule,
   ScheduleCreatable,
-  StoreAgentsResponse,
+  ScheduleID,
   StoreAgentDetails,
-  StoreSubmissionsResponse,
-  StoreSubmissionRequest,
-  StoreSubmission,
-  StoreReviewCreate,
+  StoreAgentsResponse,
   StoreReview,
+  StoreReviewCreate,
+  StoreSubmission,
+  StoreSubmissionRequest,
+  StoreSubmissionsResponse,
   TransactionHistory,
   User,
-  NotificationPreferenceDTO,
   UserPasswordCredentials,
-  NotificationPreference,
-  RefundRequest,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
-import { filter } from "../../../test-runner-jest.config";
 
 const isClient = typeof window !== "undefined";
 
@@ -91,9 +99,9 @@ export default class BackendAPI {
     return this._request("POST", "/auth/user/email", { email });
   }
 
-  getUserCredit(page?: string): Promise<{ credits: number }> {
+  getUserCredit(): Promise<{ credits: number }> {
     try {
-      return this._get(`/credits`, undefined, page);
+      return this._get("/credits");
     } catch (error) {
       return Promise.resolve({ credits: 0 });
     }
@@ -163,7 +171,7 @@ export default class BackendAPI {
   }
 
   getGraph(
-    id: string,
+    id: GraphID,
     version?: number,
     hide_credentials?: boolean,
   ): Promise<Graph> {
@@ -177,7 +185,7 @@ export default class BackendAPI {
     return this._get(`/graphs/${id}`, query);
   }
 
-  getGraphAllVersions(id: string): Promise<Graph[]> {
+  getGraphAllVersions(id: GraphID): Promise<Graph[]> {
     return this._get(`/graphs/${id}/versions`);
   }
 
@@ -187,25 +195,25 @@ export default class BackendAPI {
     return this._request("POST", "/graphs", requestBody);
   }
 
-  updateGraph(id: string, graph: GraphUpdateable): Promise<Graph> {
+  updateGraph(id: GraphID, graph: GraphUpdateable): Promise<Graph> {
     return this._request("PUT", `/graphs/${id}`, graph);
   }
 
-  deleteGraph(id: string): Promise<void> {
+  deleteGraph(id: GraphID): Promise<void> {
     return this._request("DELETE", `/graphs/${id}`);
   }
 
-  setGraphActiveVersion(id: string, version: number): Promise<Graph> {
+  setGraphActiveVersion(id: GraphID, version: number): Promise<Graph> {
     return this._request("PUT", `/graphs/${id}/versions/active`, {
       active_graph_version: version,
     });
   }
 
   executeGraph(
-    id: string,
+    id: GraphID,
     version: number,
     inputData: { [key: string]: any } = {},
-  ): Promise<{ graph_exec_id: string }> {
+  ): Promise<{ graph_exec_id: GraphExecutionID }> {
     return this._request("POST", `/graphs/${id}/execute/${version}`, inputData);
   }
 
@@ -213,13 +221,13 @@ export default class BackendAPI {
     return this._get(`/executions`);
   }
 
-  getGraphExecutions(graphID: string): Promise<GraphExecutionMeta[]> {
+  getGraphExecutions(graphID: GraphID): Promise<GraphExecutionMeta[]> {
     return this._get(`/graphs/${graphID}/executions`);
   }
 
   async getGraphExecutionInfo(
-    graphID: string,
-    runID: string,
+    graphID: GraphID,
+    runID: GraphExecutionID,
   ): Promise<GraphExecution> {
     const result = await this._get(`/graphs/${graphID}/executions/${runID}`);
     result.node_executions = result.node_executions.map(
@@ -229,8 +237,8 @@ export default class BackendAPI {
   }
 
   async stopGraphExecution(
-    graphID: string,
-    runID: string,
+    graphID: GraphID,
+    runID: GraphExecutionID,
   ): Promise<GraphExecution> {
     const result = await this._request(
       "POST",
@@ -240,6 +248,10 @@ export default class BackendAPI {
       parseNodeExecutionResultTimestamps,
     );
     return result;
+  }
+
+  async deleteGraphExecution(runID: GraphExecutionID): Promise<void> {
+    await this._request("DELETE", `/executions/${runID}`);
   }
 
   oAuthLogin(
@@ -358,10 +370,9 @@ export default class BackendAPI {
   /////////// V2 STORE API /////////////////
   /////////////////////////////////////////
 
-  getStoreProfile(page?: string): Promise<ProfileDetails | null> {
+  getStoreProfile(): Promise<ProfileDetails | null> {
     try {
-      console.log("+++ Making API from: ", page);
-      const result = this._get("/store/profile", undefined, page);
+      const result = this._get("/store/profile");
       return result;
     } catch (error) {
       console.error("Error fetching store profile:", error);
@@ -479,21 +490,83 @@ export default class BackendAPI {
   /////////// V2 LIBRARY API //////////////
   /////////////////////////////////////////
 
-  async listLibraryAgents(): Promise<LibraryAgent[]> {
-    return this._get("/library/agents");
+  listLibraryAgents(params?: {
+    search_term?: string;
+    sort_by?: LibraryAgentSortEnum;
+    page?: number;
+    page_size?: number;
+  }): Promise<LibraryAgentResponse> {
+    return this._get("/library/agents", params);
   }
 
-  async addAgentToLibrary(storeListingVersionId: string): Promise<void> {
-    await this._request("POST", `/library/agents/${storeListingVersionId}`);
+  getLibraryAgent(id: LibraryAgentID): Promise<LibraryAgent> {
+    return this._get(`/library/agents/${id}`);
   }
 
-  ///////////////////////////////////////////
-  /////////// INTERNAL FUNCTIONS ////////////
-  //////////////////////////////??///////////
-
-  private async _get(path: string, query?: Record<string, any>, page?: string) {
-    return this._request("GET", path, query, page);
+  addMarketplaceAgentToLibrary(
+    storeListingVersionID: string,
+  ): Promise<LibraryAgent> {
+    return this._request("POST", "/library/agents", {
+      store_listing_version_id: storeListingVersionID,
+    });
   }
+
+  async updateLibraryAgent(
+    libraryAgentId: LibraryAgentID,
+    params: {
+      auto_update_version?: boolean;
+      is_favorite?: boolean;
+      is_archived?: boolean;
+      is_deleted?: boolean;
+    },
+  ): Promise<void> {
+    await this._request("PUT", `/library/agents/${libraryAgentId}`, params);
+  }
+
+  listLibraryAgentPresets(params?: {
+    page?: number;
+    page_size?: number;
+  }): Promise<LibraryAgentPresetResponse> {
+    return this._get("/library/presets", params);
+  }
+
+  getLibraryAgentPreset(presetId: string): Promise<LibraryAgentPreset> {
+    return this._get(`/library/presets/${presetId}`);
+  }
+
+  createLibraryAgentPreset(
+    preset: CreateLibraryAgentPresetRequest,
+  ): Promise<LibraryAgentPreset> {
+    return this._request("POST", "/library/presets", preset);
+  }
+
+  updateLibraryAgentPreset(
+    presetId: string,
+    preset: CreateLibraryAgentPresetRequest,
+  ): Promise<LibraryAgentPreset> {
+    return this._request("PUT", `/library/presets/${presetId}`, preset);
+  }
+
+  async deleteLibraryAgentPreset(presetId: string): Promise<void> {
+    await this._request("DELETE", `/library/presets/${presetId}`);
+  }
+
+  executeLibraryAgentPreset(
+    presetId: string,
+    graphId: GraphID,
+    graphVersion: number,
+    nodeInput: { [key: string]: any },
+  ): Promise<{ id: string }> {
+    return this._request("POST", `/library/presets/${presetId}/execute`, {
+      graph_id: graphId,
+      graph_version: graphVersion,
+      node_input: nodeInput,
+    });
+  }
+
+  //////////////////////////////////
+  /////////// SCHEDULES ////////////
+  //////////////////////////////////
 
   async createSchedule(schedule: ScheduleCreatable): Promise<Schedule> {
     return this._request("POST", `/schedules`, schedule).then(
@@ -501,7 +574,7 @@ export default class BackendAPI {
     );
   }
 
-  async deleteSchedule(scheduleId: string): Promise<{ id: string }> {
+  async deleteSchedule(scheduleId: ScheduleID): Promise<{ id: string }> {
     return this._request("DELETE", `/schedules/${scheduleId}`);
   }
 
@@ -509,6 +582,14 @@ export default class BackendAPI {
     return this._get(`/schedules`).then((schedules) =>
       schedules.map(parseScheduleTimestamp),
     );
+  }
+
+  ///////////////////////////////////////////
+  /////////// INTERNAL FUNCTIONS ////////////
+  //////////////////////////////??///////////
+
+  private _get(path: string, query?: Record<string, any>) {
+    return this._request("GET", path, query);
   }
 
   private async _uploadFile(path: string, file: File): Promise<string> {
@@ -560,7 +641,6 @@ export default class BackendAPI {
     method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
     payload?: Record<string, any>,
-    page?: string,
   ) {
     if (method !== "GET") {
       console.debug(`${method} ${path} payload:`, payload);
