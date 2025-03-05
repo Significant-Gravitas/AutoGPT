@@ -49,7 +49,8 @@ def convert_comment_url_to_api_endpoint(comment_url: str) -> str:
     Returns the appropriate API endpoint path for the comment.
     """
     # First, check if this is already an API URL
-    if "api.github.com" in comment_url:
+    parsed_url = urlparse(comment_url)
+    if parsed_url.hostname == "api.github.com":
         return comment_url
 
     # Replace pull with issues for comment endpoints
