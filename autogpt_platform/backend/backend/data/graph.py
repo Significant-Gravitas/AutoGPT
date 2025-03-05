@@ -363,10 +363,12 @@ class GraphModel(Graph):
                     )
                     and (
                         for_run  # Skip input completion validation, unless when executing.
-                        or block.block_type == BlockType.INPUT
-                        or block.block_type == BlockType.OUTPUT
-                        or block.block_type == BlockType.AGENT
-                        or block.block_type == BlockType.AI
+                        or block.block_type
+                        in [
+                            BlockType.INPUT,
+                            BlockType.OUTPUT,
+                            BlockType.AGENT,
+                        ]
                     )
                 ):
                     raise ValueError(
