@@ -3,11 +3,6 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import Annotated, Any, Generic, Optional, TypeVar, Union
 
-from backend.data.user import (
-    get_user_by_id,
-    set_user_email_verification,
-    update_user_notification_preference,
-)
 from prisma import Json
 from prisma.enums import NotificationType
 from prisma.models import NotificationEvent, UserNotificationBatch
@@ -16,6 +11,7 @@ from prisma.types import UserNotificationBatchWhereInput
 # from backend.notifications.models import NotificationEvent
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
+from backend.data.user import get_user_by_id, update_user_notification_preference
 from backend.server.v2.store.exceptions import DatabaseError
 
 from .db import transaction
