@@ -46,45 +46,41 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
   };
 
   return (
-    <div className="flex w-full flex-col items-center justify-center">
-      <div className="w-[99vw]">
-        <h2 className="mx-auto mb-8 max-w-[1360px] px-4 font-poppins text-2xl font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
-          Featured agents
-        </h2>
+    <section className="mx-auto w-full max-w-7xl px-4 pb-16">
+      <h2 className="mb-8 font-poppins text-2xl font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+        Featured agents
+      </h2>
 
-        <div className="w-[99vw] pb-[60px]">
-          <Carousel
-            className="mx-auto pb-10"
-            opts={{
-              align: "center",
-              containScroll: "trimSnaps",
-            }}
-          >
-            <CarouselContent className="ml-[calc(50vw-690px)]">
-              {featuredAgents.map((agent, index) => (
-                <CarouselItem
-                  key={index}
-                  className="max-w-[460px] flex-[0_0_auto]"
-                >
-                  <Link
-                    href={`/marketplace/agent/${encodeURIComponent(agent.creator)}/${encodeURIComponent(agent.slug)}`}
-                  >
-                    <FeaturedAgentCard
-                      agent={agent}
-                      backgroundColor={getBackgroundColor(index)}
-                    />
-                  </Link>
-                </CarouselItem>
-              ))}
-            </CarouselContent>
-            <div className="relative mx-auto w-full max-w-[1360px] pl-4">
-              <CarouselIndicator />
-              <CarouselPrevious afterClick={handlePrevSlide} />
-              <CarouselNext afterClick={handleNextSlide} />
-            </div>
-          </Carousel>
+      <Carousel
+        opts={{
+          align: "center",
+          containScroll: "trimSnaps",
+        }}
+      >
+        <CarouselContent>
+          {featuredAgents.map((agent, index) => (
+            <CarouselItem
+              key={index}
+              className="h-[480px] md:basis-1/2 lg:basis-1/3"
+            >
+              <Link
+                href={`/marketplace/agent/${encodeURIComponent(agent.creator)}/${encodeURIComponent(agent.slug)}`}
+                className="block h-full"
+              >
+                <FeaturedAgentCard
+                  agent={agent}
+                  backgroundColor={getBackgroundColor(index)}
+                />
+              </Link>
+            </CarouselItem>
+          ))}
+        </CarouselContent>
+        <div className="relative mt-4">
+          <CarouselIndicator />
+          <CarouselPrevious afterClick={handlePrevSlide} />
+          <CarouselNext afterClick={handleNextSlide} />
         </div>
-      </div>
-    </div>
+      </Carousel>
+    </section>
   );
 };
