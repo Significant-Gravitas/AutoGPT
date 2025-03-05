@@ -155,6 +155,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               data-id="blocks-control-popover-trigger"
               data-testid="blocks-control-blocks-button"
               name="Blocks"
+              className="dark:hover:bg-slate-800"
             >
               <IconToyBrick />
             </Button>

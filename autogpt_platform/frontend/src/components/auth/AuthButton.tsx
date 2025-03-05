@@ -19,7 +19,7 @@ export default function AuthButton({
 }: Props) {
   return (
     <Button
-      className="w-full"
+      className="mt-2 w-full self-stretch rounded-md bg-slate-900 px-4 py-2"
       type={type}
       disabled={isLoading || disabled}
       onClick={onClick}
