@@ -11,6 +11,7 @@ import OnboardingAgentCard from "@/components/onboarding/OnboardingAgentCard";
 import { useEffect, useState } from "react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { StoreAgentDetails } from "@/lib/autogpt-server-api";
+import { finishOnboarding } from "../6-congrats/actions";
 
 function isEmptyOrWhitespace(str: string | undefined | null): boolean {
   return !str || str.trim().length === 0;
@@ -23,7 +24,9 @@ export default function Page() {
 
   useEffect(() => {
     api.getOnboardingAgents().then((agents) => {
-      console.log(agents);
+      if (agents.length < 2) {
+        finishOnboarding();
+      }
       setAgents(agents);
     });
   }, [api, setAgents]);
