@@ -204,7 +204,7 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
     if len(agents) < 2:
         agents += await prisma.models.StoreAgent.prisma().find_many(
             where={
-                "listing_id": {"notIn": [agent.listing_id for agent in agents]},
+                "listing_id": {"not_in": [agent.listing_id for agent in agents]},
             },
             order=[
                 {"featured": "desc"},
