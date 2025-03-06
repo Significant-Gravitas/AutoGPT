@@ -431,9 +431,27 @@ class SmartDecisionMakerBlock(Block):
             for pending_call_id, count in pending_tool_calls.items()
             for _ in range(count)
         ]
+
+        # If the SDM block only calls 1 tool at a time, this should not happen.
         if len(tool_output) > 1:
             logger.warning(
-                f"[node_exec_id={node_exec_id}] Multiple pending tool calls are prefilled using a single output. Execution may not be accurate."
+                f"[SmartDecisionMakerBlock-node_exec_id={node_exec_id}] "
+                f"Multiple pending tool calls are prefilled using a single output. "
+                f"Execution may not be accurate."
+            )
+
+        # Fallback on adding tool output in the conversation history as user prompt.
+        if len(tool_output) == 0:
+            logger.warning(
+                f"[SmartDecisionMakerBlock-node_exec_id={node_exec_id}] "
+                f"No pending tool calls found. This may indicate an issue with the "
+                f"conversation history, or an LLM calling two tools at the same time."
+            )
+            tool_output.append(
+                {
+                    "role": "user",
+                    "content": f"Last tool output: {json.dumps(input_data.last_tool_output)}",
+                }
             )
 
         prompt.extend(tool_output)
