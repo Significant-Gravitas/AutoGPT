@@ -17,6 +17,8 @@ class ApiResponse(BaseModel):
 class GraphData(BaseModel):
     nodes: list[Dict[str, Any]]
     edges: list[Dict[str, Any]]
+    graph_name: Optional[str] = None
+    graph_description: Optional[str] = None
 
 
 class Message(BaseModel):

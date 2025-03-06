@@ -51,11 +51,13 @@ class OttoService:
                 }
                 nodes_data.append(node_data)
 
-            return {
-                "nodes": nodes_data,
-                "graph_name": graph.name,
-                "graph_description": graph.description,
-            }
+            # Create a GraphData object with the required fields
+            return GraphData(
+                nodes=nodes_data,
+                edges=[],
+                graph_name=graph.name,
+                graph_description=graph.description,
+            )
         except Exception as e:
             logger.error(f"Failed to fetch graph data: {str(e)}")
             return None
@@ -79,14 +81,14 @@ class OttoService:
                 payload = {
                     "query": request.query,
                     "conversation_history": [
-                        msg.dict() for msg in request.conversation_history
+                        msg.model_dump() for msg in request.conversation_history
                     ],
                     "user_id": user_id,
                     "message_id": request.message_id,
                 }
 
                 if graph_data:
-                    payload["graph_data"] = graph_data
+                    payload["graph_data"] = graph_data.model_dump()
 
                 logger.info(f"Sending request to Otto API for user {user_id}")
                 logger.debug(f"Request payload: {payload}")
