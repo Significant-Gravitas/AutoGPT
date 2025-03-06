@@ -374,12 +374,14 @@ def llm_call(
                 if p["role"] != last_role:
                     messages.append({"role": p["role"], "content": p["content"]})
                     last_role = p["role"]
-                else:
-                    # If the role is the same as the last one, combine the content
-                    messages[-1]["content"] += "\n" + p["content"]
+                elif isinstance(messages[-1]["content"], str) and isinstance(
+                    p["content"], str
+                ):
+                    messages[-1]["content"] += p["content"]
 
         client = anthropic.Anthropic(api_key=credentials.api_key.get_secret_value())
         try:
+            print(">>>>>> messages", json.dumps(messages))
             resp = client.messages.create(
                 model=llm_model.value,
                 system=sysprompt,
@@ -415,7 +417,7 @@ def llm_call(
                 )
 
             return LLMResponse(
-                raw_response=resp.content[0],
+                raw_response=resp,
                 prompt=prompt,
                 response=(
                     resp.content[0].name

@@ -33,6 +33,81 @@ def get_database_manager_client():
     return get_service_client(DatabaseManager)
 
 
+def _get_tool_requests(entry: dict[str, Any]) -> list[str]:
+    """
+    Return a list of tool_call_ids if the entry is a tool request.
+    Supports both OpenAI and Anthropics formats.
+    """
+    tool_call_ids = []
+    if entry.get("role") != "assistant":
+        return tool_call_ids
+
+    # OpenAI: check for tool_calls in the entry.
+    calls = entry.get("tool_calls")
+    if isinstance(calls, list):
+        for call in calls:
+            if tool_id := call.get("id"):
+                tool_call_ids.append(tool_id)
+
+    # Anthropics: check content items for tool_use type.
+    content = entry.get("content")
+    if isinstance(content, list):
+        for item in content:
+            if item.get("type") != "tool_use":
+                continue
+            if tool_id := item.get("id"):
+                tool_call_ids.append(tool_id)
+
+    return tool_call_ids
+
+
+def _get_tool_responses(entry: dict[str, Any]) -> list[str]:
+    """
+    Return a list of tool_call_ids if the entry is a tool response.
+    Supports both OpenAI and Anthropics formats.
+    """
+    tool_call_ids: list[str] = []
+
+    # OpenAI: a tool response message with role "tool" and key "tool_call_id".
+    if entry.get("role") == "tool":
+        if tool_call_id := entry.get("tool_call_id"):
+            tool_call_ids.append(str(tool_call_id))
+
+    # Anthropics: check content items for tool_result type.
+    if entry.get("role") == "user":
+        content = entry.get("content")
+        if isinstance(content, list):
+            for item in content:
+                if item.get("type") != "tool_result":
+                    continue
+                if tool_call_id := item.get("tool_use_id"):
+                    tool_call_ids.append(tool_call_id)
+
+    return tool_call_ids
+
+
+def _create_tool_response(call_id: str, output: dict[str, Any]) -> dict[str, Any]:
+    """
+    Create a tool response message for either OpenAI or Anthropics,
+    based on the tool_id format.
+    """
+    content = output if isinstance(output, str) else json.dumps(output)
+
+    # Anthropics format: tool IDs typically start with "toolu_"
+    if call_id.startswith("toolu_"):
+        return {
+            "role": "user",
+            "type": "message",
+            "content": [
+                {"tool_use_id": call_id, "type": "tool_result", "content": content}
+            ],
+        }
+
+    # OpenAI format: tool IDs typically start with "call_".
+    # Or default fallback (if the tool_id doesn't match any known prefix)
+    return {"role": "tool", "tool_call_id": call_id, "content": content}
+
+
 def get_pending_tool_calls(conversation_history: list[Any]) -> dict[str, int]:
     """
     All the tool calls entry in the conversation history requires a response.
@@ -42,10 +117,10 @@ def get_pending_tool_calls(conversation_history: list[Any]) -> dict[str, int]:
     """
     pending_calls = Counter()
     for history in conversation_history:
-        for call in history.get("tool_calls") or []:
-            pending_calls[call.get("id")] += 1
+        for call_id in _get_tool_requests(history):
+            pending_calls[call_id] += 1
 
-        if call_id := history.get("tool_call_id"):
+        for call_id in _get_tool_responses(history):
             pending_calls[call_id] -= 1
 
     return {call_id: count for call_id, count in pending_calls.items() if count > 0}
@@ -70,7 +145,7 @@ class SmartDecisionMakerBlock(Block):
         credentials: llm.AICredentials = llm.AICredentialsField()
         sys_prompt: str = SchemaField(
             title="System Prompt",
-            default="Thinking carefully step by step decide which function to call. Always choose a function call from the list of function signatures.",
+            default="Thinking carefully step by step decide which function to call. Always choose a function call from the list of function signatures, and always provide the complete argument provided with the type matching the required jsonschema signature, no missing argument is allowed. If you have already completed the task objective, you can end the task by providing the end result of your work as a finish message.",
             description="The system prompt to provide additional context to the model.",
         )
         conversation_history: list[dict] = SchemaField(
@@ -122,7 +197,6 @@ class SmartDecisionMakerBlock(Block):
 
             conversation_history = data.get("conversation_history", [])
             pending_tool_calls = get_pending_tool_calls(conversation_history)
-
             last_tool_output = data.get("last_tool_output")
             if not last_tool_output and pending_tool_calls:
                 return {"last_tool_output"}
@@ -347,11 +421,7 @@ class SmartDecisionMakerBlock(Block):
         # Prefill all missing tool calls with the last tool output/
         # TODO: we need a better way to handle this.
         tool_output = [
-            {
-                "role": "tool",
-                "content": input_data.last_tool_output,
-                "tool_call_id": pending_call_id,
-            }
+            _create_tool_response(pending_call_id, input_data.last_tool_output)
             for pending_call_id, count in pending_tool_calls.items()
             for _ in range(count)
         ]
@@ -367,11 +437,17 @@ class SmartDecisionMakerBlock(Block):
             input_data.prompt = llm.fmt.format_string(input_data.prompt, values)
             input_data.sys_prompt = llm.fmt.format_string(input_data.sys_prompt, values)
 
-        if input_data.sys_prompt:
-            prompt.append({"role": "system", "content": input_data.sys_prompt})
+        prefix = "[Main Objective Prompt]: "
 
-        if input_data.prompt:
-            prompt.append({"role": "user", "content": input_data.prompt})
+        if input_data.sys_prompt and not any(
+            p["role"] == "system" and p["content"].startswith(prefix) for p in prompt
+        ):
+            prompt.append({"role": "system", "content": prefix + input_data.sys_prompt})
+
+        if input_data.prompt and not any(
+            p["role"] == "user" and p["content"].startswith(prefix) for p in prompt
+        ):
+            prompt.append({"role": "user", "content": prefix + input_data.prompt})
 
         response = llm.llm_call(
             credentials=credentials,
@@ -384,7 +460,7 @@ class SmartDecisionMakerBlock(Block):
         )
 
         if not response.tool_calls:
-            yield "finished", f"No Decision Made finishing task: {response.response}"
+            yield "finished", response.response
             return
 
         for tool_call in response.tool_calls:
