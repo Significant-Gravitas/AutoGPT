@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import datetime, timezone
 from multiprocessing import Manager
-from typing import Any, AsyncGenerator, Generator, Generic, Type, TypeVar
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Generator, Generic, Type, TypeVar
 
 from prisma import Json
 from prisma.enums import AgentExecutionStatus
@@ -19,6 +19,9 @@ from backend.data.queue import AsyncRedisEventBus, RedisEventBus
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util import mock, type
 from backend.util.settings import Config
+
+if TYPE_CHECKING:
+    pass
 
 
 class GraphExecutionEntry(BaseModel):
@@ -528,19 +531,38 @@ def merge_execution_input(data: BlockInput) -> BlockInput:
     return data
 
 
-async def get_latest_execution(node_id: str, graph_eid: str) -> ExecutionResult | None:
-    execution = await AgentNodeExecution.prisma().find_first(
+async def get_output_from_links(
+    links: dict[str, tuple[str, str]], graph_eid: str
+) -> BlockInput:
+    """
+    Get the latest output from the inbound static links of a node.
+    Args:
+        links: dict[node_id, (source_name, sink_name)] of the links to get the output from.
+        graph_eid: the id of the graph execution to get the output from.
+
+    Returns:
+        BlockInput: a dict of the latest output from the links.
+    """
+    executions = await AgentNodeExecution.prisma().find_many(
         where={
-            "agentNodeId": node_id,
+            "agentNodeId": {"in": list(links.keys())},
             "agentGraphExecutionId": graph_eid,
             "executionStatus": {"not": ExecutionStatus.INCOMPLETE},  # type: ignore
         },
         order={"queuedTime": "desc"},
+        distinct=["agentNodeId"],
         include=EXECUTION_RESULT_INCLUDE,
     )
-    if not execution:
-        return None
-    return ExecutionResult.from_db(execution)
+
+    latest_output = {}
+    for e in executions:
+        execution = ExecutionResult.from_db(e)
+        source_name, sink_name = links[execution.node_id]
+        if value := execution.output_data.get(source_name):
+            latest_output[sink_name] = value[-1]
+
+    print(">>>>>>>>> from links", links, "latest_output", latest_output)
+    return latest_output
 
 
 async def get_incomplete_executions(

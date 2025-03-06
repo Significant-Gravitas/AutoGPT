@@ -109,7 +109,7 @@ class LogMetadata:
         logger.exception(msg, extra={"json_fields": {**self.metadata, **extra}})
 
     def _wrap(self, msg: str, **extra):
-        return f"{self.prefix} {msg} {extra}"
+        return f"{self.prefix} {msg} {extra or ""}"
 
 
 T = TypeVar("T")
@@ -317,18 +317,18 @@ def _enqueue_next_nodes(
             )
 
             # Complete missing static input pins data using the last execution input.
-            static_link_names = {
-                link.sink_name
+            static_links = {
+                link.source_id: (link.source_name, link.sink_name)
                 for link in next_node.input_links
-                if link.is_static and link.sink_name not in next_node_input
+                if link.is_static
             }
-            if static_link_names and (
-                latest_execution := db_client.get_latest_execution(
-                    next_node_id, graph_exec_id
-                )
-            ):
-                for name in static_link_names:
-                    next_node_input[name] = latest_execution.input_data.get(name)
+            static_output = (
+                db_client.get_output_from_links(static_links, graph_exec_id)
+                if static_links
+                else {}
+            )
+            for name, value in static_output.items():
+                next_node_input[name] = next_node_input.get(name, value)
 
             # Validate the input data for the next node.
             next_node_input, validation_msg = validate_exec(next_node, next_node_input)
@@ -362,13 +362,8 @@ def _enqueue_next_nodes(
                 idata = iexec.input_data
                 ineid = iexec.node_exec_id
 
-                static_link_names = {
-                    link.sink_name
-                    for link in next_node.input_links
-                    if link.is_static and link.sink_name not in idata
-                }
-                for input_name in static_link_names:
-                    idata[input_name] = next_node_input[input_name]
+                for input_name, input_value in static_output.items():
+                    idata[input_name] = idata.get(input_name, input_value)
 
                 idata, msg = validate_exec(next_node, idata)
                 suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"

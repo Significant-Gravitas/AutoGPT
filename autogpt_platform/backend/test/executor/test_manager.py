@@ -154,11 +154,11 @@ async def test_input_pin_always_waited(server: SpinTestServer):
     even when default value on that pin is defined, the value has to be ignored.
 
     Test scenario:
-    StoreValueBlock1
+    StoreValueBlock
                 \\ input
                      >------- FindInDictionaryBlock | input_default: key: "", input: {}
                 // key
-    StoreValueBlock2
+    AgentInputBlock
     """
     logger.info("Starting test_input_pin_always_waited")
     nodes = [
@@ -167,8 +167,8 @@ async def test_input_pin_always_waited(server: SpinTestServer):
             input_default={"input": {"key1": "value1", "key2": "value2"}},
         ),
         graph.Node(
-            block_id=StoreValueBlock().id,
-            input_default={"input": "key2"},
+            block_id=AgentInputBlock().id,
+            input_default={"name": "input", "value": "key2"},
         ),
         graph.Node(
             block_id=FindInDictionaryBlock().id,
@@ -185,7 +185,7 @@ async def test_input_pin_always_waited(server: SpinTestServer):
         graph.Link(
             source_id=nodes[1].id,
             sink_id=nodes[2].id,
-            source_name="output",
+            source_name="result",
             sink_name="key",
         ),
     ]
