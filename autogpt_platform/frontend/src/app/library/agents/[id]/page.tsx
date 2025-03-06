@@ -118,25 +118,31 @@ export default function AgentRunsPage(): React.ReactElement {
 
   // load selectedRun based on selectedView
   useEffect(() => {
-    if (selectedView.type != "run" || !selectedView.id) return;
+    if (selectedView.type != "run" || !selectedView.id || !agent) return;
 
     const newSelectedRun = agentRuns.find(
       (run) => run.execution_id == selectedView.id,
-    )!;
-    if (newSelectedRun.execution_id !== selectedRun?.execution_id) {
+    );
+    if (selectedView.id !== selectedRun?.execution_id) {
       // Pull partial data from "cache" while waiting for the rest to load
-      setSelectedRun(newSelectedRun);
+      setSelectedRun(newSelectedRun ?? null);
 
       // Ensure corresponding graph version is available before rendering I/O
-      Promise.all([
-        api.getGraphExecutionInfo(
-          newSelectedRun.graph_id,
-          newSelectedRun.execution_id,
-        ),
-        getGraphVersion(newSelectedRun.graph_id, newSelectedRun.graph_version),
-      ]).then(([newSelectedRun, _]) => setSelectedRun(newSelectedRun));
+      api
+        .getGraphExecutionInfo(agent.agent_id, selectedView.id)
+        .then(async (run) => {
+          await getGraphVersion(run.graph_id, run.graph_version);
+          setSelectedRun(run);
+        });
     }
-  }, [api, selectedView, selectedRun?.execution_id, getGraphVersion]);
+  }, [
+    api,
+    selectedView,
+    agent,
+    agentRuns,
+    selectedRun?.execution_id,
+    getGraphVersion,
+  ]);
 
   const fetchSchedules = useCallback(async () => {
     if (!agent) return;
