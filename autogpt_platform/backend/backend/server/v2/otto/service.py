@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from backend.data import graph as graph_db
 from backend.data.block import get_block
 from backend.util.settings import Settings
+
 from .models import ApiResponse, ChatRequest, GraphData
 
 logger = logging.getLogger(__name__)
@@ -17,7 +18,9 @@ OTTO_API_URL = settings.config.otto_api_url
 
 class OttoService:
     @staticmethod
-    async def _fetch_graph_data(request: ChatRequest, user_id: str) -> Optional[GraphData]:
+    async def _fetch_graph_data(
+        request: ChatRequest, user_id: str
+    ) -> Optional[GraphData]:
         """Fetch graph data if requested and available."""
         if not (request.include_graph_data and request.graph_id):
             return None
@@ -107,9 +110,11 @@ class OttoService:
 
         except aiohttp.ClientError as e:
             logger.error(f"Connection error to Otto API: {str(e)}")
-            raise HTTPException(status_code=503, detail="Failed to connect to Otto service")
+            raise HTTPException(
+                status_code=503, detail="Failed to connect to Otto service"
+            )
         except Exception as e:
             logger.error(f"Unexpected error in Otto API proxy: {str(e)}")
             raise HTTPException(
                 status_code=500, detail="Internal server error in Otto proxy"
-            ) 
+            )

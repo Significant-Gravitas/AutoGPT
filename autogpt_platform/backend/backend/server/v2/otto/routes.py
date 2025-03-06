@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 
 from backend.server.utils import get_user_id
 from backend.util.settings import Settings
+
 from .models import ApiResponse, ChatRequest
 from .service import OttoService
 
@@ -14,6 +15,7 @@ settings = Settings()
 OTTO_API_URL = settings.config.otto_api_url
 
 router = APIRouter()
+
 
 @router.post(
     "/ask", response_model=ApiResponse, dependencies=[Depends(auth_middleware)]
