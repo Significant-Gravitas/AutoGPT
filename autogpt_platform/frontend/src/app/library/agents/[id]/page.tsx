@@ -94,8 +94,8 @@ export default function AgentRunsPage(): React.ReactElement {
         setAgentRuns(sortedRuns);
 
         // Preload the corresponding graph versions
-        sortedRuns.map((run) =>
-          getGraphVersion(run.graph_id, run.graph_version),
+        new Set(sortedRuns.map((run) => run.graph_version)).forEach((version) =>
+          getGraphVersion(agent.agent_id, version),
         );
 
         if (!selectedView.id && isFirstLoad && sortedRuns.length > 0) {
