@@ -1,5 +1,5 @@
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 import prisma
 import pydantic
@@ -17,7 +17,7 @@ from backend.server.v2.store.db import get_store_agent_details
 from backend.server.v2.store.model import StoreAgentDetails
 
 # Mapping from user reason id to categories to search for when choosing agent to show
-REASON_MAPPING: Dict[str, List[str]] = {
+REASON_MAPPING: dict[str, list[str]] = {
     "content_marketing": ["writing", "marketing", "creative"],
     "business_workflow_automation": ["business", "productivity"],
     "data_research": ["data", "research"],
@@ -29,7 +29,7 @@ REASON_MAPPING: Dict[str, List[str]] = {
 class UserOnboardingUpdate(pydantic.BaseModel):
     step: int
     usageReason: Optional[str] = None
-    integrations: List[str] = pydantic.Field(default_factory=list)
+    integrations: list[str] = pydantic.Field(default_factory=list)
     otherIntegrations: Optional[str] = None
     selectedAgentCreator: Optional[str] = None
     selectedAgentSlug: Optional[str] = None
