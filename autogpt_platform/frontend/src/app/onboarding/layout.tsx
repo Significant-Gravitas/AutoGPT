@@ -1,25 +1,20 @@
 "use client";
+import { UserOnboarding } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
   ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useState,
 } from "react";
 
-type OnboardingState = {
-  step: number;
-  usageReason?: string;
-  integrations: string[];
-  otherIntegrations?: string;
-  chosenAgentId?: string;
-  agentInput?: { [key: string]: string };
-};
-
 const OnboardingContext = createContext<
   | {
-      state: OnboardingState;
-      setState: (state: Partial<OnboardingState>) => void;
+      state: UserOnboarding | null;
+      setState: (state: Partial<UserOnboarding>) => void;
     }
   | undefined
 >(undefined);
@@ -27,7 +22,7 @@ const OnboardingContext = createContext<
 export function useOnboarding(step?: number) {
   const context = useContext(OnboardingContext);
   if (!context)
-    throw new Error("useOnboarding must be used within OnboardingLayout");
+    throw new Error("useOnboarding must be used within /onboarding pages");
 
   useEffect(() => {
     if (!step) return;
@@ -43,14 +38,57 @@ export default function OnboardingLayout({
 }: {
   children: ReactNode;
 }) {
-  const [state, setStateRaw] = useState<OnboardingState>({
-    step: 0,
-    integrations: [],
-  });
+  const [state, setStateRaw] = useState<UserOnboarding | null>(null);
+  const api = useBackendAPI();
+  const pathname = usePathname();
+  const router = useRouter();
 
-  const setState = (newState: Partial<OnboardingState>) => {
-    setStateRaw((prev) => ({ ...prev, ...newState }));
-  };
+  useEffect(() => {
+    const fetchOnboarding = async () => {
+      const onboarding = await api.getUserOnboarding();
+      setStateRaw(onboarding);
+
+      // Redirect outside onboarding if completed
+      if (onboarding.isCompleted && !pathname.startsWith("/onboarding/reset")) {
+        router.push("/library");
+      }
+    };
+    fetchOnboarding();
+  }, [api, pathname, router]);
+
+  const setState = useCallback(
+    (newState: Partial<UserOnboarding>) => {
+      function removeNullFields<T extends object>(obj: T): Partial<T> {
+        return Object.fromEntries(
+          Object.entries(obj).filter(([_, value]) => value != null),
+        ) as Partial<T>;
+      }
+
+      const updateState = (state: Partial<UserOnboarding>) => {
+        if (!state) return;
+
+        api.updateUserOnboarding(state);
+      };
+
+      setStateRaw((prev) => {
+        if (newState.step && prev && prev?.step !== newState.step) {
+          updateState(removeNullFields({ ...prev, ...newState }));
+        }
+
+        if (!prev) {
+          // Handle initial state
+          return {
+            step: 1,
+            integrations: [],
+            isCompleted: false,
+            ...newState,
+          };
+        }
+        return { ...prev, ...newState };
+      });
+    },
+    [api, setStateRaw],
+  );
 
   return (
     <OnboardingContext.Provider value={{ state, setState }}>

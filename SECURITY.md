@@ -20,6 +20,7 @@ Instead, please report them via:
 - Please provide detailed reports with reproducible steps
 - Include the version/commit hash where you discovered the vulnerability
 - Allow us a 90-day security fix window before any public disclosure
+- After patch is released, allow 30 days for users to update before public disclosure (for a total of 120 days max between update time and fix time)
 - Share any potential mitigations or workarounds if known
 
 ## Supported Versions
