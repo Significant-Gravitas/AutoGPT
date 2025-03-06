@@ -3237,10 +3237,10 @@
     "@storybook/react-dom-shim" "8.5.3"
     "@storybook/theming" "8.5.3"
 
-"@storybook/test-runner@^0.20.1":
-  version "0.20.1"
-  resolved "https://registry.yarnpkg.com/@storybook/test-runner/-/test-runner-0.20.1.tgz#e2efa6266d512312a6b810db376da2919008cccd"
-  integrity sha512-3WU/th/uncIR6vpQDK9hKjiZjmczsluoLbgkRV7ufxY9IgHCGcbIjvT5EPS+XZIaOrNGjaPsyB5cE1okKn9iSA==
+"@storybook/test-runner@^0.21.0":
+  version "0.21.3"
+  resolved "https://registry.yarnpkg.com/@storybook/test-runner/-/test-runner-0.21.3.tgz#20ad7a9ee20811c51f332557e362733df2c31c4b"
+  integrity sha512-tsorR0IVYElcaTZrT/ZrH/8YDw7c+wrLDN0e3qj1WdbqU8l2IU4+a32HLXaakzdDpuTn+d8xCk4VZMlzMrmToA==
   dependencies:
     "@babel/core" "^7.22.5"
     "@babel/generator" "^7.22.5"
@@ -3525,6 +3525,11 @@
   integrity sha512-r1bzfrm0tomOI8g1SzvCaQHo6Lcv6zu0EA+W2kHrt8dyrHQxGzBBL4kdkzIS+jBMV+EYcMAEAqXqYaLJq5rOZg==
   dependencies:
     "@babel/types" "^7.20.7"
+
+"@types/canvas-confetti@^1.9.0":
+  version "1.9.0"
+  resolved "https://registry.yarnpkg.com/@types/canvas-confetti/-/canvas-confetti-1.9.0.tgz#d1077752e046413c9881fbb2ba34a70ebe3c1773"
+  integrity sha512-aBGj/dULrimR1XDZLtG9JwxX1b4HPRF6CX9Yfwh3NvstZEm1ZL7RBnel4keCPSqs1ANRu1u2Aoz9R+VmtjYuTg==
 
 "@types/connect@3.4.36":
   version "3.4.36"
@@ -4931,6 +4936,11 @@ caniuse-lite@^1.0.30001579, caniuse-lite@^1.0.30001688:
   version "1.0.30001697"
   resolved "https://registry.yarnpkg.com/caniuse-lite/-/caniuse-lite-1.0.30001697.tgz#040bbbb54463c4b4b3377c716b34a322d16e6fc7"
   integrity sha512-GwNPlWJin8E+d7Gxq96jxM6w0w+VFeyyXRsjU58emtkYqnbwHqXm5uT2uCmO0RQE9htWknOP4xtBlLmM/gWxvQ==
+
+canvas-confetti@^1.9.3:
+  version "1.9.3"
+  resolved "https://registry.yarnpkg.com/canvas-confetti/-/canvas-confetti-1.9.3.tgz#ef4c857420ad8045ab4abe8547261c8cdf229845"
+  integrity sha512-rFfTURMvmVEX1gyXFgn5QMn81bYk70qa0HLzcIOSVEyl57n6o9ItHeBtUSWdvKAPY0xlvBHno4/v3QPrT83q9g==
 
 case-sensitive-paths-webpack-plugin@^2.4.0:
   version "2.4.0"

@@ -9,12 +9,13 @@ import prisma.models
 import prisma.types
 
 import backend.data.graph
-import backend.data.includes
 import backend.server.model
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
 import backend.server.v2.store.image_gen as store_image_gen
 import backend.server.v2.store.media as store_media
+from backend.data.db import locked_transaction
+from backend.data.includes import library_agent_include
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -92,15 +93,7 @@ async def list_library_agents(
     try:
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=where_clause,
-            include={
-                "Agent": {
-                    "include": {
-                        **backend.data.includes.AGENT_GRAPH_INCLUDE,
-                        "AgentGraphExecution": {"where": {"userId": user_id}},
-                    }
-                },
-                "Creator": True,
-            },
+            include=library_agent_include(user_id),
             order=order_by,
             skip=(page - 1) * page_size,
             take=page_size,
@@ -151,15 +144,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
                 "userId": user_id,
                 "isDeleted": False,
             },
-            include={
-                "Agent": {
-                    "include": {
-                        **backend.data.includes.AGENT_GRAPH_INCLUDE,
-                        "AgentGraphExecution": {"where": {"userId": user_id}},
-                    }
-                },
-                "Creator": True,
-            },
+            include=library_agent_include(user_id),
         )
 
         if not library_agent:
@@ -378,51 +363,70 @@ async def add_store_agent_to_library(
     )
 
     try:
-        store_listing_version = (
-            await prisma.models.StoreListingVersion.prisma().find_unique(
-                where={"id": store_listing_version_id}, include={"Agent": True}
+        async with locked_transaction(f"user_trx_{user_id}"):
+            store_listing_version = (
+                await prisma.models.StoreListingVersion.prisma().find_unique(
+                    where={"id": store_listing_version_id}, include={"Agent": True}
+                )
             )
-        )
-        if not store_listing_version or not store_listing_version.Agent:
-            logger.warning(
-                f"Store listing version not found: {store_listing_version_id}"
-            )
-            raise store_exceptions.AgentNotFoundError(
-                f"Store listing version {store_listing_version_id} not found or invalid"
-            )
+            if not store_listing_version or not store_listing_version.Agent:
+                logger.warning(
+                    f"Store listing version not found: {store_listing_version_id}"
+                )
+                raise store_exceptions.AgentNotFoundError(
+                    f"Store listing version {store_listing_version_id} not found or invalid"
+                )
 
-        store_agent = store_listing_version.Agent
-        if store_agent.userId == user_id:
-            logger.warning(
-                f"User #{user_id} attempted to add their own agent to their library"
-            )
-            raise store_exceptions.DatabaseError("Cannot add own agent to library")
+            graph = store_listing_version.Agent
+            if graph.userId == user_id:
+                logger.warning(
+                    f"User #{user_id} attempted to add their own agent to their library"
+                )
+                raise store_exceptions.DatabaseError("Cannot add own agent to library")
 
-        # Check if user already has this agent
-        existing_library_agent = await prisma.models.LibraryAgent.prisma().find_first(
-            where={
-                "userId": user_id,
-                "agentId": store_agent.id,
-                "agentVersion": store_agent.version,
-            }
-        )
-        if existing_library_agent:
+            # Check if user already has this agent
+            existing_library_agent = (
+                await prisma.models.LibraryAgent.prisma().find_first(
+                    where={
+                        "userId": user_id,
+                        "agentId": graph.id,
+                        "agentVersion": graph.version,
+                    },
+                    include=library_agent_include(user_id),
+                )
+            )
+            if existing_library_agent:
+                if existing_library_agent.isDeleted:
+                    # Even if agent exists it needs to be marked as not deleted
+                    await set_is_deleted_for_library_agent(
+                        user_id, graph.id, graph.version, False
+                    )
+                else:
+                    logger.debug(
+                        f"User #{user_id} already has graph #{graph.id} "
+                        "in their library"
+                    )
+                return library_model.LibraryAgent.from_db(existing_library_agent)
+
+            # Create LibraryAgent entry
+            added_agent = await prisma.models.LibraryAgent.prisma().create(
+                data={
+                    "userId": user_id,
+                    "Agent": {
+                        "connect": {
+                            "graphVersionId": {"id": graph.id, "version": graph.version}
+                        },
+                    },
+                    "isCreatedByUser": False,
+                },
+                include=library_agent_include(user_id),
+            )
             logger.debug(
-                f"User #{user_id} already has agent #{store_agent.id} in their library"
+                f"Added graph  #{graph.id} "
+                f"for store listing #{store_listing_version.id} "
+                f"to library for user #{user_id}"
             )
-            return library_model.LibraryAgent.from_db(existing_library_agent)
-
-        # Create LibraryAgent entry
-        added_agent = await prisma.models.LibraryAgent.prisma().create(
-            data={
-                "userId": user_id,
-                "agentId": store_agent.id,
-                "agentVersion": store_agent.version,
-                "isCreatedByUser": False,
-            }
-        )
-        logger.debug(f"Added agent #{store_agent.id} to library for user #{user_id}")
-        return library_model.LibraryAgent.from_db(added_agent)
+            return library_model.LibraryAgent.from_db(added_agent)
 
     except store_exceptions.AgentNotFoundError:
         # Reraise for external handling.
@@ -430,6 +434,45 @@ async def add_store_agent_to_library(
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error adding agent to library: {e}")
         raise store_exceptions.DatabaseError("Failed to add agent to library") from e
+
+
+async def set_is_deleted_for_library_agent(
+    user_id: str, agent_id: str, agent_version: int, is_deleted: bool
+) -> None:
+    """
+    Changes the isDeleted flag for a library agent.
+
+    Args:
+        user_id: The user's library from which the agent is being removed.
+        agent_id: The ID of the agent to remove.
+        agent_version: The version of the agent to remove.
+        is_deleted: Whether the agent is being marked as deleted.
+
+    Raises:
+        DatabaseError: If there's an issue updating the Library
+    """
+    logger.debug(
+        f"Setting isDeleted={is_deleted} for agent {agent_id} v{agent_version} "
+        f"in library for user {user_id}"
+    )
+    try:
+        logger.warning(
+            f"Setting isDeleted={is_deleted} for agent {agent_id} v{agent_version} in library for user {user_id}"
+        )
+        count = await prisma.models.LibraryAgent.prisma().update_many(
+            where={
+                "userId": user_id,
+                "agentId": agent_id,
+                "agentVersion": agent_version,
+            },
+            data={"isDeleted": is_deleted},
+        )
+        logger.warning(f"Updated {count} isDeleted library agents")
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error setting agent isDeleted: {e}")
+        raise store_exceptions.DatabaseError(
+            "Failed to set agent isDeleted in library"
+        ) from e
 
 
 ##############################################
