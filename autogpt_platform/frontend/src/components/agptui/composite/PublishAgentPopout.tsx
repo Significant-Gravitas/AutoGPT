@@ -263,7 +263,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
                   onClose={handleClose}
                   onDone={handleClose}
                   onViewProgress={() => {
-                    router.push("/marketplace/dashboard");
+                    router.push("/profile/dashboard");
                     handleClose();
                   }}
                 />
@@ -284,7 +284,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
       }}
     >
       <PopoverTrigger asChild>
-        {trigger || <Button variant="default">Publish Agent</Button>}
+        {trigger || <Button>Publish Agent</Button>}
       </PopoverTrigger>
       <PopoverAnchor asChild>
         <div className="fixed left-0 top-0 hidden h-screen w-screen items-center justify-center"></div>

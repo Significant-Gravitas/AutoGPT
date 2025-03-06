@@ -1,3 +1,5 @@
+"use client";
+
 import BackendAPI from "./client";
 import React, { createContext, useMemo } from "react";
 import MockClient, { MockClientProps } from "./mock_client";
