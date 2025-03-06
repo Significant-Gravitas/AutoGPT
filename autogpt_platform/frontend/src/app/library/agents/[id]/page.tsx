@@ -7,6 +7,7 @@ import {
   GraphExecution,
   GraphExecutionID,
   GraphExecutionMeta,
+  GraphID,
   GraphMeta,
   LibraryAgent,
   LibraryAgentID,
@@ -61,22 +62,46 @@ export default function AgentRunsPage(): React.ReactElement {
     setSelectedSchedule(schedule);
   }, []);
 
+  const [graphVersions, setGraphVersions] = useState<Record<number, GraphMeta>>(
+    {},
+  );
+  const getGraphVersion = useCallback(
+    async (graphID: GraphID, version: number) => {
+      if (graphVersions[version]) return graphVersions[version];
+
+      const graphVersion = await api.getGraph(graphID, version);
+      setGraphVersions((prev) => ({
+        ...prev,
+        [version]: graphVersion,
+      }));
+      return graphVersion;
+    },
+    [api, graphVersions],
+  );
+
   const fetchAgents = useCallback(() => {
     api.getLibraryAgent(agentID).then((agent) => {
       setAgent(agent);
 
-      api.getGraph(agent.agent_id).then(setGraph);
+      getGraphVersion(agent.agent_id, agent.agent_version).then(
+        (_graph) =>
+          (graph && graph.version == _graph.version) || setGraph(_graph),
+      );
       api.getGraphExecutions(agent.agent_id).then((agentRuns) => {
         const sortedRuns = agentRuns.toSorted(
           (a, b) => b.started_at - a.started_at,
         );
         setAgentRuns(sortedRuns);
 
+        // Preload the corresponding graph versions
+        new Set(sortedRuns.map((run) => run.graph_version)).forEach((version) =>
+          getGraphVersion(agent.agent_id, version),
+        );
+
         if (!selectedView.id && isFirstLoad && sortedRuns.length > 0) {
           // only for first load or first execution
           setIsFirstLoad(false);
           selectView({ type: "run", id: sortedRuns[0].execution_id });
-          setSelectedRun(sortedRuns[0]);
         }
       });
     });
@@ -85,7 +110,7 @@ export default function AgentRunsPage(): React.ReactElement {
         .getGraphExecutionInfo(agent.agent_id, selectedView.id)
         .then(setSelectedRun);
     }
-  }, [api, agentID, selectedView, isFirstLoad]);
+  }, [api, agentID, getGraphVersion, graph, selectedView, isFirstLoad, agent]);
 
   useEffect(() => {
     fetchAgents();
@@ -95,17 +120,29 @@ export default function AgentRunsPage(): React.ReactElement {
   useEffect(() => {
     if (selectedView.type != "run" || !selectedView.id || !agent) return;
 
-    // pull partial data from "cache" while waiting for the rest to load
+    const newSelectedRun = agentRuns.find(
+      (run) => run.execution_id == selectedView.id,
+    );
     if (selectedView.id !== selectedRun?.execution_id) {
-      setSelectedRun(
-        agentRuns.find((r) => r.execution_id == selectedView.id) ?? null,
-      );
-    }
+      // Pull partial data from "cache" while waiting for the rest to load
+      setSelectedRun(newSelectedRun ?? null);
 
-    api
-      .getGraphExecutionInfo(agent.agent_id, selectedView.id)
-      .then(setSelectedRun);
-  }, [api, selectedView, agentID]);
+      // Ensure corresponding graph version is available before rendering I/O
+      api
+        .getGraphExecutionInfo(agent.agent_id, selectedView.id)
+        .then(async (run) => {
+          await getGraphVersion(run.graph_id, run.graph_version);
+          setSelectedRun(run);
+        });
+    }
+  }, [
+    api,
+    selectedView,
+    agent,
+    agentRuns,
+    selectedRun?.execution_id,
+    getGraphVersion,
+  ]);
 
   const fetchSchedules = useCallback(async () => {
     if (!agent) return;
@@ -205,7 +242,7 @@ export default function AgentRunsPage(): React.ReactElement {
         {(selectedView.type == "run" && selectedView.id ? (
           selectedRun && (
             <AgentRunDetailsView
-              graph={graph}
+              graph={graphVersions[selectedRun.graph_version] ?? graph}
               run={selectedRun}
               agentActions={agentActions}
               deleteRun={() => setConfirmingDeleteAgentRun(selectedRun)}
