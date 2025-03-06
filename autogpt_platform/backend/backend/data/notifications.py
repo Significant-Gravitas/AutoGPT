@@ -263,7 +263,7 @@ class NotificationPreference(BaseModel):
 
 def get_batch_delay(notification_type: NotificationType) -> timedelta:
     return {
-        NotificationType.AGENT_RUN: timedelta(seconds=1),
+        NotificationType.AGENT_RUN: timedelta(minutes=1),
         NotificationType.ZERO_BALANCE: timedelta(minutes=60),
         NotificationType.LOW_BALANCE: timedelta(minutes=60),
         NotificationType.BLOCK_EXECUTION_FAILED: timedelta(minutes=60),
@@ -349,13 +349,14 @@ async def get_user_notification_oldest_message_in_batch(
     try:
         batch = await UserNotificationBatch.prisma().find_first(
             where={"userId": user_id, "type": notification_type},
-            order={"createdAt": "desc"},
+            include={"notifications": True},
         )
         if not batch:
             return None
         if not batch.notifications:
             return None
-        return batch.notifications[-1]
+        sorted_notifications = sorted(batch.notifications, key=lambda x: x.createdAt)
+        return sorted_notifications[0]
     except Exception as e:
         raise DatabaseError(
             f"Failed to get user notification last message in batch for user {user_id} and type {notification_type}: {e}"
@@ -399,4 +400,23 @@ async def get_user_notification_batch(
     except Exception as e:
         raise DatabaseError(
             f"Failed to get user notification batch for user {user_id} and type {notification_type}: {e}"
+        ) from e
+
+
+async def get_all_batches_by_type(
+    notification_type: NotificationType,
+) -> list[UserNotificationBatch]:
+    try:
+        return await UserNotificationBatch.prisma().find_many(
+            where={
+                "type": notification_type,
+                "notifications": {
+                    "some": {}  # Only return batches with at least one notification
+                },
+            },
+            include={"notifications": True},
+        )
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to get all batches by type {notification_type}: {e}"
         ) from e
