@@ -220,6 +220,7 @@ Then, replace the existing key in the `autogpt_platform/backend/.env` file with 
       docker compose up db -d
       poetry run prisma migrate deploy
       ```
+    
     </details>
 
 #### Starting the AutoGPT server without Docker
