@@ -215,9 +215,16 @@ class NotificationManager(AppService):
 
                         events = [
                             NotificationEventModel[
-                                get_data_type(event.type)
-                            ].model_validate(event.model_dump())
-                            for event in batch_data.notifications
+                                get_data_type(db_event.type)
+                            ].model_validate(
+                                {
+                                    "user_id": batch.userId,
+                                    "type": db_event.type,
+                                    "data": db_event.data,
+                                    "created_at": db_event.createdAt,
+                                }
+                            )
+                            for db_event in batch_data.notifications
                         ]
                         logger.info(f"{events=}")
 
