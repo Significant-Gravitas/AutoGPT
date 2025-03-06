@@ -32,3 +32,15 @@ GRAPH_EXECUTION_INCLUDE: prisma.types.AgentGraphExecutionInclude = {
 INTEGRATION_WEBHOOK_INCLUDE: prisma.types.IntegrationWebhookInclude = {
     "AgentNodes": {"include": AGENT_NODE_INCLUDE}  # type: ignore
 }
+
+
+def library_agent_include(user_id: str) -> prisma.types.LibraryAgentInclude:
+    return {
+        "Agent": {
+            "include": {
+                **AGENT_GRAPH_INCLUDE,
+                "AgentGraphExecution": {"where": {"userId": user_id}},
+            }
+        },
+        "Creator": True,
+    }
