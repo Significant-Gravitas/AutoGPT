@@ -42,7 +42,7 @@ config = Config()
 
 
 def log(msg, **kwargs):
-    logger.info("[ExecutionScheduler] " + msg, **kwargs)
+    logger.info("[Scheduler] " + msg, **kwargs)
 
 
 def job_listener(event):
