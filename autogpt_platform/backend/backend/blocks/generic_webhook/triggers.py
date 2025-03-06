@@ -1,6 +1,3 @@
-from backend.integrations.webhooks.generic import GenericWebhookType
-from pydantic import BaseModel
-
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -9,6 +6,7 @@ from backend.data.block import (
     BlockSchema,
 )
 from backend.data.model import SchemaField
+from backend.integrations.webhooks.generic import GenericWebhookType
 
 
 class GenericWebhookTriggerBlock(Block):
@@ -27,7 +25,7 @@ class GenericWebhookTriggerBlock(Block):
             description="The constants to be set when the block is put on the graph"
         )
 
-    example_paylod = {"message": "Hello, World!"}
+    example_payload = {"message": "Hello, World!"}
 
     def __init__(self):
         super().__init__(
@@ -42,10 +40,10 @@ class GenericWebhookTriggerBlock(Block):
             ),
             test_input=[
                 {"constants": {"key": "value"}},
-                {"payload": self.example_paylod},
+                {"payload": self.example_payload},
             ],
             test_output=[
-                ("output", self.example_paylod),
+                ("output", self.example_payload),
                 ("constants", {"key": "value"}),
             ],
         )
