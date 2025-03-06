@@ -1,6 +1,6 @@
-from datetime import datetime
 import logging
 import time
+from datetime import datetime
 from typing import Callable
 
 import aio_pika
