@@ -102,7 +102,6 @@ export default function AgentRunsPage(): React.ReactElement {
           // only for first load or first execution
           setIsFirstLoad(false);
           selectView({ type: "run", id: sortedRuns[0].execution_id });
-          setSelectedRun(sortedRuns[0]);
         }
       });
     });
