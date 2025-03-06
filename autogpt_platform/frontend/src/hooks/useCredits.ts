@@ -4,7 +4,6 @@ import {
   TransactionHistory,
 } from "@/lib/autogpt-server-api/types";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { loadStripe, Stripe } from "@stripe/stripe-js";
 import { useRouter } from "next/navigation";
 
 export default function useCredits({
@@ -12,13 +11,11 @@ export default function useCredits({
   fetchInitialAutoTopUpConfig = false,
   fetchInitialTransactionHistory = false,
   fetchInitialRefundRequests = false,
-  fetchTopUpLibrary = false,
 }: {
   fetchInitialCredits?: boolean;
   fetchInitialAutoTopUpConfig?: boolean;
   fetchInitialTransactionHistory?: boolean;
   fetchInitialRefundRequests?: boolean;
-  fetchTopUpLibrary?: boolean;
 } = {}): {
   credits: number | null;
   fetchCredits: () => void;
@@ -38,7 +35,6 @@ export default function useCredits({
     amount: number;
     threshold: number;
   } | null>(null);
-  const [stripe, setStripe] = useState<Stripe | null>(null);
 
   const api = useMemo(() => new AutoGPTServerAPI(), []);
   const router = useRouter();
@@ -52,21 +48,6 @@ export default function useCredits({
     if (!fetchInitialCredits) return;
     fetchCredits();
   }, [fetchCredits, fetchInitialCredits]);
-
-  useEffect(() => {
-    if (!fetchTopUpLibrary) return;
-    const fetchStripe = async () => {
-      if (!process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim()) {
-        console.debug("Stripe publishable key is not set.");
-        return;
-      }
-      const stripe = await loadStripe(
-        process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
-      );
-      setStripe(stripe);
-    };
-    fetchStripe();
-  }, [fetchTopUpLibrary]);
 
   const fetchAutoTopUpConfig = useCallback(async () => {
     const response = await api.getAutoTopUpConfig();
@@ -88,18 +69,10 @@ export default function useCredits({
 
   const requestTopUp = useCallback(
     async (credit_amount: number) => {
-      if (!stripe) {
-        console.error(
-          "Trying to top-up failed because Stripe is not loaded." +
-            "Did you set NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?",
-        );
-        return;
-      }
-
       const response = await api.requestTopUp(credit_amount);
       router.push(response.checkout_url);
     },
-    [api, router, stripe],
+    [api, router],
   );
 
   const refundTopUp = useCallback(

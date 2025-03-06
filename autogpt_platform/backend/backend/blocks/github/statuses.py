@@ -144,7 +144,7 @@ class GithubCreateStatusBlock(Block):
             data.description = description
 
         status_url = f"{repo_url}/statuses/{sha}"
-        response = api.post(status_url, json=data)
+        response = api.post(status_url, data=data.model_dump_json(exclude_none=True))
         result = response.json()
 
         return {
