@@ -59,7 +59,7 @@ def get_execution_client() -> ExecutionManager:
 
 
 def execute_graph(**kwargs):
-    args = JobArgs(**kwargs)
+    args = ExecutionJobArgs(**kwargs)
     try:
         log(f"Executing recurring job for graph #{args.graph_id}")
         get_execution_client().add_execution(
@@ -73,6 +73,7 @@ def execute_graph(**kwargs):
 
 
 class JobArgs(BaseModel):
+class ExecutionJobArgs(BaseModel):
     graph_id: str
     input_data: BlockInput
     user_id: str
@@ -80,14 +81,14 @@ class JobArgs(BaseModel):
     cron: str
 
 
-class JobInfo(JobArgs):
+class ExecutionJobInfo(ExecutionJobArgs):
     id: str
     name: str
     next_run_time: str
 
     @staticmethod
-    def from_db(job_args: JobArgs, job_obj: JobObj) -> "JobInfo":
-        return JobInfo(
+    def from_db(job_args: ExecutionJobArgs, job_obj: JobObj) -> "ExecutionJobInfo":
+        return ExecutionJobInfo(
             id=job_obj.id,
             name=job_obj.name,
             next_run_time=job_obj.next_run_time.isoformat(),
@@ -96,6 +97,7 @@ class JobInfo(JobArgs):
 
 
 class ExecutionScheduler(AppService):
+class Scheduler(AppService):
     scheduler: BlockingScheduler
 
     @classmethod
@@ -137,8 +139,8 @@ class ExecutionScheduler(AppService):
         cron: str,
         input_data: BlockInput,
         user_id: str,
-    ) -> JobInfo:
-        job_args = JobArgs(
+    ) -> ExecutionJobInfo:
+        job_args = ExecutionJobArgs(
             graph_id=graph_id,
             input_data=input_data,
             user_id=user_id,
@@ -152,35 +154,35 @@ class ExecutionScheduler(AppService):
             replace_existing=True,
         )
         log(f"Added job {job.id} with cron schedule '{cron}' input data: {input_data}")
-        return JobInfo.from_db(job_args, job)
+        return ExecutionJobInfo.from_db(job_args, job)
 
     @expose
-    def delete_schedule(self, schedule_id: str, user_id: str) -> JobInfo:
+    def delete_schedule(self, schedule_id: str, user_id: str) -> ExecutionJobInfo:
         job = self.scheduler.get_job(schedule_id)
         if not job:
             log(f"Job {schedule_id} not found.")
             raise ValueError(f"Job #{schedule_id} not found.")
 
-        job_args = JobArgs(**job.kwargs)
+        job_args = ExecutionJobArgs(**job.kwargs)
         if job_args.user_id != user_id:
             raise ValueError("User ID does not match the job's user ID.")
 
         log(f"Deleting job {schedule_id}")
         job.remove()
 
-        return JobInfo.from_db(job_args, job)
+        return ExecutionJobInfo.from_db(job_args, job)
 
     @expose
     def get_execution_schedules(
         self, graph_id: str | None = None, user_id: str | None = None
-    ) -> list[JobInfo]:
+    ) -> list[ExecutionJobInfo]:
         schedules = []
         for job in self.scheduler.get_jobs():
-            job_args = JobArgs(**job.kwargs)
+            job_args = ExecutionJobArgs(**job.kwargs)
             if (
                 job.next_run_time is not None
                 and (graph_id is None or job_args.graph_id == graph_id)
                 and (user_id is None or job_args.user_id == user_id)
             ):
-                schedules.append(JobInfo.from_db(job_args, job))
+                schedules.append(ExecutionJobInfo.from_db(job_args, job))
         return schedules
