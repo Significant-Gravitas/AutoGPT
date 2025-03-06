@@ -325,7 +325,10 @@ export default function useAgentGraph(
                           ...(node.data.executionResults || []),
                           {
                             execId: executionData.node_exec_id,
-                            data: executionData.output_data,
+                            data: {
+                              "[Input]": [executionData.input_data],
+                              ...executionData.output_data,
+                            },
                           },
                         ]
                       : node.data.executionResults,

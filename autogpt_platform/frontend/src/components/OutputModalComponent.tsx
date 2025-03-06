@@ -29,7 +29,12 @@ const OutputModalComponent: FC<OutputModalProps> = ({
         <div className="my-2 max-h-[384px] flex-grow overflow-y-auto rounded-md p-2">
           {executionResults.map((data, i) => (
             <>
-              <DataTable key={i} title={data.execId} data={data.data} />
+              <DataTable
+                key={i}
+                title={data.execId}
+                data={data.data}
+                truncateLongData={true}
+              />
               <Separator />
             </>
           ))}
