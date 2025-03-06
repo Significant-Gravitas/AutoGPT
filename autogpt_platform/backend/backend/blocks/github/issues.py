@@ -262,7 +262,18 @@ class GithubListCommentsBlock(Block):
                         "user": "test_user",
                         "url": "https://github.com/owner/repo/issues/1#issuecomment-123456789",
                     },
-                )
+                ),
+                (
+                    "comments",
+                    [
+                        {
+                            "id": 123456789,
+                            "body": "This is a test comment.",
+                            "user": "test_user",
+                            "url": "https://github.com/owner/repo/issues/1#issuecomment-123456789",
+                        }
+                    ],
+                ),
             ],
             test_mock={
                 "list_comments": lambda *args, **kwargs: [
