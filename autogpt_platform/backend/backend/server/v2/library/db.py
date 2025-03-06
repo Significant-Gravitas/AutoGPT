@@ -105,10 +105,24 @@ async def list_library_agents(
         logger.debug(
             f"Retrieved {len(library_agents)} library agents for user #{user_id}"
         )
+
+        # Only pass valid agents to the response
+        valid_library_agents: list[library_model.LibraryAgent] = []
+
+        for agent in library_agents:
+            try:
+                library_agent = library_model.LibraryAgent.from_db(agent)
+                valid_library_agents.append(library_agent)
+            except Exception as e:
+                # Skip this agent if there was an error
+                logger.error(
+                    f"Error parsing LibraryAgent when getting library agents from db: {e}"
+                )
+                continue
+
+        # Return the response with only valid agents
         return library_model.LibraryAgentResponse(
-            agents=[
-                library_model.LibraryAgent.from_db(agent) for agent in library_agents
-            ],
+            agents=valid_library_agents,
             pagination=backend.server.model.Pagination(
                 total_items=agent_count,
                 total_pages=(agent_count + page_size - 1) // page_size,
