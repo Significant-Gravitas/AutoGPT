@@ -47,6 +47,8 @@ import {
   TransactionHistory,
   User,
   UserPasswordCredentials,
+  OttoQuery,
+  OttoResponse,
   UserOnboarding,
   OttoQuery,
   OttoResponse,
