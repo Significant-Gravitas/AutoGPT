@@ -82,11 +82,11 @@ export default function AgentRunsPage(): React.ReactElement {
   const fetchAgents = useCallback(() => {
     api.getLibraryAgent(agentID).then((agent) => {
       setAgent(agent);
+
       getGraphVersion(agent.agent_id, agent.agent_version).then(
         (_graph) =>
           (graph && graph.version == _graph.version) || setGraph(_graph),
       );
-
       api.getGraphExecutions(agent.agent_id).then((agentRuns) => {
         const sortedRuns = agentRuns.toSorted(
           (a, b) => b.started_at - a.started_at,
