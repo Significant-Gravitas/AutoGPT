@@ -211,6 +211,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The email address to use for sending emails",
     )
 
+    use_agent_image_generation_v2: bool = Field(
+        default=True,
+        description="Whether to use the new agent image generation service",
+    )
+
     @field_validator("platform_base_url", "frontend_base_url")
     @classmethod
     def validate_platform_base_url(cls, v: str, info: ValidationInfo) -> str:

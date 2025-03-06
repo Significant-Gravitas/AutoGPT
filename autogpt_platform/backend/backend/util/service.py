@@ -42,6 +42,7 @@ from Pyro5 import api as pyro
 from Pyro5 import config as pyro_config
 
 from backend.data import db, rabbitmq, redis
+from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import to_dict
 from backend.util.process import AppProcess
 from backend.util.retry import conn_retry
@@ -251,6 +252,7 @@ EXCEPTION_MAPPING = {
         ValueError,
         TimeoutError,
         ConnectionError,
+        InsufficientBalanceError,
     ]
 }
 
@@ -324,7 +326,12 @@ class FastApiAppService(BaseAppService, ABC):
             f"[{self.service_name}] Starting RPC server at http://{api_host}:{self.get_port()}"
         )
         server = uvicorn.Server(
-            uvicorn.Config(self.fastapi_app, host=api_host, port=self.get_port())
+            uvicorn.Config(
+                self.fastapi_app,
+                host=api_host,
+                port=self.get_port(),
+                log_level="warning",
+            )
         )
         self.shared_event_loop.run_until_complete(server.serve())
 
@@ -441,6 +448,7 @@ def fastapi_get_service_client(service_type: Type[AS]) -> AS:
             except httpx.HTTPStatusError as e:
                 logger.error(f"HTTP error in {method_name}: {e.response.text}")
                 error = RemoteCallError.model_validate(e.response.json(), strict=False)
+                # DEBUG HELP: if you made a custom exception, make sure you override self.args to be how to make your exception
                 raise EXCEPTION_MAPPING.get(error.type, Exception)(
                     *(error.args or [str(e)])
                 )

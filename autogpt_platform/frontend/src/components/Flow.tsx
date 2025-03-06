@@ -26,7 +26,12 @@ import {
 import "@xyflow/react/dist/style.css";
 import { CustomNode } from "./CustomNode";
 import "./flow.css";
-import { BlockUIType, formatEdgeID, GraphID } from "@/lib/autogpt-server-api";
+import {
+  BlockUIType,
+  formatEdgeID,
+  GraphExecutionID,
+  GraphID,
+} from "@/lib/autogpt-server-api";
 import { getTypeColor, findNewlyAddedBlockCoordinates } from "@/lib/utils";
 import { history } from "./history";
 import { CustomEdge } from "./CustomEdge";
@@ -86,7 +91,9 @@ const FlowEditor: React.FC<{
   const [visualizeBeads, setVisualizeBeads] = useState<
     "no" | "static" | "animate"
   >("animate");
-  const [flowExecutionID, setFlowExecutionID] = useState<string | undefined>();
+  const [flowExecutionID, setFlowExecutionID] = useState<
+    GraphExecutionID | undefined
+  >();
   const {
     agentName,
     setAgentName,
@@ -164,7 +171,9 @@ const FlowEditor: React.FC<{
     if (params.get("open_scheduling") === "true") {
       setOpenCron(true);
     }
-    setFlowExecutionID(params.get("flowExecutionID") || undefined);
+    setFlowExecutionID(
+      (params.get("flowExecutionID") as GraphExecutionID) || undefined,
+    );
   }, [params]);
 
   useEffect(() => {
