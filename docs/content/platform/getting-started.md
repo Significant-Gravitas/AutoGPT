@@ -23,7 +23,7 @@ To setup the server, you need to have the following installed:
 - [Docker](https://docs.docker.com/get-docker/)
 - [Git](https://git-scm.com/downloads)
 
-#### Checking if you have Node.js & NPM installed
+### Checking if you have Node.js & NPM installed
 
 We use Node.js to run our frontend application.
 
@@ -42,7 +42,7 @@ npm -v
 
 Once you have Node.js installed, you can proceed to the next step.
 
-#### Checking if you have Docker & Docker Compose installed
+### Checking if you have Docker & Docker Compose installed
 
 Docker containerizes applications, while Docker Compose orchestrates multi-container Docker applications.
 
@@ -60,6 +60,8 @@ docker compose -v
 ```
 
 Once you have Docker and Docker Compose installed, you can proceed to the next step.
+
+## Setup
 
 ### Cloning the Repository
 The first step is cloning the AutoGPT repository to your computer.
@@ -129,7 +131,7 @@ Frontend UI Server: 3000
 Backend Websocket Server: 8001
 Execution API Rest Server: 8006
 
-#### Additional Notes
+### Additional Notes
 
 You may want to change your encryption key in the `.env` file in the `autogpt_platform/backend` directory.
 
@@ -147,74 +149,80 @@ poetry run cli gen-encrypt-key
 
 Then, replace the existing key in the `autogpt_platform/backend/.env` file with the new one.
 
+!!! Note
+    *These steps are an alternative to [Running the backend services](#running-the-backend-services)*
+    <details>
+    <summary><strong>Alternate Steps</strong></summary>
 
-### AutoGPT Agent Server 
 
-This is an initial project for creating the next generation of agent execution, which is an AutoGPT agent server.
-The agent server will enable the creation of composite multi-agent systems that utilize AutoGPT agents and other non-agent components as its primitives.
 
-#### Docs
+    ##### AutoGPT Agent Server (OLD)
+    This is an initial project for creating the next generation of agent execution, which is an AutoGPT agent server.
+    The agent server will enable the creation of composite multi-agent systems that utilize AutoGPT agents and other non-agent components as its primitives.
 
-You can access the docs for the [AutoGPT Agent Server here](https://docs.agpt.co/server/setup).
+    ##### Docs
 
-#### Setup
+    You can access the docs for the [AutoGPT Agent Server here](https://docs.agpt.co/#1-autogpt-server).
 
-We use the Poetry to manage the dependencies. To set up the project, follow these steps inside this directory:
+    ##### Setup
 
-0. Install Poetry
-    ```sh
-    pip install poetry
-    ```
-    
-1. Configure Poetry to use .venv in your project directory
-    ```sh
-    poetry config virtualenvs.in-project true
-    ```
+    We use the Poetry to manage the dependencies. To set up the project, follow these steps inside this directory:
 
-2. Enter the poetry shell
+    0. Install Poetry
+  
+      ```sh
+        pip install poetry
+      ```
+        
+    1. Configure Poetry to use .venv in your project directory
+  
+      ```sh
+        poetry config virtualenvs.in-project true
+      ```
 
-   ```sh
-   poetry shell
-   ```
-   
-3. Install dependencies
+    2. Enter the poetry shell
+  
+      ```sh
+      poetry shell
+      ```
+      
+    3. Install dependencies
 
-   ```sh
-   poetry install
-   ```
+      ```sh
+      poetry install
+      ```
 
-4. Copy .env.example to .env
+    4. Copy .env.example to .env
 
-   ```sh
-   cp .env.example .env
-   ```
-   
-5. Generate the Prisma client
+      ```sh
+      cp .env.example .env
+      ```
+      
+    5. Generate the Prisma client
 
-   ```sh
-   poetry run prisma generate
-   ```
-   
+      ```sh
+      poetry run prisma generate
+      ```
+      
 
-   > In case Prisma generates the client for the global Python installation instead of the virtual environment, the current mitigation is to just uninstall the global Prisma package:
-   >
-   > ```sh
-   > pip uninstall prisma
-   > ```
-   >
-   > Then run the generation again. The path *should* look something like this:  
-   > `<some path>/pypoetry/virtualenvs/backend-TQIRSwR6-py3.12/bin/prisma`
+      > In case Prisma generates the client for the global Python installation instead of the virtual environment, the current mitigation is to just uninstall the global Prisma package:
+      >
+      > ```sh
+      > pip uninstall prisma
+      > ```
+      >
+      > Then run the generation again. The path *should* look something like this:  
+      > `<some path>/pypoetry/virtualenvs/backend-TQIRSwR6-py3.12/bin/prisma`
 
-6. Migrate the database. Be careful because this deletes current data in the database.
+    6. Migrate the database. Be careful because this deletes current data in the database.
 
-   ```sh
-   docker compose up db -d
-   poetry run prisma migrate deploy
-   ```
+      ```sh
+      docker compose up db -d
+      poetry run prisma migrate deploy
+      ```
+    </details>
 
-#### Running The Server
-
-#### Starting the server without Docker
+#### Starting the AutoGPT server without Docker
 
 To run the server locally, start in the autogpt_platform folder:
 
@@ -230,7 +238,7 @@ cd backend
 poetry run app
 ```
 
-#### Starting the server with Docker
+#### Starting the AutoGPT server with Docker
 
 Run the following command to build the dockerfiles:
 
@@ -262,14 +270,6 @@ If you run into issues with dangling orphans, try:
 docker compose down --volumes --remove-orphans && docker-compose up --force-recreate --renew-anon-volumes --remove-orphans  
 ```
 
-#### Testing
-
-To run the tests:
-
-```sh
-poetry run test
-```
-
 ### Development
 
 #### Formatting & Linting
@@ -288,6 +288,14 @@ poetry run format
 Lint the code:
 ```sh
 poetry run lint
+```
+
+#### Testing
+
+To run the tests:
+
+```sh
+poetry run test
 ```
 
 ### Project Outline
@@ -340,13 +348,6 @@ The services run in independent Python processes and communicate through an IPC.
 A communication layer (`service.py`) is created to decouple the communication library from the implementation.
 
 Currently, the IPC is done using Pyro5 and abstracted in a way that allows a function decorated with `@expose` to be called from a different process.
-
-
-By default the daemons run on the following ports: 
-
-Execution Manager Daemon: 8002
-Execution Scheduler Daemon: 8003
-Rest Server Daemon: 8004
 
 ### Adding a New Agent Block
 
