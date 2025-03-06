@@ -34,13 +34,23 @@ export class LoginPage {
     await loginButton.waitFor({ state: "visible" });
 
     // Start waiting for navigation before clicking
-    const navigationPromise = this.page.waitForURL("/", { timeout: 10_000 });
+    const navigationPromise = Promise.race([
+      this.page.waitForURL("/", { timeout: 10_000 }), // Wait for home page
+      this.page.waitForURL("/marketplace", { timeout: 10_000 }), // Wait for home page
+      this.page.waitForURL("/onboarding/**", { timeout: 10_000 }), // Wait for onboarding page
+    ]);
 
     console.log("About to click login button"); // Debug log
     await loginButton.click();
 
     console.log("Waiting for navigation"); // Debug log
     await navigationPromise;
+
+    // If the user is redirected to onboarding, manually redirect to /marketplace
+    if (this.page.url().includes("/onboarding")) {
+      console.log("Redirecting to /marketplace"); // Debug log
+      await this.page.goto("/marketplace");
+    }
 
     console.log("Navigation complete, waiting for network idle"); // Debug log
     await this.page.waitForLoadState("load", { timeout: 10_000 });
