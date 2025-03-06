@@ -31,7 +31,7 @@ export const BreadCrumbs: React.FC<BreadCrumbsProps> = ({ items }) => {
               </span>
             </Link>
             {index < items.length - 1 && (
-              <span className="font-['SF Pro'] text-center text-2xl font-normal text-black dark:text-neutral-100">
+              <span className="text-center text-2xl font-normal text-black dark:text-neutral-100">
                 /
               </span>
             )}

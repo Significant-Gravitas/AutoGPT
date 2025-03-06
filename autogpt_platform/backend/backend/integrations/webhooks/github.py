@@ -67,7 +67,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
 
         headers = {
             **self.GITHUB_API_DEFAULT_HEADERS,
-            "Authorization": credentials.bearer(),
+            "Authorization": credentials.auth_header(),
         }
 
         repo, github_hook_id = webhook.resource, webhook.provider_webhook_id
@@ -96,7 +96,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
 
         headers = {
             **self.GITHUB_API_DEFAULT_HEADERS,
-            "Authorization": credentials.bearer(),
+            "Authorization": credentials.auth_header(),
         }
         webhook_data = {
             "name": "web",
@@ -142,7 +142,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
 
         headers = {
             **self.GITHUB_API_DEFAULT_HEADERS,
-            "Authorization": credentials.bearer(),
+            "Authorization": credentials.auth_header(),
         }
 
         if webhook_type == self.WebhookType.REPO:

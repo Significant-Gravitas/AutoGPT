@@ -122,22 +122,22 @@ It uses the Twitter API (Tweepy) to fetch quote tweets for a given tweet ID, han
 | max_results | Maximum number of results to return (max 100) |
 | exclude | Types of tweets to exclude |
 | pagination_token | Token for getting next page of results |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| media_fields | Media-related fields to include [more info](twitter/twitter.md#common-input). |
-| place_fields | Location-related fields to include [more info](twitter/twitter.md#common-input). |
-| poll_fields | Poll-related fields to include [more info](twitter/twitter.md#common-input). |
-| tweet_fields | Tweet-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| media_fields | Media-related fields to include [more info](twitter.md#common-input). |
+| place_fields | Location-related fields to include [more info](twitter.md#common-input). |
+| poll_fields | Poll-related fields to include [more info](twitter.md#common-input). |
+| tweet_fields | Tweet-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
 |--------|-------------|
 | ids | List of quote tweet IDs |
 | texts | List of quote tweet text contents |
-| next_token | Token for retrieving next page [more info](twitter/twitter.md#common-output). |
+| next_token | Token for retrieving next page [more info](twitter.md#common-output). |
 | data | Complete tweet data |
-| included | Additional requested data [more info](twitter/twitter.md#common-output). |
-| meta | Pagination and result metadata [more info](twitter/twitter.md#common-output). |
+| included | Additional requested data [more info](twitter.md#common-output). |
+| meta | Pagination and result metadata [more info](twitter.md#common-output). |
 | error | Error message if request failed |
 
 ### Possible use case
@@ -219,12 +219,12 @@ It uses the Twitter API (Tweepy) to fetch retweeter information for a given twee
 | tweet_id | ID of the tweet to get retweeters for |
 | max_results | Maximum number of results per page (1-100) |
 | pagination_token | Token for getting next page of results |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| media_fields | Media-related fields to include [more info](twitter/twitter.md#common-input). |
-| place_fields | Location-related fields to include [more info](twitter/twitter.md#common-input). |
-| poll_fields | Poll-related fields to include [more info](twitter/twitter.md#common-input). |
-| tweet_fields | Tweet-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| media_fields | Media-related fields to include [more info](twitter.md#common-input). |
+| place_fields | Location-related fields to include [more info](twitter.md#common-input). |
+| poll_fields | Poll-related fields to include [more info](twitter.md#common-input). |
+| tweet_fields | Tweet-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -234,8 +234,8 @@ It uses the Twitter API (Tweepy) to fetch retweeter information for a given twee
 | usernames | List of usernames who retweeted |
 | next_token | Token for retrieving next page |
 | data | Complete user data |
-| included | Additional requested data [more info](twitter/twitter.md#common-output). |
-| meta | Pagination and result metadata [more info](twitter/twitter.md#common-output). |
+| included | Additional requested data [more info](twitter.md#common-output). |
+| meta | Pagination and result metadata [more info](twitter.md#common-output). |
 | error | Error message if request failed |
 
 ### Possible use case
@@ -261,12 +261,12 @@ It queries the Twitter API (Tweepy) with the provided user ID to fetch tweets me
 | user_id | ID of user to get mentions for |
 | max_results | Number of results per page (5-100) |
 | pagination_token | Token for getting next page of results |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| media_fields | Media-related fields to include [more info](twitter/twitter.md#common-input). |
-| place_fields | Location-related fields to include [more info](twitter/twitter.md#common-input). |
-| poll_fields | Poll-related fields to include [more info](twitter/twitter.md#common-input). |
-| tweet_fields | Tweet-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| media_fields | Media-related fields to include [more info](twitter.md#common-input). |
+| place_fields | Location-related fields to include [more info](twitter.md#common-input). |
+| poll_fields | Poll-related fields to include [more info](twitter.md#common-input). |
+| tweet_fields | Tweet-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -277,8 +277,8 @@ It queries the Twitter API (Tweepy) with the provided user ID to fetch tweets me
 | userNames | List of usernames who mentioned target user |
 | next_token | Token for retrieving next page |
 | data | Complete tweet data |
-| included | Additional requested data [more info](twitter/twitter.md#common-output). |
-| meta | Pagination and result metadata [more info](twitter/twitter.md#common-output). |
+| included | Additional requested data [more info](twitter.md#common-output). |
+| meta | Pagination and result metadata [more info](twitter.md#common-output). |
 | error | Error message if request failed |
 
 ### Possible use case
@@ -303,12 +303,12 @@ It uses the Twitter API (Tweepy) to fetch tweets from the home timeline, handlin
 | credentials | Twitter API credentials with required scopes |
 | max_results | Number of results per page (5-100) |
 | pagination_token | Token for getting next page of results |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| media_fields | Media-related fields to include [more info](twitter/twitter.md#common-input). |
-| place_fields | Location-related fields to include [more info](twitter/twitter.md#common-input). |
-| poll_fields | Poll-related fields to include [more info](twitter/twitter.md#common-input). |
-| tweet_fields | Tweet-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| media_fields | Media-related fields to include [more info](twitter.md#common-input). |
+| place_fields | Location-related fields to include [more info](twitter.md#common-input). |
+| poll_fields | Poll-related fields to include [more info](twitter.md#common-input). |
+| tweet_fields | Tweet-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -319,8 +319,8 @@ It uses the Twitter API (Tweepy) to fetch tweets from the home timeline, handlin
 | userNames | List of usernames who authored tweets |
 | next_token | Token for retrieving next page |
 | data | Complete tweet data |
-| included | Additional requested data [more info](twitter/twitter.md#common-output). |
-| meta | Pagination and result metadata [more info](twitter/twitter.md#common-output). |
+| included | Additional requested data [more info](twitter.md#common-output). |
+| meta | Pagination and result metadata [more info](twitter.md#common-output). |
 | error | Error message if request failed |
 
 ### Possible use case
@@ -346,12 +346,12 @@ It uses the Twitter API (Tweepy) to fetch tweets from a specified user's timelin
 | user_id | ID of user to get tweets from |
 | max_results | Number of results per page (5-100) |
 | pagination_token | Token for getting next page of results |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| media_fields | Media-related fields to include [more info](twitter/twitter.md#common-input). |
-| place_fields | Location-related fields to include [more info](twitter/twitter.md#common-input). |
-| poll_fields | Poll-related fields to include [more info](twitter/twitter.md#common-input). |
-| tweet_fields | Tweet-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| media_fields | Media-related fields to include [more info](twitter.md#common-input). |
+| place_fields | Location-related fields to include [more info](twitter.md#common-input). |
+| poll_fields | Poll-related fields to include [more info](twitter.md#common-input). |
+| tweet_fields | Tweet-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -362,8 +362,8 @@ It uses the Twitter API (Tweepy) to fetch tweets from a specified user's timelin
 | userNames | List of usernames who authored tweets |
 | next_token | Token for retrieving next page |
 | data | Complete tweet data |
-| included | Additional requested data [more info](twitter/twitter.md#common-output). |
-| meta | Pagination and result metadata [more info](twitter/twitter.md#common-output). |
+| included | Additional requested data [more info](twitter.md#common-output). |
+| meta | Pagination and result metadata [more info](twitter.md#common-output). |
 | error | Error message if request failed |
 
 ### Possible use case
@@ -387,12 +387,12 @@ It uses the Twitter API (Tweepy) to fetch a single tweet by its ID, handling aut
 |-------|-------------|
 | credentials | Twitter API credentials with required scopes |
 | tweet_id | ID of the tweet to fetch |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| media_fields | Media-related fields to include [more info](twitter/twitter.md#common-input). |
-| place_fields | Location-related fields to include [more info](twitter/twitter.md#common-input). |
-| poll_fields | Poll-related fields to include [more info](twitter/twitter.md#common-input). |
-| tweet_fields | Tweet-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| media_fields | Media-related fields to include [more info](twitter.md#common-input). |
+| place_fields | Location-related fields to include [more info](twitter.md#common-input). |
+| poll_fields | Poll-related fields to include [more info](twitter.md#common-input). |
+| tweet_fields | Tweet-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -402,8 +402,8 @@ It uses the Twitter API (Tweepy) to fetch a single tweet by its ID, handling aut
 | userId | ID of tweet author |
 | userName | Username of tweet author |
 | data | Complete tweet data |
-| included | Additional requested data [more info](twitter/twitter.md#common-output). |
-| meta | Tweet metadata [more info](twitter/twitter.md#common-output). |
+| included | Additional requested data [more info](twitter.md#common-output). |
+| meta | Tweet metadata [more info](twitter.md#common-output). |
 | error | Error message if request failed |
 
 ### Possible use case
@@ -427,12 +427,12 @@ It uses the Twitter API (Tweepy) to batch fetch tweets by their IDs, handling au
 |-------|-------------|
 | credentials | Twitter API credentials with required scopes |
 | tweet_ids | List of tweet IDs to fetch (max 100) |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| media_fields | Media-related fields to include [more info](twitter/twitter.md#common-input). |
-| place_fields | Location-related fields to include [more info](twitter/twitter.md#common-input). |
-| poll_fields | Poll-related fields to include [more info](twitter/twitter.md#common-input). |
-| tweet_fields | Tweet-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| media_fields | Media-related fields to include [more info](twitter.md#common-input). |
+| place_fields | Location-related fields to include [more info](twitter.md#common-input). |
+| poll_fields | Poll-related fields to include [more info](twitter.md#common-input). |
+| tweet_fields | Tweet-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -442,8 +442,8 @@ It uses the Twitter API (Tweepy) to batch fetch tweets by their IDs, handling au
 | userIds | List of tweet author IDs |
 | userNames | List of tweet author usernames |
 | data | Complete tweet data array |
-| included | Additional requested data [more info](twitter/twitter.md#common-output). |
-| meta | Tweet metadata [more info](twitter/twitter.md#common-output). |
+| included | Additional requested data [more info](twitter.md#common-output). |
+| meta | Tweet metadata [more info](twitter.md#common-output). |
 | error | Error message if request failed |
 
 ### Possible use case
@@ -497,9 +497,9 @@ It uses the Twitter API (Tweepy) to fetch information about users who liked a gi
 | tweet_id | ID of tweet to get liking users for |
 | max_results | Maximum number of results to return (1-100) |
 | pagination_token | Token for getting next page of results |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| tweet_fields | Tweet-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| tweet_fields | Tweet-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -508,8 +508,8 @@ It uses the Twitter API (Tweepy) to fetch information about users who liked a gi
 | username | List of usernames who liked |
 | next_token | Token for retrieving next page |
 | data | Complete user data |
-| included | Additional requested data [more info](twitter/twitter.md#common-output). |
-| meta | Pagination and result metadata [more info](twitter/twitter.md#common-output). |
+| included | Additional requested data [more info](twitter.md#common-output). |
+| meta | Pagination and result metadata [more info](twitter.md#common-output). |
 | error | Error message if request failed |
 
 ### Possible use case
@@ -535,12 +535,12 @@ It uses the Twitter API (Tweepy) to fetch tweets liked by a given user ID, handl
 | user_id | ID of user to get liked tweets for |
 | max_results | Maximum number of results per page (5-100) |
 | pagination_token | Token for getting next page of results |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| media_fields | Media-related fields to include [more info](twitter/twitter.md#common-input). |
-| place_fields | Location-related fields to include [more info](twitter/twitter.md#common-input). |
-| poll_fields | Poll-related fields to include [more info](twitter/twitter.md#common-input). |
-| tweet_fields | Tweet-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| media_fields | Media-related fields to include [more info](twitter.md#common-input). |
+| place_fields | Location-related fields to include [more info](twitter.md#common-input). |
+| poll_fields | Poll-related fields to include [more info](twitter.md#common-input). |
+| tweet_fields | Tweet-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -551,8 +551,8 @@ It uses the Twitter API (Tweepy) to fetch tweets liked by a given user ID, handl
 | userNames | List of tweet author usernames |
 | next_token | Token for retrieving next page |
 | data | Complete tweet data |
-| included | Additional requested data [more info](twitter/twitter.md#common-output). |
-| meta | Pagination and result metadata [more info](twitter/twitter.md#common-output). |
+| included | Additional requested data [more info](twitter.md#common-output). |
+| meta | Pagination and result metadata [more info](twitter.md#common-output). |
 | error | Error message if request failed |
 
 ### Possible use case
@@ -689,12 +689,12 @@ It uses the Twitter API (Tweepy) to fetch bookmarked tweets, handling pagination
 | credentials | Twitter API credentials with required scopes |
 | max_results | Maximum number of results per page (1-100) |
 | pagination_token | Token for getting next page of results |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| media_fields | Media-related fields to include [more info](twitter/twitter.md#common-input). |
-| place_fields | Location-related fields to include [more info](twitter/twitter.md#common-input). |
-| poll_fields | Poll-related fields to include [more info](twitter/twitter.md#common-input). |
-| tweet_fields | Tweet-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| media_fields | Media-related fields to include [more info](twitter.md#common-input). |
+| place_fields | Location-related fields to include [more info](twitter.md#common-input). |
+| poll_fields | Poll-related fields to include [more info](twitter.md#common-input). |
+| tweet_fields | Tweet-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -705,8 +705,8 @@ It uses the Twitter API (Tweepy) to fetch bookmarked tweets, handling pagination
 | userName | List of tweet author usernames |
 | next_token | Token for retrieving next page |
 | data | Complete tweet data |
-| included | Additional requested data [more info](twitter/twitter.md#common-output). |
-| meta | Pagination and result metadata [more info](twitter/twitter.md#common-output). |
+| included | Additional requested data [more info](twitter.md#common-output). |
+| meta | Pagination and result metadata [more info](twitter.md#common-output). |
 | error | Error message if request failed |
 
 ### Possible use case
@@ -906,9 +906,9 @@ It uses the Twitter API (Tweepy) to fetch followers for a given user ID, handlin
 | target_user_id | ID of user to get followers for |
 | max_results | Maximum number of results per page (1-1000) |
 | pagination_token | Token for getting next page of results |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| tweet_fields | Tweet-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| tweet_fields | Tweet-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -917,8 +917,8 @@ It uses the Twitter API (Tweepy) to fetch followers for a given user ID, handlin
 | usernames | List of follower usernames |
 | next_token | Token for retrieving next page |
 | data | Complete user data |
-| includes | Additional requested data [more info](twitter/twitter.md#common-output). |
-| meta | Pagination and result metadata [more info](twitter/twitter.md#common-output). |
+| includes | Additional requested data [more info](twitter.md#common-output). |
+| meta | Pagination and result metadata [more info](twitter.md#common-output). |
 | error | Error message if request failed |
 
 ### Possible use case
@@ -944,9 +944,9 @@ It uses the Twitter API (Tweepy) to fetch following list for a given user ID, ha
 | target_user_id | ID of user to get following list for |
 | max_results | Maximum number of results per page (1-1000) |
 | pagination_token | Token for getting next page of results |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| tweet_fields | Tweet-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| tweet_fields | Tweet-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -955,8 +955,8 @@ It uses the Twitter API (Tweepy) to fetch following list for a given user ID, ha
 | usernames | List of following usernames |
 | next_token | Token for retrieving next page |
 | data | Complete user data |
-| includes | Additional requested data [more info](twitter/twitter.md#common-output). |
-| meta | Pagination and result metadata [more info](twitter/twitter.md#common-output). |
+| includes | Additional requested data [more info](twitter.md#common-output). |
+| meta | Pagination and result metadata [more info](twitter.md#common-output). |
 | error | Error message if request failed |
 
 ### Possible use case
@@ -1009,9 +1009,9 @@ It uses the Twitter API (Tweepy) to fetch muted users, handling authentication a
 | credentials | Twitter API credentials with required scopes |
 | max_results | Maximum results per page (1-1000, default 10) |
 | pagination_token | Token for getting next/previous page |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| tweet_fields | Tweet-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| tweet_fields | Tweet-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -1073,9 +1073,9 @@ It uses the Twitter API (Tweepy) to fetch user data for a single user identified
 |-------|-------------|
 | credentials | Twitter API credentials with required scopes |
 | identifier | User identifier (either user ID or username) |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| tweet_fields | Tweet-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| tweet_fields | Tweet-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -1108,9 +1108,9 @@ It uses the Twitter API (Tweepy) to batch fetch user data for multiple users ide
 |-------|-------------|
 | credentials | Twitter API credentials with required scopes |
 | identifier | List of user identifiers (either user IDs or usernames, max 100) |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| tweet_fields | Tweet-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| tweet_fields | Tweet-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -1145,9 +1145,9 @@ It uses the Twitter API (Tweepy) to search for Spaces matching the query paramet
 | query | Search term to find in Space titles |
 | max_results | Maximum number of results to return (1-100, default 10) |
 | state | Type of Spaces to return (live, scheduled, or all) |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| space_fields | Space-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| space_fields | Space-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -1182,9 +1182,9 @@ It uses the Twitter API (Tweepy) to batch fetch Space data for multiple Spaces, 
 |-------|-------------|
 | credentials | Twitter API credentials with required scopes |
 | identifier | Choice of lookup by Space IDs or creator user IDs |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| space_fields | Space-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| space_fields | Space-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -1216,9 +1216,9 @@ It uses the Twitter API (Tweepy) to fetch Space data for a single Space ID, hand
 |-------|-------------|
 | credentials | Twitter API credentials with required scopes |
 | space_id | ID of Space to retrieve |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| space_fields | Space-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| space_fields | Space-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -1251,8 +1251,8 @@ It uses the Twitter API (Tweepy) to fetch buyer information for a Space, handlin
 |-------|-------------|
 | credentials | Twitter API credentials with required scopes |
 | space_id | ID of Space to get buyers for |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -1284,12 +1284,12 @@ It uses the Twitter API (Tweepy) to fetch tweets from a Space, handling authenti
 |-------|-------------|
 | credentials | Twitter API credentials with required scopes |
 | space_id | ID of Space to get tweets for |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| media_fields | Media-related fields to include [more info](twitter/twitter.md#common-input). |
-| place_fields | Location-related fields to include [more info](twitter/twitter.md#common-input). |
-| poll_fields | Poll-related fields to include [more info](twitter/twitter.md#common-input). |
-| tweet_fields | Tweet-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| media_fields | Media-related fields to include [more info](twitter.md#common-input). |
+| place_fields | Location-related fields to include [more info](twitter.md#common-input). |
+| poll_fields | Poll-related fields to include [more info](twitter.md#common-input). |
+| tweet_fields | Tweet-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -1322,9 +1322,9 @@ It uses the Twitter API (Tweepy) to fetch list data for a single list ID, handli
 |-------|-------------|
 | credentials | Twitter API credentials with required scopes |
 | list_id | ID of the Twitter List to retrieve |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| list_fields | List-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| list_fields | List-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -1361,9 +1361,9 @@ It uses the Twitter API (Tweepy) to fetch owned lists for a given user ID, handl
 | user_id | ID of user whose Lists to retrieve |
 | max_results | Maximum results per page (1-100, default 10) |
 | pagination_token | Token for getting next page |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| list_fields | List-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| list_fields | List-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -1532,12 +1532,12 @@ It uses the Twitter API (Tweepy) to fetch tweets from a specified List, handling
 | list_id | ID of the List to get tweets from |
 | max_results | Maximum number of results per page (1-100, default 10) |
 | pagination_token | Token for getting next page of results |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| media_fields | Media-related fields to include [more info](twitter/twitter.md#common-input). |
-| place_fields | Location-related fields to include [more info](twitter/twitter.md#common-input). |
-| poll_fields | Poll-related fields to include [more info](twitter/twitter.md#common-input). |
-| tweet_fields | Tweet-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| media_fields | Media-related fields to include [more info](twitter.md#common-input). |
+| place_fields | Location-related fields to include [more info](twitter.md#common-input). |
+| poll_fields | Poll-related fields to include [more info](twitter.md#common-input). |
+| tweet_fields | Tweet-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -1546,8 +1546,8 @@ It uses the Twitter API (Tweepy) to fetch tweets from a specified List, handling
 | texts | List of tweet text contents |
 | next_token | Token for retrieving next page |
 | data | Complete tweet data array |
-| included | Additional requested data [more info](twitter/twitter.md#common-output). |
-| meta | Pagination and result metadata [more info](twitter/twitter.md#common-output). |
+| included | Additional requested data [more info](twitter.md#common-output). |
+| meta | Pagination and result metadata [more info](twitter.md#common-output). |
 | error | Error message if request failed |
 
 ### Possible use case
@@ -1715,9 +1715,9 @@ It uses the Twitter API (Tweepy) to fetch pinned Lists data, handling authentica
 | Input | Description |
 |-------|-------------|
 | credentials | Twitter API credentials with required scopes |
-| expansions | Additional data fields to include [more info](twitter/twitter.md#common-input). |
-| list_fields | List-specific fields to include [more info](twitter/twitter.md#common-input). |
-| user_fields | User-related fields to include [more info](twitter/twitter.md#common-input). |
+| expansions | Additional data fields to include [more info](twitter.md#common-input). |
+| list_fields | List-specific fields to include [more info](twitter.md#common-input). |
+| user_fields | User-related fields to include [more info](twitter.md#common-input). |
 
 ### Outputs
 | Output | Description |
@@ -1905,3 +1905,62 @@ Information about Twitter users
   - For user data in Tweets, add `expansions=Author_User_ID` and appropriate `user_fields`.
 
 - Data returned under `includes` helps cross-reference expanded data objects with their parent entities using IDs.
+
+## Common Output
+
+The Twitter API returns standardized response elements across many endpoints. Here are the common output fields you'll encounter:
+
+### data
+The primary data requested in the response
+
+| Field | Description |
+|-------|-------------|
+| ID | Unique identifier for the object |
+| Type | Type of object (tweet, user, etc) |
+| Properties | Object-specific fields like text for tweets |
+
+### includes
+Additional expanded data objects referenced in the primary data
+
+| Field | Description |
+|-------|-------------|
+| Tweets | Full tweet objects that were referenced |
+| Users | User profile data for authors/mentions |
+| Places | Location data for geo-tagged content |
+| Media | Details about attached photos/videos |
+| Polls | Information about embedded polls |
+
+### meta
+Metadata about the response and pagination
+
+| Field | Description |
+|-------|-------------|
+| Result_Count | Number of items returned |
+| Next_Token | Token to get next page of results |
+| Previous_Token | Token to get previous page |
+| Newest_ID | Most recent ID in results |
+| Oldest_ID | Oldest ID in results |
+| Total_Tweet_Count | Total matching tweets (search) |
+
+### errors
+Details about any errors that occurred
+
+| Field | Description |
+|-------|-------------|
+| Title | Brief error description |
+| Detail | Detailed error message |
+| Type | Error category/classification |
+| Status | HTTP status code |
+
+### Non-paginated responses
+For single-object lookups:
+- data: Contains requested object
+- includes: Referenced objects
+- errors: Any errors encountered
+
+### Paginated responses
+For multi-object lookups:
+- data: Array of objects
+- includes: Referenced objects
+- meta: Pagination details
+- errors: Any errors encountered

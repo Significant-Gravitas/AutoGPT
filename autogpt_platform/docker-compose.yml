@@ -33,6 +33,12 @@ services:
       file: ./docker-compose.platform.yml
       service: redis
 
+  rabbitmq:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: rabbitmq
+
   rest_server:
     <<: *agpt-services
     extends:
@@ -146,3 +152,4 @@ services:
       - db
       - vector
       - redis
+      - rabbitmq

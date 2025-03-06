@@ -1,5 +1,4 @@
 import logging
-import random
 from datetime import datetime
 from typing import Optional
 
@@ -16,6 +15,25 @@ from backend.data.graph import GraphModel
 logger = logging.getLogger(__name__)
 
 
+def sanitize_query(query: str | None) -> str | None:
+    if query is None:
+        return query
+    query = query.strip()[:100]
+    return (
+        query.replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+        .replace("[", "\\[")
+        .replace("]", "\\]")
+        .replace("'", "\\'")
+        .replace('"', '\\"')
+        .replace(";", "\\;")
+        .replace("--", "\\--")
+        .replace("/*", "\\/*")
+        .replace("*/", "\\*/")
+    )
+
+
 async def get_store_agents(
     featured: bool = False,
     creator: str | None = None,
@@ -28,29 +46,7 @@ async def get_store_agents(
     logger.debug(
         f"Getting store agents. featured={featured}, creator={creator}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
     )
-    sanitized_query = None
-    # Sanitize and validate search query by escaping special characters
-    if search_query is not None:
-        sanitized_query = search_query.strip()
-        if not sanitized_query or len(sanitized_query) > 100:  # Reasonable length limit
-            raise backend.server.v2.store.exceptions.DatabaseError(
-                f"Invalid search query: len({len(sanitized_query)}) query: {search_query}"
-            )
-
-        # Escape special SQL characters
-        sanitized_query = (
-            sanitized_query.replace("\\", "\\\\")
-            .replace("%", "\\%")
-            .replace("_", "\\_")
-            .replace("[", "\\[")
-            .replace("]", "\\]")
-            .replace("'", "\\'")
-            .replace('"', '\\"')
-            .replace(";", "\\;")
-            .replace("--", "\\--")
-            .replace("/*", "\\/*")
-            .replace("*/", "\\*/")
-        )
+    sanitized_query = sanitize_query(search_query)
 
     where_clause = {}
     if featured:
@@ -92,8 +88,8 @@ async def get_store_agents(
                 slug=agent.slug,
                 agent_name=agent.agent_name,
                 agent_image=agent.agent_image[0] if agent.agent_image else "",
-                creator=agent.creator_username,
-                creator_avatar=agent.creator_avatar,
+                creator=agent.creator_username or "Needs Profile",
+                creator_avatar=agent.creator_avatar or "",
                 sub_heading=agent.sub_heading,
                 description=agent.description,
                 runs=agent.runs,
@@ -113,7 +109,7 @@ async def get_store_agents(
             ),
         )
     except Exception as e:
-        logger.error(f"Error getting store agents: {str(e)}")
+        logger.error(f"Error getting store agents: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch store agents"
         ) from e
@@ -155,7 +151,7 @@ async def get_store_agent_details(
     except backend.server.v2.store.exceptions.AgentNotFoundError:
         raise
     except Exception as e:
-        logger.error(f"Error getting store agent details: {str(e)}")
+        logger.error(f"Error getting store agent details: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch agent details"
         ) from e
@@ -269,7 +265,7 @@ async def get_store_creators(
             ),
         )
     except Exception as e:
-        logger.error(f"Error getting store creators: {str(e)}")
+        logger.error(f"Error getting store creators: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch store creators"
         ) from e
@@ -306,7 +302,7 @@ async def get_store_creator_details(
     except backend.server.v2.store.exceptions.CreatorNotFoundError:
         raise
     except Exception as e:
-        logger.error(f"Error getting store creator details: {str(e)}")
+        logger.error(f"Error getting store creator details: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch creator details"
         ) from e
@@ -324,7 +320,10 @@ async def get_store_submissions(
         where = prisma.types.StoreSubmissionWhereInput(user_id=user_id)
         # Query submissions from database
         submissions = await prisma.models.StoreSubmission.prisma().find_many(
-            where=where, skip=skip, take=page_size, order=[{"date_submitted": "desc"}]
+            where=where,
+            skip=skip,
+            take=page_size,
+            order=[{"date_submitted": "desc"}],
         )
 
         # Get total count for pagination
@@ -362,7 +361,7 @@ async def get_store_submissions(
         )
 
     except Exception as e:
-        logger.error(f"Error fetching store submissions: {str(e)}")
+        logger.error(f"Error fetching store submissions: {e}")
         # Return empty response rather than exposing internal errors
         return backend.server.v2.store.model.StoreSubmissionsResponse(
             submissions=[],
@@ -404,9 +403,7 @@ async def delete_store_submission(
             )
 
         # Delete the submission
-        await prisma.models.StoreListing.prisma().delete(
-            where=prisma.types.StoreListingWhereUniqueInput(id=submission.id)
-        )
+        await prisma.models.StoreListing.prisma().delete(where={"id": submission.id})
 
         logger.debug(
             f"Successfully deleted submission {submission_id} for user {user_id}"
@@ -414,7 +411,7 @@ async def delete_store_submission(
         return True
 
     except Exception as e:
-        logger.error(f"Error deleting store submission: {str(e)}")
+        logger.error(f"Error deleting store submission: {e}")
         return False
 
 
@@ -503,7 +500,15 @@ async def create_store_submission(
                         "subHeading": sub_heading,
                     }
                 },
-            }
+            },
+            include={"StoreListingVersions": True},
+        )
+
+        store_listing_version_id = (
+            listing.StoreListingVersions[0].id
+            if listing.StoreListingVersions is not None
+            and len(listing.StoreListingVersions) > 0
+            else None
         )
 
         logger.debug(f"Created store listing for agent {agent_id}")
@@ -520,6 +525,7 @@ async def create_store_submission(
             status=prisma.enums.SubmissionStatus.PENDING,
             runs=0,
             rating=0.0,
+            store_listing_version_id=store_listing_version_id,
         )
 
     except (
@@ -528,7 +534,7 @@ async def create_store_submission(
     ):
         raise
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error creating store submission: {str(e)}")
+        logger.error(f"Database error creating store submission: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to create store submission"
         ) from e
@@ -568,7 +574,7 @@ async def create_store_review(
         )
 
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error creating store review: {str(e)}")
+        logger.error(f"Database error creating store review: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to create store review"
         ) from e
@@ -576,7 +582,7 @@ async def create_store_review(
 
 async def get_user_profile(
     user_id: str,
-) -> backend.server.v2.store.model.ProfileDetails:
+) -> backend.server.v2.store.model.ProfileDetails | None:
     logger.debug(f"Getting user profile for {user_id}")
 
     try:
@@ -585,25 +591,7 @@ async def get_user_profile(
         )
 
         if not profile:
-            logger.warning(f"Profile not found for user {user_id}")
-            new_profile = await prisma.models.Profile.prisma().create(
-                data=prisma.types.ProfileCreateInput(
-                    userId=user_id,
-                    name="No Profile Data",
-                    username=f"{random.choice(['happy', 'clever', 'swift', 'bright', 'wise'])}-{random.choice(['fox', 'wolf', 'bear', 'eagle', 'owl'])}_{random.randint(1000,9999)}".lower(),
-                    description="No Profile Data",
-                    links=[],
-                    avatarUrl="",
-                )
-            )
-            return backend.server.v2.store.model.ProfileDetails(
-                name=new_profile.name,
-                username=new_profile.username,
-                description=new_profile.description,
-                links=new_profile.links,
-                avatar_url=new_profile.avatarUrl,
-            )
-
+            return None
         return backend.server.v2.store.model.ProfileDetails(
             name=profile.name,
             username=profile.username,
@@ -612,115 +600,88 @@ async def get_user_profile(
             avatar_url=profile.avatarUrl,
         )
     except Exception as e:
-        logger.error(f"Error getting user profile: {str(e)}")
-        return backend.server.v2.store.model.ProfileDetails(
-            name="No Profile Data",
-            username="No Profile Data",
-            description="No Profile Data",
-            links=[],
-            avatar_url="",
-        )
+        logger.error(f"Error getting user profile: {e}")
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to get user profile"
+        ) from e
 
 
-async def update_or_create_profile(
+async def update_profile(
     user_id: str, profile: backend.server.v2.store.model.Profile
 ) -> backend.server.v2.store.model.CreatorDetails:
     """
-    Update the store profile for a user. Creates a new profile if one doesn't exist.
-    Only allows updating if the user_id matches the owning user.
-    If a field is None, it will not overwrite the existing value in the case of an update.
-
+    Update the store profile for a user or create a new one if it doesn't exist.
     Args:
         user_id: ID of the authenticated user
         profile: Updated profile details
-
     Returns:
-        CreatorDetails: The updated profile
-
+        CreatorDetails: The updated or created profile details
     Raises:
-        HTTPException: If user is not authorized to update this profile
-        DatabaseError: If profile cannot be updated due to database issues
+        DatabaseError: If there's an issue updating or creating the profile
     """
-    logger.info(f"Updating profile for user {user_id} data: {profile}")
-
+    logger.info(f"Updating profile for user {user_id} with data: {profile}")
     try:
-        # Sanitize username to only allow letters and hyphens
+        # Sanitize username to allow only letters, numbers, and hyphens
         username = "".join(
             c if c.isalpha() or c == "-" or c.isnumeric() else ""
             for c in profile.username
         ).lower()
-
+        # Check if profile exists for the given user_id
         existing_profile = await prisma.models.Profile.prisma().find_first(
             where={"userId": user_id}
         )
-
-        # If no profile exists, create a new one
         if not existing_profile:
-            logger.debug(
-                f"No existing profile found. Creating new profile for user {user_id}"
-            )
-            # Create new profile since one doesn't exist
-            new_profile = await prisma.models.Profile.prisma().create(
-                data={
-                    "userId": user_id,
-                    "name": profile.name,
-                    "username": username,
-                    "description": profile.description,
-                    "links": profile.links or [],
-                    "avatarUrl": profile.avatar_url,
-                    "isFeatured": False,
-                }
+            raise backend.server.v2.store.exceptions.ProfileNotFoundError(
+                f"Profile not found for user {user_id}. This should not be possible."
             )
 
-            return backend.server.v2.store.model.CreatorDetails(
-                name=new_profile.name,
-                username=new_profile.username,
-                description=new_profile.description,
-                links=new_profile.links,
-                avatar_url=new_profile.avatarUrl or "",
-                agent_rating=0.0,
-                agent_runs=0,
-                top_categories=[],
+        # Verify that the user is authorized to update this profile
+        if existing_profile.userId != user_id:
+            logger.error(
+                f"Unauthorized update attempt for profile {existing_profile.id} by user {user_id}"
             )
-        else:
-            logger.debug(f"Updating existing profile for user {user_id}")
-            # Update only provided fields for the existing profile
-            update_data = {}
-            if profile.name is not None:
-                update_data["name"] = profile.name
-            if profile.username is not None:
-                update_data["username"] = username
-            if profile.description is not None:
-                update_data["description"] = profile.description
-            if profile.links is not None:
-                update_data["links"] = profile.links
-            if profile.avatar_url is not None:
-                update_data["avatarUrl"] = profile.avatar_url
+            raise backend.server.v2.store.exceptions.DatabaseError(
+                f"Unauthorized update attempt for profile {existing_profile.id} by user {user_id}"
+            )
 
-            # Update the existing profile
-            updated_profile = await prisma.models.Profile.prisma().update(
-                where={"id": existing_profile.id},
-                data=prisma.types.ProfileUpdateInput(**update_data),
-            )
-            if updated_profile is None:
-                logger.error(f"Failed to update profile for user {user_id}")
-                raise backend.server.v2.store.exceptions.DatabaseError(
-                    "Failed to update profile"
-                )
+        logger.debug(f"Updating existing profile for user {user_id}")
+        # Prepare update data, only including non-None values
+        update_data = {}
+        if profile.name is not None:
+            update_data["name"] = profile.name
+        if profile.username is not None:
+            update_data["username"] = username
+        if profile.description is not None:
+            update_data["description"] = profile.description
+        if profile.links is not None:
+            update_data["links"] = profile.links
+        if profile.avatar_url is not None:
+            update_data["avatarUrl"] = profile.avatar_url
 
-            return backend.server.v2.store.model.CreatorDetails(
-                name=updated_profile.name,
-                username=updated_profile.username,
-                description=updated_profile.description,
-                links=updated_profile.links,
-                avatar_url=updated_profile.avatarUrl or "",
-                agent_rating=0.0,
-                agent_runs=0,
-                top_categories=[],
+        # Update the existing profile
+        updated_profile = await prisma.models.Profile.prisma().update(
+            where={"id": existing_profile.id},
+            data=prisma.types.ProfileUpdateInput(**update_data),
+        )
+        if updated_profile is None:
+            logger.error(f"Failed to update profile for user {user_id}")
+            raise backend.server.v2.store.exceptions.DatabaseError(
+                "Failed to update profile"
             )
+
+        return backend.server.v2.store.model.CreatorDetails(
+            name=updated_profile.name,
+            username=updated_profile.username,
+            description=updated_profile.description,
+            links=updated_profile.links,
+            avatar_url=updated_profile.avatarUrl or "",
+            agent_rating=0.0,
+            agent_runs=0,
+            top_categories=[],
+        )
 
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error updating profile: {str(e)}")
+        logger.error(f"Database error updating profile: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to update profile"
         ) from e
@@ -785,7 +746,7 @@ async def get_my_agents(
             ),
         )
     except Exception as e:
-        logger.error(f"Error getting my agents: {str(e)}")
+        logger.error(f"Error getting my agents: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch my agents"
         ) from e
@@ -806,11 +767,9 @@ async def get_agent(
             logger.error(f"Store listing version {store_listing_version_id} not found")
             return None
 
-        agent = store_listing_version.Agent
-
-        graph = await backend.data.graph.get_graph(
-            agent.id, agent.version, template=True
-        )
+        graph_id = store_listing_version.agentId
+        graph_version = store_listing_version.agentVersion
+        graph = await backend.data.graph.get_graph(graph_id, graph_version)
 
         if not graph:
             logger.error(f"Agent {agent.id} not found")
@@ -823,7 +782,72 @@ async def get_agent(
         return graph
 
     except Exception as e:
-        logger.error(f"Error getting agent: {str(e)}")
+        logger.error(f"Error getting agent: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to fetch agent"
+        ) from e
+
+
+async def review_store_submission(
+    store_listing_version_id: str, is_approved: bool, comments: str, reviewer_id: str
+) -> prisma.models.StoreListingSubmission:
+    """Review a store listing submission."""
+    try:
+        store_listing_version = (
+            await prisma.models.StoreListingVersion.prisma().find_unique(
+                where={"id": store_listing_version_id},
+                include={"StoreListing": True},
+            )
+        )
+
+        if not store_listing_version or not store_listing_version.StoreListing:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f"Store listing version {store_listing_version_id} not found",
+            )
+
+        if is_approved:
+            await prisma.models.StoreListing.prisma().update(
+                where={"id": store_listing_version.StoreListing.id},
+                data={"isApproved": True},
+            )
+
+        submission_status = (
+            prisma.enums.SubmissionStatus.APPROVED
+            if is_approved
+            else prisma.enums.SubmissionStatus.REJECTED
+        )
+
+        update_data: prisma.types.StoreListingSubmissionUpdateInput = {
+            "Status": submission_status,
+            "reviewComments": comments,
+            "Reviewer": {"connect": {"id": reviewer_id}},
+            "StoreListing": {"connect": {"id": store_listing_version.StoreListing.id}},
+        }
+
+        create_data: prisma.types.StoreListingSubmissionCreateInput = {
+            **update_data,
+            "StoreListingVersion": {"connect": {"id": store_listing_version_id}},
+        }
+
+        submission = await prisma.models.StoreListingSubmission.prisma().upsert(
+            where={"storeListingVersionId": store_listing_version_id},
+            data={
+                "create": create_data,
+                "update": update_data,
+            },
+        )
+
+        if not submission:
+            raise fastapi.HTTPException(  # FIXME: don't return HTTP exceptions here
+                status_code=404,
+                detail=f"Store listing submission {store_listing_version_id} not found",
+            )
+
+        return submission
+
+    except Exception as e:
+        logger.error(f"Could not create store submission review: {e}")
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to create store submission review"
         ) from e

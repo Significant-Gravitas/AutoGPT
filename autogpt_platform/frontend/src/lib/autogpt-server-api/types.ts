@@ -41,6 +41,8 @@ export type BlockIOSubSchema =
   | BlockIOSimpleTypeSubSchema
   | BlockIOCombinedTypeSubSchema;
 
+export type BlockIOSubType = BlockIOSimpleTypeSubSchema["type"];
+
 export type BlockIOSimpleTypeSubSchema =
   | BlockIOObjectSubSchema
   | BlockIOCredentialsSubSchema
@@ -65,18 +67,21 @@ export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
   properties: { [key: string]: BlockIOSubSchema };
   default?: { [key: keyof BlockIOObjectSubSchema["properties"]]: any };
   required?: (keyof BlockIOObjectSubSchema["properties"])[];
+  secret?: boolean;
 };
 
 export type BlockIOKVSubSchema = BlockIOSubSchemaMeta & {
   type: "object";
-  additionalProperties: { type: "string" | "number" | "integer" };
+  additionalProperties?: { type: "string" | "number" | "integer" };
   default?: { [key: string]: string | number };
+  secret?: boolean;
 };
 
 export type BlockIOArraySubSchema = BlockIOSubSchemaMeta & {
   type: "array";
   items?: BlockIOSimpleTypeSubSchema;
   default?: Array<string>;
+  secret?: boolean;
 };
 
 export type BlockIOStringSubSchema = BlockIOSubSchemaMeta & {
@@ -90,29 +95,41 @@ export type BlockIOStringSubSchema = BlockIOSubSchemaMeta & {
 export type BlockIONumberSubSchema = BlockIOSubSchemaMeta & {
   type: "integer" | "number";
   default?: number;
+  secret?: boolean;
 };
 
 export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
   type: "boolean";
   default?: boolean;
+  secret?: boolean;
 };
 
-export type CredentialsType = "api_key" | "oauth2";
+export type CredentialsType = "api_key" | "oauth2" | "user_password";
+
+export type Credentials =
+  | APIKeyCredentials
+  | OAuth2Credentials
+  | UserPasswordCredentials;
 
 // --8<-- [start:BlockIOCredentialsSubSchema]
 export const PROVIDER_NAMES = {
   ANTHROPIC: "anthropic",
+  APOLLO: "apollo",
   D_ID: "d_id",
   DISCORD: "discord",
   E2B: "e2b",
+  EXA: "exa",
+  FAL: "fal",
   GITHUB: "github",
   GOOGLE: "google",
   GOOGLE_MAPS: "google_maps",
   GROQ: "groq",
+  HUBSPOT: "hubspot",
   IDEOGRAM: "ideogram",
   JINA: "jina",
   LINEAR: "linear",
   MEDIUM: "medium",
+  MEM0: "mem0",
   NOTION: "notion",
   NVIDIA: "nvidia",
   OLLAMA: "ollama",
@@ -120,47 +137,54 @@ export const PROVIDER_NAMES = {
   OPENWEATHERMAP: "openweathermap",
   OPEN_ROUTER: "open_router",
   PINECONE: "pinecone",
+  SCREENSHOTONE: "screenshotone",
   SLANT3D: "slant3d",
+  SMARTLEAD: "smartlead",
+  SMTP: "smtp",
+  TWITTER: "twitter",
   REPLICATE: "replicate",
-  FAL: "fal",
+  REDDIT: "reddit",
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
-  EXA: "exa",
-  HUBSPOT: "hubspot",
-  TWITTER: "twitter",
+  TODOIST: "todoist",
+  ZEROBOUNCE: "zerobounce",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
 
 export type CredentialsProviderName =
   (typeof PROVIDER_NAMES)[keyof typeof PROVIDER_NAMES];
 
-export type BlockIOCredentialsSubSchema = BlockIOSubSchemaMeta & {
+export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   /* Mirror of backend/data/model.py:CredentialsFieldSchemaExtra */
   credentials_provider: CredentialsProviderName[];
   credentials_scopes?: string[];
   credentials_types: Array<CredentialsType>;
   discriminator?: string;
   discriminator_mapping?: { [key: string]: CredentialsProviderName };
+  secret?: boolean;
 };
 
 export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
   type: "null";
+  secret?: boolean;
 };
 
 // At the time of writing, combined schemas only occur on the first nested level in a
 // block schema. It is typed this way to make the use of these objects less tedious.
-type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta &
-  (
+type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta & { type: never } & (
     | {
         allOf: [BlockIOSimpleTypeSubSchema];
+        secret?: boolean;
       }
     | {
         anyOf: BlockIOSimpleTypeSubSchema[];
         default?: string | number | boolean | null;
+        secret?: boolean;
       }
     | {
         oneOf: BlockIOSimpleTypeSubSchema[];
         default?: string | number | boolean | null;
+        secret?: boolean;
       }
   );
 
@@ -192,26 +216,54 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
   id?: string;
 };
 
-/* Mirror of backend/data/graph.py:GraphExecution */
-export type GraphExecution = {
-  execution_id: string;
+/* Mirror of backend/data/graph.py:GraphExecutionMeta */
+export type GraphExecutionMeta = {
+  execution_id: GraphExecutionID;
   started_at: number;
   ended_at: number;
+  cost?: number;
   duration: number;
   total_run_time: number;
   status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
-  graph_id: string;
+  graph_id: GraphID;
   graph_version: number;
+  preset_id?: string;
+};
+
+export type GraphExecutionID = Brand<string, "GraphExecutionID">;
+
+/* Mirror of backend/data/graph.py:GraphExecution */
+export type GraphExecution = GraphExecutionMeta & {
+  inputs: Record<string, any>;
+  outputs: Record<string, Array<any>>;
+  node_executions: NodeExecutionResult[];
 };
 
 export type GraphMeta = {
-  id: string;
+  id: GraphID;
   version: number;
   is_active: boolean;
   name: string;
   description: string;
-  input_schema: BlockIOObjectSubSchema;
-  output_schema: BlockIOObjectSubSchema;
+  input_schema: GraphIOSchema;
+  output_schema: GraphIOSchema;
+};
+
+export type GraphID = Brand<string, "GraphID">;
+
+/* Derived from backend/data/graph.py:Graph._generate_schema() */
+export type GraphIOSchema = {
+  type: "object";
+  properties: { [key: string]: GraphIOSubSchema };
+  required: (keyof BlockIORootSchema["properties"])[];
+};
+export type GraphIOSubSchema = Omit<
+  BlockIOSubSchemaMeta,
+  "placeholder" | "depends_on" | "hidden"
+> & {
+  type: never; // bodge to avoid type checking hell; doesn't exist at runtime
+  default?: string;
+  secret: boolean;
 };
 
 /* Mirror of backend/data/graph.py:Graph */
@@ -227,25 +279,17 @@ export type GraphUpdateable = Omit<
   version?: number;
   is_active?: boolean;
   links: Array<LinkCreatable>;
-  input_schema?: BlockIOObjectSubSchema;
-  output_schema?: BlockIOObjectSubSchema;
+  input_schema?: GraphIOSchema;
+  output_schema?: GraphIOSchema;
 };
 
 export type GraphCreatable = Omit<GraphUpdateable, "id"> & { id?: string };
 
-/* Derived from backend/executor/manager.py:ExecutionManager.add_execution */
-export type GraphExecuteResponse = {
-  /** ID of the initiated run */
-  id: string;
-  /** List of node executions */
-  executions: Array<{ id: string; node_id: string }>;
-};
-
 /* Mirror of backend/data/execution.py:ExecutionResult */
 export type NodeExecutionResult = {
-  graph_id: string;
+  graph_id: GraphID;
   graph_version: number;
-  graph_exec_id: string;
+  graph_exec_id: GraphExecutionID;
   node_exec_id: string;
   node_id: string;
   block_id: string;
@@ -263,6 +307,81 @@ export type NodeExecutionResult = {
   start_time?: Date;
   end_time?: Date;
 };
+
+/* *** LIBRARY *** */
+
+/* Mirror of backend/server/v2/library/model.py:LibraryAgent */
+export type LibraryAgent = {
+  id: LibraryAgentID;
+  agent_id: GraphID;
+  agent_version: number;
+  image_url?: string;
+  creator_name: string;
+  creator_image_url: string;
+  status: AgentStatus;
+  updated_at: Date;
+  name: string;
+  description: string;
+  input_schema: BlockIOObjectSubSchema;
+  new_output: boolean;
+  can_access_graph: boolean;
+  is_latest_version: boolean;
+};
+
+export type LibraryAgentID = Brand<string, "LibraryAgentID">;
+
+export enum AgentStatus {
+  COMPLETED = "COMPLETED",
+  HEALTHY = "HEALTHY",
+  WAITING = "WAITING",
+  ERROR = "ERROR",
+}
+
+export interface LibraryAgentResponse {
+  agents: LibraryAgent[];
+  pagination: {
+    current_page: number;
+    page_size: number;
+    total_items: number;
+    total_pages: number;
+  };
+}
+
+export interface LibraryAgentPreset {
+  id: string;
+  updated_at: Date;
+  agent_id: string;
+  agent_version: number;
+  name: string;
+  description: string;
+  is_active: boolean;
+  inputs: { [key: string]: any };
+}
+
+export interface LibraryAgentPresetResponse {
+  presets: LibraryAgentPreset[];
+  pagination: {
+    total: number;
+    page: number;
+    size: number;
+  };
+}
+
+export interface CreateLibraryAgentPresetRequest {
+  name: string;
+  description: string;
+  inputs: { [key: string]: any };
+  agent_id: string;
+  agent_version: number;
+  is_active: boolean;
+}
+
+export enum LibraryAgentSortEnum {
+  CREATED_AT = "createdAt",
+  UPDATED_AT = "updatedAt",
+}
+
+/* *** CREDENTIALS *** */
 
 /* Mirror of backend/server/integrations/router.py:CredentialsMetaResponse */
 export type CredentialsMetaResponse = {
@@ -323,8 +442,39 @@ export type APIKeyCredentials = BaseCredentials & {
   expires_at?: number;
 };
 
+export type UserPasswordCredentials = BaseCredentials & {
+  type: "user_password";
+  title: string;
+  username: string;
+  password: string;
+};
+
+// Mirror of backend/backend/data/notifications.py:NotificationType
+export type NotificationType =
+  | "AGENT_RUN"
+  | "ZERO_BALANCE"
+  | "LOW_BALANCE"
+  | "BLOCK_EXECUTION_FAILED"
+  | "CONTINUOUS_AGENT_ERROR"
+  | "DAILY_SUMMARY"
+  | "WEEKLY_SUMMARY"
+  | "MONTHLY_SUMMARY";
+
+// Mirror of backend/backend/data/notifications.py:NotificationPreference
+export type NotificationPreferenceDTO = {
+  email: string;
+  preferences: { [key in NotificationType]: boolean };
+  daily_limit: number;
+};
+
+export type NotificationPreference = NotificationPreferenceDTO & {
+  user_id: string;
+  emails_sent_today: number;
+  last_reset_date: Date;
+};
+
 /* Mirror of backend/data/integrations.py:Webhook */
-type Webhook = {
+export type Webhook = {
   id: string;
   url: string;
   provider: CredentialsProviderName;
@@ -476,24 +626,27 @@ export type ProfileDetails = {
 };
 
 export type Schedule = {
-  id: string;
+  id: ScheduleID;
   name: string;
   cron: string;
   user_id: string;
-  graph_id: string;
+  graph_id: GraphID;
   graph_version: number;
   input_data: { [key: string]: any };
-  next_run_time: string;
+  next_run_time: Date;
 };
+
+export type ScheduleID = Brand<string, "ScheduleID">;
 
 export type ScheduleCreatable = {
   cron: string;
-  graph_id: string;
+  graph_id: GraphID;
+  graph_version: number;
   input_data: { [key: string]: any };
 };
 
 export type MyAgent = {
-  agent_id: string;
+  agent_id: GraphID;
   agent_version: number;
   agent_name: string;
   last_edited: string;
@@ -548,3 +701,51 @@ export interface CreateAPIKeyResponse {
   api_key: APIKey;
   plain_text_key: string;
 }
+
+export interface CreditTransaction {
+  transaction_key: string;
+  transaction_time: Date;
+  transaction_type: string;
+  amount: number;
+  balance: number;
+  description: string;
+  usage_graph_id: GraphID;
+  usage_execution_id: GraphExecutionID;
+  usage_node_count: number;
+  usage_starting_time: Date;
+}
+
+export interface TransactionHistory {
+  transactions: CreditTransaction[];
+  next_transaction_time: Date | null;
+}
+
+export interface RefundRequest {
+  id: string;
+  user_id: string;
+  transaction_key: string;
+  amount: number;
+  reason: string;
+  result: string | null;
+  status: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface UserOnboarding {
+  step: number;
+  usageReason?: string;
+  integrations: string[];
+  otherIntegrations?: string;
+  selectedAgentCreator?: string;
+  selectedAgentSlug?: string;
+  agentInput?: { [key: string]: string };
+  isCompleted: boolean;
+}
+
+/* *** UTILITIES *** */
+
+/** Use branded types for IDs -> deny mixing IDs between different object classes */
+export type Brand<T, Brand extends string> = T & {
+  readonly [B in Brand as `__${B}_brand`]: never;
+};

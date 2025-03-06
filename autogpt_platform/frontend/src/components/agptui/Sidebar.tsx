@@ -23,10 +23,6 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
-  const stripeAvailable = Boolean(
-    process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY,
-  );
-
   return (
     <>
       <Sheet>
@@ -46,7 +42,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
           <div className="h-full w-full rounded-2xl bg-zinc-200 dark:bg-zinc-800">
             <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
               <Link
-                href="/marketplace/dashboard"
+                href="/profile/dashboard"
                 className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
               >
                 <IconDashboardLayout className="h-6 w-6" />
@@ -54,19 +50,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
                   Creator dashboard
                 </div>
               </Link>
-              {stripeAvailable && (
-                <Link
-                  href="/marketplace/credits"
-                  className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
-                >
-                  <IconCoin className="h-6 w-6" />
-                  <div className="p-ui-medium text-base font-medium leading-normal">
-                    Credits
-                  </div>
-                </Link>
-              )}
               <Link
-                href="/marketplace/integrations"
+                href="/profile/credits"
+                className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+              >
+                <IconCoin className="h-6 w-6" />
+                <div className="p-ui-medium text-base font-medium leading-normal">
+                  Billing
+                </div>
+              </Link>
+              <Link
+                href="/profile/integrations"
                 className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
               >
                 <IconIntegrations className="h-6 w-6" />
@@ -75,7 +69,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
                 </div>
               </Link>
               <Link
-                href="/marketplace/api_keys"
+                href="/profile/api_keys"
                 className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
               >
                 <KeyIcon className="h-6 w-6" />
@@ -84,7 +78,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
                 </div>
               </Link>
               <Link
-                href="/marketplace/profile"
+                href="/profile"
                 className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
               >
                 <IconProfile className="h-6 w-6" />
@@ -93,7 +87,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
                 </div>
               </Link>
               <Link
-                href="/marketplace/settings"
+                href="/profile/settings"
                 className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
               >
                 <IconSliders className="h-6 w-6" />
@@ -110,7 +104,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
         <div className="h-full w-full rounded-2xl bg-zinc-200 dark:bg-zinc-800">
           <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
             <Link
-              href="/marketplace/dashboard"
+              href="/profile/dashboard"
               className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
             >
               <IconDashboardLayout className="h-6 w-6" />
@@ -118,19 +112,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
                 Agent dashboard
               </div>
             </Link>
-            {stripeAvailable && (
-              <Link
-                href="/marketplace/credits"
-                className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
-              >
-                <IconCoin className="h-6 w-6" />
-                <div className="p-ui-medium text-base font-medium leading-normal">
-                  Credits
-                </div>
-              </Link>
-            )}
             <Link
-              href="/marketplace/integrations"
+              href="/profile/credits"
+              className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+            >
+              <IconCoin className="h-6 w-6" />
+              <div className="p-ui-medium text-base font-medium leading-normal">
+                Billing
+              </div>
+            </Link>
+            <Link
+              href="/profile/integrations"
               className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
             >
               <IconIntegrations className="h-6 w-6" />
@@ -139,7 +131,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
               </div>
             </Link>
             <Link
-              href="/marketplace/api_keys"
+              href="/profile/api_keys"
               className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
             >
               <KeyIcon className="h-6 w-6" strokeWidth={1} />
@@ -148,7 +140,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
               </div>
             </Link>
             <Link
-              href="/marketplace/profile"
+              href="/profile"
               className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
             >
               <IconProfile className="h-6 w-6" />
@@ -157,7 +149,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
               </div>
             </Link>
             <Link
-              href="/marketplace/settings"
+              href="/profile/settings"
               className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
             >
               <IconSliders className="h-6 w-6" />

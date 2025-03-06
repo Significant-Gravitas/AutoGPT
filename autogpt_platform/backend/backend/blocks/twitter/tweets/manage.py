@@ -92,7 +92,8 @@ class TwitterPostTweetBlock(Block):
         attachment: Union[Media, DeepLink, Poll, Place, Quote] | None = SchemaField(
             discriminator="discriminator",
             description="Additional tweet data (media, deep link, poll, place or quote)",
-            advanced=True,
+            advanced=False,
+            default=Media(discriminator="media"),
         )
 
         exclude_reply_user_ids: Optional[List[str]] = SchemaField(

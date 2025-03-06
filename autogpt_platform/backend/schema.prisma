@@ -15,32 +15,66 @@ generator client {
 model User {
   id               String   @id // This should match the Supabase user ID
   email            String   @unique
+  emailVerified    Boolean  @default(true)
   name             String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   metadata         Json     @default("{}")
   integrations     String   @default("")
   stripeCustomerId String?
+  topUpConfig      Json?
+
+  maxEmailsPerDay              Int     @default(3)
+  notifyOnAgentRun             Boolean @default(true)
+  notifyOnZeroBalance          Boolean @default(true)
+  notifyOnLowBalance           Boolean @default(true)
+  notifyOnBlockExecutionFailed Boolean @default(true)
+  notifyOnContinuousAgentError Boolean @default(true)
+  notifyOnDailySummary         Boolean @default(true)
+  notifyOnWeeklySummary        Boolean @default(true)
+  notifyOnMonthlySummary       Boolean @default(true)
 
   // Relations
+
   AgentGraphs          AgentGraph[]
   AgentGraphExecutions AgentGraphExecution[]
   AnalyticsDetails     AnalyticsDetails[]
   AnalyticsMetrics     AnalyticsMetrics[]
   CreditTransaction    CreditTransaction[]
 
-  AgentPreset AgentPreset[]
-  UserAgent   UserAgent[]
+  AgentPreset  AgentPreset[]
+  LibraryAgent LibraryAgent[]
 
   Profile                Profile[]
+  UserOnboarding         UserOnboarding?
   StoreListing           StoreListing[]
   StoreListingReview     StoreListingReview[]
   StoreListingSubmission StoreListingSubmission[]
   APIKeys                APIKey[]
   IntegrationWebhooks    IntegrationWebhook[]
+  UserNotificationBatch  UserNotificationBatch[]
 
   @@index([id])
   @@index([email])
+}
+
+model UserOnboarding {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+
+  step                 Int      @default(0)
+  usageReason          String?
+  integrations         String[] @default([])
+  otherIntegrations    String?
+  selectedAgentCreator String?
+  selectedAgentSlug    String?
+  agentInput           Json?
+  isCompleted          Boolean  @default(false)
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 // This model describes the Agent Graph/Flow (Multi Agent System).
@@ -52,6 +86,7 @@ model AgentGraph {
 
   name        String?
   description String?
+
   isActive    Boolean @default(true)
   isTemplate  Boolean @default(false)
 
@@ -65,7 +100,7 @@ model AgentGraph {
   AgentGraphExecution AgentGraphExecution[]
 
   AgentPreset         AgentPreset[]
-  UserAgent           UserAgent[]
+  LibraryAgent        LibraryAgent[]
   StoreListing        StoreListing[]
   StoreListingVersion StoreListingVersion?
 
@@ -103,15 +138,58 @@ model AgentPreset {
   Agent        AgentGraph @relation(fields: [agentId, agentVersion], references: [id, version], onDelete: Cascade)
 
   InputPresets   AgentNodeExecutionInputOutput[] @relation("AgentPresetsInputData")
-  UserAgents     UserAgent[]
+  LibraryAgents  LibraryAgent[]
   AgentExecution AgentGraphExecution[]
+
+  isDeleted Boolean @default(false)
 
   @@index([userId])
 }
 
+enum NotificationType {
+  AGENT_RUN
+  ZERO_BALANCE
+  LOW_BALANCE
+  BLOCK_EXECUTION_FAILED
+  CONTINUOUS_AGENT_ERROR
+  DAILY_SUMMARY
+  WEEKLY_SUMMARY
+  MONTHLY_SUMMARY
+  REFUND_REQUEST
+  REFUND_PROCESSED
+}
+
+model NotificationEvent {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  UserNotificationBatch   UserNotificationBatch? @relation(fields: [userNotificationBatchId], references: [id])
+  userNotificationBatchId String?
+
+  type NotificationType
+  data Json
+}
+
+model UserNotificationBatch {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type NotificationType
+
+  notifications NotificationEvent[]
+
+  // Each user can only have one batch of a notification type at a time
+  @@unique([userId, type])
+}
+
 // For the library page
 // It is a user controlled list of agents, that they will see in there library
-model UserAgent {
+model LibraryAgent {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
@@ -119,12 +197,19 @@ model UserAgent {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  imageUrl   String?
+
   agentId      String
   agentVersion Int
   Agent        AgentGraph @relation(fields: [agentId, agentVersion], references: [id, version])
 
   agentPresetId String?
   AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
+
+  creatorId String?
+  Creator   Profile? @relation(fields: [creatorId], references: [id])
+
+  useGraphIsActiveVersion Boolean @default(false)
 
   isFavorite      Boolean @default(false)
   isCreatedByUser Boolean @default(false)
@@ -157,15 +242,13 @@ model AgentNode {
   // List of produced output, that the child node should be executed.
   Output AgentNodeLink[] @relation("AgentNodeSource")
 
-  // JSON serialized dict[str, str] containing predefined input values.
-  constantInput String @default("{}")
+  constantInput Json @default("{}")
 
   // For webhook-triggered blocks: reference to the webhook that triggers the node
   webhookId String?
   Webhook   IntegrationWebhook? @relation(fields: [webhookId], references: [id])
 
-  // JSON serialized dict[str, str] containing the node metadata.
-  metadata String @default("{}")
+  metadata Json @default("{}")
 
   ExecutionHistory AgentNodeExecution[]
 
@@ -226,6 +309,8 @@ model AgentGraphExecution {
   updatedAt DateTime? @updatedAt
   startedAt DateTime?
 
+  isDeleted Boolean @default(false)
+
   executionStatus AgentExecutionStatus @default(COMPLETED)
 
   agentGraphId      String
@@ -234,11 +319,11 @@ model AgentGraphExecution {
 
   AgentNodeExecutions AgentNodeExecution[]
 
-  // Link to User model
+  // Link to User model -- Executed by this user
   userId String
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  stats         String? // JSON serialized object
+  stats         Json?
   AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
   agentPresetId String?
 
@@ -260,14 +345,13 @@ model AgentNodeExecution {
   Output AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionOutput")
 
   executionStatus AgentExecutionStatus @default(COMPLETED)
-  // Final JSON serialized input data for the node execution.
-  executionData   String?
+  executionData   Json?
   addedTime       DateTime             @default(now())
   queuedTime      DateTime?
   startedTime     DateTime?
   endedTime       DateTime?
 
-  stats String? // JSON serialized object
+  stats Json?
 
   @@index([agentGraphExecutionId])
   @@index([agentNodeId])
@@ -278,7 +362,7 @@ model AgentNodeExecutionInputOutput {
   id String @id @default(uuid())
 
   name String
-  data String
+  data Json
   time DateTime @default(now())
 
   // Prisma requires explicit back-references.
@@ -369,16 +453,20 @@ model AnalyticsMetrics {
   @@index([userId])
 }
 
-enum CreditTransactionType {
-  TOP_UP
-  USAGE
-}
-
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
 ////////   ACCOUNTING AND CREDIT SYSTEM TABLES    //////////
 ////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////
+
+enum CreditTransactionType {
+  TOP_UP
+  USAGE
+  GRANT
+  REFUND
+  CARD_CHECK
+}
+
 model CreditTransaction {
   transactionKey String   @default(uuid())
   createdAt      DateTime @default(now())
@@ -396,6 +484,28 @@ model CreditTransaction {
 
   @@id(name: "creditTransactionIdentifier", [transactionKey, userId])
   @@index([userId, createdAt])
+}
+
+enum CreditRefundRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model CreditRefundRequest {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  userId         String
+  transactionKey String
+
+  amount Int
+  reason String
+  result String?
+  status CreditRefundRequestStatus @default(PENDING)
+
+  @@index([userId, transactionKey])
 }
 
 ////////////////////////////////////////////////////////////
@@ -424,6 +534,8 @@ model Profile {
 
   isFeatured Boolean @default(false)
 
+  LibraryAgents LibraryAgent[]
+
   @@index([username])
   @@index([userId])
 }
@@ -441,6 +553,8 @@ view Creator {
   agent_rating Float
   agent_runs   Int
   is_featured  Boolean
+
+  // Index or unique are not applied to views
 }
 
 view StoreAgent {
@@ -463,11 +577,7 @@ view StoreAgent {
   rating           Float
   versions         String[]
 
-  @@unique([creator_username, slug])
-  @@index([creator_username])
-  @@index([featured])
-  @@index([categories])
-  @@index([storeListingVersionId])
+  // Index or unique are not applied to views
 }
 
 view StoreSubmission {
@@ -485,7 +595,7 @@ view StoreSubmission {
   agent_id       String
   agent_version  Int
 
-  @@index([user_id])
+  // Index or unique are not applied to views
 }
 
 model StoreListing {
@@ -508,9 +618,13 @@ model StoreListing {
   StoreListingVersions   StoreListingVersion[]
   StoreListingSubmission StoreListingSubmission[]
 
-  @@index([isApproved])
-  @@index([agentId])
+  // Unique index on agentId to ensure only one listing per agent, regardless of number of versions the agent has.
+  @@unique([agentId])
+  @@index([agentId, owningUserId])
   @@index([owningUserId])
+  // Used in the view query
+  @@index([isDeleted, isApproved])
+  @@index([isDeleted])
 }
 
 model StoreListingVersion {
@@ -551,7 +665,7 @@ model StoreListingVersion {
   StoreListingReview StoreListingReview[]
 
   @@unique([agentId, agentVersion])
-  @@index([agentId, agentVersion, isApproved])
+  @@index([agentId, agentVersion, isDeleted])
 }
 
 model StoreListingReview {
@@ -595,6 +709,7 @@ model StoreListingSubmission {
   Status         SubmissionStatus @default(PENDING)
   reviewComments String?
 
+  @@unique([storeListingVersionId])
   @@index([storeListingId])
 }
 

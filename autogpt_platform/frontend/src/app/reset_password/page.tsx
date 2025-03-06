@@ -109,78 +109,80 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <AuthCard>
-      <AuthHeader>Reset Password</AuthHeader>
-      {user ? (
-        <form onSubmit={changePasswordForm.handleSubmit(onChangePassword)}>
-          <Form {...changePasswordForm}>
-            <FormField
-              control={changePasswordForm.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem className="mb-6">
-                  <FormLabel>Password</FormLabel>
-                  <FormControl>
-                    <PasswordInput {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={changePasswordForm.control}
-              name="confirmPassword"
-              render={({ field }) => (
-                <FormItem className="mb-6">
-                  <FormLabel>Confirm Password</FormLabel>
-                  <FormControl>
-                    <PasswordInput {...field} />
-                  </FormControl>
-                  <FormDescription className="text-sm font-normal leading-tight text-slate-500">
-                    Password needs to be at least 6 characters long
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <AuthButton
-              onClick={() => onChangePassword(changePasswordForm.getValues())}
-              isLoading={isLoading}
-              type="submit"
-            >
-              Update password
-            </AuthButton>
-            <AuthFeedback message={feedback} isError={isError} />
-          </Form>
-        </form>
-      ) : (
-        <form onSubmit={sendEmailForm.handleSubmit(onSendEmail)}>
-          <Form {...sendEmailForm}>
-            <FormField
-              control={sendEmailForm.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem className="mb-6">
-                  <FormLabel>Email</FormLabel>
-                  <FormControl>
-                    <Input placeholder="m@example.com" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <AuthButton
-              onClick={() => onSendEmail(sendEmailForm.getValues())}
-              isLoading={isLoading}
-              disabled={disabled}
-              type="submit"
-            >
-              Send reset email
-            </AuthButton>
-            <AuthFeedback message={feedback} isError={isError} />
-          </Form>
-        </form>
-      )}
-    </AuthCard>
+    <div className="flex min-h-screen items-center justify-center">
+      <AuthCard>
+        <AuthHeader>Reset Password</AuthHeader>
+        {user ? (
+          <form onSubmit={changePasswordForm.handleSubmit(onChangePassword)}>
+            <Form {...changePasswordForm}>
+              <FormField
+                control={changePasswordForm.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem className="mb-6">
+                    <FormLabel>Password</FormLabel>
+                    <FormControl>
+                      <PasswordInput {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={changePasswordForm.control}
+                name="confirmPassword"
+                render={({ field }) => (
+                  <FormItem className="mb-6">
+                    <FormLabel>Confirm Password</FormLabel>
+                    <FormControl>
+                      <PasswordInput {...field} />
+                    </FormControl>
+                    <FormDescription className="text-sm font-normal leading-tight text-slate-500">
+                      Password needs to be at least 6 characters long
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <AuthButton
+                onClick={() => onChangePassword(changePasswordForm.getValues())}
+                isLoading={isLoading}
+                type="submit"
+              >
+                Update password
+              </AuthButton>
+              <AuthFeedback message={feedback} isError={isError} />
+            </Form>
+          </form>
+        ) : (
+          <form onSubmit={sendEmailForm.handleSubmit(onSendEmail)}>
+            <Form {...sendEmailForm}>
+              <FormField
+                control={sendEmailForm.control}
+                name="email"
+                render={({ field }) => (
+                  <FormItem className="mb-6">
+                    <FormLabel>Email</FormLabel>
+                    <FormControl>
+                      <Input placeholder="m@example.com" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <AuthButton
+                onClick={() => onSendEmail(sendEmailForm.getValues())}
+                isLoading={isLoading}
+                disabled={disabled}
+                type="submit"
+              >
+                Send reset email
+              </AuthButton>
+              <AuthFeedback message={feedback} isError={isError} />
+            </Form>
+          </form>
+        )}
+      </AuthCard>
+    </div>
   );
 }

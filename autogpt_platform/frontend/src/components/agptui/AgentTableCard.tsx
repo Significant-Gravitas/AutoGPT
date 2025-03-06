@@ -4,6 +4,7 @@ import * as React from "react";
 import Image from "next/image";
 import { IconStarFilled, IconMore } from "@/components/ui/icons";
 import { Status, StatusType } from "./Status";
+import { StoreSubmissionRequest } from "@/lib/autogpt-server-api";
 
 export interface AgentTableCardProps {
   agent_id: string;

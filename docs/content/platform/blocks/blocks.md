@@ -134,7 +134,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 |------------|-------------|
 | [Twitter Post Tweet](twitter/twitter.md#twitter-post-tweet-block) | Creates a tweet on Twitter with text content and optional attachments including media, polls, quotes, or deep links |
 | [Twitter Delete Tweet](twitter/twitter.md#twitter-delete-tweet-block) | Deletes a specified tweet using its tweet ID |
-| [Twitter Search Recent](twitter/twitter.md#twitter-search-recent-block) | Searches for tweets matching specified criteria with options for filtering and pagination |
+| [Twitter Search Recent Tweets](twitter/twitter.md#twitter-search-recent-tweets-block) | Searches for tweets matching specified criteria with options for filtering and pagination |
 | [Twitter Get Quote Tweets](twitter/twitter.md#twitter-get-quote-tweets-block) | Gets tweets that quote a specified tweet ID with options for pagination and filtering |
 | [Twitter Retweet](twitter/twitter.md#twitter-retweet-block) | Creates a retweet of a specified tweet using its tweet ID |
 | [Twitter Remove Retweet](twitter/twitter.md#twitter-remove-retweet-block) | Removes an existing retweet of a specified tweet |
@@ -166,5 +166,32 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | Twitter Get DM Events | Working... Retrieves direct message events for a user |
 | Twitter Send Direct Message | Working... Sends a direct message to a specified user |
 | Twitter Create DM Conversation | Working... Creates a new direct message conversation |
+
+## Todoist Integration
+| Block Name | Description |
+|------------|-------------|
+| [Todoist Create Label](todoist.md#todoist-create-label) | Creates a new label in Todoist |
+| [Todoist List Labels](todoist.md#todoist-list-labels) | Retrieves all personal labels from Todoist |
+| [Todoist Get Label](todoist.md#todoist-get-label) | Retrieves a specific label by ID |
+| [Todoist Create Task](todoist.md#todoist-create-task) | Creates a new task in Todoist |
+| [Todoist Get Tasks](todoist.md#todoist-get-tasks) | Retrieves active tasks from Todoist |
+| [Todoist Update Task](todoist.md#todoist-update-task) | Updates an existing task |
+| [Todoist Close Task](todoist.md#todoist-close-task) | Completes/closes a task |
+| [Todoist Reopen Task](todoist.md#todoist-reopen-task) | Reopens a completed task |
+| [Todoist Delete Task](todoist.md#todoist-delete-task) | Permanently deletes a task |
+| [Todoist List Projects](todoist.md#todoist-list-projects) | Retrieves all projects from Todoist |
+| [Todoist Create Project](todoist.md#todoist-create-project) | Creates a new project in Todoist |
+| [Todoist Get Project](todoist.md#todoist-get-project) | Retrieves details for a specific project |
+| [Todoist Update Project](todoist.md#todoist-update-project) | Updates an existing project |
+| [Todoist Delete Project](todoist.md#todoist-delete-project) | Deletes a project and its contents |
+| [Todoist List Collaborators](todoist.md#todoist-list-collaborators) | Retrieves collaborators on a project |
+| [Todoist List Sections](todoist.md#todoist-list-sections) | Retrieves sections from Todoist |
+| [Todoist Get Section](todoist.md#todoist-get-section) | Retrieves details for a specific section |
+| [Todoist Delete Section](todoist.md#todoist-delete-section) | Deletes a section and its tasks |
+| [Todoist Create Comment](todoist.md#todoist-create-comment) | Creates a new comment on a task or project |
+| [Todoist Get Comments](todoist.md#todoist-get-comments) | Retrieves all comments for a task or project |
+| [Todoist Get Comment](todoist.md#todoist-get-comment) | Retrieves a specific comment by ID |
+| [Todoist Update Comment](todoist.md#todoist-update-comment) | Updates an existing comment |
+| [Todoist Delete Comment](todoist.md#todoist-delete-comment) | Deletes a comment |
 
 This comprehensive list covers all the blocks available in AutoGPT. Each block is designed to perform a specific task, and they can be combined to create powerful, automated workflows. For more detailed information on each block, click on its name to view the full documentation.

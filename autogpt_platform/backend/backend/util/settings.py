@@ -65,6 +65,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=1000,
         description="Maximum number of workers to use for node execution within a single graph.",
     )
+    use_http_based_rpc: bool = Field(
+        default=True,
+        description="Whether to use HTTP-based RPC for communication between services.",
+    )
     pyro_host: str = Field(
         default="localhost",
         description="The default hostname of the Pyro server.",
@@ -93,7 +97,18 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=1500,
         description="Number of credits to refill for each user",
     )
-    # Add more configuration fields as needed
+    refund_credit_tolerance_threshold: int = Field(
+        default=500,
+        description="Maximum number of credits above the balance to be auto-approved.",
+    )
+    refund_notification_email: str = Field(
+        default="refund@agpt.co",
+        description="Email address to send refund notifications to.",
+    )
+    refund_request_time_key_format: str = Field(
+        default="%Y-%W",  # This will allow for weekly refunds per user.
+        description="Time key format for refund requests.",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -140,6 +155,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for agent server API to run on",
     )
 
+    notification_service_port: int = Field(
+        default=8007,
+        description="The port for notification service daemon to run on",
+    )
+
     platform_base_url: str = Field(
         default="",
         description="Must be set so the application knows where it's hosted at. "
@@ -157,9 +177,38 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The name of the Google Cloud Storage bucket for media files",
     )
 
+    reddit_user_agent: str = Field(
+        default="AutoGPT:1.0 (by /u/autogpt)",
+        description="The user agent for the Reddit API",
+    )
+
     scheduler_db_pool_size: int = Field(
         default=3,
         description="The pool size for the scheduler database connection pool",
+    )
+
+    rabbitmq_host: str = Field(
+        default="localhost",
+        description="The host for the RabbitMQ server",
+    )
+    rabbitmq_port: int = Field(
+        default=5672,
+        description="The port for the RabbitMQ server",
+    )
+
+    rabbitmq_vhost: str = Field(
+        default="/",
+        description="The vhost for the RabbitMQ server",
+    )
+
+    postmark_sender_email: str = Field(
+        default="invalid@invalid.com",
+        description="The email address to use for sending emails",
+    )
+
+    use_agent_image_generation_v2: bool = Field(
+        default=True,
+        description="Whether to use the new agent image generation service",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")
@@ -253,6 +302,20 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     encryption_key: str = Field(default="", description="Encryption key")
 
+    rabbitmq_default_user: str = Field(default="", description="RabbitMQ default user")
+    rabbitmq_default_pass: str = Field(
+        default="", description="RabbitMQ default password"
+    )
+
+    postmark_server_api_token: str = Field(
+        default="", description="Postmark server API token used for sending emails"
+    )
+
+    postmark_webhook_token: str = Field(
+        default="",
+        description="The token to use for the Postmark webhook",
+    )
+
     # OAuth server credentials for integrations
     # --8<-- [start:OAuthServerCredentialsExample]
     github_client_id: str = Field(default="", description="GitHub OAuth client ID")
@@ -280,8 +343,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
 
     reddit_client_id: str = Field(default="", description="Reddit client ID")
     reddit_client_secret: str = Field(default="", description="Reddit client secret")
-    reddit_username: str = Field(default="", description="Reddit username")
-    reddit_password: str = Field(default="", description="Reddit password")
 
     openweathermap_api_key: str = Field(
         default="", description="OpenWeatherMap API key"
@@ -312,12 +373,22 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     exa_api_key: str = Field(default="", description="Exa API key")
     e2b_api_key: str = Field(default="", description="E2B API key")
     nvidia_api_key: str = Field(default="", description="Nvidia API key")
+    mem0_api_key: str = Field(default="", description="Mem0 API key")
 
     linear_client_id: str = Field(default="", description="Linear client ID")
     linear_client_secret: str = Field(default="", description="Linear client secret")
 
+    todoist_client_id: str = Field(default="", description="Todoist client ID")
+    todoist_client_secret: str = Field(default="", description="Todoist client secret")
+
     stripe_api_key: str = Field(default="", description="Stripe API Key")
     stripe_webhook_secret: str = Field(default="", description="Stripe Webhook Secret")
+
+    screenshotone_api_key: str = Field(default="", description="ScreenshotOne API Key")
+
+    apollo_api_key: str = Field(default="", description="Apollo API Key")
+    smartlead_api_key: str = Field(default="", description="SmartLead API Key")
+    zerobounce_api_key: str = Field(default="", description="ZeroBounce API Key")
 
     # Add more secret fields as needed
 

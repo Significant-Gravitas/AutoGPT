@@ -66,10 +66,17 @@ We use the Poetry to manage the dependencies. To set up the project, follow thes
 
 ### Starting the server without Docker
 
+To run the server locally, start in the autogpt_platform folder:
+
+```sh
+cd ..
+```
+
 Run the following command to run database in docker but the application locally:
 
 ```sh
 docker compose --profile local up deps --build --detach
+cd backend
 poetry run app
 ```
 

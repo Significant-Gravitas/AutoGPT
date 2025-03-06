@@ -37,6 +37,25 @@ jobs:
         run: |
           yarn lint
 
+  type-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
+
+      - name: Install dependencies
+        run: |
+          yarn install --frozen-lockfile
+
+      - name: Run tsc check
+        run: |
+          yarn type-check
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -58,8 +77,8 @@ jobs:
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
         with:
-          large-packages: false  # slow
-          docker-images: false  # limited benefit
+          large-packages: false # slow
+          docker-images: false # limited benefit
 
       - name: Copy default supabase .env
         run: |
@@ -85,11 +104,12 @@ jobs:
         run: yarn playwright install --with-deps ${{ matrix.browser }}
 
       - name: Run tests
+        timeout-minutes: 20
         run: |
           yarn test --project=${{ matrix.browser }}
 
-      - name: Print Docker Compose logs in debug mode
-        if: runner.debug
+      - name: Print Final Docker Compose logs
+        if: always()
         run: |
           docker compose -f ../docker-compose.yml logs
 

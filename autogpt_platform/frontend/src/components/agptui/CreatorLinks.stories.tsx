@@ -21,51 +21,48 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
-    links: {
-      website: "https://example.com",
-      linkedin: "https://linkedin.com/in/johndoe",
-      github: "https://github.com/johndoe",
-      other: ["https://twitter.com/johndoe", "https://medium.com/@johndoe"],
-    },
+    links: [
+      "https://example.com",
+      "https://linkedin.com/in/johndoe",
+      "https://github.com/johndoe",
+      "https://twitter.com/johndoe",
+      "https://medium.com/@johndoe",
+    ],
   },
 };
 
 export const WebsiteOnly: Story = {
   args: {
-    links: {
-      website: "https://example.com",
-    },
+    links: ["https://example.com"],
   },
 };
 
 export const SocialLinks: Story = {
   args: {
-    links: {
-      linkedin: "https://linkedin.com/in/janedoe",
-      github: "https://github.com/janedoe",
-      other: ["https://twitter.com/janedoe"],
-    },
+    links: [
+      "https://linkedin.com/in/janedoe",
+      "https://github.com/janedoe",
+      "https://twitter.com/janedoe",
+    ],
   },
 };
 
 export const NoLinks: Story = {
   args: {
-    links: {},
+    links: [],
   },
 };
 
 export const MultipleOtherLinks: Story = {
   args: {
-    links: {
-      website: "https://example.com",
-      linkedin: "https://linkedin.com/in/creator",
-      github: "https://github.com/creator",
-      other: [
-        "https://twitter.com/creator",
-        "https://medium.com/@creator",
-        "https://youtube.com/@creator",
-        "https://tiktok.com/@creator",
-      ],
-    },
+    links: [
+      "https://example.com",
+      "https://linkedin.com/in/creator",
+      "https://github.com/creator",
+      "https://twitter.com/creator",
+      "https://medium.com/@creator",
+      "https://youtube.com/@creator",
+      "https://tiktok.com/@creator",
+    ],
   },
 };

@@ -13,7 +13,6 @@ const meta = {
   argTypes: {
     userName: { control: "text" },
     userEmail: { control: "text" },
-    activeLink: { control: "text" },
     avatarSrc: { control: "text" },
     menuItemGroups: { control: "object" },
   },
@@ -67,7 +66,6 @@ export const Default: Story = {
   args: {
     userName: "John Doe",
     userEmail: "john.doe@example.com",
-    activeLink: "/marketplace",
     avatarSrc: "https://avatars.githubusercontent.com/u/123456789?v=4",
     menuItemGroups: defaultMenuItemGroups,
   },
@@ -77,7 +75,6 @@ export const NoAvatar: Story = {
   args: {
     userName: "Jane Smith",
     userEmail: "jane.smith@example.com",
-    activeLink: "/library",
     menuItemGroups: defaultMenuItemGroups,
   },
 };
@@ -86,7 +83,6 @@ export const LongUserName: Story = {
   args: {
     userName: "Alexander Bartholomew Christopherson III",
     userEmail: "alexander@example.com",
-    activeLink: "/builder",
     avatarSrc: "https://avatars.githubusercontent.com/u/987654321?v=4",
     menuItemGroups: defaultMenuItemGroups,
   },

@@ -44,6 +44,9 @@ export const Rejected: Story = {
 };
 
 export const AllStatuses: Story = {
+  args: {
+    status: "draft" as StatusType,
+  },
   render: () => (
     <div className="flex flex-col gap-4">
       <Status status="draft" />

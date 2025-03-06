@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import logging
+from datetime import datetime, timezone
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -16,6 +18,7 @@ from typing import (
 )
 from uuid import uuid4
 
+from prisma.enums import CreditTransactionType
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -199,27 +202,42 @@ class OAuth2Credentials(_BaseCredentials):
     scopes: list[str]
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    def bearer(self) -> str:
+    def auth_header(self) -> str:
         return f"Bearer {self.access_token.get_secret_value()}"
 
 
 class APIKeyCredentials(_BaseCredentials):
     type: Literal["api_key"] = "api_key"
     api_key: SecretStr
-    expires_at: Optional[int]
+    expires_at: Optional[int] = Field(
+        default=None,
+        description="Unix timestamp (seconds) indicating when the API key expires (if at all)",
+    )
     """Unix timestamp (seconds) indicating when the API key expires (if at all)"""
 
-    def bearer(self) -> str:
+    def auth_header(self) -> str:
         return f"Bearer {self.api_key.get_secret_value()}"
 
 
+class UserPasswordCredentials(_BaseCredentials):
+    type: Literal["user_password"] = "user_password"
+    username: SecretStr
+    password: SecretStr
+
+    def auth_header(self) -> str:
+        # Converting the string to bytes using encode()
+        # Base64 encoding it with base64.b64encode()
+        # Converting the resulting bytes back to a string with decode()
+        return f"Basic {base64.b64encode(f'{self.username.get_secret_value()}:{self.password.get_secret_value()}'.encode()).decode()}"
+
+
 Credentials = Annotated[
-    OAuth2Credentials | APIKeyCredentials,
+    OAuth2Credentials | APIKeyCredentials | UserPasswordCredentials,
     Field(discriminator="type"),
 ]
 
 
-CredentialsType = Literal["api_key", "oauth2"]
+CredentialsType = Literal["api_key", "oauth2", "user_password"]
 
 
 class OAuthState(BaseModel):
@@ -347,3 +365,74 @@ def CredentialsField(
 
 class ContributorDetails(BaseModel):
     name: str = Field(title="Name", description="The name of the contributor.")
+
+
+class AutoTopUpConfig(BaseModel):
+    amount: int
+    """Amount of credits to top up."""
+    threshold: int
+    """Threshold to trigger auto top up."""
+
+
+class UserTransaction(BaseModel):
+    transaction_key: str = ""
+    transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
+    transaction_type: CreditTransactionType = CreditTransactionType.USAGE
+    amount: int = 0
+    balance: int = 0
+    description: str | None = None
+    usage_graph_id: str | None = None
+    usage_execution_id: str | None = None
+    usage_node_count: int = 0
+    usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
+
+
+class TransactionHistory(BaseModel):
+    transactions: list[UserTransaction]
+    next_transaction_time: datetime | None
+
+
+class RefundRequest(BaseModel):
+    id: str
+    user_id: str
+    transaction_key: str
+    amount: int
+    reason: str
+    result: str | None = None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class NodeExecutionStats(BaseModel):
+    """Execution statistics for a node execution."""
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    error: Optional[Exception | str] = None
+    walltime: float = 0
+    cputime: float = 0
+    cost: float = 0
+    input_size: int = 0
+    output_size: int = 0
+    llm_call_count: int = 0
+    llm_retry_count: int = 0
+    input_token_count: int = 0
+    output_token_count: int = 0
+
+
+class GraphExecutionStats(BaseModel):
+    """Execution statistics for a graph execution."""
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    error: Optional[Exception | str] = None
+    walltime: float = 0
+    cputime: float = 0
+    nodes_walltime: float = 0
+    nodes_cputime: float = 0
+    node_count: int = 0
+    node_error_count: int = 0
+    cost: float = 0
