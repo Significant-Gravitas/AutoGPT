@@ -80,17 +80,17 @@ export const StoreCard: React.FC<StoreCardProps> = ({
           </p>
         )}
         {/* Description */}
-        <p className="font-geist mb-4 line-clamp-3 text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400">
+        <p className="mb-4 line-clamp-3 text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400">
           {description}
         </p>
 
         {/* Stats Row */}
         <div className="flex items-center justify-between">
-          <div className="font-geist text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+          <div className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
             {runs.toLocaleString()} runs
           </div>
           <div className="flex items-center gap-2">
-            <span className="font-geist text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+            <span className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
               {rating.toFixed(1)}
             </span>
             <div

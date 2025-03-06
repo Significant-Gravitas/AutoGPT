@@ -103,19 +103,19 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
 
       {/* Creator */}
       <div className="mb-3 flex w-full items-center gap-1.5 lg:mb-4">
-        <div className="font-geist text-base font-normal text-neutral-800 dark:text-neutral-200 sm:text-lg lg:text-xl">
+        <div className="text-base font-normal text-neutral-800 dark:text-neutral-200 sm:text-lg lg:text-xl">
           by
         </div>
         <Link
           href={`/marketplace/creator/${encodeURIComponent(creator)}`}
-          className="font-geist text-base font-medium text-neutral-800 hover:underline dark:text-neutral-200 sm:text-lg lg:text-xl"
+          className="text-base font-medium text-neutral-800 hover:underline dark:text-neutral-200 sm:text-lg lg:text-xl"
         >
           {creator}
         </Link>
       </div>
 
       {/* Short Description */}
-      <div className="font-geist mb-4 line-clamp-2 w-full text-base font-normal leading-normal text-neutral-600 dark:text-neutral-300 sm:text-lg lg:mb-6 lg:text-xl lg:leading-7">
+      <div className="mb-4 line-clamp-2 w-full text-base font-normal leading-normal text-neutral-600 dark:text-neutral-300 sm:text-lg lg:mb-6 lg:text-xl lg:leading-7">
         {shortDescription}
       </div>
 
@@ -156,12 +156,12 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
       {/* Rating and Runs */}
       <div className="mb-4 flex w-full items-center justify-between lg:mb-[44px]">
         <div className="flex items-center gap-1.5 sm:gap-2">
-          <span className="font-geist whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
+          <span className="whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
             {rating.toFixed(1)}
           </span>
           <div className="flex gap-0.5">{StarRatingIcons(rating)}</div>
         </div>
-        <div className="font-geist whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
+        <div className="whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
           {runs.toLocaleString()} runs
         </div>
       </div>
@@ -171,24 +171,24 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
 
       {/* Description Section */}
       <div className="mb-4 w-full lg:mb-[36px]">
-        <div className="font-geist decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
+        <div className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
           Description
         </div>
-        <div className="font-geist decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
+        <div className="decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
           {longDescription}
         </div>
       </div>
 
       {/* Categories */}
       <div className="mb-4 flex w-full flex-col gap-1.5 sm:gap-2 lg:mb-[36px]">
-        <div className="font-geist decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
+        <div className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
           Categories
         </div>
         <div className="flex flex-wrap gap-1.5 sm:gap-2">
           {categories.map((category, index) => (
             <div
               key={index}
-              className="font-geist decoration-skip-ink-none whitespace-nowrap rounded-full border border-neutral-600 bg-white px-2 py-0.5 text-base font-normal leading-6 text-neutral-800 underline-offset-[from-font] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 sm:px-[16px] sm:py-[10px]"
+              className="decoration-skip-ink-none whitespace-nowrap rounded-full border border-neutral-600 bg-white px-2 py-0.5 text-base font-normal leading-6 text-neutral-800 underline-offset-[from-font] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 sm:px-[16px] sm:py-[10px]"
             >
               {category}
             </div>
@@ -198,10 +198,10 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
 
       {/* Version History */}
       <div className="flex w-full flex-col gap-0.5 sm:gap-1">
-        <div className="font-geist decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
+        <div className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
           Version history
         </div>
-        <div className="font-geist decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
+        <div className="decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
           Last updated {lastUpdated}
         </div>
         <div className="text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">

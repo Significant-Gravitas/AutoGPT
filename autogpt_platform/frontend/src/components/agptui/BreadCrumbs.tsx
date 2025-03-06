@@ -26,7 +26,7 @@ export const BreadCrumbs: React.FC<BreadCrumbsProps> = ({ items }) => {
         {items.map((item, index) => (
           <React.Fragment key={index}>
             <Link href={item.link}>
-              <span className="rounded py-1 pr-2 font-neue text-xl font-medium leading-9 tracking-tight text-[#272727] transition-colors duration-200 hover:text-gray-400 dark:text-neutral-100 dark:hover:text-gray-500">
+              <span className="rounded py-1 pr-2 text-xl font-medium leading-9 tracking-tight text-[#272727] transition-colors duration-200 hover:text-gray-400 dark:text-neutral-100 dark:hover:text-gray-500">
                 {item.name}
               </span>
             </Link>
