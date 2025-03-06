@@ -50,8 +50,6 @@ import {
   OttoQuery,
   OttoResponse,
   UserOnboarding,
-  OttoQuery,
-  OttoResponse,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
