@@ -441,7 +441,7 @@ class SmartDecisionMakerBlock(Block):
             )
 
         # Fallback on adding tool output in the conversation history as user prompt.
-        if len(tool_output) == 0:
+        if len(tool_output) == 0 and input_data.last_tool_output:
             logger.warning(
                 f"[SmartDecisionMakerBlock-node_exec_id={node_exec_id}] "
                 f"No pending tool calls found. This may indicate an issue with the "
