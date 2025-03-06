@@ -341,6 +341,7 @@ class NotificationManager(AppService):
         immediate_queue = self.run_and_wait(
             channel.get_queue("immediate_notifications")
         )
+        batch_queue = self.run_and_wait(channel.get_queue("batch_notifications"))
 
         admin_queue = self.run_and_wait(channel.get_queue("admin_notifications"))
 
@@ -357,7 +358,7 @@ class NotificationManager(AppService):
                     error_queue_name="admin_notifications",
                 )
                 self._run_queue(
-                    queue=self.run_and_wait(channel.get_queue("batch_notifications")),
+                    queue=batch_queue,
                     process_func=self._process_batch,
                     error_queue_name="batch_notifications",
                 )
