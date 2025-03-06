@@ -145,7 +145,13 @@ class SmartDecisionMakerBlock(Block):
         credentials: llm.AICredentials = llm.AICredentialsField()
         sys_prompt: str = SchemaField(
             title="System Prompt",
-            default="Thinking carefully step by step decide which function to call. Always choose a function call from the list of function signatures, and always provide the complete argument provided with the type matching the required jsonschema signature, no missing argument is allowed. If you have already completed the task objective, you can end the task by providing the end result of your work as a finish message.",
+            default="Thinking carefully step by step decide which function to call. "
+            "Always choose a function call from the list of function signatures, "
+            "and always provide the complete argument provided with the type "
+            "matching the required jsonschema signature, no missing argument is allowed. "
+            "If you have already completed the task objective, you can end the task "
+            "by providing the end result of your work as a finish message. "
+            "Only provide EXACTLY one function call, multiple tool calls is strictly prohibited.",
             description="The system prompt to provide additional context to the model.",
         )
         conversation_history: list[dict] = SchemaField(

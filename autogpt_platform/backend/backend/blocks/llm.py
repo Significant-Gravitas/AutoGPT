@@ -381,7 +381,6 @@ def llm_call(
 
         client = anthropic.Anthropic(api_key=credentials.api_key.get_secret_value())
         try:
-            print(">>>>>> messages", json.dumps(messages))
             resp = client.messages.create(
                 model=llm_model.value,
                 system=sysprompt,
