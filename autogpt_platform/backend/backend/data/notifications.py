@@ -23,8 +23,8 @@ T_co = TypeVar("T_co", bound="BaseNotificationData", covariant=True)
 
 class QueueType(Enum):
     IMMEDIATE = "immediate"  # Send right away (errors, critical notifications)
-    HOURLY = "hourly"  # Batch for up to an hour (usage reports)
-    DAILY = "daily"  # Daily digest (summary notifications)
+    BATCH = "batch"  # Batch for up to an hour (usage reports)
+    SUMMARY = "summary"  # Daily digest (summary notifications)
     BACKOFF = "backoff"  # Backoff strategy (exponential backoff)
     ADMIN = "admin"  # Admin notifications (errors, critical notifications)
 
@@ -196,15 +196,15 @@ class NotificationTypeOverride:
     def strategy(self) -> QueueType:
         BATCHING_RULES = {
             # These are batched by the notification service
-            NotificationType.AGENT_RUN: QueueType.IMMEDIATE,
+            NotificationType.AGENT_RUN: QueueType.BATCH,
             # These are batched by the notification service, but with a backoff strategy
             NotificationType.ZERO_BALANCE: QueueType.BACKOFF,
             NotificationType.LOW_BALANCE: QueueType.IMMEDIATE,
             NotificationType.BLOCK_EXECUTION_FAILED: QueueType.BACKOFF,
             NotificationType.CONTINUOUS_AGENT_ERROR: QueueType.BACKOFF,
-            NotificationType.DAILY_SUMMARY: QueueType.DAILY,
-            NotificationType.WEEKLY_SUMMARY: QueueType.DAILY,
-            NotificationType.MONTHLY_SUMMARY: QueueType.DAILY,
+            NotificationType.DAILY_SUMMARY: QueueType.SUMMARY,
+            NotificationType.WEEKLY_SUMMARY: QueueType.SUMMARY,
+            NotificationType.MONTHLY_SUMMARY: QueueType.SUMMARY,
             NotificationType.REFUND_REQUEST: QueueType.ADMIN,
             NotificationType.REFUND_PROCESSED: QueueType.ADMIN,
         }
@@ -272,10 +272,8 @@ def get_batch_delay(notification_type: NotificationType) -> timedelta:
 
 
 async def create_or_add_to_user_notification_batch(
-    user_id: str,
-    notification_type: NotificationType,
-    data: str,  # type: 'NotificationEventModel'
-) -> dict:
+    user_id: str, notification_type: NotificationType, data: NotificationEventModel
+) -> UserNotificationBatch:
     try:
         logger.info(
             f"Creating or adding to notification batch for {user_id} with type {notification_type} and data {data}"
@@ -346,7 +344,7 @@ async def create_or_add_to_user_notification_batch(
         ) from e
 
 
-async def get_user_notification_last_message_in_batch(
+async def get_user_notification_oldest_message_in_batch(
     user_id: str,
     notification_type: NotificationType,
 ) -> NotificationEvent | None:

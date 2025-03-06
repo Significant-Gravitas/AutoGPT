@@ -1,3 +1,4 @@
+from datetime import datetime
 import logging
 import time
 from typing import Callable
@@ -12,7 +13,12 @@ from backend.data.notifications import (
     NotificationEventModel,
     NotificationResult,
     QueueType,
+    create_or_add_to_user_notification_batch,
+    empty_user_notification_batch,
+    get_batch_delay,
     get_data_type,
+    get_user_notification_batch,
+    get_user_notification_oldest_message_in_batch,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import (
@@ -60,6 +66,16 @@ def create_notification_config() -> RabbitMQConfig:
                 "x-dead-letter-routing-key": "failed.admin",
             },
         ),
+        # Batch Queue
+        Queue(
+            name="batch_notifications",
+            exchange=notification_exchange,
+            routing_key="notification.batch.#",
+            arguments={
+                "x-dead-letter-exchange": dead_letter_exchange.name,
+                "x-dead-letter-routing-key": "failed.batch",
+            },
+        ),
         # Failed notifications queue
         Queue(
             name="failed_notifications",
@@ -99,10 +115,10 @@ class NotificationManager(AppService):
             return f"notification.backoff.{event.type.value}"
         elif event.strategy == QueueType.ADMIN:
             return f"notification.admin.{event.type.value}"
-        elif event.strategy == QueueType.HOURLY:
-            return f"notification.hourly.{event.type.value}"
-        elif event.strategy == QueueType.DAILY:
-            return f"notification.daily.{event.type.value}"
+        elif event.strategy == QueueType.BATCH:
+            return f"notification.batch.{event.type.value}"
+        elif event.strategy == QueueType.SUMMARY:
+            return f"notification.summary.{event.type.value}"
         return f"notification.{event.type.value}"
 
     @expose
@@ -151,6 +167,27 @@ class NotificationManager(AppService):
         ).preferences.get(event_type, True)
         # only if both are true, should we email this person
         return validated_email and preference
+
+    async def _should_batch(
+        self, user_id: str, event_type: NotificationType, event: NotificationEventModel
+    ) -> bool:
+
+        batch = await create_or_add_to_user_notification_batch(
+            user_id, event_type, event
+        )
+
+        oldest_message = await get_user_notification_oldest_message_in_batch(
+            user_id, event_type
+        )
+        if not oldest_message:
+            return False
+        oldest_age = oldest_message.createdAt
+
+        max_delay = get_batch_delay(event_type)
+
+        if oldest_age + max_delay < datetime.now():
+            return True
+        return False
 
     def _parse_message(self, message: str) -> NotificationEvent | None:
         try:
@@ -216,6 +253,55 @@ class NotificationManager(AppService):
             logger.exception(f"Error processing notification for immediate queue: {e}")
             return False
 
+    def _process_batch(self, message: str) -> bool:
+        """Process a single notification with a batching strategy, returning whether to put into the failed queue"""
+        try:
+            parsed = self._parse_message(message)
+            if not parsed:
+                return False
+            event = parsed.event
+            model = parsed.model
+            logger.debug(f"Processing batch notification: {model}")
+
+            recipient_email = self.run_and_wait(get_user_email_by_id(event.user_id))
+            if not recipient_email:
+                logger.error(f"User email not found for user {event.user_id}")
+                return False
+
+            should_send = self._should_email_user_based_on_preference(
+                event.user_id, event.type
+            )
+            if not should_send:
+                logger.debug(
+                    f"User {event.user_id} does not want to receive {event.type} notifications"
+                )
+                return True
+
+            should_send = self._should_batch(event.user_id, event.type, model)
+
+            if not should_send:
+                logger.debug("Batch not old enough to send")
+                return False
+            batch = self.run_and_wait(
+                get_user_notification_batch(event.user_id, event.type)
+            )
+            if not batch:
+                logger.error(f"Batch not found for user {event.user_id}")
+                return False
+            unsub_link = generate_unsubscribe_link(event.user_id)
+
+            self.email_sender.send_templated(
+                notification=event.type,
+                user_email=recipient_email,
+                data=model,
+                user_unsub_link=unsub_link,
+            )
+            self.run_and_wait(empty_user_notification_batch(event.user_id, event.type))
+            return True
+        except Exception as e:
+            logger.exception(f"Error processing notification for batch queue: {e}")
+            return False
+
     def _run_queue(
         self,
         queue: aio_pika.abc.AbstractQueue,
@@ -268,6 +354,11 @@ class NotificationManager(AppService):
                     queue=admin_queue,
                     process_func=self._process_admin_message,
                     error_queue_name="admin_notifications",
+                )
+                self._run_queue(
+                    queue=self.run_and_wait(channel.get_queue("batch_notifications")),
+                    process_func=self._process_batch,
+                    error_queue_name="batch_notifications",
                 )
 
                 time.sleep(0.1)
