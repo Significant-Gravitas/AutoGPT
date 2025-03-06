@@ -412,11 +412,8 @@ async def add_store_agent_to_library(
             added_agent = await prisma.models.LibraryAgent.prisma().create(
                 data={
                     "userId": user_id,
-                    "Agent": {
-                        "connect": {
-                            "graphVersionId": {"id": graph.id, "version": graph.version}
-                        },
-                    },
+                    "agentId": graph.id,
+                    "agentVersion": graph.version,
                     "isCreatedByUser": False,
                 },
                 include=library_agent_include(user_id),
