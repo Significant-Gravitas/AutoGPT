@@ -23,10 +23,12 @@ export default function AgentRunDetailsView({
   graph,
   run,
   agentActions,
+  deleteRun,
 }: {
   graph: GraphMeta;
   run: GraphExecution | GraphExecutionMeta;
   agentActions: ButtonAction[];
+  deleteRun: () => void;
 }): React.ReactNode {
   const api = useBackendAPI();
 
@@ -86,6 +88,11 @@ export default function AgentRunDetailsView({
     [api, graph, agentRunInputs],
   );
 
+  const stopRun = useCallback(
+    () => api.stopGraphExecution(graph.id, run.execution_id),
+    [api, graph.id, run.execution_id],
+  );
+
   const agentRunOutputs:
     | Record<
         string,
@@ -109,9 +116,23 @@ export default function AgentRunDetailsView({
     );
   }, [graph, run, runStatus]);
 
-  const runActions: { label: string; callback: () => void }[] = useMemo(
-    () => [{ label: "Run again", callback: () => runAgain() }],
-    [runAgain],
+  const runActions: ButtonAction[] = useMemo(
+    () => [
+      ...(["running", "queued"].includes(runStatus)
+        ? ([
+            {
+              label: "Stop run",
+              variant: "secondary",
+              callback: stopRun,
+            },
+          ] satisfies ButtonAction[])
+        : []),
+      ...(["success", "failed", "stopped"].includes(runStatus)
+        ? [{ label: "Run again", callback: runAgain }]
+        : []),
+      { label: "Delete run", variant: "secondary", callback: deleteRun },
+    ],
+    [runStatus, runAgain, stopRun, deleteRun],
   );
 
   return (
@@ -190,7 +211,11 @@ export default function AgentRunDetailsView({
           <div className="flex flex-col gap-3">
             <h3 className="text-sm font-medium">Run actions</h3>
             {runActions.map((action, i) => (
-              <Button key={i} variant="outline" onClick={action.callback}>
+              <Button
+                key={i}
+                variant={action.variant ?? "outline"}
+                onClick={action.callback}
+              >
                 {action.label}
               </Button>
             ))}

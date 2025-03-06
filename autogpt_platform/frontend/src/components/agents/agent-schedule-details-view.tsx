@@ -1,7 +1,11 @@
 "use client";
 import React, { useCallback, useMemo } from "react";
 
-import { GraphMeta, Schedule } from "@/lib/autogpt-server-api";
+import {
+  GraphExecutionID,
+  GraphMeta,
+  Schedule,
+} from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 import type { ButtonAction } from "@/components/agptui/types";
@@ -18,7 +22,7 @@ export default function AgentScheduleDetailsView({
 }: {
   graph: GraphMeta;
   schedule: Schedule;
-  onForcedRun: (runID: string) => void;
+  onForcedRun: (runID: GraphExecutionID) => void;
   agentActions: ButtonAction[];
 }): React.ReactNode {
   const api = useBackendAPI();
