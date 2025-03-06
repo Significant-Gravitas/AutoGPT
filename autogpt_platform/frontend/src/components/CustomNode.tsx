@@ -837,7 +837,11 @@ export const CustomNode = React.memo(
                     data={data.executionResults!.at(-1)?.data || {}}
                   />
                   <div className="flex justify-end">
-                    <Button variant="ghost" onClick={handleOutputClick}>
+                    <Button
+                      variant="ghost"
+                      onClick={handleOutputClick}
+                      className="border border-gray-300"
+                    >
                       View More
                     </Button>
                   </div>

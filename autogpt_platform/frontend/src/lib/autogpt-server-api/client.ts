@@ -17,6 +17,7 @@ import {
   Graph,
   GraphCreatable,
   GraphExecution,
+  GraphExecutionID,
   GraphExecutionMeta,
   GraphID,
   GraphMeta,
@@ -35,6 +36,7 @@ import {
   RefundRequest,
   Schedule,
   ScheduleCreatable,
+  ScheduleID,
   StoreAgentDetails,
   StoreAgentsResponse,
   StoreReview,
@@ -211,7 +213,7 @@ export default class BackendAPI {
     id: GraphID,
     version: number,
     inputData: { [key: string]: any } = {},
-  ): Promise<{ graph_exec_id: string }> {
+  ): Promise<{ graph_exec_id: GraphExecutionID }> {
     return this._request("POST", `/graphs/${id}/execute/${version}`, inputData);
   }
 
@@ -225,7 +227,7 @@ export default class BackendAPI {
 
   async getGraphExecutionInfo(
     graphID: GraphID,
-    runID: string,
+    runID: GraphExecutionID,
   ): Promise<GraphExecution> {
     const result = await this._get(`/graphs/${graphID}/executions/${runID}`);
     result.node_executions = result.node_executions.map(
@@ -236,7 +238,7 @@ export default class BackendAPI {
 
   async stopGraphExecution(
     graphID: GraphID,
-    runID: string,
+    runID: GraphExecutionID,
   ): Promise<GraphExecution> {
     const result = await this._request(
       "POST",
@@ -246,6 +248,10 @@ export default class BackendAPI {
       parseNodeExecutionResultTimestamps,
     );
     return result;
+  }
+
+  async deleteGraphExecution(runID: GraphExecutionID): Promise<void> {
+    await this._request("DELETE", `/executions/${runID}`);
   }
 
   oAuthLogin(
@@ -558,13 +564,9 @@ export default class BackendAPI {
     });
   }
 
-  ///////////////////////////////////////////
-  /////////// INTERNAL FUNCTIONS ////////////
-  //////////////////////////////??///////////
-
-  private _get(path: string, query?: Record<string, any>) {
-    return this._request("GET", path, query);
-  }
+  //////////////////////////////////
+  /////////// SCHEDULES ////////////
+  //////////////////////////////////
 
   async createSchedule(schedule: ScheduleCreatable): Promise<Schedule> {
     return this._request("POST", `/schedules`, schedule).then(
@@ -572,7 +574,7 @@ export default class BackendAPI {
     );
   }
 
-  async deleteSchedule(scheduleId: string): Promise<{ id: string }> {
+  async deleteSchedule(scheduleId: ScheduleID): Promise<{ id: string }> {
     return this._request("DELETE", `/schedules/${scheduleId}`);
   }
 
@@ -580,6 +582,14 @@ export default class BackendAPI {
     return this._get(`/schedules`).then((schedules) =>
       schedules.map(parseScheduleTimestamp),
     );
+  }
+
+  ///////////////////////////////////////////
+  /////////// INTERNAL FUNCTIONS ////////////
+  //////////////////////////////??///////////
+
+  private _get(path: string, query?: Record<string, any>) {
+    return this._request("GET", path, query);
   }
 
   private async _uploadFile(path: string, file: File): Promise<string> {
