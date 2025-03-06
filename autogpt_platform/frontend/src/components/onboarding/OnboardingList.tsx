@@ -10,18 +10,7 @@ type OnboardingListElementProps = {
   onClick: (content: string) => void;
 };
 
-type OnboardingListProps = {
-  className?: string;
-  elements: Array<{
-    label: string;
-    text: string;
-    id: string;
-  }>;
-  selectedId?: string;
-  onSelect: (id: string) => void;
-};
-
-function OnboardingListElement({
+export function OnboardingListElement({
   label,
   text,
   selected,
@@ -46,20 +35,18 @@ function OnboardingListElement({
     <button
       onClick={() => onClick(content)}
       className={cn(
-        "relative flex h-[78px] w-[530px] items-center rounded-xl px-5 py-4",
-        "border border-transparent",
-        "transition-all duration-200 ease-in-out",
+        "relative flex h-[78px] w-[530px] items-center rounded-xl border border-transparent px-5 py-4 transition-all duration-200 ease-in-out",
         selected ? "bg-[#F5F3FF80]" : "bg-white hover:border-zinc-400",
       )}
     >
-      <div className="flex flex-col items-start gap-1">
+      <div className="flex w-full flex-col items-start gap-1">
         <span className="text-sm font-medium text-zinc-700">{label}</span>
         {custom && selected ? (
           <input
             ref={inputRef}
             className={cn(
               selected ? "text-zinc-600" : "text-zinc-400",
-              "font-poppin border-0 bg-[#F5F3FF80] text-sm focus:outline-none",
+              "font-poppin w-full border-0 bg-[#F5F3FF80] text-sm focus:outline-none",
             )}
             placeholder="Please specify"
             value={content}
@@ -89,8 +76,7 @@ function OnboardingListElement({
       )}
       <div
         className={cn(
-          "pointer-events-none absolute inset-0 rounded-xl border-2",
-          "transition-all duration-200 ease-in-out",
+          "pointer-events-none absolute inset-0 rounded-xl border-2 transition-all duration-200 ease-in-out",
           selected ? "border-violet-700" : "border-transparent",
         )}
       />
@@ -98,7 +84,18 @@ function OnboardingListElement({
   );
 }
 
-export default function OnboardingList({
+type OnboardingListProps = {
+  className?: string;
+  elements: Array<{
+    label: string;
+    text: string;
+    id: string;
+  }>;
+  selectedId?: string | null;
+  onSelect: (id: string) => void;
+};
+
+function OnboardingList({
   className,
   elements,
   selectedId,
@@ -106,7 +103,7 @@ export default function OnboardingList({
 }: OnboardingListProps) {
   const isCustom = useCallback(() => {
     return (
-      selectedId !== undefined &&
+      selectedId !== null &&
       !elements.some((element) => element.id === selectedId)
     );
   }, [selectedId, elements]);
@@ -134,3 +131,5 @@ export default function OnboardingList({
     </div>
   );
 }
+
+export default OnboardingList;
