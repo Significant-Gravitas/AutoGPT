@@ -47,6 +47,8 @@ import {
   TransactionHistory,
   User,
   UserPasswordCredentials,
+  OttoQuery,
+  OttoResponse,
   UserOnboarding,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
@@ -612,6 +614,10 @@ export default class BackendAPI {
 
   private _get(path: string, query?: Record<string, any>) {
     return this._request("GET", path, query);
+  }
+
+  async askOtto(query: OttoQuery): Promise<OttoResponse> {
+    return this._request("POST", "/otto/ask", query);
   }
 
   private async _uploadFile(path: string, file: File): Promise<string> {
