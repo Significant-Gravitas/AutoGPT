@@ -172,9 +172,7 @@ class NotificationManager(AppService):
         self, user_id: str, event_type: NotificationType, event: NotificationEventModel
     ) -> bool:
 
-        batch = await create_or_add_to_user_notification_batch(
-            user_id, event_type, event
-        )
+        await create_or_add_to_user_notification_batch(user_id, event_type, event)
 
         oldest_message = await get_user_notification_oldest_message_in_batch(
             user_id, event_type
@@ -277,7 +275,9 @@ class NotificationManager(AppService):
                 )
                 return True
 
-            should_send = self._should_batch(event.user_id, event.type, model)
+            should_send = self.run_and_wait(
+                self._should_batch(event.user_id, event.type, model)
+            )
 
             if not should_send:
                 logger.debug("Batch not old enough to send")
@@ -296,6 +296,7 @@ class NotificationManager(AppService):
                 data=model,
                 user_unsub_link=unsub_link,
             )
+            # only empty the batch if we sent the email successfully
             self.run_and_wait(empty_user_notification_batch(event.user_id, event.type))
             return True
         except Exception as e:

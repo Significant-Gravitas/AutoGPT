@@ -272,19 +272,17 @@ def get_batch_delay(notification_type: NotificationType) -> timedelta:
 
 
 async def create_or_add_to_user_notification_batch(
-    user_id: str, notification_type: NotificationType, data: NotificationEventModel
+    user_id: str,
+    notification_type: NotificationType,
+    notification_data: NotificationEventModel,
 ) -> UserNotificationBatch:
     try:
         logger.info(
-            f"Creating or adding to notification batch for {user_id} with type {notification_type} and data {data}"
+            f"Creating or adding to notification batch for {user_id} with type {notification_type} and data {notification_data}"
         )
 
-        notification_data = NotificationEventModel[
-            get_data_type(notification_type)
-        ].model_validate_json(data)
-
         # Serialize the data
-        json_data: Json = Json(notification_data.data.model_dump_json())
+        json_data: Json = Json(notification_data.data.model_dump())
 
         # First try to find existing batch
         existing_batch = await UserNotificationBatch.prisma().find_unique(
@@ -315,7 +313,7 @@ async def create_or_add_to_user_notification_batch(
                     },
                     include={"notifications": True},
                 )
-                return resp.model_dump()
+                return resp
         else:
             async with transaction() as tx:
                 notification_event = await tx.notificationevent.create(
@@ -337,7 +335,7 @@ async def create_or_add_to_user_notification_batch(
                 raise DatabaseError(
                     f"Failed to add notification event {notification_event.id} to existing batch {existing_batch.id}"
                 )
-            return resp.model_dump()
+            return resp
     except Exception as e:
         raise DatabaseError(
             f"Failed to create or add to notification batch for user {user_id} and type {notification_type}: {e}"
