@@ -57,7 +57,9 @@ class EmailSender:
             return
         template = self._get_template(notification)
 
-        base_url = settings.config.frontend_base_url or settings.config.platform_base_url
+        base_url = (
+            settings.config.frontend_base_url or settings.config.platform_base_url
+        )
         try:
             subject, full_message = self.formatter.format_email(
                 base_template=template.base_template,

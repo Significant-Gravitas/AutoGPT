@@ -16,10 +16,10 @@ from backend.data.notifications import (
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import (
+    generate_unsubscribe_link,
     get_user_email_by_id,
     get_user_email_verification,
     get_user_notification_preference,
-    generate_unsubscribe_link,
 )
 from backend.notifications.email import EmailSender
 from backend.util.service import AppService, expose

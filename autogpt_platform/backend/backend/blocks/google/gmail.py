@@ -2,13 +2,13 @@ import base64
 from email.utils import parseaddr
 from typing import List
 
-from backend.util.settings import Settings
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from pydantic import BaseModel
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
+from backend.util.settings import Settings
 
 from ._auth import (
     GOOGLE_OAUTH_IS_CONFIGURED,

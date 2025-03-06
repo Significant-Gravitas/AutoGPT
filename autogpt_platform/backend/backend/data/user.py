@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 from typing import Optional, cast
 
 from autogpt_libs.auth.models import DEFAULT_USER_ID
-from backend.util.settings import Settings
 from fastapi import HTTPException
 from prisma import Json
 from prisma.enums import NotificationType
@@ -15,6 +14,7 @@ from backend.data.model import UserIntegrations, UserMetadata, UserMetadataRaw
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util.encryption import JSONCryptor
+from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 

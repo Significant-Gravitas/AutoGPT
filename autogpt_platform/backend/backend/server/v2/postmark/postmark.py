@@ -2,7 +2,8 @@ import logging
 from typing import Annotated
 
 from autogpt_libs.auth.middleware import APIKeyValidator
-from fastapi import APIRouter, Body, Depends, Path, Query
+from fastapi import APIRouter, Body, Depends, Query
+from fastapi.responses import JSONResponse
 
 from backend.data.user import (
     get_user_by_email,
@@ -20,7 +21,6 @@ from backend.server.v2.postmark.models import (
     PostmarkWebhook,
 )
 from backend.util.settings import Settings
-from fastapi.responses import JSONResponse
 
 settings = Settings()
 postmark_validator = APIKeyValidator(
