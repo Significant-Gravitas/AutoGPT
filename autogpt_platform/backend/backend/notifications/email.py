@@ -7,9 +7,9 @@ from prisma.enums import NotificationType
 from pydantic import BaseModel
 
 from backend.data.notifications import (
+    NotificationDataType_co,
     NotificationEventModel,
     NotificationTypeOverride,
-    NotificationDataType_co,
 )
 from backend.util.settings import Settings
 from backend.util.text import TextFormatter

@@ -1,6 +1,6 @@
-from enum import Enum
 import logging
 import os
+from enum import Enum
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED

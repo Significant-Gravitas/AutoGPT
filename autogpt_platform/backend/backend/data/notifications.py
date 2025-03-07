@@ -154,6 +154,7 @@ class NotificationEventDTO(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
     retry_count: int = 0
 
+
 class SummaryParamsEventDTO(BaseModel):
     user_id: str
     type: NotificationType
@@ -205,6 +206,7 @@ def get_notif_data_type(
         NotificationType.REFUND_PROCESSED: RefundRequestData,
     }[notification_type]
 
+
 def get_summary_params_type(
     notification_type: NotificationType,
 ) -> type[BaseSummaryParams]:
@@ -212,6 +214,7 @@ def get_summary_params_type(
         NotificationType.DAILY_SUMMARY: DailySummaryParams,
         NotificationType.WEEKLY_SUMMARY: WeeklySummaryParams,
     }[notification_type]
+
 
 class NotificationBatch(BaseModel):
     user_id: str
