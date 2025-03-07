@@ -3,6 +3,7 @@ from typing import Any, List
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
+from backend.util import json
 from backend.util.file import MediaFile, store_media_file
 from backend.util.mock import MockObject
 from backend.util.text import TextFormatter
@@ -152,6 +153,9 @@ class FindInDictionaryBlock(Block):
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         obj = input_data.input
         key = input_data.key
+
+        if isinstance(obj, str):
+            obj = json.loads(obj)
 
         if isinstance(obj, dict) and key in obj:
             yield "output", obj[key]
