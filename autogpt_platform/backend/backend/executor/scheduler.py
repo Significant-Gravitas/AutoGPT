@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 from apscheduler.job import Job as JobObj
+from apscheduler.jobstores.memory import MemoryJobStore
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -93,9 +94,18 @@ def process_existing_batches(**kwargs):
         logger.exception(f"Error processing existing batches: {e}")
 
 
+def process_weekly_summary(**kwargs):
+    try:
+        log("Processing weekly summary")
+        get_notification_client().queue_weekly_summary()
+    except Exception as e:
+        logger.exception(f"Error processing weekly summary: {e}")
+
+
 class Jobstores(Enum):
     EXECUTION = "execution"
     BATCHED_NOTIFICATIONS = "batched_notifications"
+    WEEKLY_NOTIFICATIONS = "weekly_notifications"
 
 
 class ExecutionJobArgs(BaseModel):
@@ -189,6 +199,8 @@ class Scheduler(AppService):
                     metadata=MetaData(schema=db_schema),
                     tablename="apscheduler_jobs_batched_notifications",
                 ),
+                # These don't really need persistence
+                Jobstores.WEEKLY_NOTIFICATIONS.value: MemoryJobStore(),
             }
         )
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
@@ -242,6 +254,9 @@ class Scheduler(AppService):
     ) -> list[ExecutionJobInfo]:
         schedules = []
         for job in self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value):
+            logger.info(
+                f"Found job {job.id} with cron schedule {job.trigger} and args {job.kwargs}"
+            )
             job_args = ExecutionJobArgs(**job.kwargs)
             if (
                 job.next_run_time is not None
@@ -271,3 +286,21 @@ class Scheduler(AppService):
         )
         log(f"Added job {job.id} with cron schedule '{cron}' input data: {data}")
         return NotificationJobInfo.from_db(job_args, job)
+
+    @expose
+    def add_weekly_notification_schedule(self, cron: str) -> NotificationJobInfo:
+
+        job = self.scheduler.add_job(
+            process_weekly_summary,
+            CronTrigger.from_crontab(cron),
+            kwargs={},
+            replace_existing=True,
+            jobstore=Jobstores.WEEKLY_NOTIFICATIONS.value,
+        )
+        log(f"Added job {job.id} with cron schedule '{cron}'")
+        return NotificationJobInfo.from_db(
+            NotificationJobArgs(
+                cron=cron, notification_types=[NotificationType.WEEKLY_SUMMARY]
+            ),
+            job,
+        )
