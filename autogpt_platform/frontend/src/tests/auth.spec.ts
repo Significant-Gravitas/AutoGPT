@@ -18,7 +18,6 @@ test.describe("Authentication", () => {
   }) => {
     await page.goto("/login");
     await loginPage.login(testUser.email, testUser.password);
-
     await test.expect(page).toHaveURL("/marketplace");
 
     // Click on the profile menu trigger to open popout

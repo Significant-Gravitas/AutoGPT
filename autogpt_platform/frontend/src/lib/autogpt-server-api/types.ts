@@ -732,9 +732,39 @@ export interface RefundRequest {
   updated_at: Date;
 }
 
+export interface UserOnboarding {
+  step: number;
+  usageReason?: string;
+  integrations: string[];
+  otherIntegrations?: string;
+  selectedAgentCreator?: string;
+  selectedAgentSlug?: string;
+  agentInput?: { [key: string]: string };
+  isCompleted: boolean;
+}
+
 /* *** UTILITIES *** */
 
 /** Use branded types for IDs -> deny mixing IDs between different object classes */
 export type Brand<T, Brand extends string> = T & {
   readonly [B in Brand as `__${B}_brand`]: never;
 };
+
+export interface OttoDocument {
+  url: string;
+  relevance_score: number;
+}
+
+export interface OttoResponse {
+  answer: string;
+  documents: OttoDocument[];
+  success: boolean;
+}
+
+export interface OttoQuery {
+  query: string;
+  conversation_history: { query: string; response: string }[];
+  message_id: string;
+  include_graph_data: boolean;
+  graph_id?: string;
+}
