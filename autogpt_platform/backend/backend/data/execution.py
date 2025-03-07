@@ -548,10 +548,9 @@ async def get_output_from_links(
         where={
             "agentNodeId": {"in": list(links.keys())},
             "agentGraphExecutionId": graph_eid,
-            "executionStatus": {"not": ExecutionStatus.COMPLETED},  # type: ignore
+            "executionStatus": {"not": ExecutionStatus.INCOMPLETE},  # type: ignore
         },
-        order={"queuedTime": "desc"},
-        distinct=["agentNodeId"],
+        order={"queuedTime": "asc"},
         include=EXECUTION_RESULT_INCLUDE,
     )
 

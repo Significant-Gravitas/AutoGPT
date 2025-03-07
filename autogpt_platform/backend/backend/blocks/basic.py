@@ -115,7 +115,7 @@ class PrintToConsoleBlock(Block):
 
 class FindInDictionaryBlock(Block):
     class Input(BlockSchema):
-        input: Any = SchemaField(description="Dictionary to lookup from")
+        input: dict = SchemaField(description="Dictionary to lookup from")
         key: str | int = SchemaField(description="Key to lookup in the dictionary")
 
     class Output(BlockSchema):
