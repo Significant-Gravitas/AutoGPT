@@ -726,11 +726,10 @@ class NotificationManager(AppService):
                 data={},
                 cron="0 * * * *",
             )
-            get_scheduler().add_weekly_notification_schedule(
-                # weekly on Friday at 12pm
-                # cron="0 12 * * 5",
-                cron="* * * * *",
-            )
+            # get_scheduler().add_weekly_notification_schedule(
+            #     # weekly on Friday at 12pm
+            #     cron="0 12 * * 5",
+            # )
             logger.info("Scheduled notification cleanup")
         except Exception as e:
             logger.error(f"Error scheduling notification cleanup: {e}")
