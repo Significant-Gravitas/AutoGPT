@@ -23,8 +23,8 @@ T_co = TypeVar("T_co", bound="BaseNotificationData", covariant=True)
 
 class QueueType(Enum):
     IMMEDIATE = "immediate"  # Send right away (errors, critical notifications)
-    HOURLY = "hourly"  # Batch for up to an hour (usage reports)
-    DAILY = "daily"  # Daily digest (summary notifications)
+    BATCH = "batch"  # Batch for up to an hour (usage reports)
+    SUMMARY = "summary"  # Daily digest (summary notifications)
     BACKOFF = "backoff"  # Backoff strategy (exponential backoff)
     ADMIN = "admin"  # Admin notifications (errors, critical notifications)
 
@@ -196,15 +196,15 @@ class NotificationTypeOverride:
     def strategy(self) -> QueueType:
         BATCHING_RULES = {
             # These are batched by the notification service
-            NotificationType.AGENT_RUN: QueueType.IMMEDIATE,
+            NotificationType.AGENT_RUN: QueueType.BATCH,
             # These are batched by the notification service, but with a backoff strategy
             NotificationType.ZERO_BALANCE: QueueType.BACKOFF,
             NotificationType.LOW_BALANCE: QueueType.IMMEDIATE,
             NotificationType.BLOCK_EXECUTION_FAILED: QueueType.BACKOFF,
             NotificationType.CONTINUOUS_AGENT_ERROR: QueueType.BACKOFF,
-            NotificationType.DAILY_SUMMARY: QueueType.DAILY,
-            NotificationType.WEEKLY_SUMMARY: QueueType.DAILY,
-            NotificationType.MONTHLY_SUMMARY: QueueType.DAILY,
+            NotificationType.DAILY_SUMMARY: QueueType.SUMMARY,
+            NotificationType.WEEKLY_SUMMARY: QueueType.SUMMARY,
+            NotificationType.MONTHLY_SUMMARY: QueueType.SUMMARY,
             NotificationType.REFUND_REQUEST: QueueType.ADMIN,
             NotificationType.REFUND_PROCESSED: QueueType.ADMIN,
         }
@@ -263,7 +263,7 @@ class NotificationPreference(BaseModel):
 
 def get_batch_delay(notification_type: NotificationType) -> timedelta:
     return {
-        NotificationType.AGENT_RUN: timedelta(seconds=1),
+        NotificationType.AGENT_RUN: timedelta(minutes=1),
         NotificationType.ZERO_BALANCE: timedelta(minutes=60),
         NotificationType.LOW_BALANCE: timedelta(minutes=60),
         NotificationType.BLOCK_EXECUTION_FAILED: timedelta(minutes=60),
@@ -274,19 +274,15 @@ def get_batch_delay(notification_type: NotificationType) -> timedelta:
 async def create_or_add_to_user_notification_batch(
     user_id: str,
     notification_type: NotificationType,
-    data: str,  # type: 'NotificationEventModel'
-) -> dict:
+    notification_data: NotificationEventModel,
+) -> UserNotificationBatch:
     try:
         logger.info(
-            f"Creating or adding to notification batch for {user_id} with type {notification_type} and data {data}"
+            f"Creating or adding to notification batch for {user_id} with type {notification_type} and data {notification_data}"
         )
 
-        notification_data = NotificationEventModel[
-            get_data_type(notification_type)
-        ].model_validate_json(data)
-
         # Serialize the data
-        json_data: Json = Json(notification_data.data.model_dump_json())
+        json_data: Json = Json(notification_data.data.model_dump())
 
         # First try to find existing batch
         existing_batch = await UserNotificationBatch.prisma().find_unique(
@@ -317,7 +313,7 @@ async def create_or_add_to_user_notification_batch(
                     },
                     include={"notifications": True},
                 )
-                return resp.model_dump()
+                return resp
         else:
             async with transaction() as tx:
                 notification_event = await tx.notificationevent.create(
@@ -339,27 +335,28 @@ async def create_or_add_to_user_notification_batch(
                 raise DatabaseError(
                     f"Failed to add notification event {notification_event.id} to existing batch {existing_batch.id}"
                 )
-            return resp.model_dump()
+            return resp
     except Exception as e:
         raise DatabaseError(
             f"Failed to create or add to notification batch for user {user_id} and type {notification_type}: {e}"
         ) from e
 
 
-async def get_user_notification_last_message_in_batch(
+async def get_user_notification_oldest_message_in_batch(
     user_id: str,
     notification_type: NotificationType,
 ) -> NotificationEvent | None:
     try:
         batch = await UserNotificationBatch.prisma().find_first(
             where={"userId": user_id, "type": notification_type},
-            order={"createdAt": "desc"},
+            include={"notifications": True},
         )
         if not batch:
             return None
         if not batch.notifications:
             return None
-        return batch.notifications[-1]
+        sorted_notifications = sorted(batch.notifications, key=lambda x: x.createdAt)
+        return sorted_notifications[0]
     except Exception as e:
         raise DatabaseError(
             f"Failed to get user notification last message in batch for user {user_id} and type {notification_type}: {e}"
@@ -403,4 +400,23 @@ async def get_user_notification_batch(
     except Exception as e:
         raise DatabaseError(
             f"Failed to get user notification batch for user {user_id} and type {notification_type}: {e}"
+        ) from e
+
+
+async def get_all_batches_by_type(
+    notification_type: NotificationType,
+) -> list[UserNotificationBatch]:
+    try:
+        return await UserNotificationBatch.prisma().find_many(
+            where={
+                "type": notification_type,
+                "notifications": {
+                    "some": {}  # Only return batches with at least one notification
+                },
+            },
+            include={"notifications": True},
+        )
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to get all batches by type {notification_type}: {e}"
         ) from e

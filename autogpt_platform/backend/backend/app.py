@@ -32,7 +32,7 @@ def main(**kwargs):
     Run all the processes required for the AutoGPT-server (REST and WebSocket APIs).
     """
 
-    from backend.executor import DatabaseManager, ExecutionManager, ExecutionScheduler
+    from backend.executor import DatabaseManager, ExecutionManager, Scheduler
     from backend.notifications import NotificationManager
     from backend.server.rest_api import AgentServer
     from backend.server.ws_api import WebsocketServer
@@ -40,7 +40,7 @@ def main(**kwargs):
     run_processes(
         DatabaseManager(),
         ExecutionManager(),
-        ExecutionScheduler(),
+        Scheduler(),
         NotificationManager(),
         WebsocketServer(),
         AgentServer(),
