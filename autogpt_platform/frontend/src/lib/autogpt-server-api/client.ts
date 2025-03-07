@@ -47,6 +47,9 @@ import {
   TransactionHistory,
   User,
   UserPasswordCredentials,
+  OttoQuery,
+  OttoResponse,
+  UserOnboarding,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -99,6 +102,9 @@ export default class BackendAPI {
     return this._request("POST", "/auth/user/email", { email });
   }
 
+  ////////////////////////////////////////
+  ///////////// CREDITS //////////////////
+  ////////////////////////////////////////
   getUserCredit(): Promise<{ credits: number }> {
     try {
       return this._get("/credits");
@@ -162,6 +168,24 @@ export default class BackendAPI {
     return this._request("PATCH", "/credits");
   }
 
+  ////////////////////////////////////////
+  /////////// ONBOARDING /////////////////
+  ////////////////////////////////////////
+  getUserOnboarding(): Promise<UserOnboarding> {
+    return this._get("/onboarding");
+  }
+
+  updateUserOnboarding(onboarding: Partial<UserOnboarding>): Promise<void> {
+    return this._request("PATCH", "/onboarding", onboarding);
+  }
+
+  getOnboardingAgents(): Promise<StoreAgentDetails[]> {
+    return this._get("/onboarding/agents");
+  }
+
+  ////////////////////////////////////////
+  /////////// GRAPHS /////////////////////
+  ////////////////////////////////////////
   getBlocks(): Promise<Block[]> {
     return this._get("/blocks");
   }
@@ -590,6 +614,10 @@ export default class BackendAPI {
 
   private _get(path: string, query?: Record<string, any>) {
     return this._request("GET", path, query);
+  }
+
+  async askOtto(query: OttoQuery): Promise<OttoResponse> {
+    return this._request("POST", "/otto/ask", query);
   }
 
   private async _uploadFile(path: string, file: File): Promise<string> {
