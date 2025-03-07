@@ -18,7 +18,12 @@ from .db import transaction
 logger = logging.getLogger(__name__)
 
 
-T_co = TypeVar("T_co", bound="BaseNotificationData", covariant=True)
+NotificationDataType_co = TypeVar(
+    "NotificationDataType_co", bound="BaseNotificationData", covariant=True
+)
+SummaryParamsType_co = TypeVar(
+    "SummaryParamsType_co", bound="BaseSummaryParams", covariant=True
+)
 
 
 class QueueType(Enum):
@@ -87,6 +92,19 @@ class BaseSummaryData(BaseNotificationData):
     cost_breakdown: dict[str, float]
 
 
+class BaseSummaryParams(BaseModel):
+    pass
+
+
+class DailySummaryParams(BaseSummaryParams):
+    date: datetime
+
+
+class WeeklySummaryParams(BaseSummaryParams):
+    start_date: datetime
+    end_date: datetime
+
+
 class DailySummaryData(BaseSummaryData):
     date: datetime
 
@@ -94,11 +112,9 @@ class DailySummaryData(BaseSummaryData):
 class WeeklySummaryData(BaseSummaryData):
     start_date: datetime
     end_date: datetime
-    week_number: int
-    year: int
 
 
-class MonthlySummaryData(BaseSummaryData):
+class MonthlySummaryData(BaseNotificationData):
     month: int
     year: int
 
@@ -125,6 +141,7 @@ NotificationData = Annotated[
         WeeklySummaryData,
         DailySummaryData,
         RefundRequestData,
+        BaseSummaryData,
     ],
     Field(discriminator="type"),
 ]
@@ -137,11 +154,17 @@ class NotificationEventDTO(BaseModel):
     created_at: datetime = Field(default_factory=datetime.now)
     retry_count: int = 0
 
-
-class NotificationEventModel(BaseModel, Generic[T_co]):
+class SummaryParamsEventDTO(BaseModel):
     user_id: str
     type: NotificationType
-    data: T_co
+    data: dict
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
+class NotificationEventModel(BaseModel, Generic[NotificationDataType_co]):
+    user_id: str
+    type: NotificationType
+    data: NotificationDataType_co
     created_at: datetime = Field(default_factory=datetime.now)
 
     @property
@@ -159,7 +182,14 @@ class NotificationEventModel(BaseModel, Generic[T_co]):
         return NotificationTypeOverride(self.type).template
 
 
-def get_data_type(
+class SummaryParamsEventModel(BaseModel, Generic[SummaryParamsType_co]):
+    user_id: str
+    type: NotificationType
+    data: SummaryParamsType_co
+    created_at: datetime = Field(default_factory=datetime.now)
+
+
+def get_notif_data_type(
     notification_type: NotificationType,
 ) -> type[BaseNotificationData]:
     return {
@@ -175,6 +205,13 @@ def get_data_type(
         NotificationType.REFUND_PROCESSED: RefundRequestData,
     }[notification_type]
 
+def get_summary_params_type(
+    notification_type: NotificationType,
+) -> type[BaseSummaryParams]:
+    return {
+        NotificationType.DAILY_SUMMARY: DailySummaryParams,
+        NotificationType.WEEKLY_SUMMARY: WeeklySummaryParams,
+    }[notification_type]
 
 class NotificationBatch(BaseModel):
     user_id: str

@@ -1,6 +1,6 @@
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Callable
 
 import aio_pika
@@ -10,21 +10,32 @@ from prisma.enums import NotificationType
 from pydantic import BaseModel
 
 from backend.data.notifications import (
+    BaseSummaryData,
+    BaseSummaryParams,
+    DailySummaryData,
+    DailySummaryParams,
     NotificationEventDTO,
     NotificationEventModel,
     NotificationResult,
+    NotificationTypeOverride,
     QueueType,
+    SummaryParamsEventDTO,
+    SummaryParamsEventModel,
+    WeeklySummaryData,
+    WeeklySummaryParams,
     create_or_add_to_user_notification_batch,
     empty_user_notification_batch,
     get_all_batches_by_type,
     get_batch_delay,
-    get_data_type,
+    get_notif_data_type,
+    get_summary_params_type,
     get_user_notification_batch,
     get_user_notification_oldest_message_in_batch,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import (
     generate_unsubscribe_link,
+    get_active_user_ids_in_timerange,
     get_user_email_by_id,
     get_user_email_verification,
     get_user_notification_preference,
@@ -69,6 +80,26 @@ def create_notification_config() -> RabbitMQConfig:
             arguments={
                 "x-dead-letter-exchange": dead_letter_exchange.name,
                 "x-dead-letter-routing-key": "failed.admin",
+            },
+        ),
+        # Summary notification queues
+        Queue(
+            name="weekly_summary_notifications",
+            exchange=notification_exchange,
+            routing_key="notification.summary.weekly#.",
+            arguments={
+                "x-dead-letter-exchange": dead_letter_exchange.name,
+                "x-dead-letter-routing-key": "failed.summary.weekly",
+            },
+        ),
+        # Backoff notification queues
+        Queue(
+            name="backoff_notifications",
+            exchange=notification_exchange,
+            routing_key="notification.backoff.#",
+            arguments={
+                "x-dead-letter-exchange": dead_letter_exchange.name,
+                "x-dead-letter-routing-key": "failed.backoff",
             },
         ),
         # Batch Queue
@@ -125,19 +156,53 @@ class NotificationManager(AppService):
 
         return get_service_client(Scheduler)
 
-    def get_routing_key(self, event: NotificationEventModel) -> str:
+    def get_routing_key(self, event_type: NotificationType) -> str:
+        strategy = NotificationTypeOverride(event_type).strategy
         """Get the appropriate routing key for an event"""
-        if event.strategy == QueueType.IMMEDIATE:
-            return f"notification.immediate.{event.type.value}"
-        elif event.strategy == QueueType.BACKOFF:
-            return f"notification.backoff.{event.type.value}"
-        elif event.strategy == QueueType.ADMIN:
-            return f"notification.admin.{event.type.value}"
-        elif event.strategy == QueueType.BATCH:
-            return f"notification.batch.{event.type.value}"
-        elif event.strategy == QueueType.SUMMARY:
-            return f"notification.summary.{event.type.value}"
-        return f"notification.{event.type.value}"
+        if strategy == QueueType.IMMEDIATE:
+            return f"notification.immediate.{event_type.value}"
+        elif strategy == QueueType.BACKOFF:
+            return f"notification.backoff.{event_type.value}"
+        elif strategy == QueueType.ADMIN:
+            return f"notification.admin.{event_type.value}"
+        elif strategy == QueueType.BATCH:
+            return f"notification.batch.{event_type.value}"
+        elif strategy == QueueType.SUMMARY:
+            return f"notification.summary.{event_type.value}"
+        return f"notification.{event_type.value}"
+
+    @expose
+    def queue_weekly_summary(self):
+        """Process weekly summary for specified notification types"""
+        try:
+            logger.info("Processing weekly summary queuing operation")
+            processed_count = 0
+            current_time = datetime.now(tz=timezone.utc)
+            start_time = current_time - timedelta(days=7)
+            users = self.run_and_wait(
+                get_active_user_ids_in_timerange(
+                    end_time=current_time.isoformat(),
+                    start_time=start_time.isoformat(),
+                )
+            )
+            for user in users:
+
+                self._queue_scheduled_notification(
+                    SummaryParamsEventDTO(
+                        user_id=user,
+                        type=NotificationType.WEEKLY_SUMMARY,
+                        data=WeeklySummaryParams(
+                            start_date=start_time,
+                            end_date=current_time,
+                        ).model_dump(),
+                    ),
+                )
+                processed_count += 1
+
+            logger.info(f"Processed {processed_count} weekly summaries into queue")
+
+        except Exception as e:
+            logger.exception(f"Error processing weekly summary: {e}")
 
     @expose
     def process_existing_batches(self, notification_types: list[NotificationType]):
@@ -215,7 +280,7 @@ class NotificationManager(AppService):
 
                         events = [
                             NotificationEventModel[
-                                get_data_type(db_event.type)
+                                get_notif_data_type(db_event.type)
                             ].model_validate(
                                 {
                                     "user_id": batch.userId,
@@ -268,9 +333,9 @@ class NotificationManager(AppService):
             logger.info(f"Received Request to queue {event=}")
             # Workaround for not being able to serialize generics over the expose bus
             parsed_event = NotificationEventModel[
-                get_data_type(event.type)
+                get_notif_data_type(event.type)
             ].model_validate(event.model_dump())
-            routing_key = self.get_routing_key(parsed_event)
+            routing_key = self.get_routing_key(parsed_event.type)
             message = parsed_event.model_dump_json()
 
             logger.info(f"Received Request to queue {message=}")
@@ -297,6 +362,36 @@ class NotificationManager(AppService):
             logger.exception(f"Error queueing notification: {e}")
             return NotificationResult(success=False, message=str(e))
 
+    def _queue_scheduled_notification(self, event: SummaryParamsEventDTO):
+        """Queue a scheduled notification - exposed method for other services to call"""
+        try:
+            logger.info(f"Received Request to queue scheduled notification {event=}")
+
+            parsed_event = SummaryParamsEventModel[
+                get_summary_params_type(event.type)
+            ].model_validate(event.model_dump())
+
+            routing_key = self.get_routing_key(event.type)
+            message = parsed_event.model_dump_json()
+
+            logger.info(f"Received Request to queue {message=}")
+
+            exchange = "notifications"
+
+            # Publish to RabbitMQ
+            self.run_and_wait(
+                self.rabbit.publish_message(
+                    routing_key=routing_key,
+                    message=message,
+                    exchange=next(
+                        ex for ex in self.rabbit_config.exchanges if ex.name == exchange
+                    ),
+                )
+            )
+
+        except Exception as e:
+            logger.exception(f"Error queueing notification: {e}")
+
     def _should_email_user_based_on_preference(
         self, user_id: str, event_type: NotificationType
     ) -> bool:
@@ -307,6 +402,86 @@ class NotificationManager(AppService):
         ).preferences.get(event_type, True)
         # only if both are true, should we email this person
         return validated_email and preference
+
+    async def _gather_summary_data(
+        self, user_id: str, event_type: NotificationType, params: BaseSummaryParams
+    ) -> BaseSummaryData:
+        """Gathers the data to build a summary notification"""
+
+        logger.info(
+            f"Gathering summary data for {user_id} and {event_type} wiht {params=}"
+        )
+
+        # total_credits_used = self.run_and_wait(
+        #     get_total_credits_used(user_id, start_time, end_time)
+        # )
+
+        # total_executions = self.run_and_wait(
+        #     get_total_executions(user_id, start_time, end_time)
+        # )
+
+        # most_used_agent = self.run_and_wait(
+        #     get_most_used_agent(user_id, start_time, end_time)
+        # )
+
+        # execution_times = self.run_and_wait(
+        #     get_execution_time(user_id, start_time, end_time)
+        # )
+
+        # runs = self.run_and_wait(
+        #     get_runs(user_id, start_time, end_time)
+        # )
+        total_credits_used = 3.0
+        total_executions = 2
+        most_used_agent = {"name": "Some"}
+        execution_times = [1, 2, 3]
+        runs = [{"status": "COMPLETED"}, {"status": "FAILED"}]
+
+        successful_runs = len([run for run in runs if run["status"] == "COMPLETED"])
+        failed_runs = len([run for run in runs if run["status"] != "COMPLETED"])
+        average_execution_time = (
+            sum(execution_times) / len(execution_times) if execution_times else 0
+        )
+        # cost_breakdown = self.run_and_wait(
+        #     get_cost_breakdown(user_id, start_time, end_time)
+        # )
+
+        cost_breakdown = {
+            "agent1": 1.0,
+            "agent2": 2.0,
+        }
+
+        if event_type == NotificationType.DAILY_SUMMARY and isinstance(
+            params, DailySummaryParams
+        ):
+            return DailySummaryData(
+                total_credits_used=total_credits_used,
+                total_executions=total_executions,
+                most_used_agent=most_used_agent["name"],
+                total_execution_time=sum(execution_times),
+                successful_runs=successful_runs,
+                failed_runs=failed_runs,
+                average_execution_time=average_execution_time,
+                cost_breakdown=cost_breakdown,
+                date=params.date,
+            )
+        elif event_type == NotificationType.WEEKLY_SUMMARY and isinstance(
+            params, WeeklySummaryParams
+        ):
+            return WeeklySummaryData(
+                total_credits_used=total_credits_used,
+                total_executions=total_executions,
+                most_used_agent=most_used_agent["name"],
+                total_execution_time=sum(execution_times),
+                successful_runs=successful_runs,
+                failed_runs=failed_runs,
+                average_execution_time=average_execution_time,
+                cost_breakdown=cost_breakdown,
+                start_date=params.start_date,
+                end_date=params.end_date,
+            )
+        else:
+            raise ValueError("Invalid event type or params")
 
     async def _should_batch(
         self, user_id: str, event_type: NotificationType, event: NotificationEventModel
@@ -338,7 +513,7 @@ class NotificationManager(AppService):
         try:
             event = NotificationEventDTO.model_validate_json(message)
             model = NotificationEventModel[
-                get_data_type(event.type)
+                get_notif_data_type(event.type)
             ].model_validate_json(message)
             return NotificationEvent(event=event, model=model)
         except Exception as e:
@@ -438,7 +613,9 @@ class NotificationManager(AppService):
             unsub_link = generate_unsubscribe_link(event.user_id)
 
             batch_messages = [
-                NotificationEventModel[get_data_type(db_event.type)].model_validate(
+                NotificationEventModel[
+                    get_notif_data_type(db_event.type)
+                ].model_validate(
                     {
                         "user_id": event.user_id,
                         "type": db_event.type,
@@ -460,6 +637,53 @@ class NotificationManager(AppService):
             return True
         except Exception as e:
             logger.exception(f"Error processing notification for batch queue: {e}")
+            return False
+
+    def _process_summary(self, message: str) -> bool:
+        """Process a single notification with a summary strategy, returning whether to put into the failed queue"""
+        try:
+            logger.info(f"Processing summary notification: {message}")
+            event = SummaryParamsEventDTO.model_validate_json(message)
+            model = SummaryParamsEventModel[
+                get_summary_params_type(event.type)
+            ].model_validate_json(message)
+
+            logger.info(f"Processing summary notification: {model}")
+
+            recipient_email = self.run_and_wait(get_user_email_by_id(event.user_id))
+            if not recipient_email:
+                logger.error(f"User email not found for user {event.user_id}")
+                return False
+            should_send = self._should_email_user_based_on_preference(
+                event.user_id, event.type
+            )
+            if not should_send:
+                logger.info(
+                    f"User {event.user_id} does not want to receive {event.type} notifications"
+                )
+                return True
+
+            summary_data = self.run_and_wait(
+                self._gather_summary_data(event.user_id, event.type, model.data)
+            )
+
+            unsub_link = generate_unsubscribe_link(event.user_id)
+
+            data = NotificationEventModel(
+                user_id=event.user_id,
+                type=event.type,
+                data=summary_data,
+            )
+
+            self.email_sender.send_templated(
+                notification=event.type,
+                user_email=recipient_email,
+                data=data,
+                user_unsub_link=unsub_link,
+            )
+            return True
+        except Exception as e:
+            logger.exception(f"Error processing notification for summary queue: {e}")
             return False
 
     def _run_queue(
@@ -502,6 +726,11 @@ class NotificationManager(AppService):
                 data={},
                 cron="0 * * * *",
             )
+            get_scheduler().add_weekly_notification_schedule(
+                # weekly on Friday at 12pm
+                # cron="0 12 * * 5",
+                cron="* * * * *",
+            )
             logger.info("Scheduled notification cleanup")
         except Exception as e:
             logger.error(f"Error scheduling notification cleanup: {e}")
@@ -515,6 +744,8 @@ class NotificationManager(AppService):
         batch_queue = self.run_and_wait(channel.get_queue("batch_notifications"))
 
         admin_queue = self.run_and_wait(channel.get_queue("admin_notifications"))
+
+        summary_queue = self.run_and_wait(channel.get_queue("summary_notifications"))
 
         while self.running:
             try:
@@ -532,6 +763,12 @@ class NotificationManager(AppService):
                     queue=batch_queue,
                     process_func=self._process_batch,
                     error_queue_name="batch_notifications",
+                )
+
+                self._run_queue(
+                    queue=summary_queue,
+                    process_func=self._process_summary,
+                    error_queue_name="summary_notifications",
                 )
 
                 time.sleep(0.1)
