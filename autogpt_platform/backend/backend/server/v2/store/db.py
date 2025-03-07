@@ -84,20 +84,30 @@ async def get_store_agents(
         )
         total_pages = (total + page_size - 1) // page_size
 
-        store_agents = [
-            backend.server.v2.store.model.StoreAgent(
-                slug=agent.slug,
-                agent_name=agent.agent_name,
-                agent_image=agent.agent_image[0] if agent.agent_image else "",
-                creator=agent.creator_username or "Needs Profile",
-                creator_avatar=agent.creator_avatar or "",
-                sub_heading=agent.sub_heading,
-                description=agent.description,
-                runs=agent.runs,
-                rating=agent.rating,
-            )
-            for agent in agents
-        ]
+        store_agents: list[backend.server.v2.store.model.StoreAgent] = []
+        for agent in agents:
+            try:
+                # Create the StoreAgent object safely
+                store_agent = backend.server.v2.store.model.StoreAgent(
+                    slug=agent.slug,
+                    agent_name=agent.agent_name,
+                    agent_image=agent.agent_image[0] if agent.agent_image else "",
+                    creator=agent.creator_username or "Needs Profile",
+                    creator_avatar=agent.creator_avatar or "",
+                    sub_heading=agent.sub_heading,
+                    description=agent.description,
+                    runs=agent.runs,
+                    rating=agent.rating,
+                )
+                # Add to the list only if creation was successful
+                store_agents.append(store_agent)
+            except Exception as e:
+                # Skip this agent if there was an error
+                # You could log the error here if needed
+                logger.error(
+                    f"Error parsing Store agent when getting store agents from db: {e}"
+                )
+                continue
 
         logger.debug(f"Found {len(store_agents)} agents")
         return backend.server.v2.store.model.StoreAgentsResponse(
