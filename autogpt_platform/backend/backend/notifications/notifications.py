@@ -497,7 +497,7 @@ class NotificationManager(AppService):
         # Set up scheduler for batch processing of all notification types
         # this can be changed later to spawn differnt cleanups on different schedules
         try:
-            get_scheduler().add_scheduled_notification(
+            get_scheduler().add_batched_notification_schedule(
                 notification_types=list(NotificationType),
                 data={},
                 cron="0 * * * *",

@@ -1,3 +1,4 @@
+from enum import Enum
 import logging
 import os
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -92,6 +93,11 @@ def process_existing_batches(**kwargs):
         logger.exception(f"Error processing existing batches: {e}")
 
 
+class Jobstores(Enum):
+    EXECUTION = "execution"
+    BATCHED_NOTIFICATIONS = "batched_notifications"
+
+
 class ExecutionJobArgs(BaseModel):
     graph_id: str
     input_data: BlockInput
@@ -163,7 +169,7 @@ class Scheduler(AppService):
         db_schema, db_url = _extract_schema_from_url(os.getenv("DATABASE_URL"))
         self.scheduler = BlockingScheduler(
             jobstores={
-                "default": SQLAlchemyJobStore(
+                Jobstores.EXECUTION.value: SQLAlchemyJobStore(
                     engine=create_engine(
                         url=db_url,
                         pool_size=self.db_pool_size(),
@@ -171,6 +177,19 @@ class Scheduler(AppService):
                     ),
                     metadata=MetaData(schema=db_schema),
                 )
+                    # this one is pre-existing so it keeps the
+                    # default table name.
+                    tablename="apscheduler_jobs",
+                ),
+                Jobstores.BATCHED_NOTIFICATIONS.value: SQLAlchemyJobStore(
+                    engine=create_engine(
+                        url=db_url,
+                        pool_size=self.db_pool_size(),
+                        max_overflow=0,
+                    ),
+                    metadata=MetaData(schema=db_schema),
+                    tablename="apscheduler_jobs_batched_notifications",
+                ),
             }
         )
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
@@ -197,6 +216,7 @@ class Scheduler(AppService):
             CronTrigger.from_crontab(cron),
             kwargs=job_args.model_dump(),
             replace_existing=True,
+            jobstore=Jobstores.EXECUTION.value,
         )
         log(f"Added job {job.id} with cron schedule '{cron}' input data: {input_data}")
         return ExecutionJobInfo.from_db(job_args, job)
@@ -204,6 +224,7 @@ class Scheduler(AppService):
     @expose
     def delete_schedule(self, schedule_id: str, user_id: str) -> ExecutionJobInfo:
         job = self.scheduler.get_job(schedule_id)
+        job = self.scheduler.get_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
         if not job:
             log(f"Job {schedule_id} not found.")
             raise ValueError(f"Job #{schedule_id} not found.")
@@ -223,6 +244,7 @@ class Scheduler(AppService):
     ) -> list[ExecutionJobInfo]:
         schedules = []
         for job in self.scheduler.get_jobs():
+        for job in self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value):
             job_args = ExecutionJobArgs(**job.kwargs)
             if (
                 job.next_run_time is not None
@@ -234,6 +256,7 @@ class Scheduler(AppService):
 
     @expose
     def add_scheduled_notification(
+    def add_batched_notification_schedule(
         self,
         notification_types: list[NotificationType],
         data: dict,
@@ -248,6 +271,7 @@ class Scheduler(AppService):
             CronTrigger.from_crontab(cron),
             kwargs=job_args.model_dump(),
             replace_existing=True,
+            jobstore=Jobstores.BATCHED_NOTIFICATIONS.value,
         )
         log(f"Added job {job.id} with cron schedule '{cron}' input data: {data}")
         return NotificationJobInfo.from_db(job_args, job)
