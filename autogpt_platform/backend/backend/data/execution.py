@@ -189,7 +189,7 @@ async def upsert_execution_input(
     input_name: str,
     input_data: Any,
     node_exec_id: str | None = None,
-) -> tuple[str, BlockInput]:
+) -> tuple[ExecutionResult, BlockInput]:
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Input.
     If there is no AgentNodeExecution that has no `input_name` as input, create new one.
@@ -226,7 +226,7 @@ async def upsert_execution_input(
                 "referencedByInputExecId": existing_execution.id,
             }
         )
-        return existing_execution.id, {
+        return ExecutionResult.from_db(existing_execution), {
             **{
                 input_data.name: type.convert(input_data.data, Type[Any])
                 for input_data in existing_execution.Input or []
@@ -243,7 +243,7 @@ async def upsert_execution_input(
                 "Input": {"create": {"name": input_name, "data": json_input_data}},
             }
         )
-        return result.id, {input_name: input_data}
+        return ExecutionResult.from_db(result), {input_name: input_data}
 
     else:
         raise ValueError(
@@ -535,7 +535,7 @@ async def get_output_from_links(
     links: dict[str, tuple[str, str]], graph_eid: str
 ) -> BlockInput:
     """
-    Get the latest output from the inbound static links of a node.
+    Get the latest output from the graph links.
     Args:
         links: dict[node_id, (source_name, sink_name)] of the links to get the output from.
         graph_eid: the id of the graph execution to get the output from.
@@ -561,7 +561,6 @@ async def get_output_from_links(
         if value := execution.output_data.get(source_name):
             latest_output[sink_name] = value[-1]
 
-    print(">>>>>>>>> from links", links, "latest_output", latest_output)
     return latest_output
 
 

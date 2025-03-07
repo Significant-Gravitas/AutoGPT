@@ -109,7 +109,7 @@ class LogMetadata:
         logger.exception(msg, extra={"json_fields": {**self.metadata, **extra}})
 
     def _wrap(self, msg: str, **extra):
-        return f"{self.prefix} {msg} {extra or ""}"
+        return f"{self.prefix} {msg} {extra or ''}"
 
 
 T = TypeVar("T")
@@ -292,6 +292,19 @@ def _enqueue_next_nodes(
             data=data,
         )
 
+    def validate_next_exec(
+        next_node_exec_id: str, next_node: Node, next_node_input: BlockInput
+    ) -> tuple[BlockInput | None, str]:
+        try:
+            return validate_exec(next_node, next_node_input)
+        except Exception as e:
+            db_client.upsert_execution_output(next_node_exec_id, "error", str(e))
+            execution = db_client.update_execution_status(
+                next_node_exec_id, ExecutionStatus.FAILED
+            )
+            db_client.send_execution_update(execution)
+            return None, str(e)
+
     def register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
         enqueued_executions = []
         next_output_name = node_link.source_name
@@ -309,12 +322,14 @@ def _enqueue_next_nodes(
         # Or the same input to be consumed multiple times.
         with synchronized(f"upsert_input-{next_node_id}-{graph_exec_id}"):
             # Add output data to the earliest incomplete execution, or create a new one.
-            next_node_exec_id, next_node_input = db_client.upsert_execution_input(
+            next_node_exec, next_node_input = db_client.upsert_execution_input(
                 node_id=next_node_id,
                 graph_exec_id=graph_exec_id,
                 input_name=next_input_name,
                 input_data=next_data,
             )
+            next_node_exec_id = next_node_exec.node_exec_id
+            db_client.send_execution_update(next_node_exec)
 
             # Complete missing static input pins data using the last execution input.
             static_links = {
@@ -331,7 +346,9 @@ def _enqueue_next_nodes(
                 next_node_input[name] = next_node_input.get(name, value)
 
             # Validate the input data for the next node.
-            next_node_input, validation_msg = validate_exec(next_node, next_node_input)
+            next_node_input, validation_msg = validate_next_exec(
+                next_node_exec_id, next_node, next_node_input
+            )
             suffix = f"{next_output_name}>{next_input_name}~{next_node_exec_id}:{validation_msg}"
 
             # Incomplete input data, skip queueing the execution.
@@ -365,7 +382,7 @@ def _enqueue_next_nodes(
                 for input_name, input_value in static_output.items():
                     idata[input_name] = idata.get(input_name, input_value)
 
-                idata, msg = validate_exec(next_node, idata)
+                idata, msg = validate_next_exec(next_node_exec_id, next_node, idata)
                 suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"
                 if not idata:
                     log_metadata.info(f"Enqueueing static-link skipped: {suffix}")
