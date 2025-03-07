@@ -90,6 +90,7 @@ export const providerIcons: Record<
   smartlead: fallbackIcon,
   todoist: fallbackIcon,
   zerobounce: fallbackIcon,
+  example: fallbackIcon,
 };
 // --8<-- [end:ProviderIconsEmbed]
 
