@@ -535,7 +535,8 @@ async def get_output_from_links(
     links: dict[str, tuple[str, str]], graph_eid: str
 ) -> BlockInput:
     """
-    Get the latest output from the graph links.
+    Get the latest completed node execution output from the graph links.
+
     Args:
         links: dict[node_id, (source_name, sink_name)] of the links to get the output from.
         graph_eid: the id of the graph execution to get the output from.
@@ -547,7 +548,7 @@ async def get_output_from_links(
         where={
             "agentNodeId": {"in": list(links.keys())},
             "agentGraphExecutionId": graph_eid,
-            "executionStatus": {"not": ExecutionStatus.INCOMPLETE},  # type: ignore
+            "executionStatus": {"not": ExecutionStatus.COMPLETED},  # type: ignore
         },
         order={"queuedTime": "desc"},
         distinct=["agentNodeId"],
