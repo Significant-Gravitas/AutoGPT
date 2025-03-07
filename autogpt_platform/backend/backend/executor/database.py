@@ -6,7 +6,7 @@ from backend.data.execution import (
     create_graph_execution,
     get_execution_results,
     get_incomplete_executions,
-    get_latest_execution,
+    get_output_from_links,
     update_execution_status,
     update_graph_execution_start_time,
     update_graph_execution_stats,
@@ -56,7 +56,7 @@ class DatabaseManager(AppService):
     create_graph_execution = exposed_run_and_wait(create_graph_execution)
     get_execution_results = exposed_run_and_wait(get_execution_results)
     get_incomplete_executions = exposed_run_and_wait(get_incomplete_executions)
-    get_latest_execution = exposed_run_and_wait(get_latest_execution)
+    get_output_from_links = exposed_run_and_wait(get_output_from_links)
     update_execution_status = exposed_run_and_wait(update_execution_status)
     update_graph_execution_start_time = exposed_run_and_wait(
         update_graph_execution_start_time
