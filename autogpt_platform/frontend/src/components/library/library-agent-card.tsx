@@ -70,14 +70,14 @@ export default function LibraryAgentCard({
           </p>
 
           <div className="items-between mt-4 flex w-full justify-between gap-3">
-            <span className="font-geist text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200">
+            <span className="text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200">
               See runs
             </span>
 
             {can_access_graph && (
               <Link
                 href={`/build?flowID=${agent_id}`}
-                className="font-geist text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
+                className="text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
               >
                 Open in builder
               </Link>

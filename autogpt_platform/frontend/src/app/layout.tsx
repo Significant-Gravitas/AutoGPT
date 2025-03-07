@@ -1,12 +1,11 @@
 import React from "react";
 import type { Metadata } from "next";
-import { Inter, Poppins } from "next/font/google";
+import { Poppins } from "next/font/google";
 import { GoogleAnalytics } from "@next/third-parties/google";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { headers } from "next/headers";
 
-import { cn } from "@/lib/utils";
 import "./globals.css";
 
 import { Navbar } from "@/components/agptui/Navbar";
@@ -15,8 +14,6 @@ import { IconType } from "@/components/ui/icons";
 import { Providers } from "@/app/providers";
 import TallyPopupSimple from "@/components/TallyPopup";
 import OttoChatWidget from "@/components/OttoChatWidget";
-
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -40,14 +37,9 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${poppins.variable} ${GeistSans.variable} ${GeistMono.variable} ${inter.variable}`}
+      className={`${poppins.variable} ${GeistSans.variable} ${GeistMono.variable}`}
     >
-      <body
-        className={cn(
-          "bg-neutral-50 antialiased transition-colors",
-          inter.className,
-        )}
-      >
+      <body>
         <Providers
           attribute="class"
           defaultTheme="light"
