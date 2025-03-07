@@ -76,7 +76,7 @@ def generate_agent_image_v2(graph: Graph | AgentGraph) -> io.BytesIO:
             ),
             prompt=prompt,
             ideogram_model_name=IdeogramModelName.V2,
-            aspect_ratio=AspectRatio.ASPECT_4_3,
+            aspect_ratio=AspectRatio.ASPECT_16_9,
             magic_prompt_option=MagicPromptOption.OFF,
             style_type=StyleType.AUTO,
             upscale=UpscaleOption.NO_UPSCALE,

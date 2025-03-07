@@ -1,6 +1,10 @@
+import base64
+import hashlib
+import hmac
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, cast
+from urllib.parse import quote_plus
 
 from autogpt_libs.auth.models import DEFAULT_USER_ID
 from fastapi import HTTPException
@@ -339,18 +343,38 @@ async def get_user_email_verification(user_id: str) -> bool:
 
 def generate_unsubscribe_link(user_id: str) -> str:
     """Generate a link to unsubscribe from all notifications"""
-    user_hash = user_id.encode("utf-8").decode("unicode_escape")
-    logger.info(f"Generating unsubscribe link for user {user_id}: {user_hash}")
+    # Create an HMAC using a secret key
+    secret_key = Settings().secrets.unsubscribe_secret_key
+    signature = hmac.new(
+        secret_key.encode("utf-8"), user_id.encode("utf-8"), hashlib.sha256
+    ).digest()
 
-    settings = Settings()
-    base_url = settings.config.platform_base_url
-    return f"{base_url}/api/email/unsubscribe?user_hash={user_hash}"
+    # Create a token that combines the user_id and signature
+    token = base64.urlsafe_b64encode(
+        f"{user_id}:{signature.hex()}".encode("utf-8")
+    ).decode("utf-8")
+    logger.info(f"Generating unsubscribe link for user {user_id}")
+
+    base_url = Settings().config.platform_base_url
+    return f"{base_url}/api/email/unsubscribe?token={quote_plus(token)}"
 
 
-async def unsubscribe_user_by_hash(user_hash: str) -> None:
-    """Unsubscribe a user from all notifications"""
-    user_id = user_hash.encode("utf-8").decode("unicode_escape")
+async def unsubscribe_user_by_token(token: str) -> None:
+    """Unsubscribe a user from all notifications using the token"""
     try:
+        # Decode the token
+        decoded = base64.urlsafe_b64decode(token).decode("utf-8")
+        user_id, received_signature_hex = decoded.split(":", 1)
+
+        # Verify the signature
+        secret_key = Settings().secrets.unsubscribe_secret_key
+        expected_signature = hmac.new(
+            secret_key.encode("utf-8"), user_id.encode("utf-8"), hashlib.sha256
+        ).digest()
+
+        if not hmac.compare_digest(expected_signature.hex(), received_signature_hex):
+            raise ValueError("Invalid token signature")
+
         user = await get_user_by_id(user_id)
         await update_user_notification_preference(
             user.id,
@@ -370,6 +394,4 @@ async def unsubscribe_user_by_hash(user_hash: str) -> None:
             ),
         )
     except Exception as e:
-        raise DatabaseError(
-            f"Failed to unsubscribe user by hash {user_hash}: {e}"
-        ) from e
+        raise DatabaseError(f"Failed to unsubscribe user by token {token}: {e}") from e

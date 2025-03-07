@@ -5,7 +5,8 @@ import OnboardingButton from "@/components/onboarding/OnboardingButton";
 import Image from "next/image";
 
 export default function Page() {
-  const {} = useOnboarding(1);
+  // Just set step to 1
+  useOnboarding(1);
 
   return (
     <>

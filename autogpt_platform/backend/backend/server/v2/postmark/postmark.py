@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from backend.data.user import (
     get_user_by_email,
     set_user_email_verification,
-    unsubscribe_user_by_hash,
+    unsubscribe_user_by_token,
 )
 from backend.server.v2.postmark.models import (
     PostmarkBounceEnum,
@@ -35,12 +35,12 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/unsubscribe")
-async def unsubscribe_via_one_click(user_hash: Annotated[str, Query()]):
-    logger.info(f"Received unsubscribe request from One Click Unsubscribe: {user_hash}")
+async def unsubscribe_via_one_click(token: Annotated[str, Query()]):
+    logger.info(f"Received unsubscribe request from One Click Unsubscribe: {token}")
     try:
-        await unsubscribe_user_by_hash(user_hash)
+        await unsubscribe_user_by_token(token)
     except Exception as e:
-        logger.error(f"Failed to unsubscribe user: {e}")
+        logger.error(f"Failed to unsubscribe user by token {token}: {e}")
         raise e
     return JSONResponse(status_code=200, content={"status": "ok"})
 

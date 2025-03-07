@@ -56,13 +56,13 @@ export default function Page() {
       </OnboardingHeader>
       <OnboardingList
         elements={reasons}
-        selectedId={state.usageReason}
+        selectedId={state?.usageReason}
         onSelect={(usageReason) => setState({ usageReason })}
       />
       <OnboardingFooter>
         <OnboardingButton
           href="/onboarding/3-services"
-          disabled={isEmptyOrWhitespace(state.usageReason)}
+          disabled={isEmptyOrWhitespace(state?.usageReason)}
         >
           Next
         </OnboardingButton>
