@@ -1,6 +1,6 @@
-from enum import Enum
 import logging
 import os
+from enum import Enum
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
@@ -176,7 +176,6 @@ class Scheduler(AppService):
                         max_overflow=0,
                     ),
                     metadata=MetaData(schema=db_schema),
-                )
                     # this one is pre-existing so it keeps the
                     # default table name.
                     tablename="apscheduler_jobs",
@@ -223,7 +222,6 @@ class Scheduler(AppService):
 
     @expose
     def delete_schedule(self, schedule_id: str, user_id: str) -> ExecutionJobInfo:
-        job = self.scheduler.get_job(schedule_id)
         job = self.scheduler.get_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
         if not job:
             log(f"Job {schedule_id} not found.")
@@ -243,7 +241,6 @@ class Scheduler(AppService):
         self, graph_id: str | None = None, user_id: str | None = None
     ) -> list[ExecutionJobInfo]:
         schedules = []
-        for job in self.scheduler.get_jobs():
         for job in self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value):
             job_args = ExecutionJobArgs(**job.kwargs)
             if (
@@ -255,7 +252,6 @@ class Scheduler(AppService):
         return schedules
 
     @expose
-    def add_scheduled_notification(
     def add_batched_notification_schedule(
         self,
         notification_types: list[NotificationType],
