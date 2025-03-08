@@ -56,6 +56,7 @@ config = Config()
 api_host = config.pyro_host
 api_comm_retry = config.pyro_client_comm_retry
 api_comm_timeout = config.pyro_client_comm_timeout
+api_call_timeout = config.rpc_client_call_timeout
 pyro_config.MAX_RETRIES = api_comm_retry  # type: ignore
 pyro_config.COMMTIMEOUT = api_comm_timeout  # type: ignore
 
@@ -435,7 +436,7 @@ def fastapi_close_service_client(client: Any) -> None:
 @conn_retry("FastAPI client", "Creating service client", max_retry=api_comm_retry)
 def fastapi_get_service_client(
     service_type: Type[AS],
-    call_timeout: int | None = int(api_comm_retry * api_comm_timeout),
+    call_timeout: int | None = api_call_timeout,
 ) -> AS:
     class DynamicClient:
         def __init__(self):
