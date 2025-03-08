@@ -264,7 +264,11 @@ class FastApiAppService(BaseAppService, ABC):
     def _handle_internal_http_error(status_code: int = 500, log_error: bool = True):
         def handler(request: Request, exc: Exception):
             if log_error:
-                logger.exception(f"{request.method} {request.url.path} failed: {exc}")
+                if status_code == 500:
+                    log = logger.exception
+                else:
+                    log = logger.error
+                log(f"{request.method} {request.url.path} failed: {exc}")
             return responses.JSONResponse(
                 status_code=status_code,
                 content=RemoteCallError(
@@ -429,7 +433,10 @@ def fastapi_close_service_client(client: Any) -> None:
 
 
 @conn_retry("FastAPI client", "Creating service client", max_retry=api_comm_retry)
-def fastapi_get_service_client(service_type: Type[AS]) -> AS:
+def fastapi_get_service_client(
+    service_type: Type[AS],
+    call_timeout: int | None = int(api_comm_retry * api_comm_timeout),
+) -> AS:
     class DynamicClient:
         def __init__(self):
             host = service_type.get_host()
@@ -437,7 +444,7 @@ def fastapi_get_service_client(service_type: Type[AS]) -> AS:
             self.base_url = f"http://{host}:{port}".rstrip("/")
             self.client = httpx.Client(
                 base_url=self.base_url,
-                timeout=api_comm_timeout,
+                timeout=call_timeout,
             )
 
         def _call_method(self, method_name: str, **kwargs) -> Any:
