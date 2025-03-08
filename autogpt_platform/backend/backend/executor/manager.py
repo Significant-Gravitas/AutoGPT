@@ -109,7 +109,10 @@ class LogMetadata:
         logger.exception(msg, extra={"json_fields": {**self.metadata, **extra}})
 
     def _wrap(self, msg: str, **extra):
-        return f"{self.prefix} {msg} {extra}"
+        extra_msg = str(extra or "")
+        if len(extra_msg) > 1000:
+            extra_msg = extra_msg[:1000] + "..."
+        return f"{self.prefix} {msg} {extra_msg}"
 
 
 T = TypeVar("T")
