@@ -1,7 +1,7 @@
 import logging
 import time
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Callable
+from typing import Callable
 
 import aio_pika
 from aio_pika.exceptions import QueueEmpty
@@ -32,9 +32,6 @@ from backend.data.user import (
 from backend.notifications.email import EmailSender
 from backend.util.service import AppService, expose, get_service_client
 from backend.util.settings import Settings
-
-if TYPE_CHECKING:
-    from backend.executor import Scheduler
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -118,12 +115,6 @@ class NotificationManager(AppService):
     @classmethod
     def get_port(cls) -> int:
         return settings.config.notification_service_port
-
-    @thread_cached
-    def scheduler(self) -> "Scheduler":
-        from backend.executor import Scheduler
-
-        return get_service_client(Scheduler)
 
     def get_routing_key(self, event: NotificationEventModel) -> str:
         """Get the appropriate routing key for an event"""
