@@ -130,7 +130,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
       title: name,
       subheader: "",
       description: description,
-      thumbnailSrc: "",
+      thumbnailSrc: selectedAgentData?.agent_image || "",
       youtubeLink: "",
       category: "",
       slug: name.replace(/ /g, "-"),
@@ -222,7 +222,8 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
                       id: agent.agent_id,
                       version: agent.agent_version,
                       lastEdited: agent.last_edited,
-                      imageSrc: "https://picsum.photos/300/200", // Fallback image if none provided
+                      imageSrc:
+                        agent.agent_image || "https://picsum.photos/300/200",
                     })) || []
                   }
                   onSelect={handleAgentSelect}
