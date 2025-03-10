@@ -2,6 +2,7 @@ import inspect
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import (
+    TYPE_CHECKING,
     Any,
     ClassVar,
     Generator,
@@ -18,6 +19,7 @@ import jsonschema
 from prisma.models import AgentBlock
 from pydantic import BaseModel
 
+from backend.data.model import NodeExecutionStats
 from backend.util import json
 from backend.util.settings import Config
 
@@ -27,6 +29,9 @@ from .model import (
     CredentialsMetaInput,
     is_credentials_field_name,
 )
+
+if TYPE_CHECKING:
+    from .graph import Link
 
 app_config = Config()
 
@@ -44,6 +49,7 @@ class BlockType(Enum):
     WEBHOOK = "Webhook"
     WEBHOOK_MANUAL = "Webhook (manual)"
     AGENT = "Agent"
+    AI = "AI"
 
 
 class BlockCategory(Enum):
@@ -108,6 +114,10 @@ class BlockSchema(BaseModel):
     @classmethod
     def validate_data(cls, data: BlockInput) -> str | None:
         return json.validate_with_jsonschema(schema=cls.jsonschema(), data=data)
+
+    @classmethod
+    def get_mismatch_error(cls, data: BlockInput) -> str | None:
+        return cls.validate_data(data)
 
     @classmethod
     def validate_field(cls, field_name: str, data: BlockInput) -> str | None:
@@ -185,6 +195,19 @@ class BlockSchema(BaseModel):
                 )
             )
         }
+
+    @classmethod
+    def get_input_defaults(cls, data: BlockInput) -> BlockInput:
+        return data  # Return as is, by default.
+
+    @classmethod
+    def get_missing_links(cls, data: BlockInput, links: list["Link"]) -> set[str]:
+        input_fields_from_nodes = {link.sink_name for link in links}
+        return input_fields_from_nodes - set(data)
+
+    @classmethod
+    def get_missing_input(cls, data: BlockInput) -> set[str]:
+        return cls.get_required_fields() - set(data)
 
 
 BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchema)
@@ -294,7 +317,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.static_output = static_output
         self.block_type = block_type
         self.webhook_config = webhook_config
-        self.execution_stats = {}
+        self.execution_stats: NodeExecutionStats = NodeExecutionStats()
 
         if self.webhook_config:
             if isinstance(self.webhook_config, BlockWebhookConfig):
@@ -351,6 +374,14 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         Run the block with the given input data.
         Args:
             input_data: The input data with the structure of input_schema.
+
+        Kwargs: Currently 14/02/2025 these include
+            graph_id: The ID of the graph.
+            node_id: The ID of the node.
+            graph_exec_id: The ID of the graph execution.
+            node_exec_id: The ID of the node execution.
+            user_id: The ID of the user.
+
         Returns:
             A Generator that yields (output_name, output_data).
             output_name: One of the output name defined in Block's output_schema.
@@ -364,18 +395,29 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 return data
         raise ValueError(f"{self.name} did not produce any output for {output}")
 
-    def merge_stats(self, stats: dict[str, Any]) -> dict[str, Any]:
-        for key, value in stats.items():
-            if isinstance(value, dict):
-                self.execution_stats.setdefault(key, {}).update(value)
-            elif isinstance(value, (int, float)):
-                self.execution_stats.setdefault(key, 0)
-                self.execution_stats[key] += value
-            elif isinstance(value, list):
-                self.execution_stats.setdefault(key, [])
-                self.execution_stats[key].extend(value)
+    def merge_stats(self, stats: NodeExecutionStats) -> NodeExecutionStats:
+        stats_dict = stats.model_dump()
+        current_stats = self.execution_stats.model_dump()
+
+        for key, value in stats_dict.items():
+            if key not in current_stats:
+                # Field doesn't exist yet, just set it, but this will probably
+                # not happen, just in case though so we throw for invalid when
+                # converting back in
+                current_stats[key] = value
+            elif isinstance(value, dict) and isinstance(current_stats[key], dict):
+                current_stats[key].update(value)
+            elif isinstance(value, (int, float)) and isinstance(
+                current_stats[key], (int, float)
+            ):
+                current_stats[key] += value
+            elif isinstance(value, list) and isinstance(current_stats[key], list):
+                current_stats[key].extend(value)
             else:
-                self.execution_stats[key] = value
+                current_stats[key] = value
+
+        self.execution_stats = NodeExecutionStats(**current_stats)
+
         return self.execution_stats
 
     @property
@@ -398,7 +440,6 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         }
 
     def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
-        # Merge the input data with the extra execution arguments, preferring the args for security
         if error := self.input_schema.validate_data(input_data):
             raise ValueError(
                 f"Unable to execute block with invalid input data: {error}"

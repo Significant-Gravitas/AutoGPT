@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { FeaturedStoreCard } from "@/components/agptui/FeaturedStoreCard";
+import { FeaturedAgentCard } from "@/components/agptui/FeaturedAgentCard";
 import {
   Carousel,
   CarouselContent,
@@ -11,7 +11,8 @@ import {
   CarouselIndicator,
 } from "@/components/ui/carousel";
 import { useCallback, useState } from "react";
-import { useRouter } from "next/navigation";
+import { StoreAgent } from "@/lib/autogpt-server-api";
+import Link from "next/link";
 
 const BACKGROUND_COLORS = [
   "bg-violet-200 dark:bg-violet-800", // #ddd6fe / #5b21b6
@@ -19,33 +20,14 @@ const BACKGROUND_COLORS = [
   "bg-green-200 dark:bg-green-800", // #bbf7d0 / #065f46
 ];
 
-export interface FeaturedAgent {
-  slug: string;
-  agent_name: string;
-  agent_image: string;
-  creator: string;
-  creator_avatar: string;
-  sub_heading: string;
-  description: string;
-  runs: number;
-  rating: number;
-}
-
 interface FeaturedSectionProps {
-  featuredAgents: FeaturedAgent[];
+  featuredAgents: StoreAgent[];
 }
 
 export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
   featuredAgents,
 }) => {
   const [currentSlide, setCurrentSlide] = useState(0);
-  const router = useRouter();
-
-  const handleCardClick = (creator: string, slug: string) => {
-    router.push(
-      `/marketplace/agent/${encodeURIComponent(creator)}/${encodeURIComponent(slug)}`,
-    );
-  };
 
   const handlePrevSlide = useCallback(() => {
     setCurrentSlide((prev) =>
@@ -64,48 +46,41 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
   };
 
   return (
-    <div className="flex w-full flex-col items-center justify-center">
-      <div className="w-[99vw]">
-        <h2 className="font-poppins mx-auto mb-8 max-w-[1360px] px-4 text-2xl font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
-          Featured agents
-        </h2>
+    <section className="mx-auto w-full max-w-7xl px-4 pb-16">
+      <h2 className="mb-8 font-poppins text-2xl font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+        Featured agents
+      </h2>
 
-        <div className="w-[99vw] pb-[60px]">
-          <Carousel
-            className="mx-auto pb-10"
-            opts={{
-              align: "center",
-              containScroll: "trimSnaps",
-            }}
-          >
-            <CarouselContent className="ml-[calc(50vw-690px)]">
-              {featuredAgents.map((agent, index) => (
-                <CarouselItem
-                  key={index}
-                  className="max-w-[460px] flex-[0_0_auto]"
-                >
-                  <FeaturedStoreCard
-                    agentName={agent.agent_name}
-                    subHeading={agent.sub_heading}
-                    agentImage={agent.agent_image}
-                    creatorName={agent.creator}
-                    description={agent.description}
-                    runs={agent.runs}
-                    rating={agent.rating}
-                    backgroundColor={getBackgroundColor(index)}
-                    onClick={() => handleCardClick(agent.creator, agent.slug)}
-                  />
-                </CarouselItem>
-              ))}
-            </CarouselContent>
-            <div className="relative mx-auto w-full max-w-[1360px] pl-4">
-              <CarouselIndicator />
-              <CarouselPrevious afterClick={handlePrevSlide} />
-              <CarouselNext afterClick={handleNextSlide} />
-            </div>
-          </Carousel>
+      <Carousel
+        opts={{
+          align: "center",
+          containScroll: "trimSnaps",
+        }}
+      >
+        <CarouselContent>
+          {featuredAgents.map((agent, index) => (
+            <CarouselItem
+              key={index}
+              className="h-[480px] md:basis-1/2 lg:basis-1/3"
+            >
+              <Link
+                href={`/marketplace/agent/${encodeURIComponent(agent.creator)}/${encodeURIComponent(agent.slug)}`}
+                className="block h-full"
+              >
+                <FeaturedAgentCard
+                  agent={agent}
+                  backgroundColor={getBackgroundColor(index)}
+                />
+              </Link>
+            </CarouselItem>
+          ))}
+        </CarouselContent>
+        <div className="relative mt-4">
+          <CarouselIndicator />
+          <CarouselPrevious afterClick={handlePrevSlide} />
+          <CarouselNext afterClick={handleNextSlide} />
         </div>
-      </div>
-    </div>
+      </Carousel>
+    </section>
   );
 };

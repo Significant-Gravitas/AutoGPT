@@ -6,6 +6,8 @@ import BackendAPI, {
   BlockUIType,
   formatEdgeID,
   Graph,
+  GraphExecutionID,
+  GraphID,
   NodeExecutionResult,
 } from "@/lib/autogpt-server-api";
 import {
@@ -21,15 +23,14 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useToast } from "@/components/ui/use-toast";
 import { InputItem } from "@/components/RunnerUIWrapper";
 import { GraphMeta } from "@/lib/autogpt-server-api";
-import useCredits from "./useCredits";
 import { default as NextLink } from "next/link";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
 export default function useAgentGraph(
-  flowID?: string,
+  flowID?: GraphID,
   flowVersion?: number,
-  flowExecutionID?: string,
+  flowExecutionID?: GraphExecutionID,
   passDataToBeads?: boolean,
 ) {
   const { toast } = useToast();
@@ -65,7 +66,7 @@ export default function useAgentGraph(
     | {
         request: "run" | "stop";
         state: "running" | "stopping" | "error";
-        activeExecutionID?: string;
+        activeExecutionID?: GraphExecutionID;
       }
   >({
     request: "none",
@@ -76,7 +77,6 @@ export default function useAgentGraph(
     useState(false);
   const [nodes, setNodes] = useState<CustomNode[]>([]);
   const [edges, setEdges] = useState<CustomEdge[]>([]);
-  const { credits, fetchCredits } = useCredits();
 
   const api = useMemo(
     () => new BackendAPI(process.env.NEXT_PUBLIC_AGPT_SERVER_URL!),
@@ -192,12 +192,15 @@ export default function useAgentGraph(
         });
         setEdges(() =>
           graph.links.map((link) => {
+            const adjustedSourceName = link.source_name?.startsWith("tools_^_")
+              ? "tools"
+              : link.source_name;
             return {
               id: formatEdgeID(link),
               type: "custom",
               data: {
                 edgeColor: getTypeColor(
-                  getOutputType(newNodes, link.source_id, link.source_name!),
+                  getOutputType(newNodes, link.source_id, adjustedSourceName!),
                 ),
                 sourcePos: newNodes.find((node) => node.id === link.source_id)
                   ?.position,
@@ -210,12 +213,12 @@ export default function useAgentGraph(
                 type: MarkerType.ArrowClosed,
                 strokeWidth: 2,
                 color: getTypeColor(
-                  getOutputType(newNodes, link.source_id, link.source_name!),
+                  getOutputType(newNodes, link.source_id, adjustedSourceName!),
                 ),
               },
               source: link.source_id,
               target: link.sink_id,
-              sourceHandle: link.source_name || undefined,
+              sourceHandle: adjustedSourceName || undefined,
               targetHandle: link.sink_name || undefined,
             };
           }),
@@ -322,7 +325,10 @@ export default function useAgentGraph(
                           ...(node.data.executionResults || []),
                           {
                             execId: executionData.node_exec_id,
-                            data: executionData.output_data,
+                            data: {
+                              "[Input]": [executionData.input_data],
+                              ...executionData.output_data,
+                            },
                           },
                         ]
                       : node.data.executionResults,
@@ -607,8 +613,21 @@ export default function useAgentGraph(
     }
 
     const fetchExecutions = async () => {
-      const results = await api.getGraphExecutionInfo(flowID, flowExecutionID);
-      setUpdateQueue((prev) => [...prev, ...results]);
+      const execution = await api.getGraphExecutionInfo(
+        flowID,
+        flowExecutionID,
+      );
+      if (
+        (execution.status === "QUEUED" || execution.status === "RUNNING") &&
+        saveRunRequest.request === "none"
+      ) {
+        setSaveRunRequest({
+          request: "run",
+          state: "running",
+          activeExecutionID: flowExecutionID,
+        });
+      }
+      setUpdateQueue((prev) => [...prev, ...execution.node_executions]);
 
       // Track execution until completed
       const pendingNodeExecutions: Set<string> = new Set();
@@ -783,12 +802,41 @@ export default function useAgentGraph(
       };
     });
 
-    const links = edges.map((edge) => ({
-      source_id: edge.source,
-      sink_id: edge.target,
-      source_name: edge.sourceHandle || "",
-      sink_name: edge.targetHandle || "",
-    }));
+    const links = edges.map((edge) => {
+      let sourceName = edge.sourceHandle || "";
+      const sourceNode = nodes.find((node) => node.id === edge.source);
+
+      // Special case for SmartDecisionMakerBlock
+      if (
+        sourceNode?.data.block_id === "3b191d9f-356f-482d-8238-ba04b6d18381" &&
+        sourceName.toLowerCase() === "tools"
+      ) {
+        const sinkNode = nodes.find((node) => node.id === edge.target);
+
+        const sinkNodeName = sinkNode
+          ? sinkNode.data.block_id === "e189baac-8c20-45a1-94a7-55177ea42565" // AgentExecutorBlock ID
+            ? sinkNode.data.hardcodedValues?.graph_id
+              ? availableFlows
+                  .find(
+                    (flow) =>
+                      flow.id === sinkNode.data.hardcodedValues.graph_id,
+                  )
+                  ?.name?.toLowerCase()
+                  .replace(/ /g, "_") || "agentexecutorblock"
+              : "agentexecutorblock"
+            : sinkNode.data.title.toLowerCase().replace(/ /g, "_").split("_")[0]
+          : "";
+
+        sourceName =
+          `tools_^_${sinkNodeName}_${edge.targetHandle || ""}`.toLowerCase();
+      }
+      return {
+        source_id: edge.source,
+        sink_id: edge.target,
+        source_name: sourceName,
+        sink_name: edge.targetHandle || "",
+      };
+    });
 
     const payload = {
       id: savedAgent?.id!,
@@ -963,6 +1011,8 @@ export default function useAgentGraph(
         if (flowID) {
           await api.createSchedule({
             graph_id: flowID,
+            // flowVersion is always defined here because scheduling is opened for a specific version
+            graph_version: flowVersion!,
             cron: cronExpression,
             input_data: inputs.reduce(
               (acc, input) => ({

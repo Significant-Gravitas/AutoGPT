@@ -15,6 +15,7 @@ from backend.blocks.llm import (
     LlmModel,
 )
 from backend.blocks.replicate_flux_advanced import ReplicateFluxAdvancedModelBlock
+from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
 from backend.data.block import Block
@@ -265,4 +266,5 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
+    SmartDecisionMakerBlock: LLM_COST,
 }
