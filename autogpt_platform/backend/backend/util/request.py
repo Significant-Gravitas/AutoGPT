@@ -2,7 +2,7 @@ import ipaddress
 import re
 import socket
 from typing import Callable
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import idna
 import requests as req
@@ -128,7 +128,14 @@ class Requests:
         self.extra_headers = extra_headers
 
     def request(
-        self, method, url, headers=None, allow_redirects=False, *args, **kwargs
+        self,
+        method,
+        url,
+        headers=None,
+        allow_redirects=True,
+        max_redirects=10,
+        *args,
+        **kwargs,
     ) -> req.Response:
         # Merge any extra headers
         if self.extra_headers is not None:
@@ -139,17 +146,40 @@ class Requests:
         if self.extra_url_validator is not None:
             url = self.extra_url_validator(url)
 
-        # Perform the request
+        # Perform the request with redirects disabled for manual handling
         response = req.request(
             method,
             url,
             headers=headers,
-            allow_redirects=allow_redirects,
+            allow_redirects=False,
             *args,
             **kwargs,
         )
         if self.raise_for_status:
             response.raise_for_status()
+
+        # If allowed and a redirect is received, follow the redirect
+        if allow_redirects and response.is_redirect:
+            if max_redirects <= 0:
+                raise Exception("Too many redirects.")
+
+            location = response.headers.get("Location")
+            if not location:
+                return response
+
+            new_url = validate_url(urljoin(url, location), self.trusted_origins)
+            if self.extra_url_validator is not None:
+                new_url = self.extra_url_validator(new_url)
+
+            return self.request(
+                method,
+                new_url,
+                headers=headers,
+                allow_redirects=allow_redirects,
+                max_redirects=max_redirects - 1,
+                *args,
+                **kwargs,
+            )
 
         return response
 

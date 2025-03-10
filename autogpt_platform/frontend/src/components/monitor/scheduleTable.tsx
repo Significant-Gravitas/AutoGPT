@@ -1,4 +1,4 @@
-import { LibraryAgent, Schedule } from "@/lib/autogpt-server-api";
+import { LibraryAgent, Schedule, ScheduleID } from "@/lib/autogpt-server-api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -36,7 +36,7 @@ import { Label } from "../ui/label";
 interface SchedulesTableProps {
   schedules: Schedule[];
   agents: LibraryAgent[];
-  onRemoveSchedule: (scheduleId: string, enabled: boolean) => void;
+  onRemoveSchedule: (scheduleId: ScheduleID, enabled: boolean) => void;
   sortColumn: keyof Schedule;
   sortDirection: "asc" | "desc";
   onSort: (column: keyof Schedule) => void;
@@ -73,7 +73,7 @@ export const SchedulesTable = ({
       return String(bValue).localeCompare(String(aValue));
     });
 
-  const handleToggleSchedule = (scheduleId: string, enabled: boolean) => {
+  const handleToggleSchedule = (scheduleId: ScheduleID, enabled: boolean) => {
     onRemoveSchedule(scheduleId, enabled);
     if (!enabled) {
       toast({

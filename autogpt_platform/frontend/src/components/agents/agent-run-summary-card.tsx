@@ -18,24 +18,24 @@ import AgentRunStatusChip, {
 } from "@/components/agents/agent-run-status-chip";
 
 export type AgentRunSummaryProps = {
-  agentID: string;
-  agentRunID: string;
   status: AgentRunStatus;
   title: string;
   timestamp: number | Date;
   selected?: boolean;
   onClick?: () => void;
+  // onRename: () => void;
+  onDelete: () => void;
   className?: string;
 };
 
 export default function AgentRunSummaryCard({
-  agentID,
-  agentRunID,
   status,
   title,
   timestamp,
   selected = false,
   onClick,
+  // onRename,
+  onDelete,
   className,
 }: AgentRunSummaryProps): React.ReactElement {
   return (
@@ -55,32 +55,24 @@ export default function AgentRunSummaryCard({
             {title}
           </h3>
 
-          {/* <DropdownMenu>
+          <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="h-5 w-5 p-0">
                 <MoreVertical className="h-5 w-5" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              <DropdownMenuItem
-                // TODO: implement
-              >
-                Pin into a template
+              {/* {onPinAsPreset && (
+                <DropdownMenuItem onClick={onPinAsPreset}>
+                  Pin as a preset
               </DropdownMenuItem>
+              )} */}
 
-              <DropdownMenuItem
-                // TODO: implement
-              >
-                Rename
-              </DropdownMenuItem>
+              {/* <DropdownMenuItem onClick={onRename}>Rename</DropdownMenuItem> */}
 
-              <DropdownMenuItem
-                // TODO: implement
-              >
-                Delete
-              </DropdownMenuItem>
+              <DropdownMenuItem onClick={onDelete}>Delete</DropdownMenuItem>
             </DropdownMenuContent>
-          </DropdownMenu> */}
+          </DropdownMenu>
         </div>
 
         <p

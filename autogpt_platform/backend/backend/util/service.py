@@ -42,6 +42,7 @@ from Pyro5 import api as pyro
 from Pyro5 import config as pyro_config
 
 from backend.data import db, rabbitmq, redis
+from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import to_dict
 from backend.util.process import AppProcess
 from backend.util.retry import conn_retry
@@ -55,6 +56,7 @@ config = Config()
 api_host = config.pyro_host
 api_comm_retry = config.pyro_client_comm_retry
 api_comm_timeout = config.pyro_client_comm_timeout
+api_call_timeout = config.rpc_client_call_timeout
 pyro_config.MAX_RETRIES = api_comm_retry  # type: ignore
 pyro_config.COMMTIMEOUT = api_comm_timeout  # type: ignore
 
@@ -251,6 +253,7 @@ EXCEPTION_MAPPING = {
         ValueError,
         TimeoutError,
         ConnectionError,
+        InsufficientBalanceError,
     ]
 }
 
@@ -262,7 +265,11 @@ class FastApiAppService(BaseAppService, ABC):
     def _handle_internal_http_error(status_code: int = 500, log_error: bool = True):
         def handler(request: Request, exc: Exception):
             if log_error:
-                logger.exception(f"{request.method} {request.url.path} failed: {exc}")
+                if status_code == 500:
+                    log = logger.exception
+                else:
+                    log = logger.error
+                log(f"{request.method} {request.url.path} failed: {exc}")
             return responses.JSONResponse(
                 status_code=status_code,
                 content=RemoteCallError(
@@ -324,7 +331,12 @@ class FastApiAppService(BaseAppService, ABC):
             f"[{self.service_name}] Starting RPC server at http://{api_host}:{self.get_port()}"
         )
         server = uvicorn.Server(
-            uvicorn.Config(self.fastapi_app, host=api_host, port=self.get_port())
+            uvicorn.Config(
+                self.fastapi_app,
+                host=api_host,
+                port=self.get_port(),
+                log_level="warning",
+            )
         )
         self.shared_event_loop.run_until_complete(server.serve())
 
@@ -422,7 +434,10 @@ def fastapi_close_service_client(client: Any) -> None:
 
 
 @conn_retry("FastAPI client", "Creating service client", max_retry=api_comm_retry)
-def fastapi_get_service_client(service_type: Type[AS]) -> AS:
+def fastapi_get_service_client(
+    service_type: Type[AS],
+    call_timeout: int | None = api_call_timeout,
+) -> AS:
     class DynamicClient:
         def __init__(self):
             host = service_type.get_host()
@@ -430,7 +445,7 @@ def fastapi_get_service_client(service_type: Type[AS]) -> AS:
             self.base_url = f"http://{host}:{port}".rstrip("/")
             self.client = httpx.Client(
                 base_url=self.base_url,
-                timeout=api_comm_timeout,
+                timeout=call_timeout,
             )
 
         def _call_method(self, method_name: str, **kwargs) -> Any:
@@ -441,6 +456,7 @@ def fastapi_get_service_client(service_type: Type[AS]) -> AS:
             except httpx.HTTPStatusError as e:
                 logger.error(f"HTTP error in {method_name}: {e.response.text}")
                 error = RemoteCallError.model_validate(e.response.json(), strict=False)
+                # DEBUG HELP: if you made a custom exception, make sure you override self.args to be how to make your exception
                 raise EXCEPTION_MAPPING.get(error.type, Exception)(
                     *(error.args or [str(e)])
                 )

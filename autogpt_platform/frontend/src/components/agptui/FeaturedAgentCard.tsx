@@ -27,33 +27,35 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
       data-testid="featured-store-card"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={backgroundColor}
+      className={`flex h-full flex-col ${backgroundColor}`}
     >
       <CardHeader>
-        <CardTitle>{agent.agent_name}</CardTitle>
-        <CardDescription>{agent.description}</CardDescription>
+        <CardTitle className="line-clamp-2 text-base sm:text-xl">
+          {agent.agent_name}
+        </CardTitle>
+        <CardDescription className="text-sm">
+          By {agent.creator}
+        </CardDescription>
       </CardHeader>
-      <CardContent>
-        <div className="relative h-[397px] w-full overflow-hidden rounded-xl">
+      <CardContent className="flex-1 p-4">
+        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl">
+          <Image
+            src={agent.agent_image || "/AUTOgpt_Logo_dark.png"}
+            alt={`${agent.agent_name} preview`}
+            fill
+            sizes="100%"
+            className={`object-cover transition-opacity duration-200 ${
+              isHovered ? "opacity-0" : "opacity-100"
+            }`}
+          />
           <div
-            className={`transition-opacity duration-200 ${isHovered ? "opacity-0" : "opacity-100"}`}
-          >
-            <Image
-              src={agent.agent_image || "/AUTOgpt_Logo_dark.png"}
-              alt={`${agent.agent_name} preview`}
-              fill
-              sizes="100%"
-              className="rounded-xl object-cover"
-            />
-          </div>
-          <div
-            className={`absolute inset-0 overflow-y-auto transition-opacity duration-200 ${
+            className={`absolute inset-0 overflow-y-auto p-4 transition-opacity duration-200 ${
               isHovered ? "opacity-100" : "opacity-0"
-            } rounded-xl dark:bg-neutral-700`}
+            }`}
           >
-            <p className="text-base text-neutral-800 dark:text-neutral-200">
+            <CardDescription className="line-clamp-[6] text-xs sm:line-clamp-[8] sm:text-sm">
               {agent.description}
-            </p>
+            </CardDescription>
           </div>
         </div>
       </CardContent>
@@ -63,13 +65,7 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
         </div>
         <div className="flex items-center gap-1.5">
           <p>{agent.rating.toFixed(1) ?? "0.0"}</p>
-          <div
-            className="inline-flex items-center justify-start gap-px"
-            role="img"
-            aria-label={`Rating: ${agent.rating.toFixed(1)} out of 5 stars`}
-          >
-            {StarRatingIcons(agent.rating)}
-          </div>
+          {StarRatingIcons(agent.rating)}
         </div>
       </CardFooter>
     </Card>

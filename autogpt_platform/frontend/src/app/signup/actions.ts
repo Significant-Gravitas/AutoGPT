@@ -36,8 +36,8 @@ export async function signup(values: z.infer<typeof signupFormSchema>) {
       if (data.session) {
         await supabase.auth.setSession(data.session);
       }
-      revalidatePath("/", "layout");
-      redirect("/");
+      revalidatePath("/onboarding", "layout");
+      redirect("/onboarding");
     },
   );
 }

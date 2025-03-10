@@ -2,32 +2,33 @@
 import React, { useCallback, useMemo, useState } from "react";
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { GraphMeta } from "@/lib/autogpt-server-api";
+import { GraphExecutionID, GraphMeta } from "@/lib/autogpt-server-api";
 
+import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button, ButtonProps } from "@/components/agptui/Button";
 import { Input } from "@/components/ui/input";
 
 export default function AgentRunDraftView({
-  agent,
+  graph,
   onRun,
   agentActions,
 }: {
-  agent: GraphMeta;
-  onRun: (runID: string) => void;
-  agentActions: { label: string; callback: () => void }[];
+  graph: GraphMeta;
+  onRun: (runID: GraphExecutionID) => void;
+  agentActions: ButtonAction[];
 }): React.ReactNode {
   const api = useBackendAPI();
 
-  const agentInputs = agent.input_schema.properties;
+  const agentInputs = graph.input_schema.properties;
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
 
   const doRun = useCallback(
     () =>
       api
-        .executeGraph(agent.id, agent.version, inputValues)
+        .executeGraph(graph.id, graph.version, inputValues)
         .then((newRun) => onRun(newRun.graph_exec_id)),
-    [api, agent, inputValues, onRun],
+    [api, graph, inputValues, onRun],
   );
 
   const runActions: {
@@ -87,7 +88,11 @@ export default function AgentRunDraftView({
           <div className="flex flex-col gap-3">
             <h3 className="text-sm font-medium">Agent actions</h3>
             {agentActions.map((action, i) => (
-              <Button key={i} variant="outline" onClick={action.callback}>
+              <Button
+                key={i}
+                variant={action.variant ?? "outline"}
+                onClick={action.callback}
+              >
                 {action.label}
               </Button>
             ))}

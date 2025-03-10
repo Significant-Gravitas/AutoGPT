@@ -8,6 +8,7 @@ from pydantic import BaseModel
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
+from backend.util.settings import Settings
 
 from ._auth import (
     GOOGLE_OAUTH_IS_CONFIGURED,
@@ -150,8 +151,8 @@ class GmailReadBlock(Block):
                 else None
             ),
             token_uri="https://oauth2.googleapis.com/token",
-            client_id=kwargs.get("client_id"),
-            client_secret=kwargs.get("client_secret"),
+            client_id=Settings().secrets.google_client_id,
+            client_secret=Settings().secrets.google_client_secret,
             scopes=credentials.scopes,
         )
         return build("gmail", "v1", credentials=creds)

@@ -227,32 +227,36 @@ export const FlowInfo: React.FC<
               </DropdownMenuContent>
             </DropdownMenu>
           )}
-          <Link
-            className={buttonVariants({ variant: "default" })}
-            href={`/build?flowID=${flow.agent_id}&flowVersion=${flow.agent_version}`}
-          >
-            <Pencil2Icon className="mr-2" />
-            Open in Builder
-          </Link>
-          <Button
-            variant="outline"
-            className="px-2.5"
-            title="Export to a JSON-file"
-            data-testid="export-button"
-            onClick={async () =>
-              exportAsJSONFile(
-                safeCopyGraph(
-                  flowVersions!.find(
-                    (v) => v.version == selectedFlowVersion!.version,
-                  )!,
-                  await api.getBlocks(),
-                ),
-                `${flow.name}_v${selectedFlowVersion!.version}.json`,
-              )
-            }
-          >
-            <ExitIcon className="mr-2" /> Export
-          </Button>
+          {flow.can_access_graph && (
+            <Link
+              className={buttonVariants({ variant: "default" })}
+              href={`/build?flowID=${flow.agent_id}&flowVersion=${flow.agent_version}`}
+            >
+              <Pencil2Icon className="mr-2" />
+              Open in Builder
+            </Link>
+          )}
+          {flow.can_access_graph && (
+            <Button
+              variant="outline"
+              className="px-2.5"
+              title="Export to a JSON-file"
+              data-testid="export-button"
+              onClick={async () =>
+                exportAsJSONFile(
+                  safeCopyGraph(
+                    flowVersions!.find(
+                      (v) => v.version == selectedFlowVersion!.version,
+                    )!,
+                    await api.getBlocks(),
+                  ),
+                  `${flow.name}_v${selectedFlowVersion!.version}.json`,
+                )
+              }
+            >
+              <ExitIcon className="mr-2" /> Export
+            </Button>
+          )}
           <Button
             variant="secondary"
             className="bg-purple-500 text-white hover:bg-purple-700"
@@ -263,14 +267,16 @@ export const FlowInfo: React.FC<
             <PlayIcon className="mr-2" />
             {isRunning ? "Stop Agent" : "Run Agent"}
           </Button>
-          <Button
-            variant="destructive"
-            onClick={() => setIsDeleteModalOpen(true)}
-            data-testid="delete-button"
-          >
-            <TrashIcon className="mr-2" />
-            Delete Agent
-          </Button>
+          {flow.can_access_graph && (
+            <Button
+              variant="destructive"
+              onClick={() => setIsDeleteModalOpen(true)}
+              data-testid="delete-button"
+            >
+              <TrashIcon className="mr-2" />
+              Delete Agent
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent>
@@ -303,10 +309,12 @@ export const FlowInfo: React.FC<
             <Button
               variant="destructive"
               onClick={() => {
-                api.deleteGraph(flow.agent_id).then(() => {
-                  setIsDeleteModalOpen(false);
-                  refresh();
-                });
+                api
+                  .updateLibraryAgent(flow.id, { is_deleted: true })
+                  .then(() => {
+                    setIsDeleteModalOpen(false);
+                    refresh();
+                  });
               }}
             >
               Delete

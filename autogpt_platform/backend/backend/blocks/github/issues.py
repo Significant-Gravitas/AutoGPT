@@ -1,3 +1,4 @@
+import logging
 from urllib.parse import urlparse
 
 from typing_extensions import TypedDict
@@ -5,7 +6,7 @@ from typing_extensions import TypedDict
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 
-from ._api import get_api
+from ._api import convert_comment_url_to_api_endpoint, get_api
 from ._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
@@ -13,6 +14,8 @@ from ._auth import (
     GithubCredentialsField,
     GithubCredentialsInput,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def is_github_url(url: str) -> bool:
@@ -106,6 +109,228 @@ class GithubCommentBlock(Block):
 
 
 # --8<-- [end:GithubCommentBlockExample]
+
+
+class GithubUpdateCommentBlock(Block):
+    class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
+        comment_url: str = SchemaField(
+            description="URL of the GitHub comment",
+            placeholder="https://github.com/owner/repo/issues/1#issuecomment-123456789",
+            default="",
+            advanced=False,
+        )
+        issue_url: str = SchemaField(
+            description="URL of the GitHub issue or pull request",
+            placeholder="https://github.com/owner/repo/issues/1",
+            default="",
+        )
+        comment_id: str = SchemaField(
+            description="ID of the GitHub comment",
+            placeholder="123456789",
+            default="",
+        )
+        comment: str = SchemaField(
+            description="Comment to update",
+            placeholder="Enter your comment",
+        )
+
+    class Output(BlockSchema):
+        id: int = SchemaField(description="ID of the updated comment")
+        url: str = SchemaField(description="URL to the comment on GitHub")
+        error: str = SchemaField(
+            description="Error message if the comment update failed"
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="b3f4d747-10e3-4e69-8c51-f2be1d99c9a7",
+            description="This block updates a comment on a specified GitHub issue or pull request.",
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=GithubUpdateCommentBlock.Input,
+            output_schema=GithubUpdateCommentBlock.Output,
+            test_input={
+                "comment_url": "https://github.com/owner/repo/issues/1#issuecomment-123456789",
+                "comment": "This is an updated comment.",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("id", 123456789),
+                (
+                    "url",
+                    "https://github.com/owner/repo/issues/1#issuecomment-123456789",
+                ),
+            ],
+            test_mock={
+                "update_comment": lambda *args, **kwargs: (
+                    123456789,
+                    "https://github.com/owner/repo/issues/1#issuecomment-123456789",
+                )
+            },
+        )
+
+    @staticmethod
+    def update_comment(
+        credentials: GithubCredentials, comment_url: str, body_text: str
+    ) -> tuple[int, str]:
+        api = get_api(credentials, convert_urls=False)
+        data = {"body": body_text}
+        url = convert_comment_url_to_api_endpoint(comment_url)
+
+        logger.info(url)
+        response = api.patch(url, json=data)
+        comment = response.json()
+        return comment["id"], comment["html_url"]
+
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        if (
+            not input_data.comment_url
+            and input_data.comment_id
+            and input_data.issue_url
+        ):
+            parsed_url = urlparse(input_data.issue_url)
+            path_parts = parsed_url.path.strip("/").split("/")
+            owner, repo = path_parts[0], path_parts[1]
+
+            input_data.comment_url = f"https://api.github.com/repos/{owner}/{repo}/issues/comments/{input_data.comment_id}"
+
+        elif (
+            not input_data.comment_url
+            and not input_data.comment_id
+            and input_data.issue_url
+        ):
+            raise ValueError(
+                "Must provide either comment_url or comment_id and issue_url"
+            )
+        id, url = self.update_comment(
+            credentials,
+            input_data.comment_url,
+            input_data.comment,
+        )
+        yield "id", id
+        yield "url", url
+
+
+class GithubListCommentsBlock(Block):
+    class Input(BlockSchema):
+        credentials: GithubCredentialsInput = GithubCredentialsField("repo")
+        issue_url: str = SchemaField(
+            description="URL of the GitHub issue or pull request",
+            placeholder="https://github.com/owner/repo/issues/1",
+        )
+
+    class Output(BlockSchema):
+        class CommentItem(TypedDict):
+            id: int
+            body: str
+            user: str
+            url: str
+
+        comment: CommentItem = SchemaField(
+            title="Comment", description="Comments with their ID, body, user, and URL"
+        )
+        comments: list[CommentItem] = SchemaField(
+            description="List of comments with their ID, body, user, and URL"
+        )
+        error: str = SchemaField(description="Error message if listing comments failed")
+
+    def __init__(self):
+        super().__init__(
+            id="c4b5fb63-0005-4a11-b35a-0c2467bd6b59",
+            description="This block lists all comments for a specified GitHub issue or pull request.",
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=GithubListCommentsBlock.Input,
+            output_schema=GithubListCommentsBlock.Output,
+            test_input={
+                "issue_url": "https://github.com/owner/repo/issues/1",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                (
+                    "comment",
+                    {
+                        "id": 123456789,
+                        "body": "This is a test comment.",
+                        "user": "test_user",
+                        "url": "https://github.com/owner/repo/issues/1#issuecomment-123456789",
+                    },
+                ),
+                (
+                    "comments",
+                    [
+                        {
+                            "id": 123456789,
+                            "body": "This is a test comment.",
+                            "user": "test_user",
+                            "url": "https://github.com/owner/repo/issues/1#issuecomment-123456789",
+                        }
+                    ],
+                ),
+            ],
+            test_mock={
+                "list_comments": lambda *args, **kwargs: [
+                    {
+                        "id": 123456789,
+                        "body": "This is a test comment.",
+                        "user": "test_user",
+                        "url": "https://github.com/owner/repo/issues/1#issuecomment-123456789",
+                    }
+                ]
+            },
+        )
+
+    @staticmethod
+    def list_comments(
+        credentials: GithubCredentials, issue_url: str
+    ) -> list[Output.CommentItem]:
+        parsed_url = urlparse(issue_url)
+        path_parts = parsed_url.path.strip("/").split("/")
+
+        owner = path_parts[0]
+        repo = path_parts[1]
+
+        # GitHub API uses 'issues' for both issues and pull requests when it comes to comments
+        issue_number = path_parts[3]  # Whether 'issues/123' or 'pull/123'
+
+        # Construct the proper API URL directly
+        api_url = f"https://api.github.com/repos/{owner}/{repo}/issues/{issue_number}/comments"
+
+        # Set convert_urls=False since we're already providing an API URL
+        api = get_api(credentials, convert_urls=False)
+        response = api.get(api_url)
+        comments = response.json()
+        parsed_comments: list[GithubListCommentsBlock.Output.CommentItem] = [
+            {
+                "id": comment["id"],
+                "body": comment["body"],
+                "user": comment["user"]["login"],
+                "url": comment["html_url"],
+            }
+            for comment in comments
+        ]
+        return parsed_comments
+
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GithubCredentials,
+        **kwargs,
+    ) -> BlockOutput:
+        comments = self.list_comments(
+            credentials,
+            input_data.issue_url,
+        )
+        yield from (("comment", comment) for comment in comments)
+        yield "comments", comments
 
 
 class GithubMakeIssueBlock(Block):

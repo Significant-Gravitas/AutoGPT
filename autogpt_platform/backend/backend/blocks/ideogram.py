@@ -142,6 +142,16 @@ class IdeogramModelBlock(Block):
             title="Color Palette Preset",
             advanced=True,
         )
+        custom_color_palette: Optional[list[str]] = SchemaField(
+            description=(
+                "Only available for model version V_2 or V_2_TURBO. Provide one or more color hex codes "
+                "(e.g., ['#000030', '#1C0C47', '#9900FF', '#4285F4', '#FFFFFF']) to define a custom color "
+                "palette. Only used if 'color_palette_name' is 'NONE'."
+            ),
+            default=None,
+            title="Custom Color Palette",
+            advanced=True,
+        )
 
     class Output(BlockSchema):
         result: str = SchemaField(description="Generated image URL")
@@ -164,6 +174,13 @@ class IdeogramModelBlock(Block):
                 "style_type": StyleType.AUTO,
                 "negative_prompt": None,
                 "color_palette_name": ColorPalettePreset.NONE,
+                "custom_color_palette": [
+                    "#000030",
+                    "#1C0C47",
+                    "#9900FF",
+                    "#4285F4",
+                    "#FFFFFF",
+                ],
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
@@ -173,7 +190,7 @@ class IdeogramModelBlock(Block):
                 ),
             ],
             test_mock={
-                "run_model": lambda api_key, model_name, prompt, seed, aspect_ratio, magic_prompt_option, style_type, negative_prompt, color_palette_name: "https://ideogram.ai/api/images/test-generated-image-url.png",
+                "run_model": lambda api_key, model_name, prompt, seed, aspect_ratio, magic_prompt_option, style_type, negative_prompt, color_palette_name, custom_colors: "https://ideogram.ai/api/images/test-generated-image-url.png",
                 "upscale_image": lambda api_key, image_url: "https://ideogram.ai/api/images/test-upscaled-image-url.png",
             },
             test_credentials=TEST_CREDENTIALS,
@@ -195,6 +212,7 @@ class IdeogramModelBlock(Block):
             style_type=input_data.style_type.value,
             negative_prompt=input_data.negative_prompt,
             color_palette_name=input_data.color_palette_name.value,
+            custom_colors=input_data.custom_color_palette,
         )
 
         # Step 2: Upscale the image if requested
@@ -217,6 +235,7 @@ class IdeogramModelBlock(Block):
         style_type: str,
         negative_prompt: Optional[str],
         color_palette_name: str,
+        custom_colors: Optional[list[str]],
     ):
         url = "https://api.ideogram.ai/generate"
         headers = {
@@ -241,7 +260,11 @@ class IdeogramModelBlock(Block):
             data["image_request"]["negative_prompt"] = negative_prompt
 
         if color_palette_name != "NONE":
-            data["image_request"]["color_palette"] = {"name": color_palette_name}
+            data["color_palette"] = {"name": color_palette_name}
+        elif custom_colors:
+            data["color_palette"] = {
+                "members": [{"color_hex": color} for color in custom_colors]
+            }
 
         try:
             response = requests.post(url, json=data, headers=headers)
@@ -267,9 +290,7 @@ class IdeogramModelBlock(Block):
             response = requests.post(
                 url,
                 headers=headers,
-                data={
-                    "image_request": "{}",  # Empty JSON object
-                },
+                data={"image_request": "{}"},
                 files=files,
             )
 

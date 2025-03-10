@@ -1,0 +1,114 @@
+{# Low Balance Notification Email Template #}
+{# Template variables:
+data.agent_name: the name of the agent
+data.current_balance: the current balance of the user
+data.billing_page_link: the link to the billing page
+data.shortfall: the shortfall amount
+#}
+
+<p style="
+    font-family: 'Poppins', sans-serif;
+    color: #070629;
+    font-size: 16px;
+    line-height: 165%;
+    margin-top: 0;
+    margin-bottom: 10px;
+  ">
+  <strong>Low Balance Warning</strong>
+</p>
+
+<p style="
+    font-family: 'Poppins', sans-serif;
+    color: #070629;
+    font-size: 16px;
+    line-height: 165%;
+    margin-top: 0;
+    margin-bottom: 20px;
+  ">
+  Your agent "<strong>{{ data.agent_name }}</strong>" has been stopped due to low balance.
+</p>
+
+<div style="
+    margin-left: 15px;
+    margin-bottom: 20px;
+    padding: 15px;
+    border-left: 4px solid #5D23BB;
+    background-color: #f8f8ff;
+  ">
+  <p style="
+    font-family: 'Poppins', sans-serif;
+    color: #070629;
+    font-size: 16px;
+    margin-top: 0;
+    margin-bottom: 10px;
+  ">
+    <strong>Current Balance:</strong> ${{ "{:.2f}".format((data.current_balance|float)/100) }}
+  </p>
+  <p style="
+    font-family: 'Poppins', sans-serif;
+    color: #070629;
+    font-size: 16px;
+    margin-top: 0;
+    margin-bottom: 10px;
+  ">
+    <strong>Shortfall:</strong> ${{ "{:.2f}".format((data.shortfall|float)/100) }}
+  </p>
+</div>
+
+
+<div style="
+    margin-left: 15px;
+    margin-bottom: 20px;
+    padding: 15px;
+    border-left: 4px solid #FF6B6B;
+    background-color: #FFF0F0;
+  ">
+  <p style="
+    font-family: 'Poppins', sans-serif;
+    color: #070629;
+    font-size: 16px;
+    margin-top: 0;
+    margin-bottom: 10px;
+  ">
+    <strong>Low Balance:</strong>
+  </p>
+  <p style="
+    font-family: 'Poppins', sans-serif;
+    color: #070629;
+    font-size: 16px;
+    margin-top: 0;
+    margin-bottom: 5px;
+  ">
+    Your agent "<strong>{{ data.agent_name }}</strong>" requires additional credits to continue running. The current operation has been canceled until your balance is replenished.
+  </p>
+</div>
+
+<div style="
+    text-align: center;
+    margin: 30px 0;
+  ">
+  <a href="{{ data.billing_page_link }}" style="
+    font-family: 'Poppins', sans-serif;
+    background-color: #5D23BB;
+    color: white;
+    padding: 12px 24px;
+    text-decoration: none;
+    border-radius: 4px;
+    font-weight: 500;
+    display: inline-block;
+  ">
+    Manage Billing
+  </a>
+</div>
+
+<p style="
+    font-family: 'Poppins', sans-serif;
+    color: #070629;
+    font-size: 16px;
+    line-height: 150%;
+    margin-top: 30px;
+    margin-bottom: 10px;
+    font-style: italic;
+  ">
+  This is an automated notification. Your agent is stopped and will need manually restarted unless set to trigger automatically.
+</p>

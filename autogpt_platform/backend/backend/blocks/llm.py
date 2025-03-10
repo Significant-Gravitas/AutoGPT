@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Iterable, List, Literal, NamedTuple, Opti
 
 from pydantic import BaseModel, SecretStr
 
+from backend.data.model import NodeExecutionStats
 from backend.integrations.providers import ProviderName
 
 if TYPE_CHECKING:
@@ -370,12 +371,16 @@ def llm_call(
         last_role = None
         for p in prompt:
             if p["role"] in ["user", "assistant"]:
-                if p["role"] != last_role:
+                if (
+                    p["role"] == last_role
+                    and isinstance(messages[-1]["content"], str)
+                    and isinstance(p["content"], str)
+                ):
+                    # If the role is the same as the last one, combine the content
+                    messages[-1]["content"] += p["content"]
+                else:
                     messages.append({"role": p["role"], "content": p["content"]})
                     last_role = p["role"]
-                else:
-                    # If the role is the same as the last one, combine the content
-                    messages[-1]["content"] += "\n" + p["content"]
 
         client = anthropic.Anthropic(api_key=credentials.api_key.get_secret_value())
         try:
@@ -414,7 +419,7 @@ def llm_call(
                 )
 
             return LLMResponse(
-                raw_response=resp.content[0],
+                raw_response=resp,
                 prompt=prompt,
                 response=(
                     resp.content[0].name
@@ -711,10 +716,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 )
                 response_text = llm_response.response
                 self.merge_stats(
-                    {
-                        "input_token_count": llm_response.prompt_tokens,
-                        "output_token_count": llm_response.completion_tokens,
-                    }
+                    NodeExecutionStats(
+                        input_token_count=llm_response.prompt_tokens,
+                        output_token_count=llm_response.completion_tokens,
+                    )
                 )
                 logger.info(f"LLM attempt-{retry_count} response: {response_text}")
 
@@ -757,10 +762,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 retry_prompt = f"Error calling LLM: {e}"
             finally:
                 self.merge_stats(
-                    {
-                        "llm_call_count": retry_count + 1,
-                        "llm_retry_count": retry_count,
-                    }
+                    NodeExecutionStats(
+                        llm_call_count=retry_count + 1,
+                        llm_retry_count=retry_count,
+                    )
                 )
 
         raise RuntimeError(retry_prompt)

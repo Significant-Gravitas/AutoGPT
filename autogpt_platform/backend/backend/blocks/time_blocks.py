@@ -156,6 +156,10 @@ class CountdownTimerBlock(Block):
         days: Union[int, str] = SchemaField(
             advanced=False, description="Duration in days", default=0
         )
+        repeat: int = SchemaField(
+            description="Number of times to repeat the timer",
+            default=1,
+        )
 
     class Output(BlockSchema):
         output_message: Any = SchemaField(
@@ -187,5 +191,6 @@ class CountdownTimerBlock(Block):
 
         total_seconds = seconds + minutes * 60 + hours * 3600 + days * 86400
 
-        time.sleep(total_seconds)
-        yield "output_message", input_data.input_message
+        for _ in range(input_data.repeat):
+            time.sleep(total_seconds)
+            yield "output_message", input_data.input_message

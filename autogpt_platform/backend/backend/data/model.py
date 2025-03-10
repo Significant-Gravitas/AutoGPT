@@ -402,3 +402,37 @@ class RefundRequest(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+
+
+class NodeExecutionStats(BaseModel):
+    """Execution statistics for a node execution."""
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    error: Optional[Exception | str] = None
+    walltime: float = 0
+    cputime: float = 0
+    cost: float = 0
+    input_size: int = 0
+    output_size: int = 0
+    llm_call_count: int = 0
+    llm_retry_count: int = 0
+    input_token_count: int = 0
+    output_token_count: int = 0
+
+
+class GraphExecutionStats(BaseModel):
+    """Execution statistics for a graph execution."""
+
+    class Config:
+        arbitrary_types_allowed = True
+
+    error: Optional[Exception | str] = None
+    walltime: float = 0
+    cputime: float = 0
+    nodes_walltime: float = 0
+    nodes_cputime: float = 0
+    node_count: int = 0
+    node_error_count: int = 0
+    cost: float = 0

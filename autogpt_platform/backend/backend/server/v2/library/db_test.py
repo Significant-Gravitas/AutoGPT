@@ -74,7 +74,7 @@ async def test_get_library_agents(mocker):
     mock_library_agent.return_value.count = mocker.AsyncMock(return_value=1)
 
     # Call function
-    result = await db.get_library_agents("test-user")
+    result = await db.list_library_agents("test-user")
 
     # Verify results
     assert len(result.agents) == 1

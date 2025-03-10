@@ -49,10 +49,12 @@ class ZeroBalanceData(BaseNotificationData):
 
 
 class LowBalanceData(BaseNotificationData):
-    current_balance: float
-    threshold_amount: float
-    top_up_link: str
-    recent_usage: float = Field(..., description="Usage in the last 24 hours")
+    agent_name: str = Field(..., description="Name of the agent")
+    current_balance: float = Field(
+        ..., description="Current balance in credits (100 = $1)"
+    )
+    billing_page_link: str = Field(..., description="Link to billing page")
+    shortfall: float = Field(..., description="Amount of credits needed to continue")
 
 
 class BlockExecutionFailedData(BaseNotificationData):
@@ -197,7 +199,7 @@ class NotificationTypeOverride:
             NotificationType.AGENT_RUN: QueueType.IMMEDIATE,
             # These are batched by the notification service, but with a backoff strategy
             NotificationType.ZERO_BALANCE: QueueType.BACKOFF,
-            NotificationType.LOW_BALANCE: QueueType.BACKOFF,
+            NotificationType.LOW_BALANCE: QueueType.IMMEDIATE,
             NotificationType.BLOCK_EXECUTION_FAILED: QueueType.BACKOFF,
             NotificationType.CONTINUOUS_AGENT_ERROR: QueueType.BACKOFF,
             NotificationType.DAILY_SUMMARY: QueueType.DAILY,

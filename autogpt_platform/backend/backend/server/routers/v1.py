@@ -10,12 +10,14 @@ from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.feature_flag.client import feature_flag
 from autogpt_libs.utils.cache import thread_cached
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
+from starlette.status import HTTP_204_NO_CONTENT
 from typing_extensions import Optional, TypedDict
 
 import backend.data.block
 import backend.server.integrations.router
 import backend.server.routers.analytics
 import backend.server.v2.library.db as library_db
+from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.api_key import (
     APIKeyError,
@@ -41,6 +43,12 @@ from backend.data.credit import (
     set_auto_top_up,
 )
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
+from backend.data.onboarding import (
+    UserOnboardingUpdate,
+    get_recommended_agents,
+    get_user_onboarding,
+    update_user_onboarding,
+)
 from backend.data.user import (
     get_or_create_user,
     get_user_notification_preference,
@@ -148,6 +156,38 @@ async def update_preferences(
 ) -> NotificationPreference:
     output = await update_user_notification_preference(user_id, preferences)
     return output
+
+
+########################################################
+##################### Onboarding #######################
+########################################################
+
+
+@v1_router.get(
+    "/onboarding", tags=["onboarding"], dependencies=[Depends(auth_middleware)]
+)
+async def get_onboarding(user_id: Annotated[str, Depends(get_user_id)]):
+    return await get_user_onboarding(user_id)
+
+
+@v1_router.patch(
+    "/onboarding", tags=["onboarding"], dependencies=[Depends(auth_middleware)]
+)
+async def update_onboarding(
+    user_id: Annotated[str, Depends(get_user_id)], data: UserOnboardingUpdate
+):
+    return await update_user_onboarding(user_id, data)
+
+
+@v1_router.get(
+    "/onboarding/agents",
+    tags=["onboarding"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def get_onboarding_agents(
+    user_id: Annotated[str, Depends(get_user_id)],
+):
+    return await get_recommended_agents(user_id)
 
 
 ########################################################
@@ -393,7 +433,8 @@ async def get_graph_all_versions(
     path="/graphs", tags=["graphs"], dependencies=[Depends(auth_middleware)]
 )
 async def create_new_graph(
-    create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
+    create_graph: CreateGraph,
+    user_id: Annotated[str, Depends(get_user_id)],
 ) -> graph_db.GraphModel:
     graph = graph_db.make_graph_model(create_graph.graph, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
@@ -401,10 +442,9 @@ async def create_new_graph(
     graph = await graph_db.create_graph(graph, user_id=user_id)
 
     # Create a library agent for the new graph
-    await library_db.create_library_agent(
-        graph.id,
-        graph.version,
-        user_id,
+    library_agent = await library_db.create_library_agent(graph, user_id)
+    _ = asyncio.create_task(
+        library_db.add_generated_agent_image(graph, library_agent.id)
     )
 
     graph = await on_graph_activate(
@@ -621,9 +661,24 @@ async def get_graph_execution(
 
     result = await graph_db.get_execution(execution_id=graph_exec_id, user_id=user_id)
     if not result:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+        raise HTTPException(
+            status_code=404, detail=f"Graph execution #{graph_exec_id} not found."
+        )
 
     return result
+
+
+@v1_router.delete(
+    path="/executions/{graph_exec_id}",
+    tags=["graphs"],
+    dependencies=[Depends(auth_middleware)],
+    status_code=HTTP_204_NO_CONTENT,
+)
+async def delete_graph_execution(
+    graph_exec_id: str,
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> None:
+    await execution_db.delete_execution(graph_exec_id=graph_exec_id, user_id=user_id)
 
 
 ########################################################

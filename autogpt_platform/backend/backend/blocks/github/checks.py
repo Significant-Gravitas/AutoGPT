@@ -172,7 +172,9 @@ class GithubCreateCheckRunBlock(Block):
             data.output = output_data
 
         check_runs_url = f"{repo_url}/check-runs"
-        response = api.post(check_runs_url)
+        response = api.post(
+            check_runs_url, data=data.model_dump_json(exclude_none=True)
+        )
         result = response.json()
 
         return {
@@ -323,7 +325,9 @@ class GithubUpdateCheckRunBlock(Block):
             data.output = output_data
 
         check_run_url = f"{repo_url}/check-runs/{check_run_id}"
-        response = api.patch(check_run_url)
+        response = api.patch(
+            check_run_url, data=data.model_dump_json(exclude_none=True)
+        )
         result = response.json()
 
         return {

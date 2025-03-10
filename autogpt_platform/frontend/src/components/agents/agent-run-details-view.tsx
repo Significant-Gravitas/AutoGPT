@@ -9,6 +9,7 @@ import {
   GraphMeta,
 } from "@/lib/autogpt-server-api";
 
+import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/agptui/Button";
 import { Input } from "@/components/ui/input";
@@ -19,13 +20,15 @@ import {
 } from "@/components/agents/agent-run-status-chip";
 
 export default function AgentRunDetailsView({
-  agent,
+  graph,
   run,
   agentActions,
+  deleteRun,
 }: {
-  agent: GraphMeta;
+  graph: GraphMeta;
   run: GraphExecution | GraphExecutionMeta;
-  agentActions: { label: string; callback: () => void }[];
+  agentActions: ButtonAction[];
+  deleteRun: () => void;
 }): React.ReactNode {
   const api = useBackendAPI();
 
@@ -64,25 +67,30 @@ export default function AgentRunDetailsView({
       Object.entries(run.inputs).map(([k, v]) => [
         k,
         {
-          title: agent.input_schema.properties[k].title,
-          // type: agent.input_schema.properties[k].type, // TODO: implement typed graph inputs
+          title: graph.input_schema.properties[k].title,
+          // type: graph.input_schema.properties[k].type, // TODO: implement typed graph inputs
           value: v,
         },
       ]),
     );
-  }, [agent, run]);
+  }, [graph, run]);
 
   const runAgain = useCallback(
     () =>
       agentRunInputs &&
       api.executeGraph(
-        agent.id,
-        agent.version,
+        graph.id,
+        graph.version,
         Object.fromEntries(
           Object.entries(agentRunInputs).map(([k, v]) => [k, v.value]),
         ),
       ),
-    [api, agent, agentRunInputs],
+    [api, graph, agentRunInputs],
+  );
+
+  const stopRun = useCallback(
+    () => api.stopGraphExecution(graph.id, run.execution_id),
+    [api, graph.id, run.execution_id],
   );
 
   const agentRunOutputs:
@@ -100,17 +108,31 @@ export default function AgentRunDetailsView({
       Object.entries(run.outputs).map(([k, v]) => [
         k,
         {
-          title: agent.output_schema.properties[k].title,
+          title: graph.output_schema.properties[k].title,
           /* type: agent.output_schema.properties[k].type */
           values: v,
         },
       ]),
     );
-  }, [agent, run, runStatus]);
+  }, [graph, run, runStatus]);
 
-  const runActions: { label: string; callback: () => void }[] = useMemo(
-    () => [{ label: "Run again", callback: () => runAgain() }],
-    [runAgain],
+  const runActions: ButtonAction[] = useMemo(
+    () => [
+      ...(["running", "queued"].includes(runStatus)
+        ? ([
+            {
+              label: "Stop run",
+              variant: "secondary",
+              callback: stopRun,
+            },
+          ] satisfies ButtonAction[])
+        : []),
+      ...(["success", "failed", "stopped"].includes(runStatus)
+        ? [{ label: "Run again", callback: runAgain }]
+        : []),
+      { label: "Delete run", variant: "secondary", callback: deleteRun },
+    ],
+    [runStatus, runAgain, stopRun, deleteRun],
   );
 
   return (
@@ -189,7 +211,11 @@ export default function AgentRunDetailsView({
           <div className="flex flex-col gap-3">
             <h3 className="text-sm font-medium">Run actions</h3>
             {runActions.map((action, i) => (
-              <Button key={i} variant="outline" onClick={action.callback}>
+              <Button
+                key={i}
+                variant={action.variant ?? "outline"}
+                onClick={action.callback}
+              >
                 {action.label}
               </Button>
             ))}
@@ -198,7 +224,11 @@ export default function AgentRunDetailsView({
           <div className="flex flex-col gap-3">
             <h3 className="text-sm font-medium">Agent actions</h3>
             {agentActions.map((action, i) => (
-              <Button key={i} variant="outline" onClick={action.callback}>
+              <Button
+                key={i}
+                variant={action.variant ?? "outline"}
+                onClick={action.callback}
+              >
                 {action.label}
               </Button>
             ))}

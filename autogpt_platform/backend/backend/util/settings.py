@@ -81,6 +81,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=3,
         description="The default number of retries for Pyro client connections.",
     )
+    rpc_client_call_timeout: int = Field(
+        default=300,
+        description="The default timeout in seconds, for RPC client calls.",
+    )
     enable_auth: bool = Field(
         default=True,
         description="If authentication is enabled or not",
@@ -160,6 +164,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for notification service daemon to run on",
     )
 
+    otto_api_url: str = Field(
+        default="",
+        description="The URL for the Otto API service",
+    )
+
     platform_base_url: str = Field(
         default="",
         description="Must be set so the application knows where it's hosted at. "
@@ -204,6 +213,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     postmark_sender_email: str = Field(
         default="invalid@invalid.com",
         description="The email address to use for sending emails",
+    )
+
+    use_agent_image_generation_v2: bool = Field(
+        default=True,
+        description="Whether to use the new agent image generation service",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")
@@ -309,6 +323,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     postmark_webhook_token: str = Field(
         default="",
         description="The token to use for the Postmark webhook",
+    )
+
+    unsubscribe_secret_key: str = Field(
+        default="",
+        description="The secret key to use for the unsubscribe user by token",
     )
 
     # OAuth server credentials for integrations

@@ -51,6 +51,7 @@ class ExaContentsBlock(Block):
             description="List of document contents",
             default=[],
         )
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         super().__init__(
