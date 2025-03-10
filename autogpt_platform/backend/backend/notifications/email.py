@@ -60,15 +60,21 @@ class EmailSender:
         base_url = (
             settings.config.frontend_base_url or settings.config.platform_base_url
         )
+
+        # Handle the case when data is a list
+        template_data = data
+        if isinstance(data, list):
+            # Create a dictionary with a 'notifications' key containing the list
+            template_data = {"notifications": data}
+
         try:
             subject, full_message = self.formatter.format_email(
                 base_template=template.base_template,
                 subject_template=template.subject_template,
                 content_template=template.body_template,
-                data=data,
+                data=template_data,
                 unsubscribe_link=f"{base_url}/profile/settings",
             )
-
         except Exception as e:
             logger.error(f"Error formatting full message: {e}")
             raise e
