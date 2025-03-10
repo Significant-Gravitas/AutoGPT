@@ -30,7 +30,6 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
   onClose,
   onOpenBuilder,
 }) => {
-  const [selectedAgent, setSelectedAgent] = React.useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = React.useState<string | null>(
     null,
   );
@@ -43,7 +42,6 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
     agentId: string,
     agentVersion: number,
   ) => {
-    setSelectedAgent(agentName);
     setSelectedAgentId(agentId);
     setSelectedAgentVersion(agentVersion);
     onSelect(agentId, agentVersion);

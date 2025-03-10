@@ -649,6 +649,7 @@ export type MyAgent = {
   agent_id: GraphID;
   agent_version: number;
   agent_name: string;
+  agent_image: string | null;
   last_edited: string;
   description: string;
 };
