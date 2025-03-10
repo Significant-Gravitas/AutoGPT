@@ -1,5 +1,6 @@
 import logging
 import os
+from enum import Enum
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
@@ -9,11 +10,13 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from autogpt_libs.utils.cache import thread_cached
 from dotenv import load_dotenv
+from prisma.enums import NotificationType
 from pydantic import BaseModel
 from sqlalchemy import MetaData, create_engine
 
 from backend.data.block import BlockInput
 from backend.executor.manager import ExecutionManager
+from backend.notifications.notifications import NotificationManager
 from backend.util.service import AppService, expose, get_service_client
 from backend.util.settings import Config
 
@@ -42,7 +45,7 @@ config = Config()
 
 
 def log(msg, **kwargs):
-    logger.info("[ExecutionScheduler] " + msg, **kwargs)
+    logger.info("[Scheduler] " + msg, **kwargs)
 
 
 def job_listener(event):
@@ -58,8 +61,15 @@ def get_execution_client() -> ExecutionManager:
     return get_service_client(ExecutionManager)
 
 
+@thread_cached
+def get_notification_client():
+    from backend.notifications import NotificationManager
+
+    return get_service_client(NotificationManager)
+
+
 def execute_graph(**kwargs):
-    args = JobArgs(**kwargs)
+    args = ExecutionJobArgs(**kwargs)
     try:
         log(f"Executing recurring job for graph #{args.graph_id}")
         get_execution_client().add_execution(
@@ -72,7 +82,23 @@ def execute_graph(**kwargs):
         logger.exception(f"Error executing graph {args.graph_id}: {e}")
 
 
-class JobArgs(BaseModel):
+def process_existing_batches(**kwargs):
+    args = NotificationJobArgs(**kwargs)
+    try:
+        log(
+            f"Processing existing batches for notification type {args.notification_types}"
+        )
+        get_notification_client().process_existing_batches(args.notification_types)
+    except Exception as e:
+        logger.exception(f"Error processing existing batches: {e}")
+
+
+class Jobstores(Enum):
+    EXECUTION = "execution"
+    BATCHED_NOTIFICATIONS = "batched_notifications"
+
+
+class ExecutionJobArgs(BaseModel):
     graph_id: str
     input_data: BlockInput
     user_id: str
@@ -80,14 +106,14 @@ class JobArgs(BaseModel):
     cron: str
 
 
-class JobInfo(JobArgs):
+class ExecutionJobInfo(ExecutionJobArgs):
     id: str
     name: str
     next_run_time: str
 
     @staticmethod
-    def from_db(job_args: JobArgs, job_obj: JobObj) -> "JobInfo":
-        return JobInfo(
+    def from_db(job_args: ExecutionJobArgs, job_obj: JobObj) -> "ExecutionJobInfo":
+        return ExecutionJobInfo(
             id=job_obj.id,
             name=job_obj.name,
             next_run_time=job_obj.next_run_time.isoformat(),
@@ -95,7 +121,29 @@ class JobInfo(JobArgs):
         )
 
 
-class ExecutionScheduler(AppService):
+class NotificationJobArgs(BaseModel):
+    notification_types: list[NotificationType]
+    cron: str
+
+
+class NotificationJobInfo(NotificationJobArgs):
+    id: str
+    name: str
+    next_run_time: str
+
+    @staticmethod
+    def from_db(
+        job_args: NotificationJobArgs, job_obj: JobObj
+    ) -> "NotificationJobInfo":
+        return NotificationJobInfo(
+            id=job_obj.id,
+            name=job_obj.name,
+            next_run_time=job_obj.next_run_time.isoformat(),
+            **job_args.model_dump(),
+        )
+
+
+class Scheduler(AppService):
     scheduler: BlockingScheduler
 
     @classmethod
@@ -111,19 +159,36 @@ class ExecutionScheduler(AppService):
     def execution_client(self) -> ExecutionManager:
         return get_service_client(ExecutionManager)
 
+    @property
+    @thread_cached
+    def notification_client(self) -> NotificationManager:
+        return get_service_client(NotificationManager)
+
     def run_service(self):
         load_dotenv()
         db_schema, db_url = _extract_schema_from_url(os.getenv("DATABASE_URL"))
         self.scheduler = BlockingScheduler(
             jobstores={
-                "default": SQLAlchemyJobStore(
+                Jobstores.EXECUTION.value: SQLAlchemyJobStore(
                     engine=create_engine(
                         url=db_url,
                         pool_size=self.db_pool_size(),
                         max_overflow=0,
                     ),
                     metadata=MetaData(schema=db_schema),
-                )
+                    # this one is pre-existing so it keeps the
+                    # default table name.
+                    tablename="apscheduler_jobs",
+                ),
+                Jobstores.BATCHED_NOTIFICATIONS.value: SQLAlchemyJobStore(
+                    engine=create_engine(
+                        url=db_url,
+                        pool_size=self.db_pool_size(),
+                        max_overflow=0,
+                    ),
+                    metadata=MetaData(schema=db_schema),
+                    tablename="apscheduler_jobs_batched_notifications",
+                ),
             }
         )
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
@@ -137,8 +202,8 @@ class ExecutionScheduler(AppService):
         cron: str,
         input_data: BlockInput,
         user_id: str,
-    ) -> JobInfo:
-        job_args = JobArgs(
+    ) -> ExecutionJobInfo:
+        job_args = ExecutionJobArgs(
             graph_id=graph_id,
             input_data=input_data,
             user_id=user_id,
@@ -150,37 +215,59 @@ class ExecutionScheduler(AppService):
             CronTrigger.from_crontab(cron),
             kwargs=job_args.model_dump(),
             replace_existing=True,
+            jobstore=Jobstores.EXECUTION.value,
         )
         log(f"Added job {job.id} with cron schedule '{cron}' input data: {input_data}")
-        return JobInfo.from_db(job_args, job)
+        return ExecutionJobInfo.from_db(job_args, job)
 
     @expose
-    def delete_schedule(self, schedule_id: str, user_id: str) -> JobInfo:
-        job = self.scheduler.get_job(schedule_id)
+    def delete_schedule(self, schedule_id: str, user_id: str) -> ExecutionJobInfo:
+        job = self.scheduler.get_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
         if not job:
             log(f"Job {schedule_id} not found.")
             raise ValueError(f"Job #{schedule_id} not found.")
 
-        job_args = JobArgs(**job.kwargs)
+        job_args = ExecutionJobArgs(**job.kwargs)
         if job_args.user_id != user_id:
             raise ValueError("User ID does not match the job's user ID.")
 
         log(f"Deleting job {schedule_id}")
         job.remove()
 
-        return JobInfo.from_db(job_args, job)
+        return ExecutionJobInfo.from_db(job_args, job)
 
     @expose
     def get_execution_schedules(
         self, graph_id: str | None = None, user_id: str | None = None
-    ) -> list[JobInfo]:
+    ) -> list[ExecutionJobInfo]:
         schedules = []
-        for job in self.scheduler.get_jobs():
-            job_args = JobArgs(**job.kwargs)
+        for job in self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value):
+            job_args = ExecutionJobArgs(**job.kwargs)
             if (
                 job.next_run_time is not None
                 and (graph_id is None or job_args.graph_id == graph_id)
                 and (user_id is None or job_args.user_id == user_id)
             ):
-                schedules.append(JobInfo.from_db(job_args, job))
+                schedules.append(ExecutionJobInfo.from_db(job_args, job))
         return schedules
+
+    @expose
+    def add_batched_notification_schedule(
+        self,
+        notification_types: list[NotificationType],
+        data: dict,
+        cron: str,
+    ) -> NotificationJobInfo:
+        job_args = NotificationJobArgs(
+            notification_types=notification_types,
+            cron=cron,
+        )
+        job = self.scheduler.add_job(
+            process_existing_batches,
+            CronTrigger.from_crontab(cron),
+            kwargs=job_args.model_dump(),
+            replace_existing=True,
+            jobstore=Jobstores.BATCHED_NOTIFICATIONS.value,
+        )
+        log(f"Added job {job.id} with cron schedule '{cron}' input data: {data}")
+        return NotificationJobInfo.from_db(job_args, job)
