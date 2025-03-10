@@ -1,6 +1,6 @@
-from datetime import datetime, timedelta, timezone
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Callable
 
 import aio_pika
@@ -43,7 +43,6 @@ from backend.data.user import (
 from backend.notifications.email import EmailSender
 from backend.util.service import AppService, expose, get_service_client
 from backend.util.settings import Settings
-
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -88,16 +87,6 @@ def create_notification_config() -> RabbitMQConfig:
             arguments={
                 "x-dead-letter-exchange": dead_letter_exchange.name,
                 "x-dead-letter-routing-key": "failed.summary.weekly",
-            },
-        ),
-        # Backoff notification queues
-        Queue(
-            name="backoff_notifications",
-            exchange=notification_exchange,
-            routing_key="notification.backoff.#",
-            arguments={
-                "x-dead-letter-exchange": dead_letter_exchange.name,
-                "x-dead-letter-routing-key": "failed.backoff",
             },
         ),
         # Batch Queue
