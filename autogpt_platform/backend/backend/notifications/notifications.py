@@ -81,9 +81,9 @@ def create_notification_config() -> RabbitMQConfig:
         ),
         # Summary notification queues
         Queue(
-            name="weekly_summary_notifications",
+            name="summary_notifications",
             exchange=notification_exchange,
-            routing_key="notification.summary.weekly#.",
+            routing_key="notification.summary.#",
             arguments={
                 "x-dead-letter-exchange": dead_letter_exchange.name,
                 "x-dead-letter-routing-key": "failed.summary.weekly",
