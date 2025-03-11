@@ -8,6 +8,8 @@ This module provides a example of how to create a client for an API.
 from json import JSONDecodeError
 from typing import Any, Dict, Optional
 
+from pydantic import BaseModel
+
 from backend.data.model import APIKeyCredentials
 
 # This is a wrapper around the requests library that is used to make API requests.
@@ -18,6 +20,16 @@ class ExampleAPIException(Exception):
     def __init__(self, message: str, status_code: int):
         super().__init__(message)
         self.status_code = status_code
+
+
+class CreateResourceResponse(BaseModel):
+    message: str
+    is_funny: bool
+
+
+class GetResourceResponse(BaseModel):
+    message: str
+    is_funny: bool
 
 
 class ExampleClient:
@@ -41,7 +53,6 @@ class ExampleClient:
 
             self._requests = Requests(
                 extra_headers=headers,
-                trusted_origins=["https://api.example.com"],
                 raise_for_status=False,
             )
 
@@ -73,6 +84,8 @@ class ExampleClient:
 
         response_data = response.json()
         if "errors" in response_data:
+            # This is an example error and needs to be
+            # replaced with how the real API returns errors
             error_messages = [
                 error.get("message", "") for error in response_data["errors"]
             ]
@@ -83,7 +96,7 @@ class ExampleClient:
 
         return response_data
 
-    def get_resource(self, resource_id: str) -> Dict:
+    def get_resource(self, resource_id: str) -> GetResourceResponse:
         """
         Fetches a resource from the Example API.
 
@@ -91,7 +104,7 @@ class ExampleClient:
             resource_id: The ID of the resource to fetch.
 
         Returns:
-            The resource data as a dictionary.
+            The resource data as a GetResourceResponse object.
 
         Raises:
             ExampleAPIException: If the API request fails.
@@ -100,13 +113,11 @@ class ExampleClient:
             response = self._requests.get(
                 f"{self.API_BASE_URL}/resources/{resource_id}"
             )
-            return self._handle_response(response)
-        except ExampleAPIException:
-            raise
+            return GetResourceResponse(**self._handle_response(response))
         except Exception as e:
             raise ExampleAPIException(f"Failed to get resource: {str(e)}", 500)
 
-    def create_resource(self, data: Dict) -> Dict:
+    def create_resource(self, data: Dict) -> CreateResourceResponse:
         """
         Creates a new resource via the Example API.
 
@@ -114,15 +125,13 @@ class ExampleClient:
             data: The resource data to create.
 
         Returns:
-            The created resource data as a dictionary.
+            The created resource data as a CreateResourceResponse object.
 
         Raises:
             ExampleAPIException: If the API request fails.
         """
         try:
             response = self._requests.post(f"{self.API_BASE_URL}/resources", json=data)
-            return self._handle_response(response)
-        except ExampleAPIException:
-            raise
+            return CreateResourceResponse(**self._handle_response(response))
         except Exception as e:
             raise ExampleAPIException(f"Failed to create resource: {str(e)}", 500)
