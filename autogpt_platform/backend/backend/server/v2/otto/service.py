@@ -3,6 +3,7 @@ from typing import Optional
 
 import aiohttp
 from fastapi import HTTPException
+import asyncio
 
 from backend.data import graph as graph_db
 from backend.data.block import get_block
@@ -94,7 +95,7 @@ class OttoService:
                 logger.debug(f"Request payload: {payload}")
 
                 async with session.post(
-                    OTTO_API_URL, json=payload, headers=headers
+                    OTTO_API_URL, json=payload, headers=headers, timeout=60
                 ) as response:
                     if response.status != 200:
                         error_text = await response.text()
@@ -114,6 +115,11 @@ class OttoService:
             logger.error(f"Connection error to Otto API: {str(e)}")
             raise HTTPException(
                 status_code=503, detail="Failed to connect to Otto service"
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"Timeout error connecting to Otto API after 60 seconds")
+            raise HTTPException(
+                status_code=504, detail="Request to Otto service timed out"
             )
         except Exception as e:
             logger.error(f"Unexpected error in Otto API proxy: {str(e)}")
