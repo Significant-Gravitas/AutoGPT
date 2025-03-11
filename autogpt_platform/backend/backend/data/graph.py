@@ -962,12 +962,12 @@ async def migrate_llm_models(migrate_to: LlmModel):
         # Convert enum values to a list of strings for the SQL query
         enum_values = [v.value for v in LlmModel.__members__.values()]
 
-        await db.execute_raw(
-            f"""
+        query = f"""
             UPDATE "AgentNode"
             SET "constantInput" = jsonb_set("constantInput", '{{{path}}}', '"{migrate_to.value}"', true)
             WHERE "agentBlockId" = '{id}'
             AND "constantInput" ? '{path}'
-            AND NOT ("constantInput"->'{path}')::text IN ({','.join(f"'{value}'" for value in enum_values)})
+            AND "constantInput"->>'{path}' NOT IN ({','.join(f"'{value}'" for value in enum_values)})
             """
-        )
+
+        await db.execute_raw(query)
