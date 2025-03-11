@@ -24,7 +24,6 @@ export async function askOtto(
 
   try {
     const response = await api.askOtto(ottoQuery);
-    revalidatePath("/build");
     return response;
   } catch (error) {
     console.error("Error in askOtto server action:", error);
