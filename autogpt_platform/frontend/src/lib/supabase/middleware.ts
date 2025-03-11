@@ -5,9 +5,10 @@ import { NextResponse, type NextRequest } from "next/server";
 const PROTECTED_PAGES = [
   "/monitor",
   "/build",
-  "/marketplace/profile",
-  "/marketplace/settings",
-  "/marketplace/dashboard",
+  "/onboarding",
+  "/profile",
+  "/library",
+  "/monitoring",
   "/onboarding",
 ];
 const ADMIN_PAGES = ["/admin"];
@@ -62,7 +63,6 @@ export async function updateSession(request: NextRequest) {
     // Get the user role
     const userRole = user?.role;
     const url = request.nextUrl.clone();
-    const pathname = request.nextUrl.pathname;
     // AUTH REDIRECTS
     // 1. Check if user is not authenticated but trying to access protected content
     if (!user) {
