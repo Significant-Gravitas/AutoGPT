@@ -27,6 +27,11 @@ export async function askOtto(
     return response;
   } catch (error) {
     console.error("Error in askOtto server action:", error);
-    throw error;
+    return {
+      answer: error instanceof Error ? error.message : "Unknown error occurred",
+      documents: [],
+      success: false,
+      error: true,
+    };
   }
 }
