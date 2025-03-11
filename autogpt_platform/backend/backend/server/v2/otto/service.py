@@ -1,9 +1,9 @@
+import asyncio
 import logging
 from typing import Optional
 
 import aiohttp
 from fastapi import HTTPException
-import asyncio
 
 from backend.data import graph as graph_db
 from backend.data.block import get_block
@@ -117,7 +117,7 @@ class OttoService:
                 status_code=503, detail="Failed to connect to Otto service"
             )
         except asyncio.TimeoutError:
-            logger.error(f"Timeout error connecting to Otto API after 60 seconds")
+            logger.error("Timeout error connecting to Otto API after 60 seconds")
             raise HTTPException(
                 status_code=504, detail="Request to Otto service timed out"
             )
