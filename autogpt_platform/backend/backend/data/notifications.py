@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Annotated, Any, Generic, Optional, TypeVar, Union
 
@@ -52,6 +52,13 @@ class ZeroBalanceData(BaseNotificationData):
     last_transaction_time: datetime
     top_up_link: str
 
+    @field_validator("last_transaction_time")
+    @classmethod
+    def validate_timezone(cls, value: datetime):
+        if value.tzinfo is None:
+            raise ValueError("datetime must have timezone information")
+        return value
+
 
 class LowBalanceData(BaseNotificationData):
     agent_name: str = Field(..., description="Name of the agent")
@@ -80,6 +87,13 @@ class ContinuousAgentErrorData(BaseNotificationData):
     error_time: datetime
     attempts: int = Field(..., description="Number of retry attempts made")
 
+    @field_validator("start_time", "error_time")
+    @classmethod
+    def validate_timezone(cls, value: datetime):
+        if value.tzinfo is None:
+            raise ValueError("datetime must have timezone information")
+        return value
+
 
 class BaseSummaryData(BaseNotificationData):
     total_credits_used: float
@@ -99,19 +113,43 @@ class BaseSummaryParams(BaseModel):
 class DailySummaryParams(BaseSummaryParams):
     date: datetime
 
+    @field_validator("date")
+    def validate_timezone(cls, value):
+        if value.tzinfo is None:
+            raise ValueError("datetime must have timezone information")
+        return value
+
 
 class WeeklySummaryParams(BaseSummaryParams):
     start_date: datetime
     end_date: datetime
 
+    @field_validator("start_date", "end_date")
+    def validate_timezone(cls, value):
+        if value.tzinfo is None:
+            raise ValueError("datetime must have timezone information")
+        return value
+
 
 class DailySummaryData(BaseSummaryData):
     date: datetime
+
+    @field_validator("date")
+    def validate_timezone(cls, value):
+        if value.tzinfo is None:
+            raise ValueError("datetime must have timezone information")
+        return value
 
 
 class WeeklySummaryData(BaseSummaryData):
     start_date: datetime
     end_date: datetime
+
+    @field_validator("start_date", "end_date")
+    def validate_timezone(cls, value):
+        if value.tzinfo is None:
+            raise ValueError("datetime must have timezone information")
+        return value
 
 
 class MonthlySummaryData(BaseNotificationData):
@@ -151,7 +189,7 @@ class NotificationEventDTO(BaseModel):
     user_id: str
     type: NotificationType
     data: dict
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
     retry_count: int = 0
 
 
@@ -159,14 +197,14 @@ class SummaryParamsEventDTO(BaseModel):
     user_id: str
     type: NotificationType
     data: dict
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
 class NotificationEventModel(BaseModel, Generic[NotificationDataType_co]):
     user_id: str
     type: NotificationType
     data: NotificationDataType_co
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
     @property
     def strategy(self) -> QueueType:
@@ -187,7 +225,7 @@ class SummaryParamsEventModel(BaseModel, Generic[SummaryParamsType_co]):
     user_id: str
     type: NotificationType
     data: SummaryParamsType_co
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
 def get_notif_data_type(
@@ -220,7 +258,7 @@ class NotificationBatch(BaseModel):
     user_id: str
     events: list[NotificationEvent]
     strategy: QueueType
-    last_update: datetime = datetime.now()
+    last_update: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
 class NotificationResult(BaseModel):
@@ -298,7 +336,9 @@ class NotificationPreference(BaseModel):
     )
     daily_limit: int = 10  # Max emails per day
     emails_sent_today: int = 0
-    last_reset_date: datetime = Field(default_factory=datetime.now)
+    last_reset_date: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
 
 
 def get_batch_delay(notification_type: NotificationType) -> timedelta:
