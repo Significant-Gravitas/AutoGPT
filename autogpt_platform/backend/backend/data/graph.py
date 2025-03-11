@@ -6,7 +6,6 @@ from datetime import datetime, timezone
 from typing import Any, Literal, Optional, Type
 
 import prisma
-from autogpt_platform.backend.backend.blocks.llm import LlmModel
 from prisma import Json
 from prisma.models import (
     AgentGraph,
@@ -20,6 +19,8 @@ from pydantic.fields import Field, computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
+from backend.blocks.llm import LlmModel
+from backend.data.db import prisma as db
 from backend.util import type
 
 from .block import BlockInput, BlockType, get_block, get_blocks
@@ -87,31 +88,6 @@ class NodeModel(Node):
         obj.input_links = [Link.from_db(link) for link in node.Input or []]
         obj.output_links = [Link.from_db(link) for link in node.Output or []]
         return obj
-
-    @staticmethod
-    def migrate_llm_models(node: AgentNode):
-        if not node.AgentBlock:
-            return
-
-        migrated = False
-        data = json.loads(node.constantInput, target_type=dict[str, Any])
-        for name, field in node.AgentBlock.model_fields.items():
-            # Skip non-llm fields
-            if not field.annotation == LlmModel:
-                continue
-            # Skip valid model names
-            if data[name] in LlmModel.__members__.values():
-                continue
-            # Migrate invalid model names
-            data[name] = LlmModel.GPT4O
-            migrated = True
-
-        # Update node if migration occurred
-        if migrated:
-            node.constantInput = json.dumps(data)
-            _ = AgentNode.prisma().update(
-                where={"id": node.id}, data={"constantInput": node.constantInput}
-            )
 
     def is_triggered_by_event_type(self, event_type: str) -> bool:
         if not (block := get_block(self.block_id)):
@@ -957,4 +933,41 @@ async def fix_llm_provider_credentials():
         await AgentNode.prisma().update(
             where={"id": node_id},
             data={"constantInput": Json(node_preset_input)},
+        )
+
+
+async def migrate_llm_models(migrate_to: LlmModel):
+    """
+    Update all LLM models in all AI blocks that don't exist in the enum.
+    Note: Only updates top level LlmModel SchemaFields of blocks (won't update nested fields).
+    """
+    logger.info("Migrating LLM models")
+    # Scan all blocks and search for LlmModel fields
+    llm_model_fields: dict[str, str] = {}  # {block_id: field_name}
+
+    # Search for all LlmModel fields
+    for block_type in get_blocks().values():
+        block = block_type()
+        from pydantic.fields import FieldInfo
+
+        fields: dict[str, FieldInfo] = block.input_schema.model_fields
+
+        # Collect top-level LlmModel fields
+        for field_name, field in fields.items():
+            if field.annotation == LlmModel:
+                llm_model_fields[block.id] = field_name
+
+    # Update each block
+    for id, path in llm_model_fields.items():
+        # Convert enum values to a list of strings for the SQL query
+        enum_values = [v.value for v in LlmModel.__members__.values()]
+
+        await db.execute_raw(
+            f"""
+            UPDATE "AgentNode"
+            SET "constantInput" = jsonb_set("constantInput", '{{{path}}}', '"{migrate_to.value}"', true)
+            WHERE "agentBlockId" = '{id}'
+            AND "constantInput" ? '{path}'
+            AND NOT ("constantInput"->'{path}')::text IN ({','.join(f"'{value}'" for value in enum_values)})
+            """
         )
