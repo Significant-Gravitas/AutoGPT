@@ -95,7 +95,10 @@ class OttoService:
                 logger.debug(f"Request payload: {payload}")
 
                 async with session.post(
-                    OTTO_API_URL, json=payload, headers=headers, timeout=60
+                    OTTO_API_URL,
+                    json=payload,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=60),
                 ) as response:
                     if response.status != 200:
                         error_text = await response.text()
