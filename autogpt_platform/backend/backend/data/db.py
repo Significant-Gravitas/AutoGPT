@@ -24,9 +24,7 @@ def add_param(url: str, key: str, value: str) -> str:
     return urlunparse(p._replace(query=urlencode(qs)))
 
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL is not set.")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost:5432")
 
 CONN_LIMIT = os.getenv("DB_CONNECTION_LIMIT")
 if CONN_LIMIT:
