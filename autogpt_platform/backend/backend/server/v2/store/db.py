@@ -706,45 +706,35 @@ async def get_my_agents(
     logger.debug(f"Getting my agents for user {user_id}, page={page}")
 
     try:
-        agents_with_max_version = await prisma.models.AgentGraph.prisma().find_many(
-            where=prisma.types.AgentGraphWhereInput(
-                userId=user_id, StoreListing={"none": {"isDeleted": False}}
-            ),
-            order=[{"version": "desc"}],
-            distinct=["id"],
+        search_filter: prisma.types.LibraryAgentWhereInput = {
+            "userId": user_id,
+            "Agent": {"is": {"StoreListing": {"none": {"isDeleted": False}}}},
+            "isArchived": False,
+            "isDeleted": False,
+        }
+
+        library_agents = await prisma.models.LibraryAgent.prisma().find_many(
+            where=search_filter,
+            order=[{"agentVersion": "desc"}],
             skip=(page - 1) * page_size,
             take=page_size,
+            include={"Agent": True},
         )
 
-        # store_listings = await prisma.models.StoreListing.prisma().find_many(
-        #     where=prisma.types.StoreListingWhereInput(
-        #         isDeleted=False,
-        #     ),
-        # )
-
-        total = len(
-            await prisma.models.AgentGraph.prisma().find_many(
-                where=prisma.types.AgentGraphWhereInput(
-                    userId=user_id, StoreListing={"none": {"isDeleted": False}}
-                ),
-                order=[{"version": "desc"}],
-                distinct=["id"],
-            )
-        )
-
+        total = await prisma.models.LibraryAgent.prisma().count(where=search_filter)
         total_pages = (total + page_size - 1) // page_size
-
-        agents = agents_with_max_version
 
         my_agents = [
             backend.server.v2.store.model.MyAgent(
-                agent_id=agent.id,
-                agent_version=agent.version,
-                agent_name=agent.name or "",
-                last_edited=agent.updatedAt or agent.createdAt,
-                description=agent.description or "",
+                agent_id=graph.id,
+                agent_version=graph.version,
+                agent_name=graph.name or "",
+                last_edited=graph.updatedAt or graph.createdAt,
+                description=graph.description or "",
+                agent_image=library_agent.imageUrl,
             )
-            for agent in agents
+            for library_agent in library_agents
+            if (graph := library_agent.Agent)
         ]
 
         return backend.server.v2.store.model.MyAgentsResponse(
