@@ -74,7 +74,7 @@ class OttoService:
             raise HTTPException(
                 status_code=503, detail="Otto service is not configured"
             )
-            
+
         try:
             async with aiohttp.ClientSession() as session:
                 headers = {
