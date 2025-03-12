@@ -68,6 +68,13 @@ class OttoService:
         """
         Send request to Otto API and handle the response.
         """
+        # Check if Otto API URL is configured
+        if not OTTO_API_URL:
+            logger.error("Otto API URL is not configured")
+            raise HTTPException(
+                status_code=503, detail="Otto service is not configured"
+            )
+            
         try:
             async with aiohttp.ClientSession() as session:
                 headers = {
