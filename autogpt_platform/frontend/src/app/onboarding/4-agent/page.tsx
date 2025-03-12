@@ -12,10 +12,7 @@ import { useEffect, useState } from "react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { finishOnboarding } from "../6-congrats/actions";
-
-function isEmptyOrWhitespace(str: string | undefined | null): boolean {
-  return !str || str.trim().length === 0;
-}
+import { isEmptyOrWhitespace } from "@/lib/utils";
 
 export default function Page() {
   const { state, setState } = useOnboarding(4);

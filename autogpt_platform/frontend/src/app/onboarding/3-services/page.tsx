@@ -10,6 +10,7 @@ import { useOnboarding } from "../layout";
 import { OnboardingGrid } from "@/components/onboarding/OnboardingGrid";
 import { useCallback } from "react";
 import OnboardingInput from "@/components/onboarding/OnboardingInput";
+import { isEmptyOrWhitespace } from "@/lib/utils";
 
 const services = [
   {
@@ -108,10 +109,6 @@ const services = [
     icon: "/integrations/unreal-speech.png",
   },
 ];
-
-function isEmptyOrWhitespace(str: string | undefined | null): boolean {
-  return !str || str.trim().length === 0;
-}
 
 export default function Page() {
   const { state, setState } = useOnboarding(3);

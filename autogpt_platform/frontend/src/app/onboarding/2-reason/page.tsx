@@ -8,6 +8,7 @@ import {
 } from "@/components/onboarding/OnboardingStep";
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
 import OnboardingList from "@/components/onboarding/OnboardingList";
+import { isEmptyOrWhitespace } from "@/lib/utils";
 
 const reasons = [
   {
@@ -36,10 +37,6 @@ const reasons = [
     id: "personal_productivity",
   },
 ];
-
-function isEmptyOrWhitespace(str: string | undefined | null): boolean {
-  return !str || str.trim().length === 0;
-}
 
 export default function Page() {
   const { state, setState } = useOnboarding(2);
