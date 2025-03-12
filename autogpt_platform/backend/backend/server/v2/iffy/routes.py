@@ -81,13 +81,13 @@ async def handle_user_event(event_type: EventType, payload: Dict[str, Any]) -> R
     status_updated_via = payload.get("statusUpdatedVia")
 
     event_messages = {
-        "user.suspended": f'🚫 User "{user_id}" has been SUSPENDED via {status_updated_via} at {status_updated_at}',
-        "user.unsuspended": f'✅ User "{user_id}" has been UNSUSPENDED via {status_updated_via} at {status_updated_at}',
-        "user.compliant": f'✅ User "{user_id}" has been marked as COMPLIANT via {status_updated_via} at {status_updated_at}',
+        "user.suspended": f'User "{user_id}" has been SUSPENDED via {status_updated_via} at {status_updated_at}',
+        "user.unsuspended": f'User "{user_id}" has been UNSUSPENDED via {status_updated_via} at {status_updated_at}',
+        "user.compliant": f'User "{user_id}" has been marked as COMPLIANT via {status_updated_via} at {status_updated_at}',
         
         # Users can only be manually banned and unbanned on the iffy dashboard, for now logging these events
-        "user.banned": f'⛔ User "{user_id}" has been BANNED via {status_updated_via} at {status_updated_at}',
-        "user.unbanned": f'✅ User "{user_id}" has been UNBANNED via {status_updated_via} at {status_updated_at}',
+        "user.banned": f'User "{user_id}" has been BANNED via {status_updated_via} at {status_updated_at}',
+        "user.unbanned": f'User "{user_id}" has been UNBANNED via {status_updated_via} at {status_updated_at}',
     }
 
     if event_type in event_messages:
