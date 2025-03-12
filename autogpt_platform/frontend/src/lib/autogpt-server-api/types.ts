@@ -760,6 +760,7 @@ export interface OttoResponse {
   answer: string;
   documents: OttoDocument[];
   success: boolean;
+  error: boolean;
 }
 
 export interface OttoQuery {
