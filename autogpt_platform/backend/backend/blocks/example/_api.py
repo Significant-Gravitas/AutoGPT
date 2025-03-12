@@ -6,7 +6,7 @@ This module provides a example of how to create a client for an API.
 
 # We also have a Json Wrapper library available in backend.util.json
 from json import JSONDecodeError
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
@@ -45,7 +45,7 @@ class ExampleClient:
         if custom_requests:
             self._requests = custom_requests
         else:
-            headers: Dict[str, str] = {
+            headers: dict[str, str] = {
                 "Content-Type": "application/json",
             }
             if credentials:
@@ -117,7 +117,7 @@ class ExampleClient:
         except Exception as e:
             raise ExampleAPIException(f"Failed to get resource: {str(e)}", 500)
 
-    def create_resource(self, data: Dict) -> CreateResourceResponse:
+    def create_resource(self, data: dict) -> CreateResourceResponse:
         """
         Creates a new resource via the Example API.
 
