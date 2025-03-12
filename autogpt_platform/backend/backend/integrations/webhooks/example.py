@@ -47,6 +47,8 @@ class ExampleWebhookManager(ManualWebhookManagerBase):
         # Set the event type based on the webhook type in the payload.
         event_type = payload.get("webhook_type", ExampleWebhookEventType.EXAMPLE_EVENT)
 
+        # For the payload its better to return a pydantic model
+        # rather than a weakly typed dict here
         return payload, event_type
 
     async def _register_webhook(
