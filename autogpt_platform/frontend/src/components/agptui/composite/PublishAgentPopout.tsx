@@ -76,14 +76,12 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   const { toast } = useToast();
 
   React.useEffect(() => {
-    console.log("PublishAgentPopout Effect");
     setOpen(openPopout);
     setStep(inputStep);
     setPublishData(submissionData);
   }, [openPopout]); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
-    console.log("LoadMyAgents Effect");
     if (open) {
       const loadMyAgents = async () => {
         try {
@@ -130,7 +128,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
       title: name,
       subheader: "",
       description: description,
-      thumbnailSrc: "",
+      thumbnailSrc: selectedAgentData?.agent_image || "",
       youtubeLink: "",
       category: "",
       slug: name.replace(/ /g, "-"),
@@ -193,7 +191,6 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
         slug: slug.replace(/\s+/g, "-"),
         categories: categories,
       });
-      console.log("Store submission created:", submission);
     } catch (error) {
       console.error("Error creating store submission:", error);
     }
@@ -222,7 +219,8 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
                       id: agent.agent_id,
                       version: agent.agent_version,
                       lastEdited: agent.last_edited,
-                      imageSrc: "https://picsum.photos/300/200", // Fallback image if none provided
+                      imageSrc:
+                        agent.agent_image || "https://picsum.photos/300/200",
                     })) || []
                   }
                   onSelect={handleAgentSelect}
