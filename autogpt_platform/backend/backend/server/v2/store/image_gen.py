@@ -1,3 +1,4 @@
+import asyncio
 import io
 import logging
 from enum import Enum
@@ -32,6 +33,13 @@ class ImageSize(str, Enum):
 
 class ImageStyle(str, Enum):
     DIGITAL_ART = "digital art"
+
+
+async def generate_agent_image(agent: Graph | AgentGraph) -> io.BytesIO:
+    if settings.config.use_agent_image_generation_v2:
+        return await asyncio.to_thread(generate_agent_image_v2, graph=agent)
+    else:
+        return await generate_agent_image_v1(agent=agent)
 
 
 def generate_agent_image_v2(graph: Graph | AgentGraph) -> io.BytesIO:
@@ -91,7 +99,7 @@ def generate_agent_image_v2(graph: Graph | AgentGraph) -> io.BytesIO:
     return io.BytesIO(requests.get(url).content)
 
 
-async def generate_agent_image(agent: Graph | AgentGraph) -> io.BytesIO:
+async def generate_agent_image_v1(agent: Graph | AgentGraph) -> io.BytesIO:
     """
     Generate an image for an agent using Flux model via Replicate API.
 
