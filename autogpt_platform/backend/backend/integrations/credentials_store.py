@@ -177,6 +177,14 @@ example_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+elevenlabs_credentials = APIKeyCredentials(
+    id="a2b7f68f-aa6a-4995-99ec-b45b40d33498",
+    provider="elevenlabs",
+    api_key=SecretStr(settings.secrets.elevenlabs_api_key),
+    title="Use Credits for ElevenLabs",
+    expires_at=None,
+)
+
 DEFAULT_CREDENTIALS = [
     example_credentials,
     ollama_credentials,
