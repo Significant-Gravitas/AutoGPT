@@ -407,6 +407,8 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     example_api_key: str = Field(default="", description="Example API Key")
     # Add more secret fields as needed
 
+    elevenlabs_api_key: str = Field(default="", description="ElevenLabs API Key")
+    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -149,6 +149,7 @@ export const PROVIDER_NAMES = {
   TODOIST: "todoist",
   ZEROBOUNCE: "zerobounce",
   EXAMPLE: "example",
+  ELEVENLABS: "elevenlabs",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
 
