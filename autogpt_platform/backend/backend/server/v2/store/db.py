@@ -706,12 +706,12 @@ async def get_my_agents(
     logger.debug(f"Getting my agents for user {user_id}, page={page}")
 
     try:
-        search_filter = prisma.types.LibraryAgentWhereInput(
-            userId=user_id,
-            Agent={"is": {"StoreListing": {"none": {"isDeleted": False}}}},
-            isArchived=False,
-            isDeleted=False,
-        )
+        search_filter: prisma.types.LibraryAgentWhereInput = {
+            "userId": user_id,
+            "Agent": {"is": {"StoreListing": {"none": {"isDeleted": False}}}},
+            "isArchived": False,
+            "isDeleted": False,
+        }
 
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=search_filter,
@@ -726,15 +726,15 @@ async def get_my_agents(
 
         my_agents = [
             backend.server.v2.store.model.MyAgent(
-                agent_id=agent.id,
-                agent_version=agent.version,
-                agent_name=agent.name or "",
-                last_edited=agent.updatedAt or agent.createdAt,
-                description=agent.description or "",
-                agent_image=entry.imageUrl,
+                agent_id=graph.id,
+                agent_version=graph.version,
+                agent_name=graph.name or "",
+                last_edited=graph.updatedAt or graph.createdAt,
+                description=graph.description or "",
+                agent_image=library_agent.imageUrl,
             )
-            for entry in library_agents
-            if (agent := entry.Agent)
+            for library_agent in library_agents
+            if (graph := library_agent.Agent)
         ]
 
         return backend.server.v2.store.model.MyAgentsResponse(
