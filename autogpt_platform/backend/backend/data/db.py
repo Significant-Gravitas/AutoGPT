@@ -2,6 +2,7 @@ import logging
 import os
 import zlib
 from contextlib import asynccontextmanager
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
 from dotenv import load_dotenv
@@ -15,7 +16,36 @@ load_dotenv()
 PRISMA_SCHEMA = os.getenv("PRISMA_SCHEMA", "schema.prisma")
 os.environ["PRISMA_SCHEMA_PATH"] = PRISMA_SCHEMA
 
-prisma = Prisma(auto_register=True)
+
+def add_param(url: str, key: str, value: str) -> str:
+    p = urlparse(url)
+    qs = dict(parse_qsl(p.query))
+    qs[key] = value
+    return urlunparse(p._replace(query=urlencode(qs)))
+
+
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://localhost:5432")
+
+CONN_LIMIT = os.getenv("DB_CONNECTION_LIMIT")
+if CONN_LIMIT:
+    DATABASE_URL = add_param(DATABASE_URL, "connection_limit", CONN_LIMIT)
+
+CONN_TIMEOUT = os.getenv("DB_CONNECT_TIMEOUT")
+if CONN_TIMEOUT:
+    DATABASE_URL = add_param(DATABASE_URL, "connect_timeout", CONN_TIMEOUT)
+
+POOL_TIMEOUT = os.getenv("DB_POOL_TIMEOUT")
+if POOL_TIMEOUT:
+    DATABASE_URL = add_param(DATABASE_URL, "pool_timeout", POOL_TIMEOUT)
+
+HTTP_TIMEOUT = int(POOL_TIMEOUT) if POOL_TIMEOUT else None
+
+prisma = Prisma(
+    auto_register=True,
+    http={"timeout": HTTP_TIMEOUT},
+    datasource={"url": DATABASE_URL},
+)
+
 
 logger = logging.getLogger(__name__)
 
