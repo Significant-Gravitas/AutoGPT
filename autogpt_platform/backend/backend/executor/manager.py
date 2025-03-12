@@ -9,6 +9,7 @@ from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import contextmanager
 from multiprocessing.pool import AsyncResult, Pool
 from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
+import asyncio
 
 from redis.lock import Lock as RedisLock
 
@@ -62,6 +63,7 @@ from backend.util.service import (
 )
 from backend.util.settings import Settings
 from backend.util.type import convert
+from backend.util.iffy import send_to_iffy
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -899,6 +901,30 @@ class ExecutionManager(AppService):
         graph_version: Optional[int] = None,
         preset_id: str | None = None,
     ) -> GraphExecutionEntry:
+        """Synchronous wrapper for async add_execution
+        I dont like this but it works for now.
+        TODO: revisit and fix this"""
+
+        # Get or create an event loop
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+        # Run the async function in the event loop
+        return loop.run_until_complete(
+            self._add_execution_async(graph_id, data, user_id, graph_version, preset_id)
+        )
+
+    async def _add_execution_async(
+        self,
+        graph_id: str,
+        data: BlockInput,
+        user_id: str,
+        graph_version: Optional[int] = None,
+        preset_id: str | None = None,
+    ) -> GraphExecutionEntry:
         graph: GraphModel | None = self.db_client.get_graph(
             graph_id=graph_id, user_id=user_id, version=graph_version
         )
@@ -953,6 +979,54 @@ class ExecutionManager(AppService):
             user_id=user_id,
             preset_id=preset_id,
         )
+
+        # Right after creating the graph execution, we need to check if the content is safe
+        try:
+            for node in graph.nodes:
+                block = get_block(node.block_id)
+                if not block or block.block_type == BlockType.NOTE:
+                    continue
+
+                # For starting nodes, use their input data
+                if node.id in dict(nodes_input):
+                    input_data = dict(nodes_input)[node.id]
+                else:
+                    # For non-starting nodes, collect their default inputs and static values
+                    input_data = node.input_default.copy()
+                    # Add any static input from connected nodes
+                    for link in node.input_links:
+                        if link.is_static:
+                            source_node = next((n for n in graph.nodes if n.id == link.source_id), None)
+                            if source_node:
+                                source_block = get_block(source_node.block_id)
+                                if source_block:
+                                    input_data[link.sink_name] = source_node.input_default.get(link.source_name)
+                
+                block_content = {
+                    "graph_id": graph_id,
+                    "graph_exec_id": graph_exec_id,
+                    "node_id": node.id,
+                    "block_id": block.id,
+                    "block_name": block.name,
+                    "block_type": block.block_type.value,
+                    "input_data": input_data
+                }
+
+                # Send to Iffy for moderation.
+                is_safe, reason = await send_to_iffy(user_id, block_content)
+                
+                # CRITICAL: Ensure we never proceed if iffy and openrouter moderation fails
+                if not is_safe:
+                    logger.error(f"Content moderation failed for {block.name}: {reason}")
+                    raise ValueError(f"Content moderation failed for {block.name}")
+
+        except ValueError as ve:
+            logger.error(f"Moderation error: {str(ve)}")
+            raise
+            
+        except Exception as e:
+            logger.error(f"Error during content moderation: {str(e)}")
+            raise ValueError(f"Content moderation system error")
 
         starting_node_execs = []
         for node_exec in node_execs:
