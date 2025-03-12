@@ -76,14 +76,12 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   const { toast } = useToast();
 
   React.useEffect(() => {
-    console.log("PublishAgentPopout Effect");
     setOpen(openPopout);
     setStep(inputStep);
     setPublishData(submissionData);
   }, [openPopout]); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
-    console.log("LoadMyAgents Effect");
     if (open) {
       const loadMyAgents = async () => {
         try {
@@ -193,7 +191,6 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
         slug: slug.replace(/\s+/g, "-"),
         categories: categories,
       });
-      console.log("Store submission created:", submission);
     } catch (error) {
       console.error("Error creating store submission:", error);
     }

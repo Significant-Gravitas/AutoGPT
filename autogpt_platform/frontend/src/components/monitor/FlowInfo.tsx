@@ -233,7 +233,7 @@ export const FlowInfo: React.FC<
               href={`/build?flowID=${flow.agent_id}&flowVersion=${flow.agent_version}`}
             >
               <Pencil2Icon className="mr-2" />
-              Open in Builder
+              Open in Builderz
             </Link>
           )}
           {flow.can_access_graph && (
