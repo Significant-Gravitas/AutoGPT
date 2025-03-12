@@ -86,7 +86,7 @@ def create_notification_config() -> RabbitMQConfig:
             routing_key="notification.summary.#",
             arguments={
                 "x-dead-letter-exchange": dead_letter_exchange.name,
-                "x-dead-letter-routing-key": "failed.summary.weekly",
+                "x-dead-letter-routing-key": "failed.summary",
             },
         ),
         # Batch Queue
