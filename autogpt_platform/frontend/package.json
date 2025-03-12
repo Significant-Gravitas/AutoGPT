@@ -48,7 +48,7 @@
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.49.1",
     "@tanstack/react-table": "^8.21.2",
-    "@xyflow/react": "^12.4.4",
+    "@xyflow/react": "12.4.3",
     "ajv": "^8.17.1",
     "boring-avatars": "^1.11.2",
     "canvas-confetti": "^1.9.3",
