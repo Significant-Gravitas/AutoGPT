@@ -87,7 +87,7 @@ const PopoutMenuItem: React.FC<{
       {getIcon(icon)}
       <div className="relative">
         <div
-          className={`font-inter text-base font-normal leading-7 text-[#474747] dark:text-[#cfcfcf] ${isActive ? "font-semibold text-[#272727] dark:text-[#ffffff]" : "text-[#474747] dark:text-[#cfcfcf]"}`}
+          className={`font-sans text-base font-normal leading-7 text-[#474747] dark:text-[#cfcfcf] ${isActive ? "font-semibold text-[#272727] dark:text-[#ffffff]" : "text-[#474747] dark:text-[#cfcfcf]"}`}
         >
           {text}
         </div>
@@ -164,7 +164,7 @@ export const MobileNavBar: React.FC<MobileNavBarProps> = ({
                     <div className="absolute left-0 top-0 text-lg font-semibold leading-7 text-[#474747] dark:text-[#cfcfcf]">
                       {userName || "Unknown User"}
                     </div>
-                    <div className="absolute left-0 top-6 font-inter text-base font-normal leading-7 text-[#474747] dark:text-[#cfcfcf]">
+                    <div className="absolute left-0 top-6 font-sans text-base font-normal leading-7 text-[#474747] dark:text-[#cfcfcf]">
                       {userEmail || "No Email Set"}
                     </div>
                   </div>

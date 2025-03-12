@@ -40,7 +40,7 @@ export const PublishAgentAwaitingReview: React.FC<
           >
             Agent is awaiting review
           </div>
-          <div className="max-w-[280px] text-center font-inter text-sm font-normal leading-relaxed text-slate-500 dark:text-slate-400 sm:max-w-none">
+          <div className="max-w-[280px] text-center font-sans text-sm font-normal leading-relaxed text-slate-500 dark:text-slate-400 sm:max-w-none">
             In the meantime you can check your progress on your Creator
             Dashboard page
           </div>
