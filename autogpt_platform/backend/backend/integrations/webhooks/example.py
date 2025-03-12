@@ -70,7 +70,7 @@ class ExampleWebhookManager(ManualWebhookManagerBase):
             secret (str): A secret for securing the webhook.
 
         Returns:
-            tuple: A tuple containing an empty string and the webhook configuration as a dictionary.
+            tuple: A tuple containing the provider's webhook ID, if any, and the webhook configuration as a dictionary.
         """
         # Ensure the credentials are of the correct type.
         if not isinstance(credentials, APIKeyCredentials):
