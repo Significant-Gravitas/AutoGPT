@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from typing import Optional
 
@@ -105,10 +104,24 @@ async def list_library_agents(
         logger.debug(
             f"Retrieved {len(library_agents)} library agents for user #{user_id}"
         )
+
+        # Only pass valid agents to the response
+        valid_library_agents: list[library_model.LibraryAgent] = []
+
+        for agent in library_agents:
+            try:
+                library_agent = library_model.LibraryAgent.from_db(agent)
+                valid_library_agents.append(library_agent)
+            except Exception as e:
+                # Skip this agent if there was an error
+                logger.error(
+                    f"Error parsing LibraryAgent when getting library agents from db: {e}"
+                )
+                continue
+
+        # Return the response with only valid agents
         return library_model.LibraryAgentResponse(
-            agents=[
-                library_model.LibraryAgent.from_db(agent) for agent in library_agents
-            ],
+            agents=valid_library_agents,
             pagination=backend.server.model.Pagination(
                 total_items=agent_count,
                 total_pages=(agent_count + page_size - 1) // page_size,
@@ -172,12 +185,7 @@ async def add_generated_agent_image(
     try:
         if not (image_url := await store_media.check_media_exists(user_id, filename)):
             # Generate agent image as JPEG
-            if config.use_agent_image_generation_v2:
-                image = await asyncio.to_thread(
-                    store_image_gen.generate_agent_image_v2, graph=graph
-                )
-            else:
-                image = await store_image_gen.generate_agent_image(agent=graph)
+            image = await store_image_gen.generate_agent_image(graph)
 
             # Create UploadFile with the correct filename and content_type
             image_file = fastapi.UploadFile(file=image, filename=filename)

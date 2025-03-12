@@ -55,7 +55,7 @@ from backend.data.user import (
     update_user_email,
     update_user_notification_preference,
 )
-from backend.executor import ExecutionManager, ExecutionScheduler, scheduler
+from backend.executor import ExecutionManager, Scheduler, scheduler
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_activate,
@@ -84,8 +84,8 @@ def execution_manager_client() -> ExecutionManager:
 
 
 @thread_cached
-def execution_scheduler_client() -> ExecutionScheduler:
-    return get_service_client(ExecutionScheduler)
+def execution_scheduler_client() -> Scheduler:
+    return get_service_client(Scheduler)
 
 
 settings = Settings()
@@ -701,7 +701,7 @@ class ScheduleCreationRequest(pydantic.BaseModel):
 async def create_schedule(
     user_id: Annotated[str, Depends(get_user_id)],
     schedule: ScheduleCreationRequest,
-) -> scheduler.JobInfo:
+) -> scheduler.ExecutionJobInfo:
     graph = await graph_db.get_graph(
         schedule.graph_id, schedule.graph_version, user_id=user_id
     )
@@ -743,7 +743,7 @@ def delete_schedule(
 def get_execution_schedules(
     user_id: Annotated[str, Depends(get_user_id)],
     graph_id: str | None = None,
-) -> list[scheduler.JobInfo]:
+) -> list[scheduler.ExecutionJobInfo]:
     return execution_scheduler_client().get_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,

@@ -7,9 +7,9 @@ from prisma.enums import NotificationType
 from pydantic import BaseModel
 
 from backend.data.notifications import (
+    NotificationDataType_co,
     NotificationEventModel,
     NotificationTypeOverride,
-    T_co,
 )
 from backend.util.settings import Settings
 from backend.util.text import TextFormatter
@@ -48,7 +48,11 @@ class EmailSender:
         self,
         notification: NotificationType,
         user_email: str,
-        data: NotificationEventModel[T_co] | list[NotificationEventModel[T_co]],
+        data: (
+            NotificationEventModel[NotificationDataType_co]
+            | list[NotificationEventModel[NotificationDataType_co]]
+        ),
+        user_unsub_link: str | None = None,
     ):
         """Send an email to a user using a template pulled from the notification type"""
         if not self.postmark:
@@ -56,20 +60,34 @@ class EmailSender:
             return
         template = self._get_template(notification)
 
+        base_url = (
+            settings.config.frontend_base_url or settings.config.platform_base_url
+        )
+
+        # Handle the case when data is a list
+        template_data = data
+        if isinstance(data, list):
+            # Create a dictionary with a 'notifications' key containing the list
+            template_data = {"notifications": data}
+
         try:
             subject, full_message = self.formatter.format_email(
                 base_template=template.base_template,
                 subject_template=template.subject_template,
                 content_template=template.body_template,
-                data=data,
-                unsubscribe_link="https://platform.agpt.co/profile/settings",
+                data=template_data,
+                unsubscribe_link=f"{base_url}/profile/settings",
             )
-
         except Exception as e:
             logger.error(f"Error formatting full message: {e}")
             raise e
 
-        self._send_email(user_email, subject, full_message)
+        self._send_email(
+            user_email=user_email,
+            user_unsubscribe_link=user_unsub_link,
+            subject=subject,
+            body=full_message,
+        )
 
     def _get_template(self, notification: NotificationType):
         # convert the notification type to a notification type override
@@ -90,7 +108,13 @@ class EmailSender:
             base_template=base_template,
         )
 
-    def _send_email(self, user_email: str, subject: str, body: str):
+    def _send_email(
+        self,
+        user_email: str,
+        subject: str,
+        body: str,
+        user_unsubscribe_link: str | None = None,
+    ):
         if not self.postmark:
             logger.warning("Email tried to send without postmark configured")
             return
@@ -100,4 +124,13 @@ class EmailSender:
             To=user_email,
             Subject=subject,
             HtmlBody=body,
+            # Headers default to None internally so this is fine
+            Headers=(
+                {
+                    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                    "List-Unsubscribe": f"<{user_unsubscribe_link}>",
+                }
+                if user_unsubscribe_link
+                else None
+            ),
         )

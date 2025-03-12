@@ -81,6 +81,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=3,
         description="The default number of retries for Pyro client connections.",
     )
+    rpc_client_call_timeout: int = Field(
+        default=300,
+        description="The default timeout in seconds, for RPC client calls.",
+    )
     enable_auth: bool = Field(
         default=True,
         description="If authentication is enabled or not",
@@ -319,6 +323,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     postmark_webhook_token: str = Field(
         default="",
         description="The token to use for the Postmark webhook",
+    )
+
+    unsubscribe_secret_key: str = Field(
+        default="",
+        description="The secret key to use for the unsubscribe user by token",
     )
 
     # OAuth server credentials for integrations

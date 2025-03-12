@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Annotated, Any, Generic, Optional, TypeVar, Union
 
@@ -18,13 +18,18 @@ from .db import transaction
 logger = logging.getLogger(__name__)
 
 
-T_co = TypeVar("T_co", bound="BaseNotificationData", covariant=True)
+NotificationDataType_co = TypeVar(
+    "NotificationDataType_co", bound="BaseNotificationData", covariant=True
+)
+SummaryParamsType_co = TypeVar(
+    "SummaryParamsType_co", bound="BaseSummaryParams", covariant=True
+)
 
 
 class QueueType(Enum):
     IMMEDIATE = "immediate"  # Send right away (errors, critical notifications)
-    HOURLY = "hourly"  # Batch for up to an hour (usage reports)
-    DAILY = "daily"  # Daily digest (summary notifications)
+    BATCH = "batch"  # Batch for up to an hour (usage reports)
+    SUMMARY = "summary"  # Daily digest (summary notifications)
     BACKOFF = "backoff"  # Backoff strategy (exponential backoff)
     ADMIN = "admin"  # Admin notifications (errors, critical notifications)
 
@@ -46,6 +51,13 @@ class ZeroBalanceData(BaseNotificationData):
     last_transaction: float
     last_transaction_time: datetime
     top_up_link: str
+
+    @field_validator("last_transaction_time")
+    @classmethod
+    def validate_timezone(cls, value: datetime):
+        if value.tzinfo is None:
+            raise ValueError("datetime must have timezone information")
+        return value
 
 
 class LowBalanceData(BaseNotificationData):
@@ -75,6 +87,13 @@ class ContinuousAgentErrorData(BaseNotificationData):
     error_time: datetime
     attempts: int = Field(..., description="Number of retry attempts made")
 
+    @field_validator("start_time", "error_time")
+    @classmethod
+    def validate_timezone(cls, value: datetime):
+        if value.tzinfo is None:
+            raise ValueError("datetime must have timezone information")
+        return value
+
 
 class BaseSummaryData(BaseNotificationData):
     total_credits_used: float
@@ -87,18 +106,53 @@ class BaseSummaryData(BaseNotificationData):
     cost_breakdown: dict[str, float]
 
 
+class BaseSummaryParams(BaseModel):
+    pass
+
+
+class DailySummaryParams(BaseSummaryParams):
+    date: datetime
+
+    @field_validator("date")
+    def validate_timezone(cls, value):
+        if value.tzinfo is None:
+            raise ValueError("datetime must have timezone information")
+        return value
+
+
+class WeeklySummaryParams(BaseSummaryParams):
+    start_date: datetime
+    end_date: datetime
+
+    @field_validator("start_date", "end_date")
+    def validate_timezone(cls, value):
+        if value.tzinfo is None:
+            raise ValueError("datetime must have timezone information")
+        return value
+
+
 class DailySummaryData(BaseSummaryData):
     date: datetime
+
+    @field_validator("date")
+    def validate_timezone(cls, value):
+        if value.tzinfo is None:
+            raise ValueError("datetime must have timezone information")
+        return value
 
 
 class WeeklySummaryData(BaseSummaryData):
     start_date: datetime
     end_date: datetime
-    week_number: int
-    year: int
+
+    @field_validator("start_date", "end_date")
+    def validate_timezone(cls, value):
+        if value.tzinfo is None:
+            raise ValueError("datetime must have timezone information")
+        return value
 
 
-class MonthlySummaryData(BaseSummaryData):
+class MonthlySummaryData(BaseNotificationData):
     month: int
     year: int
 
@@ -125,6 +179,7 @@ NotificationData = Annotated[
         WeeklySummaryData,
         DailySummaryData,
         RefundRequestData,
+        BaseSummaryData,
     ],
     Field(discriminator="type"),
 ]
@@ -134,15 +189,22 @@ class NotificationEventDTO(BaseModel):
     user_id: str
     type: NotificationType
     data: dict
-    created_at: datetime = Field(default_factory=datetime.now)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
     retry_count: int = 0
 
 
-class NotificationEventModel(BaseModel, Generic[T_co]):
+class SummaryParamsEventDTO(BaseModel):
     user_id: str
     type: NotificationType
-    data: T_co
-    created_at: datetime = Field(default_factory=datetime.now)
+    data: dict
+    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
+
+
+class NotificationEventModel(BaseModel, Generic[NotificationDataType_co]):
+    user_id: str
+    type: NotificationType
+    data: NotificationDataType_co
+    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
     @property
     def strategy(self) -> QueueType:
@@ -159,7 +221,14 @@ class NotificationEventModel(BaseModel, Generic[T_co]):
         return NotificationTypeOverride(self.type).template
 
 
-def get_data_type(
+class SummaryParamsEventModel(BaseModel, Generic[SummaryParamsType_co]):
+    user_id: str
+    type: NotificationType
+    data: SummaryParamsType_co
+    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
+
+
+def get_notif_data_type(
     notification_type: NotificationType,
 ) -> type[BaseNotificationData]:
     return {
@@ -176,11 +245,20 @@ def get_data_type(
     }[notification_type]
 
 
+def get_summary_params_type(
+    notification_type: NotificationType,
+) -> type[BaseSummaryParams]:
+    return {
+        NotificationType.DAILY_SUMMARY: DailySummaryParams,
+        NotificationType.WEEKLY_SUMMARY: WeeklySummaryParams,
+    }[notification_type]
+
+
 class NotificationBatch(BaseModel):
     user_id: str
     events: list[NotificationEvent]
     strategy: QueueType
-    last_update: datetime = datetime.now()
+    last_update: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
 class NotificationResult(BaseModel):
@@ -196,15 +274,15 @@ class NotificationTypeOverride:
     def strategy(self) -> QueueType:
         BATCHING_RULES = {
             # These are batched by the notification service
-            NotificationType.AGENT_RUN: QueueType.IMMEDIATE,
+            NotificationType.AGENT_RUN: QueueType.BATCH,
             # These are batched by the notification service, but with a backoff strategy
             NotificationType.ZERO_BALANCE: QueueType.BACKOFF,
             NotificationType.LOW_BALANCE: QueueType.IMMEDIATE,
             NotificationType.BLOCK_EXECUTION_FAILED: QueueType.BACKOFF,
             NotificationType.CONTINUOUS_AGENT_ERROR: QueueType.BACKOFF,
-            NotificationType.DAILY_SUMMARY: QueueType.DAILY,
-            NotificationType.WEEKLY_SUMMARY: QueueType.DAILY,
-            NotificationType.MONTHLY_SUMMARY: QueueType.DAILY,
+            NotificationType.DAILY_SUMMARY: QueueType.SUMMARY,
+            NotificationType.WEEKLY_SUMMARY: QueueType.SUMMARY,
+            NotificationType.MONTHLY_SUMMARY: QueueType.SUMMARY,
             NotificationType.REFUND_REQUEST: QueueType.ADMIN,
             NotificationType.REFUND_PROCESSED: QueueType.ADMIN,
         }
@@ -258,12 +336,14 @@ class NotificationPreference(BaseModel):
     )
     daily_limit: int = 10  # Max emails per day
     emails_sent_today: int = 0
-    last_reset_date: datetime = Field(default_factory=datetime.now)
+    last_reset_date: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
 
 
 def get_batch_delay(notification_type: NotificationType) -> timedelta:
     return {
-        NotificationType.AGENT_RUN: timedelta(seconds=1),
+        NotificationType.AGENT_RUN: timedelta(minutes=1),
         NotificationType.ZERO_BALANCE: timedelta(minutes=60),
         NotificationType.LOW_BALANCE: timedelta(minutes=60),
         NotificationType.BLOCK_EXECUTION_FAILED: timedelta(minutes=60),
@@ -274,19 +354,15 @@ def get_batch_delay(notification_type: NotificationType) -> timedelta:
 async def create_or_add_to_user_notification_batch(
     user_id: str,
     notification_type: NotificationType,
-    data: str,  # type: 'NotificationEventModel'
-) -> dict:
+    notification_data: NotificationEventModel,
+) -> UserNotificationBatch:
     try:
         logger.info(
-            f"Creating or adding to notification batch for {user_id} with type {notification_type} and data {data}"
+            f"Creating or adding to notification batch for {user_id} with type {notification_type} and data {notification_data}"
         )
 
-        notification_data = NotificationEventModel[
-            get_data_type(notification_type)
-        ].model_validate_json(data)
-
         # Serialize the data
-        json_data: Json = Json(notification_data.data.model_dump_json())
+        json_data: Json = Json(notification_data.data.model_dump())
 
         # First try to find existing batch
         existing_batch = await UserNotificationBatch.prisma().find_unique(
@@ -317,7 +393,7 @@ async def create_or_add_to_user_notification_batch(
                     },
                     include={"notifications": True},
                 )
-                return resp.model_dump()
+                return resp
         else:
             async with transaction() as tx:
                 notification_event = await tx.notificationevent.create(
@@ -339,27 +415,28 @@ async def create_or_add_to_user_notification_batch(
                 raise DatabaseError(
                     f"Failed to add notification event {notification_event.id} to existing batch {existing_batch.id}"
                 )
-            return resp.model_dump()
+            return resp
     except Exception as e:
         raise DatabaseError(
             f"Failed to create or add to notification batch for user {user_id} and type {notification_type}: {e}"
         ) from e
 
 
-async def get_user_notification_last_message_in_batch(
+async def get_user_notification_oldest_message_in_batch(
     user_id: str,
     notification_type: NotificationType,
 ) -> NotificationEvent | None:
     try:
         batch = await UserNotificationBatch.prisma().find_first(
             where={"userId": user_id, "type": notification_type},
-            order={"createdAt": "desc"},
+            include={"notifications": True},
         )
         if not batch:
             return None
         if not batch.notifications:
             return None
-        return batch.notifications[-1]
+        sorted_notifications = sorted(batch.notifications, key=lambda x: x.createdAt)
+        return sorted_notifications[0]
     except Exception as e:
         raise DatabaseError(
             f"Failed to get user notification last message in batch for user {user_id} and type {notification_type}: {e}"
@@ -403,4 +480,23 @@ async def get_user_notification_batch(
     except Exception as e:
         raise DatabaseError(
             f"Failed to get user notification batch for user {user_id} and type {notification_type}: {e}"
+        ) from e
+
+
+async def get_all_batches_by_type(
+    notification_type: NotificationType,
+) -> list[UserNotificationBatch]:
+    try:
+        return await UserNotificationBatch.prisma().find_many(
+            where={
+                "type": notification_type,
+                "notifications": {
+                    "some": {}  # Only return batches with at least one notification
+                },
+            },
+            include={"notifications": True},
+        )
+    except Exception as e:
+        raise DatabaseError(
+            f"Failed to get all batches by type {notification_type}: {e}"
         ) from e
