@@ -29,14 +29,14 @@ class ExampleBlock(Block):
             description="Whether the block is funny",
             placeholder="True",
             default=True,
-            # Advanced fields are not shown in the UI by default
+            # Advanced fields are moved to the "Advanced" dropdown in the UI
             advanced=True,
         )
         greeting_context: str = SchemaField(
             description="The context of the greeting",
             placeholder="Enter a context",
             default="The user is looking for an inspirational greeting",
-            # Hidden fields are not shown in the UI by default
+            # Hidden fields are not shown in the UI at all
             hidden=True,
         )
         # Only if the block needs credentials
