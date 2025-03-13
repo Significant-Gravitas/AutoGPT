@@ -101,7 +101,7 @@ model AgentGraph {
   AgentPreset         AgentPreset[]
   LibraryAgent        LibraryAgent[]
   StoreListing        StoreListing[]
-  StoreListingVersions StoreListingVersion[]
+  StoreListingVersion StoreListingVersion[]
 
   @@id(name: "graphVersionId", [id, version])
   @@index([userId, isActive])
@@ -663,8 +663,7 @@ model StoreListingVersion {
 
   // State transition timestamps
   submittedAt DateTime?
-  approvedAt  DateTime?
-  rejectedAt  DateTime?
+  reviewedAt  DateTime?
 
   // Relations
   storeListingId String
