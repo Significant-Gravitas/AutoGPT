@@ -35,7 +35,7 @@ router = fastapi.APIRouter()
 async def get_profile(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ]
+    ],
 ):
     """
     Get the profile details for the authenticated user.
@@ -339,7 +339,7 @@ async def get_creator(
 async def get_my_agents(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ]
+    ],
 ):
     try:
         agents = await backend.server.v2.store.db.get_my_agents(user_id)
@@ -478,6 +478,7 @@ async def create_submission(
             description=submission_request.description,
             sub_heading=submission_request.sub_heading,
             categories=submission_request.categories,
+            changes_summary=submission_request.changes_summary,
         )
         return submission
     except Exception:
