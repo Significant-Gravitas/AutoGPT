@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from enum import StrEnum
+from types import UnionType
 from typing import Any, Union, get_args, get_origin
 
 from prisma import Json as PrismaJson
@@ -11,54 +15,51 @@ from pydantic import BaseModel, Json, create_model
 GLOBAL_REPLACEMENTS: dict[Any, Any] = {
     Json: Any,
     PrismaJson: Any,
+    StrEnum: str,
 }
 
 
 ###############################################################################
-# 2) A GLOBAL CACHE that maps (type, id-of-replacements) -> transformed type
+# 2) A GLOBAL CACHE that maps `type` -> transformed type
 ###############################################################################
-# We must also incorporate the ID of the replacements dict
-# if we want the cache to be invalidated when the global dictionary changes.
-# But if you intend for this dictionary never to change at runtime,
-# you can simply use a single cache keyed by the 'type' alone.
 _GLOBAL_TYPE_TRANSFORM_CACHE: dict[Any, Any] = {}
 
 
 def transform_type(tp: Any) -> Any:
     """
-    Public entry point:
-      - Recursively traverse a type annotation (could be a Pydantic model, list[model], Union, etc.).
-      - Return a new type where each "original_type" in `GLOBAL_REPLACEMENTS` is replaced.
-      - Uses a global cache to avoid rebuilding the same transformations.
-      - Also avoids infinite recursion for self-referencing or mutually-referencing models.
+    Public entry point to transform `tp` by:
+      - Replacing any types found in GLOBAL_REPLACEMENTS
+      - Recursively handling container types (list[X], set[X], etc.)
+      - Recursively handling union types (X | Y or Union[X, Y])
+      - Transforming Pydantic models by creating a new dynamic model
+        if any fields are replaced
+      - Caching globally so repeated calls for the same type won't rebuild
     """
-    # If we've already transformed this `tp` given the current replacements, return it
-    # (assuming the dictionary does not change at runtime).
+    # If we've already transformed this type, just return it
     if tp in _GLOBAL_TYPE_TRANSFORM_CACHE:
         return _GLOBAL_TYPE_TRANSFORM_CACHE[tp]
 
-    # We keep a *local* recursion cache to avoid infinite loops in this single call chain
+    # Local recursion cache to avoid infinite loops in cyclical references
     local_cache: dict[Any, Any] = {}
     transformed = _transform_type_recursive(tp, local_cache)
 
-    # Store in the global cache
     _GLOBAL_TYPE_TRANSFORM_CACHE[tp] = transformed
     return transformed
 
 
 def _transform_type_recursive(tp: Any, local_cache: dict[Any, Any]) -> Any:
     """
-    Does the actual recursion:
-      - If `tp` is in `GLOBAL_REPLACEMENTS`, use that replacement.
-      - If it's a Pydantic model, build a new model with replaced field types.
-      - If it's a container (list, tuple, Union, etc.), transform each argument.
-      - Otherwise, return as-is.
+    Recursively apply transformations:
+      1) If `tp` is in GLOBAL_REPLACEMENTS, return the replacement.
+      2) If container type (list, tuple, set, frozenset), transform sub-args.
+      3) If union type (typing.Union or types.UnionType), transform sub-args.
+      4) If a Pydantic model, create a new model with replaced fields.
+      5) Otherwise, return `tp` as-is.
     """
     if tp in local_cache:
-        # Already transformed (or in process); return it
         return local_cache[tp]
 
-    # If exactly in the global replacements, do a direct swap
+    # 1) Direct replacement if tp is in the replacements dict
     if tp in GLOBAL_REPLACEMENTS:
         replaced = GLOBAL_REPLACEMENTS[tp]
         local_cache[tp] = replaced
@@ -66,34 +67,41 @@ def _transform_type_recursive(tp: Any, local_cache: dict[Any, Any]) -> Any:
 
     origin = get_origin(tp)
 
-    # Handle container types: list[X], Union[X, Y], tuple[X, Y], etc.
+    # 2) Check if it's a built-in container type (list, tuple, set, frozenset)
     if origin in (list, tuple, set, frozenset):
         args = get_args(tp)
         if len(args) == 1:
             # e.g. list[X]
-            new_arg = _transform_type_recursive(args[0], local_cache)
-            new_container = origin[new_arg]  # type: ignore
+            transformed_arg = _transform_type_recursive(args[0], local_cache)
+            new_tp = origin[transformed_arg]  # type: ignore
         else:
             # e.g. tuple[X, Y]
-            new_args = tuple(_transform_type_recursive(a, local_cache) for a in args)
-            new_container = origin[new_args]  # type: ignore
-        local_cache[tp] = new_container
-        return new_container
+            transformed_args = tuple(
+                _transform_type_recursive(a, local_cache) for a in args
+            )
+            new_tp = origin[transformed_args]  # type: ignore
+        local_cache[tp] = new_tp
+        return new_tp
 
-    if origin is Union:
+    # 3) Check if it's a union (covers old-style typing.Union and Python 3.10+ pipe union)
+    if origin in (Union, UnionType):
         args = get_args(tp)
-        new_args = tuple(_transform_type_recursive(a, local_cache) for a in args)
-        new_union = Union[new_args]
+        transformed_args = tuple(
+            _transform_type_recursive(a, local_cache) for a in args
+        )
+        new_union = Union[transformed_args]
         local_cache[tp] = new_union
         return new_union
 
-    # Handle Pydantic model classes
+    # 4) If it's a Pydantic model class
     if isinstance(tp, type) and issubclass(tp, BaseModel):
-        new_model_cls = _transform_model(tp, local_cache)
-        local_cache[tp] = new_model_cls
-        return new_model_cls
+        # Ensure forward references in the original are resolved
+        tp.model_rebuild()
+        new_model = _transform_model(tp, local_cache)
+        local_cache[tp] = new_model
+        return new_model
 
-    # Otherwise, no transformation
+    # 5) Otherwise, no transformation
     local_cache[tp] = tp
     return tp
 
@@ -102,35 +110,39 @@ def _transform_model(
     model_cls: type[BaseModel], local_cache: dict[Any, Any]
 ) -> type[BaseModel]:
     """
-    Build a new Pydantic model that mirrors `model_cls` but with replaced field types.
-    Prevent infinite recursion with local_cache placeholders.
+    Create a brand-new Pydantic model if needed (i.e. if any field changes),
+    or reuse the original model_cls if nothing changes.
     """
-    # If we've started building this model in the recursion, return immediately
+    # Check if we have a placeholder from cyclical references
     if model_cls in local_cache and local_cache[model_cls] is None:
         return model_cls
 
-    # Mark as 'in progress' with None
+    # Mark this model as "in progress"
     local_cache[model_cls] = None
 
-    # Build new fields
     field_defs = {}
+    any_field_changed = False
+
     for field_name, field_info in model_cls.model_fields.items():
-        old_annotation = field_info.annotation
-        new_annotation = _transform_type_recursive(old_annotation, local_cache)
+        old_anno = field_info.annotation
+        transformed_anno = _transform_type_recursive(old_anno, local_cache)
 
-        if field_info.is_required():
-            default_val = ...
-        else:
-            default_val = field_info.default
+        if transformed_anno is not old_anno:
+            any_field_changed = True
 
-        field_defs[field_name] = (new_annotation, default_val)
+        # Use "..." if field is required, else its default
+        default_val = ... if field_info.is_required() else field_info.default
+        field_defs[field_name] = (transformed_anno, default_val)
 
+    if not any_field_changed:
+        # Reuse the original model if nothing changed
+        local_cache[model_cls] = model_cls
+        return model_cls
+
+    # Build a new model class
     new_name = f"{model_cls.__name__}Transformed"
-    NewModel = create_model(
-        new_name,
-        __base__=BaseModel,
-        **field_defs,
-    )
+    NewModel = create_model(new_name, __base__=model_cls, **field_defs)
+    NewModel.model_rebuild()
 
     local_cache[model_cls] = NewModel
     return NewModel
