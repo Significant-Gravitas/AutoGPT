@@ -142,8 +142,14 @@ CREATE UNIQUE INDEX IF NOT EXISTS "StoreListing_slug_key" ON "StoreListing"("slu
 -- Drop the slug column from StoreListingVersion since it's now on StoreListing
 ALTER TABLE "StoreListingVersion" DROP COLUMN "slug";
 
--- Drop the unique constraint on agentId, agentVersion in StoreListingVersion
+-- Update both sides of the relation from one-to-one to one-to-many
+
+-- The AgentGraph->StoreListingVersion relationship is now one-to-many
+-- In the schema, StoreListingVersion? becomes StoreListingVersion[] in AgentGraph
+
+-- Drop the unique constraint but add a non-unique index for query performance
 ALTER TABLE "StoreListingVersion" DROP CONSTRAINT IF EXISTS "StoreListingVersion_agentId_agentVersion_key";
+CREATE INDEX IF NOT EXISTS "StoreListingVersion_agentId_agentVersion_idx" ON "StoreListingVersion"("agentId", "agentVersion");
 
 
 -- Create new indexes

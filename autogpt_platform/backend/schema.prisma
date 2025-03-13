@@ -101,7 +101,7 @@ model AgentGraph {
   AgentPreset         AgentPreset[]
   LibraryAgent        LibraryAgent[]
   StoreListing        StoreListing[]
-  StoreListingVersion StoreListingVersion?
+  StoreListingVersions StoreListingVersion[]
 
   @@id(name: "graphVersionId", [id, version])
   @@index([userId, isActive])
@@ -690,6 +690,7 @@ model StoreListingVersion {
   @@index([storeListingId, isApproved, isAvailable])
   @@index([submissionStatus])
   @@index([reviewerId])
+  @@index([agentId, agentVersion]) // Non-unique index for efficient lookups
 }
 
 model StoreListingReview {
