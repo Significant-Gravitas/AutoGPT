@@ -86,8 +86,8 @@ model AgentGraph {
   name        String?
   description String?
 
-  isActive    Boolean @default(true)
-  isTemplate  Boolean @default(false)
+  isActive   Boolean @default(true)
+  isTemplate Boolean @default(false)
 
   // Link to User model
   userId String
@@ -196,7 +196,7 @@ model LibraryAgent {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  imageUrl   String?
+  imageUrl String?
 
   agentId      String
   agentVersion Int
@@ -602,11 +602,15 @@ model StoreListing {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  isDeleted  Boolean @default(false)
-  // Not needed but makes lookups faster
-  isApproved Boolean @default(false)
+  isDeleted          Boolean @default(false)
+  // Whether any version of this listing is approved and available for display
+  hasApprovedVersion Boolean @default(false)
 
-  // The agent link here is only so we can do lookup on agentId, for the listing the StoreListingVersion is used.
+  // The currently active version that should be shown to users
+  activeVersionId String?              @unique
+  activeVersion   StoreListingVersion? @relation("ActiveVersion", fields: [activeVersionId], references: [id])
+
+  // The agent link here is only so we can do lookup on agentId
   agentId      String
   agentVersion Int
   Agent        AgentGraph @relation(fields: [agentId, agentVersion], references: [id, version], onDelete: Cascade)
@@ -614,14 +618,15 @@ model StoreListing {
   owningUserId String
   OwningUser   User   @relation(fields: [owningUserId], references: [id])
 
-  StoreListingVersions   StoreListingVersion[]
-  StoreListingSubmission StoreListingSubmission[]
+  // Relations
+  versions    StoreListingVersion[]    @relation("ListingVersions")
+  submissions StoreListingSubmission[]
 
   // Unique index on agentId to ensure only one listing per agent, regardless of number of versions the agent has.
   @@unique([agentId])
   @@index([owningUserId])
   // Used in the view query
-  @@index([isDeleted, isApproved])
+  @@index([isDeleted, hasApprovedVersion])
 }
 
 model StoreListingVersion {
@@ -635,9 +640,7 @@ model StoreListingVersion {
   agentVersion Int
   Agent        AgentGraph @relation(fields: [agentId, agentVersion], references: [id, version])
 
-  // The details for this version of the agent, this allows the author to update the details of the agent,
-  // But still allow using old versions of the agent with there original details.
-  // TODO: Create a database view that shows only the latest version of each store listing.
+  // Content fields
   slug        String
   name        String
   subHeading  String
@@ -648,20 +651,37 @@ model StoreListingVersion {
 
   isFeatured Boolean @default(false)
 
-  isDeleted              Boolean                  @default(false)
+  isDeleted   Boolean @default(false)
   // Old versions can be made unavailable by the author if desired
-  isAvailable            Boolean                  @default(true)
-  // Not needed but makes lookups faster
-  isApproved             Boolean                  @default(false)
-  StoreListing           StoreListing?            @relation(fields: [storeListingId], references: [id], onDelete: Cascade)
-  storeListingId         String?
-  StoreListingSubmission StoreListingSubmission[]
+  isAvailable Boolean @default(true)
+  // Whether this version is approved
+  isApproved  Boolean @default(false)
 
-  // Reviews are on a specific version, but then aggregated up to the listing.
-  // This allows us to provide a review filter to current version of the agent.
-  StoreListingReview StoreListingReview[]
+  // Version workflow state
+  submissionStatus SubmissionStatus @default(DRAFT)
+
+  // State transition timestamps
+  submittedAt DateTime?
+  approvedAt  DateTime?
+  rejectedAt  DateTime?
+
+  // Relations
+  storeListingId String
+  storeListing   StoreListing @relation("ListingVersions", fields: [storeListingId], references: [id], onDelete: Cascade)
+
+  // This version might be the active version for a listing
+  activeFor StoreListing? @relation("ActiveVersion")
+
+  // Multiple submissions for this version (submission history)
+  submissions StoreListingSubmission[]
+
+  // Reviews for this specific version
+  reviews StoreListingReview[]
 
   @@unique([agentId, agentVersion])
+  @@unique([storeListingId, version])
+  @@index([storeListingId, isApproved, isAvailable])
+  @@index([submissionStatus])
 }
 
 model StoreListingReview {
@@ -670,10 +690,10 @@ model StoreListingReview {
   updatedAt DateTime @default(now()) @updatedAt
 
   storeListingVersionId String
-  StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id], onDelete: Cascade)
+  storeListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id], onDelete: Cascade)
 
   reviewByUserId String
-  ReviewByUser   User   @relation(fields: [reviewByUserId], references: [id])
+  reviewByUser   User   @relation(fields: [reviewByUserId], references: [id])
 
   score    Int
   comments String?
@@ -682,10 +702,10 @@ model StoreListingReview {
 }
 
 enum SubmissionStatus {
-  DAFT
-  PENDING
-  APPROVED
-  REJECTED
+  DRAFT // Being prepared, not yet submitted
+  PENDING // Submitted, awaiting review
+  APPROVED // Reviewed and approved
+  REJECTED // Reviewed and rejected
 }
 
 model StoreListingSubmission {
@@ -693,20 +713,29 @@ model StoreListingSubmission {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
+  // Relations - connected to both listing and version
   storeListingId String
-  StoreListing   StoreListing @relation(fields: [storeListingId], references: [id], onDelete: Cascade)
+  storeListing   StoreListing @relation(fields: [storeListingId], references: [id], onDelete: Cascade)
 
   storeListingVersionId String
-  StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id], onDelete: Cascade)
+  storeListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id], onDelete: Cascade)
 
-  reviewerId String
-  Reviewer   User   @relation(fields: [reviewerId], references: [id])
-
+  // Submission details
+  submissionDate DateTime         @default(now())
   Status         SubmissionStatus @default(PENDING)
   reviewComments String?
 
-  @@unique([storeListingVersionId])
+  // Reviewer relation (optional until reviewed)
+  reviewerId String?
+  reviewer   User?     @relation(fields: [reviewerId], references: [id])
+  reviewedAt DateTime?
+
+  // Captures what changed since last submission (optional)
+  changesSummary String?
+
   @@index([storeListingId])
+  @@index([storeListingVersionId])
+  @@index([reviewerId])
 }
 
 enum APIKeyPermission {
