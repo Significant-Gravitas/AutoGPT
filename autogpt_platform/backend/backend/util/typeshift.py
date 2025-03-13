@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from enum import StrEnum
 from types import UnionType
 from typing import Any, Union, get_args, get_origin
@@ -94,7 +95,7 @@ def _transform_type_recursive(tp: Any, local_cache: dict[Any, Any]) -> Any:
         return new_union
 
     # 4) If it's a Pydantic model class
-    if isinstance(tp, type) and issubclass(tp, BaseModel):
+    if inspect.isclass(tp) and issubclass(tp, BaseModel):
         # Ensure forward references in the original are resolved
         tp.model_rebuild()
         new_model = _transform_model(tp, local_cache)
