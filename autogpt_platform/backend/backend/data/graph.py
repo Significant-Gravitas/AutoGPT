@@ -14,7 +14,7 @@ from prisma.models import (
     AgentNodeLink,
     StoreListingVersion,
 )
-from prisma.types import AgentGraphWhereInput
+from prisma.types import AgentGraphExecutionWhereInput, AgentGraphWhereInput
 from pydantic.fields import Field, computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -597,18 +597,20 @@ async def get_graphs(
     return graph_models
 
 
-# TODO: move execution stuff to .execution
-async def get_graphs_executions(user_id: str) -> list[GraphExecutionMeta]:
-    executions = await AgentGraphExecution.prisma().find_many(
-        where={"isDeleted": False, "userId": user_id},
-        order={"createdAt": "desc"},
-    )
-    return [GraphExecutionMeta.from_db(execution) for execution in executions]
+async def get_graph_executions(
+    graph_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+) -> list[GraphExecutionMeta]:
+    where_filter: AgentGraphExecutionWhereInput = {
+        "isDeleted": False,
+    }
+    if user_id:
+        where_filter["userId"] = user_id
+    if graph_id:
+        where_filter["agentGraphId"] = graph_id
 
-
-async def get_graph_executions(graph_id: str, user_id: str) -> list[GraphExecutionMeta]:
     executions = await AgentGraphExecution.prisma().find_many(
-        where={"agentGraphId": graph_id, "isDeleted": False, "userId": user_id},
+        where=where_filter,
         order={"createdAt": "desc"},
     )
     return [GraphExecutionMeta.from_db(execution) for execution in executions]
