@@ -20,9 +20,20 @@ from backend.data.graph import (
     get_graph_metadata,
     get_node,
 )
+from backend.data.notifications import (
+    create_or_add_to_user_notification_batch,
+    empty_user_notification_batch,
+    get_all_batches_by_type,
+    get_user_notification_batch,
+    get_user_notification_oldest_message_in_batch,
+)
 from backend.data.user import (
+    get_active_user_ids_in_timerange,
+    get_user_email_by_id,
+    get_user_email_verification,
     get_user_integrations,
     get_user_metadata,
+    get_user_notification_preference,
     update_user_integrations,
     update_user_metadata,
 )
@@ -80,3 +91,24 @@ class DatabaseManager(AppService):
     update_user_metadata = exposed_run_and_wait(update_user_metadata)
     get_user_integrations = exposed_run_and_wait(get_user_integrations)
     update_user_integrations = exposed_run_and_wait(update_user_integrations)
+
+    # User Comms - async
+    get_active_user_ids_in_timerange = exposed_run_and_wait(
+        get_active_user_ids_in_timerange
+    )
+    get_user_email_by_id = exposed_run_and_wait(get_user_email_by_id)
+    get_user_email_verification = exposed_run_and_wait(get_user_email_verification)
+    get_user_notification_preference = exposed_run_and_wait(
+        get_user_notification_preference
+    )
+
+    # Notifications - async
+    create_or_add_to_user_notification_batch = exposed_run_and_wait(
+        create_or_add_to_user_notification_batch
+    )
+    empty_user_notification_batch = exposed_run_and_wait(empty_user_notification_batch)
+    get_all_batches_by_type = exposed_run_and_wait(get_all_batches_by_type)
+    get_user_notification_batch = exposed_run_and_wait(get_user_notification_batch)
+    get_user_notification_oldest_message_in_batch = exposed_run_and_wait(
+        get_user_notification_oldest_message_in_batch
+    )
