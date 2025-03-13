@@ -3,11 +3,13 @@
 
   - The values [DAFT] on the enum `SubmissionStatus` will be removed. If these variants are still used in the database, this will fail.
   - You are about to drop the column `isApproved` on the `StoreListing` table. All the data in the column will be lost.
+  - You are about to drop the `StoreListingSubmission` table. If the table is not empty, all the data it contains will be lost.
   - A unique constraint covering the columns `[activeVersionId]` on the table `StoreListing` will be added. If there are existing duplicate values, this will fail.
   - A unique constraint covering the columns `[storeListingId,version]` on the table `StoreListingVersion` will be added. If there are existing duplicate values, this will fail.
   - Made the column `storeListingId` on table `StoreListingVersion` required. This step will fail if there are existing NULL values in that column.
 
 */
+
 -- First, drop all views that depend on the columns we're modifying
 DROP VIEW IF EXISTS platform."StoreSubmission";
 DROP VIEW IF EXISTS platform."StoreAgent";
@@ -47,20 +49,75 @@ DROP COLUMN IF EXISTS "isApproved",
 ADD COLUMN IF NOT EXISTS "activeVersionId" TEXT,
 ADD COLUMN IF NOT EXISTS "hasApprovedVersion" BOOLEAN NOT NULL DEFAULT false;
 
--- Modify StoreListingSubmission
-ALTER TABLE "StoreListingSubmission" 
-ADD COLUMN IF NOT EXISTS "changesSummary" TEXT,
-ADD COLUMN IF NOT EXISTS "reviewedAt" TIMESTAMP(3),
-ADD COLUMN IF NOT EXISTS "submissionDate" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-ALTER COLUMN "reviewerId" DROP NOT NULL;
-
--- Add new columns to StoreListingVersion
+-- First add ALL columns to StoreListingVersion (including the submissionStatus column)
 ALTER TABLE "StoreListingVersion" 
+ADD COLUMN IF NOT EXISTS "reviewerId" TEXT,
+ADD COLUMN IF NOT EXISTS "reviewComments" TEXT,
+ADD COLUMN IF NOT EXISTS "internalComments" TEXT,
+ADD COLUMN IF NOT EXISTS "reviewedAt" TIMESTAMP(3),
+ADD COLUMN IF NOT EXISTS "changesSummary" TEXT,
 ADD COLUMN IF NOT EXISTS "approvedAt" TIMESTAMP(3),
 ADD COLUMN IF NOT EXISTS "rejectedAt" TIMESTAMP(3),
 ADD COLUMN IF NOT EXISTS "submissionStatus" "SubmissionStatus" NOT NULL DEFAULT 'DRAFT',
 ADD COLUMN IF NOT EXISTS "submittedAt" TIMESTAMP(3),
 ALTER COLUMN "storeListingId" SET NOT NULL;
+
+-- NOW copy data from StoreListingSubmission to StoreListingVersion
+DO $$
+BEGIN
+    -- First, check what columns actually exist in the StoreListingSubmission table
+    DECLARE
+        has_reviewerId BOOLEAN := (SELECT EXISTS (
+            SELECT FROM information_schema.columns 
+            WHERE table_name = 'StoreListingSubmission' 
+            AND column_name = 'reviewerId'
+        ));
+        
+        has_reviewComments BOOLEAN := (SELECT EXISTS (
+            SELECT FROM information_schema.columns 
+            WHERE table_name = 'StoreListingSubmission' 
+            AND column_name = 'reviewComments'
+        ));
+        
+        has_changesSummary BOOLEAN := (SELECT EXISTS (
+            SELECT FROM information_schema.columns 
+            WHERE table_name = 'StoreListingSubmission' 
+            AND column_name = 'changesSummary'
+        ));
+    BEGIN
+        -- Only copy fields that we know exist
+        IF has_reviewerId THEN
+            UPDATE "StoreListingVersion" AS v
+            SET "reviewerId" = s."reviewerId"
+            FROM "StoreListingSubmission" AS s
+            WHERE v."id" = s."storeListingVersionId";
+        END IF;
+        
+        IF has_reviewComments THEN
+            UPDATE "StoreListingVersion" AS v
+            SET "reviewComments" = s."reviewComments"
+            FROM "StoreListingSubmission" AS s
+            WHERE v."id" = s."storeListingVersionId";
+        END IF;
+        
+        IF has_changesSummary THEN
+            UPDATE "StoreListingVersion" AS v
+            SET "changesSummary" = s."changesSummary"
+            FROM "StoreListingSubmission" AS s
+            WHERE v."id" = s."storeListingVersionId";
+        END IF;
+    END;
+    
+    -- Update submission status based on StoreListingSubmission status
+    UPDATE "StoreListingVersion" AS v
+    SET "submissionStatus" = s."Status"
+    FROM "StoreListingSubmission" AS s
+    WHERE v."id" = s."storeListingVersionId";
+END
+$$;
+
+-- Drop the StoreListingSubmission table
+DROP TABLE IF EXISTS "StoreListingSubmission";
 
 -- Create new indexes
 CREATE UNIQUE INDEX IF NOT EXISTS "StoreListing_activeVersionId_key" 
@@ -68,12 +125,6 @@ ON "StoreListing"("activeVersionId");
 
 CREATE INDEX IF NOT EXISTS "StoreListing_isDeleted_hasApprovedVersion_idx" 
 ON "StoreListing"("isDeleted", "hasApprovedVersion");
-
-CREATE INDEX IF NOT EXISTS "StoreListingSubmission_storeListingVersionId_idx" 
-ON "StoreListingSubmission"("storeListingVersionId");
-
-CREATE INDEX IF NOT EXISTS "StoreListingSubmission_reviewerId_idx" 
-ON "StoreListingSubmission"("reviewerId");
 
 CREATE INDEX IF NOT EXISTS "StoreListingVersion_storeListingId_isApproved_isAvailable_idx" 
 ON "StoreListingVersion"("storeListingId", "isApproved", "isAvailable");
@@ -90,10 +141,15 @@ ADD CONSTRAINT "StoreListing_activeVersionId_fkey"
 FOREIGN KEY ("activeVersionId") REFERENCES "StoreListingVersion"("id") 
 ON DELETE SET NULL ON UPDATE CASCADE;
 
-ALTER TABLE "StoreListingSubmission" 
-ADD CONSTRAINT "StoreListingSubmission_reviewerId_fkey" 
+-- Add reviewer foreign key
+ALTER TABLE "StoreListingVersion" 
+ADD CONSTRAINT "StoreListingVersion_reviewerId_fkey" 
 FOREIGN KEY ("reviewerId") REFERENCES "User"("id") 
 ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- Add index for reviewer
+CREATE INDEX IF NOT EXISTS "StoreListingVersion_reviewerId_idx" 
+ON "StoreListingVersion"("reviewerId");
 
 -- Recreate the views with updated column references
 
@@ -109,13 +165,12 @@ SELECT
     slv."subHeading" AS sub_heading,
     slv.description,
     slv."imageUrls" AS image_urls,
-    slv."createdAt" AS date_submitted,
-    COALESCE(sls."Status", 'PENDING'::platform."SubmissionStatus") AS status,
+    slv."submittedAt" AS date_submitted,
+    slv."submissionStatus" AS status,
     COALESCE(ar.run_count, 0::bigint) AS runs,
     COALESCE(avg(sr.score::numeric), 0.0)::double precision AS rating
 FROM platform."StoreListing" sl
     JOIN platform."StoreListingVersion" slv ON slv."storeListingId" = sl.id
-    LEFT JOIN platform."StoreListingSubmission" sls ON sls."storeListingId" = sl.id
     LEFT JOIN platform."StoreListingReview" sr ON sr."storeListingVersionId" = slv.id
     LEFT JOIN (
         SELECT "AgentGraphExecution"."agentGraphId", count(*) AS run_count
@@ -124,7 +179,7 @@ FROM platform."StoreListing" sl
     ) ar ON ar."agentGraphId" = slv."agentId"
 WHERE sl."isDeleted" = false
 GROUP BY sl.id, sl."owningUserId", slv."agentId", slv.version, slv.slug, slv.name, 
-    slv."subHeading", slv.description, slv."imageUrls", slv."createdAt", sls."Status", ar.run_count;
+    slv."subHeading", slv.description, slv."imageUrls", slv."submittedAt", slv."submissionStatus", ar.run_count;
 
 -- 2. Recreate StoreAgent view
 CREATE VIEW platform."StoreAgent" AS  

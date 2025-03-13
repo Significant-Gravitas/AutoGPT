@@ -48,7 +48,7 @@ model User {
   UserOnboarding         UserOnboarding?
   StoreListing           StoreListing[]
   StoreListingReview     StoreListingReview[]
-  StoreListingSubmission StoreListingSubmission[]
+  StoreVersionsReviewed  StoreListingVersion[]
   APIKeys                APIKey[]
   IntegrationWebhooks    IntegrationWebhook[]
   UserNotificationBatch  UserNotificationBatch[]
@@ -620,7 +620,6 @@ model StoreListing {
 
   // Relations
   versions    StoreListingVersion[]    @relation("ListingVersions")
-  submissions StoreListingSubmission[]
 
   // Unique index on agentId to ensure only one listing per agent, regardless of number of versions the agent has.
   @@unique([agentId])
@@ -672,8 +671,15 @@ model StoreListingVersion {
   // This version might be the active version for a listing
   activeFor StoreListing? @relation("ActiveVersion")
 
-  // Multiple submissions for this version (submission history)
-  submissions StoreListingSubmission[]
+  // Submission history
+  changesSummary  String?
+  
+  // Review information
+  reviewerId      String?
+  reviewer        User?     @relation(fields: [reviewerId], references: [id])
+  internalComments String?  // Private notes for admin use only
+  reviewComments  String?   // Comments visible to creator
+  reviewedAt      DateTime?
 
   // Reviews for this specific version
   reviews StoreListingReview[]
@@ -682,6 +688,7 @@ model StoreListingVersion {
   @@unique([storeListingId, version])
   @@index([storeListingId, isApproved, isAvailable])
   @@index([submissionStatus])
+  @@index([reviewerId])
 }
 
 model StoreListingReview {
@@ -706,36 +713,6 @@ enum SubmissionStatus {
   PENDING // Submitted, awaiting review
   APPROVED // Reviewed and approved
   REJECTED // Reviewed and rejected
-}
-
-model StoreListingSubmission {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-
-  // Relations - connected to both listing and version
-  storeListingId String
-  storeListing   StoreListing @relation(fields: [storeListingId], references: [id], onDelete: Cascade)
-
-  storeListingVersionId String
-  storeListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id], onDelete: Cascade)
-
-  // Submission details
-  submissionDate DateTime         @default(now())
-  Status         SubmissionStatus @default(PENDING)
-  reviewComments String?
-
-  // Reviewer relation (optional until reviewed)
-  reviewerId String?
-  reviewer   User?     @relation(fields: [reviewerId], references: [id])
-  reviewedAt DateTime?
-
-  // Captures what changed since last submission (optional)
-  changesSummary String?
-
-  @@index([storeListingId])
-  @@index([storeListingVersionId])
-  @@index([reviewerId])
 }
 
 enum APIKeyPermission {
