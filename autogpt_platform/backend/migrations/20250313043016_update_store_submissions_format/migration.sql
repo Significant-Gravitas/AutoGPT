@@ -156,6 +156,14 @@ ALTER TABLE "StoreListingVersion" DROP CONSTRAINT IF EXISTS "StoreListingVersion
 CREATE INDEX IF NOT EXISTS "StoreListingVersion_agentId_agentVersion_idx" ON "StoreListingVersion"("agentId", "agentVersion");
 
 
+-- Set isApproved based on submissionStatus before removing it
+UPDATE "StoreListingVersion" 
+SET "submissionStatus" = 'APPROVED' 
+WHERE "isApproved" = true;
+
+-- Drop the isApproved column from StoreListingVersion since it's redundant with submissionStatus
+ALTER TABLE "StoreListingVersion" DROP COLUMN "isApproved";
+
 -- Create new indexes
 CREATE UNIQUE INDEX IF NOT EXISTS "StoreListing_activeVersionId_key" 
 ON "StoreListing"("activeVersionId");
@@ -163,8 +171,8 @@ ON "StoreListing"("activeVersionId");
 CREATE INDEX IF NOT EXISTS "StoreListing_isDeleted_hasApprovedVersion_idx" 
 ON "StoreListing"("isDeleted", "hasApprovedVersion");
 
-CREATE INDEX IF NOT EXISTS "StoreListingVersion_storeListingId_isApproved_isAvailable_idx" 
-ON "StoreListingVersion"("storeListingId", "isApproved", "isAvailable");
+CREATE INDEX IF NOT EXISTS "StoreListingVersion_storeListingId_submissionStatus_isAvailable_idx" 
+ON "StoreListingVersion"("storeListingId", "submissionStatus", "isAvailable");
 
 CREATE INDEX IF NOT EXISTS "StoreListingVersion_submissionStatus_idx" 
 ON "StoreListingVersion"("submissionStatus");
@@ -191,6 +199,9 @@ ON "StoreListingVersion"("reviewerId");
 
 -- DropIndex
 DROP INDEX "StoreListingVersion_agentId_agentVersion_key";
+
+-- RenameIndex
+ALTER INDEX "StoreListingVersion_storeListingId_submissionStatus_isAvailable" RENAME TO "StoreListingVersion_storeListingId_submissionStatus_isAvail_idx";
 
 -- Recreate the views with updated column references
 
@@ -261,7 +272,7 @@ FROM platform."StoreListing" sl
     LEFT JOIN platform."StoreListingVersion" slv ON slv."storeListingId" = sl.id
     LEFT JOIN reviewstats rs ON sl.id = rs."storeListingId"
     LEFT JOIN agentruns ar ON a.id = ar."agentGraphId"
-WHERE sl."isDeleted" = false AND sl."hasApprovedVersion" = true  -- Changed from isApproved to hasApprovedVersion
+WHERE sl."isDeleted" = false AND sl."hasApprovedVersion" = true AND slv."submissionStatus" = 'APPROVED'
 GROUP BY sl.id, slv.id, sl.slug, slv."createdAt", slv.name, slv."videoUrl", slv."imageUrls", 
     slv."isFeatured", p.username, p."avatarUrl", slv."subHeading", slv.description, 
     slv.categories, ar.run_count, rs.avg_rating;
@@ -282,7 +293,7 @@ WITH agentstats AS (
             FROM platform."AgentGraphExecution"
             GROUP BY "AgentGraphExecution"."agentGraphId"
         ) age ON age."agentGraphId" = sl."agentId"
-    WHERE sl."isDeleted" = false AND sl."hasApprovedVersion" = true  -- Changed from isApproved to hasApprovedVersion
+    WHERE sl."isDeleted" = false AND sl."hasApprovedVersion" = true AND slv."submissionStatus" = 'APPROVED'
     GROUP BY p_1.username
 )
 SELECT p.username,
@@ -301,6 +312,6 @@ FROM platform."Profile" p
         SELECT unnest(slv.categories) AS c
         FROM platform."StoreListing" sl
             JOIN platform."StoreListingVersion" slv ON slv."storeListingId" = sl.id
-        WHERE sl."owningUserId" = p."userId" AND sl."isDeleted" = false AND sl."hasApprovedVersion" = true  -- Changed from isApproved to hasApprovedVersion
+        WHERE sl."owningUserId" = p."userId" AND sl."isDeleted" = false AND sl."hasApprovedVersion" = true AND slv."submissionStatus" = 'APPROVED'
     ) cats ON true
 GROUP BY p.username, p.name, p."avatarUrl", p.description, p.links, p."isFeatured", ast.num_agents, ast.agent_rating, ast.agent_runs;

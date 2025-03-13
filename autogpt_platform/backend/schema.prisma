@@ -655,8 +655,6 @@ model StoreListingVersion {
   isDeleted   Boolean @default(false)
   // Old versions can be made unavailable by the author if desired
   isAvailable Boolean @default(true)
-  // Whether this version is approved
-  isApproved  Boolean @default(false)
 
   // Version workflow state
   submissionStatus SubmissionStatus @default(DRAFT)
@@ -683,7 +681,7 @@ model StoreListingVersion {
   reviews StoreListingReview[]
 
   @@unique([storeListingId, version])
-  @@index([storeListingId, isApproved, isAvailable])
+  @@index([storeListingId, submissionStatus, isAvailable])
   @@index([submissionStatus])
   @@index([reviewerId])
   @@index([agentId, agentVersion]) // Non-unique index for efficient lookups
