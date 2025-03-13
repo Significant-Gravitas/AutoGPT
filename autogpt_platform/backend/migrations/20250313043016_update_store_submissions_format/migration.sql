@@ -60,8 +60,7 @@ ADD COLUMN IF NOT EXISTS "reviewedAt" TIMESTAMP(3),
 ADD COLUMN IF NOT EXISTS "changesSummary" TEXT,
 ADD COLUMN IF NOT EXISTS "submissionStatus" "SubmissionStatus" NOT NULL DEFAULT 'DRAFT',
 ADD COLUMN IF NOT EXISTS "submittedAt" TIMESTAMP(3),
-ALTER COLUMN "storeListingId" SET NOT NULL,
-ALTER COLUMN "name" DROP NOT NULL;
+ALTER COLUMN "storeListingId" SET NOT NULL;
 
 -- NOW copy data from StoreListingSubmission to StoreListingVersion
 DO $$
