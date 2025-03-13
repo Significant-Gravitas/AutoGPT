@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Optional
 
@@ -67,6 +68,13 @@ class OttoService:
         """
         Send request to Otto API and handle the response.
         """
+        # Check if Otto API URL is configured
+        if not OTTO_API_URL:
+            logger.error("Otto API URL is not configured")
+            raise HTTPException(
+                status_code=503, detail="Otto service is not configured"
+            )
+
         try:
             async with aiohttp.ClientSession() as session:
                 headers = {
@@ -94,7 +102,10 @@ class OttoService:
                 logger.debug(f"Request payload: {payload}")
 
                 async with session.post(
-                    OTTO_API_URL, json=payload, headers=headers
+                    OTTO_API_URL,
+                    json=payload,
+                    headers=headers,
+                    timeout=aiohttp.ClientTimeout(total=60),
                 ) as response:
                     if response.status != 200:
                         error_text = await response.text()
@@ -114,6 +125,11 @@ class OttoService:
             logger.error(f"Connection error to Otto API: {str(e)}")
             raise HTTPException(
                 status_code=503, detail="Failed to connect to Otto service"
+            )
+        except asyncio.TimeoutError:
+            logger.error("Timeout error connecting to Otto API after 60 seconds")
+            raise HTTPException(
+                status_code=504, detail="Request to Otto service timed out"
             )
         except Exception as e:
             logger.error(f"Unexpected error in Otto API proxy: {str(e)}")

@@ -7,9 +7,9 @@ from prisma.enums import NotificationType
 from pydantic import BaseModel
 
 from backend.data.notifications import (
+    NotificationDataType_co,
     NotificationEventModel,
     NotificationTypeOverride,
-    T_co,
 )
 from backend.util.settings import Settings
 from backend.util.text import TextFormatter
@@ -48,7 +48,10 @@ class EmailSender:
         self,
         notification: NotificationType,
         user_email: str,
-        data: NotificationEventModel[T_co] | list[NotificationEventModel[T_co]],
+        data: (
+            NotificationEventModel[NotificationDataType_co]
+            | list[NotificationEventModel[NotificationDataType_co]]
+        ),
         user_unsub_link: str | None = None,
     ):
         """Send an email to a user using a template pulled from the notification type"""
