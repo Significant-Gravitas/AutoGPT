@@ -138,18 +138,15 @@ class NodeModel(Node):
         result = {}
         for key, value in input_data.items():
             field_schema: dict | None = field_schemas.get(key)
-            if isinstance(value, dict):
-                result[key] = NodeModel._filter_secrets_from_node_input(
-                    value, field_schema
-                )
-            elif (field_schema and field_schema.get("secret", False)) or (
-                isinstance(value, str)
-                and any(
-                    sensitive_key in key.lower() for sensitive_key in sensitive_keys
-                )
+            if (field_schema and field_schema.get("secret", False)) or any(
+                sensitive_key in key.lower() for sensitive_key in sensitive_keys
             ):
                 # This is a secret value -> filter this key-value pair out
                 continue
+            elif isinstance(value, dict):
+                result[key] = NodeModel._filter_secrets_from_node_input(
+                    value, field_schema
+                )
             else:
                 result[key] = value
         return result
