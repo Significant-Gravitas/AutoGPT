@@ -603,8 +603,11 @@ model StoreListing {
   updatedAt DateTime @default(now()) @updatedAt
 
   isDeleted          Boolean @default(false)
-  // Whether any version of this listing is approved and available for display
+  // Whether any version has been approved and is available for display
   hasApprovedVersion Boolean @default(false)
+  
+  // URL-friendly identifier for this agent (moved from StoreListingVersion)
+  slug        String  @unique
 
   // The currently active version that should be shown to users
   activeVersionId String?              @unique
@@ -640,8 +643,7 @@ model StoreListingVersion {
   Agent        AgentGraph @relation(fields: [agentId, agentVersion], references: [id, version])
 
   // Content fields
-  slug        String
-  name        String
+  name        String?
   subHeading  String
   videoUrl    String?
   imageUrls   String[]

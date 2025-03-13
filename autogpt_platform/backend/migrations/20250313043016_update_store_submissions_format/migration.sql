@@ -3,6 +3,7 @@
 
   - The values [DAFT] on the enum `SubmissionStatus` will be removed. If these variants are still used in the database, this will fail.
   - You are about to drop the column `isApproved` on the `StoreListing` table. All the data in the column will be lost.
+  - You are about to drop the column `slug` on the `StoreListingVersion` table. All the data in the column will be lost.
   - You are about to drop the `StoreListingSubmission` table. If the table is not empty, all the data it contains will be lost.
   - A unique constraint covering the columns `[activeVersionId]` on the table `StoreListing` will be added. If there are existing duplicate values, this will fail.
   - A unique constraint covering the columns `[storeListingId,version]` on the table `StoreListingVersion` will be added. If there are existing duplicate values, this will fail.
@@ -47,7 +48,8 @@ DROP INDEX IF EXISTS "StoreListingSubmission_storeListingVersionId_key";
 ALTER TABLE "StoreListing" 
 DROP COLUMN IF EXISTS "isApproved",
 ADD COLUMN IF NOT EXISTS "activeVersionId" TEXT,
-ADD COLUMN IF NOT EXISTS "hasApprovedVersion" BOOLEAN NOT NULL DEFAULT false;
+ADD COLUMN IF NOT EXISTS "hasApprovedVersion" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN IF NOT EXISTS "slug" TEXT;
 
 -- First add ALL columns to StoreListingVersion (including the submissionStatus column)
 ALTER TABLE "StoreListingVersion" 
@@ -60,7 +62,8 @@ ADD COLUMN IF NOT EXISTS "approvedAt" TIMESTAMP(3),
 ADD COLUMN IF NOT EXISTS "rejectedAt" TIMESTAMP(3),
 ADD COLUMN IF NOT EXISTS "submissionStatus" "SubmissionStatus" NOT NULL DEFAULT 'DRAFT',
 ADD COLUMN IF NOT EXISTS "submittedAt" TIMESTAMP(3),
-ALTER COLUMN "storeListingId" SET NOT NULL;
+ALTER COLUMN "storeListingId" SET NOT NULL,
+ALTER COLUMN "name" DROP NOT NULL;
 
 -- NOW copy data from StoreListingSubmission to StoreListingVersion
 DO $$
@@ -119,6 +122,27 @@ $$;
 -- Drop the StoreListingSubmission table
 DROP TABLE IF EXISTS "StoreListingSubmission";
 
+-- Copy slugs from StoreListingVersion to StoreListing
+WITH latest_versions AS (
+    SELECT 
+        "storeListingId",
+        "slug",
+        ROW_NUMBER() OVER (PARTITION BY "storeListingId" ORDER BY "version" DESC) as rn
+    FROM "StoreListingVersion"
+)
+UPDATE "StoreListing" sl
+SET "slug" = lv."slug"
+FROM latest_versions lv
+WHERE sl."id" = lv."storeListingId" AND lv.rn = 1;
+
+-- Make StoreListing.slug required and unique
+ALTER TABLE "StoreListing" ALTER COLUMN "slug" SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS "StoreListing_slug_key" ON "StoreListing"("slug");
+
+-- AlterTable
+ALTER TABLE "StoreListingVersion" DROP COLUMN "slug";
+
+
 -- Create new indexes
 CREATE UNIQUE INDEX IF NOT EXISTS "StoreListing_activeVersionId_key" 
 ON "StoreListing"("activeVersionId");
@@ -160,8 +184,8 @@ SELECT
     sl."owningUserId" AS user_id,
     slv."agentId" AS agent_id,
     slv.version AS agent_version,
-    slv.slug,
-    slv.name,
+    sl.slug,
+    COALESCE(slv.name, '') AS name,
     slv."subHeading" AS sub_heading,
     slv.description,
     slv."imageUrls" AS image_urls,
@@ -178,7 +202,7 @@ FROM platform."StoreListing" sl
         GROUP BY "AgentGraphExecution"."agentGraphId"
     ) ar ON ar."agentGraphId" = slv."agentId"
 WHERE sl."isDeleted" = false
-GROUP BY sl.id, sl."owningUserId", slv."agentId", slv.version, slv.slug, slv.name, 
+GROUP BY sl.id, sl."owningUserId", slv."agentId", slv.version, sl.slug, slv.name, 
     slv."subHeading", slv.description, slv."imageUrls", slv."submittedAt", slv."submissionStatus", ar.run_count;
 
 -- 2. Recreate StoreAgent view
@@ -201,8 +225,8 @@ WITH reviewstats AS (
 SELECT sl.id AS listing_id,
     slv.id AS "storeListingVersionId",
     slv."createdAt" AS updated_at,
-    slv.slug,
-    slv.name AS agent_name,
+    sl.slug,
+    COALESCE(slv.name, '') AS agent_name,
     slv."videoUrl" AS agent_video,
     COALESCE(slv."imageUrls", ARRAY[]::text[]) AS agent_image,
     slv."isFeatured" AS featured,
@@ -221,7 +245,7 @@ FROM platform."StoreListing" sl
     LEFT JOIN reviewstats rs ON sl.id = rs."storeListingId"
     LEFT JOIN agentruns ar ON a.id = ar."agentGraphId"
 WHERE sl."isDeleted" = false AND sl."hasApprovedVersion" = true  -- Changed from isApproved to hasApprovedVersion
-GROUP BY sl.id, slv.id, slv.slug, slv."createdAt", slv.name, slv."videoUrl", slv."imageUrls", 
+GROUP BY sl.id, slv.id, sl.slug, slv."createdAt", slv.name, slv."videoUrl", slv."imageUrls", 
     slv."isFeatured", p.username, p."avatarUrl", slv."subHeading", slv.description, 
     slv.categories, ar.run_count, rs.avg_rating;
 
