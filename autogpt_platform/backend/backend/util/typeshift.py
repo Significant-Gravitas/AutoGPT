@@ -95,7 +95,7 @@ def _transform_type_recursive(tp: Any, local_cache: dict[Any, Any]) -> Any:
     # 4) If it's a Pydantic model class
     if inspect.isclass(tp) and issubclass(tp, BaseModel):
         # Ensure forward references in the original are resolved
-        tp.model_rebuild()
+        tp.model_rebuild(force=True)
         new_model = _transform_model(tp, local_cache)
         local_cache[tp] = new_model
         return new_model
@@ -141,7 +141,7 @@ def _transform_model(
     # Build a new model class
     new_name = f"{model_cls.__name__}Transformed"
     NewModel = create_model(new_name, __base__=model_cls, **field_defs)
-    NewModel.model_rebuild()
+    NewModel.model_rebuild(force=True)
 
     local_cache[model_cls] = NewModel
     return NewModel
