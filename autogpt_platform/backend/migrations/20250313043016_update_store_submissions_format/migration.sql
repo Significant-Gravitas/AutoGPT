@@ -113,7 +113,14 @@ BEGIN
     SET "submissionStatus" = s."Status"
     FROM "StoreListingSubmission" AS s
     WHERE v."id" = s."storeListingVersionId";
-END
+    
+    -- Update reviewedAt timestamps for versions with APPROVED or REJECTED status
+    UPDATE "StoreListingVersion" AS v
+    SET "reviewedAt" = s."updatedAt"
+    FROM "StoreListingSubmission" AS s
+    WHERE v."id" = s."storeListingVersionId"
+    AND s."Status" IN ('APPROVED', 'REJECTED');
+END;
 $$;
 
 -- Drop the StoreListingSubmission table
@@ -180,6 +187,10 @@ ON DELETE SET NULL ON UPDATE CASCADE;
 -- Add index for reviewer
 CREATE INDEX IF NOT EXISTS "StoreListingVersion_reviewerId_idx" 
 ON "StoreListingVersion"("reviewerId");
+
+
+-- DropIndex
+DROP INDEX "StoreListingVersion_agentId_agentVersion_key";
 
 -- Recreate the views with updated column references
 
