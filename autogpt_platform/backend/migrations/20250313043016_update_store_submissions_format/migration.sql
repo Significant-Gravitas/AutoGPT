@@ -220,7 +220,14 @@ SELECT
     slv."submittedAt" AS date_submitted,
     slv."submissionStatus" AS status,
     COALESCE(ar.run_count, 0::bigint) AS runs,
-    COALESCE(avg(sr.score::numeric), 0.0)::double precision AS rating
+    COALESCE(avg(sr.score::numeric), 0.0)::double precision AS rating,
+    -- Add the additional fields needed by the Pydantic model
+    slv.id AS store_listing_version_id,
+    slv."reviewerId" AS reviewer_id,
+    slv."reviewComments" AS review_comments,
+    slv."internalComments" AS internal_comments,
+    slv."reviewedAt" AS reviewed_at,
+    slv."changesSummary" AS changes_summary
 FROM platform."StoreListing" sl
     JOIN platform."StoreListingVersion" slv ON slv."storeListingId" = sl.id
     LEFT JOIN platform."StoreListingReview" sr ON sr."storeListingVersionId" = slv.id
@@ -230,8 +237,10 @@ FROM platform."StoreListing" sl
         GROUP BY "AgentGraphExecution"."agentGraphId"
     ) ar ON ar."agentGraphId" = slv."agentId"
 WHERE sl."isDeleted" = false
-GROUP BY sl.id, sl."owningUserId", slv."agentId", slv.version, sl.slug, slv.name, 
-    slv."subHeading", slv.description, slv."imageUrls", slv."submittedAt", slv."submissionStatus", ar.run_count;
+GROUP BY sl.id, sl."owningUserId", slv.id, slv."agentId", slv.version, sl.slug, slv.name, 
+    slv."subHeading", slv.description, slv."imageUrls", slv."submittedAt", slv."submissionStatus",
+    slv."reviewerId", slv."reviewComments", slv."internalComments", slv."reviewedAt", slv."changesSummary", ar.run_count;
+
 
 -- 2. Recreate StoreAgent view
 CREATE VIEW platform."StoreAgent" AS  

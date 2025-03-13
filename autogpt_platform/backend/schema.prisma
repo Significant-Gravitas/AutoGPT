@@ -593,6 +593,12 @@ view StoreSubmission {
   rating         Float
   agent_id       String
   agent_version  Int
+  store_listing_version_id String
+  reviewer_id String?
+  review_comments String?
+  internal_comments String?
+  reviewed_at DateTime?
+  changes_summary String?
 
   // Index or unique are not applied to views
 }
