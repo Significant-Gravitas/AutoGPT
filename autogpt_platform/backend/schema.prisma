@@ -686,7 +686,6 @@ model StoreListingVersion {
   // Reviews for this specific version
   reviews StoreListingReview[]
 
-  @@unique([agentId, agentVersion])
   @@unique([storeListingId, version])
   @@index([storeListingId, isApproved, isAvailable])
   @@index([submissionStatus])

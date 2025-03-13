@@ -139,8 +139,11 @@ WHERE sl."id" = lv."storeListingId" AND lv.rn = 1;
 ALTER TABLE "StoreListing" ALTER COLUMN "slug" SET NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS "StoreListing_slug_key" ON "StoreListing"("slug");
 
--- AlterTable
+-- Drop the slug column from StoreListingVersion since it's now on StoreListing
 ALTER TABLE "StoreListingVersion" DROP COLUMN "slug";
+
+-- Drop the unique constraint on agentId, agentVersion in StoreListingVersion
+ALTER TABLE "StoreListingVersion" DROP CONSTRAINT IF EXISTS "StoreListingVersion_agentId_agentVersion_key";
 
 
 -- Create new indexes
