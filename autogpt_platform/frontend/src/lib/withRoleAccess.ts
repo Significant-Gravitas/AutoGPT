@@ -4,8 +4,7 @@ import { redirect } from "next/navigation";
 import getServerUser from "./supabase/getServerUser";
 
 export async function withRoleAccess(allowedRoles: string[]) {
-  console.log("withRoleAccess called:", allowedRoles);
-  ("use server");
+  "use server";
   return await Sentry.withServerActionInstrumentation(
     "withRoleAccess",
     {},

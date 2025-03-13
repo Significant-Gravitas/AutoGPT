@@ -9,7 +9,6 @@ const PROTECTED_PAGES = [
   "/profile",
   "/library",
   "/monitoring",
-  "/onboarding",
 ];
 const ADMIN_PAGES = ["/admin"];
 
@@ -78,7 +77,6 @@ export async function updateSession(request: NextRequest) {
       // If trying to access any protected content without being logged in,
       // redirect to login page
       if (isAttemptingProtectedPage || isAttemptingAdminPage) {
-        console.log("Unauthenticated user redirected to login");
         url.pathname = `/login`;
         return NextResponse.redirect(url);
       }
@@ -93,7 +91,6 @@ export async function updateSession(request: NextRequest) {
       // If a non-admin user is trying to access admin pages,
       // redirect to marketplace
       if (isAttemptingAdminPage) {
-        console.log("Non-admin user redirected to marketplace");
         url.pathname = `/marketplace`;
         return NextResponse.redirect(url);
       }
