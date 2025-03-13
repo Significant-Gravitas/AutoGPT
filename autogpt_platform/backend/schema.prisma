@@ -660,10 +660,7 @@ model StoreListingVersion {
 
   // Version workflow state
   submissionStatus SubmissionStatus @default(DRAFT)
-
-  // State transition timestamps
   submittedAt DateTime?
-  reviewedAt  DateTime?
 
   // Relations
   storeListingId String
