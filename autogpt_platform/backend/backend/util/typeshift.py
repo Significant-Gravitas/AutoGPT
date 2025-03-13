@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-from enum import StrEnum
 from types import UnionType
 from typing import Any, Union, get_args, get_origin
 
@@ -16,7 +15,6 @@ from pydantic import BaseModel, Json, create_model
 GLOBAL_REPLACEMENTS: dict[Any, Any] = {
     Json: Any,
     PrismaJson: Any,
-    StrEnum: str,
 }
 
 
