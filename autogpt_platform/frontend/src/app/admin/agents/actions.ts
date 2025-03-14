@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import BackendApi from "@/lib/autogpt-server-api";
 import {
   NotificationPreferenceDTO,
+  StoreListingsWithVersionsResponse,
   StoreSubmissionsResponse,
   SubmissionStatus,
 } from "@/lib/autogpt-server-api/types";
@@ -54,4 +55,29 @@ export async function getSubmissions(): Promise<StoreSubmissionsResponse> {
   const api = new BackendApi();
   const submission = await api.getSubmissionsAdmin(data);
   return submission;
+}
+
+export async function getAdminListingsWithVersions(
+  status?: SubmissionStatus,
+  search?: string,
+  page: number = 1,
+  pageSize: number = 20,
+): Promise<StoreListingsWithVersionsResponse> {
+  console.log("getting admin listings with versions");
+  const data: Record<string, any> = {
+    page,
+    page_size: pageSize,
+  };
+  
+  if (status) {
+    data.status = status;
+  }
+  
+  if (search) {
+    data.search = search;
+  }
+  
+  const api = new BackendApi();
+  const response = await api.getAdminListingsWithVersions(data);
+  return response;
 }

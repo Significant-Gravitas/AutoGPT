@@ -39,6 +39,8 @@ import {
   ScheduleID,
   StoreAgentDetails,
   StoreAgentsResponse,
+  StoreListingWithVersions,
+  StoreListingsWithVersionsResponse,
   StoreReview,
   StoreReviewCreate,
   StoreSubmission,
@@ -545,6 +547,15 @@ export default class BackendAPI {
       `/store/admin/submissions/listing/${params?.listing_id}/history`,
       params,
     );
+  }
+
+  getAdminListingsWithVersions(params?: {
+    status?: SubmissionStatus;
+    search?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<StoreListingsWithVersionsResponse> {
+    return this._get("/store/admin/listings", params);
   }
 
   reviewSubmissionAdmin(

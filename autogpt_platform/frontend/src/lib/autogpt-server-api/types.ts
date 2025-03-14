@@ -1,4 +1,9 @@
-export type SubmissionStatus = "DRAFT" | "PENDING" | "APPROVED" | "REJECTED";
+export enum SubmissionStatus {
+  DRAFT = "DRAFT",
+  PENDING = "PENDING",
+  APPROVED = "APPROVED",
+  REJECTED = "REJECTED"
+}
 export type ReviewSubmissionRequest = {
   store_listing_version_id: string;
   is_approved: boolean;
@@ -612,6 +617,7 @@ export type StoreSubmission = {
   rating: number;
   slug: string;
   store_listing_version_id?: string;
+  version?: number; // Actual version number from the database
 
   // Review information
   reviewer_id?: string;
@@ -791,6 +797,23 @@ export interface OttoQuery {
   message_id: string;
   include_graph_data: boolean;
   graph_id?: string;
+}
+
+export interface StoreListingWithVersions {
+  listing_id: string;
+  slug: string;
+  agent_id: string;
+  agent_version: number;
+  active_version_id: string | null;
+  has_approved_version: boolean;
+  creator_email: string | null;
+  latest_version: StoreSubmission | null;
+  versions: StoreSubmission[];
+}
+
+export interface StoreListingsWithVersionsResponse {
+  listings: StoreListingWithVersions[];
+  pagination: Pagination;
 }
 
 // Admin API Types

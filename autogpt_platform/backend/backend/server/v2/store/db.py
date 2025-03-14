@@ -509,18 +509,34 @@ async def create_store_submission(
                 f"Agent not found for this user. User ID: {user_id}, Agent ID: {agent_id}, Version: {agent_version}"
             )
 
-        listing = await prisma.models.StoreListing.prisma().find_first(
+        # Check if listing already exists for this agent
+        existing_listing = await prisma.models.StoreListing.prisma().find_first(
             where=prisma.types.StoreListingWhereInput(
                 agentId=agent_id, owningUserId=user_id
             )
         )
-        if listing is not None:
-            logger.warning(f"Listing already exists for agent {agent_id}")
-            raise backend.server.v2.store.exceptions.ListingExistsError(
-                "Listing already exists for this agent"
+
+        if existing_listing is not None:
+            logger.info(
+                f"Listing already exists for agent {agent_id}, creating new version instead"
             )
 
-        # Create the store listing
+            # Delegate to create_store_version which already handles this case correctly
+            return await create_store_version(
+                user_id=user_id,
+                agent_id=agent_id,
+                agent_version=agent_version,
+                store_listing_id=existing_listing.id,
+                name=name,
+                video_url=video_url,
+                image_urls=image_urls,
+                description=description,
+                sub_heading=sub_heading,
+                categories=categories,
+                changes_summary=changes_summary,
+            )
+
+        # If no existing listing, create a new one
         data = prisma.types.StoreListingCreateInput(
             slug=slug,
             agentId=agent_id,
@@ -583,6 +599,134 @@ async def create_store_submission(
         logger.error(f"Database error creating store submission: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to create store submission"
+        ) from e
+
+
+async def create_store_version(
+    user_id: str,
+    agent_id: str,
+    agent_version: int,
+    store_listing_id: str,
+    name: str,
+    video_url: str | None = None,
+    image_urls: list[str] = [],
+    description: str = "",
+    sub_heading: str = "",
+    categories: list[str] = [],
+    changes_summary: str = "Update Submission",
+) -> backend.server.v2.store.model.StoreSubmission:
+    """
+    Create a new version for an existing store listing
+
+    Args:
+        user_id: ID of the authenticated user submitting the version
+        agent_id: ID of the agent being submitted
+        agent_version: Version of the agent being submitted
+        store_listing_id: ID of the existing store listing
+        name: Name of the agent
+        video_url: Optional URL to video demo
+        image_urls: List of image URLs for the listing
+        description: Description of the agent
+        categories: List of categories for the agent
+        changes_summary: Summary of changes from the previous version
+
+    Returns:
+        StoreSubmission: The created store submission
+    """
+    logger.debug(
+        f"Creating new version for store listing {store_listing_id} for user {user_id}, agent {agent_id} v{agent_version}"
+    )
+
+    try:
+        # First verify the listing belongs to this user
+        listing = await prisma.models.StoreListing.prisma().find_first(
+            where=prisma.types.StoreListingWhereInput(
+                id=store_listing_id, owningUserId=user_id
+            )
+        )
+
+        if not listing:
+            logger.warning(
+                f"Store listing not found for user {user_id}: {store_listing_id}"
+            )
+            raise backend.server.v2.store.exceptions.ListingNotFoundError(
+                f"Store listing not found. User ID: {user_id}, Listing ID: {store_listing_id}"
+            )
+
+        # Verify the agent belongs to this user
+        agent = await prisma.models.AgentGraph.prisma().find_first(
+            where=prisma.types.AgentGraphWhereInput(
+                id=agent_id, version=agent_version, userId=user_id
+            )
+        )
+
+        if not agent:
+            logger.warning(
+                f"Agent not found for user {user_id}: {agent_id} v{agent_version}"
+            )
+            raise backend.server.v2.store.exceptions.AgentNotFoundError(
+                f"Agent not found for this user. User ID: {user_id}, Agent ID: {agent_id}, Version: {agent_version}"
+            )
+
+        # Get the latest version number
+        latest_version = await prisma.models.StoreListingVersion.prisma().find_first(
+            where=prisma.types.StoreListingVersionWhereInput(
+                storeListingId=store_listing_id
+            ),
+            order=[{"version": "desc"}],
+        )
+
+        next_version = (latest_version.version + 1) if latest_version else 1
+
+        # Create a new version for the existing listing
+        new_version = await prisma.models.StoreListingVersion.prisma().create(
+            data=prisma.types.StoreListingVersionCreateInput(
+                version=next_version,
+                agentId=agent_id,
+                agentVersion=agent_version,
+                name=name,
+                videoUrl=video_url,
+                imageUrls=image_urls,
+                description=description,
+                categories=categories,
+                subHeading=sub_heading,
+                submissionStatus=prisma.enums.SubmissionStatus.PENDING,
+                submittedAt=datetime.now(),
+                changesSummary=changes_summary,
+                storeListingId=store_listing_id,  # Direct assignment instead of connect
+            )
+        )
+
+        logger.debug(
+            f"Created new version for listing {store_listing_id} of agent {agent_id}"
+        )
+        # Return submission details
+        return backend.server.v2.store.model.StoreSubmission(
+            agent_id=agent_id,
+            agent_version=agent_version,
+            name=name,
+            slug=listing.slug,
+            sub_heading=sub_heading,
+            description=description,
+            image_urls=image_urls,
+            date_submitted=datetime.now(),
+            status=prisma.enums.SubmissionStatus.PENDING,
+            runs=0,
+            rating=0.0,
+            store_listing_version_id=new_version.id,
+            changes_summary=changes_summary,
+            version=next_version,  # Include the actual version number
+        )
+
+    except (
+        backend.server.v2.store.exceptions.AgentNotFoundError,
+        backend.server.v2.store.exceptions.ListingNotFoundError,
+    ):
+        raise
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error creating store version: {e}")
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to create new store version"
         ) from e
 
 
@@ -1111,6 +1255,7 @@ async def get_listing_submissions_history(
                     internal_comments=version.internalComments,
                     reviewed_at=version.reviewedAt,
                     changes_summary=version.changesSummary,
+                    version=version.version,  # Include the actual version number
                 )
             )
 
@@ -1157,6 +1302,182 @@ async def get_pending_submissions(
         page=page,
         page_size=page_size,
     )
+
+
+async def get_admin_listings_with_versions(
+    status: prisma.enums.SubmissionStatus | None = None,
+    search_query: str | None = None,
+    page: int = 1,
+    page_size: int = 20,
+) -> backend.server.v2.store.model.StoreListingsWithVersionsResponse:
+    """
+    Get store listings for admins with all their versions.
+
+    Args:
+        status: Filter by submission status (PENDING, APPROVED, REJECTED)
+        search_query: Search by name, description, or user email
+        page: Page number for pagination
+        page_size: Number of items per page
+
+    Returns:
+        StoreListingsWithVersionsResponse with listings and their versions
+    """
+    logger.debug(
+        f"Getting admin store listings with status={status}, search={search_query}, page={page}"
+    )
+
+    try:
+        # Build the where clause for StoreListing
+        where_dict = {}
+        where_dict["isDeleted"] = False
+
+        sanitized_query = sanitize_query(search_query)
+        if sanitized_query:
+            # Find users with matching email
+            matching_users = await prisma.models.User.prisma().find_many(
+                where={"email": {"contains": sanitized_query, "mode": "insensitive"}},
+            )
+
+            user_ids = [user.id for user in matching_users]
+
+            # Set up OR conditions
+            where_dict["OR"] = [
+                {"slug": {"contains": sanitized_query, "mode": "insensitive"}},
+                {
+                    "versions": {
+                        "some": {
+                            "name": {"contains": sanitized_query, "mode": "insensitive"}
+                        }
+                    }
+                },
+                {
+                    "versions": {
+                        "some": {
+                            "description": {
+                                "contains": sanitized_query,
+                                "mode": "insensitive",
+                            }
+                        }
+                    }
+                },
+                {
+                    "versions": {
+                        "some": {
+                            "subHeading": {
+                                "contains": sanitized_query,
+                                "mode": "insensitive",
+                            }
+                        }
+                    }
+                },
+            ]
+
+            # Add user_id condition if any users matched
+            if user_ids:
+                where_dict["OR"].append({"owningUserId": {"in": user_ids}})
+
+        # Calculate pagination
+        skip = (page - 1) * page_size
+
+        # Create proper Prisma types for the query
+        where = prisma.types.StoreListingWhereInput(**where_dict)
+        include = prisma.types.StoreListingInclude(versions=True, OwningUser=True)
+
+        # Query listings with their versions
+        listings = await prisma.models.StoreListing.prisma().find_many(
+            where=where,
+            skip=skip,
+            take=page_size,
+            include=include,
+            order=[{"createdAt": "desc"}],
+        )
+
+        # Get total count for pagination
+        total = await prisma.models.StoreListing.prisma().count(where=where)
+        total_pages = (total + page_size - 1) // page_size
+
+        # Convert to response models
+        listings_with_versions = []
+        for listing in listings:
+            versions = []
+            # Filter versions by status if specified and ensure versions is not None
+            if listing.versions is not None:
+                filtered_versions = [
+                    v
+                    for v in listing.versions
+                    if status is None or v.submissionStatus == status
+                ]
+
+                # Skip listings with no matching versions if a status filter is applied
+                if status and not filtered_versions:
+                    continue
+
+                for version in filtered_versions:
+                    version_model = backend.server.v2.store.model.StoreSubmission(
+                        agent_id=version.agentId,
+                        agent_version=version.agentVersion,
+                        name=version.name,
+                        sub_heading=version.subHeading,
+                        slug=listing.slug,
+                        description=version.description,
+                        image_urls=version.imageUrls or [],
+                        date_submitted=version.submittedAt or version.createdAt,
+                        status=version.submissionStatus,
+                        runs=0,  # Default values since we don't have this data here
+                        rating=0.0,  # Default values since we don't have this data here
+                        store_listing_version_id=version.id,
+                        reviewer_id=version.reviewerId,
+                        review_comments=version.reviewComments,
+                        internal_comments=version.internalComments,
+                        reviewed_at=version.reviewedAt,
+                        changes_summary=version.changesSummary,
+                        version=version.version,  # Include the actual version number
+                    )
+                    versions.append(version_model)
+
+            # Get the latest version (first in the sorted list)
+            latest_version = versions[0] if versions else None
+
+            creator_email = listing.OwningUser.email if listing.OwningUser else None
+
+            listing_with_versions = (
+                backend.server.v2.store.model.StoreListingWithVersions(
+                    listing_id=listing.id,
+                    slug=listing.slug,
+                    agent_id=listing.agentId,
+                    agent_version=listing.agentVersion,
+                    active_version_id=listing.activeVersionId,
+                    has_approved_version=listing.hasApprovedVersion,
+                    creator_email=creator_email,
+                    latest_version=latest_version,
+                    versions=versions,
+                )
+            )
+
+            listings_with_versions.append(listing_with_versions)
+
+        logger.debug(f"Found {len(listings_with_versions)} listings for admin")
+        return backend.server.v2.store.model.StoreListingsWithVersionsResponse(
+            listings=listings_with_versions,
+            pagination=backend.server.v2.store.model.Pagination(
+                current_page=page,
+                total_items=total,
+                total_pages=total_pages,
+                page_size=page_size,
+            ),
+        )
+    except Exception as e:
+        logger.error(f"Error fetching admin store listings: {e}")
+        # Return empty response rather than exposing internal errors
+        return backend.server.v2.store.model.StoreListingsWithVersionsResponse(
+            listings=[],
+            pagination=backend.server.v2.store.model.Pagination(
+                current_page=page,
+                total_items=0,
+                total_pages=0,
+                page_size=page_size,
+            ),
+        )
 
 
 async def get_submission_details(
@@ -1227,6 +1548,7 @@ async def get_submission_details(
             internal_comments=version.internalComments,
             reviewed_at=version.reviewedAt,
             changes_summary=version.changesSummary,
+            version=version.version,  # Include the actual version number
         )
 
     except backend.server.v2.store.exceptions.SubmissionNotFoundError:
