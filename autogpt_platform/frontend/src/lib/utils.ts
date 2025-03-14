@@ -390,3 +390,8 @@ export function getValue(key: string, value: any) {
     return acc[k.key];
   }, value);
 }
+
+/** Check if a string is empty or whitespace */
+export function isEmptyOrWhitespace(str: string | undefined | null): boolean {
+  return !str || str.trim().length === 0;
+}
