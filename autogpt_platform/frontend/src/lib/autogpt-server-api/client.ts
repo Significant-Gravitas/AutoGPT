@@ -183,6 +183,11 @@ export default class BackendAPI {
     return this._get("/onboarding/agents");
   }
 
+  /** Check if onboarding is enabled not if user finished it or not. */
+  isOnboardingEnabled(): Promise<boolean> {
+    return this._get("/onboarding/enabled");
+  }
+
   ////////////////////////////////////////
   /////////// GRAPHS /////////////////////
   ////////////////////////////////////////

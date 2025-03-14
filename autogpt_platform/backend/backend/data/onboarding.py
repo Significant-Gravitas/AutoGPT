@@ -243,3 +243,10 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
         )
         for agent in recommended_agents
     ]
+
+
+async def onboarding_enabled() -> bool:
+    count = await prisma.models.StoreAgent.prisma().count(take=3)
+
+    # Onboading is enabled if there are at least 2 agents in the store
+    return count >= 2

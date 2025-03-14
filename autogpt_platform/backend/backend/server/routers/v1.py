@@ -47,6 +47,7 @@ from backend.data.onboarding import (
     UserOnboardingUpdate,
     get_recommended_agents,
     get_user_onboarding,
+    onboarding_enabled,
     update_user_onboarding,
 )
 from backend.data.user import (
@@ -188,6 +189,17 @@ async def get_onboarding_agents(
     user_id: Annotated[str, Depends(get_user_id)],
 ):
     return await get_recommended_agents(user_id)
+
+
+@v1_router.get(
+    "/onboarding/enabled",
+    tags=["onboarding"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def is_onboarding_enabled(
+    user_id: Annotated[str, Depends(get_user_id)],
+):
+    return await onboarding_enabled()
 
 
 ########################################################
