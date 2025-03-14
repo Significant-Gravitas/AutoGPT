@@ -22,35 +22,29 @@ To run the AutoGPT Platform, follow these steps:
 
 2. Run the following command:
    ```
-   git submodule update --init --recursive --progress
+   cp .env.example .env
    ```
-   This command will initialize and update the submodules in the repository. The `supabase` folder will be cloned to the root directory.
+   This command will copy the `.env.example` file to `.env`. You can modify the `.env` file to add your own environment variables.
 
 3. Run the following command:
-   ```
-   cp supabase/docker/.env.example .env
-   ```
-   This command will copy the `.env.example` file to `.env` in the `supabase/docker` directory. You can modify the `.env` file to add your own environment variables.
-
-4. Run the following command:
    ```
    docker compose up -d
    ```
    This command will start all the necessary backend services defined in the `docker-compose.yml` file in detached mode.
 
-5. Navigate to `frontend` within the `autogpt_platform` directory:
+4. Navigate to `frontend` within the `autogpt_platform` directory:
    ```
    cd frontend
    ```
    You will need to run your frontend application separately on your local machine.
 
-6. Run the following command: 
+5. Run the following command: 
    ```
    cp .env.example .env.local
    ```
    This command will copy the `.env.example` file to `.env.local` in the `frontend` directory. You can modify the `.env.local` within this folder to add your own environment variables for the frontend application.
 
-7. Run the following command:
+6. Run the following command:
    ```
    npm install
    npm run dev
@@ -61,7 +55,7 @@ To run the AutoGPT Platform, follow these steps:
    yarn install && yarn dev
    ```
 
-8. Open your browser and navigate to `http://localhost:3000` to access the AutoGPT Platform frontend.
+7. Open your browser and navigate to `http://localhost:3000` to access the AutoGPT Platform frontend.
 
 ### Docker Compose Commands
 

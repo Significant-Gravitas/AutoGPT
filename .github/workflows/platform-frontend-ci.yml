@@ -82,7 +82,7 @@ jobs:
 
       - name: Copy default supabase .env
         run: |
-          cp ../supabase/docker/.env.example ../.env
+          cp ../.env.example ../.env
 
       - name: Copy backend .env
         run: |
