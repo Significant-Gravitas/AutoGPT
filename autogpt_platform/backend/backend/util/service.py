@@ -455,7 +455,7 @@ def fastapi_get_service_client(
                 return response.json()
             except httpx.HTTPStatusError as e:
                 logger.error(f"HTTP error in {method_name}: {e.response.text}")
-                error = RemoteCallError.model_validate(e.response.json(), strict=False)
+                error = RemoteCallError.model_validate(e.response.json())
                 # DEBUG HELP: if you made a custom exception, make sure you override self.args to be how to make your exception
                 raise EXCEPTION_MAPPING.get(error.type, Exception)(
                     *(error.args or [str(e)])
