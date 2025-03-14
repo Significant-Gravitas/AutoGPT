@@ -1,29 +1,51 @@
-import { withRoleAccess } from "@/lib/withRoleAccess";
-import React from "react";
-import { AdminAgentsDataTable } from "@/components/admin/agents/AdminAgentsDataTable";
+import { withRoleAccess } from "@/lib/withRoleAccess"
+import { Suspense } from "react"
+import type { SubmissionStatus } from "@/lib/autogpt-server-api/types"
+import { AdminAgentsDataTable } from "@/components/admin/agents/admin-agents-data-table"
 
-async function AgentsSettings() {
+async function AgentsSettings({
+  searchParams,
+}: {
+  searchParams: {
+    page?: string
+    status?: string
+    search?: string
+  }
+}) {
+  const page = searchParams.page ? Number.parseInt(searchParams.page) : 1
+  const status = searchParams.status as SubmissionStatus | undefined
+  const search = searchParams.search
+
   return (
     <div className="container mx-auto p-6">
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold">Agent Operations</h1>
-            <p className="text-gray-500">
-              Unified view for agent management and approval history
-            </p>
+            <p className="text-gray-500">Unified view for agent management and approval history</p>
           </div>
         </div>
 
-        <AdminAgentsDataTable />
+        <Suspense fallback={<div className="text-center py-10">Loading submissions...</div>}>
+          <AdminAgentsDataTable initialPage={page} initialStatus={status} initialSearch={search} />
+        </Suspense>
       </div>
     </div>
-  );
+  )
 }
 
-export default async function AgentSettingsPage() {
-  "use server";
-  const withAdminAccess = await withRoleAccess(["admin"]);
-  const ProtectedAgentSettings = await withAdminAccess(AgentsSettings);
-  return <ProtectedAgentSettings />;
+export default async function AgentSettingsPage({
+  searchParams,
+}: {
+  searchParams: {
+    page?: string
+    status?: string
+    search?: string
+  }
+}) {
+  "use server"
+  const withAdminAccess = await withRoleAccess(["admin"])
+  const ProtectedAgentSettings = await withAdminAccess(AgentsSettings)
+  return <ProtectedAgentSettings searchParams={searchParams} />
 }
+
