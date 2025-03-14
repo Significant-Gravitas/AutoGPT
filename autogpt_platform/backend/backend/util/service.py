@@ -47,7 +47,6 @@ from backend.util.json import to_dict
 from backend.util.process import AppProcess
 from backend.util.retry import conn_retry
 from backend.util.settings import Config, Secrets
-from backend.util.typeshift import transform_type
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -474,7 +473,7 @@ def fastapi_get_service_client(
             sig = inspect.signature(orig_func)
             ret_ann = sig.return_annotation
             if ret_ann != inspect.Signature.empty:
-                expected_return = TypeAdapter(transform_type(ret_ann))
+                expected_return = TypeAdapter(ret_ann)
             else:
                 expected_return = None
 
