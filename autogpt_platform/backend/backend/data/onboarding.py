@@ -27,14 +27,13 @@ REASON_MAPPING: dict[str, list[str]] = {
 
 
 class UserOnboardingUpdate(pydantic.BaseModel):
-    step: int
+    completedSteps: list[str] = pydantic.Field(default_factory=list)
     usageReason: Optional[str] = None
     integrations: list[str] = pydantic.Field(default_factory=list)
     otherIntegrations: Optional[str] = None
     selectedAgentCreator: Optional[str] = None
     selectedAgentSlug: Optional[str] = None
     agentInput: Optional[dict[str, Any]] = None
-    isCompleted: bool = False
 
 
 async def get_user_onboarding(user_id: str):
@@ -50,10 +49,9 @@ async def get_user_onboarding(user_id: str):
 async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     # Get the user onboarding data
     user_onboarding = await get_user_onboarding(user_id)
-    update: UserOnboardingUpdateInput = {
-        "step": data.step,
-        "isCompleted": data.isCompleted,
-    }
+    update: UserOnboardingUpdateInput = {}
+    if data.completedSteps:
+        update["completedSteps"] = data.completedSteps
     if data.usageReason:
         update["usageReason"] = data.usageReason
     if data.integrations:
