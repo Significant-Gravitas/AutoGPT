@@ -29,7 +29,6 @@ export async function sendResetEmail(email: string) {
         return error.message;
       }
 
-      console.log("Reset email sent");
       redirect("/reset_password");
     },
   );

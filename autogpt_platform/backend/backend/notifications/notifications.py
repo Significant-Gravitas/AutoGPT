@@ -23,23 +23,12 @@ from backend.data.notifications import (
     SummaryParamsEventModel,
     WeeklySummaryData,
     WeeklySummaryParams,
-    create_or_add_to_user_notification_batch,
-    empty_user_notification_batch,
-    get_all_batches_by_type,
     get_batch_delay,
     get_notif_data_type,
     get_summary_params_type,
-    get_user_notification_batch,
-    get_user_notification_oldest_message_in_batch,
 )
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
-from backend.data.user import (
-    generate_unsubscribe_link,
-    get_active_user_ids_in_timerange,
-    get_user_email_by_id,
-    get_user_email_verification,
-    get_user_notification_preference,
-)
+from backend.data.user import generate_unsubscribe_link
 from backend.notifications.email import EmailSender
 from backend.util.service import AppService, expose, get_service_client
 from backend.util.settings import Settings
@@ -86,7 +75,6 @@ def create_notification_config() -> RabbitMQConfig:
             routing_key="notification.summary.#",
             arguments={
                 "x-dead-letter-exchange": dead_letter_exchange.name,
-                "x-dead-letter-routing-key": "failed.summary.weekly",
                 "x-dead-letter-routing-key": "failed.summary",
             },
         ),
@@ -124,12 +112,18 @@ def get_scheduler():
     return get_service_client(Scheduler)
 
 
+@thread_cached
+def get_db():
+    from backend.executor.database import DatabaseManager
+
+    return get_service_client(DatabaseManager)
+
+
 class NotificationManager(AppService):
     """Service for handling notifications with batching support"""
 
     def __init__(self):
         super().__init__()
-        self.use_db = True
         self.rabbitmq_config = create_notification_config()
         self.running = True
         self.email_sender = EmailSender()
@@ -161,11 +155,9 @@ class NotificationManager(AppService):
             processed_count = 0
             current_time = datetime.now(tz=timezone.utc)
             start_time = current_time - timedelta(days=7)
-            users = self.run_and_wait(
-                get_active_user_ids_in_timerange(
-                    end_time=current_time.isoformat(),
-                    start_time=start_time.isoformat(),
-                )
+            users = get_db().get_active_user_ids_in_timerange(
+                end_time=current_time.isoformat(),
+                start_time=start_time.isoformat(),
             )
             for user in users:
 
@@ -195,80 +187,74 @@ class NotificationManager(AppService):
 
             for notification_type in notification_types:
                 # Get all batches for this notification type
-                batches = self.run_and_wait(get_all_batches_by_type(notification_type))
+                batches = get_db().get_all_batches_by_type(notification_type)
 
                 for batch in batches:
                     # Check if batch has aged out
-                    oldest_message = self.run_and_wait(
-                        get_user_notification_oldest_message_in_batch(
-                            batch.userId, notification_type
+                    oldest_message = (
+                        get_db().get_user_notification_oldest_message_in_batch(
+                            batch.user_id, notification_type
                         )
                     )
 
                     if not oldest_message:
                         # this should never happen
                         logger.error(
-                            f"Batch for user {batch.userId} and type {notification_type} has no oldest message whichshould never happen!!!!!!!!!!!!!!!!"
+                            f"Batch for user {batch.user_id} and type {notification_type} has no oldest message whichshould never happen!!!!!!!!!!!!!!!!"
                         )
                         continue
 
                     max_delay = get_batch_delay(notification_type)
 
                     # If batch has aged out, process it
-                    if oldest_message.createdAt + max_delay < current_time:
-                        recipient_email = self.run_and_wait(
-                            get_user_email_by_id(batch.userId)
-                        )
+                    if oldest_message.created_at + max_delay < current_time:
+                        recipient_email = get_db().get_user_email_by_id(batch.user_id)
 
                         if not recipient_email:
                             logger.error(
-                                f"User email not found for user {batch.userId}"
+                                f"User email not found for user {batch.user_id}"
                             )
                             continue
 
                         should_send = self._should_email_user_based_on_preference(
-                            batch.userId, notification_type
+                            batch.user_id, notification_type
                         )
 
                         if not should_send:
                             logger.debug(
-                                f"User {batch.userId} does not want to receive {notification_type} notifications"
+                                f"User {batch.user_id} does not want to receive {notification_type} notifications"
                             )
                             # Clear the batch
-                            self.run_and_wait(
-                                empty_user_notification_batch(
-                                    batch.userId, notification_type
-                                )
+                            get_db().empty_user_notification_batch(
+                                batch.user_id, notification_type
                             )
                             continue
 
-                        batch_data = self.run_and_wait(
-                            get_user_notification_batch(batch.userId, notification_type)
+                        batch_data = get_db().get_user_notification_batch(
+                            batch.user_id, notification_type
                         )
 
                         if not batch_data or not batch_data.notifications:
                             logger.error(
-                                f"Batch data not found for user {batch.userId}"
+                                f"Batch data not found for user {batch.user_id}"
                             )
                             # Clear the batch
-                            self.run_and_wait(
-                                empty_user_notification_batch(
-                                    batch.userId, notification_type
-                                )
+                            get_db().empty_user_notification_batch(
+                                batch.user_id, notification_type
                             )
                             continue
 
-                        unsub_link = generate_unsubscribe_link(batch.userId)
+                        unsub_link = generate_unsubscribe_link(batch.user_id)
 
                         events = [
                             NotificationEventModel[
                                 get_notif_data_type(db_event.type)
                             ].model_validate(
                                 {
-                                    "user_id": batch.userId,
+                                    "user_id": batch.user_id,
                                     "type": db_event.type,
                                     "data": db_event.data,
-                                    "created_at": db_event.createdAt,
+                                    "created_at": db_event.created_at,
                                 }
                             )
                             for db_event in batch_data.notifications
@@ -283,10 +269,8 @@ class NotificationManager(AppService):
                         )
 
                         # Clear the batch
-                        self.run_and_wait(
-                            empty_user_notification_batch(
-                                batch.userId, notification_type
-                            )
+                        get_db().empty_user_notification_batch(
+                            batch.user_id, notification_type
                         )
 
                         processed_count += 1
@@ -378,14 +362,16 @@ class NotificationManager(AppService):
         self, user_id: str, event_type: NotificationType
     ) -> bool:
         """Check if a user wants to receive a notification based on their preferences and email verification status"""
-        validated_email = self.run_and_wait(get_user_email_verification(user_id))
-        preference = self.run_and_wait(
-            get_user_notification_preference(user_id)
-        ).preferences.get(event_type, True)
+        validated_email = get_db().get_user_email_verification(user_id)
+        preference = (
+            get_db()
+            .get_user_notification_preference(user_id)
+            .preferences.get(event_type, True)
+        )
         # only if both are true, should we email this person
         return validated_email and preference
 
-    async def _gather_summary_data(
+    def _gather_summary_data(
         self, user_id: str, event_type: NotificationType, params: BaseSummaryParams
     ) -> BaseSummaryData:
         """Gathers the data to build a summary notification"""
@@ -465,13 +451,13 @@ class NotificationManager(AppService):
         else:
             raise ValueError("Invalid event type or params")
 
-    async def _should_batch(
+    def _should_batch(
         self, user_id: str, event_type: NotificationType, event: NotificationEventModel
     ) -> bool:
 
-        await create_or_add_to_user_notification_batch(user_id, event_type, event)
+        get_db().create_or_add_to_user_notification_batch(user_id, event_type, event)
 
-        oldest_message = await get_user_notification_oldest_message_in_batch(
+        oldest_message = get_db().get_user_notification_oldest_message_in_batch(
             user_id, event_type
         )
         if not oldest_message:
@@ -479,7 +465,7 @@ class NotificationManager(AppService):
                 f"Batch for user {user_id} and type {event_type} has no oldest message whichshould never happen!!!!!!!!!!!!!!!!"
             )
             return False
-        oldest_age = oldest_message.createdAt
+        oldest_age = oldest_message.created_at
 
         max_delay = get_batch_delay(event_type)
 
@@ -528,7 +514,7 @@ class NotificationManager(AppService):
             model = parsed.model
             logger.debug(f"Processing immediate notification: {model}")
 
-            recipient_email = self.run_and_wait(get_user_email_by_id(event.user_id))
+            recipient_email = get_db().get_user_email_by_id(event.user_id)
             if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False
@@ -565,7 +551,7 @@ class NotificationManager(AppService):
             model = parsed.model
             logger.info(f"Processing batch notification: {model}")
 
-            recipient_email = self.run_and_wait(get_user_email_by_id(event.user_id))
+            recipient_email = get_db().get_user_email_by_id(event.user_id)
             if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False
@@ -579,16 +565,12 @@ class NotificationManager(AppService):
                 )
                 return True
 
-            should_send = self.run_and_wait(
-                self._should_batch(event.user_id, event.type, model)
-            )
+            should_send = self._should_batch(event.user_id, event.type, model)
 
             if not should_send:
                 logger.info("Batch not old enough to send")
                 return False
-            batch = self.run_and_wait(
-                get_user_notification_batch(event.user_id, event.type)
-            )
+            batch = get_db().get_user_notification_batch(event.user_id, event.type)
             if not batch or not batch.notifications:
                 logger.error(f"Batch not found for user {event.user_id}")
                 return False
@@ -602,7 +584,7 @@ class NotificationManager(AppService):
                         "user_id": event.user_id,
                         "type": db_event.type,
                         "data": db_event.data,
-                        "created_at": db_event.createdAt,
+                        "created_at": db_event.created_at,
                     }
                 )
                 for db_event in batch.notifications
@@ -615,7 +597,7 @@ class NotificationManager(AppService):
                 user_unsub_link=unsub_link,
             )
             # only empty the batch if we sent the email successfully
-            self.run_and_wait(empty_user_notification_batch(event.user_id, event.type))
+            get_db().empty_user_notification_batch(event.user_id, event.type)
             return True
         except Exception as e:
             logger.exception(f"Error processing notification for batch queue: {e}")
@@ -632,7 +614,7 @@ class NotificationManager(AppService):
 
             logger.info(f"Processing summary notification: {model}")
 
-            recipient_email = self.run_and_wait(get_user_email_by_id(event.user_id))
+            recipient_email = get_db().get_user_email_by_id(event.user_id)
             if not recipient_email:
                 logger.error(f"User email not found for user {event.user_id}")
                 return False
@@ -645,8 +627,8 @@ class NotificationManager(AppService):
                 )
                 return True
 
-            summary_data = self.run_and_wait(
-                self._gather_summary_data(event.user_id, event.type, model.data)
+            summary_data = self._gather_summary_data(
+                event.user_id, event.type, model.data
             )
 
             unsub_link = generate_unsubscribe_link(event.user_id)

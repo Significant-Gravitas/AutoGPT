@@ -30,7 +30,6 @@ export default function LibraryAgentList(): React.ReactNode {
         } else {
           setAgents(response.agents);
         }
-        console.log(response);
         setHasMore(
           response.pagination.current_page * response.pagination.page_size <
             response.pagination.total_items,
