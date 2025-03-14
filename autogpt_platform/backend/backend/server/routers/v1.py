@@ -630,7 +630,7 @@ async def stop_graph_run(
 async def get_graphs_executions(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[graph_db.GraphExecutionMeta]:
-    return await graph_db.get_graphs_executions(user_id=user_id)
+    return await graph_db.get_graph_executions(user_id=user_id)
 
 
 @v1_router.get(
