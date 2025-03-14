@@ -129,30 +129,6 @@ updates:
         - "minor"
         - "patch"
 
-
-  # Submodules
-  - package-ecosystem: "gitsubmodule"
-    directory: "autogpt_platform/supabase"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 1
-    target-branch: "dev"
-    commit-message:
-      prefix: "chore(platform/deps)"
-      prefix-development: "chore(platform/deps-dev)"
-    groups:
-      production-dependencies:
-        dependency-type: "production"
-        update-types:
-        - "minor"
-        - "patch"
-      development-dependencies:
-        dependency-type: "development"
-        update-types:
-        - "minor"
-        - "patch"
-
-
   # Docs
   - package-ecosystem: 'pip'
     directory: "docs/"

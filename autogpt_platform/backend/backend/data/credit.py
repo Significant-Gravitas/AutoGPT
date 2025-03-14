@@ -39,6 +39,7 @@ from backend.util.settings import Settings
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
 logger = logging.getLogger(__name__)
+base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
 
 class UserCreditBase(ABC):
@@ -184,6 +185,14 @@ class UserCreditBase(ABC):
             user_id (str | None): The user ID must be provided if session_id is None.
         """
         pass
+
+    @staticmethod
+    async def create_billing_portal_session(user_id: str) -> str:
+        session = stripe.billing_portal.Session.create(
+            customer=await get_stripe_customer_id(user_id),
+            return_url=base_url + "/profile/credits",
+        )
+        return session.url
 
     @staticmethod
     def time_now() -> datetime:
@@ -765,10 +774,8 @@ class UserCredit(UserCreditBase):
             ui_mode="hosted",
             payment_intent_data={"setup_future_usage": "off_session"},
             saved_payment_method_options={"payment_method_save": "enabled"},
-            success_url=settings.config.frontend_base_url
-            + "/profile/credits?topup=success",
-            cancel_url=settings.config.frontend_base_url
-            + "/profile/credits?topup=cancel",
+            success_url=base_url + "/profile/credits?topup=success",
+            cancel_url=base_url + "/profile/credits?topup=cancel",
             allow_promotion_codes=True,
         )
 
