@@ -84,11 +84,11 @@ To run the backend services, follow these steps:
   ```
   This command will initialize and update the submodules in the repository. The `supabase` folder will be cloned to the root directory.
 
-* Copy the `.env.example` file available in the `supabase/docker` directory to `.env` in `autogpt_platform`:
+* Copy the `.env.example` file to `.env` in `autogpt_platform`:
   ```
-   cp supabase/docker/.env.example .env
+   cp .env.example .env
   ```
-  This command will copy the `.env.example` file to `.env` in the `supabase/docker` directory. You can modify the `.env` file to add your own environment variables.
+  This command will copy the `.env.example` file to `.env` in the `supabase` directory. You can modify the `.env` file to add your own environment variables.
 
 * Run the backend services:
   ```
