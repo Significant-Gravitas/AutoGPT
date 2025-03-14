@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
+import { exportAsJSONFile } from "@/lib/utils";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   GraphExecution,
@@ -191,19 +192,40 @@ export default function AgentRunsPage(): React.ReactElement {
     [schedules, api],
   );
 
+  const downloadGraph = useCallback(
+    async () =>
+      agent &&
+      // Export sanitized graph from backend
+      api
+        .getGraph(agent.agent_id, agent.agent_version, true)
+        .then((graph) =>
+          exportAsJSONFile(graph, `${graph.name}_v${graph.version}.json`),
+        ),
+    [api, agent],
+  );
+
   const agentActions: ButtonAction[] = useMemo(
     () => [
-      {
-        label: "Open in builder",
-        callback: () => agent && router.push(`/build?flowID=${agent.agent_id}`),
-      },
+      ...(agent?.can_access_graph
+        ? [
+            {
+              label: "Open in builder",
+              callback: () =>
+                agent &&
+                router.push(
+                  `/build?flowID=${agent.agent_id}&flowVersion=${agent.agent_version}`,
+                ),
+            },
+            { label: "Export agent to file", callback: downloadGraph },
+          ]
+        : []),
       {
         label: "Delete agent",
         variant: "destructive",
         callback: () => setAgentDeleteDialogOpen(true),
       },
     ],
-    [agent, router],
+    [agent, router, downloadGraph],
   );
 
   if (!agent || !graph) {
