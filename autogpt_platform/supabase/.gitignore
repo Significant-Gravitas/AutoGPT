@@ -1,9 +1,0 @@
-# Ignore everything except what's inside the docker folder
-*
-!docker/
-!docker/**
-docker/volumes/db/data
-docker/volumes/storage
-.env
-test.http
-docker-compose.override.yml
