@@ -129,6 +129,50 @@ async def get_submission_details(
 
 
 @router.get(
+    "/listings",
+    response_model=backend.server.v2.store.model.StoreListingsWithVersionsResponse,
+    dependencies=[fastapi.Depends(autogpt_libs.auth.depends.requires_admin_user)],
+)
+async def get_admin_listings_with_versions(
+    status: typing.Optional[prisma.enums.SubmissionStatus] = None,
+    search: typing.Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+):
+    """
+    Get store listings with their version history for admins.
+
+    This provides a consolidated view of listings with their versions,
+    allowing for an expandable UI in the admin dashboard.
+
+    Args:
+        status: Filter by submission status (PENDING, APPROVED, REJECTED)
+        search: Search by name, description, or user email
+        page: Page number for pagination
+        page_size: Number of items per page
+
+    Returns:
+        StoreListingsWithVersionsResponse with listings and their versions
+    """
+    try:
+        listings = await backend.server.v2.store.db.get_admin_listings_with_versions(
+            status=status,
+            search_query=search,
+            page=page,
+            page_size=page_size,
+        )
+        return listings
+    except Exception as e:
+        logger.exception("Error getting admin listings with versions: %s", e)
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={
+                "detail": "An error occurred while retrieving listings with versions"
+            },
+        )
+
+
+@router.get(
     "/submissions/listing/{listing_id}/history",
     response_model=backend.server.v2.store.model.StoreSubmissionsResponse,
     dependencies=[fastapi.Depends(autogpt_libs.auth.depends.requires_admin_user)],

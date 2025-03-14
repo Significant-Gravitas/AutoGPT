@@ -8,8 +8,8 @@ const sidebarLinkGroups = [
   {
     links: [
       {
-        text: "Agent Management",
-        href: "/admin/agents",
+        text: "Marketplace Management",
+        href: "/admin/marketplace",
         icon: <Users className="h-6 w-6" />,
       },
       {
@@ -32,7 +32,7 @@ export default function AdminLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-screen w-screen max-w-[1360px] flex-col lg:flex-row">
+    <div className="flex min-h-screen w-screen flex-col lg:flex-row">
       <Sidebar linkGroups={sidebarLinkGroups} />
       <div className="flex-1 pl-4">{children}</div>
     </div>
