@@ -8,18 +8,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { ExternalLink } from 'lucide-react';
+import { ExternalLink } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
   StoreListingWithVersions,
   StoreSubmission,
-  SubmissionStatus
+  SubmissionStatus,
 } from "@/lib/autogpt-server-api/types";
 import { PaginationControls } from "./pagination-controls";
 import { getAdminListingsWithVersions } from "@/app/admin/agents/actions";
 import { ExpandableRow } from "./expandable-row";
 import { SearchAndFilterForm } from "./search-filter-form";
-
 
 // Helper function to get the latest version by version number
 const getLatestVersionByNumber = (
@@ -47,7 +46,7 @@ export async function AdminAgentsDataTable({
     initialStatus,
     initialSearch,
     initialPage,
-    10
+    10,
   );
 
   return (
@@ -79,7 +78,9 @@ export async function AdminAgentsDataTable({
               </TableRow>
             ) : (
               listings.map((listing) => {
-                const latestVersion = getLatestVersionByNumber(listing.versions);
+                const latestVersion = getLatestVersionByNumber(
+                  listing.versions,
+                );
 
                 return (
                   <ExpandableRow

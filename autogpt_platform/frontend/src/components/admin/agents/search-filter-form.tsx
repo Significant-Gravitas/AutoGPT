@@ -1,60 +1,68 @@
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { useRouter, usePathname, useSearchParams } from "next/navigation"
-import { Input } from "@/components/ui/input"
-import { Button } from "@/components/ui/button"
-import { Search } from "lucide-react"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { SubmissionStatus } from "@/lib/autogpt-server-api/types"
+import { useState, useEffect } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Search } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { SubmissionStatus } from "@/lib/autogpt-server-api/types";
 
 export function SearchAndFilterForm({
   initialStatus,
   initialSearch,
 }: {
-  initialStatus?: SubmissionStatus
-  initialSearch?: string
+  initialStatus?: SubmissionStatus;
+  initialSearch?: string;
 }) {
-  const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   // Initialize state from URL parameters
-  const [searchQuery, setSearchQuery] = useState(initialSearch || "")
-  const [selectedStatus, setSelectedStatus] = useState<string>(searchParams.get("status") || "ALL")
+  const [searchQuery, setSearchQuery] = useState(initialSearch || "");
+  const [selectedStatus, setSelectedStatus] = useState<string>(
+    searchParams.get("status") || "ALL",
+  );
 
   // Update local state when URL parameters change
   useEffect(() => {
-    const status = searchParams.get("status")
-    setSelectedStatus(status || "ALL")
-    setSearchQuery(searchParams.get("search") || "")
-  }, [searchParams])
+    const status = searchParams.get("status");
+    setSelectedStatus(status || "ALL");
+    setSearchQuery(searchParams.get("search") || "");
+  }, [searchParams]);
 
   const handleSearch = () => {
-    const params = new URLSearchParams(searchParams.toString())
+    const params = new URLSearchParams(searchParams.toString());
 
     if (searchQuery) {
-      params.set("search", searchQuery)
+      params.set("search", searchQuery);
     } else {
-      params.delete("search")
+      params.delete("search");
     }
 
     if (selectedStatus !== "ALL") {
-      params.set("status", selectedStatus)
+      params.set("status", selectedStatus);
     } else {
-      params.delete("status")
+      params.delete("status");
     }
 
-    params.set("page", "1") // Reset to first page on new search
+    params.set("page", "1"); // Reset to first page on new search
 
-    router.push(`${pathname}?${params.toString()}`)
-  }
+    router.push(`${pathname}?${params.toString()}`);
+  };
 
   return (
     <div className="flex items-center justify-between">
-      <div className="flex w-full max-w-sm items-center gap-2">
+      <div className="flex w-full items-center gap-2">
         <Input
-          placeholder="Search submissions..."
+          placeholder="Search agents by Name, Creator, or Description..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -67,15 +75,15 @@ export function SearchAndFilterForm({
       <Select
         value={selectedStatus}
         onValueChange={(value) => {
-          setSelectedStatus(value)
-          const params = new URLSearchParams(searchParams.toString())
+          setSelectedStatus(value);
+          const params = new URLSearchParams(searchParams.toString());
           if (value === "ALL") {
-            params.delete("status")
+            params.delete("status");
           } else {
-            params.set("status", value)
+            params.set("status", value);
           }
-          params.set("page", "1")
-          router.push(`${pathname}?${params.toString()}`)
+          params.set("page", "1");
+          router.push(`${pathname}?${params.toString()}`);
         }}
       >
         <SelectTrigger className="w-[180px]">
@@ -89,6 +97,5 @@ export function SearchAndFilterForm({
         </SelectContent>
       </Select>
     </div>
-  )
+  );
 }
-

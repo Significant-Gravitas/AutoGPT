@@ -1,8 +1,8 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { CheckCircle, XCircle } from "lucide-react"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { CheckCircle, XCircle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -10,37 +10,41 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import type { StoreSubmission } from "@/lib/autogpt-server-api/types"
-import { useRouter } from "next/navigation"
-import { approveAgent, rejectAgent } from "@/app/admin/agents/actions"
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import type { StoreSubmission } from "@/lib/autogpt-server-api/types";
+import { useRouter } from "next/navigation";
+import { approveAgent, rejectAgent } from "@/app/admin/agents/actions";
 
-export function ApproveRejectButtons({ version }: { version: StoreSubmission }) {
-  const router = useRouter()
-  const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false)
-  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false)
+export function ApproveRejectButtons({
+  version,
+}: {
+  version: StoreSubmission;
+}) {
+  const router = useRouter();
+  const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
+  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
 
   const handleApproveSubmit = async (formData: FormData) => {
-    setIsApproveDialogOpen(false)
+    setIsApproveDialogOpen(false);
     try {
-      await approveAgent(formData)
-      router.refresh() // Refresh the current route
+      await approveAgent(formData);
+      router.refresh(); // Refresh the current route
     } catch (error) {
-      console.error("Error approving agent:", error)
+      console.error("Error approving agent:", error);
     }
-  }
+  };
 
   const handleRejectSubmit = async (formData: FormData) => {
-    setIsRejectDialogOpen(false)
+    setIsRejectDialogOpen(false);
     try {
-      await rejectAgent(formData)
-      router.refresh() // Refresh the current route
+      await rejectAgent(formData);
+      router.refresh(); // Refresh the current route
     } catch (error) {
-      console.error("Error rejecting agent:", error)
+      console.error("Error rejecting agent:", error);
     }
-  }
+  };
 
   return (
     <>
@@ -49,8 +53,8 @@ export function ApproveRejectButtons({ version }: { version: StoreSubmission }) 
         variant="outline"
         className="text-green-600 hover:bg-green-50 hover:text-green-700"
         onClick={(e) => {
-          e.stopPropagation()
-          setIsApproveDialogOpen(true)
+          e.stopPropagation();
+          setIsApproveDialogOpen(true);
         }}
       >
         <CheckCircle className="mr-2 h-4 w-4" />
@@ -61,8 +65,8 @@ export function ApproveRejectButtons({ version }: { version: StoreSubmission }) 
         variant="outline"
         className="text-red-600 hover:bg-red-50 hover:text-red-700"
         onClick={(e) => {
-          e.stopPropagation()
-          setIsRejectDialogOpen(true)
+          e.stopPropagation();
+          setIsRejectDialogOpen(true);
         }}
       >
         <XCircle className="mr-2 h-4 w-4" />
@@ -75,12 +79,17 @@ export function ApproveRejectButtons({ version }: { version: StoreSubmission }) 
           <DialogHeader>
             <DialogTitle>Approve Agent</DialogTitle>
             <DialogDescription>
-              Are you sure you want to approve this agent? This will make it available in the marketplace.
+              Are you sure you want to approve this agent? This will make it
+              available in the marketplace.
             </DialogDescription>
           </DialogHeader>
 
           <form action={handleApproveSubmit}>
-            <input type="hidden" name="id" value={version.store_listing_version_id || ""} />
+            <input
+              type="hidden"
+              name="id"
+              value={version.store_listing_version_id || ""}
+            />
 
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
@@ -95,7 +104,11 @@ export function ApproveRejectButtons({ version }: { version: StoreSubmission }) 
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsApproveDialogOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsApproveDialogOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit">Approve</Button>
@@ -109,16 +122,27 @@ export function ApproveRejectButtons({ version }: { version: StoreSubmission }) 
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Reject Agent</DialogTitle>
-            <DialogDescription>Please provide feedback on why this agent is being rejected.</DialogDescription>
+            <DialogDescription>
+              Please provide feedback on why this agent is being rejected.
+            </DialogDescription>
           </DialogHeader>
 
           <form action={handleRejectSubmit}>
-            <input type="hidden" name="id" value={version.store_listing_version_id || ""} />
+            <input
+              type="hidden"
+              name="id"
+              value={version.store_listing_version_id || ""}
+            />
 
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
                 <Label htmlFor="comments">Comments for Creator</Label>
-                <Textarea id="comments" name="comments" placeholder="Provide feedback for the agent creator" required />
+                <Textarea
+                  id="comments"
+                  name="comments"
+                  placeholder="Provide feedback for the agent creator"
+                  required
+                />
               </div>
 
               <div className="grid gap-2">
@@ -132,7 +156,11 @@ export function ApproveRejectButtons({ version }: { version: StoreSubmission }) 
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsRejectDialogOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsRejectDialogOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit" variant="destructive">
@@ -143,6 +171,5 @@ export function ApproveRejectButtons({ version }: { version: StoreSubmission }) 
         </DialogContent>
       </Dialog>
     </>
-  )
+  );
 }
-

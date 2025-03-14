@@ -1,41 +1,48 @@
-"use client"
+"use client";
 
-import { useRouter, usePathname, useSearchParams } from "next/navigation"
-import { Button } from "@/components/ui/button"
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { Button } from "@/components/ui/button";
 
 export function PaginationControls({
   currentPage,
   totalPages,
 }: {
-  currentPage: number
-  totalPages: number
+  currentPage: number;
+  totalPages: number;
 }) {
-  const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const createPageUrl = (page: number) => {
-    const params = new URLSearchParams(searchParams)
-    params.set("page", page.toString())
-    return `${pathname}?${params.toString()}`
-  }
+    const params = new URLSearchParams(searchParams);
+    params.set("page", page.toString());
+    return `${pathname}?${params.toString()}`;
+  };
 
   const handlePageChange = (page: number) => {
-    router.push(createPageUrl(page))
-  }
+    router.push(createPageUrl(page));
+  };
 
   return (
     <div className="mt-4 flex items-center justify-center space-x-2">
-      <Button variant="outline" onClick={() => handlePageChange(currentPage - 1)} disabled={currentPage <= 1}>
+      <Button
+        variant="outline"
+        onClick={() => handlePageChange(currentPage - 1)}
+        disabled={currentPage <= 1}
+      >
         Previous
       </Button>
       <span className="text-sm">
         Page {currentPage} of {totalPages}
       </span>
-      <Button variant="outline" onClick={() => handlePageChange(currentPage + 1)} disabled={currentPage >= totalPages}>
+      <Button
+        variant="outline"
+        onClick={() => handlePageChange(currentPage + 1)}
+        disabled={currentPage >= totalPages}
+      >
         Next
       </Button>
     </div>
-  )
+  );
 }
-
