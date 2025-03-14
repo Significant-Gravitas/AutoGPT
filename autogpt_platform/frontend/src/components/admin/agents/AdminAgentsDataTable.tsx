@@ -11,7 +11,14 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ChevronDown, ChevronRight, Search } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Search,
+  CheckCircle,
+  XCircle,
+  ExternalLink
+} from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -21,11 +28,25 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
   StoreListingWithVersions,
   StoreSubmission,
   SubmissionStatus,
 } from "@/lib/autogpt-server-api/types";
-import { getAdminListingsWithVersions } from "@/app/admin/agents/actions";
+import {
+  getAdminListingsWithVersions,
+  approveAgent,
+  rejectAgent
+} from "@/app/admin/agents/actions";
 import { formatDistanceToNow } from "date-fns";
 
 export function AdminAgentsDataTable() {
@@ -40,6 +61,11 @@ export function AdminAgentsDataTable() {
   const [expandedListings, setExpandedListings] = useState<
     Record<string, boolean>
   >({});
+
+  // Dialog state for approve/reject functionality
+  const [selectedVersion, setSelectedVersion] = useState<StoreSubmission | null>(null);
+  const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
+  const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
 
   useEffect(() => {
     fetchListings();
@@ -83,6 +109,36 @@ export function AdminAgentsDataTable() {
       ...prev,
       [listingId]: !prev[listingId],
     }));
+  };
+
+  const handleApproveClick = (version: StoreSubmission) => {
+    setSelectedVersion(version);
+    setIsApproveDialogOpen(true);
+  };
+
+  const handleRejectClick = (version: StoreSubmission) => {
+    setSelectedVersion(version);
+    setIsRejectDialogOpen(true);
+  };
+
+  const handleApproveSubmit = async (formData: FormData) => {
+    setIsApproveDialogOpen(false);
+    try {
+      await approveAgent(formData);
+      fetchListings(); // Refresh data after approval
+    } catch (error) {
+      console.error("Error approving agent:", error);
+    }
+  };
+
+  const handleRejectSubmit = async (formData: FormData) => {
+    setIsRejectDialogOpen(false);
+    try {
+      await rejectAgent(formData);
+      fetchListings(); // Refresh data after rejection
+    } catch (error) {
+      console.error("Error rejecting agent:", error);
+    }
   };
 
   const getStatusBadge = (status: SubmissionStatus) => {
@@ -236,8 +292,38 @@ export function AdminAgentsDataTable() {
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button size="sm" variant="outline">
-                          View
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          Builder
                         </Button>
+
+                        {listing.latest_version?.status === SubmissionStatus.PENDING && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleApproveClick(listing.latest_version!);
+                              }}
+                            >
+                              <CheckCircle className="h-4 w-4 mr-2" />
+                              Approve
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRejectClick(listing.latest_version!);
+                              }}
+                            >
+                              <XCircle className="h-4 w-4 mr-2" />
+                              Reject
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -271,7 +357,6 @@ export function AdminAgentsDataTable() {
                                   key={version.store_listing_version_id}
                                 >
                                   <TableCell>
-                                    {/* Use the actual version number from the API if available */}
                                     v{version.version || "?"}
                                     {version.store_listing_version_id ===
                                       listing.active_version_id && (
@@ -328,9 +413,36 @@ export function AdminAgentsDataTable() {
                                   </TableCell>
                                   <TableCell className="text-right">
                                     <div className="flex justify-end gap-2">
-                                      <Button size="sm" variant="outline">
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={() => window.location.href = `/admin/agents/${version.store_listing_version_id}`}
+                                      >
                                         Review
                                       </Button>
+
+                                      {version.status === SubmissionStatus.PENDING && (
+                                        <>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="text-green-600 hover:text-green-700 hover:bg-green-50"
+                                            onClick={() => handleApproveClick(version)}
+                                          >
+                                            <CheckCircle className="h-4 w-4 mr-1" />
+                                            Approve
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                            onClick={() => handleRejectClick(version)}
+                                          >
+                                            <XCircle className="h-4 w-4 mr-1" />
+                                            Reject
+                                          </Button>
+                                        </>
+                                      )}
                                     </div>
                                   </TableCell>
                                 </TableRow>
@@ -353,6 +465,109 @@ export function AdminAgentsDataTable() {
         totalPages={totalPages}
         onPageChange={setCurrentPage}
       />
+
+      {/* Approve Dialog */}
+      <Dialog open={isApproveDialogOpen} onOpenChange={setIsApproveDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Approve Agent</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to approve this agent? This will make it available in the marketplace.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form action={handleApproveSubmit}>
+            <input
+              type="hidden"
+              name="id"
+              value={selectedVersion?.store_listing_version_id || ""}
+            />
+
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="comments">Comments (Optional)</Label>
+                <Textarea
+                  id="comments"
+                  name="comments"
+                  placeholder="Add any comments for the agent creator"
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsApproveDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+              >
+                Approve
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Dialog */}
+      <Dialog open={isRejectDialogOpen} onOpenChange={setIsRejectDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reject Agent</DialogTitle>
+            <DialogDescription>
+              Please provide feedback on why this agent is being rejected.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form action={handleRejectSubmit}>
+            <input
+              type="hidden"
+              name="id"
+              value={selectedVersion?.store_listing_version_id || ""}
+            />
+
+            <div className="grid gap-4 py-4">
+              <div className="grid gap-2">
+                <Label htmlFor="comments">Comments for Creator</Label>
+                <Textarea
+                  id="comments"
+                  name="comments"
+                  placeholder="Provide feedback for the agent creator"
+                  required
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="internal_comments">Internal Comments</Label>
+                <Textarea
+                  id="internal_comments"
+                  name="internal_comments"
+                  placeholder="Add any internal notes (not visible to creator)"
+                />
+              </div>
+            </div>
+
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsRejectDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                variant="destructive"
+              >
+                Reject
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
