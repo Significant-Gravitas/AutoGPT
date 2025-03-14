@@ -68,15 +68,14 @@ export async function getAdminListingsWithVersions(
     page,
     page_size: pageSize,
   };
-  
+
   if (status) {
     data.status = status;
   }
-  
+
   if (search) {
     data.search = search;
   }
-  
   const api = new BackendApi();
   const response = await api.getAdminListingsWithVersions(data);
   return response;

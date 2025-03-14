@@ -2,7 +2,7 @@ export enum SubmissionStatus {
   DRAFT = "DRAFT",
   PENDING = "PENDING",
   APPROVED = "APPROVED",
-  REJECTED = "REJECTED"
+  REJECTED = "REJECTED",
 }
 export type ReviewSubmissionRequest = {
   store_listing_version_id: string;

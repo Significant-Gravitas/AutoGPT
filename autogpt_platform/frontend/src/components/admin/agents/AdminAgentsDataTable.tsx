@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { useState, useEffect } from "react";
 import {
   Table,
@@ -17,7 +18,7 @@ import {
   Search,
   CheckCircle,
   XCircle,
-  ExternalLink
+  ExternalLink,
 } from "lucide-react";
 import {
   Select,
@@ -45,7 +46,7 @@ import {
 import {
   getAdminListingsWithVersions,
   approveAgent,
-  rejectAgent
+  rejectAgent,
 } from "@/app/admin/agents/actions";
 import { formatDistanceToNow } from "date-fns";
 
@@ -56,16 +57,29 @@ export function AdminAgentsDataTable() {
   const [totalPages, setTotalPages] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatus, setSelectedStatus] = useState<SubmissionStatus | null>(
-    SubmissionStatus.PENDING
+    null,
   );
   const [expandedListings, setExpandedListings] = useState<
     Record<string, boolean>
   >({});
 
   // Dialog state for approve/reject functionality
-  const [selectedVersion, setSelectedVersion] = useState<StoreSubmission | null>(null);
+  const [selectedVersion, setSelectedVersion] =
+    useState<StoreSubmission | null>(null);
   const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+
+  // Helper function to get the latest version by version number
+  const getLatestVersionByNumber = (
+    versions: StoreSubmission[],
+  ): StoreSubmission | null => {
+    if (!versions || versions.length === 0) return null;
+    return versions.reduce(
+      (latest, current) =>
+        (current.version ?? 0) > (latest.version ?? 1) ? current : latest,
+      versions[0],
+    );
+  };
 
   useEffect(() => {
     fetchListings();
@@ -78,7 +92,7 @@ export function AdminAgentsDataTable() {
         selectedStatus || undefined,
         searchQuery || undefined,
         currentPage,
-        10
+        10,
       );
 
       setListings(response.listings);
@@ -242,219 +256,254 @@ export function AdminAgentsDataTable() {
                 </TableCell>
               </TableRow>
             ) : (
-              listings.map((listing) => (
-                <>
-                  <TableRow
-                    key={listing.listing_id}
-                    className="cursor-pointer hover:bg-muted/50"
-                  >
-                    <TableCell
-                      onClick={() => toggleListingExpanded(listing.listing_id)}
-                    >
-                      {expandedListings[listing.listing_id] ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                    </TableCell>
-                    <TableCell
-                      className="font-medium"
-                      onClick={() => toggleListingExpanded(listing.listing_id)}
-                    >
-                      {listing.latest_version?.name || "Unnamed Agent"}
-                    </TableCell>
-                    <TableCell
-                      onClick={() => toggleListingExpanded(listing.listing_id)}
-                    >
-                      {listing.creator_email || "Unknown"}
-                    </TableCell>
-                    <TableCell
-                      onClick={() => toggleListingExpanded(listing.listing_id)}
-                    >
-                      {listing.latest_version?.sub_heading || "No description"}
-                    </TableCell>
-                    <TableCell
-                      onClick={() => toggleListingExpanded(listing.listing_id)}
-                    >
-                      {listing.latest_version?.status &&
-                        getStatusBadge(listing.latest_version.status)}
-                    </TableCell>
-                    <TableCell
-                      onClick={() => toggleListingExpanded(listing.listing_id)}
-                    >
-                      {listing.latest_version?.date_submitted
-                        ? formatDistanceToNow(
-                          new Date(listing.latest_version.date_submitted),
-                          { addSuffix: true },
-                        )
-                        : "Unknown"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="outline">
-                          <ExternalLink className="h-4 w-4 mr-2" />
-                          Builder
-                        </Button>
+              listings.map((listing) => {
+                // Get the latest version by version number
+                const latestVersion = getLatestVersionByNumber(
+                  listing.versions,
+                );
 
-                        {listing.latest_version?.status === SubmissionStatus.PENDING && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleApproveClick(listing.latest_version!);
-                              }}
-                            >
-                              <CheckCircle className="h-4 w-4 mr-2" />
-                              Approve
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRejectClick(listing.latest_version!);
-                              }}
-                            >
-                              <XCircle className="h-4 w-4 mr-2" />
-                              Reject
-                            </Button>
-                          </>
+                return (
+                  <React.Fragment key={listing.listing_id}>
+                    <TableRow className="cursor-pointer hover:bg-muted/50">
+                      <TableCell
+                        onClick={() =>
+                          toggleListingExpanded(listing.listing_id)
+                        }
+                      >
+                        {expandedListings[listing.listing_id] ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
                         )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
+                      </TableCell>
+                      <TableCell
+                        className="font-medium"
+                        onClick={() =>
+                          toggleListingExpanded(listing.listing_id)
+                        }
+                      >
+                        {latestVersion?.name || "Unnamed Agent"}
+                      </TableCell>
+                      <TableCell
+                        onClick={() =>
+                          toggleListingExpanded(listing.listing_id)
+                        }
+                      >
+                        {listing.creator_email || "Unknown"}
+                      </TableCell>
+                      <TableCell
+                        onClick={() =>
+                          toggleListingExpanded(listing.listing_id)
+                        }
+                      >
+                        {latestVersion?.sub_heading || "No description"}
+                      </TableCell>
+                      <TableCell
+                        onClick={() =>
+                          toggleListingExpanded(listing.listing_id)
+                        }
+                      >
+                        {latestVersion?.status &&
+                          getStatusBadge(latestVersion.status)}
+                      </TableCell>
+                      <TableCell
+                        onClick={() =>
+                          toggleListingExpanded(listing.listing_id)
+                        }
+                      >
+                        {latestVersion?.date_submitted
+                          ? formatDistanceToNow(
+                              new Date(latestVersion.date_submitted),
+                              { addSuffix: true },
+                            )
+                          : "Unknown"}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button size="sm" variant="outline">
+                            <ExternalLink className="mr-2 h-4 w-4" />
+                            Builder
+                          </Button>
 
-                  {/* Expanded version history */}
-                  {expandedListings[listing.listing_id] && (
-                    <TableRow>
-                      <TableCell colSpan={7} className="border-t-0 p-0">
-                        <div className="bg-muted/30 px-4 py-3">
-                          <h4 className="mb-2 text-sm font-semibold">
-                            Version History
-                          </h4>
-                          <Table>
-                            <TableHeader>
-                              <TableRow>
-                                <TableHead>Version</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead>Changes</TableHead>
-                                <TableHead>Submitted</TableHead>
-                                <TableHead>Reviewed</TableHead>
-                                <TableHead>External Comments</TableHead>
-                                <TableHead>Internal Comments</TableHead>
-                                <TableHead className="text-right">
-                                  Actions
-                                </TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {listing.versions.map((version) => (
-                                <TableRow
-                                  key={version.store_listing_version_id}
-                                >
-                                  <TableCell>
-                                    v{version.version || "?"}
-                                    {version.store_listing_version_id ===
-                                      listing.active_version_id && (
-                                        <Badge className="ml-2 bg-blue-500">
-                                          Active
-                                        </Badge>
-                                      )}
-                                  </TableCell>
-                                  <TableCell>
-                                    {getStatusBadge(version.status)}
-                                  </TableCell>
-                                  <TableCell>
-                                    {version.changes_summary || "No summary"}
-                                  </TableCell>
-                                  <TableCell>
-                                    {version.date_submitted
-                                      ? formatDistanceToNow(
-                                        new Date(version.date_submitted),
-                                        { addSuffix: true },
-                                      )
-                                      : "Unknown"}
-                                  </TableCell>
-                                  <TableCell>
-                                    {version.reviewed_at
-                                      ? formatDistanceToNow(
-                                        new Date(version.reviewed_at),
-                                        { addSuffix: true },
-                                      )
-                                      : "Not reviewed"}
-                                  </TableCell>
-                                  <TableCell className="max-w-xs truncate">
-                                    {version.review_comments ? (
-                                      <div
-                                        className="truncate"
-                                        title={version.review_comments}
-                                      >
-                                        {version.review_comments}
-                                      </div>
-                                    ) : (
-                                      <span className="text-gray-400">No external comments</span>
-                                    )}
-                                  </TableCell>
-                                  <TableCell className="max-w-xs truncate">
-                                    {version.internal_comments ? (
-                                      <div
-                                        className="truncate text-pink-600"
-                                        title={version.internal_comments}
-                                      >
-                                        {version.internal_comments}
-                                      </div>
-                                    ) : (
-                                      <span className="text-gray-400">No internal comments</span>
-                                    )}
-                                  </TableCell>
-                                  <TableCell className="text-right">
-                                    <div className="flex justify-end gap-2">
-                                      <Button
-                                        size="sm"
-                                        variant="outline"
-                                        onClick={() => window.location.href = `/admin/agents/${version.store_listing_version_id}`}
-                                      >
-                                        Review
-                                      </Button>
-
-                                      {version.status === SubmissionStatus.PENDING && (
-                                        <>
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="text-green-600 hover:text-green-700 hover:bg-green-50"
-                                            onClick={() => handleApproveClick(version)}
-                                          >
-                                            <CheckCircle className="h-4 w-4 mr-1" />
-                                            Approve
-                                          </Button>
-                                          <Button
-                                            size="sm"
-                                            variant="outline"
-                                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                                            onClick={() => handleRejectClick(version)}
-                                          >
-                                            <XCircle className="h-4 w-4 mr-1" />
-                                            Reject
-                                          </Button>
-                                        </>
-                                      )}
-                                    </div>
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
+                          {latestVersion?.status ===
+                            SubmissionStatus.PENDING && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-green-600 hover:bg-green-50 hover:text-green-700"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleApproveClick(latestVersion);
+                                }}
+                              >
+                                <CheckCircle className="mr-2 h-4 w-4" />
+                                Approve
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRejectClick(latestVersion);
+                                }}
+                              >
+                                <XCircle className="mr-2 h-4 w-4" />
+                                Reject
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
-                  )}
-                </>
-              ))
+
+                    {/* Expanded version history */}
+                    {expandedListings[listing.listing_id] && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="border-t-0 p-0">
+                          <div className="bg-muted/30 px-4 py-3">
+                            <h4 className="mb-2 text-sm font-semibold">
+                              Version History
+                            </h4>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Version</TableHead>
+                                  <TableHead>Status</TableHead>
+                                  <TableHead>Changes</TableHead>
+                                  <TableHead>Submitted</TableHead>
+                                  <TableHead>Reviewed</TableHead>
+                                  <TableHead>External Comments</TableHead>
+                                  <TableHead>Internal Comments</TableHead>
+                                  <TableHead className="text-right">
+                                    Actions
+                                  </TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {listing.versions
+                                  // Sort versions by version number in descending order
+                                  .sort(
+                                    (a, b) =>
+                                      (b.version ?? 1) - (a.version ?? 0),
+                                  )
+                                  .map((version) => (
+                                    <TableRow
+                                      key={version.store_listing_version_id}
+                                    >
+                                      <TableCell>
+                                        v{version.version || "?"}
+                                        {version.store_listing_version_id ===
+                                          listing.active_version_id && (
+                                          <Badge className="ml-2 bg-blue-500">
+                                            Active
+                                          </Badge>
+                                        )}
+                                      </TableCell>
+                                      <TableCell>
+                                        {getStatusBadge(version.status)}
+                                      </TableCell>
+                                      <TableCell>
+                                        {version.changes_summary ||
+                                          "No summary"}
+                                      </TableCell>
+                                      <TableCell>
+                                        {version.date_submitted
+                                          ? formatDistanceToNow(
+                                              new Date(version.date_submitted),
+                                              { addSuffix: true },
+                                            )
+                                          : "Unknown"}
+                                      </TableCell>
+                                      <TableCell>
+                                        {version.reviewed_at
+                                          ? formatDistanceToNow(
+                                              new Date(version.reviewed_at),
+                                              { addSuffix: true },
+                                            )
+                                          : "Not reviewed"}
+                                      </TableCell>
+                                      <TableCell className="max-w-xs truncate">
+                                        {version.review_comments ? (
+                                          <div
+                                            className="truncate"
+                                            title={version.review_comments}
+                                          >
+                                            {version.review_comments}
+                                          </div>
+                                        ) : (
+                                          <span className="text-gray-400">
+                                            No external comments
+                                          </span>
+                                        )}
+                                      </TableCell>
+                                      <TableCell className="max-w-xs truncate">
+                                        {version.internal_comments ? (
+                                          <div
+                                            className="truncate text-pink-600"
+                                            title={version.internal_comments}
+                                          >
+                                            {version.internal_comments}
+                                          </div>
+                                        ) : (
+                                          <span className="text-gray-400">
+                                            No internal comments
+                                          </span>
+                                        )}
+                                      </TableCell>
+                                      <TableCell className="text-right">
+                                        <div className="flex justify-end gap-2">
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() =>
+                                              (window.location.href = `/admin/agents/${version.store_listing_version_id}`)
+                                            }
+                                          >
+                                            Review
+                                          </Button>
+
+                                          {version.status ===
+                                            SubmissionStatus.PENDING && (
+                                            <React.Fragment>
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="text-green-600 hover:bg-green-50 hover:text-green-700"
+                                                onClick={() =>
+                                                  handleApproveClick(version)
+                                                }
+                                              >
+                                                <CheckCircle className="mr-1 h-4 w-4" />
+                                                Approve
+                                              </Button>
+                                              <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                                                onClick={() =>
+                                                  handleRejectClick(version)
+                                                }
+                                              >
+                                                <XCircle className="mr-1 h-4 w-4" />
+                                                Reject
+                                              </Button>
+                                            </React.Fragment>
+                                          )}
+                                        </div>
+                                      </TableCell>
+                                    </TableRow>
+                                  ))}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </React.Fragment>
+                );
+              })
             )}
           </TableBody>
         </Table>
@@ -472,7 +521,8 @@ export function AdminAgentsDataTable() {
           <DialogHeader>
             <DialogTitle>Approve Agent</DialogTitle>
             <DialogDescription>
-              Are you sure you want to approve this agent? This will make it available in the marketplace.
+              Are you sure you want to approve this agent? This will make it
+              available in the marketplace.
             </DialogDescription>
           </DialogHeader>
 
@@ -502,11 +552,7 @@ export function AdminAgentsDataTable() {
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-              >
-                Approve
-              </Button>
+              <Button type="submit">Approve</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -558,10 +604,7 @@ export function AdminAgentsDataTable() {
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                variant="destructive"
-              >
+              <Button type="submit" variant="destructive">
                 Reject
               </Button>
             </DialogFooter>
