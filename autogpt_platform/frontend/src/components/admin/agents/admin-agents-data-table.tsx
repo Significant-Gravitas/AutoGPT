@@ -16,7 +16,7 @@ import {
   SubmissionStatus,
 } from "@/lib/autogpt-server-api/types";
 import { PaginationControls } from "./pagination-controls";
-import { getAdminListingsWithVersions } from "@/app/admin/agents/actions";
+import { getAdminListingsWithVersions } from "@/app/admin/marketplace/actions";
 import { ExpandableRow } from "./expandable-row";
 import { SearchAndFilterForm } from "./search-filter-form";
 

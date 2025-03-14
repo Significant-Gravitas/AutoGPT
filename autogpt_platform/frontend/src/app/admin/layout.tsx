@@ -8,8 +8,8 @@ const sidebarLinkGroups = [
   {
     links: [
       {
-        text: "Agent Management",
-        href: "/admin/agents",
+        text: "Marketplace Management",
+        href: "/admin/marketplace",
         icon: <Users className="h-6 w-6" />,
       },
       {

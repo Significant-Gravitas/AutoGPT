@@ -100,11 +100,15 @@ export function ExpandableRow({
                   <TableRow>
                     <TableHead>Version</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Changes</TableHead>
+                    {/* <TableHead>Changes</TableHead> */}
                     <TableHead>Submitted</TableHead>
                     <TableHead>Reviewed</TableHead>
                     <TableHead>External Comments</TableHead>
                     <TableHead>Internal Comments</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Sub Heading</TableHead>
+                    <TableHead>Description</TableHead>
+                    {/* <TableHead>Categories</TableHead> */}
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -121,9 +125,9 @@ export function ExpandableRow({
                           )}
                         </TableCell>
                         <TableCell>{getStatusBadge(version.status)}</TableCell>
-                        <TableCell>
+                        {/* <TableCell>
                           {version.changes_summary || "No summary"}
-                        </TableCell>
+                        </TableCell> */}
                         <TableCell>
                           {version.date_submitted
                             ? formatDistanceToNow(
@@ -170,6 +174,10 @@ export function ExpandableRow({
                             </span>
                           )}
                         </TableCell>
+                        <TableCell>{version.name}</TableCell>
+                        <TableCell>{version.sub_heading}</TableCell>
+                        <TableCell>{version.description}</TableCell>
+                        {/* <TableCell>{version.categories.join(", ")}</TableCell> */}
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Button
