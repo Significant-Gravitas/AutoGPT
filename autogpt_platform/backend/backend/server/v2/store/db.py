@@ -938,6 +938,7 @@ async def review_store_submission(
             "Failed to create store submission review"
         ) from e
 
+
 async def get_admin_submissions(
     status: prisma.enums.SubmissionStatus | None = None,
     search_query: str | None = None,
@@ -948,7 +949,7 @@ async def get_admin_submissions(
 
     Args:
         status: Filter by submission status (PENDING, APPROVED, REJECTED)
-        search_query: Search by name, creator, or description
+        search_query: Search by name, description, or user email
         page: Page number for pagination
         page_size: Number of items per page
 
@@ -967,10 +968,26 @@ async def get_admin_submissions(
 
         sanitized_query = sanitize_query(search_query)
         if sanitized_query:
+            # Find users with matching email first
+            matching_users = await prisma.models.User.prisma().find_many(
+                where={"email": {"contains": sanitized_query, "mode": "insensitive"}},
+            )
+
+            user_ids = [user.id for user in matching_users]
+
+            # Set up the OR conditions to search across multiple fields
             where["OR"] = [
                 {"name": {"contains": sanitized_query, "mode": "insensitive"}},
                 {"description": {"contains": sanitized_query, "mode": "insensitive"}},
+                {"sub_heading": {"contains": sanitized_query, "mode": "insensitive"}},
             ]
+
+            # Add user_id condition if any users matched
+            if user_ids:
+                where["OR"].append({"user_id": {"in": user_ids}})
+                logger.debug(
+                    f"Found {len(user_ids)} users matching query: {sanitized_query}"
+                )
 
         # Calculate pagination
         skip = (page - 1) * page_size
@@ -1005,7 +1022,7 @@ async def get_admin_submissions(
                 store_listing_version_id=sub.store_listing_version_id,
                 reviewer_id=sub.reviewer_id,
                 review_comments=sub.review_comments,
-                internal_comments=sub.internal_comments,  # Include for admins
+                internal_comments=sub.internal_comments,
                 reviewed_at=sub.reviewed_at,
                 changes_summary=sub.changes_summary,
             )
