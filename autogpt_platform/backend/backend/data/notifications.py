@@ -35,7 +35,8 @@ class QueueType(Enum):
 
 
 class BaseNotificationData(BaseModel):
-    pass
+    class Config:
+        extra = "allow"
 
 
 class AgentRunData(BaseNotificationData):
