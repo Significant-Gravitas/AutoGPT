@@ -901,19 +901,8 @@ class ExecutionManager(AppService):
         graph_version: Optional[int] = None,
         preset_id: str | None = None,
     ) -> GraphExecutionEntry:
-        """Synchronous wrapper for async add_execution
-        I dont like this but it works for now.
-        TODO: revisit and fix this"""
-
-        # Get or create an event loop
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-        # Run the async function in the event loop
-        return loop.run_until_complete(
+        """Add a graph execution to the queue"""
+        return self.run_and_wait(
             self._add_execution_async(graph_id, data, user_id, graph_version, preset_id)
         )
 
