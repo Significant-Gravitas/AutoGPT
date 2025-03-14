@@ -67,7 +67,6 @@ class StoreAgentDetails(pydantic.BaseModel):
     versions: list[str]
     last_updated: datetime.datetime
 
-    # Active version information
     active_version_id: str | None = None
     has_approved_version: bool = False
 
@@ -122,7 +121,6 @@ class StoreSubmission(pydantic.BaseModel):
     rating: float
     store_listing_version_id: str | None = None
 
-    # New fields to match StoreListingVersion changes
     reviewer_id: str | None = None
     review_comments: str | None = None  # External comments visible to creator
     internal_comments: str | None = None  # Private notes for admin use only

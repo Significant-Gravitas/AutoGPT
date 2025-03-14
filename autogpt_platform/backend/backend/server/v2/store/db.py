@@ -364,7 +364,7 @@ async def get_store_submissions(
 
         total_pages = (total + page_size - 1) // page_size
 
-        # Convert to response models - using fields directly from the view now
+        # Convert to response models
         submission_models = []
         for sub in submissions:
             submission_model = backend.server.v2.store.model.StoreSubmission(
@@ -379,7 +379,6 @@ async def get_store_submissions(
                 status=sub.status,
                 runs=sub.runs or 0,
                 rating=sub.rating or 0.0,
-                # Now using fields directly from the updated view
                 store_listing_version_id=sub.store_listing_version_id,
                 reviewer_id=sub.reviewer_id,
                 review_comments=sub.review_comments,
@@ -466,10 +465,10 @@ async def create_store_submission(
     description: str = "",
     sub_heading: str = "",
     categories: list[str] = [],
-    changes_summary: str | None = None,
+    changes_summary: str = "Initial Submission",
 ) -> backend.server.v2.store.model.StoreSubmission:
     """
-    Create a new store listing submission as a normal user
+    Create the first (and only) store listing and thus submission as a normal user
 
     Args:
         user_id: ID of the authenticated user submitting the listing
@@ -523,7 +522,7 @@ async def create_store_submission(
 
         # Create the store listing
         data = prisma.types.StoreListingCreateInput(
-            slug=slug,  # Moved to listing level
+            slug=slug,
             agentId=agent_id,
             agentVersion=agent_version,
             owningUserId=user_id,
@@ -657,7 +656,7 @@ async def get_user_profile(
 
 async def update_profile(
     user_id: str, profile: backend.server.v2.store.model.Profile
-) -> backend.server.v2.store.model.ProfileDetails:
+) -> backend.server.v2.store.model.CreatorDetails:
     """
     Update the store profile for a user or create a new one if it doesn't exist.
     Args:
@@ -718,12 +717,15 @@ async def update_profile(
                 "Failed to update profile"
             )
 
-        return backend.server.v2.store.model.ProfileDetails(
+        return backend.server.v2.store.model.CreatorDetails(
             name=updated_profile.name,
             username=updated_profile.username,
             description=updated_profile.description,
             links=updated_profile.links,
             avatar_url=updated_profile.avatarUrl or "",
+            agent_rating=0.0,
+            agent_runs=0,
+            top_categories=[],
         )
 
     except prisma.errors.PrismaError as e:
@@ -834,6 +836,10 @@ async def get_agent(
         ) from e
 
 
+#####################################################
+################## ADMIN FUNCTIONS ##################
+#####################################################
+
 async def review_store_submission(
     store_listing_version_id: str,
     is_approved: bool,
@@ -893,6 +899,7 @@ async def review_store_submission(
         submission = await prisma.models.StoreListingVersion.prisma().update(
             where={"id": store_listing_version_id},
             data=update_data,
+            include={"storeListing": True},
         )
 
         if not submission:
@@ -930,12 +937,6 @@ async def review_store_submission(
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to create store submission review"
         ) from e
-
-
-#####################################################
-################## ADMIN FUNCTIONS ##################
-#####################################################
-
 
 async def get_admin_submissions(
     status: prisma.enums.SubmissionStatus | None = None,
