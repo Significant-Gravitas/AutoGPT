@@ -25,6 +25,7 @@ import backend.server.v2.otto.routes
 import backend.server.v2.postmark.postmark
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
+import backend.server.v2.iffy.routes
 import backend.util.service
 import backend.util.settings
 from backend.data.model import Credentials
@@ -111,6 +112,12 @@ app.include_router(
     tags=["v2", "email"],
     prefix="/api/email",
 )
+
+app.include_router(
+    backend.server.v2.iffy.routes.iffy_router,
+    tags=["v2"],
+    prefix="/api/iffy"
+    )
 
 app.mount("/external-api", external_app)
 
