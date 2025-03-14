@@ -38,7 +38,6 @@ from backend.data.credit import (
     TransactionHistory,
     get_auto_top_up,
     get_block_costs,
-    get_stripe_customer_id,
     get_user_credit_model,
     set_auto_top_up,
 )
@@ -341,15 +340,7 @@ async def stripe_webhook(request: Request):
 async def manage_payment_method(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, str]:
-    session = stripe.billing_portal.Session.create(
-        customer=await get_stripe_customer_id(user_id),
-        return_url=settings.config.frontend_base_url + "/profile/credits",
-    )
-    if not session:
-        raise HTTPException(
-            status_code=400, detail="Failed to create billing portal session"
-        )
-    return {"url": session.url}
+    return {"url": await _user_credit_model.create_billing_portal_session(user_id)}
 
 
 @v1_router.get(path="/credits/transactions", dependencies=[Depends(auth_middleware)])
