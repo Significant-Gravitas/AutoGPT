@@ -50,6 +50,8 @@ import {
   OttoQuery,
   OttoResponse,
   UserOnboarding,
+  ReviewSubmissionRequest,
+  SubmissionStatus,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -507,6 +509,53 @@ export default class BackendAPI {
       : `/store/download/agents/${storeListingVersionId}`;
 
     return this._get(url);
+  }
+
+  /////////////////////////////////////////
+  /////////// Admin API ///////////////////
+  /////////////////////////////////////////
+  getSubmissionsAdmin(params?: {
+    status?: SubmissionStatus;
+    search?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<StoreSubmissionsResponse> {
+    return this._get("/store/admin/submissions", params);
+  }
+
+  getPendingSubmissionsAdmin(params?: {
+    page?: number;
+    page_size?: number;
+  }): Promise<StoreSubmissionsResponse> {
+    return this._get("/store/admin/submissions/pending", params);
+  }
+
+  getSubmissionDetailsAdmin(
+    storeListingVersionId: string,
+  ): Promise<StoreSubmission> {
+    return this._get(`/store/admin/submissions/${storeListingVersionId}`);
+  }
+
+  getListingHistoryAdmin(params?: {
+    listing_id: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<StoreSubmissionsResponse> {
+    return this._get(
+      `/store/admin/submissions/listing/${params?.listing_id}/history`,
+      params,
+    );
+  }
+
+  reviewSubmissionAdmin(
+    storeListingVersionId: string,
+    review: ReviewSubmissionRequest,
+  ): Promise<StoreSubmission> {
+    return this._request(
+      "POST",
+      `/store/admin/submissions/${storeListingVersionId}/review`,
+      review,
+    );
   }
 
   /////////////////////////////////////////

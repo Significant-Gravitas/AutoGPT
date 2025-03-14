@@ -619,9 +619,6 @@ export type StoreSubmission = {
   internal_comments?: string; // Admin-only comments
   reviewed_at?: string;
   changes_summary?: string;
-
-  // Approval status
-  is_approved?: boolean;
 };
 
 export type StoreSubmissionsResponse = {
