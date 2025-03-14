@@ -37,8 +37,8 @@ export async function signup(values: z.infer<typeof signupFormSchema>) {
       if (data.session) {
         await supabase.auth.setSession(data.session);
       }
-      // Don't onboard if disabled 
-      if ((await new BackendAPI().isOnboardingEnabled())) {
+      // Don't onboard if disabled
+      if (await new BackendAPI().isOnboardingEnabled()) {
         revalidatePath("/onboarding", "layout");
         redirect("/onboarding");
       }

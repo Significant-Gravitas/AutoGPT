@@ -732,7 +732,7 @@ export interface RefundRequest {
   updated_at: Date;
 }
 
-export type OnboardingStep = 
+export type OnboardingStep =
   | "WELCOME"
   | "USAGE_REASON"
   | "INTEGRATIONS"
@@ -742,7 +742,7 @@ export type OnboardingStep =
   | "CONGRATS";
 
 export interface UserOnboarding {
-  completedSteps: OnboardingStep[]
+  completedSteps: OnboardingStep[];
   usageReason: string | null;
   integrations: string[];
   otherIntegrations: string | null;

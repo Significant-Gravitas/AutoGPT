@@ -79,7 +79,11 @@ export default function Page() {
     if (!agent) {
       return;
     }
-    api.executeGraph(agent.agent_id, agent.agent_version, state?.agentInput || {});
+    api.executeGraph(
+      agent.agent_id,
+      agent.agent_version,
+      state?.agentInput || {},
+    );
     router.push("/onboarding/6-congrats");
   }, [api, agent, router]);
 
@@ -97,7 +101,12 @@ export default function Page() {
         <div
           onClick={() => {
             setShowInput(true);
-            updateState({ completedSteps: [...(state?.completedSteps || []), "AGENT_NEW_RUN"] });
+            updateState({
+              completedSteps: [
+                ...(state?.completedSteps || []),
+                "AGENT_NEW_RUN",
+              ],
+            });
           }}
           className={cn(
             "mt-16 flex h-[68px] w-[330px] items-center justify-center rounded-xl border-2 border-violet-700 bg-neutral-50",

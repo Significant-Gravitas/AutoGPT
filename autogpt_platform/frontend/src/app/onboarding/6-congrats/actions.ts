@@ -6,7 +6,9 @@ import { redirect } from "next/navigation";
 export async function finishOnboarding() {
   const api = new BackendAPI();
   const onboarding = await api.getUserOnboarding();
-  await api.updateUserOnboarding({ completedSteps: [...onboarding.completedSteps, "CONGRATS"] });
+  await api.updateUserOnboarding({
+    completedSteps: [...onboarding.completedSteps, "CONGRATS"],
+  });
   revalidatePath("/library", "layout");
   redirect("/library");
 }

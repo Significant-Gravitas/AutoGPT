@@ -50,7 +50,10 @@ export async function login(values: z.infer<typeof loginFormSchema>) {
 
     await api.createUser();
     // Don't onboard if disabled or already onboarded
-    if ((await api.isOnboardingEnabled()) && !(await api.getUserOnboarding()).completedSteps.includes("CONGRATS")) {
+    if (
+      (await api.isOnboardingEnabled()) &&
+      !(await api.getUserOnboarding()).completedSteps.includes("CONGRATS")
+    ) {
       revalidatePath("/onboarding", "layout");
       redirect("/onboarding");
     }
@@ -91,7 +94,10 @@ export async function providerLogin(provider: LoginProvider) {
 
       await api.createUser();
       // Don't onboard if disabled or already onboarded
-      if ((await api.isOnboardingEnabled()) && !(await api.getUserOnboarding()).completedSteps.includes("CONGRATS")) {
+      if (
+        (await api.isOnboardingEnabled()) &&
+        !(await api.getUserOnboarding()).completedSteps.includes("CONGRATS")
+      ) {
         revalidatePath("/onboarding", "layout");
         redirect("/onboarding");
       }
