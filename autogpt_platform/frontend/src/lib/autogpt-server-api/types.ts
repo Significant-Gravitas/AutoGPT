@@ -629,7 +629,6 @@ export type StoreSubmissionsResponse = {
   pagination: Pagination;
 };
 
-
 export type StoreSubmissionRequest = {
   agent_id: string;
   agent_version: number;
