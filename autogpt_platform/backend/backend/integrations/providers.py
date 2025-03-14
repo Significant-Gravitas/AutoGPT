@@ -10,6 +10,7 @@ class ProviderName(str, Enum):
     D_ID = "d_id"
     E2B = "e2b"
     EXA = "exa"
+    EXAMPLE_PROVIDER = "example-provider"
     FAL = "fal"
     GITHUB = "github"
     GOOGLE = "google"
