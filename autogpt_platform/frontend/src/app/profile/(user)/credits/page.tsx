@@ -29,7 +29,6 @@ export default function CreditsPage() {
     formatCredits,
     refundTopUp,
     refundRequests,
-    fetchRefundRequests,
   } = useCredits({
     fetchInitialAutoTopUpConfig: true,
     fetchInitialRefundRequests: true,
