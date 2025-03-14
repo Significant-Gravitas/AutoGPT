@@ -58,7 +58,7 @@ def _transform_type_recursive(tp: Any, local_cache: dict[Any, Any]) -> Any:
       5) Otherwise, return `tp` as-is.
     """
     if tp in local_cache:
-        return local_cache[tp]
+        return local_cache[tp] or tp
 
     # 1) Direct replacement if tp is in the replacements dict
     if tp in GLOBAL_REPLACEMENTS:
@@ -128,7 +128,7 @@ def _transform_model(
         old_anno = field_info.annotation
         transformed_anno = _transform_type_recursive(old_anno, local_cache)
 
-        if transformed_anno is not old_anno:
+        if transformed_anno != old_anno:
             any_field_changed = True
 
         # Use "..." if field is required, else its default
