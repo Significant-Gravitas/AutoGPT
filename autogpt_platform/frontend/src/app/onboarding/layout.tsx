@@ -1,5 +1,5 @@
 "use client";
-import { UserOnboarding } from "@/lib/autogpt-server-api";
+import { OnboardingStep, UserOnboarding } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -13,22 +13,22 @@ import {
 
 const OnboardingContext = createContext<
   | {
-      state: UserOnboarding | null;
-      setState: (state: Partial<UserOnboarding>) => void;
-    }
+    state: UserOnboarding | null;
+    updateState: (state: Partial<UserOnboarding>) => void;
+  }
   | undefined
 >(undefined);
 
-export function useOnboarding(step?: number) {
+export function useOnboarding(completeStep?: OnboardingStep) {
   const context = useContext(OnboardingContext);
   if (!context)
     throw new Error("useOnboarding must be used within /onboarding pages");
 
   useEffect(() => {
-    if (!step) return;
+    if (!completeStep || !context.state || context.state.completedSteps.includes(completeStep)) return;
 
-    context.setState({ step });
-  }, [step]);
+    context.updateState({ completedSteps: [...context.state.completedSteps, completeStep] });
+  }, [completeStep, context.state, context.updateState]);
 
   return context;
 }
@@ -38,60 +38,66 @@ export default function OnboardingLayout({
 }: {
   children: ReactNode;
 }) {
-  const [state, setStateRaw] = useState<UserOnboarding | null>(null);
+  const [state, setState] = useState<UserOnboarding | null>(null);
   const api = useBackendAPI();
   const pathname = usePathname();
   const router = useRouter();
 
   useEffect(() => {
     const fetchOnboarding = async () => {
+      const enabled = await api.isOnboardingEnabled();
+      if (!enabled) {
+        router.push("/library");
+        return;
+      }
       const onboarding = await api.getUserOnboarding();
-      setStateRaw(onboarding);
+      setState(onboarding);
 
       // Redirect outside onboarding if completed
-      if (onboarding.isCompleted && !pathname.startsWith("/onboarding/reset")) {
+      // If user did CONGRATS step, that means they completed introductory onboarding
+      if (onboarding.completedSteps.includes("CONGRATS") && !pathname.startsWith("/onboarding/reset")) {
         router.push("/library");
       }
     };
     fetchOnboarding();
   }, [api, pathname, router]);
 
-  const setState = useCallback(
+  const updateState = useCallback(
     (newState: Partial<UserOnboarding>) => {
-      function removeNullFields<T extends object>(obj: T): Partial<T> {
-        return Object.fromEntries(
-          Object.entries(obj).filter(([_, value]) => value != null),
-        ) as Partial<T>;
-      }
-
-      const updateState = (state: Partial<UserOnboarding>) => {
+      const sendState = (state: Partial<UserOnboarding>) => {
         if (!state) return;
 
         api.updateUserOnboarding(state);
       };
 
-      setStateRaw((prev) => {
-        if (newState.step && prev && prev?.step !== newState.step) {
-          updateState(removeNullFields({ ...prev, ...newState }));
+      setState((prev) => {
+        // We want to send updates only when completedSteps is updated
+        // to avoid api calls on every small change
+        if (newState.completedSteps) {
+          sendState({ ...prev, ...newState });
         }
 
         if (!prev) {
           // Handle initial state
           return {
-            step: 1,
+            completedSteps: [],
+            usageReason: null,
             integrations: [],
-            isCompleted: false,
+            otherIntegrations: null,
+            selectedAgentCreator: null,
+            selectedAgentSlug: null,
+            agentInput: null,
             ...newState,
           };
         }
         return { ...prev, ...newState };
       });
     },
-    [api, setStateRaw],
+    [api, setState],
   );
 
   return (
-    <OnboardingContext.Provider value={{ state, setState }}>
+    <OnboardingContext.Provider value={{ state, updateState }}>
       <div className="flex min-h-screen w-full items-center justify-center bg-gray-100">
         <div className="mx-auto flex w-full flex-col items-center">
           {children}

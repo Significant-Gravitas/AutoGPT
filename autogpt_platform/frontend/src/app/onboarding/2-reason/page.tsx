@@ -39,7 +39,7 @@ const reasons = [
 ];
 
 export default function Page() {
-  const { state, setState } = useOnboarding(2);
+  const { state, updateState } = useOnboarding("WELCOME");
 
   return (
     <OnboardingStep>
@@ -54,7 +54,7 @@ export default function Page() {
       <OnboardingList
         elements={reasons}
         selectedId={state?.usageReason}
-        onSelect={(usageReason) => setState({ usageReason })}
+        onSelect={(usageReason) => updateState({ usageReason })}
       />
       <OnboardingFooter>
         <OnboardingButton

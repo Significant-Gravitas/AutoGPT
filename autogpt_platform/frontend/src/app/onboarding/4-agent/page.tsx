@@ -15,7 +15,7 @@ import { finishOnboarding } from "../6-congrats/actions";
 import { isEmptyOrWhitespace } from "@/lib/utils";
 
 export default function Page() {
-  const { state, setState } = useOnboarding(4);
+  const { state, updateState } = useOnboarding("INTEGRATIONS");
   const [agents, setAgents] = useState<StoreAgentDetails[]>([]);
   const api = useBackendAPI();
 
@@ -34,13 +34,13 @@ export default function Page() {
       state?.selectedAgentSlug &&
       !agents.some((agent) => agent.slug === state.selectedAgentSlug)
     ) {
-      setState({
-        selectedAgentSlug: undefined,
-        selectedAgentCreator: undefined,
-        agentInput: undefined,
+      updateState({
+        selectedAgentSlug: null,
+        selectedAgentCreator: null,
+        agentInput: null,
       });
     }
-  }, [state?.selectedAgentSlug, setState, agents]);
+  }, [state?.selectedAgentSlug, updateState, agents]);
 
   return (
     <OnboardingStep>
@@ -62,7 +62,7 @@ export default function Page() {
               : false
           }
           onClick={() =>
-            setState({
+            updateState({
               selectedAgentSlug: agents[0].slug,
               selectedAgentCreator: agents[0].creator,
             })
@@ -76,7 +76,7 @@ export default function Page() {
               : false
           }
           onClick={() =>
-            setState({
+            updateState({
               selectedAgentSlug: agents[1].slug,
               selectedAgentCreator: agents[1].creator,
             })

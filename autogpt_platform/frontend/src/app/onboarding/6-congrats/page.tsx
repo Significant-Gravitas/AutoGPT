@@ -3,8 +3,10 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { finishOnboarding } from "./actions";
 import confetti from "canvas-confetti";
+import { useOnboarding } from "../layout";
 
 export default function Page() {
+  useOnboarding("AGENT_INPUT");
   const [showText, setShowText] = useState(false);
   const [showSubtext, setShowSubtext] = useState(false);
 

@@ -17,7 +17,7 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useRouter } from "next/navigation";
 
 export default function Page() {
-  const { state, setState } = useOnboarding(5);
+  const { state, updateState } = useOnboarding("AGENT_CHOICE");
   const [showInput, setShowInput] = useState(false);
   const [storeAgent, setStoreAgent] = useState<StoreAgentDetails | null>(null);
   const [agent, setAgent] = useState<LibraryAgent | null>(null);
@@ -48,7 +48,7 @@ export default function Page() {
                 update[key] = value.type !== "null" ? value.default || "" : "";
               },
             );
-            setState({
+            updateState({
               agentInput: update,
             });
           });
@@ -57,14 +57,14 @@ export default function Page() {
     api,
     setAgent,
     setStoreAgent,
-    setState,
+    updateState,
     state?.selectedAgentCreator,
     state?.selectedAgentSlug,
   ]);
 
   const setAgentInput = useCallback(
     (key: string, value: string) => {
-      setState({
+      updateState({
         ...state,
         agentInput: {
           ...state?.agentInput,
@@ -72,14 +72,14 @@ export default function Page() {
         },
       });
     },
-    [state, state?.agentInput, setState],
+    [state, state?.agentInput, updateState],
   );
 
   const runAgent = useCallback(() => {
     if (!agent) {
       return;
     }
-    api.executeGraph(agent.agent_id, agent.agent_version, state?.agentInput);
+    api.executeGraph(agent.agent_id, agent.agent_version, state?.agentInput || {});
     router.push("/onboarding/6-congrats");
   }, [api, agent, router]);
 
@@ -97,7 +97,7 @@ export default function Page() {
         <div
           onClick={() => {
             setShowInput(true);
-            setState({ step: 6 });
+            updateState({ completedSteps: [...(state?.completedSteps || []), "AGENT_NEW_RUN"] });
           }}
           className={cn(
             "mt-16 flex h-[68px] w-[330px] items-center justify-center rounded-xl border-2 border-violet-700 bg-neutral-50",

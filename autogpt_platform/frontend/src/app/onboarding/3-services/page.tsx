@@ -111,7 +111,7 @@ const services = [
 ];
 
 export default function Page() {
-  const { state, setState } = useOnboarding(3);
+  const { state, updateState } = useOnboarding("USAGE_REASON");
 
   const switchIntegration = useCallback(
     (name: string) => {
@@ -123,9 +123,9 @@ export default function Page() {
         ? state.integrations.filter((i) => i !== name)
         : [...state.integrations, name];
 
-      setState({ integrations });
+      updateState({ integrations });
     },
-    [state, setState],
+    [state, updateState],
   );
 
   return (
@@ -158,7 +158,7 @@ export default function Page() {
           className="mb-4"
           placeholder="Others (please specify)"
           value={state?.otherIntegrations || ""}
-          onChange={(otherIntegrations) => setState({ otherIntegrations })}
+          onChange={(otherIntegrations) => updateState({ otherIntegrations })}
         />
       </div>
 
