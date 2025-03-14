@@ -2,27 +2,49 @@ import * as React from "react";
 import Link from "next/link";
 import { Button } from "./Button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { KeyIcon, Menu } from "lucide-react";
-import {
-  IconDashboardLayout,
-  IconIntegrations,
-  IconProfile,
-  IconSliders,
-  IconCoin,
-} from "../ui/icons";
+import { Menu } from "lucide-react";
+import { IconDashboardLayout } from "../ui/icons";
 
-interface SidebarLinkGroup {
-  links: {
-    text: string;
-    href: string;
-  }[];
+export interface SidebarLink {
+  text: string;
+  href: string;
+  icon?: React.ReactNode;
 }
 
-interface SidebarProps {
+export interface SidebarLinkGroup {
+  links: SidebarLink[];
+}
+
+export interface SidebarProps {
   linkGroups: SidebarLinkGroup[];
 }
 
+// Helper function to get the default icon component based on link text
+const getDefaultIconForLink = () => {
+  // Default icon
+  return <IconDashboardLayout className="h-6 w-6" />;
+};
+
 export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
+  // Extract all links from linkGroups
+  const allLinks = linkGroups.flatMap((group) => group.links);
+
+  // Function to render link items
+  const renderLinks = () => {
+    return allLinks.map((link, index) => (
+      <Link
+        key={`${link.href}-${index}`}
+        href={link.href}
+        className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+      >
+        {link.icon || getDefaultIconForLink()}
+        <div className="p-ui-medium text-base font-medium leading-normal">
+          {link.text}
+        </div>
+      </Link>
+    ));
+  };
+
   return (
     <>
       <Sheet>
@@ -41,60 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
         >
           <div className="h-full w-full rounded-2xl bg-zinc-200 dark:bg-zinc-800">
             <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
-              <Link
-                href="/profile/dashboard"
-                className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
-              >
-                <IconDashboardLayout className="h-6 w-6" />
-                <div className="p-ui-medium text-base font-medium leading-normal">
-                  Creator dashboard
-                </div>
-              </Link>
-              <Link
-                href="/profile/credits"
-                className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
-              >
-                <IconCoin className="h-6 w-6" />
-                <div className="p-ui-medium text-base font-medium leading-normal">
-                  Billing
-                </div>
-              </Link>
-              <Link
-                href="/profile/integrations"
-                className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
-              >
-                <IconIntegrations className="h-6 w-6" />
-                <div className="p-ui-medium text-base font-medium leading-normal">
-                  Integrations
-                </div>
-              </Link>
-              <Link
-                href="/profile/api_keys"
-                className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
-              >
-                <KeyIcon className="h-6 w-6" />
-                <div className="p-ui-medium text-base font-medium leading-normal">
-                  API Keys
-                </div>
-              </Link>
-              <Link
-                href="/profile"
-                className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
-              >
-                <IconProfile className="h-6 w-6" />
-                <div className="p-ui-medium text-base font-medium leading-normal">
-                  Profile
-                </div>
-              </Link>
-              <Link
-                href="/profile/settings"
-                className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
-              >
-                <IconSliders className="h-6 w-6" />
-                <div className="p-ui-medium text-base font-medium leading-normal">
-                  Settings
-                </div>
-              </Link>
+              {renderLinks()}
             </div>
           </div>
         </SheetContent>
@@ -103,60 +72,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
       <div className="relative hidden h-[912px] w-[234px] border-none lg:block">
         <div className="h-full w-full rounded-2xl bg-zinc-200 dark:bg-zinc-800">
           <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
-            <Link
-              href="/profile/dashboard"
-              className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
-            >
-              <IconDashboardLayout className="h-6 w-6" />
-              <div className="p-ui-medium text-base font-medium leading-normal">
-                Agent dashboard
-              </div>
-            </Link>
-            <Link
-              href="/profile/credits"
-              className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
-            >
-              <IconCoin className="h-6 w-6" />
-              <div className="p-ui-medium text-base font-medium leading-normal">
-                Billing
-              </div>
-            </Link>
-            <Link
-              href="/profile/integrations"
-              className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
-            >
-              <IconIntegrations className="h-6 w-6" />
-              <div className="p-ui-medium text-base font-medium leading-normal">
-                Integrations
-              </div>
-            </Link>
-            <Link
-              href="/profile/api_keys"
-              className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
-            >
-              <KeyIcon className="h-6 w-6" strokeWidth={1} />
-              <div className="p-ui-medium text-base font-medium leading-normal">
-                API Keys
-              </div>
-            </Link>
-            <Link
-              href="/profile"
-              className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
-            >
-              <IconProfile className="h-6 w-6" />
-              <div className="p-ui-medium text-base font-medium leading-normal">
-                Profile
-              </div>
-            </Link>
-            <Link
-              href="/profile/settings"
-              className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
-            >
-              <IconSliders className="h-6 w-6" />
-              <div className="p-ui-medium text-base font-medium leading-normal">
-                Settings
-              </div>
-            </Link>
+            {renderLinks()}
           </div>
         </div>
       </div>
