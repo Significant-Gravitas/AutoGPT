@@ -11,6 +11,7 @@ from autogpt_libs.feature_flag.client import (
     initialize_launchdarkly,
     shutdown_launchdarkly,
 )
+from prisma.enums import SubmissionStatus
 
 import backend.data.block
 import backend.data.db
@@ -23,6 +24,7 @@ import backend.server.v2.library.model
 import backend.server.v2.library.routes
 import backend.server.v2.otto.routes
 import backend.server.v2.postmark.postmark
+import backend.server.v2.store.admin_routes
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
 import backend.util.service
@@ -98,6 +100,11 @@ app.add_exception_handler(Exception, handle_internal_http_error(500))
 app.include_router(backend.server.routers.v1.v1_router, tags=["v1"], prefix="/api")
 app.include_router(
     backend.server.v2.store.routes.router, tags=["v2"], prefix="/api/store"
+)
+app.include_router(
+    backend.server.v2.store.admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/store",
 )
 app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
@@ -249,12 +256,53 @@ class AgentServer(backend.util.service.AppProcess):
     ):
         return await backend.server.v2.store.routes.create_submission(request, user_id)
 
+    ### ADMIN ###
+    @staticmethod
+    async def test_get_store_submissions(
+        status: SubmissionStatus | None = None,
+        search: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ):
+        return await backend.server.v2.store.admin_routes.get_submissions(
+            status, search, page, page_size
+        )
+
+    @staticmethod
+    async def test_get_pending_store_submissions(
+        page: int = 1,
+        page_size: int = 20,
+    ):
+        return await backend.server.v2.store.admin_routes.get_pending_submissions(
+            page, page_size
+        )
+
+    @staticmethod
+    async def test_get_store_submission_details(
+        store_listing_version_id: str,
+    ):
+        return await backend.server.v2.store.admin_routes.get_submission_details(
+            store_listing_version_id
+        )
+
+    @staticmethod
+    async def test_get_listing_history(
+        listing_id: str,
+        page: int = 1,
+        page_size: int = 20,
+    ):
+        return await backend.server.v2.store.admin_routes.get_listing_history(
+            listing_id, page, page_size
+        )
+
     @staticmethod
     async def test_review_store_listing(
         request: backend.server.v2.store.model.ReviewSubmissionRequest,
         user: autogpt_libs.auth.models.User,
     ):
-        return await backend.server.v2.store.routes.review_submission(request, user)
+        return await backend.server.v2.store.admin_routes.review_submission(
+            request.store_listing_version_id, request, user
+        )
 
     @staticmethod
     def test_create_credentials(
