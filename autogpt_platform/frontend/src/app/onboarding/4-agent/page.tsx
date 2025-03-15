@@ -1,6 +1,5 @@
 "use client";
 import OnboardingButton from "@/components/onboarding/OnboardingButton";
-import { useOnboarding } from "../layout";
 import {
   OnboardingFooter,
   OnboardingHeader,
@@ -13,9 +12,10 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { finishOnboarding } from "../6-congrats/actions";
 import { isEmptyOrWhitespace } from "@/lib/utils";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 
 export default function Page() {
-  const { state, updateState } = useOnboarding("INTEGRATIONS");
+  const { state, updateState } = useOnboarding(4, "INTEGRATIONS");
   const [agents, setAgents] = useState<StoreAgentDetails[]>([]);
   const api = useBackendAPI();
 

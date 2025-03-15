@@ -1,6 +1,5 @@
 "use client";
 import OnboardingButton from "@/components/onboarding/OnboardingButton";
-import { useOnboarding } from "../layout";
 import {
   OnboardingFooter,
   OnboardingHeader,
@@ -9,6 +8,7 @@ import {
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
 import OnboardingList from "@/components/onboarding/OnboardingList";
 import { isEmptyOrWhitespace } from "@/lib/utils";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 
 const reasons = [
   {
@@ -39,7 +39,7 @@ const reasons = [
 ];
 
 export default function Page() {
-  const { state, updateState } = useOnboarding("WELCOME");
+  const { state, updateState } = useOnboarding(2, "WELCOME");
 
   return (
     <OnboardingStep>

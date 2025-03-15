@@ -5,7 +5,6 @@ import {
   OnboardingHeader,
 } from "@/components/onboarding/OnboardingStep";
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
-import { useOnboarding } from "../layout";
 import StarRating from "@/components/onboarding/StarRating";
 import { Play } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -15,9 +14,10 @@ import Image from "next/image";
 import { LibraryAgent, StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useRouter } from "next/navigation";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 
 export default function Page() {
-  const { state, updateState } = useOnboarding("AGENT_CHOICE");
+  const { state, updateState, setStep } = useOnboarding(5, "AGENT_CHOICE");
   const [showInput, setShowInput] = useState(false);
   const [storeAgent, setStoreAgent] = useState<StoreAgentDetails | null>(null);
   const [agent, setAgent] = useState<LibraryAgent | null>(null);
@@ -101,6 +101,7 @@ export default function Page() {
         <div
           onClick={() => {
             setShowInput(true);
+            setStep(6);
             updateState({
               completedSteps: [
                 ...(state?.completedSteps || []),

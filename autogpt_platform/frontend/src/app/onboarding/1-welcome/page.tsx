@@ -2,8 +2,11 @@
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
 import OnboardingButton from "@/components/onboarding/OnboardingButton";
 import Image from "next/image";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 
 export default function Page() {
+  useOnboarding(1);
+
   return (
     <>
       <Image

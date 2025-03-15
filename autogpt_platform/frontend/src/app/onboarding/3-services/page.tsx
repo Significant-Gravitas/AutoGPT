@@ -6,11 +6,11 @@ import {
   OnboardingFooter,
 } from "@/components/onboarding/OnboardingStep";
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
-import { useOnboarding } from "../layout";
 import { OnboardingGrid } from "@/components/onboarding/OnboardingGrid";
 import { useCallback } from "react";
 import OnboardingInput from "@/components/onboarding/OnboardingInput";
 import { isEmptyOrWhitespace } from "@/lib/utils";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 
 const services = [
   {
@@ -111,7 +111,7 @@ const services = [
 ];
 
 export default function Page() {
-  const { state, updateState } = useOnboarding("USAGE_REASON");
+  const { state, updateState } = useOnboarding(3, "USAGE_REASON");
 
   const switchIntegration = useCallback(
     (name: string) => {

@@ -15,11 +15,13 @@ const OnboardingContext = createContext<
   | {
       state: UserOnboarding | null;
       updateState: (state: Partial<UserOnboarding>) => void;
+      step: number;
+      setStep: (step: number) => void;
     }
   | undefined
 >(undefined);
 
-export function useOnboarding(completeStep?: OnboardingStep) {
+export function useOnboarding(step?: number, completeStep?: OnboardingStep) {
   const context = useContext(OnboardingContext);
   if (!context)
     throw new Error("useOnboarding must be used within an OnboardingProvider");
@@ -37,6 +39,12 @@ export function useOnboarding(completeStep?: OnboardingStep) {
     });
   }, [completeStep, context.state, context.updateState]);
 
+  useEffect(() => {
+    if (step && context.step !== step) {
+      context.setStep(step);
+    }
+  }, [step, context.step, context.setStep]);
+
   return context;
 }
 
@@ -46,6 +54,8 @@ export default function OnboardingProvider({
   children: ReactNode;
 }) {
   const [state, setState] = useState<UserOnboarding | null>(null);
+  // Step is used to control the progress bar, it's frotend only
+  const [step, setStep] = useState(1);
   const api = useBackendAPI();
   const pathname = usePathname();
   const router = useRouter();
@@ -107,7 +117,7 @@ export default function OnboardingProvider({
   );
 
   return (
-    <OnboardingContext.Provider value={{ state, updateState }}>
+    <OnboardingContext.Provider value={{ state, updateState, step, setStep }}>
       {children}
     </OnboardingContext.Provider>
   );
