@@ -71,8 +71,8 @@ export function ExpandableRow({
         <TableCell onClick={() => setExpanded(!expanded)}>
           {latestVersion?.date_submitted
             ? formatDistanceToNow(new Date(latestVersion.date_submitted), {
-              addSuffix: true,
-            })
+                addSuffix: true,
+              })
             : "Unknown"}
         </TableCell>
         <TableCell className="text-right">
@@ -121,8 +121,8 @@ export function ExpandableRow({
                           v{version.version || "?"}
                           {version.store_listing_version_id ===
                             listing.active_version_id && (
-                              <Badge className="ml-2 bg-blue-500">Active</Badge>
-                            )}
+                            <Badge className="ml-2 bg-blue-500">Active</Badge>
+                          )}
                         </TableCell>
                         <TableCell>{getStatusBadge(version.status)}</TableCell>
                         {/* <TableCell>
@@ -131,19 +131,19 @@ export function ExpandableRow({
                         <TableCell>
                           {version.date_submitted
                             ? formatDistanceToNow(
-                              new Date(version.date_submitted),
-                              { addSuffix: true },
-                            )
+                                new Date(version.date_submitted),
+                                { addSuffix: true },
+                              )
                             : "Unknown"}
                         </TableCell>
                         <TableCell>
                           {version.reviewed_at
                             ? formatDistanceToNow(
-                              new Date(version.reviewed_at),
-                              {
-                                addSuffix: true,
-                              },
-                            )
+                                new Date(version.reviewed_at),
+                                {
+                                  addSuffix: true,
+                                },
+                              )
                             : "Not reviewed"}
                         </TableCell>
                         <TableCell className="max-w-xs truncate">
