@@ -796,7 +796,11 @@ async def _get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
         graphs = await AgentGraph.prisma().find_many(
             where={
                 "OR": [
-                    {"id": graph_id, "version": graph_version}
+                    {
+                        "id": graph_id,
+                        "version": graph_version,
+                        "userId": graph.userId,  # Ensure the sub-graph is owned by the same user
+                    }
                     for graph_id, graph_version in sub_graph_ids
                 ]  # type: ignore
             },
