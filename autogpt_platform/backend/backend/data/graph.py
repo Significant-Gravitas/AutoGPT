@@ -18,9 +18,9 @@ from pydantic.fields import Field, computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
-from backend.util import type
+from backend.util import type as type_utils
 
-from .block import BlockInput, BlockType, get_block, get_blocks
+from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
 from .db import BaseDbModel, transaction
 from .execution import ExecutionResult, ExecutionStatus
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
@@ -70,13 +70,20 @@ class NodeModel(Node):
 
     webhook: Optional[Webhook] = None
 
+    @property
+    def block(self) -> Block[BlockSchema, BlockSchema]:
+        block = get_block(self.block_id)
+        if not block:
+            raise ValueError(f"Block #{self.block_id} does not exist")
+        return block
+
     @staticmethod
-    def from_db(node: AgentNode) -> "NodeModel":
+    def from_db(node: AgentNode, for_export: bool = False) -> "NodeModel":
         obj = NodeModel(
             id=node.id,
             block_id=node.agentBlockId,
-            input_default=type.convert(node.constantInput, dict[str, Any]),
-            metadata=type.convert(node.metadata, dict[str, Any]),
+            input_default=type_utils.convert(node.constantInput, dict[str, Any]),
+            metadata=type_utils.convert(node.metadata, dict[str, Any]),
             graph_id=node.agentGraphId,
             graph_version=node.agentGraphVersion,
             webhook_id=node.webhookId,
@@ -84,6 +91,8 @@ class NodeModel(Node):
         )
         obj.input_links = [Link.from_db(link) for link in node.Input or []]
         obj.output_links = [Link.from_db(link) for link in node.Output or []]
+        if for_export:
+            return obj.stripped_for_export()
         return obj
 
     def is_triggered_by_event_type(self, event_type: str) -> bool:
@@ -101,6 +110,45 @@ class NodeModel(Node):
             for k in event_filter
             if event_filter[k] is True
         ]
+
+    def stripped_for_export(self) -> "NodeModel":
+        """
+        Returns a copy of the node model, stripped of any non-transferable properties
+        """
+        stripped_node = self.model_copy(deep=True)
+        # Remove credentials from node input
+        if stripped_node.input_default:
+            stripped_node.input_default = NodeModel._filter_secrets_from_node_input(
+                stripped_node.input_default, self.block.input_schema.jsonschema()
+            )
+
+        # Remove webhook info
+        stripped_node.webhook_id = None
+        stripped_node.webhook = None
+
+        return stripped_node
+
+    @staticmethod
+    def _filter_secrets_from_node_input(
+        input_data: dict[str, Any], schema: dict[str, Any] | None
+    ) -> dict[str, Any]:
+        sensitive_keys = ["credentials", "api_key", "password", "token", "secret"]
+        field_schemas = schema.get("properties", {}) if schema else {}
+        result = {}
+        for key, value in input_data.items():
+            field_schema: dict | None = field_schemas.get(key)
+            if (field_schema and field_schema.get("secret", False)) or any(
+                sensitive_key in key.lower() for sensitive_key in sensitive_keys
+            ):
+                # This is a secret value -> filter this key-value pair out
+                continue
+            elif isinstance(value, dict):
+                result[key] = NodeModel._filter_secrets_from_node_input(
+                    value, field_schema
+                )
+            else:
+                result[key] = value
+        return result
 
 
 # Fix 2-way reference Node <-> Webhook
@@ -128,7 +176,7 @@ class GraphExecutionMeta(BaseDbModel):
         total_run_time = duration
 
         try:
-            stats = type.convert(_graph_exec.stats or {}, dict[str, Any])
+            stats = type_utils.convert(_graph_exec.stats or {}, dict[str, Any])
         except ValueError:
             stats = {}
 
@@ -496,8 +544,7 @@ class GraphModel(Graph):
             name=graph.name or "",
             description=graph.description or "",
             nodes=[
-                NodeModel.from_db(GraphModel._process_node(node, for_export))
-                for node in graph.AgentNodes or []
+                NodeModel.from_db(node, for_export) for node in graph.AgentNodes or []
             ],
             links=list(
                 {
@@ -511,37 +558,6 @@ class GraphModel(Graph):
                 for sub_graph in sub_graphs or []
             ],
         )
-
-    @staticmethod
-    def _process_node(node: AgentNode, for_export: bool) -> AgentNode:
-        if for_export:
-            # Remove credentials from node input
-            if node.constantInput:
-                constant_input = type.convert(node.constantInput, dict[str, Any])
-                constant_input = GraphModel._hide_node_input_credentials(constant_input)
-                node.constantInput = Json(constant_input)
-
-            # Remove webhook info
-            node.webhookId = None
-            node.Webhook = None
-
-        return node
-
-    @staticmethod
-    def _hide_node_input_credentials(input_data: dict[str, Any]) -> dict[str, Any]:
-        sensitive_keys = ["credentials", "api_key", "password", "token", "secret"]
-        result = {}
-        for key, value in input_data.items():
-            if isinstance(value, dict):
-                result[key] = GraphModel._hide_node_input_credentials(value)
-            elif isinstance(value, str) and any(
-                sensitive_key in key.lower() for sensitive_key in sensitive_keys
-            ):
-                # Skip this key-value pair in the result
-                continue
-            else:
-                result[key] = value
-        return result
 
     def clean_graph(self):
         blocks = [block() for block in get_blocks().values()]
