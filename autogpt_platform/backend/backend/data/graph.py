@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import uuid
 from collections import defaultdict
@@ -201,10 +200,9 @@ class GraphExecution(GraphExecutionMeta):
         )
 
 
-class Graph(BaseDbModel):
+class BaseGraph(BaseDbModel):
     version: int = 1
     is_active: bool = True
-    is_template: bool = False
     name: str
     description: str
     nodes: list[Node] = []
@@ -267,6 +265,10 @@ class Graph(BaseDbModel):
         }
 
 
+class Graph(BaseGraph):
+    sub_graphs: list[BaseGraph] = []  # Flattened sub-graphs, only used in export
+
+
 class GraphModel(Graph):
     user_id: str
     nodes: list[NodeModel] = []  # type: ignore
@@ -290,31 +292,55 @@ class GraphModel(Graph):
         Reassigns all IDs in the graph to new UUIDs.
         This method can be used before storing a new graph to the database.
         """
+        if reassign_graph_id:
+            graph_id_map = {
+                self.id: str(uuid.uuid4()),
+                **{sub_graph.id: str(uuid.uuid4()) for sub_graph in self.sub_graphs},
+            }
+        else:
+            graph_id_map = {}
+
+        self._reassign_ids(self, user_id, graph_id_map)
+        for sub_graph in self.sub_graphs:
+            self._reassign_ids(sub_graph, user_id, graph_id_map)
+
+    @staticmethod
+    def _reassign_ids(
+        graph: BaseGraph,
+        user_id: str,
+        graph_id_map: dict[str, str],
+    ):
 
         # Reassign Graph ID
-        id_map = {node.id: str(uuid.uuid4()) for node in self.nodes}
-        if reassign_graph_id:
-            self.id = str(uuid.uuid4())
+        if graph.id in graph_id_map:
+            graph.id = graph_id_map[graph.id]
 
         # Reassign Node IDs
-        for node in self.nodes:
+        id_map = {node.id: str(uuid.uuid4()) for node in graph.nodes}
+        for node in graph.nodes:
             node.id = id_map[node.id]
 
         # Reassign Link IDs
-        for link in self.links:
+        for link in graph.links:
             link.source_id = id_map[link.source_id]
             link.sink_id = id_map[link.sink_id]
 
         # Reassign User IDs for agent blocks
-        for node in self.nodes:
+        for node in graph.nodes:
             if node.block_id != AgentExecutorBlock().id:
                 continue
             node.input_default["user_id"] = user_id
             node.input_default.setdefault("data", {})
-
-        self.validate_graph()
+            if (graph_id := node.input_default.get("graph_id")) in graph_id_map:
+                node.input_default["graph_id"] = graph_id_map[graph_id]
 
     def validate_graph(self, for_run: bool = False):
+        self._validate_graph(self, for_run)
+        for sub_graph in self.sub_graphs:
+            self._validate_graph(sub_graph, for_run)
+
+    @staticmethod
+    def _validate_graph(graph: BaseGraph, for_run: bool = False):
         def sanitize(name):
             sanitized_name = name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
             if sanitized_name.startswith("tools_^_"):
@@ -326,11 +352,11 @@ class GraphModel(Graph):
         agent_nodes = set()
         nodes_block = {
             node.id: block
-            for node in self.nodes
+            for node in graph.nodes
             if (block := get_block(node.block_id)) is not None
         }
 
-        for node in self.nodes:
+        for node in graph.nodes:
             if (block := nodes_block.get(node.id)) is None:
                 raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
 
@@ -343,11 +369,11 @@ class GraphModel(Graph):
 
         input_links = defaultdict(list)
 
-        for link in self.links:
+        for link in graph.links:
             input_links[link.sink_id].append(link)
 
         # Nodes: required fields are filled or connected and dependencies are satisfied
-        for node in self.nodes:
+        for node in graph.nodes:
             if (block := nodes_block.get(node.id)) is None:
                 raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
 
@@ -408,7 +434,7 @@ class GraphModel(Graph):
                         f"Node {block.name} #{node.id}: Field `{field_name}` requires [{', '.join(missing_deps)}] to be set"
                     )
 
-        node_map = {v.id: v for v in self.nodes}
+        node_map = {v.id: v for v in graph.nodes}
 
         def is_static_output_block(nid: str) -> bool:
             bid = node_map[nid].block_id
@@ -416,7 +442,7 @@ class GraphModel(Graph):
             return b.static_output if b else False
 
         # Links: links are connected and the connected pin data type are compatible.
-        for link in self.links:
+        for link in graph.links:
             source = (link.source_id, link.source_name)
             sink = (link.sink_id, link.sink_name)
             prefix = f"Link {source} <-> {sink}"
@@ -457,13 +483,16 @@ class GraphModel(Graph):
                 link.is_static = True  # Each value block output should be static.
 
     @staticmethod
-    def from_db(graph: AgentGraph, for_export: bool = False):
+    def from_db(
+        graph: AgentGraph,
+        for_export: bool = False,
+        sub_graphs: list[AgentGraph] | None = None,
+    ):
         return GraphModel(
             id=graph.id,
             user_id=graph.userId,
             version=graph.version,
             is_active=graph.isActive,
-            is_template=graph.isTemplate,
             name=graph.name or "",
             description=graph.description or "",
             nodes=[
@@ -477,6 +506,10 @@ class GraphModel(Graph):
                     for link in (node.Input or []) + (node.Output or [])
                 }
             ),
+            sub_graphs=[
+                GraphModel.from_db(sub_graph, for_export)
+                for sub_graph in sub_graphs or []
+            ],
         )
 
     @staticmethod
@@ -559,14 +592,14 @@ async def set_node_webhook(node_id: str, webhook_id: str | None) -> NodeModel:
 
 async def get_graphs(
     user_id: str,
-    filter_by: Literal["active", "template"] | None = "active",
+    filter_by: Literal["active"] | None = "active",
 ) -> list[GraphModel]:
     """
     Retrieves graph metadata objects.
     Default behaviour is to get all currently active graphs.
 
     Args:
-        filter_by: An optional filter to either select templates or active graphs.
+        filter_by: An optional filter to either select graphs.
         user_id: The ID of the user that owns the graph.
 
     Returns:
@@ -576,8 +609,6 @@ async def get_graphs(
 
     if filter_by == "active":
         where_clause["isActive"] = True
-    elif filter_by == "template":
-        where_clause["isTemplate"] = True
 
     graphs = await AgentGraph.prisma().find_many(
         where=where_clause,
@@ -666,21 +697,18 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
         description=graph.description or "",
         version=graph.version,
         is_active=graph.isActive,
-        is_template=graph.isTemplate,
     )
 
 
 async def get_graph(
     graph_id: str,
     version: int | None = None,
-    template: bool = False,  # note: currently not in use; TODO: remove from DB entirely
     user_id: str | None = None,
     for_export: bool = False,
 ) -> GraphModel | None:
     """
     Retrieves a graph from the DB.
-    Defaults to the version with `is_active` if `version` is not passed,
-    or the latest version with `is_template` if `template=True`.
+    Defaults to the version with `is_active` if `version` is not passed.
 
     Returns `None` if the record is not found.
     """
@@ -690,8 +718,6 @@ async def get_graph(
 
     if version is not None:
         where_clause["version"] = version
-    elif not template:
-        where_clause["isActive"] = True
 
     graph = await AgentGraph.prisma().find_first(
         where=where_clause,
@@ -715,7 +741,51 @@ async def get_graph(
     ):
         return None
 
+    if for_export:
+        sub_graphs = await _get_sub_graphs(graph)
+        return GraphModel.from_db(
+            graph=graph,
+            sub_graphs=sub_graphs,
+            for_export=for_export,
+        )
+
     return GraphModel.from_db(graph, for_export)
+
+
+async def _get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
+    sub_graphs = {graph.id: graph}
+    search_graphs = [graph]
+    agent_block_id = AgentExecutorBlock().id
+
+    while search_graphs:
+        sub_graph_ids = [
+            (graph_id, graph_version)
+            for graph in search_graphs
+            for node in graph.AgentNodes or []
+            if (
+                node.AgentBlock
+                and node.AgentBlock.id == agent_block_id
+                and (graph_id := dict(node.constantInput).get("graph_id"))
+                and (graph_version := dict(node.constantInput).get("graph_version"))
+            )
+        ]
+        if not sub_graph_ids:
+            break
+
+        graphs = await AgentGraph.prisma().find_many(
+            where={
+                "OR": [
+                    {"id": graph_id, "version": graph_version}
+                    for graph_id, graph_version in sub_graph_ids
+                ]  # type: ignore
+            },
+            include=AGENT_GRAPH_INCLUDE,
+        )
+
+        search_graphs = [graph for graph in graphs if graph.id not in sub_graphs]
+        sub_graphs.update({graph.id: graph for graph in search_graphs})
+
+    return [g for g in sub_graphs.values() if g.id != graph.id]
 
 
 async def get_connected_output_nodes(node_id: str) -> list[tuple[Link, Node]]:
@@ -781,50 +851,56 @@ async def create_graph(graph: Graph, user_id: str) -> GraphModel:
     async with transaction() as tx:
         await __create_graph(tx, graph, user_id)
 
-    if created_graph := await get_graph(
-        graph.id, graph.version, template=graph.is_template, user_id=user_id
-    ):
+    if created_graph := await get_graph(graph.id, graph.version, user_id=user_id):
         return created_graph
 
     raise ValueError(f"Created graph {graph.id} v{graph.version} is not in DB")
 
 
 async def __create_graph(tx, graph: Graph, user_id: str):
-    await AgentGraph.prisma(tx).create(
-        data={
-            "id": graph.id,
-            "version": graph.version,
-            "name": graph.name,
-            "description": graph.description,
-            "isTemplate": graph.is_template,
-            "isActive": graph.is_active,
-            "userId": user_id,
-            "AgentNodes": {
-                "create": [
-                    {
-                        "id": node.id,
-                        "agentBlockId": node.block_id,
-                        "constantInput": Json(node.input_default),
-                        "metadata": Json(node.metadata),
-                    }
-                    for node in graph.nodes
-                ]
-            },
-        }
+    graphs = [graph] + graph.sub_graphs
+
+    await AgentGraph.prisma(tx).create_many(
+        data=[
+            {
+                "id": graph.id,
+                "version": graph.version,
+                "name": graph.name,
+                "description": graph.description,
+                "isActive": graph.is_active,
+                "userId": user_id,
+            }
+            for graph in graphs
+        ]
     )
 
-    await asyncio.gather(
-        *[
-            AgentNodeLink.prisma(tx).create(
-                {
-                    "id": str(uuid.uuid4()),
-                    "sourceName": link.source_name,
-                    "sinkName": link.sink_name,
-                    "agentNodeSourceId": link.source_id,
-                    "agentNodeSinkId": link.sink_id,
-                    "isStatic": link.is_static,
-                }
-            )
+    await AgentNode.prisma(tx).create_many(
+        data=[
+            {
+                "id": node.id,
+                "agentGraphId": graph.id,
+                "agentGraphVersion": graph.version,
+                "agentBlockId": node.block_id,
+                "constantInput": Json(node.input_default),
+                "metadata": Json(node.metadata),
+                "webhookId": node.webhook_id,
+            }
+            for graph in graphs
+            for node in graph.nodes
+        ]
+    )
+
+    await AgentNodeLink.prisma(tx).create_many(
+        data=[
+            {
+                "id": str(uuid.uuid4()),
+                "sourceName": link.source_name,
+                "sinkName": link.sink_name,
+                "agentNodeSourceId": link.source_id,
+                "agentNodeSinkId": link.sink_id,
+                "isStatic": link.is_static,
+            }
+            for graph in graphs
             for link in graph.links
         ]
     )

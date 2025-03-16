@@ -784,7 +784,6 @@ async def get_agent(
             )
 
         graph.version = 1
-        graph.is_template = False
         graph.is_active = True
         delattr(graph, "user_id")
 
