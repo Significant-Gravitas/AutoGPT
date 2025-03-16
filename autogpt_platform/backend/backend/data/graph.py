@@ -769,6 +769,11 @@ async def get_graph(
 
 
 async def _get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
+    """
+    Iteratively fetches all sub-graphs of a given graph, and flattens them into a list.
+    This call involves a DB fetch in batch, breadth-first, per-level of graph depth.
+    On each DB fetch we will only fetch the sub-graphs that are not already in the list.
+    """
     sub_graphs = {graph.id: graph}
     search_graphs = [graph]
     agent_block_id = AgentExecutorBlock().id
