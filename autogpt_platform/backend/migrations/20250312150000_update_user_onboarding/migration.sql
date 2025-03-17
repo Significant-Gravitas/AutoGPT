@@ -13,4 +13,7 @@ CREATE TYPE "OnboardingStep" AS ENUM (
 ALTER TABLE "UserOnboarding"
   DROP COLUMN "step",
   DROP COLUMN "isCompleted",
-  ADD COLUMN "completedSteps" "OnboardingStep"[] DEFAULT '{}';
+  DROP COLUMN "selectedAgentCreator",
+  DROP COLUMN "selectedAgentSlug",
+  ADD COLUMN "completedSteps" "OnboardingStep"[] DEFAULT '{}',
+  ADD COLUMN "selectedStoreListingVersionId" TEXT

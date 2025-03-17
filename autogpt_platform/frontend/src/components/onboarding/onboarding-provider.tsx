@@ -104,8 +104,7 @@ export default function OnboardingProvider({
             usageReason: null,
             integrations: [],
             otherIntegrations: null,
-            selectedAgentCreator: null,
-            selectedAgentSlug: null,
+            selectedStoreListingVersionId: null,
             agentInput: null,
             ...newState,
           };

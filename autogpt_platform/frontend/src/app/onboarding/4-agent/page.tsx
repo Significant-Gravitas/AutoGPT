@@ -31,16 +31,19 @@ export default function Page() {
   useEffect(() => {
     // Deselect agent if it's not in the list of agents
     if (
-      state?.selectedAgentSlug &&
-      !agents.some((agent) => agent.slug === state.selectedAgentSlug)
+      state?.selectedStoreListingVersionId &&
+      !agents.some(
+        (agent) =>
+          agent.store_listing_version_id ===
+          state.selectedStoreListingVersionId,
+      )
     ) {
       updateState({
-        selectedAgentSlug: null,
-        selectedAgentCreator: null,
+        selectedStoreListingVersionId: null,
         agentInput: null,
       });
     }
-  }, [state?.selectedAgentSlug, updateState, agents]);
+  }, [state?.selectedStoreListingVersionId, updateState, agents]);
 
   return (
     <OnboardingStep>
@@ -58,13 +61,13 @@ export default function Page() {
           {...(agents[0] || {})}
           selected={
             agents[0] !== undefined
-              ? state?.selectedAgentSlug == agents[0]?.slug
+              ? state?.selectedStoreListingVersionId ==
+                agents[0]?.store_listing_version_id
               : false
           }
           onClick={() =>
             updateState({
-              selectedAgentSlug: agents[0].slug,
-              selectedAgentCreator: agents[0].creator,
+              selectedStoreListingVersionId: agents[0].store_listing_version_id,
             })
           }
         />
@@ -72,13 +75,13 @@ export default function Page() {
           {...(agents[1] || {})}
           selected={
             agents[1] !== undefined
-              ? state?.selectedAgentSlug == agents[1]?.slug
+              ? state?.selectedStoreListingVersionId ==
+                agents[1]?.store_listing_version_id
               : false
           }
           onClick={() =>
             updateState({
-              selectedAgentSlug: agents[1].slug,
-              selectedAgentCreator: agents[1].creator,
+              selectedStoreListingVersionId: agents[1].store_listing_version_id,
             })
           }
         />
@@ -87,7 +90,7 @@ export default function Page() {
       <OnboardingFooter>
         <OnboardingButton
           href="/onboarding/5-run"
-          disabled={isEmptyOrWhitespace(state?.selectedAgentSlug)}
+          disabled={isEmptyOrWhitespace(state?.selectedStoreListingVersionId)}
         >
           Next
         </OnboardingButton>

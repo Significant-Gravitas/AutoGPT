@@ -4,16 +4,9 @@ from typing import Any, Optional
 import prisma
 import pydantic
 from prisma import Json
-from prisma.models import (
-    AgentGraph,
-    AgentGraphExecution,
-    StoreListingVersion,
-    UserOnboarding,
-)
+from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingUpdateInput
 
-from backend.server.v2.library.db import set_is_deleted_for_library_agent
-from backend.server.v2.store.db import get_store_agent_details
 from backend.server.v2.store.model import StoreAgentDetails
 
 # Mapping from user reason id to categories to search for when choosing agent to show
@@ -31,8 +24,7 @@ class UserOnboardingUpdate(pydantic.BaseModel):
     usageReason: Optional[str] = None
     integrations: list[str] = pydantic.Field(default_factory=list)
     otherIntegrations: Optional[str] = None
-    selectedAgentCreator: Optional[str] = None
-    selectedAgentSlug: Optional[str] = None
+    selectedStoreListingVersionId: Optional[str] = None
     agentInput: Optional[dict[str, Any]] = None
 
 
@@ -47,8 +39,6 @@ async def get_user_onboarding(user_id: str):
 
 
 async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
-    # Get the user onboarding data
-    user_onboarding = await get_user_onboarding(user_id)
     update: UserOnboardingUpdateInput = {}
     if data.completedSteps:
         update["completedSteps"] = data.completedSteps
@@ -58,37 +48,8 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         update["integrations"] = data.integrations
     if data.otherIntegrations:
         update["otherIntegrations"] = data.otherIntegrations
-    if data.selectedAgentSlug and data.selectedAgentCreator:
-        update["selectedAgentSlug"] = data.selectedAgentSlug
-        update["selectedAgentCreator"] = data.selectedAgentCreator
-        # Check if slug changes
-        if (
-            user_onboarding.selectedAgentCreator
-            and user_onboarding.selectedAgentSlug
-            and user_onboarding.selectedAgentSlug != data.selectedAgentSlug
-        ):
-            store_agent = await get_store_agent_details(
-                user_onboarding.selectedAgentCreator, user_onboarding.selectedAgentSlug
-            )
-            store_listing = await StoreListingVersion.prisma().find_unique_or_raise(
-                where={"id": store_agent.store_listing_version_id}
-            )
-            agent_graph = await AgentGraph.prisma().find_first(
-                where={"id": store_listing.agentId, "version": store_listing.version}
-            )
-            execution_count = await AgentGraphExecution.prisma().count(
-                where={
-                    "userId": user_id,
-                    "agentGraphId": store_listing.agentId,
-                    "agentGraphVersion": store_listing.version,
-                }
-            )
-            # If there was no execution and graph doesn't belong to the user,
-            # mark the agent as deleted
-            if execution_count == 0 and agent_graph and agent_graph.userId != user_id:
-                await set_is_deleted_for_library_agent(
-                    user_id, store_listing.agentId, store_listing.agentVersion, True
-                )
+    if data.selectedStoreListingVersionId:
+        update["selectedStoreListingVersionId"] = data.selectedStoreListingVersionId
     if data.agentInput:
         update["agentInput"] = Json(data.agentInput)
 
@@ -169,6 +130,9 @@ def calculate_points(
 
 
 async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
+    # todo kcze ignore agents without input
+    # and with empty credentials
+    # do GraphModel.from_db to get input_schema and analyse
     user_onboarding = await get_user_onboarding(user_id)
     categories = REASON_MAPPING.get(user_onboarding.usageReason or "", [])
 

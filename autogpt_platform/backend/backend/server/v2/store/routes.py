@@ -197,6 +197,60 @@ async def get_agent(username: str, agent_name: str):
         )
 
 
+@router.get(
+    "/graph/{store_listing_version_id}",
+    tags=["store"],
+    response_model=backend.data.graph.GraphModel,
+)
+async def get_graph_by_store_listing_version_id(
+    store_listing_version_id: str,
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ],
+):
+    """
+    Get Agent Graph from Store Listing Version ID.
+    """
+    try:
+        graph = await backend.server.v2.store.db.get_approved_graph(
+            store_listing_version_id
+        )
+        return graph
+    except Exception:
+        logger.exception("Exception occurred whilst getting agent graph")
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={"detail": "An error occurred while retrieving the agent graph"},
+        )
+
+
+@router.get(
+    "/agents/{store_listing_version_id}",
+    tags=["store"],
+    response_model=backend.data.graph.GraphModel,
+)
+async def get_store_agent(
+    store_listing_version_id: str,
+    user_id: typing.Annotated[
+        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
+    ],
+):
+    """
+    Get Agent Graph from Store Listing Version ID.
+    """
+    try:
+        graph = await backend.server.v2.store.db.get_agent(
+            store_listing_version_id, None
+        )
+        return graph
+    except Exception:
+        logger.exception("Exception occurred whilst getting store agent")
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={"detail": "An error occurred while retrieving the store agent"},
+        )
+
+
 @router.post(
     "/agents/{username}/{agent_name}/review",
     tags=["store"],

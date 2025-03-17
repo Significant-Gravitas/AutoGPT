@@ -746,8 +746,7 @@ export interface UserOnboarding {
   usageReason: string | null;
   integrations: string[];
   otherIntegrations: string | null;
-  selectedAgentCreator: string | null;
-  selectedAgentSlug: string | null;
+  selectedStoreListingVersionId: string | null;
   agentInput: { [key: string]: string } | null;
 }
 

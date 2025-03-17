@@ -71,13 +71,12 @@ model UserOnboarding {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
 
-  completedSteps       OnboardingStep[] @default([])
-  usageReason          String?
-  integrations         String[]         @default([])
-  otherIntegrations    String?
-  selectedAgentCreator String?
-  selectedAgentSlug    String?
-  agentInput           Json?
+  completedSteps                OnboardingStep[] @default([])
+  usageReason                   String?
+  integrations                  String[]         @default([])
+  otherIntegrations             String?
+  selectedStoreListingVersionId String?
+  agentInput                    Json?
 
   userId String @unique
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

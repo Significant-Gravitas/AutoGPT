@@ -432,6 +432,18 @@ export default class BackendAPI {
     );
   }
 
+  getAgentByStoreListingVersionId(
+    storeListingVersionID: string,
+  ): Promise<Graph> {
+    return this._get(`/store/graph/${storeListingVersionID}`);
+  }
+
+  getStoreAgentByVersionId(
+    storeListingVersionID: string,
+  ): Promise<StoreAgentDetails> {
+    return this._get(`/store/agents/${storeListingVersionID}`);
+  }
+
   getStoreCreators(params?: {
     featured?: boolean;
     search_query?: string;
