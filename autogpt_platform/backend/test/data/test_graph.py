@@ -199,7 +199,9 @@ async def test_clean_graph(server: SpinTestServer):
     )
 
     # Clean the graph
-    created_graph.clean_graph()
+    created_graph = await server.agent_server.test_get_graph(
+        created_graph.id, created_graph.version, DEFAULT_USER_ID, for_export=True
+    )
 
     # # Verify input block value is cleared
     input_node = next(
