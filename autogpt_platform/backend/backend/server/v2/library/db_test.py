@@ -3,20 +3,11 @@ from datetime import datetime
 import prisma.errors
 import prisma.models
 import pytest
-from prisma import Prisma
 
 import backend.server.v2.library.db as db
 import backend.server.v2.store.exceptions
-
-
-@pytest.fixture(autouse=True)
-async def setup_prisma():
-    # Don't register client if already registered
-    try:
-        Prisma()
-    except prisma.errors.ClientAlreadyRegisteredError:
-        pass
-    yield
+from backend.data.db import connect
+from backend.data.includes import library_agent_include
 
 
 @pytest.mark.asyncio
@@ -31,7 +22,6 @@ async def test_get_library_agents(mocker):
             userId="test-user",
             isActive=True,
             createdAt=datetime.now(),
-            isTemplate=False,
         )
     ]
 
@@ -56,7 +46,6 @@ async def test_get_library_agents(mocker):
                 userId="other-user",
                 isActive=True,
                 createdAt=datetime.now(),
-                isTemplate=False,
             ),
         )
     ]
@@ -91,10 +80,11 @@ async def test_get_library_agents(mocker):
     assert result.pagination.page_size == 50
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(scope="session")
 async def test_add_agent_to_library(mocker):
+    await connect()
     # Mock data
-    mock_store_listing = prisma.models.StoreListingVersion(
+    mock_store_listing_data = prisma.models.StoreListingVersion(
         id="version123",
         version=1,
         createdAt=datetime.now(),
@@ -119,8 +109,22 @@ async def test_add_agent_to_library(mocker):
             userId="creator",
             isActive=True,
             createdAt=datetime.now(),
-            isTemplate=False,
         ),
+    )
+
+    mock_library_agent_data = prisma.models.LibraryAgent(
+        id="ua1",
+        userId="test-user",
+        agentId=mock_store_listing_data.agentId,
+        agentVersion=1,
+        isCreatedByUser=False,
+        isDeleted=False,
+        isArchived=False,
+        createdAt=datetime.now(),
+        updatedAt=datetime.now(),
+        isFavorite=False,
+        useGraphIsActiveVersion=True,
+        Agent=mock_store_listing_data.Agent,
     )
 
     # Mock prisma calls
@@ -128,12 +132,14 @@ async def test_add_agent_to_library(mocker):
         "prisma.models.StoreListingVersion.prisma"
     )
     mock_store_listing_version.return_value.find_unique = mocker.AsyncMock(
-        return_value=mock_store_listing
+        return_value=mock_store_listing_data
     )
 
     mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
     mock_library_agent.return_value.find_first = mocker.AsyncMock(return_value=None)
-    mock_library_agent.return_value.create = mocker.AsyncMock()
+    mock_library_agent.return_value.create = mocker.AsyncMock(
+        return_value=mock_library_agent_data
+    )
 
     # Call function
     await db.add_store_agent_to_library("version123", "test-user")
@@ -147,17 +153,20 @@ async def test_add_agent_to_library(mocker):
             "userId": "test-user",
             "agentId": "agent1",
             "agentVersion": 1,
-        }
+        },
+        include=library_agent_include("test-user"),
     )
     mock_library_agent.return_value.create.assert_called_once_with(
         data=prisma.types.LibraryAgentCreateInput(
             userId="test-user", agentId="agent1", agentVersion=1, isCreatedByUser=False
-        )
+        ),
+        include=library_agent_include("test-user"),
     )
 
 
-@pytest.mark.asyncio
+@pytest.mark.asyncio(scope="session")
 async def test_add_agent_to_library_not_found(mocker):
+    await connect()
     # Mock prisma calls
     mock_store_listing_version = mocker.patch(
         "prisma.models.StoreListingVersion.prisma"
