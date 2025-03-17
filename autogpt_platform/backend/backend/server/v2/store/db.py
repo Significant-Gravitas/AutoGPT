@@ -1,6 +1,5 @@
 import logging
 from datetime import datetime
-from typing import Optional
 
 import fastapi
 import prisma.enums
@@ -754,47 +753,31 @@ async def get_my_agents(
 
 
 async def get_agent(
-    store_listing_version_id: str, version_id: Optional[int]
+    user_id: str,
+    store_listing_version_id: str,
 ) -> GraphModel:
     """Get agent using the version ID and store listing version ID."""
-    try:
-        store_listing_version = (
-            await prisma.models.StoreListingVersion.prisma().find_unique(
-                where={"id": store_listing_version_id}, include={"Agent": True}
-            )
+    store_listing_version = (
+        await prisma.models.StoreListingVersion.prisma().find_unique(
+            where={"id": store_listing_version_id}
+        )
+    )
+
+    if not store_listing_version:
+        raise ValueError(f"Store listing version {store_listing_version_id} not found")
+
+    graph = await backend.data.graph.get_graph(
+        user_id=user_id,
+        graph_id=store_listing_version.agentId,
+        version=store_listing_version.agentVersion,
+        for_export=True,
+    )
+    if not graph:
+        raise ValueError(
+            f"Agent {store_listing_version.agentId} v{store_listing_version.agentVersion} not found"
         )
 
-        if not store_listing_version or not store_listing_version.Agent:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f"Store listing version {store_listing_version_id} not found",
-            )
-
-        graph_id = store_listing_version.agentId
-        graph_version = store_listing_version.agentVersion
-        graph = await backend.data.graph.get_graph(graph_id, graph_version)
-
-        if not graph:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=(
-                    f"Agent #{graph_id} not found "
-                    f"for store listing version #{store_listing_version_id}"
-                ),
-            )
-
-        graph.version = 1
-        graph.is_template = False
-        graph.is_active = True
-        delattr(graph, "user_id")
-
-        return graph
-
-    except Exception as e:
-        logger.error(f"Error getting agent: {e}")
-        raise backend.server.v2.store.exceptions.DatabaseError(
-            "Failed to fetch agent"
-        ) from e
+    return graph
 
 
 async def review_store_submission(

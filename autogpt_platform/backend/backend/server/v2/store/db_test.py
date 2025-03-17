@@ -146,7 +146,6 @@ async def test_create_store_submission(mocker):
         userId="user-id",
         createdAt=datetime.now(),
         isActive=True,
-        isTemplate=False,
     )
 
     mock_listing = prisma.models.StoreListing(
