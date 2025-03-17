@@ -122,6 +122,12 @@ class NodeModel(Node):
                 stripped_node.input_default, self.block.input_schema.jsonschema()
             )
 
+        if (
+            stripped_node.block.block_type == BlockType.INPUT
+            and "value" in stripped_node.input_default
+        ):
+            stripped_node.input_default["value"] = ""
+
         # Remove webhook info
         stripped_node.webhook_id = None
         stripped_node.webhook = None
@@ -538,7 +544,7 @@ class GraphModel(Graph):
     ):
         return GraphModel(
             id=graph.id,
-            user_id=graph.userId,
+            user_id=graph.userId if not for_export else "",
             version=graph.version,
             is_active=graph.isActive,
             name=graph.name or "",
@@ -558,26 +564,6 @@ class GraphModel(Graph):
                 for sub_graph in sub_graphs or []
             ],
         )
-
-    def clean_graph(self):
-        blocks = [block() for block in get_blocks().values()]
-
-        input_blocks = [
-            node
-            for node in self.nodes
-            if next(
-                (
-                    b
-                    for b in blocks
-                    if b.id == node.block_id and b.block_type == BlockType.INPUT
-                ),
-                None,
-            )
-        ]
-
-        for node in self.nodes:
-            if any(input_block.id == node.id for input_block in input_blocks):
-                node.input_default["value"] = ""
 
 
 # --------------------- CRUD functions --------------------- #
