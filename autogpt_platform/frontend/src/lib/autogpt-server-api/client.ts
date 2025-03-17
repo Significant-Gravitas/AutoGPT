@@ -197,14 +197,14 @@ export default class BackendAPI {
   getGraph(
     id: GraphID,
     version?: number,
-    hide_credentials?: boolean,
+    for_export?: boolean,
   ): Promise<Graph> {
     let query: Record<string, any> = {};
     if (version !== undefined) {
       query["version"] = version;
     }
-    if (hide_credentials !== undefined) {
-      query["hide_credentials"] = hide_credentials;
+    if (for_export !== undefined) {
+      query["for_export"] = for_export;
     }
     return this._get(`/graphs/${id}`, query);
   }
