@@ -154,9 +154,10 @@ class AgentServer(backend.util.service.AppProcess):
         graph_id: str,
         graph_version: int,
         user_id: str,
+        for_export: bool = False,
     ):
         return await backend.server.routers.v1.get_graph(
-            graph_id, user_id, graph_version
+            graph_id, user_id, graph_version, for_export
         )
 
     @staticmethod
