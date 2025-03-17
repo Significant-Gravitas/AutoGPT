@@ -38,7 +38,6 @@ from backend.data.credit import (
     TransactionHistory,
     get_auto_top_up,
     get_block_costs,
-    get_stripe_customer_id,
     get_user_credit_model,
     set_auto_top_up,
 )
@@ -55,7 +54,7 @@ from backend.data.user import (
     update_user_email,
     update_user_notification_preference,
 )
-from backend.executor import ExecutionManager, ExecutionScheduler, scheduler
+from backend.executor import ExecutionManager, Scheduler, scheduler
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_activate,
@@ -84,8 +83,8 @@ def execution_manager_client() -> ExecutionManager:
 
 
 @thread_cached
-def execution_scheduler_client() -> ExecutionScheduler:
-    return get_service_client(ExecutionScheduler)
+def execution_scheduler_client() -> Scheduler:
+    return get_service_client(Scheduler)
 
 
 settings = Settings()
@@ -341,15 +340,7 @@ async def stripe_webhook(request: Request):
 async def manage_payment_method(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, str]:
-    session = stripe.billing_portal.Session.create(
-        customer=await get_stripe_customer_id(user_id),
-        return_url=settings.config.frontend_base_url + "/profile/credits",
-    )
-    if not session:
-        raise HTTPException(
-            status_code=400, detail="Failed to create billing portal session"
-        )
-    return {"url": session.url}
+    return {"url": await _user_credit_model.create_billing_portal_session(user_id)}
 
 
 @v1_router.get(path="/credits/transactions", dependencies=[Depends(auth_middleware)])
@@ -630,7 +621,7 @@ async def stop_graph_run(
 async def get_graphs_executions(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[graph_db.GraphExecutionMeta]:
-    return await graph_db.get_graphs_executions(user_id=user_id)
+    return await graph_db.get_graph_executions(user_id=user_id)
 
 
 @v1_router.get(
@@ -701,7 +692,7 @@ class ScheduleCreationRequest(pydantic.BaseModel):
 async def create_schedule(
     user_id: Annotated[str, Depends(get_user_id)],
     schedule: ScheduleCreationRequest,
-) -> scheduler.JobInfo:
+) -> scheduler.ExecutionJobInfo:
     graph = await graph_db.get_graph(
         schedule.graph_id, schedule.graph_version, user_id=user_id
     )
@@ -743,7 +734,7 @@ def delete_schedule(
 def get_execution_schedules(
     user_id: Annotated[str, Depends(get_user_id)],
     graph_id: str | None = None,
-) -> list[scheduler.JobInfo]:
+) -> list[scheduler.ExecutionJobInfo]:
     return execution_scheduler_client().get_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,

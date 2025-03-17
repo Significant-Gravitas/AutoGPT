@@ -24,6 +24,7 @@ class MyAgent(pydantic.BaseModel):
     agent_id: str
     agent_version: int
     agent_name: str
+    agent_image: str | None = None
     description: str
     last_edited: datetime.datetime
 

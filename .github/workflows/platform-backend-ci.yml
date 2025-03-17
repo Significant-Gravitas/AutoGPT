@@ -66,7 +66,7 @@ jobs:
       - name: Setup Supabase
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 1.178.1
 
       - id: get_date
         name: Get date
