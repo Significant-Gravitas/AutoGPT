@@ -1,7 +1,6 @@
 import datetime
 
 import autogpt_libs.auth as autogpt_auth_lib
-import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
@@ -30,49 +29,48 @@ app.dependency_overrides[autogpt_auth_lib.auth_middleware] = override_auth_middl
 app.dependency_overrides[autogpt_auth_lib.depends.get_user_id] = override_get_user_id
 
 
-def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
-    mocked_value = [
-        library_model.LibraryAgentResponse(
-            agents=[
-                library_model.LibraryAgent(
-                    id="test-agent-1",
-                    agent_id="test-agent-1",
-                    agent_version=1,
-                    name="Test Agent 1",
-                    description="Test Description 1",
-                    image_url=None,
-                    creator_name="Test Creator",
-                    creator_image_url="",
-                    input_schema={"type": "object", "properties": {}},
-                    status=library_model.LibraryAgentStatus.COMPLETED,
-                    new_output=False,
-                    can_access_graph=True,
-                    is_latest_version=True,
-                    updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
-                ),
-                library_model.LibraryAgent(
-                    id="test-agent-2",
-                    agent_id="test-agent-2",
-                    agent_version=1,
-                    name="Test Agent 2",
-                    description="Test Description 2",
-                    image_url=None,
-                    creator_name="Test Creator",
-                    creator_image_url="",
-                    input_schema={"type": "object", "properties": {}},
-                    status=library_model.LibraryAgentStatus.COMPLETED,
-                    new_output=False,
-                    can_access_graph=False,
-                    is_latest_version=True,
-                    updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
-                ),
-            ],
-            pagination=server_model.Pagination(
-                total_items=2, total_pages=1, current_page=1, page_size=50
+@pytest.mark.asyncio
+async def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
+    mocked_value = library_model.LibraryAgentResponse(
+        agents=[
+            library_model.LibraryAgent(
+                id="test-agent-1",
+                agent_id="test-agent-1",
+                agent_version=1,
+                name="Test Agent 1",
+                description="Test Description 1",
+                image_url=None,
+                creator_name="Test Creator",
+                creator_image_url="",
+                input_schema={"type": "object", "properties": {}},
+                status=library_model.LibraryAgentStatus.COMPLETED,
+                new_output=False,
+                can_access_graph=True,
+                is_latest_version=True,
+                updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
             ),
+            library_model.LibraryAgent(
+                id="test-agent-2",
+                agent_id="test-agent-2",
+                agent_version=1,
+                name="Test Agent 2",
+                description="Test Description 2",
+                image_url=None,
+                creator_name="Test Creator",
+                creator_image_url="",
+                input_schema={"type": "object", "properties": {}},
+                status=library_model.LibraryAgentStatus.COMPLETED,
+                new_output=False,
+                can_access_graph=False,
+                is_latest_version=True,
+                updated_at=datetime.datetime(2023, 1, 1, 0, 0, 0),
+            ),
+        ],
+        pagination=server_model.Pagination(
+            total_items=2, total_pages=1, current_page=1, page_size=50
         ),
-    ]
-    mock_db_call = mocker.patch("backend.server.v2.library.db.get_library_agents")
+    )
+    mock_db_call = mocker.patch("backend.server.v2.library.db.list_library_agents")
     mock_db_call.return_value = mocked_value
 
     response = client.get("/agents?search_term=test")
@@ -94,7 +92,7 @@ def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
 
 
 def test_get_library_agents_error(mocker: pytest_mock.MockFixture):
-    mock_db_call = mocker.patch("backend.server.v2.library.db.get_library_agents")
+    mock_db_call = mocker.patch("backend.server.v2.library.db.list_library_agents")
     mock_db_call.side_effect = Exception("Test error")
 
     response = client.get("/agents?search_term=test")
