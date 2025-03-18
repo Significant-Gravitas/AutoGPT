@@ -468,11 +468,27 @@ class AddToListBlock(Block):
 
         @classmethod
         def get_missing_links(cls, data: BlockInput, links: List["Link"]) -> set[str]:
+            # If `list` self-loop present, the `entry` pin can't be static.
+            list_self_loop_present = any(
+                link.sink_name == "list" and link.sink_id == link.source_id
+                for link in links
+            )
+            entry_static_output_present = any(
+                link.sink_name == "entry" and link.is_static for link in links
+            )
+            if list_self_loop_present and entry_static_output_present:
+                raise ValueError(
+                    "The `entry` pin can't have static output from `AgentInput` or "
+                    "`StoreValue` block as long as the `list` pin has a self-loop."
+                    "This will cause an infinite execution loop."
+                )
+
             return super().get_missing_links(
                 data,
                 [
                     link
                     for link in links
+                    # Allow execution with `list` pin self-loop
                     if link.sink_name != "list" or link.sink_id != link.source_id
                 ],
             )
