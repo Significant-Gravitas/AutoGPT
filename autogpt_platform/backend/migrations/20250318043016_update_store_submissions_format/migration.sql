@@ -1,15 +1,16 @@
 /*
   Warnings:
 
-  - The values [DAFT] on the enum `SubmissionStatus` will be removed. If these variants are still used in the database, this will fail.
-  - You are about to drop the column `isApproved` on the `StoreListing` table. All the data in the column will be lost.
-  - You are about to drop the column `slug` on the `StoreListingVersion` table. All the data in the column will be lost.
-  - You are about to drop the `StoreListingSubmission` table. If the table is not empty, all the data it contains will be lost.
-  - A unique constraint covering the columns `[activeVersionId]` on the table `StoreListing` will be added. If there are existing duplicate values, this will fail.
-  - A unique constraint covering the columns `[storeListingId,version]` on the table `StoreListingVersion` will be added. If there are existing duplicate values, this will fail.
-  - Made the column `storeListingId` on table `StoreListingVersion` required. This step will fail if there are existing NULL values in that column.
-
+  - The enum type "SubmissionStatus" will be replaced. The 'DAFT' value is removed, so any data using 'DAFT' will be updated to 'DRAFT'. If there are rows still expecting 'DAFT' after this change, it will fail.
+  - You are about to drop the column "isApproved" on the "StoreListing" table. All the data in that column will be lost.
+  - You are about to drop the column "slug" on the "StoreListingVersion" table. All the data in that column will be lost.
+  - You are about to drop the "StoreListingSubmission" table. Data in that table (beyond what is copied over) will be permanently lost.
+  - A unique constraint covering the column "activeVersionId" on the "StoreListing" table will be added. If duplicates already exist, this will fail.
+  - A unique constraint covering the columns ("storeListingId","version") on "StoreListingVersion" will be added. If duplicates already exist, this will fail.
+  - The "storeListingId" column on "StoreListingVersion" is set to NOT NULL. If any rows currently have a NULL value, this step will fail.
+  - The views "StoreSubmission", "StoreAgent", and "Creator" are dropped and recreated. Any usage or references to them will be momentarily disrupted until the views are recreated.
 */
+
 
 BEGIN;
 
