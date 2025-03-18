@@ -7,6 +7,9 @@ from prisma import Json
 from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingUpdateInput
 
+from backend.data.model import CredentialsMetaInput
+from backend.data.block import get_blocks
+from backend.data.graph import GraphModel
 from backend.server.v2.store.model import StoreAgentDetails
 
 # Mapping from user reason id to categories to search for when choosing agent to show
@@ -20,9 +23,9 @@ REASON_MAPPING: dict[str, list[str]] = {
 
 
 class UserOnboardingUpdate(pydantic.BaseModel):
-    completedSteps: list[str] = pydantic.Field(default_factory=list)
+    completedSteps: Optional[list[str]] = pydantic.Field(default_factory=list)
     usageReason: Optional[str] = None
-    integrations: list[str] = pydantic.Field(default_factory=list)
+    integrations: Optional[list[str]] = pydantic.Field(default_factory=list)
     otherIntegrations: Optional[str] = None
     selectedStoreListingVersionId: Optional[str] = None
     agentInput: Optional[dict[str, Any]] = None
@@ -40,17 +43,17 @@ async def get_user_onboarding(user_id: str):
 
 async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     update: UserOnboardingUpdateInput = {}
-    if data.completedSteps:
+    if data.completedSteps is not None:
         update["completedSteps"] = data.completedSteps
-    if data.usageReason:
+    if data.usageReason is not None:
         update["usageReason"] = data.usageReason
-    if data.integrations:
+    if data.integrations is not None:
         update["integrations"] = data.integrations
-    if data.otherIntegrations:
+    if data.otherIntegrations is not None:
         update["otherIntegrations"] = data.otherIntegrations
-    if data.selectedStoreListingVersionId:
+    if data.selectedStoreListingVersionId is not None:
         update["selectedStoreListingVersionId"] = data.selectedStoreListingVersionId
-    if data.agentInput:
+    if data.agentInput is not None:
         update["agentInput"] = Json(data.agentInput)
 
     return await UserOnboarding.prisma().upsert(
@@ -129,10 +132,22 @@ def calculate_points(
     return int(points)
 
 
+def get_credentials_blocks() -> dict[str, str]:
+    # Returns a dictionary of block id to credentials field name
+    creds: dict[str, str] = {}
+    blocks = get_blocks()
+    for id, block in blocks.items():
+        for field_name, field_info in block().input_schema.model_fields.items():
+            if field_info.annotation == CredentialsMetaInput:
+                creds[id] = field_name
+    print("CREDENTIALS FIELDS", creds)
+    return creds
+
+
+CREDENTIALS_FIELDS: dict[str, str] = get_credentials_blocks()
+
+
 async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
-    # todo kcze ignore agents without input
-    # and with empty credentials
-    # do GraphModel.from_db to get input_schema and analyse
     user_onboarding = await get_user_onboarding(user_id)
     categories = REASON_MAPPING.get(user_onboarding.usageReason or "", [])
 
@@ -155,31 +170,64 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
         for word in user_onboarding.integrations
     ]
 
-    agents = await prisma.models.StoreAgent.prisma().find_many(
+    storeAgents = await prisma.models.StoreAgent.prisma().find_many(
         where=prisma.types.StoreAgentWhereInput(**where_clause),
         order=[
             {"featured": "desc"},
             {"runs": "desc"},
             {"rating": "desc"},
         ],
+        take=100,
     )
 
-    if len(agents) < 2:
-        agents += await prisma.models.StoreAgent.prisma().find_many(
+    agentListings = await prisma.models.StoreListingVersion.prisma().find_many(
+        where={
+            "id": {"in": [agent.storeListingVersionId for agent in storeAgents]},
+        },
+        include={"Agent": True},
+    )
+
+    for listing in agentListings:
+        agent = listing.Agent
+        if agent is None:
+            continue
+        graph = GraphModel.from_db(agent)
+        # Remove agents with empty input schema
+        if not graph.input_schema:
+            storeAgents = [a for a in storeAgents if a.storeListingVersionId != listing.id]
+            continue
+        
+        # Remove agents with empty credentials
+        # Get nodes from this agent that have credentials
+        nodes = await prisma.models.AgentNode.prisma().find_many(
+            where={"agentGraphId": agent.id, "agentBlockId": { "in": list(CREDENTIALS_FIELDS.keys()) }},
+        )
+        for node in nodes:
+            block_id = node.agentBlockId
+            field_name = CREDENTIALS_FIELDS[block_id]
+            # If there are no credentials or they are empty, remove the agent
+            # FIXME ignores default values
+            if not field_name in node.constantInput or node.constantInput[field_name] is None:
+                storeAgents = [a for a in storeAgents if a.storeListingVersionId != listing.id]
+                break
+
+    # If there are less than 2 agents, add more agents to the list
+    if len(storeAgents) < 2:
+        storeAgents += await prisma.models.StoreAgent.prisma().find_many(
             where={
-                "listing_id": {"not_in": [agent.listing_id for agent in agents]},
+                "listing_id": {"not_in": [agent.listing_id for agent in storeAgents]},
             },
             order=[
                 {"featured": "desc"},
                 {"runs": "desc"},
                 {"rating": "desc"},
             ],
-            take=2 - len(agents),
+            take=2 - len(storeAgents),
         )
 
     # Calculate points for the first 30 agents and choose the top 2
     agent_points = []
-    for agent in agents[:50]:
+    for agent in storeAgents[:50]:
         points = calculate_points(
             agent, categories, custom, user_onboarding.integrations
         )

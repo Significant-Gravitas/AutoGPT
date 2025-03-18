@@ -432,9 +432,9 @@ export default class BackendAPI {
     );
   }
 
-  getAgentByStoreListingVersionId(
+  getAgentMetaByStoreListingVersionId(
     storeListingVersionID: string,
-  ): Promise<Graph> {
+  ): Promise<GraphMeta> {
     return this._get(`/store/graph/${storeListingVersionID}`);
   }
 

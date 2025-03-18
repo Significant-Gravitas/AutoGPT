@@ -54,7 +54,7 @@ export default function OnboardingProvider({
   children: ReactNode;
 }) {
   const [state, setState] = useState<UserOnboarding | null>(null);
-  // Step is used to control the progress bar, it's frotend only
+  // Step is used to control the progress bar, it's frontend only
   const [step, setStep] = useState(1);
   const api = useBackendAPI();
   const pathname = usePathname();
@@ -63,7 +63,7 @@ export default function OnboardingProvider({
   useEffect(() => {
     const fetchOnboarding = async () => {
       const enabled = await api.isOnboardingEnabled();
-      if (!enabled) {
+      if (!enabled && pathname.startsWith("/onboarding")) {
         router.push("/library");
         return;
       }
@@ -74,6 +74,7 @@ export default function OnboardingProvider({
       // If user did CONGRATS step, that means they completed introductory onboarding
       if (
         onboarding.completedSteps.includes("CONGRATS") &&
+        pathname.startsWith("/onboarding") &&
         !pathname.startsWith("/onboarding/reset")
       ) {
         router.push("/library");
@@ -84,18 +85,8 @@ export default function OnboardingProvider({
 
   const updateState = useCallback(
     (newState: Partial<UserOnboarding>) => {
-      const sendState = (state: Partial<UserOnboarding>) => {
-        if (!state) return;
-
-        api.updateUserOnboarding(state);
-      };
-
       setState((prev) => {
-        // We want to send updates only when completedSteps is updated
-        // to avoid api calls on every small change
-        if (newState.completedSteps) {
-          sendState({ ...prev, ...newState });
-        }
+        api.updateUserOnboarding({ ...prev, ...newState });
 
         if (!prev) {
           // Handle initial state

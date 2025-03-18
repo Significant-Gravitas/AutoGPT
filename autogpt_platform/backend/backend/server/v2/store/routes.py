@@ -200,11 +200,10 @@ async def get_agent(username: str, agent_name: str):
 @router.get(
     "/graph/{store_listing_version_id}",
     tags=["store"],
-    response_model=backend.data.graph.GraphModel,
 )
-async def get_graph_by_store_listing_version_id(
+async def get_graph_meta_by_store_listing_version_id(
     store_listing_version_id: str,
-    user_id: typing.Annotated[
+    _: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
     ],
 ):
@@ -227,22 +226,22 @@ async def get_graph_by_store_listing_version_id(
 @router.get(
     "/agents/{store_listing_version_id}",
     tags=["store"],
-    response_model=backend.data.graph.GraphModel,
+    response_model=backend.server.v2.store.model.StoreAgentDetails,
 )
 async def get_store_agent(
     store_listing_version_id: str,
-    user_id: typing.Annotated[
+    _: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
     ],
 ):
     """
-    Get Agent Graph from Store Listing Version ID.
+    Get Store Agent Details from Store Listing Version ID.
     """
     try:
-        graph = await backend.server.v2.store.db.get_agent(
-            store_listing_version_id, None
+        agent = await backend.server.v2.store.db.get_store_agent_by_version_id(
+            store_listing_version_id
         )
-        return graph
+        return agent
     except Exception:
         logger.exception("Exception occurred whilst getting store agent")
         return fastapi.responses.JSONResponse(

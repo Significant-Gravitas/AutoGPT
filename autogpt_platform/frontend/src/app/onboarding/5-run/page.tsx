@@ -11,18 +11,22 @@ import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useState } from "react";
 import OnboardingAgentInput from "@/components/onboarding/OnboardingAgentInput";
 import Image from "next/image";
-import { Graph, StoreAgentDetails } from "@/lib/autogpt-server-api";
+import { GraphMeta, StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useRouter } from "next/navigation";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 
 export default function Page() {
-  const { state, updateState, setStep } = useOnboarding(5, "AGENT_CHOICE");
+  const { state, updateState, setStep } = useOnboarding(undefined, "AGENT_CHOICE");
   const [showInput, setShowInput] = useState(false);
-  const [agent, setAgent] = useState<Graph | null>(null);
+  const [agent, setAgent] = useState<GraphMeta | null>(null);
   const [storeAgent, setStoreAgent] = useState<StoreAgentDetails | null>(null);
   const router = useRouter();
   const api = useBackendAPI();
+
+  useEffect(() => {
+    setStep(5);
+  }, [setStep]);
 
   useEffect(() => {
     if (!state?.selectedStoreListingVersionId) {
@@ -34,7 +38,7 @@ export default function Page() {
         setStoreAgent(storeAgent);
       });
     api
-      .getAgentByStoreListingVersionId(state?.selectedStoreListingVersionId)
+      .getAgentMetaByStoreListingVersionId(state?.selectedStoreListingVersionId)
       .then((agent) => {
         setAgent(agent);
         const update: { [key: string]: any } = {};
@@ -52,29 +56,31 @@ export default function Page() {
         updateState({
           agentInput: update,
         });
+        console.log("setting default input", update);
       });
   }, [api, setAgent, updateState, state?.selectedStoreListingVersionId]);
 
   const setAgentInput = useCallback(
     (key: string, value: string) => {
       updateState({
-        ...state,
         agentInput: {
           ...state?.agentInput,
           [key]: value,
         },
       });
     },
-    [state, state?.agentInput, updateState],
+    [state?.agentInput, updateState],
   );
 
   const runAgent = useCallback(() => {
     if (!agent) {
       return;
     }
+    console.log("running with", state?.agentInput);
+    api.addMarketplaceAgentToLibrary(storeAgent?.store_listing_version_id || "");
     api.executeGraph(agent.id, agent.version, state?.agentInput || {});
     router.push("/onboarding/6-congrats");
-  }, [api, agent, router]);
+  }, [api, agent, router, state?.agentInput]);
 
   const runYourAgent = (
     <div className="ml-[54px] w-[481px] pl-5">
@@ -195,7 +201,6 @@ export default function Page() {
                       key={key}
                       name={value.title!}
                       description={value.description || ""}
-                      placeholder={value.placeholder || ""}
                       value={state?.agentInput?.[key] || ""}
                       onChange={(v) => setAgentInput(key, v)}
                     />

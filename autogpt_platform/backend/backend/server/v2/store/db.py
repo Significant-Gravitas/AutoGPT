@@ -170,7 +170,7 @@ async def get_store_agent_details(
 
 async def get_approved_graph(
     store_listing_version_id: str,
-) -> GraphModel:
+):
     try:
         # Get approved, non-deleted store listing version
         store_listing_version = (
@@ -180,7 +180,7 @@ async def get_approved_graph(
                     "isApproved": True,
                     "isDeleted": False,
                 },
-                include={"Agent": True},
+                include={"Agent": { "include": { "AgentNodes": True } } },
             )
         )
 
@@ -190,8 +190,18 @@ async def get_approved_graph(
                 detail=f"Store listing version {store_listing_version_id} not found",
             )
 
-        # We don't strip credentials, assuming that approved agents are safe
-        return GraphModel.from_db(store_listing_version.Agent)
+        graph = GraphModel.from_db(store_listing_version.Agent)
+        # We return graph meta, without nodes, they cannot be just removed
+        # because then input_schema would be empty
+        return {
+            "id": graph.id,
+            "version": graph.version,
+            "is_active": graph.is_active,
+            "name": graph.name,
+            "description": graph.description,
+            "input_schema": graph.input_schema,
+            "output_schema": graph.output_schema,
+        }
 
     except Exception as e:
         logger.error(f"Error getting agent: {e}")

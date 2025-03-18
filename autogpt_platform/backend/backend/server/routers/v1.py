@@ -193,12 +193,10 @@ async def get_onboarding_agents(
 
 @v1_router.get(
     "/onboarding/enabled",
-    tags=["onboarding"],
+    tags=["onboarding", "public"],
     dependencies=[Depends(auth_middleware)],
 )
-async def is_onboarding_enabled(
-    user_id: Annotated[str, Depends(get_user_id)],
-):
+async def is_onboarding_enabled():
     return await onboarding_enabled()
 
 

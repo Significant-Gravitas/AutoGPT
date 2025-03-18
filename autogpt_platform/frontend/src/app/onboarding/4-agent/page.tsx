@@ -32,6 +32,7 @@ export default function Page() {
     // Deselect agent if it's not in the list of agents
     if (
       state?.selectedStoreListingVersionId &&
+      agents.length > 0 &&
       !agents.some(
         (agent) =>
           agent.store_listing_version_id ===
@@ -40,7 +41,7 @@ export default function Page() {
     ) {
       updateState({
         selectedStoreListingVersionId: null,
-        agentInput: null,
+        agentInput: {},
       });
     }
   }, [state?.selectedStoreListingVersionId, updateState, agents]);
@@ -68,6 +69,7 @@ export default function Page() {
           onClick={() =>
             updateState({
               selectedStoreListingVersionId: agents[0].store_listing_version_id,
+              agentInput: {},
             })
           }
         />

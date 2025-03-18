@@ -7,10 +7,9 @@ export default async function OnboardingResetPage() {
     completedSteps: [],
     usageReason: null,
     integrations: [],
-    otherIntegrations: null,
-    selectedAgentCreator: null,
-    selectedAgentSlug: null,
-    agentInput: null,
+    otherIntegrations: "",
+    selectedStoreListingVersionId: null,
+    agentInput: {},
   });
   redirect("/onboarding/1-welcome");
 }
