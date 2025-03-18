@@ -89,13 +89,21 @@ class SendWebRequestBlock(Block):
                 raise ValueError(f"Unexpected status code: {response.status_code}")
         except requests.exceptions.HTTPError as e:
             # Handle HTTP errors (like 404, 500, etc.)
-            status_code = e.response.status_code if hasattr(e, 'response') else None
-            
+            status_code = e.response.status_code if hasattr(e, "response") else None
+
             if status_code and status_code // 100 == 4:
-                result = e.response.json() if input_data.json_format and hasattr(e.response, 'json') else str(e)
+                result = (
+                    e.response.json()
+                    if input_data.json_format and hasattr(e.response, "json")
+                    else str(e)
+                )
                 yield "client_error", result
             elif status_code and status_code // 100 == 5:
-                result = e.response.json() if input_data.json_format and hasattr(e.response, 'json') else str(e)
+                result = (
+                    e.response.json()
+                    if input_data.json_format and hasattr(e.response, "json")
+                    else str(e)
+                )
                 yield "server_error", result
             else:
                 yield "error", str(e)
