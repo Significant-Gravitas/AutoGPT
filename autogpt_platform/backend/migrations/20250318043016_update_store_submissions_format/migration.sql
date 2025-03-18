@@ -15,9 +15,9 @@
 BEGIN;
 
 -- First, drop all views that depend on the columns and types we're modifying
-DROP VIEW IF EXISTS platform."StoreSubmission";
-DROP VIEW IF EXISTS platform."StoreAgent";
-DROP VIEW IF EXISTS platform."Creator";
+DROP VIEW IF EXISTS "StoreSubmission";
+DROP VIEW IF EXISTS "StoreAgent";
+DROP VIEW IF EXISTS "Creator";
 
 -- Create the new enum type
 CREATE TYPE "SubmissionStatus_new" AS ENUM ('DRAFT', 'PENDING', 'APPROVED', 'REJECTED');
@@ -217,7 +217,7 @@ RENAME TO "StoreListingVersion_storeListingId_submissionStatus_isAvail_idx";
 -- Recreate the views with updated column references
 
 -- 1. Recreate StoreSubmission view
-CREATE VIEW platform."StoreSubmission" AS
+CREATE VIEW "StoreSubmission" AS
 SELECT
     sl.id AS listing_id,
     sl."owningUserId" AS user_id,
@@ -239,12 +239,12 @@ SELECT
     slv."internalComments" AS internal_comments,
     slv."reviewedAt" AS reviewed_at,
     slv."changesSummary" AS changes_summary
-FROM platform."StoreListing" sl
-    JOIN platform."StoreListingVersion" slv ON slv."storeListingId" = sl.id
-    LEFT JOIN platform."StoreListingReview" sr ON sr."storeListingVersionId" = slv.id
+FROM "StoreListing" sl
+    JOIN "StoreListingVersion" slv ON slv."storeListingId" = sl.id
+    LEFT JOIN "StoreListingReview" sr ON sr."storeListingVersionId" = slv.id
     LEFT JOIN (
         SELECT "AgentGraphExecution"."agentGraphId", count(*) AS run_count
-        FROM platform."AgentGraphExecution"
+        FROM "AgentGraphExecution"
         GROUP BY "AgentGraphExecution"."agentGraphId"
     ) ar ON ar."agentGraphId" = slv."agentId"
 WHERE sl."isDeleted" = false
@@ -254,22 +254,22 @@ GROUP BY sl.id, sl."owningUserId", slv.id, slv."agentId", slv.version, sl.slug, 
          slv."reviewedAt", slv."changesSummary", ar.run_count;
 
 -- 2. Recreate StoreAgent view
-CREATE VIEW platform."StoreAgent" AS
+CREATE VIEW "StoreAgent" AS
 WITH reviewstats AS (
     SELECT sl_1.id AS "storeListingId",
            count(sr.id) AS review_count,
            avg(sr.score::numeric) AS avg_rating
-      FROM platform."StoreListing" sl_1
-      JOIN platform."StoreListingVersion" slv_1
+      FROM "StoreListing" sl_1
+      JOIN "StoreListingVersion" slv_1
            ON slv_1."storeListingId" = sl_1.id
-      JOIN platform."StoreListingReview" sr
+      JOIN "StoreListingReview" sr
            ON sr."storeListingVersionId" = slv_1.id
      WHERE sl_1."isDeleted" = false
      GROUP BY sl_1.id
 ), agentruns AS (
     SELECT "AgentGraphExecution"."agentGraphId",
            count(*) AS run_count
-      FROM platform."AgentGraphExecution"
+      FROM "AgentGraphExecution"
      GROUP BY "AgentGraphExecution"."agentGraphId"
 )
 SELECT sl.id AS listing_id,
@@ -288,13 +288,13 @@ SELECT sl.id AS listing_id,
        COALESCE(ar.run_count, 0::bigint) AS runs,
        COALESCE(rs.avg_rating, 0.0)::double precision AS rating,
        array_agg(DISTINCT slv.version::text) AS versions
-  FROM platform."StoreListing" sl
-  JOIN platform."AgentGraph" a
+  FROM "StoreListing" sl
+  JOIN "AgentGraph" a
        ON sl."agentId" = a.id
       AND sl."agentVersion" = a.version
-  LEFT JOIN platform."Profile" p
+  LEFT JOIN "Profile" p
        ON sl."owningUserId" = p."userId"
-  LEFT JOIN platform."StoreListingVersion" slv
+  LEFT JOIN "StoreListingVersion" slv
        ON slv."storeListingId" = sl.id
   LEFT JOIN reviewstats rs
        ON sl.id = rs."storeListingId"
@@ -309,23 +309,23 @@ SELECT sl.id AS listing_id,
           rs.avg_rating;
 
 -- 3. Recreate Creator view
-CREATE VIEW platform."Creator" AS
+CREATE VIEW "Creator" AS
 WITH agentstats AS (
     SELECT p_1.username,
            count(DISTINCT sl.id) AS num_agents,
            avg(COALESCE(sr.score, 0)::numeric) AS agent_rating,
            sum(COALESCE(age.run_count, 0::bigint)) AS agent_runs
-      FROM platform."Profile" p_1
- LEFT JOIN platform."StoreListing" sl
+      FROM "Profile" p_1
+ LEFT JOIN "StoreListing" sl
         ON sl."owningUserId" = p_1."userId"
- LEFT JOIN platform."StoreListingVersion" slv
+ LEFT JOIN "StoreListingVersion" slv
         ON slv."storeListingId" = sl.id
- LEFT JOIN platform."StoreListingReview" sr
+ LEFT JOIN "StoreListingReview" sr
         ON sr."storeListingVersionId" = slv.id
  LEFT JOIN (
           SELECT "AgentGraphExecution"."agentGraphId",
                  count(*) AS run_count
-            FROM platform."AgentGraphExecution"
+            FROM "AgentGraphExecution"
         GROUP BY "AgentGraphExecution"."agentGraphId"
       ) age ON age."agentGraphId" = sl."agentId"
      WHERE sl."isDeleted" = false
@@ -343,13 +343,13 @@ SELECT p.username,
        COALESCE(ast.num_agents, 0::bigint) AS num_agents,
        COALESCE(ast.agent_rating, 0.0) AS agent_rating,
        COALESCE(ast.agent_runs, 0::numeric) AS agent_runs
-  FROM platform."Profile" p
+  FROM "Profile" p
   LEFT JOIN agentstats ast
          ON ast.username = p.username
   LEFT JOIN LATERAL (
           SELECT unnest(slv.categories) AS c
-            FROM platform."StoreListing" sl
-            JOIN platform."StoreListingVersion" slv
+            FROM "StoreListing" sl
+            JOIN "StoreListingVersion" slv
                  ON slv."storeListingId" = sl.id
            WHERE sl."owningUserId" = p."userId"
              AND sl."isDeleted" = false
