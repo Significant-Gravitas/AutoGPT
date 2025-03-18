@@ -1,11 +1,9 @@
 import json
 from enum import Enum
 from typing import Any
-
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 from backend.util.request import requests
-
 
 class HttpMethod(Enum):
     GET = "GET"
@@ -15,7 +13,6 @@ class HttpMethod(Enum):
     PATCH = "PATCH"
     OPTIONS = "OPTIONS"
     HEAD = "HEAD"
-
 
 class SendWebRequestBlock(Block):
     class Input(BlockSchema):
@@ -57,7 +54,6 @@ class SendWebRequestBlock(Block):
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         body = input_data.body
-
         if input_data.json_format:
             if isinstance(body, str):
                 try:
@@ -67,21 +63,40 @@ class SendWebRequestBlock(Block):
                     # If it's not valid JSON and just plain text,
                     # we should send it as plain text instead
                     input_data.json_format = False
-
-        response = requests.request(
-            input_data.method.value,
-            input_data.url,
-            headers=input_data.headers,
-            json=body if input_data.json_format else None,
-            data=body if not input_data.json_format else None,
-        )
-        result = response.json() if input_data.json_format else response.text
-
-        if response.status_code // 100 == 2:
-            yield "response", result
-        elif response.status_code // 100 == 4:
-            yield "client_error", result
-        elif response.status_code // 100 == 5:
-            yield "server_error", result
-        else:
-            raise ValueError(f"Unexpected status code: {response.status_code}")
+        
+        try:
+            response = requests.request(
+                input_data.method.value,
+                input_data.url,
+                headers=input_data.headers,
+                json=body if input_data.json_format else None,
+                data=body if not input_data.json_format else None,
+            )
+            
+            # Handle the response based on status code
+            result = response.json() if input_data.json_format else response.text
+            
+            if response.status_code // 100 == 2:
+                yield "response", result
+            elif response.status_code // 100 == 4:
+                yield "client_error", result
+            elif response.status_code // 100 == 5:
+                yield "server_error", result
+            else:
+                raise ValueError(f"Unexpected status code: {response.status_code}")
+                
+        except requests.exceptions.HTTPError as e:
+            # Handle HTTP errors (like 404, 500, etc.)
+            status_code = e.response.status_code if hasattr(e, 'response') else None
+            
+            if status_code and status_code // 100 == 4:
+                result = e.response.json() if input_data.json_format and hasattr(e.response, 'json') else str(e)
+                yield "client_error", result
+            elif status_code and status_code // 100 == 5:
+                result = e.response.json() if input_data.json_format and hasattr(e.response, 'json') else str(e)
+                yield "server_error", result
+            else:
+                raise ValueError(f"Unexpected HTTP error: {e}")
+        except Exception as e:
+            # Re-raise any other exceptions
+            raise ValueError(f"Error making request: {e}")
