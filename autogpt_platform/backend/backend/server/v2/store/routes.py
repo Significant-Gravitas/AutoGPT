@@ -466,7 +466,7 @@ async def create_submission(
         HTTPException: If there is an error creating the submission
     """
     try:
-        submission = await backend.server.v2.store.db.create_store_submission(
+        return await backend.server.v2.store.db.create_store_submission(
             user_id=user_id,
             agent_id=submission_request.agent_id,
             agent_version=submission_request.agent_version,
@@ -479,7 +479,6 @@ async def create_submission(
             categories=submission_request.categories,
             changes_summary=submission_request.changes_summary or "Initial Submission",
         )
-        return submission
     except Exception:
         logger.exception("Exception occurred whilst creating store submission")
         return fastapi.responses.JSONResponse(
