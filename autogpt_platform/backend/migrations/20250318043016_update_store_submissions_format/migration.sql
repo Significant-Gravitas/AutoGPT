@@ -11,7 +11,6 @@
   - The views "StoreSubmission", "StoreAgent", and "Creator" are dropped and recreated. Any usage or references to them will be momentarily disrupted until the views are recreated.
 */
 
-
 BEGIN;
 
 -- First, drop all views that depend on the columns and types we're modifying
@@ -158,9 +157,7 @@ DROP INDEX "StoreListing_owningUserId_idx";
 ALTER TABLE "StoreListingVersion" DROP COLUMN "slug";
 
 -- Update both sides of the relation from one-to-one to one-to-many
-
 -- The AgentGraph->StoreListingVersion relationship is now one-to-many
--- In the schema, StoreListingVersion? becomes StoreListingVersion[] in AgentGraph
 
 -- Drop the unique constraint but add a non-unique index for query performance
 ALTER TABLE "StoreListingVersion" DROP CONSTRAINT IF EXISTS "StoreListingVersion_agentId_agentVersion_key";
@@ -174,6 +171,19 @@ WHERE "isApproved" = true;
 
 -- Drop the isApproved column from StoreListingVersion since it's redundant with submissionStatus
 ALTER TABLE "StoreListingVersion" DROP COLUMN "isApproved";
+
+-- Initialize hasApprovedVersion for existing StoreListing rows ***
+-- This sets "hasApprovedVersion" = TRUE for any StoreListing
+-- that has at least one corresponding version with "APPROVED" status.
+UPDATE "StoreListing" sl
+SET "hasApprovedVersion" = (
+  SELECT COUNT(*) > 0
+  FROM "StoreListingVersion" slv
+  WHERE slv."storeListingId" = sl.id
+    AND slv."submissionStatus" = 'APPROVED'
+    AND sl."agentId" = slv."agentId"
+    AND sl."agentVersion" = slv."agentVersion"
+);
 
 -- Create new indexes
 CREATE UNIQUE INDEX IF NOT EXISTS "StoreListing_activeVersionId_key"
