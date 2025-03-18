@@ -11,12 +11,11 @@ from .models import EventType, IffyWebhookEvent
 logger = logging.getLogger(__name__)
 settings = Settings()
 
-WEBHOOK_SECRET = settings.secrets.iffy_webhook_secret
-
 iffy_router = APIRouter()
 
 async def verify_signature(body: bytes, signature: str) -> bool:
     """Verify the Iffy webhook signature using HMAC SHA256"""
+    WEBHOOK_SECRET = settings.secrets.iffy_webhook_secret
     computed_hash = hmac.new(
         WEBHOOK_SECRET.encode(),
         body,
