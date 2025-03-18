@@ -45,7 +45,7 @@ class SendWebRequestBlock(Block):
         response: object = SchemaField(description="The response from the server")
         client_error: object = SchemaField(description="The error on 4xx status codes")
         server_error: object = SchemaField(description="The error on 5xx status codes")
-        error: object = SchemaField(description="The error for unexpected exceptions")
+        error: str = SchemaField(description="The error for unexpected exceptions")
 
     def __init__(self):
         super().__init__(
