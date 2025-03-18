@@ -1,6 +1,6 @@
 import aiohttp
 import logging
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Tuple, TypedDict, Optional
 import json
 from backend.data.user import get_user_by_id
 from backend.util.settings import Settings
@@ -13,10 +13,16 @@ settings = Settings()
 IFFY_API_KEY = settings.secrets.iffy_api_key
 IFFY_API_URL = settings.secrets.iffy_api_url
 
+class UserData(TypedDict):
+    clientId: str
+    email: Optional[str]
+    name: Optional[str]
+    username: Optional[str]
+
 async def send_to_iffy(user_id: str, block_content: Dict[str, Any]) -> Tuple[bool, str]:
     """
     Send block content to Iffy for content moderation.
-    If Iffy call fails, falls back to OpenRouter moderation.
+    Only used in cloud mode - local mode skips moderation entirely.
     
     Args:
         user_id: The ID of the user executing the block
@@ -28,6 +34,10 @@ async def send_to_iffy(user_id: str, block_content: Dict[str, Any]) -> Tuple[boo
                   False if both services failed or content was flagged
         - reason: Description of the result or error
     """
+    if settings.config.behave_as == "local":
+        logger.info("Content moderation skipped - running in local mode")
+        return True, "Moderation skipped - running in local mode"
+
     # Validate Iffy API URL and key at the start
     if not IFFY_API_URL or not IFFY_API_KEY:
         logger.warning("Iffy API URL or key not configured, falling back to OpenRouter moderation")
@@ -50,7 +60,7 @@ async def send_to_iffy(user_id: str, block_content: Dict[str, Any]) -> Tuple[boo
         input_data = json.dumps(block_content.get('input_data', {}), indent=2)
 
         # Get user details with proper connection handling
-        user_data = {
+        user_data: UserData = {
             "clientId": user_id,
             "email": None,
             "name": None,
@@ -98,7 +108,9 @@ async def send_to_iffy(user_id: str, block_content: Dict[str, Any]) -> Tuple[boo
         logger.info(f"Sending content to Iffy for moderation - User: {user_data['name'] or user_id}, Block: {name}")
         
         async with aiohttp.ClientSession() as session:
-            async with session.post(IFFY_API_URL, json=payload, headers=headers) as response:
+            base_url = IFFY_API_URL.rstrip('/')
+            api_path = '/api/v1/ingest'
+            async with session.post(f"{base_url}{api_path}", json=payload, headers=headers) as response:
                 response_text = await response.text()
                 if response.status != 200:
                     logger.info(f"Iffy moderation failed, falling back to OpenRouter. Status: {response.status}, Response: {response_text}")

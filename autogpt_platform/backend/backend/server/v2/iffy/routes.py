@@ -7,6 +7,7 @@ from pydantic import BaseModel
 from backend.util.settings import Settings
 from backend.util.service import get_service_client
 from backend.executor import ExecutionManager
+from enum import Enum
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -15,14 +16,20 @@ WEBHOOK_SECRET = settings.secrets.iffy_webhook_secret
 
 iffy_router = APIRouter()
 
+class EventType(str, Enum):
+    RECORD_FLAGGED = "record.flagged"
+    RECORD_COMPLIANT = "record.compliant"
+    RECORD_UNFLAGGED = "record.unflagged"
+    USER_SUSPENDED = "user.suspended"
+    USER_UNSUSPENDED = "user.unsuspended"
+    USER_BANNED = "user.banned"
+    USER_UNBANNED = "user.unbanned"
+    USER_COMPLIANT = "user.compliant"
+
 class IffyWebhookEvent(BaseModel):
-    event: str
+    event: EventType
     payload: Dict[str, Any]
     timestamp: str
-
-EventType = Literal["record.flagged", "record.compliant", "record.unflagged", 
-                    "user.suspended", "user.unsuspended", "user.banned", 
-                    "user.unbanned", "user.compliant"]
 
 async def verify_signature(body: bytes, signature: str) -> bool:
     """Verify the Iffy webhook signature using HMAC SHA256"""
@@ -42,7 +49,7 @@ async def handle_record_event(event_type: EventType, metadata: Dict[str, Any]) -
     node_id = metadata.get("nodeId")
     block_name = metadata.get("blockName", "Unknown Block")
 
-    if event_type == "record.flagged":
+    if event_type == EventType.RECORD_FLAGGED:
         logger.warning(
             f'Content flagged for node "{node_id}" ("{block_name}") '
             f'in execution "{graph_exec_id}"'
@@ -59,7 +66,7 @@ async def handle_record_event(event_type: EventType, metadata: Dict[str, Any]) -
         
         return Response(status_code=200)
     
-    elif event_type in ("record.compliant", "record.unflagged"):
+    elif event_type in (EventType.RECORD_COMPLIANT, EventType.RECORD_UNFLAGGED):
         logger.info(
             f'Content cleared for node "{node_id}" ("{block_name}") '
             f'in execution "{graph_exec_id}"'
@@ -74,20 +81,23 @@ async def handle_user_event(event_type: EventType, payload: Dict[str, Any]) -> R
     
     user_id = payload.get("clientId")
     if not user_id:
-        logger.warning("Received user event without user ID, skipping")
-        return Response(status_code=200)
+        logger.error("Received user event without user ID")
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required field 'clientId' in user event payload"
+        )
 
     status_updated_at = payload.get("statusUpdatedAt")
     status_updated_via = payload.get("statusUpdatedVia")
 
     event_messages = {
-        "user.suspended": f'User "{user_id}" has been SUSPENDED via {status_updated_via} at {status_updated_at}',
-        "user.unsuspended": f'User "{user_id}" has been UNSUSPENDED via {status_updated_via} at {status_updated_at}',
-        "user.compliant": f'User "{user_id}" has been marked as COMPLIANT via {status_updated_via} at {status_updated_at}',
+        EventType.USER_SUSPENDED: f'User "{user_id}" has been SUSPENDED via {status_updated_via} at {status_updated_at}',
+        EventType.USER_UNSUSPENDED: f'User "{user_id}" has been UNSUSPENDED via {status_updated_via} at {status_updated_at}',
+        EventType.USER_COMPLIANT: f'User "{user_id}" has been marked as COMPLIANT via {status_updated_via} at {status_updated_at}',
         
         # Users can only be manually banned and unbanned on the iffy dashboard, for now logging these events
-        "user.banned": f'User "{user_id}" has been BANNED via {status_updated_via} at {status_updated_at}',
-        "user.unbanned": f'User "{user_id}" has been UNBANNED via {status_updated_via} at {status_updated_at}',
+        EventType.USER_BANNED: f'User "{user_id}" has been BANNED via {status_updated_via} at {status_updated_at}',
+        EventType.USER_UNBANNED: f'User "{user_id}" has been UNBANNED via {status_updated_via} at {status_updated_at}',
     }
 
     if event_type in event_messages:

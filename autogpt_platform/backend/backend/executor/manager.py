@@ -970,52 +970,55 @@ class ExecutionManager(AppService):
         )
 
         # Right after creating the graph execution, we need to check if the content is safe
-        try:
-            for node in graph.nodes:
-                block = get_block(node.block_id)
-                if not block or block.block_type == BlockType.NOTE:
-                    continue
+        if settings.config.behave_as == "local":
+            logger.info("Content moderation skipped - running in local mode")
+        else:
+            try:
+                for node in graph.nodes:
+                    block = get_block(node.block_id)
+                    if not block or block.block_type == BlockType.NOTE:
+                        continue
 
-                # For starting nodes, use their input data
-                if node.id in dict(nodes_input):
-                    input_data = dict(nodes_input)[node.id]
-                else:
-                    # For non-starting nodes, collect their default inputs and static values
-                    input_data = node.input_default.copy()
-                    # Add any static input from connected nodes
-                    for link in node.input_links:
-                        if link.is_static:
-                            source_node = next((n for n in graph.nodes if n.id == link.source_id), None)
-                            if source_node:
-                                source_block = get_block(source_node.block_id)
-                                if source_block:
-                                    input_data[link.sink_name] = source_node.input_default.get(link.source_name)
+                    # For starting nodes, use their input data
+                    if node.id in dict(nodes_input):
+                        input_data = dict(nodes_input)[node.id]
+                    else:
+                        # For non-starting nodes, collect their default inputs and static values
+                        input_data = node.input_default.copy()
+                        # Add any static input from connected nodes
+                        for link in node.input_links:
+                            if link.is_static:
+                                source_node = next((n for n in graph.nodes if n.id == link.source_id), None)
+                                if source_node:
+                                    source_block = get_block(source_node.block_id)
+                                    if source_block:
+                                        input_data[link.sink_name] = source_node.input_default.get(link.source_name)
+                    
+                    block_content = {
+                        "graph_id": graph_id,
+                        "graph_exec_id": graph_exec_id,
+                        "node_id": node.id,
+                        "block_id": block.id,
+                        "block_name": block.name,
+                        "block_type": block.block_type.value,
+                        "input_data": input_data
+                    }
+
+                    # Send to Iffy for moderation.
+                    is_safe, reason = await send_to_iffy(user_id, block_content)
+                    
+                    # CRITICAL: Ensure we never proceed if iffy and openrouter moderation fails
+                    if not is_safe:
+                        logger.error(f"Content moderation failed for {block.name}: {reason}")
+                        raise ValueError(f"Content moderation failed for {block.name}")
+
+            except ValueError as ve:
+                logger.error(f"Moderation error: {str(ve)}")
+                raise
                 
-                block_content = {
-                    "graph_id": graph_id,
-                    "graph_exec_id": graph_exec_id,
-                    "node_id": node.id,
-                    "block_id": block.id,
-                    "block_name": block.name,
-                    "block_type": block.block_type.value,
-                    "input_data": input_data
-                }
-
-                # Send to Iffy for moderation.
-                is_safe, reason = await send_to_iffy(user_id, block_content)
-                
-                # CRITICAL: Ensure we never proceed if iffy and openrouter moderation fails
-                if not is_safe:
-                    logger.error(f"Content moderation failed for {block.name}: {reason}")
-                    raise ValueError(f"Content moderation failed for {block.name}")
-
-        except ValueError as ve:
-            logger.error(f"Moderation error: {str(ve)}")
-            raise
-            
-        except Exception as e:
-            logger.error(f"Error during content moderation: {str(e)}")
-            raise ValueError(f"Content moderation system error")
+            except Exception as e:
+                logger.error(f"Error during content moderation: {str(e)}")
+                raise ValueError(f"Content moderation system error")
 
         starting_node_execs = []
         for node_exec in node_execs:
