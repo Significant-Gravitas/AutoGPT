@@ -91,7 +91,6 @@ async def main():
                     "description": faker.text(max_nb_chars=200),
                     "userId": user.id,
                     "isActive": True,
-                    "isTemplate": False,
                 }
             )
             agent_graphs.append(graph)
