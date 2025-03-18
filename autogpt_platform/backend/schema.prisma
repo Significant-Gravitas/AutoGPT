@@ -87,7 +87,6 @@ model AgentGraph {
   description String?
 
   isActive    Boolean @default(true)
-  isTemplate  Boolean @default(false)
 
   // Link to User model
   userId String
