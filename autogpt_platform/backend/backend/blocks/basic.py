@@ -1,23 +1,13 @@
 import enum
-from typing import TYPE_CHECKING, Any, List
+from typing import Any, List
 
-from backend.data.block import (
-    Block,
-    BlockCategory,
-    BlockInput,
-    BlockOutput,
-    BlockSchema,
-    BlockType,
-)
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
 from backend.util import json
 from backend.util.file import MediaFile, store_media_file
 from backend.util.mock import MockObject
 from backend.util.text import TextFormatter
 from backend.util.type import convert
-
-if TYPE_CHECKING:
-    from backend.data.graph import Link
 
 formatter = TextFormatter()
 
@@ -465,33 +455,6 @@ class AddToListBlock(Block):
             default=None,
             description="The position to insert the new entry. If not provided, the entry will be appended to the end of the list.",
         )
-
-        @classmethod
-        def get_missing_links(cls, data: BlockInput, links: List["Link"]) -> set[str]:
-            # If `list` self-loop present, the `entry` pin can't be static.
-            list_self_loop_present = any(
-                link.sink_name == "list" and link.sink_id == link.source_id
-                for link in links
-            )
-            entry_static_output_present = any(
-                link.sink_name == "entry" and link.is_static for link in links
-            )
-            if list_self_loop_present and entry_static_output_present:
-                raise ValueError(
-                    "The `entry` pin can't have static output from `AgentInput` or "
-                    "`StoreValue` block as long as the `list` pin has a self-loop."
-                    "This will cause an infinite execution loop."
-                )
-
-            return super().get_missing_links(
-                data,
-                [
-                    link
-                    for link in links
-                    # Allow execution with `list` pin self-loop
-                    if link.sink_name != "list" or link.sink_id != link.source_id
-                ],
-            )
 
     class Output(BlockSchema):
         updated_list: List[Any] = SchemaField(
