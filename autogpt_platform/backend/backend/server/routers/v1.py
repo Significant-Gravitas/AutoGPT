@@ -38,7 +38,6 @@ from backend.data.credit import (
     TransactionHistory,
     get_auto_top_up,
     get_block_costs,
-    get_stripe_customer_id,
     get_user_credit_model,
     set_auto_top_up,
 )
@@ -341,15 +340,7 @@ async def stripe_webhook(request: Request):
 async def manage_payment_method(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, str]:
-    session = stripe.billing_portal.Session.create(
-        customer=await get_stripe_customer_id(user_id),
-        return_url=settings.config.frontend_base_url + "/profile/credits",
-    )
-    if not session:
-        raise HTTPException(
-            status_code=400, detail="Failed to create billing portal session"
-        )
-    return {"url": session.url}
+    return {"url": await _user_credit_model.create_billing_portal_session(user_id)}
 
 
 @v1_router.get(path="/credits/transactions", dependencies=[Depends(auth_middleware)])
@@ -405,10 +396,10 @@ async def get_graph(
     graph_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
     version: int | None = None,
-    hide_credentials: bool = False,
+    for_export: bool = False,
 ) -> graph_db.GraphModel:
     graph = await graph_db.get_graph(
-        graph_id, version, user_id=user_id, for_export=hide_credentials
+        graph_id, version, user_id=user_id, for_export=for_export
     )
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
@@ -438,6 +429,7 @@ async def create_new_graph(
 ) -> graph_db.GraphModel:
     graph = graph_db.make_graph_model(create_graph.graph, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
+    graph.validate_graph(for_run=False)
 
     graph = await graph_db.create_graph(graph, user_id=user_id)
 
@@ -489,17 +481,10 @@ async def update_graph(
     latest_version_number = max(g.version for g in existing_versions)
     graph.version = latest_version_number + 1
 
-    latest_version_graph = next(
-        v for v in existing_versions if v.version == latest_version_number
-    )
     current_active_version = next((v for v in existing_versions if v.is_active), None)
-    if latest_version_graph.is_template != graph.is_template:
-        raise HTTPException(
-            400, detail="Changing is_template on an existing graph is forbidden"
-        )
-    graph.is_active = not graph.is_template
     graph = graph_db.make_graph_model(graph, user_id)
-    graph.reassign_ids(user_id=user_id)
+    graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
+    graph.validate_graph(for_run=False)
 
     new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
 

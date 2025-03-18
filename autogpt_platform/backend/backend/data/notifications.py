@@ -35,7 +35,8 @@ class QueueType(Enum):
 
 
 class BaseNotificationData(BaseModel):
-    pass
+    class Config:
+        extra = "allow"
 
 
 class AgentRunData(BaseNotificationData):
@@ -341,6 +342,43 @@ class NotificationPreference(BaseModel):
     )
 
 
+class UserNotificationEventDTO(BaseModel):
+    type: NotificationType
+    data: dict
+    created_at: datetime
+    updated_at: datetime
+
+    @staticmethod
+    def from_db(model: NotificationEvent) -> "UserNotificationEventDTO":
+        return UserNotificationEventDTO(
+            type=model.type,
+            data=dict(model.data),
+            created_at=model.createdAt,
+            updated_at=model.updatedAt,
+        )
+
+
+class UserNotificationBatchDTO(BaseModel):
+    user_id: str
+    type: NotificationType
+    notifications: list[UserNotificationEventDTO]
+    created_at: datetime
+    updated_at: datetime
+
+    @staticmethod
+    def from_db(model: UserNotificationBatch) -> "UserNotificationBatchDTO":
+        return UserNotificationBatchDTO(
+            user_id=model.userId,
+            type=model.type,
+            notifications=[
+                UserNotificationEventDTO.from_db(notification)
+                for notification in model.notifications or []
+            ],
+            created_at=model.createdAt,
+            updated_at=model.updatedAt,
+        )
+
+
 def get_batch_delay(notification_type: NotificationType) -> timedelta:
     return {
         NotificationType.AGENT_RUN: timedelta(minutes=1),
@@ -355,7 +393,7 @@ async def create_or_add_to_user_notification_batch(
     user_id: str,
     notification_type: NotificationType,
     notification_data: NotificationEventModel,
-) -> UserNotificationBatch:
+) -> UserNotificationBatchDTO:
     try:
         logger.info(
             f"Creating or adding to notification batch for {user_id} with type {notification_type} and data {notification_data}"
@@ -393,7 +431,7 @@ async def create_or_add_to_user_notification_batch(
                     },
                     include={"notifications": True},
                 )
-                return resp
+                return UserNotificationBatchDTO.from_db(resp)
         else:
             async with transaction() as tx:
                 notification_event = await tx.notificationevent.create(
@@ -415,7 +453,7 @@ async def create_or_add_to_user_notification_batch(
                 raise DatabaseError(
                     f"Failed to add notification event {notification_event.id} to existing batch {existing_batch.id}"
                 )
-            return resp
+            return UserNotificationBatchDTO.from_db(resp)
     except Exception as e:
         raise DatabaseError(
             f"Failed to create or add to notification batch for user {user_id} and type {notification_type}: {e}"
@@ -425,7 +463,7 @@ async def create_or_add_to_user_notification_batch(
 async def get_user_notification_oldest_message_in_batch(
     user_id: str,
     notification_type: NotificationType,
-) -> NotificationEvent | None:
+) -> UserNotificationEventDTO | None:
     try:
         batch = await UserNotificationBatch.prisma().find_first(
             where={"userId": user_id, "type": notification_type},
@@ -436,7 +474,12 @@ async def get_user_notification_oldest_message_in_batch(
         if not batch.notifications:
             return None
         sorted_notifications = sorted(batch.notifications, key=lambda x: x.createdAt)
-        return sorted_notifications[0]
+
+        return (
+            UserNotificationEventDTO.from_db(sorted_notifications[0])
+            if sorted_notifications
+            else None
+        )
     except Exception as e:
         raise DatabaseError(
             f"Failed to get user notification last message in batch for user {user_id} and type {notification_type}: {e}"
@@ -471,12 +514,13 @@ async def empty_user_notification_batch(
 async def get_user_notification_batch(
     user_id: str,
     notification_type: NotificationType,
-) -> UserNotificationBatch | None:
+) -> UserNotificationBatchDTO | None:
     try:
-        return await UserNotificationBatch.prisma().find_first(
+        batch = await UserNotificationBatch.prisma().find_first(
             where={"userId": user_id, "type": notification_type},
             include={"notifications": True},
         )
+        return UserNotificationBatchDTO.from_db(batch) if batch else None
     except Exception as e:
         raise DatabaseError(
             f"Failed to get user notification batch for user {user_id} and type {notification_type}: {e}"
@@ -485,9 +529,9 @@ async def get_user_notification_batch(
 
 async def get_all_batches_by_type(
     notification_type: NotificationType,
-) -> list[UserNotificationBatch]:
+) -> list[UserNotificationBatchDTO]:
     try:
-        return await UserNotificationBatch.prisma().find_many(
+        batches = await UserNotificationBatch.prisma().find_many(
             where={
                 "type": notification_type,
                 "notifications": {
@@ -496,6 +540,7 @@ async def get_all_batches_by_type(
             },
             include={"notifications": True},
         )
+        return [UserNotificationBatchDTO.from_db(batch) for batch in batches]
     except Exception as e:
         raise DatabaseError(
             f"Failed to get all batches by type {notification_type}: {e}"
