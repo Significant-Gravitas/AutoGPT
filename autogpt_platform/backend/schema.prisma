@@ -612,7 +612,7 @@ model StoreListing {
   hasApprovedVersion Boolean @default(false)
 
   // URL-friendly identifier for this agent (moved from StoreListingVersion)
-  slug String @unique
+  slug String
 
   // The currently active version that should be shown to users
   activeVersionId String?              @unique
@@ -631,7 +631,7 @@ model StoreListing {
 
   // Unique index on agentId to ensure only one listing per agent, regardless of number of versions the agent has.
   @@unique([agentId])
-  @@index([owningUserId])
+  @@unique([owningUserId, slug])
   // Used in the view query
   @@index([isDeleted, hasApprovedVersion])
 }
