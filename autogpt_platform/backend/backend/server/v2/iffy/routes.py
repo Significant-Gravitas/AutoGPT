@@ -1,13 +1,12 @@
 import hmac
 import hashlib
 import logging
-from typing import Dict, Any, Literal
+from typing import Dict, Any
 from fastapi import APIRouter, Request, Response, HTTPException, Header
-from pydantic import BaseModel
 from backend.util.settings import Settings
 from backend.util.service import get_service_client
 from backend.executor import ExecutionManager
-from enum import Enum
+from .models import EventType, IffyWebhookEvent
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -15,21 +14,6 @@ settings = Settings()
 WEBHOOK_SECRET = settings.secrets.iffy_webhook_secret
 
 iffy_router = APIRouter()
-
-class EventType(str, Enum):
-    RECORD_FLAGGED = "record.flagged"
-    RECORD_COMPLIANT = "record.compliant"
-    RECORD_UNFLAGGED = "record.unflagged"
-    USER_SUSPENDED = "user.suspended"
-    USER_UNSUSPENDED = "user.unsuspended"
-    USER_BANNED = "user.banned"
-    USER_UNBANNED = "user.unbanned"
-    USER_COMPLIANT = "user.compliant"
-
-class IffyWebhookEvent(BaseModel):
-    event: EventType
-    payload: Dict[str, Any]
-    timestamp: str
 
 async def verify_signature(body: bytes, signature: str) -> bool:
     """Verify the Iffy webhook signature using HMAC SHA256"""

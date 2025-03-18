@@ -61,7 +61,7 @@ from backend.util.service import (
     expose,
     get_service_client,
 )
-from backend.util.settings import Settings
+from backend.util.settings import Settings, BehaveAs
 from backend.util.type import convert
 from backend.util.iffy import send_to_iffy
 
@@ -970,7 +970,7 @@ class ExecutionManager(AppService):
         )
 
         # Right after creating the graph execution, we need to check if the content is safe
-        if settings.config.behave_as == "local":
+        if settings.config.behave_as == BehaveAs.LOCAL:
             logger.info("Content moderation skipped - running in local mode")
         else:
             try:

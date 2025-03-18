@@ -1,7 +1,7 @@
 import logging
 from typing import Tuple
 import openai
-from backend.util.settings import Settings, Config
+from backend.util.settings import Settings, Config, BehaveAs
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -15,7 +15,7 @@ Content to moderate:MODERATION_PROMPT
 
 Respond with only one word from the above choices."""
 
-async def moderate_content(content: str, user_id: str | None = None) -> Tuple[bool, str]:
+async def open_router_moderate_content(content: str, user_id: str | None = None) -> Tuple[bool, str]:
     """
     Use OpenRouter's API to moderate content using an LLM.
     Uses OpenRouter's auto-routing to select the best available model.
@@ -31,7 +31,7 @@ async def moderate_content(content: str, user_id: str | None = None) -> Tuple[bo
     """
     api_key = settings.secrets.open_router_api_key
 
-    if settings.config.behave_as == "local":
+    if settings.config.behave_as == BehaveAs.LOCAL:
         logger.info("OpenRouter moderation skipped - running in local mode")
         return True, "Moderation skipped - running in local mode"
     
@@ -72,11 +72,9 @@ async def moderate_content(content: str, user_id: str | None = None) -> Tuple[bo
 
                 result = response.choices[0].message.content.strip().upper()
                 
-                # Consider content safe if response contains "SAFE", otherwise assume flagged
-                is_safe = "SAFE" in result
-                
-                if not is_safe:
-                    logger.warning(f"Content moderation result: {result}")
+                is_safe = result == "SAFE"
+                if result not in ["SAFE", "FLAGGED"]:
+                    logger.warning(f"Unexpected moderation response: {result}")
                 
                 return is_safe, result
 
