@@ -7,9 +7,10 @@ import { GraphExecutionID, GraphMeta } from "@/lib/autogpt-server-api";
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button, ButtonProps } from "@/components/agptui/Button";
+import { LocalValuedInput } from "@/components/ui/input";
 import { Pencil2Icon } from "@radix-ui/react-icons";
 import { Textarea } from "@/components/ui/textarea";
-import { LocalValuedInput } from "@/components/ui/input";
+import { IconPlay } from "@/components/ui/icons";
 import {
   Dialog,
   DialogContent,
@@ -60,12 +61,19 @@ export default function AgentRunDraftView({
     [api, graph, inputValues, onRun],
   );
 
-  const runActions: {
-    label: string;
-    variant?: ButtonProps["variant"];
-    callback: () => void;
-  }[] = useMemo(
-    () => [{ label: "Run", variant: "accent", callback: () => doRun() }],
+  const runActions: ButtonAction[] = useMemo(
+    () => [
+      {
+        label: (
+          <>
+            <IconPlay className="mr-2 size-5" />
+            Run
+          </>
+        ),
+        variant: "accent",
+        callback: doRun,
+      },
+    ],
     [doRun],
   );
 
