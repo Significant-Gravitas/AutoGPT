@@ -381,7 +381,7 @@ class UserNotificationBatchDTO(BaseModel):
 
 def get_batch_delay(notification_type: NotificationType) -> timedelta:
     return {
-        NotificationType.AGENT_RUN: timedelta(minutes=1),
+        NotificationType.AGENT_RUN: timedelta(minutes=60),
         NotificationType.ZERO_BALANCE: timedelta(minutes=60),
         NotificationType.LOW_BALANCE: timedelta(minutes=60),
         NotificationType.BLOCK_EXECUTION_FAILED: timedelta(minutes=60),
