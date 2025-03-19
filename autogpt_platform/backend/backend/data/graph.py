@@ -223,7 +223,7 @@ class GraphExecution(GraphExecutionMeta):
         inputs = {
             **{
                 # inputs from Agent Input Blocks
-                exec.input_data["name"]: exec.input_data["value"]
+                exec.input_data["name"]: exec.input_data.get("value")
                 for exec in node_executions
                 if exec.block_id == _INPUT_BLOCK_ID
             },
@@ -364,7 +364,6 @@ class GraphModel(Graph):
         user_id: str,
         graph_id_map: dict[str, str],
     ):
-
         # Reassign Graph ID
         if graph.id in graph_id_map:
             graph.id = graph_id_map[graph.id]
