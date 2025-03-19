@@ -96,7 +96,7 @@ class SendWebRequestBlock(Block):
 
         except req.exceptions.HTTPError as e:
             # Handle HTTP errors from raise_for_status()
-            if hasattr(e, "response"):
+            if e.response:
                 status_code = e.response.status_code
 
                 if 400 <= status_code < 500:
@@ -115,7 +115,7 @@ class SendWebRequestBlock(Block):
                     yield "server_error", result
                 else:
                     yield "error", str(e)
-            else:
+        except Exception as e:
                 yield "error", str(e)
 
         except req.exceptions.RequestException as e:
