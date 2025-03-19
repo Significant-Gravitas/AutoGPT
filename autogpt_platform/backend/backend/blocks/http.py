@@ -3,7 +3,7 @@ import logging
 from enum import Enum
 from typing import Any
 
-import requests as req  # Import standard requests to access exception types
+from requests.exceptions import HTTPError, RequestException
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
@@ -48,9 +48,9 @@ class SendWebRequestBlock(Block):
 
     class Output(BlockSchema):
         response: object = SchemaField(description="The response from the server")
-        client_error: object = SchemaField(description="The error on 4xx status codes")
-        server_error: object = SchemaField(description="The error on 5xx status codes")
-        error: str = SchemaField(description="The error for unexpected exceptions")
+        client_error: object = SchemaField(description="Errors on 4xx status codes")
+        server_error: object = SchemaField(description="Errors on 5xx status codes")
+        error: str = SchemaField(description="Errors for all other exceptions")
 
     def __init__(self):
         super().__init__(
@@ -83,40 +83,25 @@ class SendWebRequestBlock(Block):
                 data=body if not input_data.json_format else None,
             )
             result = response.json() if input_data.json_format else response.text
+            yield "response", result
 
-            if response.ok:
-                yield "response", result
-            elif 400 <= response.status_code < 500:
+        except HTTPError as e:
+            # Handle error responses
+            result = e.response.json() if input_data.json_format else str(e)
+
+            if 400 <= e.response.status_code < 500:
                 yield "client_error", result
-            elif 500 <= response.status_code < 600:
+            elif 500 <= e.response.status_code < 600:
                 yield "server_error", result
             else:
-                logger.warning(f"Unexpected status code: {response.status_code}")
-                yield "error", f"Unexpected status code: {response.status_code}"
+                error_msg = (
+                    "Unexpected status code "
+                    f"{e.response.status_code} '{e.response.reason}'"
+                )
+                logger.warning(error_msg)
+                yield "error", error_msg
 
-        except req.exceptions.HTTPError as e:
-            # Handle HTTP errors from raise_for_status()
-            if e.response:
-                status_code = e.response.status_code
-
-                if 400 <= status_code < 500:
-                    result = (
-                        e.response.json()
-                        if input_data.json_format and hasattr(e.response, "json")
-                        else str(e)
-                    )
-                    yield "client_error", result
-                elif 500 <= status_code < 600:
-                    result = (
-                        e.response.json()
-                        if input_data.json_format and hasattr(e.response, "json")
-                        else str(e)
-                    )
-                    yield "server_error", result
-                else:
-                    yield "error", str(e)
-
-        except req.exceptions.RequestException as e:
+        except RequestException as e:
             # Handle other request-related exceptions
             yield "error", str(e)
 
