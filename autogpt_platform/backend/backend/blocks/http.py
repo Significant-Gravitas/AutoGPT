@@ -93,7 +93,7 @@ class SendWebRequestBlock(Block):
                 status_code = e.response.status_code  # type: ignore
 
                 if status_code // 100 == 4:
-                    result = e.response.json() if input_data.json_format and hasattr(e.response, "json") else str(e)  # type: ignore  # type: ignore
+                    result = e.response.json() if input_data.json_format and hasattr(e.response, "json") else str(e)  # type: ignore
                     yield "client_error", result
                 elif status_code // 100 == 5:
                     result = e.response.json() if input_data.json_format and hasattr(e.response, "json") else str(e)  # type: ignore
