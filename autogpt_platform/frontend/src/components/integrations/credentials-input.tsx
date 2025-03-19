@@ -91,6 +91,7 @@ export const providerIcons: Record<
   todoist: fallbackIcon,
   zerobounce: fallbackIcon,
   example: fallbackIcon,
+  elevenlabs: fallbackIcon,
 };
 // --8<-- [end:ProviderIconsEmbed]
 
