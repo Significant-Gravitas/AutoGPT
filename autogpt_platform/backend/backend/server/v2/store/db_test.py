@@ -173,7 +173,7 @@ async def test_create_store_submission(mocker):
         agentId="agent-id",
         agentVersion=1,
         owningUserId="user-id",
-        versions=[
+        Versions=[
             prisma.models.StoreListingVersion(
                 id="version-id",
                 agentId="agent-id",

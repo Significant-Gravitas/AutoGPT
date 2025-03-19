@@ -492,7 +492,7 @@ async def test_store_listing_graph(server: SpinTestServer):
     store_submission_request = backend.server.v2.store.model.StoreSubmissionRequest(
         agent_id=test_graph.id,
         agent_version=test_graph.version,
-        slug="test-slug",
+        slug=test_graph.id,
         name="Test name",
         sub_heading="Test sub heading",
         video_url=None,

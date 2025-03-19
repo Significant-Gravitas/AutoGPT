@@ -6,6 +6,7 @@ from typing import Any, Literal, Optional, Type
 
 import prisma
 from prisma import Json
+from prisma.enums import SubmissionStatus
 from prisma.models import (
     AgentGraph,
     AgentGraphExecution,
@@ -223,7 +224,7 @@ class GraphExecution(GraphExecutionMeta):
         inputs = {
             **{
                 # inputs from Agent Input Blocks
-                exec.input_data["name"]: exec.input_data["value"]
+                exec.input_data["name"]: exec.input_data.get("value")
                 for exec in node_executions
                 if exec.block_id == _INPUT_BLOCK_ID
             },
@@ -364,7 +365,6 @@ class GraphModel(Graph):
         user_id: str,
         graph_id_map: dict[str, str],
     ):
-
         # Reassign Graph ID
         if graph.id in graph_id_map:
             graph.id = graph_id_map[graph.id]
@@ -732,19 +732,19 @@ async def get_graph(
         graph.userId != user_id
         and not (
             await StoreListingVersion.prisma().find_first(
-                where=prisma.types.StoreListingVersionWhereInput(
-                    agentId=graph_id,
-                    agentVersion=version or graph.version,
-                    isDeleted=False,
-                    storeListing={"is": {"hasApprovedVersion": True}},
-                )
+                where={
+                    "agentId": graph_id,
+                    "agentVersion": version or graph.version,
+                    "isDeleted": False,
+                    "submissionStatus": SubmissionStatus.APPROVED,
+                }
             )
         )
     ):
         return None
 
     if for_export:
-        sub_graphs = await _get_sub_graphs(graph)
+        sub_graphs = await get_sub_graphs(graph)
         return GraphModel.from_db(
             graph=graph,
             sub_graphs=sub_graphs,
@@ -754,7 +754,7 @@ async def get_graph(
     return GraphModel.from_db(graph, for_export)
 
 
-async def _get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
+async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
     """
     Iteratively fetches all sub-graphs of a given graph, and flattens them into a list.
     This call involves a DB fetch in batch, breadth-first, per-level of graph depth.

@@ -408,7 +408,7 @@ async def main():
             where={"id": version.id},
             data={
                 "submissionStatus": status,
-                "reviewer": {"connect": {"id": reviewer.id}},
+                "Reviewer": {"connect": {"id": reviewer.id}},
                 "reviewComments": faker.text(),
                 "reviewedAt": datetime.now(),
             },

@@ -44,14 +44,14 @@ model User {
   AgentPreset  AgentPreset[]
   LibraryAgent LibraryAgent[]
 
-  Profile                Profile[]
-  UserOnboarding         UserOnboarding?
-  StoreListing           StoreListing[]
-  StoreListingReview     StoreListingReview[]
-  StoreVersionsReviewed  StoreListingVersion[]
-  APIKeys                APIKey[]
-  IntegrationWebhooks    IntegrationWebhook[]
-  UserNotificationBatch  UserNotificationBatch[]
+  Profile               Profile[]
+  UserOnboarding        UserOnboarding?
+  StoreListing          StoreListing[]
+  StoreListingReview    StoreListingReview[]
+  StoreVersionsReviewed StoreListingVersion[]
+  APIKeys               APIKey[]
+  IntegrationWebhooks   IntegrationWebhook[]
+  UserNotificationBatch UserNotificationBatch[]
 
   @@index([id])
   @@index([email])
@@ -71,7 +71,7 @@ model UserOnboarding {
   isCompleted          Boolean  @default(false)
 
   userId String @unique
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
@@ -86,13 +86,13 @@ model AgentGraph {
   name        String?
   description String?
 
-  isActive    Boolean @default(true)
+  isActive Boolean @default(true)
 
   // Link to User model
   userId String
   // FIX: Do not cascade delete the agent when the user is deleted
   // This allows us to delete user data with deleting the agent which maybe in use by other users
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   AgentNodes          AgentNode[]
   AgentGraphExecution AgentGraphExecution[]
@@ -175,11 +175,11 @@ model UserNotificationBatch {
   updatedAt DateTime @default(now()) @updatedAt
 
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   type NotificationType
 
-  notifications NotificationEvent[]
+  Notifications NotificationEvent[]
 
   // Each user can only have one batch of a notification type at a time
   @@unique([userId, type])
@@ -319,7 +319,7 @@ model AgentGraphExecution {
 
   // Link to User model -- Executed by this user
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   stats         Json?
   AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
@@ -384,7 +384,7 @@ model IntegrationWebhook {
   updatedAt DateTime? @updatedAt
 
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict) // Webhooks must be deregistered before deleting
+  User   User   @relation(fields: [userId], references: [id], onDelete: Restrict) // Webhooks must be deregistered before deleting
 
   provider      String // e.g. 'github'
   credentialsId String // relation to the credentials that the webhook was created with
@@ -411,7 +411,7 @@ model AnalyticsDetails {
 
   // Link to User model
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Analytics Categorical data used for filtering (indexable w and w/o userId)
   type String
@@ -446,7 +446,7 @@ model AnalyticsMetrics {
 
   // Link to User model
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
 }
@@ -470,7 +470,7 @@ model CreditTransaction {
   createdAt      DateTime @default(now())
 
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   amount Int
   type   CreditTransactionType
@@ -579,25 +579,25 @@ view StoreAgent {
 }
 
 view StoreSubmission {
-  listing_id     String           @id
-  user_id        String
-  slug           String
-  name           String
-  sub_heading    String
-  description    String
-  image_urls     String[]
-  date_submitted DateTime
-  status         SubmissionStatus
-  runs           Int
-  rating         Float
-  agent_id       String
-  agent_version  Int
+  listing_id               String           @id
+  user_id                  String
+  slug                     String
+  name                     String
+  sub_heading              String
+  description              String
+  image_urls               String[]
+  date_submitted           DateTime
+  status                   SubmissionStatus
+  runs                     Int
+  rating                   Float
+  agent_id                 String
+  agent_version            Int
   store_listing_version_id String
-  reviewer_id String?
-  review_comments String?
-  internal_comments String?
-  reviewed_at DateTime?
-  changes_summary String?
+  reviewer_id              String?
+  review_comments          String?
+  internal_comments        String?
+  reviewed_at              DateTime?
+  changes_summary          String?
 
   // Index or unique are not applied to views
 }
@@ -610,13 +610,13 @@ model StoreListing {
   isDeleted          Boolean @default(false)
   // Whether any version has been approved and is available for display
   hasApprovedVersion Boolean @default(false)
-  
+
   // URL-friendly identifier for this agent (moved from StoreListingVersion)
-  slug        String  @unique
+  slug String
 
   // The currently active version that should be shown to users
   activeVersionId String?              @unique
-  activeVersion   StoreListingVersion? @relation("ActiveVersion", fields: [activeVersionId], references: [id])
+  ActiveVersion   StoreListingVersion? @relation("ActiveVersion", fields: [activeVersionId], references: [id])
 
   // The agent link here is only so we can do lookup on agentId
   agentId      String
@@ -627,11 +627,11 @@ model StoreListing {
   OwningUser   User   @relation(fields: [owningUserId], references: [id])
 
   // Relations
-  versions    StoreListingVersion[]    @relation("ListingVersions")
+  Versions StoreListingVersion[] @relation("ListingVersions")
 
   // Unique index on agentId to ensure only one listing per agent, regardless of number of versions the agent has.
   @@unique([agentId])
-  @@index([owningUserId])
+  @@unique([owningUserId, slug])
   // Used in the view query
   @@index([isDeleted, hasApprovedVersion])
 }
@@ -663,27 +663,27 @@ model StoreListingVersion {
 
   // Version workflow state
   submissionStatus SubmissionStatus @default(DRAFT)
-  submittedAt DateTime?
+  submittedAt      DateTime?
 
   // Relations
   storeListingId String
-  storeListing   StoreListing @relation("ListingVersions", fields: [storeListingId], references: [id], onDelete: Cascade)
+  StoreListing   StoreListing @relation("ListingVersions", fields: [storeListingId], references: [id], onDelete: Cascade)
 
   // This version might be the active version for a listing
-  activeFor StoreListing? @relation("ActiveVersion")
+  ActiveFor StoreListing? @relation("ActiveVersion")
 
   // Submission history
-  changesSummary  String?
-  
+  changesSummary String?
+
   // Review information
-  reviewerId      String?
-  reviewer        User?     @relation(fields: [reviewerId], references: [id])
-  internalComments String?  // Private notes for admin use only
-  reviewComments  String?   // Comments visible to creator
-  reviewedAt      DateTime?
+  reviewerId       String?
+  Reviewer         User?     @relation(fields: [reviewerId], references: [id])
+  internalComments String? // Private notes for admin use only
+  reviewComments   String? // Comments visible to creator
+  reviewedAt       DateTime?
 
   // Reviews for this specific version
-  reviews StoreListingReview[]
+  Reviews StoreListingReview[]
 
   @@unique([storeListingId, version])
   @@index([storeListingId, submissionStatus, isAvailable])
@@ -698,10 +698,10 @@ model StoreListingReview {
   updatedAt DateTime @default(now()) @updatedAt
 
   storeListingVersionId String
-  storeListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id], onDelete: Cascade)
+  StoreListingVersion   StoreListingVersion @relation(fields: [storeListingVersionId], references: [id], onDelete: Cascade)
 
   reviewByUserId String
-  reviewByUser   User   @relation(fields: [reviewByUserId], references: [id])
+  ReviewByUser   User   @relation(fields: [reviewByUserId], references: [id])
 
   score    Int
   comments String?
@@ -740,7 +740,7 @@ model APIKey {
 
   // Relation to user
   userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([key])
   @@index([prefix])
