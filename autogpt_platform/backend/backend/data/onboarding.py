@@ -6,6 +6,7 @@ import pydantic
 from prisma import Json
 from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingUpdateInput
+from prisma.enums import OnboardingStep
 
 from backend.data.block import get_blocks
 from backend.data.graph import GraphModel
@@ -23,7 +24,7 @@ REASON_MAPPING: dict[str, list[str]] = {
 
 
 class UserOnboardingUpdate(pydantic.BaseModel):
-    completedSteps: Optional[list[str]] = pydantic.Field(default_factory=list)
+    completedSteps: Optional[list[OnboardingStep]] = pydantic.Field(default_factory=list)
     usageReason: Optional[str] = None
     integrations: Optional[list[str]] = pydantic.Field(default_factory=list)
     otherIntegrations: Optional[str] = None
