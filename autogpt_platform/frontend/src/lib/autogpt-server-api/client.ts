@@ -202,14 +202,14 @@ export default class BackendAPI {
   getGraph(
     id: GraphID,
     version?: number,
-    hide_credentials?: boolean,
+    for_export?: boolean,
   ): Promise<Graph> {
     let query: Record<string, any> = {};
     if (version !== undefined) {
       query["version"] = version;
     }
-    if (hide_credentials !== undefined) {
-      query["hide_credentials"] = hide_credentials;
+    if (for_export !== undefined) {
+      query["for_export"] = for_export;
     }
     return this._get(`/graphs/${id}`, query);
   }
@@ -499,7 +499,6 @@ export default class BackendAPI {
     agentName: string,
     review: StoreReviewCreate,
   ): Promise<StoreReview> {
-    console.log("Reviewing agent: ", username, agentName, review);
     return this._request(
       "POST",
       `/store/agents/${encodeURIComponent(username)}/${encodeURIComponent(
@@ -802,7 +801,7 @@ export default class BackendAPI {
         );
 
         this.heartbeatTimeoutId = window.setTimeout(() => {
-          console.log("Heartbeat timeout - reconnecting");
+          console.warn("Heartbeat timeout - reconnecting");
           this.webSocket?.close();
           this.connectWebSocket();
         }, this.HEARTBEAT_TIMEOUT);
@@ -838,13 +837,12 @@ export default class BackendAPI {
         this.webSocket = new WebSocket(wsUrlWithToken);
 
         this.webSocket.onopen = () => {
-          console.log("WebSocket connection established");
           this.startHeartbeat(); // Start heartbeat when connection opens
           resolve();
         };
 
         this.webSocket.onclose = (event) => {
-          console.log("WebSocket connection closed", event);
+          console.warn("WebSocket connection closed", event);
           this.stopHeartbeat(); // Stop heartbeat when connection closes
           this.webSocket = null;
           // Attempt to reconnect after a delay
