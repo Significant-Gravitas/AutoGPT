@@ -98,7 +98,7 @@ export default function AgentRunDraftView({
                       "default" in inputSubSchema ? inputSubSchema.default : ""
                     }
                     value={inputValues[key] ?? undefined}
-                    className="rounded-full"
+                    className="rounded-full pr-8"
                     onChange={(e) =>
                       setInputValues((obj) => ({
                         ...obj,
