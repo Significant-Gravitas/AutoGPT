@@ -1378,14 +1378,14 @@ async def get_admin_listings_with_versions(
             where_dict["OR"] = [
                 {"slug": {"contains": sanitized_query, "mode": "insensitive"}},
                 {
-                    "versions": {
+                    "Versions": {
                         "some": {
                             "name": {"contains": sanitized_query, "mode": "insensitive"}
                         }
                     }
                 },
                 {
-                    "versions": {
+                    "Versions": {
                         "some": {
                             "description": {
                                 "contains": sanitized_query,
@@ -1395,7 +1395,7 @@ async def get_admin_listings_with_versions(
                     }
                 },
                 {
-                    "versions": {
+                    "Versions": {
                         "some": {
                             "subHeading": {
                                 "contains": sanitized_query,
