@@ -115,8 +115,6 @@ class SendWebRequestBlock(Block):
                     yield "server_error", result
                 else:
                     yield "error", str(e)
-        except Exception as e:
-            yield "error", str(e)
 
         except req.exceptions.RequestException as e:
             # Handle other request-related exceptions
