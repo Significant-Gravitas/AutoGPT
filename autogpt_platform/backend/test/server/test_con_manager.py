@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import WebSocket
 
-from backend.data.execution import ExecutionResult, ExecutionStatus
+from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.server.conn_manager import ConnectionManager
 from backend.server.model import Methods, WsMessage
 
@@ -66,7 +66,7 @@ async def test_send_execution_result(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
     connection_manager.subscriptions["test_graph_1"] = {mock_websocket}
-    result: ExecutionResult = ExecutionResult(
+    result: NodeExecutionResult = NodeExecutionResult(
         graph_id="test_graph",
         graph_version=1,
         graph_exec_id="test_exec_id",
@@ -97,7 +97,7 @@ async def test_send_execution_result(
 async def test_send_execution_result_no_subscribers(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    result: ExecutionResult = ExecutionResult(
+    result: NodeExecutionResult = NodeExecutionResult(
         graph_id="test_graph",
         graph_version=1,
         graph_exec_id="test_exec_id",

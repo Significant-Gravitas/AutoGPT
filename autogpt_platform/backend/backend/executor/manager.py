@@ -40,10 +40,10 @@ from backend.data.block import (
 )
 from backend.data.execution import (
     ExecutionQueue,
-    ExecutionResult,
     ExecutionStatus,
     GraphExecutionEntry,
     NodeExecutionEntry,
+    NodeExecutionResult,
     merge_execution_input,
     parse_execution_output,
 )
@@ -144,7 +144,7 @@ def execute_node(
     node_exec_id = data.node_exec_id
     node_id = data.node_id
 
-    def update_execution(status: ExecutionStatus) -> ExecutionResult:
+    def update_execution(status: ExecutionStatus) -> NodeExecutionResult:
         exec_update = db_client.update_execution_status(node_exec_id, status)
         db_client.send_execution_update(exec_update)
         return exec_update
@@ -689,7 +689,6 @@ class Executor:
             low_balance_error: Optional[InsufficientBalanceError] = None
 
             def make_exec_callback(exec_data: NodeExecutionEntry):
-
                 def callback(result: object):
                     running_executions.pop(exec_data.node_id)
 

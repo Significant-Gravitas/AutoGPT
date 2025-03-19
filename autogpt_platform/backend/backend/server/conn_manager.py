@@ -35,7 +35,7 @@ class ConnectionManager:
             if not self.subscriptions[key]:
                 del self.subscriptions[key]
 
-    async def send_execution_result(self, result: execution.ExecutionResult):
+    async def send_execution_result(self, result: execution.NodeExecutionResult):
         key = f"{result.graph_id}_{result.graph_version}"
         if key in self.subscriptions:
             message = WsMessage(

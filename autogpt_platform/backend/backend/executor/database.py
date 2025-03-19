@@ -1,7 +1,7 @@
 from backend.data.credit import get_user_credit_model
 from backend.data.execution import (
-    ExecutionResult,
     NodeExecutionEntry,
+    NodeExecutionResult,
     RedisExecutionEventBus,
     create_graph_execution,
     get_incomplete_node_executions,
@@ -60,7 +60,7 @@ class DatabaseManager(AppService):
         return config.database_api_port
 
     @expose
-    def send_execution_update(self, execution_result: ExecutionResult):
+    def send_execution_update(self, execution_result: NodeExecutionResult):
         self.event_queue.publish(execution_result)
 
     # Executions

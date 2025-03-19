@@ -12,7 +12,7 @@ from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.api_key import APIKey
 from backend.data.block import BlockInput, CompletedBlockOutput
-from backend.data.execution import ExecutionResult
+from backend.data.execution import NodeExecutionResult
 from backend.executor import ExecutionManager
 from backend.server.external.middleware import require_permission
 from backend.util.service import get_service_client
@@ -53,7 +53,7 @@ class GraphExecutionResult(TypedDict):
     output: Optional[List[Dict[str, str]]]
 
 
-def get_outputs_with_names(results: List[ExecutionResult]) -> List[Dict[str, str]]:
+def get_outputs_with_names(results: list[NodeExecutionResult]) -> list[dict[str, str]]:
     outputs = []
     for result in results:
         if "output" in result.output_data:
