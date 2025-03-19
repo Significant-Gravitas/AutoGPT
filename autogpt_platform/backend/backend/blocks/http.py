@@ -1,4 +1,5 @@
 import json
+import logging
 from enum import Enum
 from typing import Any
 
@@ -7,6 +8,8 @@ import requests as req  # Import standard requests to access exception types
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 from backend.util.request import requests
+
+logger = logging.getLogger(name=__name__)
 
 
 class HttpMethod(Enum):
@@ -88,7 +91,8 @@ class SendWebRequestBlock(Block):
             elif 500 <= response.status_code < 600:
                 yield "server_error", result
             else:
-                raise ValueError(f"Unexpected status code: {response.status_code}")
+                logger.warning(f"Unexpected status code: {response.status_code}")
+                yield "error", f"Unexpected status code: {response.status_code}"
 
         except req.exceptions.HTTPError as e:
             # Handle HTTP errors from raise_for_status()
