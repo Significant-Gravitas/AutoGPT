@@ -2,6 +2,8 @@ import json
 from enum import Enum
 from typing import Any
 
+import requests as req  # Import standard requests to access exception types
+
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 from backend.util.request import requests
@@ -79,27 +81,43 @@ class SendWebRequestBlock(Block):
             )
             result = response.json() if input_data.json_format else response.text
 
-            if response.status_code // 100 == 2:
+            if response.ok:
                 yield "response", result
-            elif response.status_code // 100 == 4:
+            elif 400 <= response.status_code < 500:
                 yield "client_error", result
-            elif response.status_code // 100 == 5:
+            elif 500 <= response.status_code < 600:
                 yield "server_error", result
             else:
                 raise ValueError(f"Unexpected status code: {response.status_code}")
-        except Exception as e:
-            # Check if this is an HTTP error with a response attribute
-            if hasattr(e, "response") and hasattr(e.response, "status_code"):  # type: ignore
-                status_code = e.response.status_code  # type: ignore
 
-                if status_code // 100 == 4:
-                    result = e.response.json() if input_data.json_format and hasattr(e.response, "json") else str(e)  # type: ignore
+        except req.exceptions.HTTPError as e:
+            # Handle HTTP errors from raise_for_status()
+            if hasattr(e, "response"):
+                status_code = e.response.status_code
+
+                if 400 <= status_code < 500:
+                    result = (
+                        e.response.json()
+                        if input_data.json_format and hasattr(e.response, "json")
+                        else str(e)
+                    )
                     yield "client_error", result
-                elif status_code // 100 == 5:
-                    result = e.response.json() if input_data.json_format and hasattr(e.response, "json") else str(e)  # type: ignore
+                elif 500 <= status_code < 600:
+                    result = (
+                        e.response.json()
+                        if input_data.json_format and hasattr(e.response, "json")
+                        else str(e)
+                    )
                     yield "server_error", result
                 else:
                     yield "error", str(e)
             else:
-                # Handle non-HTTP exceptions
                 yield "error", str(e)
+
+        except req.exceptions.RequestException as e:
+            # Handle other request-related exceptions
+            yield "error", str(e)
+
+        except Exception as e:
+            # Catch any other unexpected exceptions
+            yield "error", str(e)
