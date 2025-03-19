@@ -180,7 +180,7 @@ async def get_approved_graph(
                     "isApproved": True,
                     "isDeleted": False,
                 },
-                include={"Agent": { "include": { "AgentNodes": True } } },
+                include={"Agent": {"include": {"AgentNodes": True}}},
             )
         )
 

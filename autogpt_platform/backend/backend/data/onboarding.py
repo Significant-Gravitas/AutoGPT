@@ -7,9 +7,9 @@ from prisma import Json
 from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingUpdateInput
 
-from backend.data.model import CredentialsMetaInput
 from backend.data.block import get_blocks
 from backend.data.graph import GraphModel
+from backend.data.model import CredentialsMetaInput
 from backend.server.v2.store.model import StoreAgentDetails
 
 # Mapping from user reason id to categories to search for when choosing agent to show
@@ -140,7 +140,6 @@ def get_credentials_blocks() -> dict[str, str]:
         for field_name, field_info in block().input_schema.model_fields.items():
             if field_info.annotation == CredentialsMetaInput:
                 creds[id] = field_name
-    print("CREDENTIALS FIELDS", creds)
     return creds
 
 
@@ -194,21 +193,31 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
         graph = GraphModel.from_db(agent)
         # Remove agents with empty input schema
         if not graph.input_schema:
-            storeAgents = [a for a in storeAgents if a.storeListingVersionId != listing.id]
+            storeAgents = [
+                a for a in storeAgents if a.storeListingVersionId != listing.id
+            ]
             continue
-        
+
         # Remove agents with empty credentials
         # Get nodes from this agent that have credentials
         nodes = await prisma.models.AgentNode.prisma().find_many(
-            where={"agentGraphId": agent.id, "agentBlockId": { "in": list(CREDENTIALS_FIELDS.keys()) }},
+            where={
+                "agentGraphId": agent.id,
+                "agentBlockId": {"in": list(CREDENTIALS_FIELDS.keys())},
+            },
         )
         for node in nodes:
             block_id = node.agentBlockId
             field_name = CREDENTIALS_FIELDS[block_id]
             # If there are no credentials or they are empty, remove the agent
             # FIXME ignores default values
-            if not field_name in node.constantInput or node.constantInput[field_name] is None:
-                storeAgents = [a for a in storeAgents if a.storeListingVersionId != listing.id]
+            if (
+                field_name not in node.constantInput
+                or node.constantInput[field_name] is None
+            ):
+                storeAgents = [
+                    a for a in storeAgents if a.storeListingVersionId != listing.id
+                ]
                 break
 
     # If there are less than 2 agents, add more agents to the list

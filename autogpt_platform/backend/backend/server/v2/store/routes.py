@@ -203,9 +203,7 @@ async def get_agent(username: str, agent_name: str):
 )
 async def get_graph_meta_by_store_listing_version_id(
     store_listing_version_id: str,
-    _: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
+    _: typing.Annotated[str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)],
 ):
     """
     Get Agent Graph from Store Listing Version ID.
@@ -230,9 +228,7 @@ async def get_graph_meta_by_store_listing_version_id(
 )
 async def get_store_agent(
     store_listing_version_id: str,
-    _: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
+    _: typing.Annotated[str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)],
 ):
     """
     Get Store Agent Details from Store Listing Version ID.
