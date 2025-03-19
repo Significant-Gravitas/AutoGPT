@@ -1415,7 +1415,7 @@ async def get_admin_listings_with_versions(
 
         # Create proper Prisma types for the query
         where = prisma.types.StoreListingWhereInput(**where_dict)
-        include = prisma.types.StoreListingInclude(versions=True, OwningUser=True)
+        include = prisma.types.StoreListingInclude(Versions=True, OwningUser=True)
 
         # Query listings with their versions
         listings = await prisma.models.StoreListing.prisma().find_many(
@@ -1435,10 +1435,10 @@ async def get_admin_listings_with_versions(
         for listing in listings:
             versions = []
             # Filter versions by status if specified and ensure versions is not None
-            if listing.versions is not None:
+            if listing.Versions is not None:
                 filtered_versions = [
                     v
-                    for v in listing.versions
+                    for v in listing.Versions
                     if status is None or v.submissionStatus == status
                 ]
 
