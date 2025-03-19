@@ -17,7 +17,10 @@ import { useRouter } from "next/navigation";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 
 export default function Page() {
-  const { state, updateState, setStep } = useOnboarding(undefined, "AGENT_CHOICE");
+  const { state, updateState, setStep } = useOnboarding(
+    undefined,
+    "AGENT_CHOICE",
+  );
   const [showInput, setShowInput] = useState(false);
   const [agent, setAgent] = useState<GraphMeta | null>(null);
   const [storeAgent, setStoreAgent] = useState<StoreAgentDetails | null>(null);
@@ -43,11 +46,11 @@ export default function Page() {
         setAgent(agent);
         const update: { [key: string]: any } = {};
         // Set default values from schema
-        Object.entries(agent?.input_schema?.properties || {}).forEach(
+        Object.entries(agent.input_schema.properties).forEach(
           ([key, value]) => {
             // Skip if already set
-            if (state?.agentInput && state?.agentInput[key]) {
-              update[key] = state?.agentInput[key];
+            if (state.agentInput && state.agentInput[key]) {
+              update[key] = state.agentInput[key];
               return;
             }
             update[key] = value.type !== "null" ? value.default || "" : "";
@@ -77,7 +80,9 @@ export default function Page() {
       return;
     }
     console.log("running with", state?.agentInput);
-    api.addMarketplaceAgentToLibrary(storeAgent?.store_listing_version_id || "");
+    api.addMarketplaceAgentToLibrary(
+      storeAgent?.store_listing_version_id || "",
+    );
     api.executeGraph(agent.id, agent.version, state?.agentInput || {});
     router.push("/onboarding/6-congrats");
   }, [api, agent, router, state?.agentInput]);

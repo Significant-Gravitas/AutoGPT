@@ -68,7 +68,7 @@ export default function OnboardingProvider({
         return;
       }
       const onboarding = await api.getUserOnboarding();
-      setState(onboarding);
+      setState((prev) => ({ ...onboarding, ...prev }));
 
       // Redirect outside onboarding if completed
       // If user did CONGRATS step, that means they completed introductory onboarding
