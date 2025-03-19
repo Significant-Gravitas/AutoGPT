@@ -248,34 +248,38 @@ const NodeDateTimeInput: FC<{
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      {hideDate || <Popover>
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            className={cn(
-              "w-full justify-start text-left font-normal",
-              !value && "text-muted-foreground",
-            )}
-          >
-            <CalendarIcon className="mr-2 h-4 w-4" />
-            {value ? format(date, "PPP") : <span>Pick a date</span>}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
-            mode="single"
-            selected={date}
-            onSelect={handleDateSelect}
-            initialFocus
-          />
-        </PopoverContent>
-      </Popover>}
-      {hideTime || <LocalValuedInput
-        type="time"
-        value={timeInput}
-        onChange={handleTimeChange}
-        className="w-full"
-      />}
+      {hideDate || (
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className={cn(
+                "w-full justify-start text-left font-normal",
+                !value && "text-muted-foreground",
+              )}
+            >
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {value ? format(date, "PPP") : <span>Pick a date</span>}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={date}
+              onSelect={handleDateSelect}
+              initialFocus
+            />
+          </PopoverContent>
+        </Popover>
+      )}
+      {hideTime || (
+        <LocalValuedInput
+          type="time"
+          value={timeInput}
+          onChange={handleTimeChange}
+          className="w-full"
+        />
+      )}
       {error && <span className="error-message">{error}</span>}
     </div>
   );
@@ -519,7 +523,9 @@ export const NodeGenericInputField: FC<{
 
       if (
         "format" in propSchema.anyOf[0] &&
-        ["date-time", "date", "time"].includes(propSchema.anyOf[0].format as string)
+        ["date-time", "date", "time"].includes(
+          propSchema.anyOf[0].format as string,
+        )
       ) {
         return (
           <NodeDateTimeInput
