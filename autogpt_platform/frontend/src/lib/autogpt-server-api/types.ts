@@ -500,6 +500,7 @@ export enum BlockUIType {
   WEBHOOK = "Webhook",
   WEBHOOK_MANUAL = "Webhook (manual)",
   AGENT = "Agent",
+  AI = "AI",
 }
 
 export enum SpecialBlockID {

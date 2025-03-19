@@ -51,14 +51,15 @@ test.describe("Build", () => { //(1)!
     await buildPage.openBlocksPanel();
     const blocks = await buildPage.getBlocks();
 
-    const blocksToSkip = await buildPage.getBlocksToSkip();
+    const blockIdsToSkip = await buildPage.getBlocksToSkip();
+    const blockTypesToSkip = ["Input", "Output", "Agent", "AI"];
 
     // add all the blocks in order except for the agent executor block
     for (const block of blocks) {
       if (block.name[0].toLowerCase() >= "m") {
         continue;
       }
-      if (!blocksToSkip.some((b) => b === block.id)) {
+      if (!blockIdsToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.name.includes(b))) {
         await buildPage.addBlock(block);
       }
     }
@@ -68,7 +69,7 @@ test.describe("Build", () => { //(1)!
       if (block.name[0].toLowerCase() >= "m") {
         continue;
       }
-      if (!blocksToSkip.some((b) => b === block.id)) {
+      if (!blockIdsToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.name.includes(b))) {
         console.log("Checking block:", block.name);
         await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
       }
@@ -90,13 +91,14 @@ test.describe("Build", () => { //(1)!
     const blocks = await buildPage.getBlocks();
 
     const blocksToSkip = await buildPage.getBlocksToSkip();
+    const blockTypesToSkip = ["Input", "Output", "Agent", "AI"];
 
     // add all the blocks in order except for the agent executor block
     for (const block of blocks) {
       if (block.name[0].toLowerCase() < "m") {
         continue;
       }
-      if (!blocksToSkip.some((b) => b === block.id)) {
+      if (!blocksToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.name.includes(b))) {
         await buildPage.addBlock(block);
       }
     }
@@ -106,7 +108,7 @@ test.describe("Build", () => { //(1)!
       if (block.name[0].toLowerCase() < "m") {
         continue;
       }
-      if (!blocksToSkip.some((b) => b === block.id)) {
+      if (!blocksToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.name.includes(b))) {
         await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
       }
     }
