@@ -185,7 +185,9 @@ export default function AgentRunDetailsView({
                         {title || key}
                       </label>
                       {values.map((value, i) => (
-                        <pre key={i}>{value}</pre>
+                        <p className="text-sm text-neutral-700" key={i}>
+                          {value}
+                        </p>
                       ))}
                       {/* TODO: pretty type-dependent rendering */}
                     </div>
