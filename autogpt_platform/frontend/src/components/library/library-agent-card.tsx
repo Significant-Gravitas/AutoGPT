@@ -64,14 +64,17 @@ export default function LibraryAgentCard({
 
       <div className="flex w-full flex-1 flex-col px-4 py-4">
         <Link href={`/library/agents/${id}`}>
-          <h3 className="mb-2 font-poppins text-2xl font-semibold leading-tight text-[#272727] dark:text-neutral-100">
+          <h3 className="mb-2 line-clamp-2 font-poppins text-2xl font-semibold leading-tight text-[#272727] dark:text-neutral-100">
             {name}
           </h3>
 
-          <p className="mb-4 flex-1 text-sm text-gray-600 dark:text-gray-400">
+          <p className="line-clamp-3 flex-1 text-sm text-gray-600 dark:text-gray-400">
             {description}
           </p>
         </Link>
+
+        <div className="flex-grow" />
+        {/* Spacer */}
 
         <div className="items-between mt-4 flex w-full justify-between gap-3">
           <Link
