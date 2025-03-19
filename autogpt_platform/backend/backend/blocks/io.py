@@ -330,12 +330,12 @@ class DateAgentInputBlock(AgentInputBlock):
             test_input=[
                 {
                     # If your system can parse JSON date strings to date objects
-                    "value": date(2025, 3, 19),
+                    "value": str(date(2025, 3, 19)),
                     "name": "date_input_1",
                     "description": "Example date input 1",
                 },
                 {
-                    "value": date(2023, 12, 31),
+                    "value": str(date(2023, 12, 31)),
                     "name": "date_input_2",
                     "description": "Example date input 2",
                 },
@@ -364,12 +364,12 @@ class TimeAgentInputBlock(AgentInputBlock):
             output_schema=TimeAgentInputBlock.Output,
             test_input=[
                 {
-                    "value": time(9, 30, 0),
+                    "value": str(time(9, 30, 0)),
                     "name": "time_input_1",
                     "description": "Time example 1",
                 },
                 {
-                    "value": time(23, 59, 59),
+                    "value": str(time(23, 59, 59)),
                     "name": "time_input_2",
                     "description": "Time example 2",
                 },
@@ -404,18 +404,12 @@ class FileUploadAgentInputBlock(AgentInputBlock):
             output_schema=FileUploadAgentInputBlock.Output,
             test_input=[
                 {
-                    "value": "data:image/png;base64,iVBORw0KGgoAAA=",
+                    "value": "data:image/png;base64,MQ==",
                     "name": "file_upload_1",
                     "description": "Example file upload 1",
                 },
-                {
-                    "value": "path/to/second_file.png",
-                    "name": "file_upload_2",
-                    "description": "Example file upload 2",
-                },
             ],
             test_output=[
-                ("result", str),
                 ("result", str),
             ],
         )
@@ -432,7 +426,7 @@ class FileUploadAgentInputBlock(AgentInputBlock):
             file=input_data.value,
             return_content=False,
         )
-        yield "output", file_path
+        yield "result", file_path
 
 
 class DropdownAgentInputBlock(AgentInputBlock):

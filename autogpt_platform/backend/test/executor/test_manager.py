@@ -1,10 +1,10 @@
 import logging
 
+import autogpt_libs.auth.models
 import fastapi.responses
 import pytest
 from prisma.models import User
 
-import autogpt_libs.auth.models
 import backend.server.v2.library.model
 import backend.server.v2.store.model
 from backend.blocks.basic import FindInDictionaryBlock, StoreValueBlock
@@ -125,7 +125,7 @@ async def assert_sample_graph_executions(
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
     assert exec.output_data == {"output": ["Hello, World!!!"]}
-    assert exec.input_data == {"text": "Hello, World!!!"}
+    assert exec.input_data == {"input": "Hello, World!!!"}
     assert exec.node_id == test_graph.nodes[3].id
 
 

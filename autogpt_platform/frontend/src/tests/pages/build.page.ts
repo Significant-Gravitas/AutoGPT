@@ -394,6 +394,14 @@ export class BuildPage extends BasePage {
     };
   }
 
+  async getAgentInputBlockDetails(): Promise<Block> {
+    return {
+      id: "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
+      name: "Agent Input",
+      description: "This block is used to provide input to the graph.",
+    };
+  }
+
   async getGithubTriggerBlockDetails(): Promise<Block> {
     return {
       id: "6c60ec01-8128-419e-988f-96a063ee2fea",
@@ -485,6 +493,7 @@ export class BuildPage extends BasePage {
   async getBlocksToSkip(): Promise<string[]> {
     return [
       (await this.getAgentExecutorBlockDetails()).id,
+      (await this.getAgentInputBlockDetails()).id,
       (await this.getAgentOutputBlockDetails()).id,
       (await this.getGithubTriggerBlockDetails()).id,
       (await this.getSmartDecisionMakerBlockDetails()).id,
