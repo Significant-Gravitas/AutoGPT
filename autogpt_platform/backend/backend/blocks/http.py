@@ -87,7 +87,10 @@ class SendWebRequestBlock(Block):
 
         except HTTPError as e:
             # Handle error responses
-            result = e.response.json() if input_data.json_format else str(e)
+            try:
+                result = e.response.json() if input_data.json_format else str(e)
+            except json.JSONDecodeError:
+                result = str(e)
 
             if 400 <= e.response.status_code < 500:
                 yield "client_error", result
