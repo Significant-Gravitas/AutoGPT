@@ -5,7 +5,7 @@ networks:
     name: shared-network
 
 volumes:
-  db-config:
+  supabase-config:
 
 x-agpt-services:
   &agpt-services
