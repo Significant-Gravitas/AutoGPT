@@ -169,9 +169,9 @@ class AgentServer(backend.util.service.AppProcess):
 
     @staticmethod
     async def test_get_graph_run_status(graph_exec_id: str, user_id: str):
-        from backend.data.execution import get_execution_meta
+        from backend.data.execution import get_graph_execution_meta
 
-        execution = await get_execution_meta(
+        execution = await get_graph_execution_meta(
             user_id=user_id, execution_id=graph_exec_id
         )
         if not execution:

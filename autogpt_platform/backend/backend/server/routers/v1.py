@@ -588,7 +588,7 @@ def execute_graph(
 async def stop_graph_run(
     graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> execution_db.GraphExecution:
-    if not await execution_db.get_execution_meta(
+    if not await execution_db.get_graph_execution_meta(
         user_id=user_id, execution_id=graph_exec_id
     ):
         raise HTTPException(404, detail=f"Agent execution #{graph_exec_id} not found")
@@ -598,7 +598,7 @@ async def stop_graph_run(
     )
 
     # Retrieve & return canceled graph execution in its final state
-    result = await execution_db.get_execution(
+    result = await execution_db.get_graph_execution(
         execution_id=graph_exec_id, user_id=user_id
     )
     if not result:
@@ -646,7 +646,7 @@ async def get_graph_execution(
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
-    result = await execution_db.get_execution(
+    result = await execution_db.get_graph_execution(
         execution_id=graph_exec_id, user_id=user_id
     )
     if not result:
@@ -667,7 +667,9 @@ async def delete_graph_execution(
     graph_exec_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> None:
-    await execution_db.delete_execution(graph_exec_id=graph_exec_id, user_id=user_id)
+    await execution_db.delete_graph_execution(
+        graph_exec_id=graph_exec_id, user_id=user_id
+    )
 
 
 ########################################################

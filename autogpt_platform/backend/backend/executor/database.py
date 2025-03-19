@@ -4,13 +4,13 @@ from backend.data.execution import (
     NodeExecutionEntry,
     RedisExecutionEventBus,
     create_graph_execution,
-    get_execution_results,
-    get_incomplete_executions,
-    get_latest_execution,
-    update_execution_status,
+    get_incomplete_node_executions,
+    get_latest_node_execution,
+    get_node_execution_results,
     update_graph_execution_start_time,
     update_graph_execution_stats,
     update_node_execution_stats,
+    update_node_execution_status,
     upsert_execution_input,
     upsert_execution_output,
 )
@@ -65,10 +65,10 @@ class DatabaseManager(AppService):
 
     # Executions
     create_graph_execution = exposed_run_and_wait(create_graph_execution)
-    get_execution_results = exposed_run_and_wait(get_execution_results)
-    get_incomplete_executions = exposed_run_and_wait(get_incomplete_executions)
-    get_latest_execution = exposed_run_and_wait(get_latest_execution)
-    update_execution_status = exposed_run_and_wait(update_execution_status)
+    get_execution_results = exposed_run_and_wait(get_node_execution_results)
+    get_incomplete_executions = exposed_run_and_wait(get_incomplete_node_executions)
+    get_latest_execution = exposed_run_and_wait(get_latest_node_execution)
+    update_execution_status = exposed_run_and_wait(update_node_execution_status)
     update_graph_execution_start_time = exposed_run_and_wait(
         update_graph_execution_start_time
     )
