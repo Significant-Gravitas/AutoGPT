@@ -51,7 +51,10 @@ async def test_websocket_router_subscribe(
         websocket=mock_websocket,
     )
     mock_websocket.send_text.assert_called_once()
-    assert '"method":"subscribe"' in mock_websocket.send_text.call_args[0][0]
+    assert (
+        '"method":"subscribe_graph_execution"'
+        in mock_websocket.send_text.call_args[0][0]
+    )
     assert '"success":true' in mock_websocket.send_text.call_args[0][0]
     mock_manager.disconnect_socket.assert_called_once_with(mock_websocket)
 
@@ -132,7 +135,10 @@ async def test_handle_subscribe_success(
         websocket=mock_websocket,
     )
     mock_websocket.send_text.assert_called_once()
-    assert '"method":"subscribe"' in mock_websocket.send_text.call_args[0][0]
+    assert (
+        '"method":"subscribe_graph_execution"'
+        in mock_websocket.send_text.call_args[0][0]
+    )
     assert '"success":true' in mock_websocket.send_text.call_args[0][0]
 
 
