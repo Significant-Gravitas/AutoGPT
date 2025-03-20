@@ -163,27 +163,6 @@ class NodeExecutionResult(BaseModel):
     end_time: datetime | None
 
     @staticmethod
-    def from_graph(graph_exec: AgentGraphExecution):
-        return NodeExecutionResult(
-            user_id=graph_exec.userId,
-            graph_id=graph_exec.agentGraphId,
-            graph_version=graph_exec.agentGraphVersion,
-            graph_exec_id=graph_exec.id,
-            node_exec_id="",
-            node_id="",
-            block_id="",
-            status=graph_exec.executionStatus,
-            # TODO: Populate input_data & output_data from AgentNodeExecutions
-            #       Input & Output comes AgentInputBlock & AgentOutputBlock.
-            input_data={},
-            output_data={},
-            add_time=graph_exec.createdAt,
-            queue_time=graph_exec.createdAt,
-            start_time=graph_exec.startedAt,
-            end_time=graph_exec.updatedAt,
-        )
-
-    @staticmethod
     def from_db(execution: AgentNodeExecution, user_id: Optional[str] = None):
         if execution.executionData:
             # Execution that has been queued for execution will persist its data.
