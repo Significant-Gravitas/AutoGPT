@@ -191,23 +191,32 @@ async def websocket_router(
                 )
                 continue
 
-            if message.method == Methods.SUBSCRIBE:
-                await handle_subscribe(
-                    connection_manager=manager,
-                    websocket=websocket,
-                    user_id=user_id,
-                    message=message,
-                )
+            try:
+                if message.method == Methods.SUBSCRIBE:
+                    await handle_subscribe(
+                        connection_manager=manager,
+                        websocket=websocket,
+                        user_id=user_id,
+                        message=message,
+                    )
+                    continue
 
-            elif message.method == Methods.UNSUBSCRIBE:
-                await handle_unsubscribe(
-                    connection_manager=manager,
-                    websocket=websocket,
-                    user_id=user_id,
-                    message=message,
+                elif message.method == Methods.UNSUBSCRIBE:
+                    await handle_unsubscribe(
+                        connection_manager=manager,
+                        websocket=websocket,
+                        user_id=user_id,
+                        message=message,
+                    )
+                    continue
+            except Exception as e:
+                logger.error(
+                    f"Error while handling '{message.method}' message "
+                    f"for user #{user_id}: {e}"
                 )
+                continue
 
-            elif message.method == Methods.ERROR:
+            if message.method == Methods.ERROR:
                 logger.error(f"WebSocket Error message received: {message.data}")
 
             else:
