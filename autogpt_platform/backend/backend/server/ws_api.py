@@ -99,19 +99,19 @@ async def handle_subscribe(
         sub_req = ExecutionSubscription.model_validate(message.data)
 
         # Verify that user has read access to graph
-        if not get_db_client().get_graph(
-            graph_id=sub_req.graph_id,
-            version=sub_req.graph_version,
-            user_id=user_id,
-        ):
-            await websocket.send_text(
-                WsMessage(
-                    method=Methods.ERROR,
-                    success=False,
-                    error="Access denied",
-                ).model_dump_json()
-            )
-            return
+        # if not get_db_client().get_graph(
+        #     graph_id=sub_req.graph_id,
+        #     version=sub_req.graph_version,
+        #     user_id=user_id,
+        # ):
+        #     await websocket.send_text(
+        #         WsMessage(
+        #             method=Methods.ERROR,
+        #             success=False,
+        #             error="Access denied",
+        #         ).model_dump_json()
+        #     )
+        #     return
 
         await connection_manager.subscribe(
             user_id=user_id,
