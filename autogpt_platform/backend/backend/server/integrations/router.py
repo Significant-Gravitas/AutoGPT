@@ -368,7 +368,7 @@ async def remove_all_webhooks_for_credentials(
             await set_node_webhook(node.id, None)
 
         # Prune the webhook
-        webhook_manager = get_webhook_manager(credentials.provider)
+        webhook_manager = get_webhook_manager(ProviderName(credentials.provider))
         success = await webhook_manager.prune_webhook_if_dangling(
             webhook.id, credentials
         )
