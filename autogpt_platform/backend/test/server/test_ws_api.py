@@ -31,7 +31,7 @@ async def test_websocket_router_subscribe(
 ) -> None:
     mock_websocket.receive_text.side_effect = [
         WSMessage(
-            method=WSMethod.SUBSCRIBE,
+            method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
             data={"graph_id": "test_graph", "graph_version": 1},
         ).model_dump_json(),
         WebSocketDisconnect(),
@@ -108,7 +108,8 @@ async def test_handle_subscribe_success(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:
     message = WSMessage(
-        method=WSMethod.SUBSCRIBE, data={"graph_id": "test_graph", "graph_version": 1}
+        method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
+        data={"graph_exec_id": "test-graph-exec-id"},
     )
 
     await handle_subscribe(
@@ -120,8 +121,7 @@ async def test_handle_subscribe_success(
 
     mock_manager.subscribe.assert_called_once_with(
         user_id="user-1",
-        graph_id="test_graph",
-        graph_version=1,
+        graph_exec_id="test-graph-exec-id",
         websocket=mock_websocket,
     )
     mock_websocket.send_text.assert_called_once()
@@ -133,7 +133,7 @@ async def test_handle_subscribe_success(
 async def test_handle_subscribe_missing_data(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:
-    message = WSMessage(method=WSMethod.SUBSCRIBE)
+    message = WSMessage(method=WSMethod.SUBSCRIBE_GRAPH_EXEC)
 
     await handle_subscribe(
         connection_manager=cast(ConnectionManager, mock_manager),
@@ -153,7 +153,7 @@ async def test_handle_unsubscribe_success(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:
     message = WSMessage(
-        method=WSMethod.UNSUBSCRIBE, data={"graph_id": "test_graph", "graph_version": 1}
+        method=WSMethod.UNSUBSCRIBE, data={"graph_exec_id": "test-graph-exec-id"}
     )
 
     await handle_unsubscribe(
@@ -165,8 +165,7 @@ async def test_handle_unsubscribe_success(
 
     mock_manager.unsubscribe.assert_called_once_with(
         user_id="user-1",
-        graph_id="test_graph",
-        graph_version=1,
+        graph_exec_id="test-graph-exec-id",
         websocket=mock_websocket,
     )
     mock_websocket.send_text.assert_called_once()

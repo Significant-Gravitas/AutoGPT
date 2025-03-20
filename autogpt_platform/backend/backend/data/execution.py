@@ -55,12 +55,12 @@ class GraphExecutionMeta(BaseDbModel):
     started_at: datetime
     ended_at: datetime
     cost: Optional[int] = Field(..., description="Execution cost in credits")
-    duration: float
-    total_run_time: float
+    duration: float = Field(..., description="Seconds from start to end of run")
+    total_run_time: float = Field(..., description="Seconds of node runtime")
     status: ExecutionStatus
     graph_id: str
     graph_version: int
-    preset_id: Optional[str]
+    preset_id: Optional[str] = None
 
     @staticmethod
     def from_db(_graph_exec: AgentGraphExecution):

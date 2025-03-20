@@ -12,7 +12,7 @@ from backend.data import redis
 from backend.data.execution import AsyncRedisExecutionEventBus
 from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
-from backend.server.model import ExecutionSubscription, WSMessage, WSMethod
+from backend.server.model import WSMessage, WSMethod, WSSubscribeGraphExecutionRequest
 from backend.util.service import AppProcess, get_service_client
 from backend.util.settings import AppEnvironment, Config, Settings
 
@@ -96,7 +96,7 @@ async def handle_subscribe(
             ).model_dump_json()
         )
     else:
-        sub_req = ExecutionSubscription.model_validate(message.data)
+        sub_req = WSSubscribeGraphExecutionRequest.model_validate(message.data)
 
         # Verify that user has read access to graph
         # if not get_db_client().get_graph(
@@ -113,21 +113,20 @@ async def handle_subscribe(
         #     )
         #     return
 
-        await connection_manager.subscribe(
+        channel_key = await connection_manager.subscribe_graph_exec(
             user_id=user_id,
-            graph_id=sub_req.graph_id,
-            graph_version=sub_req.graph_version,
+            graph_exec_id=sub_req.graph_exec_id,
             websocket=websocket,
         )
         logger.debug(
-            f"New execution subscription for user #{user_id} "
-            f"graph #{sub_req.graph_id}v{sub_req.graph_version}"
+            f"New subscription for user #{user_id}, "
+            f"graph execution #{sub_req.graph_exec_id}"
         )
         await websocket.send_text(
             WSMessage(
-                method=WSMethod.SUBSCRIBE,
+                method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
                 success=True,
-                channel=f"{user_id}_{sub_req.graph_id}_{sub_req.graph_version}",
+                channel=channel_key,
             ).model_dump_json()
         )
 
@@ -147,22 +146,21 @@ async def handle_unsubscribe(
             ).model_dump_json()
         )
     else:
-        unsub_req = ExecutionSubscription.model_validate(message.data)
-        await connection_manager.unsubscribe(
+        unsub_req = WSSubscribeGraphExecutionRequest.model_validate(message.data)
+        channel_key = await connection_manager.unsubscribe(
             user_id=user_id,
-            graph_id=unsub_req.graph_id,
-            graph_version=unsub_req.graph_version,
+            graph_exec_id=unsub_req.graph_exec_id,
             websocket=websocket,
         )
         logger.debug(
-            f"Removed execution subscription for user #{user_id} "
-            f"graph #{unsub_req.graph_id}v{unsub_req.graph_version}"
+            f"Removed subscription for user #{user_id}, "
+            f"graph execution #{unsub_req.graph_exec_id}"
         )
         await websocket.send_text(
             WSMessage(
                 method=WSMethod.UNSUBSCRIBE,
                 success=True,
-                channel=f"{unsub_req.graph_id}_{unsub_req.graph_version}",
+                channel=channel_key,
             ).model_dump_json()
         )
 
@@ -179,7 +177,7 @@ async def websocket_router(
     user_id = await authenticate_websocket(websocket)
     if not user_id:
         return
-    await manager.connect(websocket)
+    await manager.connect_socket(websocket)
     try:
         while True:
             data = await websocket.receive_text()
@@ -196,7 +194,7 @@ async def websocket_router(
                 continue
 
             try:
-                if message.method == WSMethod.SUBSCRIBE:
+                if message.method == WSMethod.SUBSCRIBE_GRAPH_EXEC:
                     await handle_subscribe(
                         connection_manager=manager,
                         websocket=websocket,
@@ -237,7 +235,7 @@ async def websocket_router(
                 )
 
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        manager.disconnect_socket(websocket)
         logger.debug("WebSocket client disconnected")
 
 
