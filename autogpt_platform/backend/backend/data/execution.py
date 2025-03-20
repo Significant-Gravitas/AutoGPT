@@ -728,15 +728,15 @@ class ExecutionEventType(Enum):
 
 
 class GraphExecutionEvent(GraphExecutionMeta):
-    event_type: Literal[
+    event_type: Literal[ExecutionEventType.GRAPH_EXEC_UPDATE] = (
         ExecutionEventType.GRAPH_EXEC_UPDATE
-    ] = ExecutionEventType.GRAPH_EXEC_UPDATE
+    )
 
 
 class NodeExecutionEvent(NodeExecutionResult):
-    event_type: Literal[
+    event_type: Literal[ExecutionEventType.NODE_EXEC_UPDATE] = (
         ExecutionEventType.NODE_EXEC_UPDATE
-    ] = ExecutionEventType.NODE_EXEC_UPDATE
+    )
 
 
 ExecutionEvent = Annotated[
