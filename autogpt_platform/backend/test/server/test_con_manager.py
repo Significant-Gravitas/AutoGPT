@@ -98,7 +98,7 @@ async def test_send_execution_result(
     mock_websocket.send_text.assert_called_once_with(
         WsMessage(
             method=Methods.EXECUTION_EVENT,
-            channel="test_graph_1",
+            channel="user-1_test_graph_1",
             data=result.model_dump(),
         ).model_dump_json()
     )

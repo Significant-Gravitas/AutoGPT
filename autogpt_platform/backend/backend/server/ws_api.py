@@ -127,7 +127,7 @@ async def handle_subscribe(
             WsMessage(
                 method=Methods.SUBSCRIBE,
                 success=True,
-                channel=f"{sub_req.graph_id}_{sub_req.graph_version}",
+                channel=f"{user_id}_{sub_req.graph_id}_{sub_req.graph_version}",
             ).model_dump_json()
         )
 
