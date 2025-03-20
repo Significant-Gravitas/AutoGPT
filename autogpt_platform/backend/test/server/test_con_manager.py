@@ -100,7 +100,7 @@ async def test_send_graph_execution_result(
 
     mock_websocket.send_text.assert_called_once_with(
         WSMessage(
-            method=WSMethod.NODE_EXECUTION_EVENT,
+            method=WSMethod.GRAPH_EXECUTION_EVENT,
             channel="user-1|graph_exec#graph-exec-1",
             data=result.model_dump(),
         ).model_dump_json()
