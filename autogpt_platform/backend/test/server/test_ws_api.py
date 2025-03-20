@@ -6,8 +6,8 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from backend.server.conn_manager import ConnectionManager
 from backend.server.ws_api import (
-    Methods,
-    WsMessage,
+    WSMessage,
+    WSMethod,
     handle_subscribe,
     handle_unsubscribe,
     websocket_router,
@@ -29,8 +29,8 @@ async def test_websocket_router_subscribe(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:
     mock_websocket.receive_text.side_effect = [
-        WsMessage(
-            method=Methods.SUBSCRIBE,
+        WSMessage(
+            method=WSMethod.SUBSCRIBE,
             data={"graph_id": "test_graph", "graph_version": 1},
         ).model_dump_json(),
         WebSocketDisconnect(),
@@ -53,8 +53,8 @@ async def test_websocket_router_unsubscribe(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:
     mock_websocket.receive_text.side_effect = [
-        WsMessage(
-            method=Methods.UNSUBSCRIBE,
+        WSMessage(
+            method=WSMethod.UNSUBSCRIBE,
             data={"graph_id": "test_graph", "graph_version": 1},
         ).model_dump_json(),
         WebSocketDisconnect(),
@@ -77,7 +77,7 @@ async def test_websocket_router_invalid_method(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:
     mock_websocket.receive_text.side_effect = [
-        WsMessage(method=Methods.EXECUTION_EVENT).model_dump_json(),
+        WSMessage(method=WSMethod.GRAPH_EXECUTION_EVENT).model_dump_json(),
         WebSocketDisconnect(),
     ]
 
@@ -96,8 +96,8 @@ async def test_websocket_router_invalid_method(
 async def test_handle_subscribe_success(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:
-    message = WsMessage(
-        method=Methods.SUBSCRIBE, data={"graph_id": "test_graph", "graph_version": 1}
+    message = WSMessage(
+        method=WSMethod.SUBSCRIBE, data={"graph_id": "test_graph", "graph_version": 1}
     )
 
     await handle_subscribe(
@@ -114,7 +114,7 @@ async def test_handle_subscribe_success(
 async def test_handle_subscribe_missing_data(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:
-    message = WsMessage(method=Methods.SUBSCRIBE)
+    message = WSMessage(method=WSMethod.SUBSCRIBE)
 
     await handle_subscribe(
         cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager), message
@@ -130,8 +130,8 @@ async def test_handle_subscribe_missing_data(
 async def test_handle_unsubscribe_success(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:
-    message = WsMessage(
-        method=Methods.UNSUBSCRIBE, data={"graph_id": "test_graph", "graph_version": 1}
+    message = WSMessage(
+        method=WSMethod.UNSUBSCRIBE, data={"graph_id": "test_graph", "graph_version": 1}
     )
 
     await handle_unsubscribe(
@@ -148,7 +148,7 @@ async def test_handle_unsubscribe_success(
 async def test_handle_unsubscribe_missing_data(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:
-    message = WsMessage(method=Methods.UNSUBSCRIBE)
+    message = WSMessage(method=WSMethod.UNSUBSCRIBE)
 
     await handle_unsubscribe(
         cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager), message

@@ -2,8 +2,17 @@ from typing import Dict, Set
 
 from fastapi import WebSocket
 
-from backend.data import execution
-from backend.server.model import Methods, WsMessage
+from backend.data.execution import (
+    ExecutionEventType,
+    GraphExecutionEvent,
+    NodeExecutionEvent,
+)
+from backend.server.model import WSMessage, WSMethod
+
+_EVENT_TYPE_TO_METHOD_MAP: dict[ExecutionEventType, WSMethod] = {
+    ExecutionEventType.GRAPH_EXEC_UPDATE: WSMethod.GRAPH_EXECUTION_EVENT,
+    ExecutionEventType.NODE_EXEC_UPDATE: WSMethod.NODE_EXECUTION_EVENT,
+}
 
 
 class ConnectionManager:
@@ -35,13 +44,15 @@ class ConnectionManager:
             if not self.subscriptions[key]:
                 del self.subscriptions[key]
 
-    async def send_execution_update(self, result: execution.NodeExecutionResult):
-        key = f"{result.graph_id}_{result.graph_version}"
+    async def send_execution_update(
+        self, execution_event: GraphExecutionEvent | NodeExecutionEvent
+    ):
+        key = f"{execution_event.graph_id}_{execution_event.graph_version}"
         if key in self.subscriptions:
-            message = WsMessage(
-                method=Methods.EXECUTION_EVENT,
+            message = WSMessage(
+                method=_EVENT_TYPE_TO_METHOD_MAP[execution_event.event_type],
                 channel=key,
-                data=result.model_dump(),
+                data=execution_event.model_dump(),
             ).model_dump_json()
             for connection in self.subscriptions[key]:
                 await connection.send_text(message)

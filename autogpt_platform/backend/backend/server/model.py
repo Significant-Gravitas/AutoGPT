@@ -1,23 +1,24 @@
 import enum
-from typing import Any, List, Optional, Union
+from typing import Any, Optional
 
 import pydantic
 
-import backend.data.graph
 from backend.data.api_key import APIKeyPermission, APIKeyWithoutHash
+from backend.data.graph import Graph
 
 
-class Methods(enum.Enum):
+class WSMethod(enum.Enum):
     SUBSCRIBE = "subscribe"
     UNSUBSCRIBE = "unsubscribe"
-    EXECUTION_EVENT = "execution_event"
+    GRAPH_EXECUTION_EVENT = "graph_execution_event"
+    NODE_EXECUTION_EVENT = "node_execution_event"
     ERROR = "error"
     HEARTBEAT = "heartbeat"
 
 
-class WsMessage(pydantic.BaseModel):
-    method: Methods
-    data: Optional[Union[dict[str, Any], list[Any], str]] = None
+class WSMessage(pydantic.BaseModel):
+    method: WSMethod
+    data: Optional[dict[str, Any] | list[Any] | str] = None
     success: bool | None = None
     channel: str | None = None
     error: str | None = None
@@ -33,12 +34,12 @@ class ExecuteGraphResponse(pydantic.BaseModel):
 
 
 class CreateGraph(pydantic.BaseModel):
-    graph: backend.data.graph.Graph
+    graph: Graph
 
 
 class CreateAPIKeyRequest(pydantic.BaseModel):
     name: str
-    permissions: List[APIKeyPermission]
+    permissions: list[APIKeyPermission]
     description: Optional[str] = None
 
 
@@ -52,7 +53,7 @@ class SetGraphActiveVersion(pydantic.BaseModel):
 
 
 class UpdatePermissionsRequest(pydantic.BaseModel):
-    permissions: List[APIKeyPermission]
+    permissions: list[APIKeyPermission]
 
 
 class Pagination(pydantic.BaseModel):

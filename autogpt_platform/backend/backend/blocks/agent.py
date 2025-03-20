@@ -75,6 +75,8 @@ class AgentExecutorBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        from backend.data.execution import ExecutionEventType
+
         executor_manager = get_executor_manager_client()
         event_bus = get_event_bus()
 
@@ -90,7 +92,7 @@ class AgentExecutorBlock(Block):
         for event in event_bus.listen(
             graph_id=graph_exec.graph_id, graph_exec_id=graph_exec.graph_exec_id
         ):
-            if event.event_type == "graph_execution_update":
+            if event.event_type == ExecutionEventType.GRAPH_EXEC_UPDATE:
                 if event.status in [
                     ExecutionStatus.COMPLETED,
                     ExecutionStatus.TERMINATED,

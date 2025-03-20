@@ -11,7 +11,7 @@ from backend.data import redis
 from backend.data.execution import AsyncRedisExecutionEventBus
 from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
-from backend.server.model import ExecutionSubscription, Methods, WsMessage
+from backend.server.model import ExecutionSubscription, WSMessage, WSMethod
 from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
 
@@ -74,12 +74,12 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
 
 
 async def handle_subscribe(
-    websocket: WebSocket, manager: ConnectionManager, message: WsMessage
+    websocket: WebSocket, manager: ConnectionManager, message: WSMessage
 ):
     if not message.data:
         await websocket.send_text(
-            WsMessage(
-                method=Methods.ERROR,
+            WSMessage(
+                method=WSMethod.ERROR,
                 success=False,
                 error="Subscription data missing",
             ).model_dump_json()
@@ -89,8 +89,8 @@ async def handle_subscribe(
         await manager.subscribe(ex_sub.graph_id, ex_sub.graph_version, websocket)
         logger.debug(f"New execution subscription for graph {ex_sub.graph_id}")
         await websocket.send_text(
-            WsMessage(
-                method=Methods.SUBSCRIBE,
+            WSMessage(
+                method=WSMethod.SUBSCRIBE,
                 success=True,
                 channel=f"{ex_sub.graph_id}_{ex_sub.graph_version}",
             ).model_dump_json()
@@ -98,12 +98,12 @@ async def handle_subscribe(
 
 
 async def handle_unsubscribe(
-    websocket: WebSocket, manager: ConnectionManager, message: WsMessage
+    websocket: WebSocket, manager: ConnectionManager, message: WSMessage
 ):
     if not message.data:
         await websocket.send_text(
-            WsMessage(
-                method=Methods.ERROR,
+            WSMessage(
+                method=WSMethod.ERROR,
                 success=False,
                 error="Subscription data missing",
             ).model_dump_json()
@@ -113,8 +113,8 @@ async def handle_unsubscribe(
         await manager.unsubscribe(ex_sub.graph_id, ex_sub.graph_version, websocket)
         logger.debug(f"Removed execution subscription for graph {ex_sub.graph_id}")
         await websocket.send_text(
-            WsMessage(
-                method=Methods.UNSUBSCRIBE,
+            WSMessage(
+                method=WSMethod.UNSUBSCRIBE,
                 success=True,
                 channel=f"{ex_sub.graph_id}_{ex_sub.graph_version}",
             ).model_dump_json()
@@ -137,21 +137,25 @@ async def websocket_router(
     try:
         while True:
             data = await websocket.receive_text()
-            message = WsMessage.model_validate_json(data)
+            message = WSMessage.model_validate_json(data)
 
-            if message.method == Methods.HEARTBEAT:
+            if message.method == WSMethod.HEARTBEAT:
                 await websocket.send_json(
-                    {"method": Methods.HEARTBEAT.value, "data": "pong", "success": True}
+                    {
+                        "method": WSMethod.HEARTBEAT.value,
+                        "data": "pong",
+                        "success": True,
+                    }
                 )
                 continue
 
-            if message.method == Methods.SUBSCRIBE:
+            if message.method == WSMethod.SUBSCRIBE:
                 await handle_subscribe(websocket, manager, message)
 
-            elif message.method == Methods.UNSUBSCRIBE:
+            elif message.method == WSMethod.UNSUBSCRIBE:
                 await handle_unsubscribe(websocket, manager, message)
 
-            elif message.method == Methods.ERROR:
+            elif message.method == WSMethod.ERROR:
                 logger.error(f"WebSocket Error message received: {message.data}")
 
             else:
@@ -160,8 +164,8 @@ async def websocket_router(
                     f"{message.data}"
                 )
                 await websocket.send_text(
-                    WsMessage(
-                        method=Methods.ERROR,
+                    WSMessage(
+                        method=WSMethod.ERROR,
                         success=False,
                         error="Message type is not processed by the server",
                     ).model_dump_json()

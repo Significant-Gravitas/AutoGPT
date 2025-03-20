@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import WebSocket
 
-from backend.data.execution import ExecutionStatus, NodeExecutionResult
+from backend.data.execution import ExecutionStatus, NodeExecutionEvent
 from backend.server.conn_manager import ConnectionManager
-from backend.server.model import Methods, WsMessage
+from backend.server.model import WSMessage, WSMethod
 
 
 @pytest.fixture
@@ -62,11 +62,11 @@ async def test_unsubscribe(
 
 
 @pytest.mark.asyncio
-async def test_send_execution_result(
+async def test_send_node_execution_result(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
     connection_manager.subscriptions["test_graph_1"] = {mock_websocket}
-    result: NodeExecutionResult = NodeExecutionResult(
+    result: NodeExecutionEvent = NodeExecutionEvent(
         graph_id="test_graph",
         graph_version=1,
         graph_exec_id="test_exec_id",
@@ -85,8 +85,8 @@ async def test_send_execution_result(
     await connection_manager.send_execution_update(result)
 
     mock_websocket.send_text.assert_called_once_with(
-        WsMessage(
-            method=Methods.EXECUTION_EVENT,
+        WSMessage(
+            method=WSMethod.NODE_EXECUTION_EVENT,
             channel="test_graph_1",
             data=result.model_dump(),
         ).model_dump_json()
@@ -94,10 +94,10 @@ async def test_send_execution_result(
 
 
 @pytest.mark.asyncio
-async def test_send_execution_result_no_subscribers(
+async def test_send_node_execution_result_no_subscribers(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    result: NodeExecutionResult = NodeExecutionResult(
+    result: NodeExecutionEvent = NodeExecutionEvent(
         graph_id="test_graph",
         graph_version=1,
         graph_exec_id="test_exec_id",

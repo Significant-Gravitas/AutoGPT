@@ -230,14 +230,14 @@ def websocket(server_address: str, graph_id: str, graph_version: int):
 
     import websockets.asyncio.client
 
-    from backend.server.ws_api import ExecutionSubscription, Methods, WsMessage
+    from backend.server.ws_api import ExecutionSubscription, WSMessage, WSMethod
 
     async def send_message(server_address: str):
         uri = f"ws://{server_address}"
         async with websockets.asyncio.client.connect(uri) as websocket:
             try:
-                msg = WsMessage(
-                    method=Methods.SUBSCRIBE,
+                msg = WSMessage(
+                    method=WSMethod.SUBSCRIBE,
                     data=ExecutionSubscription(
                         graph_id=graph_id, graph_version=graph_version
                     ).model_dump(),

@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import datetime, timezone
+from enum import Enum
 from multiprocessing import Manager
 from typing import (
     Annotated,
@@ -732,12 +733,21 @@ def merge_execution_input(data: BlockInput) -> BlockInput:
 # --------------------- Event Bus --------------------- #
 
 
+class ExecutionEventType(Enum):
+    GRAPH_EXEC_UPDATE = "graph_execution_update"
+    NODE_EXEC_UPDATE = "node_execution_update"
+
+
 class GraphExecutionEvent(GraphExecutionMeta):
-    event_type: Literal["graph_execution_update"] = "graph_execution_update"
+    event_type: Literal[
+        ExecutionEventType.GRAPH_EXEC_UPDATE
+    ] = ExecutionEventType.GRAPH_EXEC_UPDATE
 
 
 class NodeExecutionEvent(NodeExecutionResult):
-    event_type: Literal["node_execution_update"] = "node_execution_update"
+    event_type: Literal[
+        ExecutionEventType.NODE_EXEC_UPDATE
+    ] = ExecutionEventType.NODE_EXEC_UPDATE
 
 
 ExecutionEvent = Annotated[
