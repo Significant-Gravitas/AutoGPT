@@ -11,6 +11,7 @@ import {
 
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { IconRefresh, IconSquare } from "@/components/ui/icons";
 import { Button } from "@/components/agptui/Button";
 import { Input } from "@/components/ui/input";
 
@@ -121,14 +122,29 @@ export default function AgentRunDetailsView({
       ...(["running", "queued"].includes(runStatus)
         ? ([
             {
-              label: "Stop run",
+              label: (
+                <>
+                  <IconSquare className="mr-2 size-4" />
+                  Stop run
+                </>
+              ),
               variant: "secondary",
               callback: stopRun,
             },
           ] satisfies ButtonAction[])
         : []),
       ...(["success", "failed", "stopped"].includes(runStatus)
-        ? [{ label: "Run again", callback: runAgain }]
+        ? [
+            {
+              label: (
+                <>
+                  <IconRefresh className="mr-2 size-4" />
+                  Run again
+                </>
+              ),
+              callback: runAgain,
+            },
+          ]
         : []),
       { label: "Delete run", variant: "secondary", callback: deleteRun },
     ],
@@ -169,7 +185,9 @@ export default function AgentRunDetailsView({
                         {title || key}
                       </label>
                       {values.map((value, i) => (
-                        <pre key={i}>{value}</pre>
+                        <p className="text-sm text-neutral-700" key={i}>
+                          {value}
+                        </p>
                       ))}
                       {/* TODO: pretty type-dependent rendering */}
                     </div>
