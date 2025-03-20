@@ -113,6 +113,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="%Y-%W",  # This will allow for weekly refunds per user.
         description="Time key format for refund requests.",
     )
+    execution_cost_count_threshold: int = Field(
+        default=100,
+        description="Number of executions after which the cost is calculated.",
+    )
+    execution_cost_per_threshold: int = Field(
+        default=1,
+        description="Cost per execution in cents after each threshold.",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

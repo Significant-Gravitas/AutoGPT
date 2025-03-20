@@ -1,7 +1,6 @@
-from backend.data.credit import get_user_credit_model
+from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     ExecutionResult,
-    NodeExecutionEntry,
     RedisExecutionEventBus,
     create_graph_execution,
     get_execution_results,
@@ -44,8 +43,10 @@ config = Config()
 _user_credit_model = get_user_credit_model()
 
 
-async def _spend_credits(entry: NodeExecutionEntry) -> int:
-    return await _user_credit_model.spend_credits(entry, 0, 0)
+async def _spend_credits(
+    user_id: str, cost: int, metadata: UsageTransactionMetadata
+) -> int:
+    return await _user_credit_model.spend_credits(user_id, cost, metadata)
 
 
 class DatabaseManager(AppService):
