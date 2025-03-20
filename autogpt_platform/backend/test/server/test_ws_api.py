@@ -101,10 +101,18 @@ async def test_handle_subscribe_success(
     )
 
     await handle_subscribe(
-        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager), message
+        connection_manager=cast(ConnectionManager, mock_manager),
+        websocket=cast(WebSocket, mock_websocket),
+        user_id="user-1",
+        message=message,
     )
 
-    mock_manager.subscribe.assert_called_once_with("test_graph", 1, mock_websocket)
+    mock_manager.subscribe.assert_called_once_with(
+        user_id="user-1",
+        graph_id="test_graph",
+        graph_version=1,
+        websocket=mock_websocket,
+    )
     mock_websocket.send_text.assert_called_once()
     assert '"method":"subscribe"' in mock_websocket.send_text.call_args[0][0]
     assert '"success":true' in mock_websocket.send_text.call_args[0][0]
@@ -117,7 +125,10 @@ async def test_handle_subscribe_missing_data(
     message = WsMessage(method=Methods.SUBSCRIBE)
 
     await handle_subscribe(
-        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager), message
+        connection_manager=cast(ConnectionManager, mock_manager),
+        websocket=cast(WebSocket, mock_websocket),
+        user_id="user-1",
+        message=message,
     )
 
     mock_manager.subscribe.assert_not_called()
@@ -135,10 +146,18 @@ async def test_handle_unsubscribe_success(
     )
 
     await handle_unsubscribe(
-        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager), message
+        connection_manager=cast(ConnectionManager, mock_manager),
+        websocket=cast(WebSocket, mock_websocket),
+        user_id="user-1",
+        message=message,
     )
 
-    mock_manager.unsubscribe.assert_called_once_with("test_graph", 1, mock_websocket)
+    mock_manager.unsubscribe.assert_called_once_with(
+        user_id="user-1",
+        graph_id="test_graph",
+        graph_version=1,
+        websocket=mock_websocket,
+    )
     mock_websocket.send_text.assert_called_once()
     assert '"method":"unsubscribe"' in mock_websocket.send_text.call_args[0][0]
     assert '"success":true' in mock_websocket.send_text.call_args[0][0]
@@ -151,7 +170,10 @@ async def test_handle_unsubscribe_missing_data(
     message = WsMessage(method=Methods.UNSUBSCRIBE)
 
     await handle_unsubscribe(
-        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager), message
+        connection_manager=cast(ConnectionManager, mock_manager),
+        websocket=cast(WebSocket, mock_websocket),
+        user_id="user-1",
+        message=message,
     )
 
     mock_manager.unsubscribe.assert_not_called()
