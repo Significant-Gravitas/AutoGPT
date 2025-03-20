@@ -52,7 +52,6 @@ ExecutionStatus = AgentExecutionStatus
 
 class GraphExecutionMeta(BaseDbModel):
     user_id: str
-    execution_id: str
     started_at: datetime
     ended_at: datetime
     cost: Optional[int] = Field(..., description="Execution cost in credits")
@@ -82,7 +81,6 @@ class GraphExecutionMeta(BaseDbModel):
         return GraphExecutionMeta(
             id=_graph_exec.id,
             user_id=_graph_exec.userId,
-            execution_id=_graph_exec.id,
             started_at=start_time,
             ended_at=end_time,
             cost=stats.get("cost", None),

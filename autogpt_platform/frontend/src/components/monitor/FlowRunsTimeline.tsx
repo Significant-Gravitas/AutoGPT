@@ -108,7 +108,7 @@ export const FlowRunsTimeline = ({
       ))}
       {executions.map((execution) => (
         <Line
-          key={execution.execution_id}
+          key={execution.id}
           type="linear"
           dataKey="_duration"
           data={[
