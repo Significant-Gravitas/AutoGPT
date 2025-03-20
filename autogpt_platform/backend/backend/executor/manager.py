@@ -145,6 +145,7 @@ def execute_node(
     node_id = data.node_id
 
     def update_execution(status: ExecutionStatus) -> NodeExecutionResult:
+        """Sets status and fetches+broadcasts the latest state of the node execution"""
         exec_update = db_client.update_execution_status(node_exec_id, status)
         db_client.send_execution_update(exec_update)
         return exec_update
