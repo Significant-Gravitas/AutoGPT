@@ -67,14 +67,14 @@ export class BuildPage extends BasePage {
             const fullId = (await block.getAttribute("data-id")) || "";
             const id = fullId.replace("block-card-", "");
             const nameElement = block.locator('[data-testid^="block-name-"]');
-            const typeElement = block.locator('[data-type="block-type-"]');
+            const typeElement = block.locator('[data-type^="block-type-"]');
             const descriptionElement = block.locator(
               '[data-testid^="block-description-"]',
             );
 
             const name = (await nameElement.textContent()) || "";
-            const description = (await descriptionElement.textContent()) || "";
             const type = (await typeElement.textContent()) || "";
+            const description = (await descriptionElement.textContent()) || "";
 
             return {
               id,

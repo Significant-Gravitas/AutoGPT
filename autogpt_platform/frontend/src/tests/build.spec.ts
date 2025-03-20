@@ -59,7 +59,7 @@ test.describe("Build", () => { //(1)!
       if (block.name[0].toLowerCase() >= "m") {
         continue;
       }
-      if (!blockIdsToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.name.includes(b))) {
+      if (!blockIdsToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.type === b)) {
         await buildPage.addBlock(block);
       }
     }
@@ -69,7 +69,7 @@ test.describe("Build", () => { //(1)!
       if (block.name[0].toLowerCase() >= "m") {
         continue;
       }
-      if (!blockIdsToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.name.includes(b))) {
+      if (!blockIdsToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.type === b)) {
         console.log("Checking block:", block.name);
         await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
       }
@@ -98,7 +98,7 @@ test.describe("Build", () => { //(1)!
       if (block.name[0].toLowerCase() < "m") {
         continue;
       }
-      if (!blocksToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.name.includes(b))) {
+      if (!blocksToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.type === b)) {
         await buildPage.addBlock(block);
       }
     }
@@ -108,7 +108,7 @@ test.describe("Build", () => { //(1)!
       if (block.name[0].toLowerCase() < "m") {
         continue;
       }
-      if (!blocksToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.name.includes(b))) {
+      if (!blocksToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.type === b)) {
         await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
       }
     }
