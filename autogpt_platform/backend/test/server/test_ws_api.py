@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import WebSocket, WebSocketDisconnect
 
+from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
 from backend.server.ws_api import (
     Methods,
@@ -41,7 +42,12 @@ async def test_websocket_router_subscribe(
     )
 
     mock_manager.connect.assert_called_once_with(mock_websocket)
-    mock_manager.subscribe.assert_called_once_with("test_graph", 1, mock_websocket)
+    mock_manager.subscribe.assert_called_once_with(
+        user_id=DEFAULT_USER_ID,
+        graph_id="test_graph",
+        graph_version=1,
+        websocket=mock_websocket,
+    )
     mock_websocket.send_text.assert_called_once()
     assert '"method":"subscribe"' in mock_websocket.send_text.call_args[0][0]
     assert '"success":true' in mock_websocket.send_text.call_args[0][0]
@@ -65,7 +71,12 @@ async def test_websocket_router_unsubscribe(
     )
 
     mock_manager.connect.assert_called_once_with(mock_websocket)
-    mock_manager.unsubscribe.assert_called_once_with("test_graph", 1, mock_websocket)
+    mock_manager.unsubscribe.assert_called_once_with(
+        user_id=DEFAULT_USER_ID,
+        graph_id="test_graph",
+        graph_version=1,
+        websocket=mock_websocket,
+    )
     mock_websocket.send_text.assert_called_once()
     assert '"method":"unsubscribe"' in mock_websocket.send_text.call_args[0][0]
     assert '"success":true' in mock_websocket.send_text.call_args[0][0]
