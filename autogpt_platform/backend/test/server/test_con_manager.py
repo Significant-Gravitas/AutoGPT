@@ -46,17 +46,27 @@ def test_disconnect(
 async def test_subscribe(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    await connection_manager.subscribe("test_graph", 1, mock_websocket)
-    assert mock_websocket in connection_manager.subscriptions["test_graph_1"]
+    await connection_manager.subscribe(
+        user_id="user-1",
+        graph_id="test_graph",
+        graph_version=1,
+        websocket=mock_websocket,
+    )
+    assert mock_websocket in connection_manager.subscriptions["user-1_test_graph_1"]
 
 
 @pytest.mark.asyncio
 async def test_unsubscribe(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    connection_manager.subscriptions["test_graph_1"] = {mock_websocket}
+    connection_manager.subscriptions["user-1_test_graph_1"] = {mock_websocket}
 
-    await connection_manager.unsubscribe("test_graph", 1, mock_websocket)
+    await connection_manager.unsubscribe(
+        user_id="user-1",
+        graph_id="test_graph",
+        graph_version=1,
+        websocket=mock_websocket,
+    )
 
     assert "test_graph" not in connection_manager.subscriptions
 
@@ -65,8 +75,9 @@ async def test_unsubscribe(
 async def test_send_execution_result(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    connection_manager.subscriptions["test_graph_1"] = {mock_websocket}
+    connection_manager.subscriptions["user-1_test_graph_1"] = {mock_websocket}
     result: ExecutionResult = ExecutionResult(
+        user_id="user-1",
         graph_id="test_graph",
         graph_version=1,
         graph_exec_id="test_exec_id",
@@ -87,10 +98,37 @@ async def test_send_execution_result(
     mock_websocket.send_text.assert_called_once_with(
         WsMessage(
             method=Methods.EXECUTION_EVENT,
-            channel="test_graph_1",
+            channel="user-1_test_graph_1",
             data=result.model_dump(),
         ).model_dump_json()
     )
+
+
+@pytest.mark.asyncio
+async def test_send_execution_result_user_mismatch(
+    connection_manager: ConnectionManager, mock_websocket: AsyncMock
+) -> None:
+    connection_manager.subscriptions["user-1_test_graph_1"] = {mock_websocket}
+    result: ExecutionResult = ExecutionResult(
+        user_id="user-2",
+        graph_id="test_graph",
+        graph_version=1,
+        graph_exec_id="test_exec_id",
+        node_exec_id="test_node_exec_id",
+        node_id="test_node_id",
+        block_id="test_block_id",
+        status=ExecutionStatus.COMPLETED,
+        input_data={"input1": "value1"},
+        output_data={"output1": ["result1"]},
+        add_time=datetime.now(tz=timezone.utc),
+        queue_time=None,
+        start_time=datetime.now(tz=timezone.utc),
+        end_time=datetime.now(tz=timezone.utc),
+    )
+
+    await connection_manager.send_execution_result(result)
+
+    mock_websocket.send_text.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -98,6 +136,7 @@ async def test_send_execution_result_no_subscribers(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
     result: ExecutionResult = ExecutionResult(
+        user_id="user-1",
         graph_id="test_graph",
         graph_version=1,
         graph_exec_id="test_exec_id",
