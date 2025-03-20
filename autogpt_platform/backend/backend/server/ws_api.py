@@ -83,8 +83,8 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
 
 async def handle_subscribe(
     connection_manager: ConnectionManager,
-    user_id: str,
     websocket: WebSocket,
+    user_id: str,
     message: WsMessage,
 ):
     if not message.data:
@@ -134,8 +134,8 @@ async def handle_subscribe(
 
 async def handle_unsubscribe(
     connection_manager: ConnectionManager,
-    user_id: str,
     websocket: WebSocket,
+    user_id: str,
     message: WsMessage,
 ):
     if not message.data:
@@ -194,16 +194,16 @@ async def websocket_router(
             if message.method == Methods.SUBSCRIBE:
                 await handle_subscribe(
                     connection_manager=manager,
-                    user_id=user_id,
                     websocket=websocket,
+                    user_id=user_id,
                     message=message,
                 )
 
             elif message.method == Methods.UNSUBSCRIBE:
                 await handle_unsubscribe(
                     connection_manager=manager,
-                    user_id=user_id,
                     websocket=websocket,
+                    user_id=user_id,
                     message=message,
                 )
 
