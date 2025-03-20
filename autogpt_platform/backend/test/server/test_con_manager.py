@@ -82,7 +82,7 @@ async def test_send_execution_result(
         end_time=datetime.now(tz=timezone.utc),
     )
 
-    await connection_manager.send_execution_result(result)
+    await connection_manager.send_execution_update(result)
 
     mock_websocket.send_text.assert_called_once_with(
         WsMessage(
@@ -113,6 +113,6 @@ async def test_send_execution_result_no_subscribers(
         end_time=datetime.now(),
     )
 
-    await connection_manager.send_execution_result(result)
+    await connection_manager.send_execution_update(result)
 
     mock_websocket.send_text.assert_not_called()

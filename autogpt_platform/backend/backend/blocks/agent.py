@@ -90,11 +90,7 @@ class AgentExecutorBlock(Block):
         for event in event_bus.listen(
             graph_id=graph_exec.graph_id, graph_exec_id=graph_exec.graph_exec_id
         ):
-            logger.info(
-                f"Execution {log_id} produced input {event.input_data} output {event.output_data}"
-            )
-
-            if not event.node_id:
+            if event.event_type == "graph_execution_update":
                 if event.status in [
                     ExecutionStatus.COMPLETED,
                     ExecutionStatus.TERMINATED,
@@ -104,6 +100,10 @@ class AgentExecutorBlock(Block):
                     break
                 else:
                     continue
+
+            logger.info(
+                f"Execution {log_id} produced input {event.input_data} output {event.output_data}"
+            )
 
             if not event.block_id:
                 logger.warning(f"{log_id} received event without block_id {event}")

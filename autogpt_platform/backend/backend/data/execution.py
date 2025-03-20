@@ -1,7 +1,16 @@
 from collections import defaultdict
 from datetime import datetime, timezone
 from multiprocessing import Manager
-from typing import Any, AsyncGenerator, Generator, Generic, Optional, TypeVar
+from typing import (
+    Annotated,
+    Any,
+    AsyncGenerator,
+    Generator,
+    Generic,
+    Literal,
+    Optional,
+    TypeVar,
+)
 
 from prisma import Json
 from prisma.enums import AgentExecutionStatus
@@ -400,7 +409,7 @@ async def update_graph_execution_stats(
     graph_exec_id: str,
     status: ExecutionStatus,
     stats: GraphExecutionStats,
-) -> NodeExecutionResult:
+) -> GraphExecutionMeta:
     data = stats.model_dump()
     if isinstance(data["error"], Exception):
         data["error"] = str(data["error"])
@@ -412,9 +421,9 @@ async def update_graph_execution_stats(
         },
     )
     if not res:
-        raise ValueError(f"Execution {graph_exec_id} not found.")
+        raise ValueError(f"Graph execution #{graph_exec_id} not found")
 
-    return NodeExecutionResult.from_graph(res)
+    return GraphExecutionMeta.from_db(res)
 
 
 async def update_node_execution_stats(node_exec_id: str, stats: NodeExecutionStats):
@@ -723,35 +732,70 @@ def merge_execution_input(data: BlockInput) -> BlockInput:
 # --------------------- Event Bus --------------------- #
 
 
-class RedisExecutionEventBus(RedisEventBus[NodeExecutionResult]):
-    Model = NodeExecutionResult
+class GraphExecutionEvent(GraphExecutionMeta):
+    event_type: Literal["graph_execution_update"] = "graph_execution_update"
+
+
+class NodeExecutionEvent(NodeExecutionResult):
+    event_type: Literal["node_execution_update"] = "node_execution_update"
+
+
+ExecutionEvent = Annotated[
+    GraphExecutionEvent | NodeExecutionEvent, Field(discriminator="event_type")
+]
+
+
+class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
+    Model = ExecutionEvent
 
     @property
     def event_bus_name(self) -> str:
         return config.execution_event_bus_name
 
-    def publish(self, res: NodeExecutionResult):
-        self.publish_event(res, f"{res.graph_id}/{res.graph_exec_id}")
+    def publish(self, res: GraphExecutionMeta | NodeExecutionResult):
+        if isinstance(res, GraphExecutionMeta):
+            self.publish_graph_exec_update(res)
+        else:
+            self.publish_node_exec_update(res)
+
+    def publish_node_exec_update(self, res: NodeExecutionResult):
+        event = NodeExecutionEvent.model_validate(res)
+        self.publish_event(event, f"{res.graph_id}/{res.graph_exec_id}")
+
+    def publish_graph_exec_update(self, res: GraphExecutionMeta):
+        event = GraphExecutionEvent.model_validate(res)
+        self.publish_event(event, f"{res.graph_id}/{res.id}")
 
     def listen(
         self, graph_id: str = "*", graph_exec_id: str = "*"
-    ) -> Generator[NodeExecutionResult, None, None]:
-        for execution_result in self.listen_events(f"{graph_id}/{graph_exec_id}"):
-            yield execution_result
+    ) -> Generator[ExecutionEvent, None, None]:
+        for event in self.listen_events(f"{graph_id}/{graph_exec_id}"):
+            yield event
 
 
-class AsyncRedisExecutionEventBus(AsyncRedisEventBus[NodeExecutionResult]):
-    Model = NodeExecutionResult
+class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
+    Model = ExecutionEvent
 
     @property
     def event_bus_name(self) -> str:
         return config.execution_event_bus_name
 
-    async def publish(self, res: NodeExecutionResult):
-        await self.publish_event(res, f"{res.graph_id}/{res.graph_exec_id}")
+    async def publish(self, res: GraphExecutionMeta | NodeExecutionResult):
+        if isinstance(res, GraphExecutionMeta):
+            await self.publish_graph_exec_update(res)
+        else:
+            await self.publish_node_exec_update(res)
+
+    async def publish_node_exec_update(self, res: NodeExecutionResult):
+        event = NodeExecutionEvent.model_validate(res)
+        await self.publish_event(event, f"{res.graph_id}/{res.graph_exec_id}")
+
+    async def publish_graph_exec_update(self, res: GraphExecutionMeta):
+        event = GraphExecutionEvent.model_validate(res)
+        await self.publish_event(event, f"{res.graph_id}/{res.id}")
 
     async def listen(
         self, graph_id: str = "*", graph_exec_id: str = "*"
-    ) -> AsyncGenerator[NodeExecutionResult, None]:
-        async for execution_result in self.listen_events(f"{graph_id}/{graph_exec_id}"):
-            yield execution_result
+    ) -> AsyncGenerator[ExecutionEvent, None]:
+        async for event in self.listen_events(f"{graph_id}/{graph_exec_id}"):
+            yield event

@@ -1,5 +1,6 @@
 from backend.data.credit import get_user_credit_model
 from backend.data.execution import (
+    GraphExecutionMeta,
     NodeExecutionEntry,
     NodeExecutionResult,
     RedisExecutionEventBus,
@@ -53,15 +54,17 @@ class DatabaseManager(AppService):
         super().__init__()
         self.use_db = True
         self.use_redis = True
-        self.event_queue = RedisExecutionEventBus()
+        self.execution_event_bus = RedisExecutionEventBus()
 
     @classmethod
     def get_port(cls) -> int:
         return config.database_api_port
 
     @expose
-    def send_execution_update(self, execution_result: NodeExecutionResult):
-        self.event_queue.publish(execution_result)
+    def send_execution_update(
+        self, execution_result: GraphExecutionMeta | NodeExecutionResult
+    ):
+        self.execution_event_bus.publish(execution_result)
 
     # Executions
     create_graph_execution = exposed_run_and_wait(create_graph_execution)
