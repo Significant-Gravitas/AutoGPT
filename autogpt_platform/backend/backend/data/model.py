@@ -144,6 +144,7 @@ def SchemaField(
     depends_on: list[str] | None = None,
     image_upload: Optional[bool] = None,
     image_output: Optional[bool] = None,
+    json_extra: dict[str, Any] | None = None,
     **kwargs,
 ) -> T:
     if default is PydanticUndefined and default_factory is None:
@@ -161,6 +162,7 @@ def SchemaField(
             "depends_on": depends_on,
             "image_upload": image_upload,
             "image_output": image_output,
+            **(json_extra or {}),
         }.items()
         if v is not None
     }

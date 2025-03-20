@@ -146,11 +146,13 @@ test.describe("Build", () => { //(1)!
       id: "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
       name: "Store Value 1",
       description: "Store Value Block 1",
+      type: "Standard",
     };
     const block2 = {
       id: "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
       name: "Store Value 2",
       description: "Store Value Block 2",
+      type: "Standard",
     };
 
     // Add the blocks

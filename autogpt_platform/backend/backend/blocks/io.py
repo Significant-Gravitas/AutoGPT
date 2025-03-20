@@ -195,11 +195,12 @@ class AgentOutputBlock(Block):
             yield "name", input_data.name
 
 
-class TextShortAgentInputBlock(AgentInputBlock):
+class ShortTextAgentInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
         value: str = SchemaField(
             description="Short text input.",
             default="Short text",
+            json_extra={"format": "short-text"},
         )
 
     class Output(AgentInputBlock.Output):
@@ -209,8 +210,8 @@ class TextShortAgentInputBlock(AgentInputBlock):
         super().__init__(
             id="7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
             description="Block for short text input (single-line).",
-            input_schema=TextShortAgentInputBlock.Input,
-            output_schema=TextShortAgentInputBlock.Output,
+            input_schema=ShortTextAgentInputBlock.Input,
+            output_schema=ShortTextAgentInputBlock.Output,
             test_input=[
                 {
                     "value": "Hello",
@@ -234,11 +235,12 @@ class TextShortAgentInputBlock(AgentInputBlock):
         )
 
 
-class TextLongAgentInputBlock(AgentInputBlock):
+class LongTextAgentInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
         value: str = SchemaField(
             description="Long text input (potentially multi-line).",
             default="Longer text can go here.",
+            json_extra={"format": "long-text"},
         )
 
     class Output(AgentInputBlock.Output):
@@ -248,8 +250,8 @@ class TextLongAgentInputBlock(AgentInputBlock):
         super().__init__(
             id="90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
             description="Block for long text input (multi-line).",
-            input_schema=TextLongAgentInputBlock.Input,
-            output_schema=TextLongAgentInputBlock.Output,
+            input_schema=LongTextAgentInputBlock.Input,
+            output_schema=LongTextAgentInputBlock.Output,
             test_input=[
                 {
                     "value": "Lorem ipsum dolor sit amet...",
