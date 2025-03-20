@@ -36,6 +36,9 @@ async def test_websocket_router_subscribe(
         ).model_dump_json(),
         WebSocketDisconnect(),
     ]
+    mock_manager.subscribe_graph_exec.return_value = (
+        f"{DEFAULT_USER_ID}|graph_exec#test-graph-exec-1"
+    )
 
     await websocket_router(
         cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
@@ -64,6 +67,9 @@ async def test_websocket_router_unsubscribe(
         ).model_dump_json(),
         WebSocketDisconnect(),
     ]
+    mock_manager.unsubscribe.return_value = (
+        f"{DEFAULT_USER_ID}|graph_exec#test-graph-exec-1"
+    )
 
     await websocket_router(
         cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
@@ -109,6 +115,9 @@ async def test_handle_subscribe_success(
         method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
         data={"graph_exec_id": "test-graph-exec-id"},
     )
+    mock_manager.subscribe_graph_exec.return_value = (
+        "user-1|graph_exec#test-graph-exec-id"
+    )
 
     await handle_subscribe(
         connection_manager=cast(ConnectionManager, mock_manager),
@@ -153,6 +162,7 @@ async def test_handle_unsubscribe_success(
     message = WSMessage(
         method=WSMethod.UNSUBSCRIBE, data={"graph_exec_id": "test-graph-exec-id"}
     )
+    mock_manager.unsubscribe.return_value = "user-1|graph_exec#test-graph-exec-id"
 
     await handle_unsubscribe(
         connection_manager=cast(ConnectionManager, mock_manager),
