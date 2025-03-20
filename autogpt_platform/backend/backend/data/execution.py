@@ -758,11 +758,11 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
             self.publish_node_exec_update(res)
 
     def publish_node_exec_update(self, res: NodeExecutionResult):
-        event = NodeExecutionEvent.model_validate(res)
+        event = NodeExecutionEvent.model_validate(res.model_dump())
         self.publish_event(event, f"{res.graph_id}/{res.graph_exec_id}")
 
     def publish_graph_exec_update(self, res: GraphExecutionMeta):
-        event = GraphExecutionEvent.model_validate(res)
+        event = GraphExecutionEvent.model_validate(res.model_dump())
         self.publish_event(event, f"{res.graph_id}/{res.id}")
 
     def listen(
@@ -786,11 +786,11 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
             await self.publish_node_exec_update(res)
 
     async def publish_node_exec_update(self, res: NodeExecutionResult):
-        event = NodeExecutionEvent.model_validate(res)
+        event = NodeExecutionEvent.model_validate(res.model_dump())
         await self.publish_event(event, f"{res.graph_id}/{res.graph_exec_id}")
 
     async def publish_graph_exec_update(self, res: GraphExecutionMeta):
-        event = GraphExecutionEvent.model_validate(res)
+        event = GraphExecutionEvent.model_validate(res.model_dump())
         await self.publish_event(event, f"{res.graph_id}/{res.id}")
 
     async def listen(
