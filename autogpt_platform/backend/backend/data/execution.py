@@ -51,6 +51,7 @@ ExecutionStatus = AgentExecutionStatus
 
 
 class GraphExecutionMeta(BaseDbModel):
+    user_id: str
     execution_id: str
     started_at: datetime
     ended_at: datetime
@@ -80,6 +81,7 @@ class GraphExecutionMeta(BaseDbModel):
 
         return GraphExecutionMeta(
             id=_graph_exec.id,
+            user_id=_graph_exec.userId,
             execution_id=_graph_exec.id,
             started_at=start_time,
             ended_at=end_time,
@@ -108,7 +110,8 @@ class GraphExecution(GraphExecutionMeta):
         graph_exec = GraphExecutionMeta.from_db(_graph_exec)
 
         node_executions = [
-            NodeExecutionResult.from_db(ne) for ne in _graph_exec.AgentNodeExecutions
+            NodeExecutionResult.from_db(ne, _graph_exec.userId)
+            for ne in _graph_exec.AgentNodeExecutions
         ]
 
         inputs = {
@@ -146,6 +149,7 @@ class GraphExecution(GraphExecutionMeta):
 
 
 class NodeExecutionResult(BaseModel):
+    user_id: str
     graph_id: str
     graph_version: int
     graph_exec_id: str
@@ -161,27 +165,28 @@ class NodeExecutionResult(BaseModel):
     end_time: datetime | None
 
     @staticmethod
-    def from_graph(graph: AgentGraphExecution):
+    def from_graph(graph_exec: AgentGraphExecution):
         return NodeExecutionResult(
-            graph_id=graph.agentGraphId,
-            graph_version=graph.agentGraphVersion,
-            graph_exec_id=graph.id,
+            user_id=graph_exec.userId,
+            graph_id=graph_exec.agentGraphId,
+            graph_version=graph_exec.agentGraphVersion,
+            graph_exec_id=graph_exec.id,
             node_exec_id="",
             node_id="",
             block_id="",
-            status=graph.executionStatus,
+            status=graph_exec.executionStatus,
             # TODO: Populate input_data & output_data from AgentNodeExecutions
             #       Input & Output comes AgentInputBlock & AgentOutputBlock.
             input_data={},
             output_data={},
-            add_time=graph.createdAt,
-            queue_time=graph.createdAt,
-            start_time=graph.startedAt,
-            end_time=graph.updatedAt,
+            add_time=graph_exec.createdAt,
+            queue_time=graph_exec.createdAt,
+            start_time=graph_exec.startedAt,
+            end_time=graph_exec.updatedAt,
         )
 
     @staticmethod
-    def from_db(execution: AgentNodeExecution):
+    def from_db(execution: AgentNodeExecution, user_id: Optional[str] = None):
         if execution.executionData:
             # Execution that has been queued for execution will persist its data.
             input_data = type_utils.convert(execution.executionData, dict[str, Any])
@@ -196,8 +201,15 @@ class NodeExecutionResult(BaseModel):
             output_data[data.name].append(type_utils.convert(data.data, type[Any]))
 
         graph_execution: AgentGraphExecution | None = execution.AgentGraphExecution
+        if graph_execution:
+            user_id = graph_execution.userId
+        elif not user_id:
+            raise ValueError(
+                "AgentGraphExecution must be included or user_id passed in"
+            )
 
         return NodeExecutionResult(
+            user_id=user_id,
             graph_id=graph_execution.agentGraphId if graph_execution else "",
             graph_version=graph_execution.agentGraphVersion if graph_execution else 0,
             graph_exec_id=execution.agentGraphExecutionId,
@@ -302,7 +314,7 @@ async def create_graph_execution(
     )
 
     return result.id, [
-        NodeExecutionResult.from_db(execution)
+        NodeExecutionResult.from_db(execution, result.userId)
         for execution in result.AgentNodeExecutions or []
     ]
 
