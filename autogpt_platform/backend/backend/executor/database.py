@@ -34,6 +34,7 @@ from backend.data.user import (
     get_user_email_verification,
     get_user_integrations,
     get_user_metadata,
+    get_user_info_by_id,
     get_user_notification_preference,
     update_user_integrations,
     update_user_metadata,
@@ -90,6 +91,7 @@ class DatabaseManager(AppService):
 
     # User + User Metadata + User Integrations
     get_user_metadata = exposed_run_and_wait(get_user_metadata)
+    get_user_info_by_id = exposed_run_and_wait(get_user_info_by_id)
     update_user_metadata = exposed_run_and_wait(update_user_metadata)
     get_user_integrations = exposed_run_and_wait(get_user_integrations)
     update_user_integrations = exposed_run_and_wait(update_user_integrations)
