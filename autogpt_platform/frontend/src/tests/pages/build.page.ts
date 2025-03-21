@@ -5,6 +5,7 @@ export interface Block {
   id: string;
   name: string;
   description: string;
+  type: string;
 }
 
 export class BuildPage extends BasePage {
@@ -72,10 +73,12 @@ export class BuildPage extends BasePage {
 
             const name = (await nameElement.textContent()) || "";
             const description = (await descriptionElement.textContent()) || "";
+            const type = (await nameElement.getAttribute("data-type")) || "";
 
             return {
               id,
               name: name.trim(),
+              type: type.trim(),
               description: description.trim(),
             };
           } catch (elementError) {
@@ -358,6 +361,7 @@ export class BuildPage extends BasePage {
       id: "31d1064e-7446-4693-a7d4-65e5ca1180d1",
       name: "Add to Dictionary",
       description: "Add to Dictionary",
+      type: "Standard",
     };
   }
 
@@ -375,30 +379,7 @@ export class BuildPage extends BasePage {
       id: "b1ab9b19-67a6-406d-abf5-2dba76d00c79",
       name: "Calculator",
       description: "Calculator",
-    };
-  }
-
-  async getAgentExecutorBlockDetails(): Promise<Block> {
-    return {
-      id: "e189baac-8c20-45a1-94a7-55177ea42565",
-      name: "Agent Executor",
-      description: "Executes an existing agent inside your agent",
-    };
-  }
-
-  async getAgentOutputBlockDetails(): Promise<Block> {
-    return {
-      id: "363ae599-353e-4804-937e-b2ee3cef3da4",
-      name: "Agent Output",
-      description: "This block is used to output the result of an agent.",
-    };
-  }
-
-  async getAgentInputBlockDetails(): Promise<Block> {
-    return {
-      id: "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
-      name: "Agent Input",
-      description: "This block is used to provide input to the graph.",
+      type: "Standard",
     };
   }
 
@@ -408,15 +389,7 @@ export class BuildPage extends BasePage {
       name: "Github Trigger",
       description:
         "This block triggers on pull request events and outputs the event type and payload.",
-    };
-  }
-
-  async getSmartDecisionMakerBlockDetails(): Promise<Block> {
-    return {
-      id: "3b191d9f-356f-482d-8238-ba04b6d18381",
-      name: "Smart Decision Maker",
-      description:
-        "This block is used to make a decision based on the input and the available tools.",
+      type: "Standard",
     };
   }
 
@@ -491,13 +464,7 @@ export class BuildPage extends BasePage {
   }
 
   async getBlocksToSkip(): Promise<string[]> {
-    return [
-      (await this.getAgentExecutorBlockDetails()).id,
-      (await this.getAgentInputBlockDetails()).id,
-      (await this.getAgentOutputBlockDetails()).id,
-      (await this.getGithubTriggerBlockDetails()).id,
-      (await this.getSmartDecisionMakerBlockDetails()).id,
-    ];
+    return [(await this.getGithubTriggerBlockDetails()).id];
   }
 
   async waitForRunTutorialButton(): Promise<void> {

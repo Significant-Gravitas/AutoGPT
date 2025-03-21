@@ -5,7 +5,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { format } from "date-fns";
-import { CalendarIcon, Clock } from "lucide-react";
+import { CalendarIcon } from "lucide-react";
 import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
 import { beautifyString, cn } from "@/lib/utils";
 import {
@@ -196,6 +196,8 @@ const NodeDateTimeInput: FC<{
   handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
   className?: string;
   displayName: string;
+  hideDate?: boolean;
+  hideTime?: boolean;
 }> = ({
   selfKey,
   schema,
@@ -204,6 +206,8 @@ const NodeDateTimeInput: FC<{
   handleInputChange,
   className,
   displayName,
+  hideDate = false,
+  hideTime = false,
 }) => {
   const date = value ? new Date(value) : new Date();
   const [timeInput, setTimeInput] = useState(
@@ -213,16 +217,28 @@ const NodeDateTimeInput: FC<{
   const handleDateSelect = (newDate: Date | undefined) => {
     if (!newDate) return;
 
-    const [hours, minutes] = timeInput.split(":").map(Number);
-    newDate.setHours(hours, minutes);
-    handleInputChange(selfKey, newDate.toISOString());
+    if (hideTime) {
+      // Only pass YYYY-MM-DD if time is hidden
+      handleInputChange(selfKey, format(newDate, "yyyy-MM-dd"));
+    } else {
+      // Otherwise pass full date/time, but still incorporate time
+      const [hours, minutes] = timeInput.split(":").map(Number);
+      newDate.setHours(hours, minutes);
+      handleInputChange(selfKey, newDate.toISOString());
+    }
   };
 
   const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTime = e.target.value;
     setTimeInput(newTime);
 
-    if (value) {
+    if (!value) return;
+
+    if (hideDate) {
+      // Only pass HH:mm if date is hidden
+      handleInputChange(selfKey, newTime);
+    } else {
+      // Otherwise pass full date/time
       const [hours, minutes] = newTime.split(":").map(Number);
       const newDate = new Date(value);
       newDate.setHours(hours, minutes);
@@ -232,34 +248,131 @@ const NodeDateTimeInput: FC<{
 
   return (
     <div className={cn("flex flex-col gap-2", className)}>
-      <Popover>
-        <PopoverTrigger asChild>
+      {hideDate || (
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className={cn(
+                "w-full justify-start text-left font-normal",
+                !value && "text-muted-foreground",
+              )}
+            >
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {value ? format(date, "PPP") : <span>Pick a date</span>}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={date}
+              onSelect={handleDateSelect}
+              initialFocus
+            />
+          </PopoverContent>
+        </Popover>
+      )}
+      {hideTime || (
+        <LocalValuedInput
+          type="time"
+          value={timeInput}
+          onChange={handleTimeChange}
+          className="w-full"
+        />
+      )}
+      {error && <span className="error-message">{error}</span>}
+    </div>
+  );
+};
+
+const NodeFileInput: FC<{
+  selfKey: string;
+  schema: BlockIOStringSubSchema;
+  value?: string;
+  error?: string;
+  handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
+  className?: string;
+  displayName: string;
+}> = ({
+  selfKey,
+  schema,
+  value = "",
+  error,
+  handleInputChange,
+  className,
+  displayName,
+}) => {
+  const handleFileChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const base64String = e.target?.result as string;
+        handleInputChange(selfKey, base64String);
+      };
+      reader.readAsDataURL(file);
+    },
+    [selfKey, handleInputChange],
+  );
+
+  const getFileLabel = useCallback((value: string) => {
+    if (value.startsWith("data:")) {
+      const matches = value.match(/^data:([^;]+);/);
+      if (matches?.[1]) {
+        const mimeParts = matches[1].split("/");
+        if (mimeParts.length > 1) {
+          return `${mimeParts[1].toUpperCase()} file`;
+        }
+        return `${matches[1]} file`;
+      }
+    } else {
+      const pathParts = value.split(".");
+      if (pathParts.length > 1) {
+        const ext = pathParts.pop();
+        if (ext) return `${ext.toUpperCase()} file`;
+      }
+    }
+    return "File";
+  }, []);
+
+  return (
+    <div className={cn("flex flex-col gap-2", className)}>
+      <div className="nodrag flex flex-col gap-2">
+        <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            className={cn(
-              "w-full justify-start text-left font-normal",
-              !value && "text-muted-foreground",
-            )}
+            onClick={() =>
+              document.getElementById(`${selfKey}-upload`)?.click()
+            }
+            className="w-full"
           >
-            <CalendarIcon className="mr-2 h-4 w-4" />
-            {value ? format(date, "PPP") : <span>Pick a date</span>}
+            {value ? `Change ${displayName}` : `Upload ${displayName}`}
           </Button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="start">
-          <Calendar
-            mode="single"
-            selected={date}
-            onSelect={handleDateSelect}
-            initialFocus
-          />
-        </PopoverContent>
-      </Popover>
-      <LocalValuedInput
-        type="time"
-        value={timeInput}
-        onChange={handleTimeChange}
-        className="w-full"
-      />
+          {value && (
+            <Button
+              variant="ghost"
+              className="text-red-500 hover:text-red-700"
+              onClick={() => handleInputChange(selfKey, "")}
+            >
+              <Cross2Icon className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
+        <input
+          id={`${selfKey}-upload`}
+          type="file"
+          accept="*/*"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+        {value && (
+          <div className="break-all rounded-md border border-gray-300 p-2 dark:border-gray-600">
+            <small>{getFileLabel(value)}</small>
+          </div>
+        )}
+      </div>
       {error && <span className="error-message">{error}</span>}
     </div>
   );
@@ -410,10 +523,14 @@ export const NodeGenericInputField: FC<{
 
       if (
         "format" in propSchema.anyOf[0] &&
-        propSchema.anyOf[0].format === "date-time"
+        ["date-time", "date", "time"].includes(
+          propSchema.anyOf[0].format as string,
+        )
       ) {
         return (
           <NodeDateTimeInput
+            hideDate={propSchema.anyOf[0].format === "time"}
+            hideTime={propSchema.anyOf[0].format === "date"}
             selfKey={propKey}
             schema={propSchema.anyOf[0]}
             value={currentValue}
@@ -421,6 +538,23 @@ export const NodeGenericInputField: FC<{
             className={className}
             displayName={displayName}
             handleInputChange={handleInputChange}
+          />
+        );
+      }
+
+      if (
+        "format" in propSchema.anyOf[0] &&
+        propSchema.anyOf[0].format === "file"
+      ) {
+        return (
+          <NodeFileInput
+            selfKey={propKey}
+            schema={propSchema.anyOf[0] as BlockIOStringSubSchema}
+            value={currentValue}
+            error={errors[propKey]}
+            handleInputChange={handleInputChange}
+            className={className}
+            displayName={displayName}
           />
         );
       }
@@ -597,9 +731,14 @@ export const NodeGenericInputField: FC<{
           />
         );
       }
-      if ("format" in propSchema && propSchema.format === "date-time") {
+      if (
+        "format" in propSchema &&
+        ["date-time", "date", "time"].includes(propSchema.format as string)
+      ) {
         return (
           <NodeDateTimeInput
+            hideDate={propSchema.format === "time"}
+            hideTime={propSchema.format === "date"}
             selfKey={propKey}
             schema={propSchema}
             value={currentValue}
@@ -607,6 +746,19 @@ export const NodeGenericInputField: FC<{
             className={className}
             displayName={displayName}
             handleInputChange={handleInputChange}
+          />
+        );
+      }
+      if ("format" in propSchema && propSchema.format === "file") {
+        return (
+          <NodeFileInput
+            selfKey={propKey}
+            schema={propSchema}
+            value={currentValue}
+            error={errors[propKey]}
+            handleInputChange={handleInputChange}
+            className={className}
+            displayName={displayName}
           />
         );
       }
@@ -1390,15 +1542,10 @@ const NodeBooleanInput: FC<{
   value ||= schema.default ?? false;
   return (
     <div className={className}>
-      <div className="nodrag flex items-center">
-        <Switch
-          defaultChecked={value}
-          onCheckedChange={(v) => handleInputChange(selfKey, v)}
-        />
-        {displayName && (
-          <span className="ml-3 dark:text-gray-300">{displayName}</span>
-        )}
-      </div>
+      <Switch
+        defaultChecked={value}
+        onCheckedChange={(v) => handleInputChange(selfKey, v)}
+      />
       {error && <span className="error-message">{error}</span>}
     </div>
   );

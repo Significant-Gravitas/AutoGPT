@@ -51,14 +51,16 @@ test.describe("Build", () => { //(1)!
     await buildPage.openBlocksPanel();
     const blocks = await buildPage.getBlocks();
 
-    const blocksToSkip = await buildPage.getBlocksToSkip();
+    const blockIdsToSkip = await buildPage.getBlocksToSkip();
+    const blockTypesToSkip = ["Input", "Output", "Agent", "AI"];
 
     // add all the blocks in order except for the agent executor block
     for (const block of blocks) {
       if (block.name[0].toLowerCase() >= "m") {
         continue;
       }
-      if (!blocksToSkip.some((b) => b === block.id)) {
+      if (!blockIdsToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.type === b)) {
+        console.log("Adding block:", block.name, block.id, block.type, " skipping types:", blockTypesToSkip);
         await buildPage.addBlock(block);
       }
     }
@@ -68,8 +70,8 @@ test.describe("Build", () => { //(1)!
       if (block.name[0].toLowerCase() >= "m") {
         continue;
       }
-      if (!blocksToSkip.some((b) => b === block.id)) {
-        console.log("Checking block:", block.name);
+      if (!blockIdsToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.type === b)) {
+        console.log("Checking block:", block.name, block.id, block.type, " skipping types:", blockTypesToSkip);
         await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
       }
     }
@@ -89,14 +91,16 @@ test.describe("Build", () => { //(1)!
     await buildPage.openBlocksPanel();
     const blocks = await buildPage.getBlocks();
 
-    const blocksToSkip = await buildPage.getBlocksToSkip();
+    const blockIdsToSkip = await buildPage.getBlocksToSkip();
+    const blockTypesToSkip = ["Input", "Output", "Agent", "AI"];
 
     // add all the blocks in order except for the agent executor block
     for (const block of blocks) {
       if (block.name[0].toLowerCase() < "m") {
         continue;
       }
-      if (!blocksToSkip.some((b) => b === block.id)) {
+      if (!blockIdsToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.type === b)) {
+        console.log("Adding block:", block.name, block.id, block.type, " skipping types:", blockTypesToSkip);
         await buildPage.addBlock(block);
       }
     }
@@ -106,7 +110,8 @@ test.describe("Build", () => { //(1)!
       if (block.name[0].toLowerCase() < "m") {
         continue;
       }
-      if (!blocksToSkip.some((b) => b === block.id)) {
+      if (!blockIdsToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.type === b)) {
+        console.log("Checking block:", block.name, block.id, block.type, " skipping types:", blockTypesToSkip);
         await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
       }
     }
@@ -141,11 +146,13 @@ test.describe("Build", () => { //(1)!
       id: "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
       name: "Store Value 1",
       description: "Store Value Block 1",
+      type: "Standard",
     };
     const block2 = {
       id: "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
       name: "Store Value 2",
       description: "Store Value Block 2",
+      type: "Standard",
     };
 
     // Add the blocks

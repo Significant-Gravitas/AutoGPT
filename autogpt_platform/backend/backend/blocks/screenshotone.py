@@ -142,7 +142,9 @@ class ScreenshotWebPageBlock(Block):
         return {
             "image": store_media_file(
                 graph_exec_id=graph_exec_id,
-                file=f"data:image/{format.value};base64,{b64encode(response.content).decode('utf-8')}",
+                file=MediaFile(
+                    f"data:image/{format.value};base64,{b64encode(response.content).decode('utf-8')}"
+                ),
                 return_content=True,
             )
         }
