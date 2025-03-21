@@ -102,9 +102,7 @@ const Monitor = () => {
             : executions),
         ].sort((a, b) => Number(b.started_at) - Number(a.started_at))}
         selectedRun={selectedRun}
-        onSelectRun={(r) =>
-          setSelectedRun(r.execution_id == selectedRun?.execution_id ? null : r)
-        }
+        onSelectRun={(r) => setSelectedRun(r.id == selectedRun?.id ? null : r)}
       />
       {(selectedRun && (
         <FlowRunInfo

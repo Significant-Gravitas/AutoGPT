@@ -140,7 +140,7 @@ repos:
         language: system
 
   - repo: https://github.com/psf/black
-    rev: 23.12.1
+    rev: 24.10.0
     # Black has sensible defaults, doesn't need package context, and ignores
     # everything in .gitignore, so it works fine without any config or arguments.
     hooks:

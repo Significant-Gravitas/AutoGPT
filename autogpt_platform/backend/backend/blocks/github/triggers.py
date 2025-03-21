@@ -12,6 +12,7 @@ from backend.data.block import (
     BlockWebhookConfig,
 )
 from backend.data.model import SchemaField
+from backend.integrations.providers import ProviderName
 
 from ._auth import (
     TEST_CREDENTIALS,
@@ -123,7 +124,7 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
             output_schema=GithubPullRequestTriggerBlock.Output,
             # --8<-- [start:example-webhook_config]
             webhook_config=BlockWebhookConfig(
-                provider="github",
+                provider=ProviderName.GITHUB,
                 webhook_type=GithubWebhookType.REPO,
                 resource_format="{repo}",
                 event_filter_input="events",

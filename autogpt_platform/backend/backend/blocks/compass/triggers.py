@@ -8,6 +8,7 @@ from backend.data.block import (
     BlockSchema,
 )
 from backend.data.model import SchemaField
+from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.compass import CompassWebhookType
 
 
@@ -42,7 +43,7 @@ class CompassAITriggerBlock(Block):
             input_schema=CompassAITriggerBlock.Input,
             output_schema=CompassAITriggerBlock.Output,
             webhook_config=BlockManualWebhookConfig(
-                provider="compass",
+                provider=ProviderName.COMPASS,
                 webhook_type=CompassWebhookType.TRANSCRIPTION,
             ),
             test_input=[

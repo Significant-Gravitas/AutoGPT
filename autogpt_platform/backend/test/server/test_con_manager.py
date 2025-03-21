@@ -4,9 +4,13 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import WebSocket
 
-from backend.data.execution import ExecutionResult, ExecutionStatus
+from backend.data.execution import (
+    ExecutionStatus,
+    GraphExecutionEvent,
+    NodeExecutionEvent,
+)
 from backend.server.conn_manager import ConnectionManager
-from backend.server.model import Methods, WsMessage
+from backend.server.model import WSMessage, WSMethod
 
 
 @pytest.fixture
@@ -25,7 +29,7 @@ def mock_websocket() -> AsyncMock:
 async def test_connect(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    await connection_manager.connect(mock_websocket)
+    await connection_manager.connect_socket(mock_websocket)
     assert mock_websocket in connection_manager.active_connections
     mock_websocket.accept.assert_called_once()
 
@@ -34,37 +38,39 @@ def test_disconnect(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
     connection_manager.active_connections.add(mock_websocket)
-    connection_manager.subscriptions["test_graph_1"] = {mock_websocket}
+    connection_manager.subscriptions["test_channel_42"] = {mock_websocket}
 
-    connection_manager.disconnect(mock_websocket)
+    connection_manager.disconnect_socket(mock_websocket)
 
     assert mock_websocket not in connection_manager.active_connections
-    assert mock_websocket not in connection_manager.subscriptions["test_graph_1"]
+    assert mock_websocket not in connection_manager.subscriptions["test_channel_42"]
 
 
 @pytest.mark.asyncio
 async def test_subscribe(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    await connection_manager.subscribe(
+    await connection_manager.subscribe_graph_exec(
         user_id="user-1",
-        graph_id="test_graph",
-        graph_version=1,
+        graph_exec_id="graph-exec-1",
         websocket=mock_websocket,
     )
-    assert mock_websocket in connection_manager.subscriptions["user-1_test_graph_1"]
+    assert (
+        mock_websocket
+        in connection_manager.subscriptions["user-1|graph_exec#graph-exec-1"]
+    )
 
 
 @pytest.mark.asyncio
 async def test_unsubscribe(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    connection_manager.subscriptions["user-1_test_graph_1"] = {mock_websocket}
+    channel_key = "user-1|graph_exec#graph-exec-1"
+    connection_manager.subscriptions[channel_key] = {mock_websocket}
 
     await connection_manager.unsubscribe(
         user_id="user-1",
-        graph_id="test_graph",
-        graph_version=1,
+        graph_exec_id="graph-exec-1",
         websocket=mock_websocket,
     )
 
@@ -72,15 +78,46 @@ async def test_unsubscribe(
 
 
 @pytest.mark.asyncio
-async def test_send_execution_result(
+async def test_send_graph_execution_result(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    connection_manager.subscriptions["user-1_test_graph_1"] = {mock_websocket}
-    result: ExecutionResult = ExecutionResult(
+    channel_key = "user-1|graph_exec#graph-exec-1"
+    connection_manager.subscriptions[channel_key] = {mock_websocket}
+    result = GraphExecutionEvent(
+        id="graph-exec-1",
         user_id="user-1",
         graph_id="test_graph",
         graph_version=1,
-        graph_exec_id="test_exec_id",
+        status=ExecutionStatus.COMPLETED,
+        cost=0,
+        duration=1.2,
+        total_run_time=0.5,
+        started_at=datetime.now(tz=timezone.utc),
+        ended_at=datetime.now(tz=timezone.utc),
+    )
+
+    await connection_manager.send_execution_update(result)
+
+    mock_websocket.send_text.assert_called_once_with(
+        WSMessage(
+            method=WSMethod.GRAPH_EXECUTION_EVENT,
+            channel="user-1|graph_exec#graph-exec-1",
+            data=result.model_dump(),
+        ).model_dump_json()
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_node_execution_result(
+    connection_manager: ConnectionManager, mock_websocket: AsyncMock
+) -> None:
+    channel_key = "user-1|graph_exec#graph-exec-1"
+    connection_manager.subscriptions[channel_key] = {mock_websocket}
+    result = NodeExecutionEvent(
+        user_id="user-1",
+        graph_id="test_graph",
+        graph_version=1,
+        graph_exec_id="graph-exec-1",
         node_exec_id="test_node_exec_id",
         node_id="test_node_id",
         block_id="test_block_id",
@@ -93,12 +130,12 @@ async def test_send_execution_result(
         end_time=datetime.now(tz=timezone.utc),
     )
 
-    await connection_manager.send_execution_result(result)
+    await connection_manager.send_execution_update(result)
 
     mock_websocket.send_text.assert_called_once_with(
-        WsMessage(
-            method=Methods.EXECUTION_EVENT,
-            channel="user-1_test_graph_1",
+        WSMessage(
+            method=WSMethod.NODE_EXECUTION_EVENT,
+            channel="user-1|graph_exec#graph-exec-1",
             data=result.model_dump(),
         ).model_dump_json()
     )
@@ -108,12 +145,13 @@ async def test_send_execution_result(
 async def test_send_execution_result_user_mismatch(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    connection_manager.subscriptions["user-1_test_graph_1"] = {mock_websocket}
-    result: ExecutionResult = ExecutionResult(
+    channel_key = "user-1|graph_exec#graph-exec-1"
+    connection_manager.subscriptions[channel_key] = {mock_websocket}
+    result = NodeExecutionEvent(
         user_id="user-2",
         graph_id="test_graph",
         graph_version=1,
-        graph_exec_id="test_exec_id",
+        graph_exec_id="graph-exec-1",
         node_exec_id="test_node_exec_id",
         node_id="test_node_id",
         block_id="test_block_id",
@@ -126,7 +164,7 @@ async def test_send_execution_result_user_mismatch(
         end_time=datetime.now(tz=timezone.utc),
     )
 
-    await connection_manager.send_execution_result(result)
+    await connection_manager.send_execution_update(result)
 
     mock_websocket.send_text.assert_not_called()
 
@@ -135,7 +173,7 @@ async def test_send_execution_result_user_mismatch(
 async def test_send_execution_result_no_subscribers(
     connection_manager: ConnectionManager, mock_websocket: AsyncMock
 ) -> None:
-    result: ExecutionResult = ExecutionResult(
+    result = NodeExecutionEvent(
         user_id="user-1",
         graph_id="test_graph",
         graph_version=1,
@@ -152,6 +190,6 @@ async def test_send_execution_result_no_subscribers(
         end_time=datetime.now(),
     )
 
-    await connection_manager.send_execution_result(result)
+    await connection_manager.send_execution_update(result)
 
     mock_websocket.send_text.assert_not_called()
