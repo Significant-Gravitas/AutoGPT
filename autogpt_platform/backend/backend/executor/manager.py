@@ -681,10 +681,6 @@ class Executor:
         try:
             queue = ExecutionQueue[NodeExecutionEntry]()
             for node_exec in graph_exec.start_node_execs:
-                exec_update = cls.db_client.update_execution_status(
-                    node_exec.node_exec_id, ExecutionStatus.QUEUED, node_exec.data
-                )
-                cls.db_client.send_execution_update(exec_update)
                 queue.add(node_exec)
 
             running_executions: dict[str, AsyncResult] = {}
@@ -789,7 +785,10 @@ class Executor:
         metadata = cls.db_client.get_graph_metadata(
             graph_exec.graph_id, graph_exec.graph_version
         )
-        outputs = cls.db_client.get_execution_results(graph_exec.graph_exec_id)
+        outputs = cls.db_client.get_execution_results(
+            graph_exec.graph_exec_id,
+            block_ids=[AgentOutputBlock().id],
+        )
 
         named_outputs = [
             {
@@ -797,7 +796,6 @@ class Executor:
                 for key, value in output.output_data.items()
             }
             for output in outputs
-            if output.block_id == AgentOutputBlock().id
         ]
 
         event = NotificationEventDTO(
@@ -1055,29 +1053,36 @@ class ExecutionManager(AppService):
         3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
         """
         if graph_exec_id not in self.active_graph_runs:
-            raise Exception(
+            logger.warning(
                 f"Graph execution #{graph_exec_id} not active/running: "
                 "possibly already completed/cancelled."
             )
+        else:
+            future, cancel_event = self.active_graph_runs[graph_exec_id]
+            if not cancel_event.is_set():
+                cancel_event.set()
+                future.result()
 
-        future, cancel_event = self.active_graph_runs[graph_exec_id]
-        if cancel_event.is_set():
-            return
-
-        cancel_event.set()
-        future.result()
-
-        # Update the status of the unfinished node executions
-        node_execs = self.db_client.get_execution_results(graph_exec_id)
+        # Update the status of the graph & node executions
+        self.db_client.update_graph_execution_stats(
+            graph_exec_id,
+            ExecutionStatus.TERMINATED,
+        )
+        node_execs = self.db_client.get_execution_results(
+            graph_exec_id=graph_exec_id,
+            statuses=[
+                ExecutionStatus.QUEUED,
+                ExecutionStatus.RUNNING,
+                ExecutionStatus.INCOMPLETE,
+            ],
+        )
+        self.db_client.update_execution_status_batch(
+            [node_exec.node_exec_id for node_exec in node_execs],
+            ExecutionStatus.TERMINATED,
+        )
         for node_exec in node_execs:
-            if node_exec.status not in (
-                ExecutionStatus.COMPLETED,
-                ExecutionStatus.FAILED,
-            ):
-                exec_update = self.db_client.update_execution_status(
-                    node_exec.node_exec_id, ExecutionStatus.TERMINATED
-                )
-                self.db_client.send_execution_update(exec_update)
+            node_exec.status = ExecutionStatus.TERMINATED
+            self.db_client.send_execution_update(node_exec)
 
     def _validate_node_input_credentials(self, graph: GraphModel, user_id: str):
         """Checks all credentials for all nodes of the graph"""
