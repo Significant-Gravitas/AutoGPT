@@ -55,6 +55,7 @@ export const providerIcons: Record<
   CredentialsProviderName,
   React.FC<{ className?: string }>
 > = {
+  airtable: fallbackIcon,
   anthropic: fallbackIcon,
   apollo: fallbackIcon,
   e2b: fallbackIcon,

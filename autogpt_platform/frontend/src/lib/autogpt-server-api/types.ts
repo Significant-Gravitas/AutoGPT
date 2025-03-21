@@ -113,6 +113,7 @@ export type Credentials =
 
 // --8<-- [start:BlockIOCredentialsSubSchema]
 export const PROVIDER_NAMES = {
+  AIRTABLE: "airtable",
   ANTHROPIC: "anthropic",
   APOLLO: "apollo",
   D_ID: "d_id",
