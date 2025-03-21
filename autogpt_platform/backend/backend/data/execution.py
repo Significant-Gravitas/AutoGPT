@@ -167,7 +167,8 @@ async def create_graph_execution(
                 "create": [  # type: ignore
                     {
                         "agentNodeId": node_id,
-                        "executionStatus": ExecutionStatus.INCOMPLETE,
+                        "executionStatus": ExecutionStatus.QUEUED,
+                        "queuedTime": datetime.now(tz=timezone.utc),
                         "Input": {
                             "create": [
                                 {"name": name, "data": Json(data)}
