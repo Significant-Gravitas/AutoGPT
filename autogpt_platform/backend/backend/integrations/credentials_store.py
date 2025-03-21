@@ -177,6 +177,15 @@ airtable_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+proxycurl_credentials = APIKeyCredentials(
+    id="d9fce73a-6c1d-4e8b-ba2e-12a456789def",
+    provider="proxycurl",
+    api_key=SecretStr(settings.secrets.proxycurl_api_key),
+    title="Use Credits for Proxycurl",
+    expires_at=None,
+)
+
+
 DEFAULT_CREDENTIALS = [
     ollama_credentials,
     revid_credentials,
@@ -189,6 +198,7 @@ DEFAULT_CREDENTIALS = [
     jina_credentials,
     unreal_credentials,
     open_router_credentials,
+    proxycurl_credentials,
     fal_credentials,
     exa_credentials,
     e2b_credentials,
@@ -256,6 +266,8 @@ class IntegrationCredentialsStore:
             all_credentials.append(unreal_credentials)
         if settings.secrets.open_router_api_key:
             all_credentials.append(open_router_credentials)
+        if settings.secrets.proxycurl_api_key:
+            all_credentials.append(proxycurl_credentials)
         if settings.secrets.fal_api_key:
             all_credentials.append(fal_credentials)
         if settings.secrets.exa_api_key:

@@ -18,6 +18,11 @@ from backend.blocks.llm import (
     AITextGeneratorBlock,
     AITextSummarizerBlock,
     LlmModel,
+)   
+from backend.blocks.proxycurl.proxycurl import (
+    ProxycurlProfileFetchBlock,
+    ProxycurlPersonLookupBlock,
+    ProxycurlRoleLookupBlock,
 )
 from backend.blocks.replicate_flux_advanced import ReplicateFluxAdvancedModelBlock
 from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
@@ -34,6 +39,7 @@ from backend.integrations.credentials_store import (
     jina_credentials,
     open_router_credentials,
     openai_credentials,
+    proxycurl_credentials,
     replicate_credentials,
     revid_credentials,
     unreal_credentials,
@@ -304,6 +310,42 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                     "id": airtable_credentials.id,
                     "provider": airtable_credentials.provider,
                     "type": airtable_credentials.type,
+                }
+            },
+        ),
+    ],
+    ProxycurlProfileFetchBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": proxycurl_credentials.id,
+                    "provider": proxycurl_credentials.provider,
+                    "type": proxycurl_credentials.type,
+                }
+            },
+        )
+    ],
+    ProxycurlPersonLookupBlock: [
+        BlockCost(
+            cost_amount=2,
+            cost_filter={
+                "credentials": {
+                    "id": proxycurl_credentials.id,
+                    "provider": proxycurl_credentials.provider,
+                    "type": proxycurl_credentials.type,
+                }
+            },
+        )
+    ],
+    ProxycurlRoleLookupBlock: [
+        BlockCost(
+            cost_amount=3,
+            cost_filter={
+                "credentials": {
+                    "id": proxycurl_credentials.id,
+                    "provider": proxycurl_credentials.provider,
+                    "type": proxycurl_credentials.type,
                 }
             },
         )
