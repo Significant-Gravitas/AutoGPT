@@ -217,7 +217,8 @@ class GraphExecution(GraphExecutionMeta):
         graph_exec = GraphExecutionMeta.from_db(_graph_exec)
 
         node_executions = [
-            ExecutionResult.from_db(ne) for ne in _graph_exec.AgentNodeExecutions
+            ExecutionResult.from_db(ne, _graph_exec.userId)
+            for ne in _graph_exec.AgentNodeExecutions
         ]
 
         inputs = {

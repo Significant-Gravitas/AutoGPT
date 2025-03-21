@@ -679,10 +679,6 @@ class Executor:
         try:
             queue = ExecutionQueue[NodeExecutionEntry]()
             for node_exec in graph_exec.start_node_execs:
-                exec_update = cls.db_client.update_execution_status(
-                    node_exec.node_exec_id, ExecutionStatus.QUEUED, node_exec.data
-                )
-                cls.db_client.send_execution_update(exec_update)
                 queue.add(node_exec)
 
             running_executions: dict[str, AsyncResult] = {}

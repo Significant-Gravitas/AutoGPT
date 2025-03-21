@@ -114,10 +114,19 @@ export default function useAgentGraph(
     });
 
     if (flowID && flowVersion) {
-      api.subscribeToExecution(flowID, flowVersion);
-      console.debug(
-        `Subscribed to execution events for ${flowID} v.${flowVersion}`,
-      );
+      api
+        .subscribeToExecution(flowID, flowVersion)
+        .then(() =>
+          console.debug(
+            `Subscribed to execution events for ${flowID} v.${flowVersion}`,
+          ),
+        )
+        .catch((error) =>
+          console.error(
+            `Failed to subscribe to execution events for ${flowID} v.${flowVersion}:`,
+            error,
+          ),
+        );
     }
   }, [api, flowID, flowVersion, flowExecutionID]);
 
