@@ -405,6 +405,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     zerobounce_api_key: str = Field(default="", description="ZeroBounce API Key")
 
     # Add more secret fields as needed
+    airtable_api_key: str = Field(default="", description="Airtable API Key")
 
     model_config = SettingsConfigDict(
         env_file=".env",
