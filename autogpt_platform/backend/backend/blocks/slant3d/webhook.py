@@ -8,6 +8,7 @@ from backend.data.block import (
     BlockWebhookConfig,
 )
 from backend.data.model import SchemaField
+from backend.integrations.providers import ProviderName
 from backend.util import settings
 from backend.util.settings import AppEnvironment, BehaveAs
 
@@ -82,7 +83,7 @@ class Slant3DOrderWebhookBlock(Slant3DTriggerBase, Block):
             input_schema=self.Input,
             output_schema=self.Output,
             webhook_config=BlockWebhookConfig(
-                provider="slant3d",
+                provider=ProviderName.SLANT3D,
                 webhook_type="orders",  # Only one type for now
                 resource_format="",  # No resource format needed
                 event_filter_input="events",
