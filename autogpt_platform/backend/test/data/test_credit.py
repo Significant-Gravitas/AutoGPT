@@ -5,9 +5,11 @@ from prisma.enums import CreditTransactionType
 from prisma.models import CreditTransaction
 
 from backend.blocks.llm import AITextGeneratorBlock
+from backend.data.block import get_block
 from backend.data.credit import BetaUserCredit
 from backend.data.execution import NodeExecutionEntry
 from backend.data.user import DEFAULT_USER_ID
+from backend.executor.utils import UsageTransactionMetadata, block_usage_cost
 from backend.integrations.credentials_store import openai_credentials
 from backend.util.test import SpinTestServer
 
@@ -27,13 +29,36 @@ async def top_up(amount: int):
     )
 
 
+async def spend_credits(entry: NodeExecutionEntry) -> int:
+    block = get_block(entry.block_id)
+    if not block:
+        raise RuntimeError(f"Block {entry.block_id} not found")
+
+    cost, matching_filter = block_usage_cost(block=block, input_data=entry.data)
+    await user_credit.spend_credits(
+        entry.user_id,
+        cost,
+        UsageTransactionMetadata(
+            graph_exec_id=entry.graph_exec_id,
+            graph_id=entry.graph_id,
+            node_id=entry.node_id,
+            node_exec_id=entry.node_exec_id,
+            block_id=entry.block_id,
+            block=entry.block_id,
+            input=matching_filter,
+        ),
+    )
+
+    return cost
+
+
 @pytest.mark.asyncio(scope="session")
 async def test_block_credit_usage(server: SpinTestServer):
     await disable_test_user_transactions()
     await top_up(100)
     current_credit = await user_credit.get_credits(DEFAULT_USER_ID)
 
-    spending_amount_1 = await user_credit.spend_credits(
+    spending_amount_1 = await spend_credits(
         NodeExecutionEntry(
             user_id=DEFAULT_USER_ID,
             graph_id="test_graph",
@@ -50,12 +75,10 @@ async def test_block_credit_usage(server: SpinTestServer):
                 },
             },
         ),
-        0.0,
-        0.0,
     )
     assert spending_amount_1 > 0
 
-    spending_amount_2 = await user_credit.spend_credits(
+    spending_amount_2 = await spend_credits(
         NodeExecutionEntry(
             user_id=DEFAULT_USER_ID,
             graph_id="test_graph",
@@ -65,8 +88,6 @@ async def test_block_credit_usage(server: SpinTestServer):
             block_id=AITextGeneratorBlock().id,
             data={"model": "gpt-4-turbo", "api_key": "owned_api_key"},
         ),
-        0.0,
-        0.0,
     )
     assert spending_amount_2 == 0
 
