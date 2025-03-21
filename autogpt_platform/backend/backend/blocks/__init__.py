@@ -89,9 +89,6 @@ def load_all_blocks() -> dict[str, type["Block"]]:
                     f"{block.name} has a boolean field with no default value"
                 )
 
-        if block.disabled:
-            continue
-
         _AVAILABLE_BLOCKS[block.id] = block_cls
 
     return _AVAILABLE_BLOCKS
