@@ -242,7 +242,7 @@ async def test_access_store_listing_graph(server: SpinTestServer):
     store_submission_request = store.StoreSubmissionRequest(
         agent_id=created_graph.id,
         agent_version=created_graph.version,
-        slug="test-slug",
+        slug=created_graph.id,
         name="Test name",
         sub_heading="Test sub heading",
         video_url=None,

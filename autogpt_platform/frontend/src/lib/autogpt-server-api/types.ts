@@ -1,3 +1,10 @@
+export type SubmissionStatus = "DRAFT" | "PENDING" | "APPROVED" | "REJECTED";
+export type ReviewSubmissionRequest = {
+  store_listing_version_id: string;
+  is_approved: boolean;
+  comments: string; // External comments visible to creator
+  internal_comments?: string; // Admin-only comments
+};
 export type Category = {
   category: string;
   description: string;
@@ -559,6 +566,11 @@ export type StoreAgentDetails = {
   runs: number;
   rating: number;
   versions: string[];
+
+  // Approval and status fields
+  active_version_id?: string;
+  has_approved_version?: boolean;
+  is_available?: boolean;
 };
 
 export type Creator = {
@@ -595,9 +607,21 @@ export type StoreSubmission = {
   description: string;
   image_urls: string[];
   date_submitted: string;
-  status: string;
+  status: SubmissionStatus;
   runs: number;
   rating: number;
+  slug: string;
+  store_listing_version_id?: string;
+
+  // Review information
+  reviewer_id?: string;
+  review_comments?: string;
+  internal_comments?: string; // Admin-only comments
+  reviewed_at?: string;
+  changes_summary?: string;
+
+  // Approval status
+  is_approved?: boolean;
 };
 
 export type StoreSubmissionsResponse = {
@@ -615,6 +639,7 @@ export type StoreSubmissionRequest = {
   image_urls: string[];
   description: string;
   categories: string[];
+  changes_summary?: string;
 };
 
 export type ProfileDetails = {
@@ -770,3 +795,26 @@ export interface OttoQuery {
   include_graph_data: boolean;
   graph_id?: string;
 }
+
+// Admin API Types
+export type AdminSubmissionsRequest = {
+  status?: SubmissionStatus;
+  search?: string;
+  page: number;
+  page_size: number;
+};
+
+export type AdminListingHistoryRequest = {
+  listing_id: string;
+  page: number;
+  page_size: number;
+};
+
+export type AdminSubmissionDetailsRequest = {
+  store_listing_version_id: string;
+};
+
+export type AdminPendingSubmissionsRequest = {
+  page: number;
+  page_size: number;
+};

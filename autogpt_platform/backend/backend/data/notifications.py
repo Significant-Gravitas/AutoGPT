@@ -372,7 +372,7 @@ class UserNotificationBatchDTO(BaseModel):
             type=model.type,
             notifications=[
                 UserNotificationEventDTO.from_db(notification)
-                for notification in model.notifications or []
+                for notification in model.Notifications or []
             ],
             created_at=model.createdAt,
             updated_at=model.updatedAt,
@@ -410,7 +410,7 @@ async def create_or_add_to_user_notification_batch(
                     "type": notification_type,
                 }
             },
-            include={"notifications": True},
+            include={"Notifications": True},
         )
 
         if not existing_batch:
@@ -427,9 +427,9 @@ async def create_or_add_to_user_notification_batch(
                     data={
                         "userId": user_id,
                         "type": notification_type,
-                        "notifications": {"connect": [{"id": notification_event.id}]},
+                        "Notifications": {"connect": [{"id": notification_event.id}]},
                     },
-                    include={"notifications": True},
+                    include={"Notifications": True},
                 )
                 return UserNotificationBatchDTO.from_db(resp)
         else:
@@ -445,9 +445,9 @@ async def create_or_add_to_user_notification_batch(
                 resp = await tx.usernotificationbatch.update(
                     where={"id": existing_batch.id},
                     data={
-                        "notifications": {"connect": [{"id": notification_event.id}]}
+                        "Notifications": {"connect": [{"id": notification_event.id}]}
                     },
-                    include={"notifications": True},
+                    include={"Notifications": True},
                 )
             if not resp:
                 raise DatabaseError(
@@ -467,13 +467,13 @@ async def get_user_notification_oldest_message_in_batch(
     try:
         batch = await UserNotificationBatch.prisma().find_first(
             where={"userId": user_id, "type": notification_type},
-            include={"notifications": True},
+            include={"Notifications": True},
         )
         if not batch:
             return None
-        if not batch.notifications:
+        if not batch.Notifications:
             return None
-        sorted_notifications = sorted(batch.notifications, key=lambda x: x.createdAt)
+        sorted_notifications = sorted(batch.Notifications, key=lambda x: x.createdAt)
 
         return (
             UserNotificationEventDTO.from_db(sorted_notifications[0])
@@ -518,7 +518,7 @@ async def get_user_notification_batch(
     try:
         batch = await UserNotificationBatch.prisma().find_first(
             where={"userId": user_id, "type": notification_type},
-            include={"notifications": True},
+            include={"Notifications": True},
         )
         return UserNotificationBatchDTO.from_db(batch) if batch else None
     except Exception as e:
@@ -534,11 +534,11 @@ async def get_all_batches_by_type(
         batches = await UserNotificationBatch.prisma().find_many(
             where={
                 "type": notification_type,
-                "notifications": {
+                "Notifications": {
                     "some": {}  # Only return batches with at least one notification
                 },
             },
-            include={"notifications": True},
+            include={"Notifications": True},
         )
         return [UserNotificationBatchDTO.from_db(batch) for batch in batches]
     except Exception as e:
