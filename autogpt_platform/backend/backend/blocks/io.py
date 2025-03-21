@@ -195,7 +195,7 @@ class AgentOutputBlock(Block):
             yield "name", input_data.name
 
 
-class ShortTextAgentInputBlock(AgentInputBlock):
+class AgentShortTextInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
         value: str = SchemaField(
             description="Short text input.",
@@ -210,8 +210,8 @@ class ShortTextAgentInputBlock(AgentInputBlock):
         super().__init__(
             id="7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
             description="Block for short text input (single-line).",
-            input_schema=ShortTextAgentInputBlock.Input,
-            output_schema=ShortTextAgentInputBlock.Output,
+            input_schema=AgentShortTextInputBlock.Input,
+            output_schema=AgentShortTextInputBlock.Output,
             test_input=[
                 {
                     "value": "Hello",
@@ -235,7 +235,7 @@ class ShortTextAgentInputBlock(AgentInputBlock):
         )
 
 
-class LongTextAgentInputBlock(AgentInputBlock):
+class AgentLongTextInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
         value: str = SchemaField(
             description="Long text input (potentially multi-line).",
@@ -250,8 +250,8 @@ class LongTextAgentInputBlock(AgentInputBlock):
         super().__init__(
             id="90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
             description="Block for long text input (multi-line).",
-            input_schema=LongTextAgentInputBlock.Input,
-            output_schema=LongTextAgentInputBlock.Output,
+            input_schema=AgentLongTextInputBlock.Input,
+            output_schema=AgentLongTextInputBlock.Output,
             test_input=[
                 {
                     "value": "Lorem ipsum dolor sit amet...",
@@ -275,7 +275,7 @@ class LongTextAgentInputBlock(AgentInputBlock):
         )
 
 
-class NumberAgentInputBlock(AgentInputBlock):
+class AgentNumberInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
         value: int = SchemaField(description="Number input.")
 
@@ -286,8 +286,8 @@ class NumberAgentInputBlock(AgentInputBlock):
         super().__init__(
             id="96dae2bb-97a2-41c2-bd2f-13a3b5a8ea98",
             description="Block for number input.",
-            input_schema=NumberAgentInputBlock.Input,
-            output_schema=NumberAgentInputBlock.Output,
+            input_schema=AgentNumberInputBlock.Input,
+            output_schema=AgentNumberInputBlock.Output,
             test_input=[
                 {
                     "value": 42,
@@ -311,7 +311,7 @@ class NumberAgentInputBlock(AgentInputBlock):
         )
 
 
-class DateAgentInputBlock(AgentInputBlock):
+class AgentDateInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
         value: date = SchemaField(
             description="Date input (YYYY-MM-DD).",
@@ -324,8 +324,8 @@ class DateAgentInputBlock(AgentInputBlock):
         super().__init__(
             id="7e198b09-4994-47db-8b4d-952d98241817",
             description="Block for date input.",
-            input_schema=DateAgentInputBlock.Input,
-            output_schema=DateAgentInputBlock.Output,
+            input_schema=AgentDateInputBlock.Input,
+            output_schema=AgentDateInputBlock.Output,
             test_input=[
                 {
                     # If your system can parse JSON date strings to date objects
@@ -346,7 +346,7 @@ class DateAgentInputBlock(AgentInputBlock):
         )
 
 
-class TimeAgentInputBlock(AgentInputBlock):
+class AgentTimeInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
         value: time = SchemaField(
             description="Time input (HH:MM:SS).",
@@ -359,8 +359,8 @@ class TimeAgentInputBlock(AgentInputBlock):
         super().__init__(
             id="2a1c757e-86cf-4c7e-aacf-060dc382e434",
             description="Block for time input.",
-            input_schema=TimeAgentInputBlock.Input,
-            output_schema=TimeAgentInputBlock.Output,
+            input_schema=AgentTimeInputBlock.Input,
+            output_schema=AgentTimeInputBlock.Output,
             test_input=[
                 {
                     "value": str(time(9, 30, 0)),
@@ -380,7 +380,7 @@ class TimeAgentInputBlock(AgentInputBlock):
         )
 
 
-class FileUploadAgentInputBlock(AgentInputBlock):
+class AgentFileInputBlock(AgentInputBlock):
     """
     A simplified file-upload block. In real usage, you might have a custom
     file type or handle binary data. Here, we'll store a string path as the example.
@@ -398,8 +398,8 @@ class FileUploadAgentInputBlock(AgentInputBlock):
         super().__init__(
             id="95ead23f-8283-4654-aef3-10c053b74a31",
             description="Block for file upload input (string path for example).",
-            input_schema=FileUploadAgentInputBlock.Input,
-            output_schema=FileUploadAgentInputBlock.Output,
+            input_schema=AgentFileInputBlock.Input,
+            output_schema=AgentFileInputBlock.Output,
             test_input=[
                 {
                     "value": "data:image/png;base64,MQ==",
@@ -427,7 +427,7 @@ class FileUploadAgentInputBlock(AgentInputBlock):
         yield "result", file_path
 
 
-class DropdownAgentInputBlock(AgentInputBlock):
+class AgentDropdownInputBlock(AgentInputBlock):
     """
     A specialized text input block that relies on placeholder_values +
     limit_to_placeholder_values to present a dropdown.
@@ -454,8 +454,8 @@ class DropdownAgentInputBlock(AgentInputBlock):
         super().__init__(
             id="655d6fdf-a334-421c-b733-520549c07cd1",
             description="Block for dropdown text selection.",
-            input_schema=DropdownAgentInputBlock.Input,
-            output_schema=DropdownAgentInputBlock.Output,
+            input_schema=AgentDropdownInputBlock.Input,
+            output_schema=AgentDropdownInputBlock.Output,
             test_input=[
                 {
                     "value": "Option A",
@@ -479,7 +479,7 @@ class DropdownAgentInputBlock(AgentInputBlock):
         )
 
 
-class ToggleAgentInputBlock(AgentInputBlock):
+class AgentToggleInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
         value: bool = SchemaField(description="Boolean toggle input.", default=False)
 
@@ -490,8 +490,8 @@ class ToggleAgentInputBlock(AgentInputBlock):
         super().__init__(
             id="cbf36ab5-df4a-43b6-8a7f-f7ed8652116e",
             description="Block for boolean toggle input.",
-            input_schema=ToggleAgentInputBlock.Input,
-            output_schema=ToggleAgentInputBlock.Output,
+            input_schema=AgentToggleInputBlock.Input,
+            output_schema=AgentToggleInputBlock.Output,
             test_input=[
                 {
                     "value": True,
