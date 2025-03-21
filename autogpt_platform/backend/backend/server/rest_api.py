@@ -115,7 +115,7 @@ app.include_router(
 
 app.include_router(
     backend.server.v2.iffy.routes.iffy_router,
-    tags=["v2"],
+    tags=["v2", "iffy"],
     prefix="/api/iffy"
     )
 

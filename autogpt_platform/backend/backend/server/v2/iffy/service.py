@@ -3,14 +3,17 @@ import json
 import logging
 from typing import Dict, Any
 
-from backend.data.user import get_user_by_id
-from backend.data.db import prisma
 from backend.util.settings import Settings, BehaveAs
 from backend.util.openrouter import open_router_moderate_content
+from backend.util.service import get_service_client
 from .models import UserData, IffyPayload, ModerationResult
 
 logger = logging.getLogger(__name__)
 settings = Settings()
+
+def get_db():
+    from backend.executor.database import DatabaseManager
+    return get_service_client(DatabaseManager)
 
 class IffyService:
     """Service class for handling content moderation through Iffy API"""
@@ -26,26 +29,17 @@ class IffyService:
             "username": None,
         }
 
-        try:
-            if not prisma.is_connected():
-                await prisma.connect()
-            
-            user = await get_user_by_id(user_id)
+        try:        
+            user = get_db().get_user_info_by_id(user_id)
             if user:
                 user_data.update({
-                    "email": user.email or user_data["email"],
-                    "name": user.name,
-                    "username": user.username if hasattr(user, 'username') else user.name,
+                    "id": user["id"],
+                    "name": user["name"],
+                    "username": user["username"],
+                    "email": user["email"],
                 })
         except Exception as e:
             logger.warning(f"Failed to get user details for {user_id}: {str(e)}")
-        finally:
-            # Ensure we disconnect from Prisma if we connected
-            try:
-                if prisma.is_connected():
-                    await prisma.disconnect()
-            except Exception as e:
-                logger.warning(f"Error disconnecting from Prisma: {str(e)}")
         
         return user_data
 
