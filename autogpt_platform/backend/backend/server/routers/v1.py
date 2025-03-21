@@ -640,12 +640,8 @@ async def get_graph_execution(
     graph_exec_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> graph_db.GraphExecution:
-    graph = await graph_db.get_graph(graph_id, user_id=user_id)
-    if not graph:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-
     result = await graph_db.get_execution(execution_id=graph_exec_id, user_id=user_id)
-    if not result:
+    if not result or result.graph_id != graph_id:
         raise HTTPException(
             status_code=404, detail=f"Graph execution #{graph_exec_id} not found."
         )
