@@ -363,15 +363,21 @@ def _get_update_status_data(
     stats: dict[str, Any] | None = None,
 ) -> AgentNodeExecutionUpdateInput:
     now = datetime.now(tz=timezone.utc)
-    return {
-        **({"executionStatus": status}),
-        **({"queuedTime": now} if status == ExecutionStatus.QUEUED else {}),
-        **({"startedTime": now} if status == ExecutionStatus.RUNNING else {}),
-        **({"endedTime": now} if status == ExecutionStatus.FAILED else {}),
-        **({"endedTime": now} if status == ExecutionStatus.COMPLETED else {}),
-        **({"executionData": Json(execution_data)} if execution_data else {}),
-        **({"stats": Json(stats)} if stats else {}),
-    }  # type: ignore
+    update_data: AgentNodeExecutionUpdateInput = {"executionStatus": status}
+
+    if status == ExecutionStatus.QUEUED:
+        update_data["queuedTime"] = now
+    elif status == ExecutionStatus.RUNNING:
+        update_data["startedTime"] = now
+    elif status in (ExecutionStatus.FAILED, ExecutionStatus.COMPLETED):
+        update_data["endedTime"] = now
+
+    if execution_data:
+        update_data["executionData"] = Json(execution_data)
+    if stats:
+        update_data["stats"] = Json(stats)
+
+    return update_data
 
 
 async def delete_execution(
