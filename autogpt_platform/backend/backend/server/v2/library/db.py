@@ -371,7 +371,7 @@ async def add_store_agent_to_library(
     )
 
     try:
-        async with locked_transaction(f"user_trx_{user_id}"):
+        async with locked_transaction(f"add_agent_trx_{user_id}"):
             store_listing_version = (
                 await prisma.models.StoreListingVersion.prisma().find_unique(
                     where={"id": store_listing_version_id}, include={"Agent": True}

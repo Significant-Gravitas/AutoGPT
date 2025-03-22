@@ -1,6 +1,5 @@
 "use client";
 import OnboardingButton from "@/components/onboarding/OnboardingButton";
-import { useOnboarding } from "../layout";
 import {
   OnboardingFooter,
   OnboardingHeader,
@@ -12,13 +11,11 @@ import { useEffect, useState } from "react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { finishOnboarding } from "../6-congrats/actions";
-
-function isEmptyOrWhitespace(str: string | undefined | null): boolean {
-  return !str || str.trim().length === 0;
-}
+import { isEmptyOrWhitespace } from "@/lib/utils";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 
 export default function Page() {
-  const { state, setState } = useOnboarding(4);
+  const { state, updateState } = useOnboarding(4, "INTEGRATIONS");
   const [agents, setAgents] = useState<StoreAgentDetails[]>([]);
   const api = useBackendAPI();
 
@@ -34,16 +31,20 @@ export default function Page() {
   useEffect(() => {
     // Deselect agent if it's not in the list of agents
     if (
-      state?.selectedAgentSlug &&
-      !agents.some((agent) => agent.slug === state.selectedAgentSlug)
+      state?.selectedStoreListingVersionId &&
+      agents.length > 0 &&
+      !agents.some(
+        (agent) =>
+          agent.store_listing_version_id ===
+          state.selectedStoreListingVersionId,
+      )
     ) {
-      setState({
-        selectedAgentSlug: undefined,
-        selectedAgentCreator: undefined,
-        agentInput: undefined,
+      updateState({
+        selectedStoreListingVersionId: null,
+        agentInput: {},
       });
     }
-  }, [state?.selectedAgentSlug, setState, agents]);
+  }, [state?.selectedStoreListingVersionId, updateState, agents]);
 
   return (
     <OnboardingStep>
@@ -61,13 +62,14 @@ export default function Page() {
           {...(agents[0] || {})}
           selected={
             agents[0] !== undefined
-              ? state?.selectedAgentSlug == agents[0]?.slug
+              ? state?.selectedStoreListingVersionId ==
+                agents[0]?.store_listing_version_id
               : false
           }
           onClick={() =>
-            setState({
-              selectedAgentSlug: agents[0].slug,
-              selectedAgentCreator: agents[0].creator,
+            updateState({
+              selectedStoreListingVersionId: agents[0].store_listing_version_id,
+              agentInput: {},
             })
           }
         />
@@ -75,13 +77,13 @@ export default function Page() {
           {...(agents[1] || {})}
           selected={
             agents[1] !== undefined
-              ? state?.selectedAgentSlug == agents[1]?.slug
+              ? state?.selectedStoreListingVersionId ==
+                agents[1]?.store_listing_version_id
               : false
           }
           onClick={() =>
-            setState({
-              selectedAgentSlug: agents[1].slug,
-              selectedAgentCreator: agents[1].creator,
+            updateState({
+              selectedStoreListingVersionId: agents[1].store_listing_version_id,
             })
           }
         />
@@ -90,7 +92,7 @@ export default function Page() {
       <OnboardingFooter>
         <OnboardingButton
           href="/onboarding/5-run"
-          disabled={isEmptyOrWhitespace(state?.selectedAgentSlug)}
+          disabled={isEmptyOrWhitespace(state?.selectedStoreListingVersionId)}
         >
           Next
         </OnboardingButton>

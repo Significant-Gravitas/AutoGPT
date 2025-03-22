@@ -7,6 +7,7 @@ import { BackendAPIProvider } from "@/lib/autogpt-server-api/context";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import CredentialsProvider from "@/components/integrations/credentials-provider";
 import { LaunchDarklyProvider } from "@/components/feature-flag/feature-flag-provider";
+import OnboardingProvider from "@/components/onboarding/onboarding-provider";
 
 export function Providers({ children, ...props }: ThemeProviderProps) {
   return (
@@ -14,7 +15,9 @@ export function Providers({ children, ...props }: ThemeProviderProps) {
       <BackendAPIProvider>
         <CredentialsProvider>
           <LaunchDarklyProvider>
-            <TooltipProvider>{children}</TooltipProvider>
+            <OnboardingProvider>
+              <TooltipProvider>{children}</TooltipProvider>
+            </OnboardingProvider>
           </LaunchDarklyProvider>
         </CredentialsProvider>
       </BackendAPIProvider>

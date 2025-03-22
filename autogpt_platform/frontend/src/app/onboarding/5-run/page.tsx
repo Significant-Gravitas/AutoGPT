@@ -5,83 +5,87 @@ import {
   OnboardingHeader,
 } from "@/components/onboarding/OnboardingStep";
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
-import { useOnboarding } from "../layout";
 import StarRating from "@/components/onboarding/StarRating";
 import { Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useState } from "react";
 import OnboardingAgentInput from "@/components/onboarding/OnboardingAgentInput";
 import Image from "next/image";
-import { LibraryAgent, StoreAgentDetails } from "@/lib/autogpt-server-api";
+import { GraphMeta, StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useRouter } from "next/navigation";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 
 export default function Page() {
-  const { state, setState } = useOnboarding(5);
+  const { state, updateState, setStep } = useOnboarding(
+    undefined,
+    "AGENT_CHOICE",
+  );
   const [showInput, setShowInput] = useState(false);
+  const [agent, setAgent] = useState<GraphMeta | null>(null);
   const [storeAgent, setStoreAgent] = useState<StoreAgentDetails | null>(null);
-  const [agent, setAgent] = useState<LibraryAgent | null>(null);
   const router = useRouter();
   const api = useBackendAPI();
 
   useEffect(() => {
-    if (!state?.selectedAgentCreator || !state?.selectedAgentSlug) {
+    setStep(5);
+  }, [setStep]);
+
+  useEffect(() => {
+    if (!state?.selectedStoreListingVersionId) {
       return;
     }
     api
-      .getStoreAgent(state?.selectedAgentCreator!, state?.selectedAgentSlug!)
-      .then((agent) => {
-        setStoreAgent(agent);
-        api
-          .addMarketplaceAgentToLibrary(agent?.store_listing_version_id!)
-          .then((agent) => {
-            setAgent(agent);
-            const update: { [key: string]: any } = {};
-            // Set default values from schema
-            Object.entries(agent?.input_schema?.properties || {}).forEach(
-              ([key, value]) => {
-                // Skip if already set
-                if (state?.agentInput && state?.agentInput[key]) {
-                  update[key] = state?.agentInput[key];
-                  return;
-                }
-                update[key] = value.type !== "null" ? value.default || "" : "";
-              },
-            );
-            setState({
-              agentInput: update,
-            });
-          });
+      .getStoreAgentByVersionId(state?.selectedStoreListingVersionId)
+      .then((storeAgent) => {
+        setStoreAgent(storeAgent);
       });
-  }, [
-    api,
-    setAgent,
-    setStoreAgent,
-    setState,
-    state?.selectedAgentCreator,
-    state?.selectedAgentSlug,
-  ]);
+    api
+      .getAgentMetaByStoreListingVersionId(state?.selectedStoreListingVersionId)
+      .then((agent) => {
+        setAgent(agent);
+        const update: { [key: string]: any } = {};
+        // Set default values from schema
+        Object.entries(agent.input_schema.properties).forEach(
+          ([key, value]) => {
+            // Skip if already set
+            if (state.agentInput && state.agentInput[key]) {
+              update[key] = state.agentInput[key];
+              return;
+            }
+            update[key] = value.type !== "null" ? value.default || "" : "";
+          },
+        );
+        updateState({
+          agentInput: update,
+        });
+        console.log("setting default input", update);
+      });
+  }, [api, setAgent, updateState, state?.selectedStoreListingVersionId]);
 
   const setAgentInput = useCallback(
     (key: string, value: string) => {
-      setState({
-        ...state,
+      updateState({
         agentInput: {
           ...state?.agentInput,
           [key]: value,
         },
       });
     },
-    [state, state?.agentInput, setState],
+    [state?.agentInput, updateState],
   );
 
   const runAgent = useCallback(() => {
     if (!agent) {
       return;
     }
-    api.executeGraph(agent.agent_id, agent.agent_version, state?.agentInput);
+    console.log("running with", state?.agentInput);
+    api.addMarketplaceAgentToLibrary(
+      storeAgent?.store_listing_version_id || "",
+    );
+    api.executeGraph(agent.id, agent.version, state?.agentInput || {});
     router.push("/onboarding/6-congrats");
-  }, [api, agent, router]);
+  }, [api, agent, router, state?.agentInput]);
 
   const runYourAgent = (
     <div className="ml-[54px] w-[481px] pl-5">
@@ -97,7 +101,13 @@ export default function Page() {
         <div
           onClick={() => {
             setShowInput(true);
-            setState({ step: 6 });
+            setStep(6);
+            updateState({
+              completedSteps: [
+                ...(state?.completedSteps || []),
+                "AGENT_NEW_RUN",
+              ],
+            });
           }}
           className={cn(
             "mt-16 flex h-[68px] w-[330px] items-center justify-center rounded-xl border-2 border-violet-700 bg-neutral-50",
@@ -196,7 +206,6 @@ export default function Page() {
                       key={key}
                       name={value.title!}
                       description={value.description || ""}
-                      placeholder={value.placeholder || ""}
                       value={state?.agentInput?.[key] || ""}
                       onChange={(v) => setAgentInput(key, v)}
                     />

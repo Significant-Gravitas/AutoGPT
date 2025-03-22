@@ -1,11 +1,10 @@
 "use client";
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
-import { useOnboarding } from "../layout";
 import OnboardingButton from "@/components/onboarding/OnboardingButton";
 import Image from "next/image";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 
 export default function Page() {
-  // Just set step to 1
   useOnboarding(1);
 
   return (

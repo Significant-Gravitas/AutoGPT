@@ -6,10 +6,11 @@ import {
   OnboardingFooter,
 } from "@/components/onboarding/OnboardingStep";
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
-import { useOnboarding } from "../layout";
 import { OnboardingGrid } from "@/components/onboarding/OnboardingGrid";
 import { useCallback } from "react";
 import OnboardingInput from "@/components/onboarding/OnboardingInput";
+import { isEmptyOrWhitespace } from "@/lib/utils";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 
 const services = [
   {
@@ -109,12 +110,8 @@ const services = [
   },
 ];
 
-function isEmptyOrWhitespace(str: string | undefined | null): boolean {
-  return !str || str.trim().length === 0;
-}
-
 export default function Page() {
-  const { state, setState } = useOnboarding(3);
+  const { state, updateState } = useOnboarding(3, "USAGE_REASON");
 
   const switchIntegration = useCallback(
     (name: string) => {
@@ -126,9 +123,9 @@ export default function Page() {
         ? state.integrations.filter((i) => i !== name)
         : [...state.integrations, name];
 
-      setState({ integrations });
+      updateState({ integrations });
     },
-    [state, setState],
+    [state, updateState],
   );
 
   return (
@@ -161,7 +158,7 @@ export default function Page() {
           className="mb-4"
           placeholder="Others (please specify)"
           value={state?.otherIntegrations || ""}
-          onChange={(otherIntegrations) => setState({ otherIntegrations })}
+          onChange={(otherIntegrations) => updateState({ otherIntegrations })}
         />
       </div>
 
