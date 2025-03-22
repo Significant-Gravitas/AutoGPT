@@ -43,17 +43,12 @@ export default function useCredentials(
     inputFieldName
   ] as BlockIOCredentialsSubSchema;
 
-  const fieldValue =
-    credentialsSchema.discriminator &&
-    (getValue(credentialsSchema.discriminator, data.hardcodedValues) ||
-      (
-        data.inputSchema.properties[
-          credentialsSchema.discriminator
-        ] as BlockIOCredentialsSubSchema
-      ).default);
-
   const discriminatorValue: CredentialsProviderName | null =
-    credentialsSchema.discriminator_mapping![fieldValue] || null;
+    (credentialsSchema.discriminator &&
+      credentialsSchema.discriminator_mapping![
+        getValue(credentialsSchema.discriminator, data.hardcodedValues)
+      ]) ||
+    null;
 
   let providerName: CredentialsProviderName;
   if (credentialsSchema.credentials_provider.length > 1) {
