@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 
 import uvicorn
 from autogpt_libs.auth import parse_jwt_token
+from autogpt_libs.utils.cache import thread_cached
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
@@ -12,7 +13,7 @@ from backend.data.execution import AsyncRedisExecutionEventBus
 from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
 from backend.server.model import ExecutionSubscription, Methods, WsMessage
-from backend.util.service import AppProcess
+from backend.util.service import AppProcess, get_service_client
 from backend.util.settings import AppEnvironment, Config, Settings
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,13 @@ def get_connection_manager():
     if _connection_manager is None:
         _connection_manager = ConnectionManager()
     return _connection_manager
+
+
+@thread_cached
+def get_db_client():
+    from backend.executor import DatabaseManager
+
+    return get_service_client(DatabaseManager)
 
 
 async def event_broadcaster(manager: ConnectionManager):
@@ -74,7 +82,10 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
 
 
 async def handle_subscribe(
-    websocket: WebSocket, manager: ConnectionManager, message: WsMessage
+    connection_manager: ConnectionManager,
+    websocket: WebSocket,
+    user_id: str,
+    message: WsMessage,
 ):
     if not message.data:
         await websocket.send_text(
@@ -85,20 +96,47 @@ async def handle_subscribe(
             ).model_dump_json()
         )
     else:
-        ex_sub = ExecutionSubscription.model_validate(message.data)
-        await manager.subscribe(ex_sub.graph_id, ex_sub.graph_version, websocket)
-        logger.debug(f"New execution subscription for graph {ex_sub.graph_id}")
+        sub_req = ExecutionSubscription.model_validate(message.data)
+
+        # Verify that user has read access to graph
+        # if not get_db_client().get_graph(
+        #     graph_id=sub_req.graph_id,
+        #     version=sub_req.graph_version,
+        #     user_id=user_id,
+        # ):
+        #     await websocket.send_text(
+        #         WsMessage(
+        #             method=Methods.ERROR,
+        #             success=False,
+        #             error="Access denied",
+        #         ).model_dump_json()
+        #     )
+        #     return
+
+        await connection_manager.subscribe(
+            user_id=user_id,
+            graph_id=sub_req.graph_id,
+            graph_version=sub_req.graph_version,
+            websocket=websocket,
+        )
+        logger.debug(
+            f"New execution subscription for user #{user_id} "
+            f"graph #{sub_req.graph_id}v{sub_req.graph_version}"
+        )
         await websocket.send_text(
             WsMessage(
                 method=Methods.SUBSCRIBE,
                 success=True,
-                channel=f"{ex_sub.graph_id}_{ex_sub.graph_version}",
+                channel=f"{user_id}_{sub_req.graph_id}_{sub_req.graph_version}",
             ).model_dump_json()
         )
 
 
 async def handle_unsubscribe(
-    websocket: WebSocket, manager: ConnectionManager, message: WsMessage
+    connection_manager: ConnectionManager,
+    websocket: WebSocket,
+    user_id: str,
+    message: WsMessage,
 ):
     if not message.data:
         await websocket.send_text(
@@ -109,14 +147,22 @@ async def handle_unsubscribe(
             ).model_dump_json()
         )
     else:
-        ex_sub = ExecutionSubscription.model_validate(message.data)
-        await manager.unsubscribe(ex_sub.graph_id, ex_sub.graph_version, websocket)
-        logger.debug(f"Removed execution subscription for graph {ex_sub.graph_id}")
+        unsub_req = ExecutionSubscription.model_validate(message.data)
+        await connection_manager.unsubscribe(
+            user_id=user_id,
+            graph_id=unsub_req.graph_id,
+            graph_version=unsub_req.graph_version,
+            websocket=websocket,
+        )
+        logger.debug(
+            f"Removed execution subscription for user #{user_id} "
+            f"graph #{unsub_req.graph_id}v{unsub_req.graph_version}"
+        )
         await websocket.send_text(
             WsMessage(
                 method=Methods.UNSUBSCRIBE,
                 success=True,
-                channel=f"{ex_sub.graph_id}_{ex_sub.graph_version}",
+                channel=f"{unsub_req.graph_id}_{unsub_req.graph_version}",
             ).model_dump_json()
         )
 
@@ -145,13 +191,32 @@ async def websocket_router(
                 )
                 continue
 
-            if message.method == Methods.SUBSCRIBE:
-                await handle_subscribe(websocket, manager, message)
+            try:
+                if message.method == Methods.SUBSCRIBE:
+                    await handle_subscribe(
+                        connection_manager=manager,
+                        websocket=websocket,
+                        user_id=user_id,
+                        message=message,
+                    )
+                    continue
 
-            elif message.method == Methods.UNSUBSCRIBE:
-                await handle_unsubscribe(websocket, manager, message)
+                elif message.method == Methods.UNSUBSCRIBE:
+                    await handle_unsubscribe(
+                        connection_manager=manager,
+                        websocket=websocket,
+                        user_id=user_id,
+                        message=message,
+                    )
+                    continue
+            except Exception as e:
+                logger.error(
+                    f"Error while handling '{message.method}' message "
+                    f"for user #{user_id}: {e}"
+                )
+                continue
 
-            elif message.method == Methods.ERROR:
+            if message.method == Methods.ERROR:
                 logger.error(f"WebSocket Error message received: {message.data}")
 
             else:
