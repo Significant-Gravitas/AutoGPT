@@ -44,7 +44,7 @@ from Pyro5 import config as pyro_config
 from backend.data import db, rabbitmq, redis
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import to_dict
-from backend.util.process import AppProcess
+from backend.util.process import AppProcess, get_service_name
 from backend.util.retry import conn_retry
 from backend.util.settings import Config, Secrets
 
@@ -190,7 +190,17 @@ class BaseAppService(AppProcess, ABC):
 
     @classmethod
     def get_host(cls) -> str:
-        return os.environ.get(f"{cls.service_name.upper()}_HOST", api_host)
+        source_host = os.environ.get(f"{get_service_name().upper()}_HOST", api_host)
+        target_host = os.environ.get(f"{cls.service_name.upper()}_HOST", api_host)
+
+        if source_host == target_host and source_host != api_host:
+            logger.warning(
+                f"Service {cls.service_name} is the same host as the source service."
+                f"Use the localhost of {api_host} instead."
+            )
+            return api_host
+
+        return target_host
 
     @property
     def rabbit(self) -> rabbitmq.AsyncRabbitMQ:
