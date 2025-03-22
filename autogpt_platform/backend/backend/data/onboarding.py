@@ -47,7 +47,7 @@ async def get_user_onboarding(user_id: str):
 async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     update: UserOnboardingUpdateInput = {}
     if data.completedSteps is not None:
-        update["completedSteps"] = data.completedSteps
+        update["completedSteps"] = list(set(data.completedSteps))
     if data.usageReason is not None:
         update["usageReason"] = data.usageReason
     if data.integrations is not None:

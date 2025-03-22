@@ -63,7 +63,7 @@ export default function Page() {
           showSubtext ? "opacity-100" : "opacity-0",
         )}
       >
-        You earned 10$ for running your first agent
+        You earned 15$ for running your first agent
       </p>
     </div>
   );
