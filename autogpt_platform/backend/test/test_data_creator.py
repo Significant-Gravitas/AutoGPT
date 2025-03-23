@@ -328,12 +328,14 @@ async def main():
     print(f"Inserting {NUM_USERS} store listings")
     for graph in agent_graphs:
         user = random.choice(users)
+        slug = faker.slug()
         listing = await db.storelisting.create(
             data={
                 "agentId": graph.id,
                 "agentVersion": graph.version,
                 "owningUserId": user.id,
-                "isApproved": random.choice([True, False]),
+                "hasApprovedVersion": random.choice([True, False]),
+                "slug": slug,
             }
         )
         store_listings.append(listing)
@@ -347,7 +349,6 @@ async def main():
             data={
                 "agentId": graph.id,
                 "agentVersion": graph.version,
-                "slug": faker.slug(),
                 "name": graph.name or faker.sentence(nb_words=3),
                 "subHeading": faker.sentence(),
                 "videoUrl": faker.url(),
@@ -356,8 +357,14 @@ async def main():
                 "categories": [faker.word() for _ in range(3)],
                 "isFeatured": random.choice([True, False]),
                 "isAvailable": True,
-                "isApproved": random.choice([True, False]),
                 "storeListingId": listing.id,
+                "submissionStatus": random.choice(
+                    [
+                        prisma.enums.SubmissionStatus.PENDING,
+                        prisma.enums.SubmissionStatus.APPROVED,
+                        prisma.enums.SubmissionStatus.REJECTED,
+                    ]
+                ),
             }
         )
         store_listing_versions.append(version)
@@ -386,10 +393,9 @@ async def main():
                 }
             )
 
-    # Insert StoreListingSubmissions
-    print(f"Inserting {NUM_USERS} store listing submissions")
-    for listing in store_listings:
-        version = random.choice(store_listing_versions)
+    # Update StoreListingVersions with submission status (StoreListingSubmissions table no longer exists)
+    print(f"Updating {NUM_USERS} store listing versions with submission status")
+    for version in store_listing_versions:
         reviewer = random.choice(users)
         status: prisma.enums.SubmissionStatus = random.choice(
             [
@@ -398,14 +404,14 @@ async def main():
                 prisma.enums.SubmissionStatus.REJECTED,
             ]
         )
-        await db.storelistingsubmission.create(
+        await db.storelistingversion.update(
+            where={"id": version.id},
             data={
-                "storeListingId": listing.id,
-                "storeListingVersionId": version.id,
-                "reviewerId": reviewer.id,
-                "Status": status,
+                "submissionStatus": status,
+                "Reviewer": {"connect": {"id": reviewer.id}},
                 "reviewComments": faker.text(),
-            }
+                "reviewedAt": datetime.now(),
+            },
         )
 
     # Insert APIKeys
