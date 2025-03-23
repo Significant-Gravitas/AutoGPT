@@ -17,7 +17,6 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
 }) => {
   const handleButtonClick = () => {
     onButtonClick?.();
-    console.log("Become A Creator clicked");
   };
 
   return (

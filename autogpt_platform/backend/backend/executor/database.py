@@ -8,6 +8,7 @@ from backend.data.execution import (
     get_incomplete_executions,
     get_latest_execution,
     update_execution_status,
+    update_execution_status_batch,
     update_graph_execution_start_time,
     update_graph_execution_stats,
     update_node_execution_stats,
@@ -20,9 +21,20 @@ from backend.data.graph import (
     get_graph_metadata,
     get_node,
 )
+from backend.data.notifications import (
+    create_or_add_to_user_notification_batch,
+    empty_user_notification_batch,
+    get_all_batches_by_type,
+    get_user_notification_batch,
+    get_user_notification_oldest_message_in_batch,
+)
 from backend.data.user import (
+    get_active_user_ids_in_timerange,
+    get_user_email_by_id,
+    get_user_email_verification,
     get_user_integrations,
     get_user_metadata,
+    get_user_notification_preference,
     update_user_integrations,
     update_user_metadata,
 )
@@ -58,6 +70,7 @@ class DatabaseManager(AppService):
     get_incomplete_executions = exposed_run_and_wait(get_incomplete_executions)
     get_latest_execution = exposed_run_and_wait(get_latest_execution)
     update_execution_status = exposed_run_and_wait(update_execution_status)
+    update_execution_status_batch = exposed_run_and_wait(update_execution_status_batch)
     update_graph_execution_start_time = exposed_run_and_wait(
         update_graph_execution_start_time
     )
@@ -80,3 +93,24 @@ class DatabaseManager(AppService):
     update_user_metadata = exposed_run_and_wait(update_user_metadata)
     get_user_integrations = exposed_run_and_wait(get_user_integrations)
     update_user_integrations = exposed_run_and_wait(update_user_integrations)
+
+    # User Comms - async
+    get_active_user_ids_in_timerange = exposed_run_and_wait(
+        get_active_user_ids_in_timerange
+    )
+    get_user_email_by_id = exposed_run_and_wait(get_user_email_by_id)
+    get_user_email_verification = exposed_run_and_wait(get_user_email_verification)
+    get_user_notification_preference = exposed_run_and_wait(
+        get_user_notification_preference
+    )
+
+    # Notifications - async
+    create_or_add_to_user_notification_batch = exposed_run_and_wait(
+        create_or_add_to_user_notification_batch
+    )
+    empty_user_notification_batch = exposed_run_and_wait(empty_user_notification_batch)
+    get_all_batches_by_type = exposed_run_and_wait(get_all_batches_by_type)
+    get_user_notification_batch = exposed_run_and_wait(get_user_notification_batch)
+    get_user_notification_oldest_message_in_batch = exposed_run_and_wait(
+        get_user_notification_oldest_message_in_batch
+    )

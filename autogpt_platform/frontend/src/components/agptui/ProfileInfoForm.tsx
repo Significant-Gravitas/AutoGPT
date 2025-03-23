@@ -49,8 +49,6 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
       const formData = new FormData();
       formData.append("file", file);
 
-      console.log(formData);
-
       // Get auth token
       if (!supabase) {
         throw new Error("Supabase client not initialized");

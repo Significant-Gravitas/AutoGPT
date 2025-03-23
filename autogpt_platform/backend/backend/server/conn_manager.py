@@ -20,23 +20,25 @@ class ConnectionManager:
         for subscribers in self.subscriptions.values():
             subscribers.discard(websocket)
 
-    async def subscribe(self, graph_id: str, graph_version: int, websocket: WebSocket):
-        key = f"{graph_id}_{graph_version}"
+    async def subscribe(
+        self, *, user_id: str, graph_id: str, graph_version: int, websocket: WebSocket
+    ):
+        key = f"{user_id}_{graph_id}_{graph_version}"
         if key not in self.subscriptions:
             self.subscriptions[key] = set()
         self.subscriptions[key].add(websocket)
 
     async def unsubscribe(
-        self, graph_id: str, graph_version: int, websocket: WebSocket
+        self, *, user_id: str, graph_id: str, graph_version: int, websocket: WebSocket
     ):
-        key = f"{graph_id}_{graph_version}"
+        key = f"{user_id}_{graph_id}_{graph_version}"
         if key in self.subscriptions:
             self.subscriptions[key].discard(websocket)
             if not self.subscriptions[key]:
                 del self.subscriptions[key]
 
     async def send_execution_result(self, result: execution.ExecutionResult):
-        key = f"{result.graph_id}_{result.graph_version}"
+        key = f"{result.user_id}_{result.graph_id}_{result.graph_version}"
         if key in self.subscriptions:
             message = WsMessage(
                 method=Methods.EXECUTION_EVENT,

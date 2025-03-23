@@ -87,7 +87,6 @@ model AgentGraph {
   description String?
 
   isActive    Boolean @default(true)
-  isTemplate  Boolean @default(false)
 
   // Link to User model
   userId String
@@ -619,11 +618,9 @@ model StoreListing {
 
   // Unique index on agentId to ensure only one listing per agent, regardless of number of versions the agent has.
   @@unique([agentId])
-  @@index([agentId, owningUserId])
   @@index([owningUserId])
   // Used in the view query
   @@index([isDeleted, isApproved])
-  @@index([isDeleted])
 }
 
 model StoreListingVersion {
@@ -664,7 +661,6 @@ model StoreListingVersion {
   StoreListingReview StoreListingReview[]
 
   @@unique([agentId, agentVersion])
-  @@index([agentId, agentVersion, isDeleted])
 }
 
 model StoreListingReview {
@@ -740,7 +736,6 @@ model APIKey {
 
   @@index([key])
   @@index([prefix])
-  @@index([userId])
   @@index([status])
   @@index([userId, status])
 }
