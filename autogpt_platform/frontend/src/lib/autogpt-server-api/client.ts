@@ -39,6 +39,7 @@ import {
   ScheduleID,
   StoreAgentDetails,
   StoreAgentsResponse,
+  StoreListingsWithVersionsResponse,
   StoreReview,
   StoreReviewCreate,
   StoreSubmission,
@@ -50,6 +51,8 @@ import {
   OttoQuery,
   OttoResponse,
   UserOnboarding,
+  ReviewSubmissionRequest,
+  SubmissionStatus,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -524,6 +527,30 @@ export default class BackendAPI {
       : `/store/download/agents/${storeListingVersionId}`;
 
     return this._get(url);
+  }
+
+  /////////////////////////////////////////
+  /////////// Admin API ///////////////////
+  /////////////////////////////////////////
+
+  getAdminListingsWithVersions(params?: {
+    status?: SubmissionStatus;
+    search?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<StoreListingsWithVersionsResponse> {
+    return this._get("/store/admin/listings", params);
+  }
+
+  reviewSubmissionAdmin(
+    storeListingVersionId: string,
+    review: ReviewSubmissionRequest,
+  ): Promise<StoreSubmission> {
+    return this._request(
+      "POST",
+      `/store/admin/submissions/${storeListingVersionId}/review`,
+      review,
+    );
   }
 
   /////////////////////////////////////////

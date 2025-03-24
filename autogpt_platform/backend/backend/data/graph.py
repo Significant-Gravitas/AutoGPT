@@ -6,6 +6,7 @@ from typing import Any, Literal, Optional, Type
 
 import prisma
 from prisma import Json
+from prisma.enums import SubmissionStatus
 from prisma.models import (
     AgentGraph,
     AgentGraphExecution,
@@ -17,7 +18,7 @@ from prisma.types import AgentGraphExecutionWhereInput, AgentGraphWhereInput
 from pydantic.fields import Field, computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
-from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
+from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.util import type as type_utils
 
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
@@ -229,20 +230,28 @@ class GraphExecution(GraphExecutionMeta):
                 # inputs from Agent Input Blocks
                 exec.input_data["name"]: exec.input_data.get("value")
                 for exec in node_executions
-                if exec.block_id == _INPUT_BLOCK_ID
+                if (
+                    (block := get_block(exec.block_id))
+                    and block.block_type == BlockType.INPUT
+                )
             },
             **{
                 # input from webhook-triggered block
                 "payload": exec.input_data["payload"]
                 for exec in node_executions
-                if (block := get_block(exec.block_id))
-                and block.block_type in [BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL]
+                if (
+                    (block := get_block(exec.block_id))
+                    and block.block_type
+                    in [BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL]
+                )
             },
         }
 
         outputs: dict[str, list] = defaultdict(list)
         for exec in node_executions:
-            if exec.block_id == _OUTPUT_BLOCK_ID:
+            if (
+                block := get_block(exec.block_id)
+            ) and block.block_type == BlockType.OUTPUT:
                 outputs[exec.input_data["name"]].append(
                     exec.input_data.get("value", None)
                 )
@@ -732,7 +741,7 @@ async def get_graph(
                     "agentId": graph_id,
                     "agentVersion": version or graph.version,
                     "isDeleted": False,
-                    "StoreListing": {"is": {"isApproved": True}},
+                    "submissionStatus": SubmissionStatus.APPROVED,
                 }
             )
         )
@@ -740,7 +749,7 @@ async def get_graph(
         return None
 
     if for_export:
-        sub_graphs = await _get_sub_graphs(graph)
+        sub_graphs = await get_sub_graphs(graph)
         return GraphModel.from_db(
             graph=graph,
             sub_graphs=sub_graphs,
@@ -750,7 +759,7 @@ async def get_graph(
     return GraphModel.from_db(graph, for_export)
 
 
-async def _get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
+async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
     """
     Iteratively fetches all sub-graphs of a given graph, and flattens them into a list.
     This call involves a DB fetch in batch, breadth-first, per-level of graph depth.

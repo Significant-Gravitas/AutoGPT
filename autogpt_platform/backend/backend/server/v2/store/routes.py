@@ -34,7 +34,7 @@ router = fastapi.APIRouter()
 async def get_profile(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ]
+    ],
 ):
     """
     Get the profile details for the authenticated user.
@@ -387,7 +387,7 @@ async def get_creator(
 async def get_my_agents(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ]
+    ],
 ):
     try:
         agents = await backend.server.v2.store.db.get_my_agents(user_id)
@@ -515,7 +515,7 @@ async def create_submission(
         HTTPException: If there is an error creating the submission
     """
     try:
-        submission = await backend.server.v2.store.db.create_store_submission(
+        return await backend.server.v2.store.db.create_store_submission(
             user_id=user_id,
             agent_id=submission_request.agent_id,
             agent_version=submission_request.agent_version,
@@ -526,8 +526,8 @@ async def create_submission(
             description=submission_request.description,
             sub_heading=submission_request.sub_heading,
             categories=submission_request.categories,
+            changes_summary=submission_request.changes_summary or "Initial Submission",
         )
-        return submission
     except Exception:
         logger.exception("Exception occurred whilst creating store submission")
         return fastapi.responses.JSONResponse(
@@ -674,32 +674,4 @@ async def download_agent_file(
 
         return fastapi.responses.FileResponse(
             tmp_file.name, filename=file_name, media_type="application/json"
-        )
-
-
-@router.post(
-    "/submissions/review/{store_listing_version_id}",
-    tags=["store", "private"],
-)
-async def review_submission(
-    request: backend.server.v2.store.model.ReviewSubmissionRequest,
-    user: typing.Annotated[
-        autogpt_libs.auth.models.User,
-        fastapi.Depends(autogpt_libs.auth.depends.requires_admin_user),
-    ],
-):
-    # Proceed with the review submission logic
-    try:
-        submission = await backend.server.v2.store.db.review_store_submission(
-            store_listing_version_id=request.store_listing_version_id,
-            is_approved=request.is_approved,
-            comments=request.comments,
-            reviewer_id=user.user_id,
-        )
-        return submission
-    except Exception as e:
-        logger.error(f"Could not create store submission review: {e}")
-        raise fastapi.HTTPException(
-            status_code=500,
-            detail="An error occurred while creating the store submission review",
         )
