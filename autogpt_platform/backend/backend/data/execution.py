@@ -817,7 +817,7 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
 
 
 class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
-    Model = ExecutionEvent
+    Model = ExecutionEvent  # type: ignore
 
     @property
     def event_bus_name(self) -> str:
