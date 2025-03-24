@@ -21,14 +21,14 @@ REASON_MAPPING: dict[str, list[str]] = {
     "ai_innovation": ["development", "research"],
     "personal_productivity": ["personal", "productivity"],
 }
+POINTS_AGENT_COUNT = 50  # Number of agents to calculate points for
+MIN_AGENT_COUNT = 2  # Minimum number of marketplace agents to enable onboarding
 
 
 class UserOnboardingUpdate(pydantic.BaseModel):
-    completedSteps: Optional[list[OnboardingStep]] = pydantic.Field(
-        default_factory=list
-    )
+    completedSteps: Optional[list[OnboardingStep]] = None
     usageReason: Optional[str] = None
-    integrations: Optional[list[str]] = pydantic.Field(default_factory=list)
+    integrations: Optional[list[str]] = None
     otherIntegrations: Optional[str] = None
     selectedStoreListingVersionId: Optional[str] = None
     agentInput: Optional[dict[str, Any]] = None
@@ -237,9 +237,9 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
             take=2 - len(storeAgents),
         )
 
-    # Calculate points for the first 30 agents and choose the top 2
+    # Calculate points for the first X agents and choose the top 2
     agent_points = []
-    for agent in storeAgents[:50]:
+    for agent in storeAgents[:POINTS_AGENT_COUNT]:
         points = calculate_points(
             agent, categories, custom, user_onboarding.integrations
         )
@@ -270,7 +270,7 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
 
 
 async def onboarding_enabled() -> bool:
-    count = await prisma.models.StoreAgent.prisma().count(take=3)
+    count = await prisma.models.StoreAgent.prisma().count(take=MIN_AGENT_COUNT + 1)
 
     # Onboading is enabled if there are at least 2 agents in the store
-    return count >= 2
+    return count >= MIN_AGENT_COUNT
