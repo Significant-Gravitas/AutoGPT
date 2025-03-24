@@ -70,11 +70,13 @@ class DatabaseManager(AppService):
 
     # Executions
     create_graph_execution = exposed_run_and_wait(create_graph_execution)
-    get_execution_results = exposed_run_and_wait(get_node_execution_results)
-    get_incomplete_executions = exposed_run_and_wait(get_incomplete_node_executions)
-    get_latest_execution = exposed_run_and_wait(get_latest_node_execution)
-    update_execution_status = exposed_run_and_wait(update_node_execution_status)
-    update_execution_status_batch = exposed_run_and_wait(
+    get_node_execution_results = exposed_run_and_wait(get_node_execution_results)
+    get_incomplete_node_executions = exposed_run_and_wait(
+        get_incomplete_node_executions
+    )
+    get_latest_node_execution = exposed_run_and_wait(get_latest_node_execution)
+    update_node_execution_status = exposed_run_and_wait(update_node_execution_status)
+    update_node_execution_status_batch = exposed_run_and_wait(
         update_node_execution_status_batch
     )
     update_graph_execution_start_time = exposed_run_and_wait(
