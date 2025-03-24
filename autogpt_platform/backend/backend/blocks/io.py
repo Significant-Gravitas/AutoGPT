@@ -1,5 +1,5 @@
 from datetime import date, time
-from typing import Any
+from typing import Any, Optional
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
@@ -92,7 +92,8 @@ class AgentInputBlock(Block):
         )
 
     def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
-        yield "result", input_data.value
+        if input_data.value:
+            yield "result", input_data.value
 
 
 class AgentOutputBlock(Block):
@@ -197,9 +198,11 @@ class AgentOutputBlock(Block):
 
 class AgentShortTextInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: str = SchemaField(
+        value: Optional[str] = SchemaField(
             description="Short text input.",
-            default="Short text",
+            default=None,
+            advanced=False,
+            title="Default Value",
             json_schema_extra={"format": "short-text"},
         )
 
@@ -237,9 +240,11 @@ class AgentShortTextInputBlock(AgentInputBlock):
 
 class AgentLongTextInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: str = SchemaField(
+        value: Optional[str] = SchemaField(
             description="Long text input (potentially multi-line).",
-            default="Longer text can go here.",
+            default=None,
+            advanced=False,
+            title="Default Value",
             json_schema_extra={"format": "long-text"},
         )
 
@@ -277,7 +282,12 @@ class AgentLongTextInputBlock(AgentInputBlock):
 
 class AgentNumberInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: int = SchemaField(description="Number input.")
+        value: Optional[int] = SchemaField(
+            description="Number input.",
+            default=None,
+            advanced=False,
+            title="Default Value",
+        )
 
     class Output(AgentInputBlock.Output):
         result: int = SchemaField(description="Number result.")
@@ -313,8 +323,11 @@ class AgentNumberInputBlock(AgentInputBlock):
 
 class AgentDateInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: date = SchemaField(
+        value: Optional[date] = SchemaField(
             description="Date input (YYYY-MM-DD).",
+            default=None,
+            advanced=False,
+            title="Default Value",
         )
 
     class Output(AgentInputBlock.Output):
@@ -348,8 +361,11 @@ class AgentDateInputBlock(AgentInputBlock):
 
 class AgentTimeInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: time = SchemaField(
+        value: Optional[time] = SchemaField(
             description="Time input (HH:MM:SS).",
+            default=None,
+            advanced=False,
+            title="Default Value",
         )
 
     class Output(AgentInputBlock.Output):
@@ -387,8 +403,11 @@ class AgentFileInputBlock(AgentInputBlock):
     """
 
     class Input(AgentInputBlock.Input):
-        value: MediaFile = SchemaField(
+        value: Optional[MediaFile] = SchemaField(
             description="Path or reference to an uploaded file.",
+            default=None,
+            advanced=False,
+            title="Default Value",
         )
 
     class Output(AgentInputBlock.Output):
@@ -419,6 +438,9 @@ class AgentFileInputBlock(AgentInputBlock):
         graph_exec_id: str,
         **kwargs,
     ) -> BlockOutput:
+        if not input_data.value:
+            return
+
         file_path = store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.value,
@@ -434,13 +456,16 @@ class AgentDropdownInputBlock(AgentInputBlock):
     """
 
     class Input(AgentInputBlock.Input):
-        value: str = SchemaField(
-            description="Text selected from a dropdown.", default="Option A"
+        value: Optional[str] = SchemaField(
+            description="Text selected from a dropdown.",
+            default=None,
+            advanced=False,
+            title="Default Value",
         )
         placeholder_values: list = SchemaField(
             description="Possible placeholder values for the input.",
-            default=["Option A", "Option B", "Option C"],
             advanced=False,
+            default=[],
         )
         limit_to_placeholder_values: bool = SchemaField(
             description="Whether the selection is limited to placeholder values.",
@@ -481,7 +506,12 @@ class AgentDropdownInputBlock(AgentInputBlock):
 
 class AgentToggleInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: bool = SchemaField(description="Boolean toggle input.", default=False)
+        value: bool = SchemaField(
+            description="Boolean toggle input.",
+            default=False,
+            advanced=False,
+            title="Default Value",
+        )
 
     class Output(AgentInputBlock.Output):
         result: bool = SchemaField(description="Boolean toggle result.")
