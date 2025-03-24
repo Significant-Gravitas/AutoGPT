@@ -70,6 +70,12 @@ class ProfileNotFoundError(StoreError):
     pass
 
 
+class ListingNotFoundError(StoreError):
+    """Raised when a store listing is not found"""
+
+    pass
+
+
 class SubmissionNotFoundError(StoreError):
     """Raised when a submission is not found"""
 

@@ -5,12 +5,13 @@ from typing import Any, Literal, Optional, Type
 
 import prisma
 from prisma import Json
+from prisma.enums import SubmissionStatus
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink, StoreListingVersion
 from prisma.types import AgentGraphWhereInput
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
-from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
+from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.util import type as type_utils
 
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
@@ -585,7 +586,7 @@ async def get_graph(
                     "agentId": graph_id,
                     "agentVersion": version or graph.version,
                     "isDeleted": False,
-                    "StoreListing": {"is": {"isApproved": True}},
+                    "submissionStatus": SubmissionStatus.APPROVED,
                 }
             )
         )
@@ -593,7 +594,7 @@ async def get_graph(
         return None
 
     if for_export:
-        sub_graphs = await _get_sub_graphs(graph)
+        sub_graphs = await get_sub_graphs(graph)
         return GraphModel.from_db(
             graph=graph,
             sub_graphs=sub_graphs,
@@ -603,7 +604,7 @@ async def get_graph(
     return GraphModel.from_db(graph, for_export)
 
 
-async def _get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
+async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
     """
     Iteratively fetches all sub-graphs of a given graph, and flattens them into a list.
     This call involves a DB fetch in batch, breadth-first, per-level of graph depth.

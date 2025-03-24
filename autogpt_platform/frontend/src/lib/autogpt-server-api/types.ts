@@ -1,3 +1,15 @@
+export enum SubmissionStatus {
+  DRAFT = "DRAFT",
+  PENDING = "PENDING",
+  APPROVED = "APPROVED",
+  REJECTED = "REJECTED",
+}
+export type ReviewSubmissionRequest = {
+  store_listing_version_id: string;
+  is_approved: boolean;
+  comments: string; // External comments visible to creator
+  internal_comments?: string; // Admin-only comments
+};
 export type Category = {
   category: string;
   description: string;
@@ -500,11 +512,11 @@ export enum BlockUIType {
   WEBHOOK = "Webhook",
   WEBHOOK_MANUAL = "Webhook (manual)",
   AGENT = "Agent",
+  AI = "AI",
 }
 
 export enum SpecialBlockID {
   AGENT = "e189baac-8c20-45a1-94a7-55177ea42565",
-  INPUT = "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
   OUTPUT = "363ae599-353e-4804-937e-b2ee3cef3da4",
 }
 
@@ -559,6 +571,11 @@ export type StoreAgentDetails = {
   runs: number;
   rating: number;
   versions: string[];
+
+  // Approval and status fields
+  active_version_id?: string;
+  has_approved_version?: boolean;
+  is_available?: boolean;
 };
 
 export type Creator = {
@@ -595,9 +612,19 @@ export type StoreSubmission = {
   description: string;
   image_urls: string[];
   date_submitted: string;
-  status: string;
+  status: SubmissionStatus;
   runs: number;
   rating: number;
+  slug: string;
+  store_listing_version_id?: string;
+  version?: number; // Actual version number from the database
+
+  // Review information
+  reviewer_id?: string;
+  review_comments?: string;
+  internal_comments?: string; // Admin-only comments
+  reviewed_at?: string;
+  changes_summary?: string;
 };
 
 export type StoreSubmissionsResponse = {
@@ -615,6 +642,7 @@ export type StoreSubmissionRequest = {
   image_urls: string[];
   description: string;
   categories: string[];
+  changes_summary?: string;
 };
 
 export type ProfileDetails = {
@@ -770,3 +798,43 @@ export interface OttoQuery {
   include_graph_data: boolean;
   graph_id?: string;
 }
+
+export interface StoreListingWithVersions {
+  listing_id: string;
+  slug: string;
+  agent_id: string;
+  agent_version: number;
+  active_version_id: string | null;
+  has_approved_version: boolean;
+  creator_email: string | null;
+  latest_version: StoreSubmission | null;
+  versions: StoreSubmission[];
+}
+
+export interface StoreListingsWithVersionsResponse {
+  listings: StoreListingWithVersions[];
+  pagination: Pagination;
+}
+
+// Admin API Types
+export type AdminSubmissionsRequest = {
+  status?: SubmissionStatus;
+  search?: string;
+  page: number;
+  page_size: number;
+};
+
+export type AdminListingHistoryRequest = {
+  listing_id: string;
+  page: number;
+  page_size: number;
+};
+
+export type AdminSubmissionDetailsRequest = {
+  store_listing_version_id: string;
+};
+
+export type AdminPendingSubmissionsRequest = {
+  page: number;
+  page_size: number;
+};

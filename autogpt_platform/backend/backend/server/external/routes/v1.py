@@ -71,7 +71,7 @@ def get_outputs_with_names(results: list[NodeExecutionResult]) -> list[dict[str,
 )
 def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     blocks = [block() for block in backend.data.block.get_blocks().values()]
-    return [b.to_dict() for b in blocks]
+    return [b.to_dict() for b in blocks if not b.disabled]
 
 
 @v1_router.post(

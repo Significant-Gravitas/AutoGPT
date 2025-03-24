@@ -1,7 +1,6 @@
-from backend.data.credit import get_user_credit_model
+from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     GraphExecutionMeta,
-    NodeExecutionEntry,
     NodeExecutionResult,
     RedisExecutionEventBus,
     create_graph_execution,
@@ -12,6 +11,7 @@ from backend.data.execution import (
     update_graph_execution_stats,
     update_node_execution_stats,
     update_node_execution_status,
+    update_node_execution_status_batch,
     upsert_execution_input,
     upsert_execution_output,
 )
@@ -45,8 +45,10 @@ config = Config()
 _user_credit_model = get_user_credit_model()
 
 
-async def _spend_credits(entry: NodeExecutionEntry) -> int:
-    return await _user_credit_model.spend_credits(entry, 0, 0)
+async def _spend_credits(
+    user_id: str, cost: int, metadata: UsageTransactionMetadata
+) -> int:
+    return await _user_credit_model.spend_credits(user_id, cost, metadata)
 
 
 class DatabaseManager(AppService):
@@ -72,6 +74,9 @@ class DatabaseManager(AppService):
     get_incomplete_executions = exposed_run_and_wait(get_incomplete_node_executions)
     get_latest_execution = exposed_run_and_wait(get_latest_node_execution)
     update_execution_status = exposed_run_and_wait(update_node_execution_status)
+    update_execution_status_batch = exposed_run_and_wait(
+        update_node_execution_status_batch
+    )
     update_graph_execution_start_time = exposed_run_and_wait(
         update_graph_execution_start_time
     )

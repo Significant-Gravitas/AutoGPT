@@ -198,7 +198,9 @@ async def get_onboarding_agents(
 def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     blocks = [block() for block in backend.data.block.get_blocks().values()]
     costs = get_block_costs()
-    return [{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks]
+    return [
+        {**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks if not b.disabled
+    ]
 
 
 @v1_router.post(
@@ -642,14 +644,10 @@ async def get_graph_execution(
     graph_exec_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> execution_db.GraphExecution:
-    graph = await graph_db.get_graph(graph_id, user_id=user_id)
-    if not graph:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
-
     result = await execution_db.get_graph_execution(
         execution_id=graph_exec_id, user_id=user_id
     )
-    if not result:
+    if not result or result.graph_id != graph_id:
         raise HTTPException(
             status_code=404, detail=f"Graph execution #{graph_exec_id} not found."
         )

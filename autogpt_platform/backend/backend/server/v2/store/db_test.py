@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import prisma.enums
 import prisma.errors
 import prisma.models
 import pytest
@@ -83,9 +84,20 @@ async def test_get_store_agent_details(mocker):
         updated_at=datetime.now(),
     )
 
-    # Mock prisma call
+    # Create a mock StoreListing result
+    mock_store_listing = mocker.MagicMock()
+    mock_store_listing.activeVersionId = "active-version-id"
+    mock_store_listing.hasApprovedVersion = True
+
+    # Mock StoreAgent prisma call
     mock_store_agent = mocker.patch("prisma.models.StoreAgent.prisma")
     mock_store_agent.return_value.find_first = mocker.AsyncMock(return_value=mock_agent)
+
+    # Mock StoreListing prisma call - this is what was missing
+    mock_store_listing_db = mocker.patch("prisma.models.StoreListing.prisma")
+    mock_store_listing_db.return_value.find_first = mocker.AsyncMock(
+        return_value=mock_store_listing
+    )
 
     # Call function
     result = await db.get_store_agent_details("creator", "test-agent")
@@ -93,11 +105,14 @@ async def test_get_store_agent_details(mocker):
     # Verify results
     assert result.slug == "test-agent"
     assert result.agent_name == "Test Agent"
+    assert result.active_version_id == "active-version-id"
+    assert result.has_approved_version is True
 
-    # Verify mock called correctly
+    # Verify mocks called correctly
     mock_store_agent.return_value.find_first.assert_called_once_with(
         where={"creator_username": "creator", "slug": "test-agent"}
     )
+    mock_store_listing_db.return_value.find_first.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -153,16 +168,16 @@ async def test_create_store_submission(mocker):
         createdAt=datetime.now(),
         updatedAt=datetime.now(),
         isDeleted=False,
-        isApproved=False,
+        hasApprovedVersion=False,
+        slug="test-agent",
         agentId="agent-id",
         agentVersion=1,
         owningUserId="user-id",
-        StoreListingVersions=[
+        Versions=[
             prisma.models.StoreListingVersion(
                 id="version-id",
                 agentId="agent-id",
                 agentVersion=1,
-                slug="test-agent",
                 name="Test Agent",
                 description="Test description",
                 createdAt=datetime.now(),
@@ -173,8 +188,9 @@ async def test_create_store_submission(mocker):
                 isFeatured=False,
                 isDeleted=False,
                 version=1,
+                storeListingId="listing-id",
+                submissionStatus=prisma.enums.SubmissionStatus.PENDING,
                 isAvailable=True,
-                isApproved=False,
             )
         ],
     )
