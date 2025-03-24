@@ -246,6 +246,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                       <span
                         className="block truncate pb-1 text-sm font-semibold dark:text-white"
                         data-id={`block-name-${block.id}`}
+                        data-type={block.uiType}
                         data-testid={`block-name-${block.id}`}
                       >
                         <TextRenderer
