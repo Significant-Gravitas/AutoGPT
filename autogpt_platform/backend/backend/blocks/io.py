@@ -92,7 +92,7 @@ class AgentInputBlock(Block):
         )
 
     def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
-        if input_data.value:
+        if input_data.value is not None:
             yield "result", input_data.value
 
 
