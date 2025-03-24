@@ -644,7 +644,8 @@ async def create_store_version(
         listing = await prisma.models.StoreListing.prisma().find_first(
             where=prisma.types.StoreListingWhereInput(
                 id=store_listing_id, owningUserId=user_id
-            )
+            ),
+            include={"Versions": {"order_by": {"version": "desc"}, "take": 1}},
         )
 
         if not listing:
@@ -665,12 +666,7 @@ async def create_store_version(
             )
 
         # Get the latest version number
-        latest_version = await prisma.models.StoreListingVersion.prisma().find_first(
-            where=prisma.types.StoreListingVersionWhereInput(
-                storeListingId=store_listing_id
-            ),
-            order=[{"version": "desc"}],
-        )
+        latest_version = listing.Versions[0] if listing.Versions else None
 
         next_version = (latest_version.version + 1) if latest_version else 1
 
@@ -689,7 +685,7 @@ async def create_store_version(
                 submissionStatus=prisma.enums.SubmissionStatus.PENDING,
                 submittedAt=datetime.now(),
                 changesSummary=changes_summary,
-                storeListingId=store_listing_id,  # Direct assignment instead of connect
+                storeListingId=store_listing_id,
             )
         )
 
