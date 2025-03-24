@@ -208,7 +208,9 @@ async def is_onboarding_enabled():
 def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     blocks = [block() for block in backend.data.block.get_blocks().values()]
     costs = get_block_costs()
-    return [{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks]
+    return [
+        {**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks if not b.disabled
+    ]
 
 
 @v1_router.post(
