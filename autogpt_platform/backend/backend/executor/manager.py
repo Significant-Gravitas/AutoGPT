@@ -68,7 +68,7 @@ from backend.util.service import (
 )
 from backend.util.settings import Settings, BehaveAs
 from backend.util.type import convert
-from backend.util.iffy import send_to_iffy
+from backend.server.v2.iffy.service import IffyService
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -1197,12 +1197,12 @@ class ExecutionManager(AppService):
                     "input_data": input_data
                 }
 
-                # Send to Iffy for moderation.
-                is_safe, reason = await send_to_iffy(user_id, block_content)
+                # Send to Iffy for moderation using the service directly
+                result = await IffyService._moderate_content(user_id, block_content)
                 
-                # CRITICAL: Ensure we never proceed if iffy and openrouter moderation fails
-                if not is_safe:
-                    logger.error(f"Content moderation failed for {block.name}: {reason}")
+                # CRITICAL: Ensure we never proceed if moderation fails
+                if not result.is_safe:
+                    logger.error(f"Content moderation failed for {block.name}: {result.reason}")
                     raise ValueError(f"Content moderation failed for {block.name}")
 
         except ValueError as ve:
