@@ -1190,7 +1190,14 @@ async def get_admin_listings_with_versions(
 
         # Create proper Prisma types for the query
         where = prisma.types.StoreListingWhereInput(**where_dict)
-        include = prisma.types.StoreListingInclude(Versions=True, OwningUser=True)
+        include = prisma.types.StoreListingInclude(
+            Versions=prisma.types.FindManyStoreListingVersionArgsFromStoreListing(
+                order_by=prisma.types._StoreListingVersion_version_OrderByInput(
+                    version="desc"
+                )
+            ),
+            OwningUser=True,
+        )
 
         # Query listings with their versions
         listings = await prisma.models.StoreListing.prisma().find_many(
@@ -1209,7 +1216,7 @@ async def get_admin_listings_with_versions(
         listings_with_versions = []
         for listing in listings:
             versions: list[backend.server.v2.store.model.StoreSubmission] = []
-            # If we have versions, turn them into StoreSubmission models and sort them by version
+            # If we have versions, turn them into StoreSubmission models
             if listing.Versions is not None:
                 for version in listing.Versions:
                     version_model = backend.server.v2.store.model.StoreSubmission(
@@ -1233,8 +1240,6 @@ async def get_admin_listings_with_versions(
                         version=version.version,
                     )
                     versions.append(version_model)
-                # prisma doesn't support ordering in include, so we sort here
-                versions.sort(key=lambda x: x.version or 0, reverse=True)
 
             # Get the latest version (first in the sorted list)
             latest_version = versions[0] if versions else None
