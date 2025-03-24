@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { SubmissionStatus } from "@/lib/autogpt-server-api/types";
 
-export function SearchAndFilterForm({
+export function SearchAndFilterAdminMarketplace({
   initialStatus,
   initialSearch,
 }: {

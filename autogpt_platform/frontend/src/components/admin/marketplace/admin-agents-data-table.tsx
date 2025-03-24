@@ -18,7 +18,7 @@ import {
 import { PaginationControls } from "./pagination-controls";
 import { getAdminListingsWithVersions } from "@/app/admin/marketplace/actions";
 import { ExpandableRow } from "./expandable-row";
-import { SearchAndFilterForm } from "./search-filter-form";
+import { SearchAndFilterAdminMarketplace } from "./search-filter-form";
 
 // Helper function to get the latest version by version number
 const getLatestVersionByNumber = (
@@ -51,7 +51,7 @@ export async function AdminAgentsDataTable({
 
   return (
     <div className="space-y-4">
-      <SearchAndFilterForm
+      <SearchAndFilterAdminMarketplace
         initialStatus={initialStatus}
         initialSearch={initialSearch}
       />

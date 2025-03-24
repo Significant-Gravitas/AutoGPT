@@ -1,9 +1,9 @@
 import { withRoleAccess } from "@/lib/withRoleAccess";
 import { Suspense } from "react";
 import type { SubmissionStatus } from "@/lib/autogpt-server-api/types";
-import { AdminAgentsDataTable } from "@/components/admin/agents/admin-agents-data-table";
+import { AdminAgentsDataTable } from "@/components/admin/marketplace/admin-agents-data-table";
 
-async function AgentsSettings({
+async function AdminMarketplaceDashboard({
   searchParams,
 }: {
   searchParams: {
@@ -44,7 +44,7 @@ async function AgentsSettings({
   );
 }
 
-export default async function AgentSettingsPage({
+export default async function AdminMarketplacePage({
   searchParams,
 }: {
   searchParams: {
@@ -55,6 +55,6 @@ export default async function AgentSettingsPage({
 }) {
   "use server";
   const withAdminAccess = await withRoleAccess(["admin"]);
-  const ProtectedAgentSettings = await withAdminAccess(AgentsSettings);
-  return <ProtectedAgentSettings searchParams={searchParams} />;
+  const ProtectedAdminMarketplace = await withAdminAccess(AdminMarketplaceDashboard);
+  return <ProtectedAdminMarketplace searchParams={searchParams} />;
 }
