@@ -1137,6 +1137,8 @@ async def get_admin_listings_with_versions(
         # Build the where clause for StoreListing
         where_dict = {}
         where_dict["isDeleted"] = False
+        if status:
+            where_dict["Versions"] = {"some": {"submissionStatus": status}}
 
         sanitized_query = sanitize_query(search_query)
         if sanitized_query:
@@ -1206,20 +1208,10 @@ async def get_admin_listings_with_versions(
         # Convert to response models
         listings_with_versions = []
         for listing in listings:
-            versions = []
-            # Filter versions by status if specified and ensure versions is not None
+            versions: list[backend.server.v2.store.model.StoreSubmission] = []
+            # If we have versions, turn them into StoreSubmission models and sort them by version
             if listing.Versions is not None:
-                filtered_versions = [
-                    v
-                    for v in listing.Versions
-                    if status is None or v.submissionStatus == status
-                ]
-
-                # Skip listings with no matching versions if a status filter is applied
-                if status and not filtered_versions:
-                    continue
-
-                for version in filtered_versions:
+                for version in listing.Versions:
                     version_model = backend.server.v2.store.model.StoreSubmission(
                         agent_id=version.agentId,
                         agent_version=version.agentVersion,
@@ -1241,6 +1233,8 @@ async def get_admin_listings_with_versions(
                         version=version.version,
                     )
                     versions.append(version_model)
+                # prisma doesn't support ordering in include, so we sort here
+                versions.sort(key=lambda x: x.version or 0, reverse=True)
 
             # Get the latest version (first in the sorted list)
             latest_version = versions[0] if versions else None
