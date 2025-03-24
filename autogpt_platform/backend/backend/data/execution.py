@@ -789,7 +789,7 @@ ExecutionEvent = Annotated[
 
 
 class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
-    Model = ExecutionEvent
+    Model = ExecutionEvent  # type: ignore
 
     @property
     def event_bus_name(self) -> str:
