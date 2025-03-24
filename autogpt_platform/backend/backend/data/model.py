@@ -415,7 +415,6 @@ class NodeExecutionStats(BaseModel):
     error: Optional[Exception | str] = None
     walltime: float = 0
     cputime: float = 0
-    cost: float = 0
     input_size: int = 0
     output_size: int = 0
     llm_call_count: int = 0
