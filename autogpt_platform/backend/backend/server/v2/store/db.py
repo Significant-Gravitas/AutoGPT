@@ -660,9 +660,6 @@ async def create_store_version(
         )
 
         if not agent:
-            logger.warning(
-                f"Agent not found for user {user_id}: {agent_id} v{agent_version}"
-            )
             raise backend.server.v2.store.exceptions.AgentNotFoundError(
                 f"Agent not found for this user. User ID: {user_id}, Agent ID: {agent_id}, Version: {agent_version}"
             )
@@ -723,7 +720,6 @@ async def create_store_version(
     ):
         raise
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error creating store version: {e}")
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to create new store version"
         ) from e
