@@ -188,16 +188,16 @@ async def get_store_agent_details(
         ) from e
 
 
-async def get_approved_graph(
+async def get_available_graph(
     store_listing_version_id: str,
 ):
     try:
-        # Get approved, non-deleted store listing version
+        # Get avaialble, non-deleted store listing version
         store_listing_version = (
             await prisma.models.StoreListingVersion.prisma().find_first(
                 where={
                     "id": store_listing_version_id,
-                    "isApproved": True,
+                    "isAvailable": True,
                     "isDeleted": False,
                 },
                 include={"Agent": {"include": {"AgentNodes": True}}},

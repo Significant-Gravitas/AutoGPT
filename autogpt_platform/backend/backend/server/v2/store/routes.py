@@ -208,7 +208,7 @@ async def get_graph_meta_by_store_listing_version_id(
     Get Agent Graph from Store Listing Version ID.
     """
     try:
-        graph = await backend.server.v2.store.db.get_approved_graph(
+        graph = await backend.server.v2.store.db.get_available_graph(
             store_listing_version_id
         )
         return graph
