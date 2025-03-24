@@ -46,11 +46,7 @@ export class LoginPage {
     console.log("Waiting for navigation"); // Debug log
     await navigationPromise;
 
-    // If the user is redirected to onboarding, manually redirect to /marketplace
-    if (this.page.url().includes("/onboarding")) {
-      console.log("Redirecting to /marketplace"); // Debug log
-      await this.page.goto("/marketplace");
-    }
+    await this.page.goto("/marketplace");
 
     console.log("Navigation complete, waiting for network idle"); // Debug log
     await this.page.waitForLoadState("load", { timeout: 10_000 });
