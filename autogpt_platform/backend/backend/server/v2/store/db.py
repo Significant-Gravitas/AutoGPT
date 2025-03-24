@@ -648,9 +648,6 @@ async def create_store_version(
         )
 
         if not listing:
-            logger.warning(
-                f"Store listing not found for user {user_id}: {store_listing_id}"
-            )
             raise backend.server.v2.store.exceptions.ListingNotFoundError(
                 f"Store listing not found. User ID: {user_id}, Listing ID: {store_listing_id}"
             )
