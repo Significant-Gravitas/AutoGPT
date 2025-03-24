@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import prisma.enums
 import prisma.errors
 import prisma.models
 import pytest
@@ -91,7 +92,6 @@ async def test_add_agent_to_library(mocker):
         updatedAt=datetime.now(),
         agentId="agent1",
         agentVersion=1,
-        slug="test-agent",
         name="Test Agent",
         subHeading="Test Agent Subheading",
         imageUrls=["https://example.com/image.jpg"],
@@ -100,7 +100,8 @@ async def test_add_agent_to_library(mocker):
         isFeatured=False,
         isDeleted=False,
         isAvailable=True,
-        isApproved=True,
+        storeListingId="listing123",
+        submissionStatus=prisma.enums.SubmissionStatus.APPROVED,
         Agent=prisma.models.AgentGraph(
             id="agent1",
             version=1,

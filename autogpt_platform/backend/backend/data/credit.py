@@ -15,14 +15,11 @@ from prisma.enums import (
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditRefundRequest, CreditTransaction, User
 from prisma.types import CreditTransactionCreateInput, CreditTransactionWhereInput
-from pydantic import BaseModel
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from backend.data import db
-from backend.data.block import Block, BlockInput, get_block
 from backend.data.block_cost_config import BLOCK_COSTS
-from backend.data.cost import BlockCost, BlockCostType
-from backend.data.execution import NodeExecutionEntry
+from backend.data.cost import BlockCost
 from backend.data.model import (
     AutoTopUpConfig,
     RefundRequest,
@@ -31,6 +28,7 @@ from backend.data.model import (
 )
 from backend.data.notifications import NotificationEventDTO, RefundRequestData
 from backend.data.user import get_user_by_id
+from backend.executor.utils import UsageTransactionMetadata
 from backend.notifications import NotificationManager
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.service import get_service_client
@@ -91,20 +89,20 @@ class UserCreditBase(ABC):
     @abstractmethod
     async def spend_credits(
         self,
-        entry: NodeExecutionEntry,
-        data_size: float,
-        run_time: float,
+        user_id: str,
+        cost: int,
+        metadata: UsageTransactionMetadata,
     ) -> int:
         """
-        Spend the credits for the user based on the block usage.
+        Spend the credits for the user based on the cost.
 
         Args:
-            entry (NodeExecutionEntry): The node execution identifiers & data.
-            data_size (float): The size of the data being processed.
-            run_time (float): The time taken to run the block.
+            user_id (str): The user ID.
+            cost (int): The cost to spend.
+            metadata (UsageTransactionMetadata): The metadata of the transaction.
 
         Returns:
-            int: amount of credit spent
+            int: The remaining balance.
         """
         pass
 
@@ -348,16 +346,6 @@ class UserCreditBase(ABC):
             return user_balance + amount, tx.transactionKey
 
 
-class UsageTransactionMetadata(BaseModel):
-    graph_exec_id: str | None = None
-    graph_id: str | None = None
-    node_id: str | None = None
-    node_exec_id: str | None = None
-    block_id: str | None = None
-    block: str | None = None
-    input: BlockInput | None = None
-
-
 class UserCredit(UserCreditBase):
     @thread_cached
     def notification_client(self) -> NotificationManager:
@@ -378,89 +366,21 @@ class UserCredit(UserCreditBase):
             )
         )
 
-    def _block_usage_cost(
-        self,
-        block: Block,
-        input_data: BlockInput,
-        data_size: float,
-        run_time: float,
-    ) -> tuple[int, BlockInput]:
-        block_costs = BLOCK_COSTS.get(type(block))
-        if not block_costs:
-            return 0, {}
-
-        for block_cost in block_costs:
-            if not self._is_cost_filter_match(block_cost.cost_filter, input_data):
-                continue
-
-            if block_cost.cost_type == BlockCostType.RUN:
-                return block_cost.cost_amount, block_cost.cost_filter
-
-            if block_cost.cost_type == BlockCostType.SECOND:
-                return (
-                    int(run_time * block_cost.cost_amount),
-                    block_cost.cost_filter,
-                )
-
-            if block_cost.cost_type == BlockCostType.BYTE:
-                return (
-                    int(data_size * block_cost.cost_amount),
-                    block_cost.cost_filter,
-                )
-
-        return 0, {}
-
-    def _is_cost_filter_match(
-        self, cost_filter: BlockInput, input_data: BlockInput
-    ) -> bool:
-        """
-        Filter rules:
-          - If cost_filter is an object, then check if cost_filter is the subset of input_data
-          - Otherwise, check if cost_filter is equal to input_data.
-          - Undefined, null, and empty string are considered as equal.
-        """
-        if not isinstance(cost_filter, dict) or not isinstance(input_data, dict):
-            return cost_filter == input_data
-
-        return all(
-            (not input_data.get(k) and not v)
-            or (input_data.get(k) and self._is_cost_filter_match(v, input_data[k]))
-            for k, v in cost_filter.items()
-        )
-
     async def spend_credits(
         self,
-        entry: NodeExecutionEntry,
-        data_size: float,
-        run_time: float,
+        user_id: str,
+        cost: int,
+        metadata: UsageTransactionMetadata,
     ) -> int:
-        block = get_block(entry.block_id)
-        if not block:
-            raise ValueError(f"Block not found: {entry.block_id}")
-
-        cost, matching_filter = self._block_usage_cost(
-            block=block, input_data=entry.data, data_size=data_size, run_time=run_time
-        )
         if cost == 0:
             return 0
 
         balance, _ = await self._add_transaction(
-            user_id=entry.user_id,
+            user_id=user_id,
             amount=-cost,
             transaction_type=CreditTransactionType.USAGE,
-            metadata=Json(
-                UsageTransactionMetadata(
-                    graph_exec_id=entry.graph_exec_id,
-                    graph_id=entry.graph_id,
-                    node_id=entry.node_id,
-                    node_exec_id=entry.node_exec_id,
-                    block_id=entry.block_id,
-                    block=block.name,
-                    input=matching_filter,
-                ).model_dump()
-            ),
+            metadata=Json(metadata.model_dump()),
         )
-        user_id = entry.user_id
 
         # Auto top-up if balance is below threshold.
         auto_top_up = await get_auto_top_up(user_id)
@@ -470,7 +390,7 @@ class UserCredit(UserCreditBase):
                     user_id=user_id,
                     amount=auto_top_up.amount,
                     # Avoid multiple auto top-ups within the same graph execution.
-                    key=f"AUTO-TOP-UP-{user_id}-{entry.graph_exec_id}",
+                    key=f"AUTO-TOP-UP-{user_id}-{metadata.graph_exec_id}",
                     ceiling_balance=auto_top_up.threshold,
                 )
             except Exception as e:
@@ -479,7 +399,7 @@ class UserCredit(UserCreditBase):
                     f"Auto top-up failed for user {user_id}, balance: {balance}, amount: {auto_top_up.amount}, error: {e}"
                 )
 
-        return cost
+        return balance
 
     async def top_up_credits(self, user_id: str, amount: int):
         await self._top_up_credits(user_id, amount)

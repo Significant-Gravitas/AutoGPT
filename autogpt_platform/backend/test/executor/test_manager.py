@@ -7,7 +7,8 @@ from prisma.models import User
 
 import backend.server.v2.library.model
 import backend.server.v2.store.model
-from backend.blocks.basic import AgentInputBlock, FindInDictionaryBlock, StoreValueBlock
+from backend.blocks.basic import FindInDictionaryBlock, StoreValueBlock
+from backend.blocks.io import AgentInputBlock
 from backend.blocks.maths import CalculatorBlock, Operation
 from backend.data import execution, graph
 from backend.server.model import CreateGraph
@@ -123,8 +124,8 @@ async def assert_sample_graph_executions(
     logger.info(f"Checking PrintToConsoleBlock execution: {exec}")
     assert exec.status == execution.ExecutionStatus.COMPLETED
     assert exec.graph_exec_id == graph_exec_id
-    assert exec.output_data == {"status": ["printed"]}
-    assert exec.input_data == {"text": "Hello, World!!!"}
+    assert exec.output_data == {"output": ["Hello, World!!!"]}
+    assert exec.input_data == {"input": "Hello, World!!!"}
     assert exec.node_id == test_graph.nodes[3].id
 
 
@@ -492,7 +493,7 @@ async def test_store_listing_graph(server: SpinTestServer):
     store_submission_request = backend.server.v2.store.model.StoreSubmissionRequest(
         agent_id=test_graph.id,
         agent_version=test_graph.version,
-        slug="test-slug",
+        slug=test_graph.id,
         name="Test name",
         sub_heading="Test sub heading",
         video_url=None,
