@@ -29,15 +29,25 @@ def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
         shutil.rmtree(exec_path)
 
 
-"""
-MediaFile is a string that represents a file. It can be one of the following:
-    - Data URI: base64 encoded media file. See https://developer.mozilla.org/en-US/docs/Web/URI/Schemes/data/
-    - URL: Media file hosted on the internet, it starts with http:// or https://.
-    - Local path (anything else): A temporary file path living within graph execution time.
-    
-Note: Replace this type alias into a proper class, when more information is needed.
-"""
-MediaFile = str
+class MediaFile(str):
+    """
+    MediaFile is a string that represents a file. It can be one of the following:
+        - Data URI: base64 encoded media file. See https://developer.mozilla.org/en-US/docs/Web/URI/Schemes/data/
+        - URL: Media file hosted on the internet, it starts with http:// or https://.
+        - Local path (anything else): A temporary file path living within graph execution time.
+
+    Note: Replace this type alias into a proper class, when more information is needed.
+    """
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type, handler):
+        return handler(str)
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, core_schema, handler):
+        json_schema = handler(core_schema)
+        json_schema["format"] = "file"
+        return json_schema
 
 
 def store_media_file(

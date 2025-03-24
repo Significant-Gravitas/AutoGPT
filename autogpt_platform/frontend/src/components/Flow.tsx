@@ -461,6 +461,37 @@ const FlowEditor: React.FC<{
     });
   }, [nodes, setViewport, x, y]);
 
+  const fillDefaults = useCallback((obj: any, schema: any) => {
+    // Iterate over the schema properties
+    for (const key in schema.properties) {
+      if (schema.properties.hasOwnProperty(key)) {
+        const propertySchema = schema.properties[key];
+
+        // If the property is not in the object, initialize it with the default value
+        if (!obj.hasOwnProperty(key)) {
+          if (propertySchema.default !== undefined) {
+            obj[key] = propertySchema.default;
+          } else if (propertySchema.type === "object") {
+            // Recursively fill defaults for nested objects
+            obj[key] = fillDefaults({}, propertySchema);
+          } else if (propertySchema.type === "array") {
+            // Recursively fill defaults for arrays
+            obj[key] = fillDefaults([], propertySchema);
+          }
+        } else {
+          // If the property exists, recursively fill defaults for nested objects/arrays
+          if (propertySchema.type === "object") {
+            obj[key] = fillDefaults(obj[key], propertySchema);
+          } else if (propertySchema.type === "array") {
+            obj[key] = fillDefaults(obj[key], propertySchema);
+          }
+        }
+      }
+    }
+
+    return obj;
+  }, []);
+
   const addNode = useCallback(
     (blockId: string, nodeType: string, hardcodedValues: any = {}) => {
       const nodeSchema = availableNodes.find((node) => node.id === blockId);
@@ -507,7 +538,10 @@ const FlowEditor: React.FC<{
           categories: nodeSchema.categories,
           inputSchema: nodeSchema.inputSchema,
           outputSchema: nodeSchema.outputSchema,
-          hardcodedValues: hardcodedValues,
+          hardcodedValues: {
+            ...fillDefaults({}, nodeSchema.inputSchema),
+            ...hardcodedValues,
+          },
           connections: [],
           isOutputOpen: false,
           block_id: blockId,
