@@ -24,7 +24,7 @@ from backend.util import type as type_utils
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
 from .db import BaseDbModel, transaction
 from .execution import ExecutionResult, ExecutionStatus
-from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
+from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE, GRAPH_EXECUTION_INCLUDE
 from .integrations import Webhook
 
 logger = logging.getLogger(__name__)
@@ -217,10 +217,13 @@ class GraphExecution(GraphExecutionMeta):
 
         graph_exec = GraphExecutionMeta.from_db(_graph_exec)
 
-        node_executions = [
-            ExecutionResult.from_db(ne, _graph_exec.userId)
-            for ne in _graph_exec.AgentNodeExecutions
-        ]
+        node_executions = sorted(
+            [
+                ExecutionResult.from_db(ne, _graph_exec.userId)
+                for ne in _graph_exec.AgentNodeExecutions
+            ],
+            key=lambda ne: (ne.queue_time is None, ne.queue_time or ne.add_time),
+        )
 
         inputs = {
             **{
@@ -659,20 +662,13 @@ async def get_execution_meta(
     return GraphExecutionMeta.from_db(execution) if execution else None
 
 
-async def get_execution(user_id: str, execution_id: str) -> GraphExecution | None:
+async def get_execution(
+    user_id: str,
+    execution_id: str,
+) -> GraphExecution | None:
     execution = await AgentGraphExecution.prisma().find_first(
         where={"id": execution_id, "isDeleted": False, "userId": user_id},
-        include={
-            "AgentNodeExecutions": {
-                "include": {"AgentNode": True, "Input": True, "Output": True},
-                "order_by": [
-                    {"queuedTime": "asc"},
-                    {  # Fallback: Incomplete execs has no queuedTime.
-                        "addedTime": "asc"
-                    },
-                ],
-            },
-        },
+        include=GRAPH_EXECUTION_INCLUDE,
     )
     return GraphExecution.from_db(execution) if execution else None
 
