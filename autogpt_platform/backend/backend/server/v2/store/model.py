@@ -120,6 +120,13 @@ class StoreSubmission(pydantic.BaseModel):
     runs: int
     rating: float
     store_listing_version_id: str | None = None
+    version: int | None = None  # Actual version number from the database
+
+    reviewer_id: str | None = None
+    review_comments: str | None = None  # External comments visible to creator
+    internal_comments: str | None = None  # Private notes for admin use only
+    reviewed_at: datetime.datetime | None = None
+    changes_summary: str | None = None
 
     reviewer_id: str | None = None
     review_comments: str | None = None  # External comments visible to creator
@@ -130,6 +137,27 @@ class StoreSubmission(pydantic.BaseModel):
 
 class StoreSubmissionsResponse(pydantic.BaseModel):
     submissions: list[StoreSubmission]
+    pagination: Pagination
+
+
+class StoreListingWithVersions(pydantic.BaseModel):
+    """A store listing with its version history"""
+
+    listing_id: str
+    slug: str
+    agent_id: str
+    agent_version: int
+    active_version_id: str | None = None
+    has_approved_version: bool = False
+    creator_email: str | None = None
+    latest_version: StoreSubmission | None = None
+    versions: list[StoreSubmission] = []
+
+
+class StoreListingsWithVersionsResponse(pydantic.BaseModel):
+    """Response model for listings with version history"""
+
+    listings: list[StoreListingWithVersions]
     pagination: Pagination
 
 
