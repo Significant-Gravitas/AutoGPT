@@ -42,8 +42,8 @@ export async function signup(values: z.infer<typeof signupFormSchema>) {
         revalidatePath("/onboarding", "layout");
         redirect("/onboarding");
       }
-      revalidatePath("/library", "layout");
-      redirect("/library");
+      revalidatePath("/", "layout");
+      redirect("/");
     },
   );
 }
