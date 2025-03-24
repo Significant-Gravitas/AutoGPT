@@ -55,6 +55,8 @@ export default async function AdminMarketplacePage({
 }) {
   "use server";
   const withAdminAccess = await withRoleAccess(["admin"]);
-  const ProtectedAdminMarketplace = await withAdminAccess(AdminMarketplaceDashboard);
+  const ProtectedAdminMarketplace = await withAdminAccess(
+    AdminMarketplaceDashboard,
+  );
   return <ProtectedAdminMarketplace searchParams={searchParams} />;
 }
