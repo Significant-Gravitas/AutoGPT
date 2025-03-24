@@ -64,7 +64,7 @@ export default function OnboardingProvider({
     const fetchOnboarding = async () => {
       const enabled = await api.isOnboardingEnabled();
       if (!enabled && pathname.startsWith("/onboarding")) {
-        router.push("/library");
+        router.push("/marketplace");
         return;
       }
       const onboarding = await api.getUserOnboarding();
@@ -77,7 +77,7 @@ export default function OnboardingProvider({
         pathname.startsWith("/onboarding") &&
         !pathname.startsWith("/onboarding/reset")
       ) {
-        router.push("/library");
+        router.push("/marketplace");
       }
     };
     fetchOnboarding();
