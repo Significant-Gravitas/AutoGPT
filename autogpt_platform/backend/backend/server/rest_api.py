@@ -11,7 +11,6 @@ from autogpt_libs.feature_flag.client import (
     initialize_launchdarkly,
     shutdown_launchdarkly,
 )
-from prisma.enums import SubmissionStatus
 
 import backend.data.block
 import backend.data.db
@@ -258,43 +257,6 @@ class AgentServer(backend.util.service.AppProcess):
         return await backend.server.v2.store.routes.create_submission(request, user_id)
 
     ### ADMIN ###
-    @staticmethod
-    async def test_get_store_submissions(
-        status: SubmissionStatus | None = None,
-        search: str | None = None,
-        page: int = 1,
-        page_size: int = 20,
-    ):
-        return await backend.server.v2.admin.store_admin_routes.get_submissions(
-            status, search, page, page_size
-        )
-
-    @staticmethod
-    async def test_get_pending_store_submissions(
-        page: int = 1,
-        page_size: int = 20,
-    ):
-        return await backend.server.v2.admin.store_admin_routes.get_pending_submissions(
-            page, page_size
-        )
-
-    @staticmethod
-    async def test_get_store_submission_details(
-        store_listing_version_id: str,
-    ):
-        return await backend.server.v2.admin.store_admin_routes.get_submission_details(
-            store_listing_version_id
-        )
-
-    @staticmethod
-    async def test_get_listing_history(
-        listing_id: str,
-        page: int = 1,
-        page_size: int = 20,
-    ):
-        return await backend.server.v2.admin.store_admin_routes.get_listing_history(
-            listing_id, page, page_size
-        )
 
     @staticmethod
     async def test_review_store_listing(

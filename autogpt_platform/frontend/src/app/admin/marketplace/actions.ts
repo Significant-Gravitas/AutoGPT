@@ -36,27 +36,6 @@ export async function rejectAgent(formData: FormData) {
   revalidatePath("/admin/marketplace");
 }
 
-export async function getPendingAgents(): Promise<StoreSubmissionsResponse> {
-  console.log("getting pending agents");
-  const api = new BackendApi();
-  const submissions = await api.getPendingSubmissionsAdmin();
-
-  return submissions;
-}
-
-export async function getSubmissions(): Promise<StoreSubmissionsResponse> {
-  console.log("getting submissions");
-  const data = {
-    // status: formData.get("status") as SubmissionStatus | undefined,
-    // search: formData.get("search") as string | undefined,
-    page: 1,
-    page_size: 20,
-  };
-  const api = new BackendApi();
-  const submission = await api.getSubmissionsAdmin(data);
-  return submission;
-}
-
 export async function getAdminListingsWithVersions(
   status?: SubmissionStatus,
   search?: string,
