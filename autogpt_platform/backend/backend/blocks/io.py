@@ -463,9 +463,10 @@ class AgentDropdownInputBlock(AgentInputBlock):
             title="Default Value",
         )
         placeholder_values: list = SchemaField(
-            description="Possible placeholder values for the input.",
-            advanced=False,
+            description="Possible values for the dropdown.",
             default=[],
+            advanced=False,
+            title="Dropdown Options",
         )
         limit_to_placeholder_values: bool = SchemaField(
             description="Whether the selection is limited to placeholder values.",
