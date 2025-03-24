@@ -507,11 +507,11 @@ export enum BlockUIType {
   WEBHOOK = "Webhook",
   WEBHOOK_MANUAL = "Webhook (manual)",
   AGENT = "Agent",
+  AI = "AI",
 }
 
 export enum SpecialBlockID {
   AGENT = "e189baac-8c20-45a1-94a7-55177ea42565",
-  INPUT = "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
   OUTPUT = "363ae599-353e-4804-937e-b2ee3cef3da4",
 }
 
