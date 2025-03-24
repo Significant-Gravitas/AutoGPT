@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import {
   Table,
   TableBody,
@@ -7,15 +6,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { ExternalLink } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
 import {
-  StoreListingWithVersions,
   StoreSubmission,
   SubmissionStatus,
 } from "@/lib/autogpt-server-api/types";
-import { PaginationControls } from "./pagination-controls";
+import { PaginationControls } from "../../ui/pagination-controls";
 import { getAdminListingsWithVersions } from "@/app/admin/marketplace/actions";
 import { ExpandableRow } from "./expandable-row";
 import { SearchAndFilterAdminMarketplace } from "./search-filter-form";
