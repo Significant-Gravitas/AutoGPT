@@ -10,7 +10,6 @@ import {
 } from "@/lib/autogpt-server-api/types";
 
 export async function approveAgent(formData: FormData) {
-  console.log("approving agent", formData);
   const data = {
     store_listing_version_id: formData.get("id") as string,
     is_approved: true,
@@ -23,7 +22,6 @@ export async function approveAgent(formData: FormData) {
 }
 
 export async function rejectAgent(formData: FormData) {
-  console.log("rejecting agent", formData);
   const data = {
     store_listing_version_id: formData.get("id") as string,
     is_approved: false,
@@ -42,7 +40,6 @@ export async function getAdminListingsWithVersions(
   page: number = 1,
   pageSize: number = 20,
 ): Promise<StoreListingsWithVersionsResponse> {
-  console.log("getting admin listings with versions");
   const data: Record<string, any> = {
     page,
     page_size: pageSize,
