@@ -19,7 +19,7 @@ export async function approveAgent(formData: FormData) {
   const api = new BackendApi();
   await api.reviewSubmissionAdmin(data.store_listing_version_id, data);
 
-  revalidatePath("/admin/agents");
+  revalidatePath("/admin/marketplace");
 }
 
 export async function rejectAgent(formData: FormData) {
@@ -33,7 +33,7 @@ export async function rejectAgent(formData: FormData) {
   const api = new BackendApi();
   await api.reviewSubmissionAdmin(data.store_listing_version_id, data);
 
-  revalidatePath("/admin/agents");
+  revalidatePath("/admin/marketplace");
 }
 
 export async function getPendingAgents(): Promise<StoreSubmissionsResponse> {
