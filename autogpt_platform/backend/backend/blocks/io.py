@@ -5,9 +5,11 @@ from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, B
 from backend.data.model import SchemaField
 from backend.util.file import MediaFile, store_media_file
 from backend.util.mock import MockObject
+from backend.util.settings import Config
 from backend.util.text import TextFormatter
 
 formatter = TextFormatter()
+config = Config()
 
 
 class AgentInputBlock(Block):
@@ -213,6 +215,7 @@ class AgentShortTextInputBlock(AgentInputBlock):
         super().__init__(
             id="7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
             description="Block for short text input (single-line).",
+            disabled=not config.enable_agent_input_subtype_blocks,
             input_schema=AgentShortTextInputBlock.Input,
             output_schema=AgentShortTextInputBlock.Output,
             test_input=[
@@ -255,6 +258,7 @@ class AgentLongTextInputBlock(AgentInputBlock):
         super().__init__(
             id="90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
             description="Block for long text input (multi-line).",
+            disabled=not config.enable_agent_input_subtype_blocks,
             input_schema=AgentLongTextInputBlock.Input,
             output_schema=AgentLongTextInputBlock.Output,
             test_input=[
@@ -296,6 +300,7 @@ class AgentNumberInputBlock(AgentInputBlock):
         super().__init__(
             id="96dae2bb-97a2-41c2-bd2f-13a3b5a8ea98",
             description="Block for number input.",
+            disabled=not config.enable_agent_input_subtype_blocks,
             input_schema=AgentNumberInputBlock.Input,
             output_schema=AgentNumberInputBlock.Output,
             test_input=[
@@ -337,6 +342,7 @@ class AgentDateInputBlock(AgentInputBlock):
         super().__init__(
             id="7e198b09-4994-47db-8b4d-952d98241817",
             description="Block for date input.",
+            disabled=not config.enable_agent_input_subtype_blocks,
             input_schema=AgentDateInputBlock.Input,
             output_schema=AgentDateInputBlock.Output,
             test_input=[
@@ -375,6 +381,7 @@ class AgentTimeInputBlock(AgentInputBlock):
         super().__init__(
             id="2a1c757e-86cf-4c7e-aacf-060dc382e434",
             description="Block for time input.",
+            disabled=not config.enable_agent_input_subtype_blocks,
             input_schema=AgentTimeInputBlock.Input,
             output_schema=AgentTimeInputBlock.Output,
             test_input=[
@@ -417,6 +424,7 @@ class AgentFileInputBlock(AgentInputBlock):
         super().__init__(
             id="95ead23f-8283-4654-aef3-10c053b74a31",
             description="Block for file upload input (string path for example).",
+            disabled=not config.enable_agent_input_subtype_blocks,
             input_schema=AgentFileInputBlock.Input,
             output_schema=AgentFileInputBlock.Output,
             test_input=[
@@ -480,6 +488,7 @@ class AgentDropdownInputBlock(AgentInputBlock):
         super().__init__(
             id="655d6fdf-a334-421c-b733-520549c07cd1",
             description="Block for dropdown text selection.",
+            disabled=not config.enable_agent_input_subtype_blocks,
             input_schema=AgentDropdownInputBlock.Input,
             output_schema=AgentDropdownInputBlock.Output,
             test_input=[
@@ -521,6 +530,7 @@ class AgentToggleInputBlock(AgentInputBlock):
         super().__init__(
             id="cbf36ab5-df4a-43b6-8a7f-f7ed8652116e",
             description="Block for boolean toggle input.",
+            disabled=not config.enable_agent_input_subtype_blocks,
             input_schema=AgentToggleInputBlock.Input,
             output_schema=AgentToggleInputBlock.Output,
             test_input=[
