@@ -709,12 +709,6 @@ async def create_store_version(
             changes_summary=changes_summary,
             version=next_version,
         )
-
-    except (
-        backend.server.v2.store.exceptions.AgentNotFoundError,
-        backend.server.v2.store.exceptions.ListingNotFoundError,
-    ):
-        raise
     except prisma.errors.PrismaError as e:
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to create new store version"
@@ -1131,8 +1125,9 @@ async def get_admin_listings_with_versions(
 
     try:
         # Build the where clause for StoreListing
-        where_dict = {}
-        where_dict["isDeleted"] = False
+        where_dict: prisma.types.StoreListingWhereInput = {
+            "isDeleted": False,
+        }
         if status:
             where_dict["Versions"] = {"some": {"submissionStatus": status}}
 
@@ -1213,29 +1208,28 @@ async def get_admin_listings_with_versions(
         for listing in listings:
             versions: list[backend.server.v2.store.model.StoreSubmission] = []
             # If we have versions, turn them into StoreSubmission models
-            if listing.Versions is not None:
-                for version in listing.Versions:
-                    version_model = backend.server.v2.store.model.StoreSubmission(
-                        agent_id=version.agentId,
-                        agent_version=version.agentVersion,
-                        name=version.name,
-                        sub_heading=version.subHeading,
-                        slug=listing.slug,
-                        description=version.description,
-                        image_urls=version.imageUrls or [],
-                        date_submitted=version.submittedAt or version.createdAt,
-                        status=version.submissionStatus,
-                        runs=0,  # Default values since we don't have this data here
-                        rating=0.0,  # Default values since we don't have this data here
-                        store_listing_version_id=version.id,
-                        reviewer_id=version.reviewerId,
-                        review_comments=version.reviewComments,
-                        internal_comments=version.internalComments,
-                        reviewed_at=version.reviewedAt,
-                        changes_summary=version.changesSummary,
-                        version=version.version,
-                    )
-                    versions.append(version_model)
+            for version in listing.Versions or []:
+                version_model = backend.server.v2.store.model.StoreSubmission(
+                    agent_id=version.agentId,
+                    agent_version=version.agentVersion,
+                    name=version.name,
+                    sub_heading=version.subHeading,
+                    slug=listing.slug,
+                    description=version.description,
+                    image_urls=version.imageUrls or [],
+                    date_submitted=version.submittedAt or version.createdAt,
+                    status=version.submissionStatus,
+                    runs=0,  # Default values since we don't have this data here
+                    rating=0.0,  # Default values since we don't have this data here
+                    store_listing_version_id=version.id,
+                    reviewer_id=version.reviewerId,
+                    review_comments=version.reviewComments,
+                    internal_comments=version.internalComments,
+                    reviewed_at=version.reviewedAt,
+                    changes_summary=version.changesSummary,
+                    version=version.version,
+                )
+                versions.append(version_model)
 
             # Get the latest version (first in the sorted list)
             latest_version = versions[0] if versions else None
