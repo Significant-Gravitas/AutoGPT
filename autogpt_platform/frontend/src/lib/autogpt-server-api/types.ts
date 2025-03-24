@@ -1,3 +1,6 @@
+import { revalidatePath } from "next/cache";
+import BackendApi from "./client";
+
 export enum SubmissionStatus {
   DRAFT = "DRAFT",
   PENDING = "PENDING",
@@ -837,4 +840,35 @@ export type AdminSubmissionDetailsRequest = {
 export type AdminPendingSubmissionsRequest = {
   page: number;
   page_size: number;
+};
+
+export type UserBalance = {
+  user_id: string;
+  user_email: string;
+  balance: number;
+};
+
+export type UserBalancesResponse = {
+  balances: UserBalance[];
+  pagination: Pagination;
+};
+
+export type GrantHistory = {
+  user_id: string;
+  user_email: string;
+  amount: number;
+  date: Date;
+  reason: string;
+  admin_email: string;
+};
+
+export type GrantHistoryResponse = {
+  grants: GrantHistory[];
+  pagination: Pagination;
+};
+
+export type AddUserCreditsResponse = {
+  success: boolean;
+  new_balance: number;
+  transaction_key: string;
 };

@@ -4,6 +4,8 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timezone
 
+from backend.server.model import Pagination
+from backend.server.v2.admin.model import UserBalance, UserBalanceResponse
 import stripe
 from autogpt_libs.utils.cache import thread_cached
 from prisma import Json
@@ -14,7 +16,11 @@ from prisma.enums import (
 )
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditRefundRequest, CreditTransaction, User
-from prisma.types import CreditTransactionCreateInput, CreditTransactionWhereInput
+from prisma.types import (
+    CreditTransactionCreateInput,
+    CreditTransactionWhereInput,
+    UserWhereInput,
+)
 from pydantic import BaseModel
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -1032,3 +1038,45 @@ async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
         return AutoTopUpConfig(threshold=0, amount=0)
 
     return AutoTopUpConfig.model_validate(user.topUpConfig)
+
+
+async def admin_get_user_balances(
+    page: int = 1, page_size: int = 20, search: str | None = None
+):
+
+    if page < 1 or page_size < 1:
+        raise ValueError("Invalid pagination input")
+
+    where_clause: UserWhereInput = {}
+    if search:
+        where_clause["OR"] = [
+            {"email": {"contains": search, "mode": "insensitive"}},
+            {"name": {"contains": search, "mode": "insensitive"}},
+        ]
+    users = await User.prisma().find_many(
+        where=where_clause if search else None,
+        skip=(page - 1) * page_size,
+        take=page_size,
+    )
+    total = await User.prisma().count(where=where_clause)
+    total_pages = (total + page_size - 1) // page_size
+
+    balances = []
+    for user in users:
+        balance, last_update = await get_user_credit_model()._get_credits(user.id)
+        balances.append(
+            UserBalance(
+                user_id=user.id,
+                user_email=user.email,
+                balance=balance,
+            )
+        )
+    return UserBalanceResponse(
+        balances=balances,
+        pagination=Pagination(
+            total_items=total,
+            total_pages=total_pages,
+            current_page=page,
+            page_size=page_size,
+        ),
+    )

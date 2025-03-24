@@ -53,6 +53,8 @@ import {
   UserOnboarding,
   ReviewSubmissionRequest,
   SubmissionStatus,
+  UserBalancesResponse,
+  GrantHistoryResponse,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -534,6 +536,30 @@ export default class BackendAPI {
       `/store/admin/submissions/${storeListingVersionId}/review`,
       review,
     );
+  }
+
+  addUserCredits(user_id: string, amount: number, comments: string): Promise<number> {
+    return this._request("POST", "/credits/admin/add_credits", {
+      user_id,
+      amount,
+      comments,
+    });
+  }
+
+  getUserBalances(params?: {
+    search?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<UserBalancesResponse> {
+    return this._get("/credits/admin/user_balances", params);
+  }
+
+  getGrantHistory(params?: {
+    search?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<GrantHistoryResponse> {
+    return this._get("/credits/admin/grant_history", params);
   }
 
   /////////////////////////////////////////
