@@ -125,6 +125,7 @@ export type Credentials =
 
 // --8<-- [start:BlockIOCredentialsSubSchema]
 export const PROVIDER_NAMES = {
+  AIRTABLE: "airtable",
   ANTHROPIC: "anthropic",
   APOLLO: "apollo",
   D_ID: "d_id",
@@ -147,6 +148,7 @@ export const PROVIDER_NAMES = {
   OLLAMA: "ollama",
   OPENAI: "openai",
   OPENWEATHERMAP: "openweathermap",
+  PROXYCURL: "proxycurl",
   OPEN_ROUTER: "open_router",
   PINECONE: "pinecone",
   SCREENSHOTONE: "screenshotone",
