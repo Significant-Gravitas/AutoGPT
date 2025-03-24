@@ -39,7 +39,7 @@ class BaseRedisEventBus(Generic[M], ABC):
             return None
         try:
             logger.debug(f"[{channel_key}] Consuming an event from Redis {msg['data']}")
-            return self.Message.model_validate(msg["data"]).payload
+            return self.Message.model_validate_json(msg["data"]).payload
         except Exception as e:
             logger.error(f"Failed to parse event result from Redis {msg} {e}")
 

@@ -766,7 +766,7 @@ def merge_execution_input(data: BlockInput) -> BlockInput:
 # --------------------- Event Bus --------------------- #
 
 
-class ExecutionEventType(Enum):
+class ExecutionEventType(str, Enum):
     GRAPH_EXEC_UPDATE = "graph_execution_update"
     NODE_EXEC_UPDATE = "node_execution_update"
 
