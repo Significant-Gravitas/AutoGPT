@@ -411,6 +411,7 @@ class NodeExecutionStats(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
+        extra = "allow"
 
     error: Optional[Exception | str] = None
     walltime: float = 0
@@ -428,6 +429,7 @@ class GraphExecutionStats(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
+        extra = "allow"
 
     error: Optional[Exception | str] = None
     walltime: float = Field(
