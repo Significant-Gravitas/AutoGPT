@@ -1,6 +1,8 @@
 import inspect
 import logging
 from typing import Any, Callable, Optional
+import hmac
+import hashlib
 
 from fastapi import HTTPException, Request, Security
 from fastapi.security import APIKeyHeader, HTTPBearer
@@ -133,3 +135,85 @@ class APIKeyValidator:
         # This helps FastAPI recognize it as a security dependency
         validate_api_key.__name__ = f"validate_{self.security_scheme.model.name}"
         return validate_api_key
+
+class HMACValidator:
+    """
+    Configurable HMAC-based validator for FastAPI applications.
+
+    This class is useful for validating signed requests such as webhooks,
+    where the signature is computed using HMAC SHA256 and sent in a request header.
+    It compares the provided signature to a computed one using a shared secret and the raw request body.
+
+    Examples:
+        Basic usage:
+        ```python
+        validator = HMACValidator(
+            header_name="X-Signature",
+            secret="your-shared-secret"
+        )
+
+        @app.post("/webhook", dependencies=[Depends(validator.get_dependency())])
+        async def webhook_handler():
+            return {"status": "ok"}
+        ```
+
+        Custom integration:
+        ```python
+        validator = HMACValidator(
+            header_name="X-Custom-Signature",
+            secret=secrets.webhook_secret
+        )
+
+        @router.post("/custom-endpoint")
+        async def handler(
+            _ = Depends(validator.get_dependency())
+        ):
+            ...
+        ```
+
+    Args:
+        header_name (str): The name of the request header containing the HMAC signature.
+        secret (str): The shared secret used to compute the HMAC hash.
+        error_status (int): HTTP status code to return when validation fails.
+        error_message (str): Error message to return when validation fails.
+    """
+
+
+    def __init__(
+        self,
+        header_name: str,
+        secret: str,
+        error_status: int = HTTP_401_UNAUTHORIZED,
+        error_message: str = "Invalid HMAC signature"
+    ):
+        self.secret = secret
+        self.header = APIKeyHeader(name=header_name)
+        self.error_status = error_status
+        self.error_message = error_message
+
+    async def __call__(
+        self,
+        request: Request,
+        signature: str = Security(APIKeyHeader(name="X-Signature"))
+    ) -> bool:
+        body = await request.body()
+        computed_signature = hmac.new(
+            self.secret.encode(),
+            body,
+            hashlib.sha256
+        ).hexdigest()
+
+        if not hmac.compare_digest(computed_signature, signature):
+            raise HTTPException(
+                status_code=self.error_status,
+                detail=self.error_message
+            )
+
+        return True
+
+    def get_dependency(self):
+        async def validate_signature(request: Request, signature: str = Security(self.header)) -> bool:
+            return await self(request, signature)
+
+        validate_signature.__name__ = f"validate_{self.header.model.name}"
+        return validate_signature

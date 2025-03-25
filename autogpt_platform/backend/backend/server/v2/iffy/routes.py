@@ -2,26 +2,23 @@ import hmac
 import hashlib
 import logging
 from typing import Dict, Any
-from fastapi import APIRouter, Request, Response, HTTPException, Header
+from fastapi import APIRouter, Request, Response, HTTPException, Header, Depends
 from backend.util.settings import Settings
 from backend.util.service import get_service_client
 from backend.executor import ExecutionManager
 from .models import EventType, IffyWebhookEvent
+from autogpt_libs.auth.middleware import HMACValidator
 
 logger = logging.getLogger(__name__)
 settings = Settings()
 
 iffy_router = APIRouter()
 
-async def verify_signature(body: bytes, signature: str) -> bool:
-    """Verify the Iffy webhook signature using HMAC SHA256"""
-    WEBHOOK_SECRET = settings.secrets.iffy_webhook_secret
-    computed_hash = hmac.new(
-        WEBHOOK_SECRET.encode(),
-        body,
-        hashlib.sha256
-    ).hexdigest()
-    return hmac.compare_digest(computed_hash, signature)
+iffy_signature_validator = HMACValidator(
+    header_name="X-Signature",
+    secret=settings.secrets.iffy_webhook_secret,
+    error_message="Invalid Iffy signature"
+)
 
 # This handles the webhook events from iffy like stopping an execution if a flagged block is detected.
 async def handle_record_event(event_type: EventType, metadata: Dict[str, Any]) -> Response:
@@ -92,15 +89,9 @@ async def handle_user_event(event_type: EventType, payload: Dict[str, Any]) -> R
 @iffy_router.post("/webhook")
 async def handle_iffy_webhook(
     request: Request,
-    x_signature: str = Header(..., alias="X-Signature")
+    _ = Depends(iffy_signature_validator.get_dependency())
 ) -> Response:
-    """Handle incoming webhook events from Iffy"""
     body = await request.body()
-    
-    if not await verify_signature(body, x_signature):
-        logger.error("Invalid Iffy webhook signature")
-        raise HTTPException(status_code=401, detail="Invalid signature")
-    
     try:
         event_data = IffyWebhookEvent.model_validate_json(body)
     except Exception as e:
