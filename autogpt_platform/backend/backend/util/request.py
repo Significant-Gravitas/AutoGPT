@@ -65,8 +65,7 @@ def _remove_insecure_headers(headers: dict, old_url: str, new_url: str) -> dict:
 class SNIHostAdapter(HTTPAdapter):
     """
     A custom adapter that connects to an IP address but still
-    sets the TLS SNI to the original domain name so the cert
-    can match. Also sets assert_hostname for proper validation.
+    sets the TLS SNI to the original host name so the cert can match.
     """
 
     def __init__(self, ssl_hostname, *args, **kwargs):
@@ -160,6 +159,7 @@ def validate_url(
             )
 
     # Pin to the first valid IP (for SSRF defense).
+    # More reliable but slower alternative: iterate the IPs and pick the one that works.
     pinned_ip = ip_addresses[0]
 
     # If it's IPv6, bracket it
