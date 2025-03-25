@@ -9,6 +9,7 @@ from backend.data.includes import INTEGRATION_WEBHOOK_INCLUDE
 from backend.data.queue import AsyncRedisEventBus
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.utils import webhook_ingress_url
+from backend.util.exceptions import NotFoundError
 
 from .db import BaseDbModel
 
@@ -82,11 +83,18 @@ async def create_webhook(webhook: Webhook) -> Webhook:
 
 
 async def get_webhook(webhook_id: str) -> Webhook:
-    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
-    webhook = await IntegrationWebhook.prisma().find_unique_or_raise(
+    """
+    ⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints.
+
+    Raises:
+        NotFoundError: if no record with the given ID exists
+    """
+    webhook = await IntegrationWebhook.prisma().find_unique(
         where={"id": webhook_id},
         include=INTEGRATION_WEBHOOK_INCLUDE,
     )
+    if not webhook:
+        raise NotFoundError(f"Webhook #{webhook_id} not found")
     return Webhook.from_db(webhook)
 
 
