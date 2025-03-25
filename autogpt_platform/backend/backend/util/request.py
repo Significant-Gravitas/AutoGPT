@@ -62,7 +62,7 @@ def _remove_insecure_headers(headers: dict, old_url: str, new_url: str) -> dict:
     return headers
 
 
-class SNIHostAdapter(HTTPAdapter):
+class HostSSLAdapter(HTTPAdapter):
     """
     A custom adapter that connects to an IP address but still
     sets the TLS SNI to the original host name so the cert can match.
@@ -74,8 +74,10 @@ class SNIHostAdapter(HTTPAdapter):
 
     def init_poolmanager(self, *args, **kwargs):
         self.poolmanager = PoolManager(
+            *args,
             ssl_context=ssl.create_default_context(),
             server_hostname=self.ssl_hostname,  # This works for urllib3>=2
+            **kwargs,
         )
 
 
@@ -159,7 +161,6 @@ def validate_url(
             )
 
     # Pin to the first valid IP (for SSRF defense).
-    # More reliable but slower alternative: iterate the IPs and pick the one that works.
     pinned_ip = ip_addresses[0]
 
     # If it's IPv6, bracket it
@@ -238,7 +239,7 @@ class Requests:
         # Force the Host header to the original hostname
         headers["Host"] = original_hostname
 
-        # 4) Create a fresh session & mount our SNIHostAdapter if pinned to IP
+        # Create a fresh session & mount our HostSSLAdapter if pinned to IP
         session = req.Session()
         pinned_parsed = urlparse(pinned_url)
 
@@ -249,8 +250,8 @@ class Requests:
             mount_prefix = f"{pinned_parsed.scheme}://{pinned_parsed.hostname}"
             if pinned_parsed.port:
                 mount_prefix += f":{pinned_parsed.port}"
-            adapter = SNIHostAdapter(ssl_hostname=original_hostname)
-            session.mount(mount_prefix, adapter)
+            adapter = HostSSLAdapter(ssl_hostname=original_hostname)
+            session.mount("https://", adapter)
 
         # Perform the request with redirects disabled for manual handling
         response = session.request(
@@ -276,24 +277,13 @@ class Requests:
 
             # The base URL is the pinned_url we just used
             # so that relative redirects resolve correctly.
-            new_raw_url = urljoin(pinned_url, location)
-
-            # Validate/pin the redirect URL
-            new_pinned_url, new_original_hostname = validate_url(
-                new_raw_url, self.trusted_origins
-            )
-            if self.extra_url_validator is not None:
-                new_pinned_url = self.extra_url_validator(new_pinned_url)
-
+            new_url = urljoin(pinned_url, location)
             # Carry forward the same headers but update Host
-            new_headers = _remove_insecure_headers(
-                dict(headers), pinned_url, new_pinned_url
-            )
-            new_headers["Host"] = new_original_hostname
+            new_headers = _remove_insecure_headers(dict(headers), url, new_url)
 
             return self.request(
                 method,
-                new_pinned_url,
+                new_url,
                 headers=new_headers,
                 allow_redirects=allow_redirects,
                 max_redirects=max_redirects - 1,
