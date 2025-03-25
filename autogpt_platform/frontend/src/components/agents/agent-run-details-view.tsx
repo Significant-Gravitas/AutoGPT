@@ -13,6 +13,7 @@ import {
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconRefresh, IconSquare } from "@/components/ui/icons";
+import { useToastOnFail } from "@/components/ui/use-toast";
 import { Button } from "@/components/agptui/Button";
 import { Input } from "@/components/ui/input";
 
@@ -40,6 +41,8 @@ export default function AgentRunDetailsView({
     () => agentRunStatusMap[run.status],
     [run],
   );
+
+  const toastOnFail = useToastOnFail();
 
   const infoStats: { label: string; value: React.ReactNode }[] = useMemo(() => {
     if (!run) return [];
@@ -90,8 +93,9 @@ export default function AgentRunDetailsView({
             Object.entries(agentRunInputs).map(([k, v]) => [k, v.value]),
           ),
         )
-        .then(({ graph_exec_id }) => onRun(graph_exec_id)),
-    [api, graph, agentRunInputs, onRun],
+        .then(({ graph_exec_id }) => onRun(graph_exec_id))
+        .catch(toastOnFail("execute agent")),
+    [api, graph, agentRunInputs, onRun, toastOnFail],
   );
 
   const stopRun = useCallback(
