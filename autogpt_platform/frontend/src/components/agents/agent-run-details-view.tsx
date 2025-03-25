@@ -95,8 +95,8 @@ export default function AgentRunDetailsView({
   );
 
   const stopRun = useCallback(
-    () => api.stopGraphExecution(graph.id, run.execution_id),
-    [api, graph.id, run.execution_id],
+    () => api.stopGraphExecution(graph.id, run.id),
+    [api, graph.id, run.id],
   );
 
   const agentRunOutputs:

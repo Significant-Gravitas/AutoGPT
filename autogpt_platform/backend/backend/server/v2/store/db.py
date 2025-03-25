@@ -188,6 +188,90 @@ async def get_store_agent_details(
         ) from e
 
 
+async def get_available_graph(
+    store_listing_version_id: str,
+):
+    try:
+        # Get avaialble, non-deleted store listing version
+        store_listing_version = (
+            await prisma.models.StoreListingVersion.prisma().find_first(
+                where={
+                    "id": store_listing_version_id,
+                    "isAvailable": True,
+                    "isDeleted": False,
+                },
+                include={"Agent": {"include": {"AgentNodes": True}}},
+            )
+        )
+
+        if not store_listing_version or not store_listing_version.Agent:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f"Store listing version {store_listing_version_id} not found",
+            )
+
+        graph = GraphModel.from_db(store_listing_version.Agent)
+        # We return graph meta, without nodes, they cannot be just removed
+        # because then input_schema would be empty
+        return {
+            "id": graph.id,
+            "version": graph.version,
+            "is_active": graph.is_active,
+            "name": graph.name,
+            "description": graph.description,
+            "input_schema": graph.input_schema,
+            "output_schema": graph.output_schema,
+        }
+
+    except Exception as e:
+        logger.error(f"Error getting agent: {e}")
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to fetch agent"
+        ) from e
+
+
+async def get_store_agent_by_version_id(
+    store_listing_version_id: str,
+) -> backend.server.v2.store.model.StoreAgentDetails:
+    logger.debug(f"Getting store agent details for {store_listing_version_id}")
+
+    try:
+        agent = await prisma.models.StoreAgent.prisma().find_first(
+            where={"storeListingVersionId": store_listing_version_id}
+        )
+
+        if not agent:
+            logger.warning(f"Agent not found: {store_listing_version_id}")
+            raise backend.server.v2.store.exceptions.AgentNotFoundError(
+                f"Agent {store_listing_version_id} not found"
+            )
+
+        logger.debug(f"Found agent details for {store_listing_version_id}")
+        return backend.server.v2.store.model.StoreAgentDetails(
+            store_listing_version_id=agent.storeListingVersionId,
+            slug=agent.slug,
+            agent_name=agent.agent_name,
+            agent_video=agent.agent_video or "",
+            agent_image=agent.agent_image,
+            creator=agent.creator_username,
+            creator_avatar=agent.creator_avatar,
+            sub_heading=agent.sub_heading,
+            description=agent.description,
+            categories=agent.categories,
+            runs=agent.runs,
+            rating=agent.rating,
+            versions=agent.versions,
+            last_updated=agent.updated_at,
+        )
+    except backend.server.v2.store.exceptions.AgentNotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting store agent details: {e}")
+        raise backend.server.v2.store.exceptions.DatabaseError(
+            "Failed to fetch agent details"
+        ) from e
+
+
 async def get_store_creators(
     featured: bool = False,
     search_query: str | None = None,

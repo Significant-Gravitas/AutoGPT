@@ -99,7 +99,7 @@ export const FlowRunsTimeline = ({
             .filter((e) => e.graph_id == flow.agent_id)
             .map((e) => ({
               ...e,
-              time: e.started_at + e.total_run_time * 1000,
+              time: Number(e.started_at) + e.total_run_time * 1000,
               _duration: e.total_run_time,
             }))}
           name={flow.name}
@@ -108,14 +108,14 @@ export const FlowRunsTimeline = ({
       ))}
       {executions.map((execution) => (
         <Line
-          key={execution.execution_id}
+          key={execution.id}
           type="linear"
           dataKey="_duration"
           data={[
-            { ...execution, time: execution.started_at, _duration: 0 },
+            { ...execution, time: Number(execution.started_at), _duration: 0 },
             {
               ...execution,
-              time: execution.ended_at,
+              time: Number(execution.ended_at),
               _duration: execution.total_run_time,
             },
           ]}

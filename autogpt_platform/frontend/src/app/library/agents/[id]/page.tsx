@@ -90,7 +90,7 @@ export default function AgentRunsPage(): React.ReactElement {
       );
       api.getGraphExecutions(agent.agent_id).then((agentRuns) => {
         const sortedRuns = agentRuns.toSorted(
-          (a, b) => b.started_at - a.started_at,
+          (a, b) => Number(b.started_at) - Number(a.started_at),
         );
         setAgentRuns(sortedRuns);
 
@@ -102,7 +102,7 @@ export default function AgentRunsPage(): React.ReactElement {
         if (!selectedView.id && isFirstLoad && sortedRuns.length > 0) {
           // only for first load or first execution
           setIsFirstLoad(false);
-          selectView({ type: "run", id: sortedRuns[0].execution_id });
+          selectView({ type: "run", id: sortedRuns[0].id });
         }
       });
     });
@@ -121,10 +121,8 @@ export default function AgentRunsPage(): React.ReactElement {
   useEffect(() => {
     if (selectedView.type != "run" || !selectedView.id || !agent) return;
 
-    const newSelectedRun = agentRuns.find(
-      (run) => run.execution_id == selectedView.id,
-    );
-    if (selectedView.id !== selectedRun?.execution_id) {
+    const newSelectedRun = agentRuns.find((run) => run.id == selectedView.id);
+    if (selectedView.id !== selectedRun?.id) {
       // Pull partial data from "cache" while waiting for the rest to load
       setSelectedRun(newSelectedRun ?? null);
 
@@ -136,14 +134,7 @@ export default function AgentRunsPage(): React.ReactElement {
           setSelectedRun(run);
         });
     }
-  }, [
-    api,
-    selectedView,
-    agent,
-    agentRuns,
-    selectedRun?.execution_id,
-    getGraphVersion,
-  ]);
+  }, [api, selectedView, agent, agentRuns, selectedRun?.id, getGraphVersion]);
 
   const fetchSchedules = useCallback(async () => {
     if (!agent) return;
@@ -169,17 +160,15 @@ export default function AgentRunsPage(): React.ReactElement {
   const deleteRun = useCallback(
     async (run: GraphExecutionMeta) => {
       if (run.status == "RUNNING" || run.status == "QUEUED") {
-        await api.stopGraphExecution(run.graph_id, run.execution_id);
+        await api.stopGraphExecution(run.graph_id, run.id);
       }
-      await api.deleteGraphExecution(run.execution_id);
+      await api.deleteGraphExecution(run.id);
 
       setConfirmingDeleteAgentRun(null);
-      if (selectedView.type == "run" && selectedView.id == run.execution_id) {
+      if (selectedView.type == "run" && selectedView.id == run.id) {
         openRunDraftView();
       }
-      setAgentRuns(
-        agentRuns.filter((r) => r.execution_id !== run.execution_id),
-      );
+      setAgentRuns(agentRuns.filter((r) => r.id !== run.id));
     },
     [agentRuns, api, selectedView, openRunDraftView],
   );
