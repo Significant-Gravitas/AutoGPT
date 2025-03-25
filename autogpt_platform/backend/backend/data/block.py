@@ -20,6 +20,7 @@ from prisma.models import AgentBlock
 from pydantic import BaseModel
 
 from backend.data.model import NodeExecutionStats
+from backend.integrations.providers import ProviderName
 from backend.util import json
 from backend.util.settings import Config
 
@@ -225,7 +226,7 @@ class BlockManualWebhookConfig(BaseModel):
     the user has to manually set up the webhook at the provider.
     """
 
-    provider: str
+    provider: ProviderName
     """The service provider that the webhook connects to"""
 
     webhook_type: str
@@ -461,9 +462,9 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
 
 
 def get_blocks() -> dict[str, Type[Block]]:
-    from backend.blocks import AVAILABLE_BLOCKS  # noqa: E402
+    from backend.blocks import load_all_blocks
 
-    return AVAILABLE_BLOCKS
+    return load_all_blocks()
 
 
 async def initialize_blocks() -> None:

@@ -18,6 +18,7 @@ import backend.data.graph
 import backend.data.user
 import backend.server.integrations.router
 import backend.server.routers.v1
+import backend.server.v2.admin.store_admin_routes
 import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
@@ -100,6 +101,11 @@ app.include_router(
     backend.server.v2.store.routes.router, tags=["v2"], prefix="/api/store"
 )
 app.include_router(
+    backend.server.v2.admin.store_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/store",
+)
+app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
 )
 app.include_router(
@@ -154,9 +160,10 @@ class AgentServer(backend.util.service.AppProcess):
         graph_id: str,
         graph_version: int,
         user_id: str,
+        for_export: bool = False,
     ):
         return await backend.server.routers.v1.get_graph(
-            graph_id, user_id, graph_version
+            graph_id, user_id, graph_version, for_export
         )
 
     @staticmethod
@@ -249,12 +256,16 @@ class AgentServer(backend.util.service.AppProcess):
     ):
         return await backend.server.v2.store.routes.create_submission(request, user_id)
 
+    ### ADMIN ###
+
     @staticmethod
     async def test_review_store_listing(
         request: backend.server.v2.store.model.ReviewSubmissionRequest,
         user: autogpt_libs.auth.models.User,
     ):
-        return await backend.server.v2.store.routes.review_submission(request, user)
+        return await backend.server.v2.admin.store_admin_routes.review_submission(
+            request.store_listing_version_id, request, user
+        )
 
     @staticmethod
     def test_create_credentials(

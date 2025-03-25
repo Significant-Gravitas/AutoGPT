@@ -56,29 +56,30 @@ const OttoChatWidget = () => {
     // Add user message to chat
     setMessages((prev) => [...prev, { type: "user", content: userMessage }]);
 
+    // Add temporary processing message
+    setMessages((prev) => [
+      ...prev,
+      { type: "assistant", content: "Processing your question..." },
+    ]);
+
+    const conversationHistory = messages.reduce<
+      { query: string; response: string }[]
+    >((acc, msg, i, arr) => {
+      if (
+        msg.type === "user" &&
+        i + 1 < arr.length &&
+        arr[i + 1].type === "assistant" &&
+        arr[i + 1].content !== "Processing your question..."
+      ) {
+        acc.push({
+          query: msg.content,
+          response: arr[i + 1].content,
+        });
+      }
+      return acc;
+    }, []);
+
     try {
-      // Add temporary processing message
-      setMessages((prev) => [
-        ...prev,
-        { type: "assistant", content: "Processing your question..." },
-      ]);
-
-      const conversationHistory = messages.reduce<
-        { query: string; response: string }[]
-      >((acc, msg, i, arr) => {
-        if (
-          msg.type === "user" &&
-          i + 1 < arr.length &&
-          arr[i + 1].type === "assistant"
-        ) {
-          acc.push({
-            query: msg.content,
-            response: arr[i + 1].content,
-          });
-        }
-        return acc;
-      }, []);
-
       const data = await askOtto(
         userMessage,
         conversationHistory,
@@ -86,34 +87,43 @@ const OttoChatWidget = () => {
         flowID || undefined,
       );
 
-      // Remove processing message and add actual response
-      setMessages((prev) => [
-        ...prev.slice(0, -1),
-        { type: "assistant", content: data.answer },
-      ]);
-    } catch (error) {
-      console.error("Error calling API:", error);
-      // Remove processing message and add error message
-      const errorMessage =
-        error instanceof Error && error.message === "Authentication required"
-          ? "Please sign in to use the chat feature."
-          : "Sorry, there was an error processing your message. Please try again.";
+      // Check if the response contains an error
+      if ("error" in data && data.error === true) {
+        // Handle different error types
+        let errorMessage =
+          "Sorry, there was an error processing your message. Please try again.";
 
-      setMessages((prev) => [
-        ...prev.slice(0, -1),
-        { type: "assistant", content: errorMessage },
-      ]);
+        if (data.answer === "Authentication required") {
+          errorMessage = "Please sign in to use the chat feature.";
+        } else if (data.answer === "Failed to connect to Otto service") {
+          errorMessage =
+            "Otto service is currently unavailable. Please try again later.";
+        } else if (data.answer.includes("timed out")) {
+          errorMessage = "Request timed out. Please try again later.";
+        }
 
-      if (
-        error instanceof Error &&
-        error.message === "Authentication required"
-      ) {
-        toast({
-          title: "Authentication Error",
-          description: "Please sign in to use the chat feature.",
-          variant: "destructive",
-        });
+        // Remove processing message and add error message
+        setMessages((prev) => [
+          ...prev.slice(0, -1),
+          { type: "assistant", content: errorMessage },
+        ]);
+      } else {
+        // Remove processing message and add actual response
+        setMessages((prev) => [
+          ...prev.slice(0, -1),
+          { type: "assistant", content: data.answer },
+        ]);
       }
+    } catch (error) {
+      console.error("Unexpected error in chat widget:", error);
+      setMessages((prev) => [
+        ...prev.slice(0, -1),
+        {
+          type: "assistant",
+          content:
+            "An unexpected error occurred. Please refresh the page and try again.",
+        },
+      ]);
     } finally {
       setIsProcessing(false);
       setIncludeGraphData(false);

@@ -114,10 +114,19 @@ export default function useAgentGraph(
     });
 
     if (flowID && flowVersion) {
-      api.subscribeToExecution(flowID, flowVersion);
-      console.debug(
-        `Subscribed to execution events for ${flowID} v.${flowVersion}`,
-      );
+      api
+        .subscribeToExecution(flowID, flowVersion)
+        .then(() =>
+          console.debug(
+            `Subscribed to execution events for ${flowID} v.${flowVersion}`,
+          ),
+        )
+        .catch((error) =>
+          console.error(
+            `Failed to subscribe to execution events for ${flowID} v.${flowVersion}:`,
+            error,
+          ),
+        );
     }
   }, [api, flowID, flowVersion, flowExecutionID]);
 
@@ -406,7 +415,6 @@ export default function useAgentGraph(
           errorMessage = error.message || "Invalid input";
           if (path && error.message) {
             const key = path.slice(1);
-            console.log("Error", key, error.message);
             setNestedProperty(
               errors,
               key,
@@ -495,7 +503,6 @@ export default function useAgentGraph(
     // Display error message
     if (saveRunRequest.state === "error") {
       if (saveRunRequest.request === "save") {
-        console.error("Error saving agent");
         toast({
           variant: "destructive",
           title: `Error saving agent`,
@@ -507,9 +514,7 @@ export default function useAgentGraph(
           title: `Error saving&running agent`,
           duration: 2000,
         });
-        console.error(`Error saving&running agent`);
       } else if (saveRunRequest.request === "stop") {
-        console.error(`Error stopping agent`);
         toast({
           variant: "destructive",
           title: `Error stopping agent`,
@@ -539,7 +544,6 @@ export default function useAgentGraph(
       } else if (saveRunRequest.request === "run") {
         const validationError = validateNodes();
         if (validationError) {
-          console.error("Validation failed; aborting run");
           toast({
             title: `Validation failed: ${validationError}`,
             variant: "destructive",
@@ -1034,7 +1038,7 @@ export default function useAgentGraph(
           return;
         }
       } catch (error) {
-        console.log(error);
+        console.error(error);
         toast({
           variant: "destructive",
           title: "Error scheduling agent",
