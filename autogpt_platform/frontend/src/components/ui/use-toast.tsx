@@ -189,16 +189,21 @@ function useToast() {
 }
 
 function useToastOnFail() {
-  return React.useCallback((action: string, fn: () => Promise<unknown>) => {
-    return fn().catch((e) => {
-      toast({
-        title: `Unable to ${action}`,
-        description: e?.message ?? "Something went wrong",
-        variant: "destructive",
-        duration: 10000,
-      });
-    });
-  }, []);
+  return React.useCallback(
+    async (action: string, fn: () => Promise<unknown>): Promise<void> => {
+      try {
+        await fn();
+      } catch (e: unknown) {
+        toast({
+          title: `Unable to ${action}`,
+          description: (e as Error)?.message ?? "Something went wrong",
+          variant: "destructive",
+          duration: 10000,
+        });
+      }
+    },
+    [],
+  );
 }
 
 export { useToast, toast, useToastOnFail };
