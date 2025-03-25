@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from typing import Protocol
 
 import uvicorn
 from autogpt_libs.auth import parse_jwt_token
@@ -86,7 +87,20 @@ async def authenticate_websocket(websocket: WebSocket) -> str:
         return ""
 
 
-async def handle_subscribe_graph_exec(
+# ===================== Message Handlers ===================== #
+
+
+class WSMessageHandler(Protocol):
+    async def __call__(
+        self,
+        connection_manager: ConnectionManager,
+        websocket: WebSocket,
+        user_id: str,
+        message: WSMessage,
+    ): ...
+
+
+async def handle_subscribe(
     connection_manager: ConnectionManager,
     websocket: WebSocket,
     user_id: str,
@@ -100,90 +114,52 @@ async def handle_subscribe_graph_exec(
                 error="Subscription data missing",
             ).model_dump_json()
         )
-    else:
+        return
+
+    # Verify that user has read access to graph
+    # if not get_db_client().get_graph(
+    #     graph_id=sub_req.graph_id,
+    #     version=sub_req.graph_version,
+    #     user_id=user_id,
+    # ):
+    #     await websocket.send_text(
+    #         WsMessage(
+    #             method=Methods.ERROR,
+    #             success=False,
+    #             error="Access denied",
+    #         ).model_dump_json()
+    #     )
+    #     return
+
+    if message.method == WSMethod.SUBSCRIBE_GRAPH_EXEC:
         sub_req = WSSubscribeGraphExecutionRequest.model_validate(message.data)
-
-        # Verify that user has read access to graph
-        # if not get_db_client().get_graph(
-        #     graph_id=sub_req.graph_id,
-        #     version=sub_req.graph_version,
-        #     user_id=user_id,
-        # ):
-        #     await websocket.send_text(
-        #         WsMessage(
-        #             method=Methods.ERROR,
-        #             success=False,
-        #             error="Access denied",
-        #         ).model_dump_json()
-        #     )
-        #     return
-
         channel_key = await connection_manager.subscribe_graph_exec(
             user_id=user_id,
             graph_exec_id=sub_req.graph_exec_id,
             websocket=websocket,
         )
-        logger.debug(
-            f"New subscription for user #{user_id}, "
-            f"graph execution #{sub_req.graph_exec_id}"
-        )
-        await websocket.send_text(
-            WSMessage(
-                method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
-                success=True,
-                channel=channel_key,
-            ).model_dump_json()
-        )
 
-
-async def handle_subscribe_graph_execs(
-    connection_manager: ConnectionManager,
-    websocket: WebSocket,
-    user_id: str,
-    message: WSMessage,
-):
-    if not message.data:
-        await websocket.send_text(
-            WSMessage(
-                method=WSMethod.ERROR,
-                success=False,
-                error="Subscription data missing",
-            ).model_dump_json()
-        )
-    else:
+    elif message.method == WSMethod.SUBSCRIBE_GRAPH_EXECS:
         sub_req = WSSubscribeGraphExecutionsRequest.model_validate(message.data)
-
-        # Verify that user has read access to graph
-        # if not get_db_client().get_graph(
-        #     graph_id=sub_req.graph_id,
-        #     version=sub_req.graph_version,
-        #     user_id=user_id,
-        # ):
-        #     await websocket.send_text(
-        #         WsMessage(
-        #             method=Methods.ERROR,
-        #             success=False,
-        #             error="Access denied",
-        #         ).model_dump_json()
-        #     )
-        #     return
-
         channel_key = await connection_manager.subscribe_graph_execs(
             user_id=user_id,
             graph_id=sub_req.graph_id,
             websocket=websocket,
         )
-        logger.debug(
-            f"New subscription for user #{user_id}, "
-            f"graph #{sub_req.graph_id} executions"
+
+    else:
+        raise ValueError(
+            f"{handle_subscribe.__name__} can't handle '{message.method}' messages"
         )
-        await websocket.send_text(
-            WSMessage(
-                method=WSMethod.SUBSCRIBE_GRAPH_EXECS,
-                success=True,
-                channel=channel_key,
-            ).model_dump_json()
-        )
+
+    logger.debug(f"New subscription on channel {channel_key} for user #{user_id}")
+    await websocket.send_text(
+        WSMessage(
+            method=message.method,
+            success=True,
+            channel=channel_key,
+        ).model_dump_json()
+    )
 
 
 async def handle_unsubscribe(
@@ -200,29 +176,49 @@ async def handle_unsubscribe(
                 error="Subscription data missing",
             ).model_dump_json()
         )
-    else:
-        unsub_req = WSSubscribeGraphExecutionRequest.model_validate(message.data)
-        channel_key = await connection_manager.unsubscribe_graph_exec(
-            user_id=user_id,
-            graph_exec_id=unsub_req.graph_exec_id,
-            websocket=websocket,
-        )
-        logger.debug(
-            f"Removed subscription for user #{user_id}, "
-            f"graph execution #{unsub_req.graph_exec_id}"
-        )
-        await websocket.send_text(
-            WSMessage(
-                method=WSMethod.UNSUBSCRIBE,
-                success=True,
-                channel=channel_key,
-            ).model_dump_json()
-        )
+        return
+
+    unsub_req = WSSubscribeGraphExecutionRequest.model_validate(message.data)
+    channel_key = await connection_manager.unsubscribe_graph_exec(
+        user_id=user_id,
+        graph_exec_id=unsub_req.graph_exec_id,
+        websocket=websocket,
+    )
+
+    logger.debug(f"Removed subscription on channel {channel_key} for user #{user_id}")
+    await websocket.send_text(
+        WSMessage(
+            method=WSMethod.UNSUBSCRIBE,
+            success=True,
+            channel=channel_key,
+        ).model_dump_json()
+    )
 
 
-@app.get("/")
-async def health():
-    return {"status": "healthy"}
+async def handle_heartbeat(
+    connection_manager: ConnectionManager,
+    websocket: WebSocket,
+    user_id: str,
+    message: WSMessage,
+):
+    await websocket.send_json(
+        {
+            "method": WSMethod.HEARTBEAT.value,
+            "data": "pong",
+            "success": True,
+        }
+    )
+
+
+_MSG_HANDLERS: dict[WSMethod, WSMessageHandler] = {
+    WSMethod.HEARTBEAT: handle_heartbeat,
+    WSMethod.SUBSCRIBE_GRAPH_EXEC: handle_subscribe,
+    WSMethod.SUBSCRIBE_GRAPH_EXECS: handle_subscribe,
+    WSMethod.UNSUBSCRIBE: handle_unsubscribe,
+}
+
+
+# ===================== WebSocket Server ===================== #
 
 
 @app.websocket("/ws")
@@ -238,37 +234,9 @@ async def websocket_router(
             data = await websocket.receive_text()
             message = WSMessage.model_validate_json(data)
 
-            if message.method == WSMethod.HEARTBEAT:
-                await websocket.send_json(
-                    {
-                        "method": WSMethod.HEARTBEAT.value,
-                        "data": "pong",
-                        "success": True,
-                    }
-                )
-                continue
-
             try:
-                if message.method == WSMethod.SUBSCRIBE_GRAPH_EXEC:
-                    await handle_subscribe_graph_exec(
-                        connection_manager=manager,
-                        websocket=websocket,
-                        user_id=user_id,
-                        message=message,
-                    )
-                    continue
-
-                elif message.method == WSMethod.SUBSCRIBE_GRAPH_EXECS:
-                    await handle_subscribe_graph_execs(
-                        connection_manager=manager,
-                        websocket=websocket,
-                        user_id=user_id,
-                        message=message,
-                    )
-                    continue
-
-                elif message.method == WSMethod.UNSUBSCRIBE:
-                    await handle_unsubscribe(
+                if message.method in _MSG_HANDLERS:
+                    await _MSG_HANDLERS[message.method](
                         connection_manager=manager,
                         websocket=websocket,
                         user_id=user_id,
@@ -277,7 +245,7 @@ async def websocket_router(
                     continue
             except Exception as e:
                 logger.error(
-                    f"Error while handling '{message.method}' message "
+                    f"Error while handling '{message.method.value}' message "
                     f"for user #{user_id}: {e}"
                 )
                 continue
@@ -301,6 +269,11 @@ async def websocket_router(
     except WebSocketDisconnect:
         manager.disconnect_socket(websocket)
         logger.debug("WebSocket client disconnected")
+
+
+@app.get("/")
+async def health():
+    return {"status": "healthy"}
 
 
 class WebsocketServer(AppProcess):
