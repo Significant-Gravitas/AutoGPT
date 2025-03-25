@@ -125,7 +125,9 @@ export const AgentFlowList = ({
                 if (!a.lastRun && !b.lastRun) return 0;
                 if (!a.lastRun) return 1;
                 if (!b.lastRun) return -1;
-                return b.lastRun.started_at - a.lastRun.started_at;
+                return (
+                  Number(b.lastRun.started_at) - Number(a.lastRun.started_at)
+                );
               })
               .map(({ flow, runCount, lastRun }) => (
                 <TableRow

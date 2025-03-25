@@ -27,7 +27,7 @@ export const FlowRunInfo: React.FC<
 
   const fetchBlockResults = useCallback(async () => {
     const executionResults = (
-      await api.getGraphExecutionInfo(flow.agent_id, execution.execution_id)
+      await api.getGraphExecutionInfo(flow.agent_id, execution.id)
     ).node_executions;
 
     // Create a map of the latest COMPLETED execution results of output nodes by node_id
@@ -69,7 +69,7 @@ export const FlowRunInfo: React.FC<
         result: result.output_data?.output || undefined,
       })),
     );
-  }, [api, flow.agent_id, execution.execution_id]);
+  }, [api, flow.agent_id, execution.id]);
 
   // Fetch graph and execution data
   useEffect(() => {
@@ -84,8 +84,8 @@ export const FlowRunInfo: React.FC<
   }
 
   const handleStopRun = useCallback(() => {
-    api.stopGraphExecution(flow.agent_id, execution.execution_id);
-  }, [api, flow.agent_id, execution.execution_id]);
+    api.stopGraphExecution(flow.agent_id, execution.id);
+  }, [api, flow.agent_id, execution.id]);
 
   return (
     <>
@@ -109,7 +109,7 @@ export const FlowRunInfo: React.FC<
             {flow.can_access_graph && (
               <Link
                 className={buttonVariants({ variant: "default" })}
-                href={`/build?flowID=${execution.graph_id}&flowVersion=${execution.graph_version}&flowExecutionID=${execution.execution_id}`}
+                href={`/build?flowID=${execution.graph_id}&flowVersion=${execution.graph_version}&flowExecutionID=${execution.id}`}
               >
                 <Pencil2Icon className="mr-2" /> Open in Builder
               </Link>
@@ -121,7 +121,7 @@ export const FlowRunInfo: React.FC<
             <strong>Agent ID:</strong> <code>{flow.agent_id}</code>
           </p>
           <p className="hidden">
-            <strong>Run ID:</strong> <code>{execution.execution_id}</code>
+            <strong>Run ID:</strong> <code>{execution.id}</code>
           </p>
           <div>
             <strong>Status:</strong>{" "}

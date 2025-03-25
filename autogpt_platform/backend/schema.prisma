@@ -57,18 +57,26 @@ model User {
   @@index([email])
 }
 
+enum OnboardingStep {
+  WELCOME
+  USAGE_REASON
+  INTEGRATIONS
+  AGENT_CHOICE
+  AGENT_NEW_RUN
+  AGENT_INPUT
+  CONGRATS
+}
+
 model UserOnboarding {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
 
-  step                 Int      @default(0)
-  usageReason          String?
-  integrations         String[] @default([])
-  otherIntegrations    String?
-  selectedAgentCreator String?
-  selectedAgentSlug    String?
-  agentInput           Json?
-  isCompleted          Boolean  @default(false)
+  completedSteps                OnboardingStep[] @default([])
+  usageReason                   String?
+  integrations                  String[]         @default([])
+  otherIntegrations             String?
+  selectedStoreListingVersionId String?
+  agentInput                    Json?
 
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)

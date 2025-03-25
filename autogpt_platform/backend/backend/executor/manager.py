@@ -41,10 +41,10 @@ from backend.data.block import (
 )
 from backend.data.execution import (
     ExecutionQueue,
-    ExecutionResult,
     ExecutionStatus,
     GraphExecutionEntry,
     NodeExecutionEntry,
+    NodeExecutionResult,
     merge_execution_input,
     parse_execution_output,
 )
@@ -151,8 +151,9 @@ def execute_node(
     node_exec_id = data.node_exec_id
     node_id = data.node_id
 
-    def update_execution(status: ExecutionStatus) -> ExecutionResult:
-        exec_update = db_client.update_execution_status(node_exec_id, status)
+    def update_execution(status: ExecutionStatus) -> NodeExecutionResult:
+        """Sets status and fetches+broadcasts the latest state of the node execution"""
+        exec_update = db_client.update_node_execution_status(node_exec_id, status)
         db_client.send_execution_update(exec_update)
         return exec_update
 
@@ -283,7 +284,7 @@ def _enqueue_next_nodes(
     def add_enqueued_execution(
         node_exec_id: str, node_id: str, block_id: str, data: BlockInput
     ) -> NodeExecutionEntry:
-        exec_update = db_client.update_execution_status(
+        exec_update = db_client.update_node_execution_status(
             node_exec_id, ExecutionStatus.QUEUED, data
         )
         db_client.send_execution_update(exec_update)
@@ -328,7 +329,7 @@ def _enqueue_next_nodes(
                 if link.is_static and link.sink_name not in next_node_input
             }
             if static_link_names and (
-                latest_execution := db_client.get_latest_execution(
+                latest_execution := db_client.get_latest_node_execution(
                     next_node_id, graph_exec_id
                 )
             ):
@@ -361,7 +362,7 @@ def _enqueue_next_nodes(
 
             # If link is static, there could be some incomplete executions waiting for it.
             # Load and complete the input missing input data, and try to re-enqueue them.
-            for iexec in db_client.get_incomplete_executions(
+            for iexec in db_client.get_incomplete_node_executions(
                 next_node_id, graph_exec_id
             ):
                 idata = iexec.input_data
@@ -734,7 +735,6 @@ class Executor:
             running_executions: dict[str, AsyncResult] = {}
 
             def make_exec_callback(exec_data: NodeExecutionEntry):
-
                 def callback(result: object):
                     running_executions.pop(exec_data.node_id)
 
@@ -780,7 +780,7 @@ class Executor:
                     exec_id = exec_data.node_exec_id
                     cls.db_client.upsert_execution_output(exec_id, "error", str(error))
 
-                    exec_update = cls.db_client.update_execution_status(
+                    exec_update = cls.db_client.update_node_execution_status(
                         exec_id, ExecutionStatus.FAILED
                     )
                     cls.db_client.send_execution_update(exec_update)
@@ -844,7 +844,7 @@ class Executor:
         metadata = cls.db_client.get_graph_metadata(
             graph_exec.graph_id, graph_exec.graph_version
         )
-        outputs = cls.db_client.get_execution_results(
+        outputs = cls.db_client.get_node_execution_results(
             graph_exec.graph_exec_id,
             block_ids=[AgentOutputBlock().id],
         )
@@ -1086,7 +1086,7 @@ class ExecutionManager(AppService):
             graph_exec_id,
             ExecutionStatus.TERMINATED,
         )
-        node_execs = self.db_client.get_execution_results(
+        node_execs = self.db_client.get_node_execution_results(
             graph_exec_id=graph_exec_id,
             statuses=[
                 ExecutionStatus.QUEUED,
@@ -1094,7 +1094,7 @@ class ExecutionManager(AppService):
                 ExecutionStatus.INCOMPLETE,
             ],
         )
-        self.db_client.update_execution_status_batch(
+        self.db_client.update_node_execution_status_batch(
             [node_exec.node_exec_id for node_exec in node_execs],
             ExecutionStatus.TERMINATED,
         )
