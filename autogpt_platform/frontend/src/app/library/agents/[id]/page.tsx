@@ -90,7 +90,7 @@ export default function AgentRunsPage(): React.ReactElement {
       );
       api.getGraphExecutions(agent.agent_id).then((agentRuns) => {
         const sortedRuns = agentRuns.toSorted(
-          (a, b) => b.started_at - a.started_at,
+          (a, b) => Number(b.started_at) - Number(a.started_at),
         );
         setAgentRuns(sortedRuns);
 
