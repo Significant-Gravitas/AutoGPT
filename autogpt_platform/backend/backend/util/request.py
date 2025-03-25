@@ -41,11 +41,15 @@ def _is_ip_blocked(ip: str) -> bool:
     return any(ip_addr in network for network in BLOCKED_IP_NETWORKS)
 
 
-def validate_url(url: str, trusted_origins: list[str]) -> str:
+def validate_url(url: str, trusted_origins: list[str]) -> tuple[str, str]:
     """
     Validates the URL to prevent SSRF attacks by ensuring it does not point
     to a private, link-local, or otherwise blocked IP address — unless
     the hostname is explicitly trusted.
+
+    Returns a tuple of:
+    - pinned_url:  a URL that has the netloc replaced with the validated IP
+    - ascii_hostname: the original ASCII hostname (IDNA-decoded) for use in the Host header
     """
     # Canonicalize URL
     url = url.strip("/ ").replace("\\", "/")
@@ -74,13 +78,24 @@ def validate_url(url: str, trusted_origins: list[str]) -> str:
     if not HOSTNAME_REGEX.match(ascii_hostname):
         raise ValueError("Hostname contains invalid characters.")
 
-    # Rebuild URL with IDNA-encoded hostname
-    parsed = parsed._replace(netloc=ascii_hostname)
-    url = str(urlunparse(parsed))
-
-    # If hostname is trusted, skip IP-based checks
+    # If hostname is trusted, skip IP-based checks but still return pinned URL
     if ascii_hostname in trusted_origins:
-        return url
+        # We still “pin” the URL but keep the hostname if it's trusted
+        pinned_netloc = ascii_hostname
+        if parsed.port:
+            pinned_netloc += f":{parsed.port}"
+
+        pinned_url = urlunparse(
+            (
+                parsed.scheme,
+                pinned_netloc,
+                parsed.path,
+                parsed.params,
+                parsed.query,
+                parsed.fragment,
+            )
+        )
+        return pinned_url, ascii_hostname
 
     # Resolve all IP addresses for the hostname
     try:
@@ -99,7 +114,24 @@ def validate_url(url: str, trusted_origins: list[str]) -> str:
                 f"for hostname {ascii_hostname} is not allowed."
             )
 
-    return url
+    # Pick an IP and build the pinned URL so we do not re-resolve later
+    pinned_ip = next(iter(ip_addresses))  # Just pick the first valid IP
+    pinned_netloc = pinned_ip
+    if parsed.port:
+        pinned_netloc += f":{parsed.port}"
+
+    pinned_url = urlunparse(
+        (
+            parsed.scheme,
+            pinned_netloc,
+            parsed.path,
+            parsed.params,
+            parsed.query,
+            parsed.fragment,
+        )
+    )
+
+    return pinned_url, ascii_hostname  # (pinned_url, original_hostname)
 
 
 class Requests:
@@ -137,28 +169,35 @@ class Requests:
         *args,
         **kwargs,
     ) -> req.Response:
-        # Merge any extra headers
-        if self.extra_headers is not None:
-            headers = {**(headers or {}), **self.extra_headers}
+        # Validate URL and get pinned URL + original hostname
+        pinned_url, original_hostname = validate_url(url, self.trusted_origins)
 
-        # Validate the URL (with optional extra validator)
-        url = validate_url(url, self.trusted_origins)
+        # Apply any extra user-defined validation/transformation
         if self.extra_url_validator is not None:
-            url = self.extra_url_validator(url)
+            pinned_url = self.extra_url_validator(pinned_url)
+
+        # Merge any extra headers
+        headers = dict(headers) if headers else {}
+        if self.extra_headers is not None:
+            headers.update(self.extra_headers)
+
+        # Force the Host header to the original hostname
+        headers["Host"] = original_hostname
 
         # Perform the request with redirects disabled for manual handling
         response = req.request(
             method,
-            url,
+            pinned_url,
             headers=headers,
             allow_redirects=False,
             *args,
             **kwargs,
         )
+
         if self.raise_for_status:
             response.raise_for_status()
 
-        # If allowed and a redirect is received, follow the redirect
+        # If allowed and a redirect is received, follow the redirect manually
         if allow_redirects and response.is_redirect:
             if max_redirects <= 0:
                 raise Exception("Too many redirects.")
@@ -167,14 +206,25 @@ class Requests:
             if not location:
                 return response
 
-            new_url = validate_url(urljoin(url, location), self.trusted_origins)
+            # The base URL is the pinned_url we just used
+            # so that relative redirects resolve correctly.
+            new_raw_url = urljoin(pinned_url, location)
+
+            # Validate/pin the redirect URL
+            new_pinned_url, new_original_hostname = validate_url(
+                new_raw_url, self.trusted_origins
+            )
             if self.extra_url_validator is not None:
-                new_url = self.extra_url_validator(new_url)
+                new_pinned_url = self.extra_url_validator(new_pinned_url)
+
+            # Carry forward the same headers but update Host
+            new_headers = dict(headers)
+            new_headers["Host"] = new_original_hostname
 
             return self.request(
                 method,
-                new_url,
-                headers=headers,
+                new_pinned_url,
+                headers=new_headers,
                 allow_redirects=allow_redirects,
                 max_redirects=max_redirects - 1,
                 *args,
