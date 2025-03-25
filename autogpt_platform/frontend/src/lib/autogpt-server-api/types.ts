@@ -768,7 +768,14 @@ export type OnboardingStep =
   | "AGENT_CHOICE"
   | "AGENT_NEW_RUN"
   | "AGENT_INPUT"
-  | "CONGRATS";
+  | "CONGRATS"
+  | "GET_RESULTS"
+  | "MARKETPLACE_VISIT"
+  | "MARKETPLACE_ADD_AGENT"
+  | "MARKETPLACE_RUN_AGENT"
+  | "BUILDER_OPEN"
+  | "BUILDER_ADD_NODE"
+  | "BUILDER_RUN_AGENT"
 
 export interface UserOnboarding {
   completedSteps: OnboardingStep[];

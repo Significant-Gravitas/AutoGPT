@@ -58,6 +58,7 @@ model User {
 }
 
 enum OnboardingStep {
+  // Introductory onboarding (Library)
   WELCOME
   USAGE_REASON
   INTEGRATIONS
@@ -65,6 +66,15 @@ enum OnboardingStep {
   AGENT_NEW_RUN
   AGENT_INPUT
   CONGRATS
+  GET_RESULTS
+  // Marketplace
+  MARKETPLACE_VISIT
+  MARKETPLACE_ADD_AGENT
+  MARKETPLACE_RUN_AGENT
+  // Builder
+  BUILDER_OPEN
+  BUILDER_ADD_NODE
+  BUILDER_RUN_AGENT
 }
 
 model UserOnboarding {
