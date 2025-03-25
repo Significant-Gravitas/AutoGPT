@@ -5,7 +5,7 @@ from typing import Sequence, cast
 
 from backend.data import db
 from backend.data.block import Block, BlockSchema, initialize_blocks
-from backend.data.execution import ExecutionResult, ExecutionStatus
+from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.data.model import _BaseCredentials
 from backend.data.user import create_default_user
 from backend.executor import DatabaseManager, ExecutionManager, Scheduler
@@ -63,7 +63,7 @@ async def wait_execution(
     graph_id: str,
     graph_exec_id: str,
     timeout: int = 30,
-) -> Sequence[ExecutionResult]:
+) -> Sequence[NodeExecutionResult]:
     async def is_execution_completed():
         status = await AgentServer().test_get_graph_run_status(graph_exec_id, user_id)
         log.info(f"Execution status: {status}")
