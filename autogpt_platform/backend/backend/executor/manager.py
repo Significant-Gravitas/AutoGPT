@@ -633,16 +633,14 @@ class Executor:
         )
         exec_stats.walltime = timing_info.wall_time
         exec_stats.cputime = timing_info.cpu_time
-        exec_stats.error = error
+        exec_stats.error = str(error)
 
-        if isinstance(exec_stats.error, Exception):
-            exec_stats.error = str(exec_stats.error)
-        result = cls.db_client.update_graph_execution_stats(
+        if result := cls.db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
             status=status,
             stats=exec_stats,
-        )
-        cls.db_client.send_execution_update(result)
+        ):
+            cls.db_client.send_execution_update(result)
 
         cls._handle_agent_run_notif(graph_exec, exec_stats)
 
