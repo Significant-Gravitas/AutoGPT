@@ -430,10 +430,16 @@ class GraphExecutionStats(BaseModel):
         arbitrary_types_allowed = True
 
     error: Optional[Exception | str] = None
-    walltime: float = 0
+    walltime: float = Field(
+        default=0, description="Time between start and end of run (seconds)"
+    )
     cputime: float = 0
-    nodes_walltime: float = 0
+    nodes_walltime: float = Field(
+        default=0, description="Total node execution time (seconds)"
+    )
     nodes_cputime: float = 0
-    node_count: int = 0
-    node_error_count: int = 0
-    cost: float = 0
+    node_count: int = Field(default=0, description="Total number of node executions")
+    node_error_count: int = Field(
+        default=0, description="Total number of errors generated"
+    )
+    cost: int = Field(default=0, description="Total execution cost (cents)")

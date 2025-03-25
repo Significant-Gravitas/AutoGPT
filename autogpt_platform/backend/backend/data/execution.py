@@ -1,3 +1,4 @@
+import logging
 from collections import defaultdict
 from datetime import datetime, timezone
 from enum import Enum
@@ -33,7 +34,7 @@ from backend.util import mock
 from backend.util import type as type_utils
 from backend.util.settings import Config
 
-from .block import BlockData, BlockInput, CompletedBlockOutput
+from .block import BlockData, BlockInput, BlockType, CompletedBlockOutput, get_block
 from .db import BaseDbModel
 from .includes import EXECUTION_RESULT_INCLUDE, GRAPH_EXECUTION_INCLUDE
 from .model import GraphExecutionStats, NodeExecutionStats
@@ -41,6 +42,7 @@ from .queue import AsyncRedisEventBus, RedisEventBus
 
 T = TypeVar("T")
 
+logger = logging.getLogger(__name__)
 config = Config()
 
 
@@ -71,19 +73,24 @@ class GraphExecutionMeta(BaseDbModel):
         total_run_time = duration
 
         try:
-            stats = type_utils.convert(_graph_exec.stats or {}, dict[str, Any])
-        except ValueError:
-            stats = {}
+            stats = GraphExecutionStats.model_validate(_graph_exec.stats)
+        except ValueError as e:
+            if _graph_exec.stats is not None:
+                logger.warning(
+                    "Failed to parse invalid graph execution stats "
+                    f"{_graph_exec.stats}: {e}"
+                )
+            stats = None
 
-        duration = stats.get("walltime", duration)
-        total_run_time = stats.get("nodes_walltime", total_run_time)
+        duration = stats.walltime if stats else duration
+        total_run_time = stats.nodes_walltime if stats else total_run_time
 
         return GraphExecutionMeta(
             id=_graph_exec.id,
             user_id=_graph_exec.userId,
             started_at=start_time,
             ended_at=end_time,
-            cost=stats.get("cost", None),
+            cost=stats.cost if stats else None,
             duration=duration,
             total_run_time=total_run_time,
             status=ExecutionStatus(_graph_exec.executionStatus),
@@ -94,14 +101,12 @@ class GraphExecutionMeta(BaseDbModel):
 
 
 class GraphExecution(GraphExecutionMeta):
-    inputs: dict[str, Any]
-    outputs: dict[str, list[Any]]
+    inputs: BlockInput
+    outputs: CompletedBlockOutput
     node_executions: list["NodeExecutionResult"]
 
     @staticmethod
     def from_db(_graph_exec: AgentGraphExecution):
-        from .block import BlockType, get_block
-
         if _graph_exec.AgentNodeExecutions is None:
             raise ValueError("Node executions must be included in query")
 
@@ -137,7 +142,7 @@ class GraphExecution(GraphExecutionMeta):
             },
         }
 
-        outputs: dict[str, list] = defaultdict(list)
+        outputs: CompletedBlockOutput = defaultdict(list)
         for exec in node_executions:
             if (
                 block := get_block(exec.block_id)
