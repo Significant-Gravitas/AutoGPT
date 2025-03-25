@@ -175,15 +175,19 @@ class BaseGraph(BaseDbModel):
         )
         return self._generate_schema(
             AgentInputBlock.Input,
-            [
-                node.input_default
-                for node in self.nodes
-                if (b := get_block(node.block_id))
-                and b.block_type == BlockType.INPUT
-                and "name" in node.input_default
-            ]
-            if not webhook_input_block
-            else [{"name": "payload", "title": f"{webhook_input_block.name} payload"}],
+            (
+                [
+                    node.input_default
+                    for node in self.nodes
+                    if (b := get_block(node.block_id))
+                    and b.block_type == BlockType.INPUT
+                    and "name" in node.input_default
+                ]
+                if not webhook_input_block
+                else [
+                    {"name": "payload", "title": f"{webhook_input_block.name} payload"}
+                ]
+            ),
         )
 
     @computed_field
