@@ -1,11 +1,14 @@
 import ipaddress
 import re
 import socket
+import ssl
 from typing import Callable
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import quote, urljoin, urlparse, urlunparse
 
 import idna
 import requests as req
+from requests.adapters import HTTPAdapter
+from urllib3 import PoolManager
 
 from backend.util.settings import Config
 
@@ -41,7 +44,29 @@ def _is_ip_blocked(ip: str) -> bool:
     return any(ip_addr in network for network in BLOCKED_IP_NETWORKS)
 
 
-def validate_url(url: str, trusted_origins: list[str]) -> tuple[str, str]:
+class SNIHostAdapter(HTTPAdapter):
+    """
+    A custom adapter that connects to an IP address but still
+    sets the TLS SNI to the original domain name so the cert
+    can match. Also sets assert_hostname for proper validation.
+    """
+
+    def __init__(self, ssl_hostname, *args, **kwargs):
+        self.ssl_hostname = ssl_hostname
+        super().__init__(*args, **kwargs)
+
+    def init_poolmanager(self, *args, **kwargs):
+        self.poolmanager = PoolManager(
+            ssl_context=ssl.create_default_context(),
+            server_hostname=self.ssl_hostname,  # This works for urllib3>=2
+        )
+
+
+def validate_url(
+    url: str,
+    trusted_origins: list[str],
+    enable_dns_rebinding: bool = True,
+) -> tuple[str, str]:
     """
     Validates the URL to prevent SSRF attacks by ensuring it does not point
     to a private, link-local, or otherwise blocked IP address — unless
@@ -89,7 +114,7 @@ def validate_url(url: str, trusted_origins: list[str]) -> tuple[str, str]:
             (
                 parsed.scheme,
                 pinned_netloc,
-                parsed.path,
+                quote(parsed.path, safe="/%:@"),
                 parsed.params,
                 parsed.query,
                 parsed.fragment,
@@ -99,7 +124,10 @@ def validate_url(url: str, trusted_origins: list[str]) -> tuple[str, str]:
 
     # Resolve all IP addresses for the hostname
     try:
-        ip_addresses = {res[4][0] for res in socket.getaddrinfo(ascii_hostname, None)}
+        ip_list = [res[4][0] for res in socket.getaddrinfo(ascii_hostname, None)]
+        ipv4 = [ip for ip in ip_list if ":" not in ip]
+        ipv6 = [ip for ip in ip_list if ":" in ip]
+        ip_addresses = ipv4 + ipv6  # Prefer IPv4 over IPv6
     except socket.gaierror:
         raise ValueError(f"Unable to resolve IP address for hostname {ascii_hostname}")
 
@@ -114,17 +142,27 @@ def validate_url(url: str, trusted_origins: list[str]) -> tuple[str, str]:
                 f"for hostname {ascii_hostname} is not allowed."
             )
 
-    # Pick an IP and build the pinned URL so we do not re-resolve later
-    pinned_ip = next(iter(ip_addresses))  # Just pick the first valid IP
-    pinned_netloc = pinned_ip
+    # Pin to the first valid IP (for SSRF defense).
+    # More reliable but slower alternative: iterate over all IPs, pick the working one.
+    pinned_ip = ip_addresses[0]
+
+    # If it's IPv6, bracket it
+    if ":" in pinned_ip:
+        pinned_netloc = f"[{pinned_ip}]"
+    else:
+        pinned_netloc = pinned_ip
+
     if parsed.port:
         pinned_netloc += f":{parsed.port}"
+
+    if not enable_dns_rebinding:
+        pinned_netloc = ascii_hostname
 
     pinned_url = urlunparse(
         (
             parsed.scheme,
             pinned_netloc,
-            parsed.path,
+            quote(parsed.path, safe="/%:@"),
             parsed.params,
             parsed.query,
             parsed.fragment,
@@ -184,8 +222,22 @@ class Requests:
         # Force the Host header to the original hostname
         headers["Host"] = original_hostname
 
+        # 4) Create a fresh session & mount our SNIHostAdapter if pinned to IP
+        session = req.Session()
+        pinned_parsed = urlparse(pinned_url)
+
+        # If pinned_url netloc is an IP (not in trusted_origins),
+        # then we attach the custom SNI adapter:
+        if pinned_parsed.hostname and pinned_parsed.hostname != original_hostname:
+            # That means we definitely pinned to an IP
+            mount_prefix = f"{pinned_parsed.scheme}://{pinned_parsed.hostname}"
+            if pinned_parsed.port:
+                mount_prefix += f":{pinned_parsed.port}"
+            adapter = SNIHostAdapter(ssl_hostname=original_hostname)
+            session.mount(mount_prefix, adapter)
+
         # Perform the request with redirects disabled for manual handling
-        response = req.request(
+        response = session.request(
             method,
             pinned_url,
             headers=headers,
