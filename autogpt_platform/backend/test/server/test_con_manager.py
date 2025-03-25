@@ -68,7 +68,7 @@ async def test_unsubscribe(
     channel_key = "user-1|graph_exec#graph-exec-1"
     connection_manager.subscriptions[channel_key] = {mock_websocket}
 
-    await connection_manager.unsubscribe(
+    await connection_manager.unsubscribe_graph_exec(
         user_id="user-1",
         graph_exec_id="graph-exec-1",
         websocket=mock_websocket,

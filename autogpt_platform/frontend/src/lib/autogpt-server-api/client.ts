@@ -828,6 +828,12 @@ export default class BackendAPI {
     });
   }
 
+  subscribeToGraphExecutions(graphID: GraphID): Promise<void> {
+    return this.sendWebSocketMessage("subscribe_graph_executions", {
+      graph_id: graphID,
+    });
+  }
+
   async sendWebSocketMessage<M extends keyof WebsocketMessageTypeMap>(
     method: M,
     data: WebsocketMessageTypeMap[M],
@@ -973,6 +979,7 @@ type GraphCreateRequestBody = {
 
 type WebsocketMessageTypeMap = {
   subscribe_graph_execution: { graph_exec_id: GraphExecutionID };
+  subscribe_graph_executions: { graph_id: GraphID };
   graph_execution_event: GraphExecutionMeta;
   node_execution_event: NodeExecutionResult;
   heartbeat: "ping" | "pong";

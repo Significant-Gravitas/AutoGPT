@@ -9,7 +9,7 @@ from backend.server.conn_manager import ConnectionManager
 from backend.server.ws_api import (
     WSMessage,
     WSMethod,
-    handle_subscribe,
+    handle_subscribe_graph_exec,
     handle_unsubscribe,
     websocket_router,
 )
@@ -122,7 +122,7 @@ async def test_handle_subscribe_success(
         "user-1|graph_exec#test-graph-exec-id"
     )
 
-    await handle_subscribe(
+    await handle_subscribe_graph_exec(
         connection_manager=cast(ConnectionManager, mock_manager),
         websocket=cast(WebSocket, mock_websocket),
         user_id="user-1",
@@ -148,7 +148,7 @@ async def test_handle_subscribe_missing_data(
 ) -> None:
     message = WSMessage(method=WSMethod.SUBSCRIBE_GRAPH_EXEC)
 
-    await handle_subscribe(
+    await handle_subscribe_graph_exec(
         connection_manager=cast(ConnectionManager, mock_manager),
         websocket=cast(WebSocket, mock_websocket),
         user_id="user-1",
