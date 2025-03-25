@@ -1,11 +1,14 @@
 import ipaddress
 import re
 import socket
+import ssl
 from typing import Callable
-from urllib.parse import urljoin, urlparse, urlunparse
+from urllib.parse import quote, urljoin, urlparse, urlunparse
 
 import idna
 import requests as req
+from requests.adapters import HTTPAdapter
+from urllib3 import PoolManager
 
 from backend.util.settings import Config
 
@@ -41,11 +44,56 @@ def _is_ip_blocked(ip: str) -> bool:
     return any(ip_addr in network for network in BLOCKED_IP_NETWORKS)
 
 
-def validate_url(url: str, trusted_origins: list[str]) -> str:
+def _remove_insecure_headers(headers: dict, old_url: str, new_url: str) -> dict:
+    """
+    Removes sensitive headers (Authorization, Proxy-Authorization, Cookie)
+    if the scheme/host/port of new_url differ from old_url.
+    """
+    old_parsed = urlparse(old_url)
+    new_parsed = urlparse(new_url)
+    if (
+        (old_parsed.scheme != new_parsed.scheme)
+        or (old_parsed.hostname != new_parsed.hostname)
+        or (old_parsed.port != new_parsed.port)
+    ):
+        headers.pop("Authorization", None)
+        headers.pop("Proxy-Authorization", None)
+        headers.pop("Cookie", None)
+    return headers
+
+
+class HostSSLAdapter(HTTPAdapter):
+    """
+    A custom adapter that connects to an IP address but still
+    sets the TLS SNI to the original host name so the cert can match.
+    """
+
+    def __init__(self, ssl_hostname, *args, **kwargs):
+        self.ssl_hostname = ssl_hostname
+        super().__init__(*args, **kwargs)
+
+    def init_poolmanager(self, *args, **kwargs):
+        self.poolmanager = PoolManager(
+            *args,
+            ssl_context=ssl.create_default_context(),
+            server_hostname=self.ssl_hostname,  # This works for urllib3>=2
+            **kwargs,
+        )
+
+
+def validate_url(
+    url: str,
+    trusted_origins: list[str],
+    enable_dns_rebinding: bool = True,
+) -> tuple[str, str]:
     """
     Validates the URL to prevent SSRF attacks by ensuring it does not point
     to a private, link-local, or otherwise blocked IP address — unless
     the hostname is explicitly trusted.
+
+    Returns a tuple of:
+    - pinned_url:  a URL that has the netloc replaced with the validated IP
+    - ascii_hostname: the original ASCII hostname (IDNA-decoded) for use in the Host header
     """
     # Canonicalize URL
     url = url.strip("/ ").replace("\\", "/")
@@ -74,17 +122,30 @@ def validate_url(url: str, trusted_origins: list[str]) -> str:
     if not HOSTNAME_REGEX.match(ascii_hostname):
         raise ValueError("Hostname contains invalid characters.")
 
-    # Rebuild URL with IDNA-encoded hostname
-    parsed = parsed._replace(netloc=ascii_hostname)
-    url = str(urlunparse(parsed))
-
-    # If hostname is trusted, skip IP-based checks
+    # If hostname is trusted, skip IP-based checks but still return pinned URL
     if ascii_hostname in trusted_origins:
-        return url
+        pinned_netloc = ascii_hostname
+        if parsed.port:
+            pinned_netloc += f":{parsed.port}"
+
+        pinned_url = urlunparse(
+            (
+                parsed.scheme,
+                pinned_netloc,
+                quote(parsed.path, safe="/%:@"),
+                parsed.params,
+                parsed.query,
+                parsed.fragment,
+            )
+        )
+        return pinned_url, ascii_hostname
 
     # Resolve all IP addresses for the hostname
     try:
-        ip_addresses = {res[4][0] for res in socket.getaddrinfo(ascii_hostname, None)}
+        ip_list = [res[4][0] for res in socket.getaddrinfo(ascii_hostname, None)]
+        ipv4 = [ip for ip in ip_list if ":" not in ip]
+        ipv6 = [ip for ip in ip_list if ":" in ip]
+        ip_addresses = ipv4 + ipv6  # Prefer IPv4 over IPv6
     except socket.gaierror:
         raise ValueError(f"Unable to resolve IP address for hostname {ascii_hostname}")
 
@@ -99,7 +160,33 @@ def validate_url(url: str, trusted_origins: list[str]) -> str:
                 f"for hostname {ascii_hostname} is not allowed."
             )
 
-    return url
+    # Pin to the first valid IP (for SSRF defense).
+    pinned_ip = ip_addresses[0]
+
+    # If it's IPv6, bracket it
+    if ":" in pinned_ip:
+        pinned_netloc = f"[{pinned_ip}]"
+    else:
+        pinned_netloc = pinned_ip
+
+    if parsed.port:
+        pinned_netloc += f":{parsed.port}"
+
+    if not enable_dns_rebinding:
+        pinned_netloc = ascii_hostname
+
+    pinned_url = urlunparse(
+        (
+            parsed.scheme,
+            pinned_netloc,
+            quote(parsed.path, safe="/%:@"),
+            parsed.params,
+            parsed.query,
+            parsed.fragment,
+        )
+    )
+
+    return pinned_url, ascii_hostname  # (pinned_url, original_hostname)
 
 
 class Requests:
@@ -137,28 +224,49 @@ class Requests:
         *args,
         **kwargs,
     ) -> req.Response:
-        # Merge any extra headers
-        if self.extra_headers is not None:
-            headers = {**(headers or {}), **self.extra_headers}
+        # Validate URL and get pinned URL + original hostname
+        pinned_url, original_hostname = validate_url(url, self.trusted_origins)
 
-        # Validate the URL (with optional extra validator)
-        url = validate_url(url, self.trusted_origins)
+        # Apply any extra user-defined validation/transformation
         if self.extra_url_validator is not None:
-            url = self.extra_url_validator(url)
+            pinned_url = self.extra_url_validator(pinned_url)
+
+        # Merge any extra headers
+        headers = dict(headers) if headers else {}
+        if self.extra_headers is not None:
+            headers.update(self.extra_headers)
+
+        # Force the Host header to the original hostname
+        headers["Host"] = original_hostname
+
+        # Create a fresh session & mount our HostSSLAdapter if pinned to IP
+        session = req.Session()
+        pinned_parsed = urlparse(pinned_url)
+
+        # If pinned_url netloc is an IP (not in trusted_origins),
+        # then we attach the custom SNI adapter:
+        if pinned_parsed.hostname and pinned_parsed.hostname != original_hostname:
+            # That means we definitely pinned to an IP
+            mount_prefix = f"{pinned_parsed.scheme}://{pinned_parsed.hostname}"
+            if pinned_parsed.port:
+                mount_prefix += f":{pinned_parsed.port}"
+            adapter = HostSSLAdapter(ssl_hostname=original_hostname)
+            session.mount("https://", adapter)
 
         # Perform the request with redirects disabled for manual handling
-        response = req.request(
+        response = session.request(
             method,
-            url,
+            pinned_url,
             headers=headers,
             allow_redirects=False,
             *args,
             **kwargs,
         )
+
         if self.raise_for_status:
             response.raise_for_status()
 
-        # If allowed and a redirect is received, follow the redirect
+        # If allowed and a redirect is received, follow the redirect manually
         if allow_redirects and response.is_redirect:
             if max_redirects <= 0:
                 raise Exception("Too many redirects.")
@@ -167,14 +275,16 @@ class Requests:
             if not location:
                 return response
 
-            new_url = validate_url(urljoin(url, location), self.trusted_origins)
-            if self.extra_url_validator is not None:
-                new_url = self.extra_url_validator(new_url)
+            # The base URL is the pinned_url we just used
+            # so that relative redirects resolve correctly.
+            new_url = urljoin(pinned_url, location)
+            # Carry forward the same headers but update Host
+            new_headers = _remove_insecure_headers(dict(headers), url, new_url)
 
             return self.request(
                 method,
                 new_url,
-                headers=headers,
+                headers=new_headers,
                 allow_redirects=allow_redirects,
                 max_redirects=max_redirects - 1,
                 *args,
