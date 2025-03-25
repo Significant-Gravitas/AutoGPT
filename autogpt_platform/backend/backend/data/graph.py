@@ -19,6 +19,8 @@ from pydantic.fields import Field, computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
+from backend.blocks.llm import LlmModel
+from backend.data.db import prisma as db
 from backend.util import type as type_utils
 
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
@@ -1026,3 +1028,40 @@ async def fix_llm_provider_credentials():
             where={"id": node_id},
             data={"constantInput": Json(node_preset_input)},
         )
+
+
+async def migrate_llm_models(migrate_to: LlmModel):
+    """
+    Update all LLM models in all AI blocks that don't exist in the enum.
+    Note: Only updates top level LlmModel SchemaFields of blocks (won't update nested fields).
+    """
+    logger.info("Migrating LLM models")
+    # Scan all blocks and search for LlmModel fields
+    llm_model_fields: dict[str, str] = {}  # {block_id: field_name}
+
+    # Search for all LlmModel fields
+    for block_type in get_blocks().values():
+        block = block_type()
+        from pydantic.fields import FieldInfo
+
+        fields: dict[str, FieldInfo] = block.input_schema.model_fields
+
+        # Collect top-level LlmModel fields
+        for field_name, field in fields.items():
+            if field.annotation == LlmModel:
+                llm_model_fields[block.id] = field_name
+
+    # Update each block
+    for id, path in llm_model_fields.items():
+        # Convert enum values to a list of strings for the SQL query
+        enum_values = [v.value for v in LlmModel.__members__.values()]
+
+        query = f"""
+            UPDATE "AgentNode"
+            SET "constantInput" = jsonb_set("constantInput", '{{{path}}}', '"{migrate_to.value}"', true)
+            WHERE "agentBlockId" = '{id}'
+            AND "constantInput" ? '{path}'
+            AND "constantInput"->>'{path}' NOT IN ({','.join(f"'{value}'" for value in enum_values)})
+            """
+
+        await db.execute_raw(query)
