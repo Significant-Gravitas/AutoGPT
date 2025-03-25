@@ -264,7 +264,7 @@ async def create_graph_execution(
     nodes_input: list[tuple[str, BlockInput]],
     user_id: str,
     preset_id: str | None = None,
-) -> tuple[str, list[NodeExecutionResult]]:
+) -> GraphExecution:
     """
     Create a new AgentGraphExecution record.
     Returns:
@@ -297,10 +297,7 @@ async def create_graph_execution(
         include=GRAPH_EXECUTION_INCLUDE,
     )
 
-    return result.id, [
-        NodeExecutionResult.from_db(execution, result.userId)
-        for execution in result.AgentNodeExecutions or []
-    ]
+    return GraphExecution.from_db(result)
 
 
 async def upsert_execution_input(

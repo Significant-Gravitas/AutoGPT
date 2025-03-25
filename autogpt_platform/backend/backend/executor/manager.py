@@ -627,7 +627,10 @@ class Executor:
             node_eid="*",
             block_name="-",
         )
-        cls.db_client.update_graph_execution_start_time(graph_exec.graph_exec_id)
+        exec_meta = cls.db_client.update_graph_execution_start_time(
+            graph_exec.graph_exec_id
+        )
+        cls.db_client.send_execution_update(exec_meta)
         timing_info, (exec_stats, status, error) = cls._on_graph_execution(
             graph_exec, cancel, log_metadata
         )
@@ -637,12 +640,12 @@ class Executor:
 
         if isinstance(exec_stats.error, Exception):
             exec_stats.error = str(exec_stats.error)
-        result = cls.db_client.update_graph_execution_stats(
+        exec_meta = cls.db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
             status=status,
             stats=exec_stats,
         )
-        cls.db_client.send_execution_update(result)
+        cls.db_client.send_execution_update(exec_meta)
 
         cls._handle_agent_run_notif(graph_exec, exec_stats)
 
@@ -1003,17 +1006,21 @@ class ExecutionManager(AppService):
                 "No starting nodes found for the graph, make sure an AgentInput or blocks with no inbound links are present as starting nodes."
             )
 
-        graph_exec_id, node_execs = self.db_client.create_graph_execution(
+        graph_exec = self.db_client.create_graph_execution(
             graph_id=graph_id,
             graph_version=graph.version,
             nodes_input=nodes_input,
             user_id=user_id,
             preset_id=preset_id,
         )
+        self.db_client.send_execution_update(graph_exec)
 
-        starting_node_execs = []
-        for node_exec in node_execs:
-            starting_node_execs.append(
+        graph_exec_entry = GraphExecutionEntry(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph_version or 0,
+            graph_exec_id=graph_exec.id,
+            start_node_execs=[
                 NodeExecutionEntry(
                     user_id=user_id,
                     graph_exec_id=node_exec.graph_exec_id,
@@ -1023,18 +1030,12 @@ class ExecutionManager(AppService):
                     block_id=node_exec.block_id,
                     data=node_exec.input_data,
                 )
-            )
-
-        graph_exec = GraphExecutionEntry(
-            user_id=user_id,
-            graph_id=graph_id,
-            graph_version=graph_version or 0,
-            graph_exec_id=graph_exec_id,
-            start_node_execs=starting_node_execs,
+                for node_exec in graph_exec.node_executions
+            ],
         )
-        self.queue.add(graph_exec)
+        self.queue.add(graph_exec_entry)
 
-        return graph_exec
+        return graph_exec_entry
 
     @expose
     def cancel_execution(self, graph_exec_id: str) -> None:
