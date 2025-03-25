@@ -44,6 +44,24 @@ def _is_ip_blocked(ip: str) -> bool:
     return any(ip_addr in network for network in BLOCKED_IP_NETWORKS)
 
 
+def _remove_insecure_headers(headers: dict, old_url: str, new_url: str) -> dict:
+    """
+    Removes sensitive headers (Authorization, Proxy-Authorization, Cookie)
+    if the scheme/host/port of new_url differ from old_url.
+    """
+    old_parsed = urlparse(old_url)
+    new_parsed = urlparse(new_url)
+    if (
+        (old_parsed.scheme != new_parsed.scheme)
+        or (old_parsed.hostname != new_parsed.hostname)
+        or (old_parsed.port != new_parsed.port)
+    ):
+        headers.pop("Authorization", None)
+        headers.pop("Proxy-Authorization", None)
+        headers.pop("Cookie", None)
+    return headers
+
+
 class SNIHostAdapter(HTTPAdapter):
     """
     A custom adapter that connects to an IP address but still
@@ -105,7 +123,6 @@ def validate_url(
 
     # If hostname is trusted, skip IP-based checks but still return pinned URL
     if ascii_hostname in trusted_origins:
-        # We still “pin” the URL but keep the hostname if it's trusted
         pinned_netloc = ascii_hostname
         if parsed.port:
             pinned_netloc += f":{parsed.port}"
@@ -143,7 +160,6 @@ def validate_url(
             )
 
     # Pin to the first valid IP (for SSRF defense).
-    # More reliable but slower alternative: iterate over all IPs, pick the working one.
     pinned_ip = ip_addresses[0]
 
     # If it's IPv6, bracket it
@@ -270,7 +286,9 @@ class Requests:
                 new_pinned_url = self.extra_url_validator(new_pinned_url)
 
             # Carry forward the same headers but update Host
-            new_headers = dict(headers)
+            new_headers = _remove_insecure_headers(
+                dict(headers), pinned_url, new_pinned_url
+            )
             new_headers["Host"] = new_original_hostname
 
             return self.request(
