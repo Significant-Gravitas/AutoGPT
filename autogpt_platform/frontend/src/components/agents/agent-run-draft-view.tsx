@@ -57,11 +57,10 @@ export default function AgentRunDraftView({
 
   const doRun = useCallback(
     () =>
-      toastOnFail("execute agent", () =>
-        api
-          .executeGraph(graph.id, graph.version, inputValues)
-          .then((newRun) => onRun(newRun.graph_exec_id)),
-      ),
+      api
+        .executeGraph(graph.id, graph.version, inputValues)
+        .then((newRun) => onRun(newRun.graph_exec_id))
+        .catch(toastOnFail("execute agent")),
     [api, graph, inputValues, onRun, toastOnFail],
   );
 

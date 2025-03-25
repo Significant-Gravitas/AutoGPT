@@ -68,11 +68,10 @@ export default function AgentScheduleDetailsView({
 
   const runNow = useCallback(
     () =>
-      toastOnFail("execute agent", () =>
-        api
-          .executeGraph(graph.id, graph.version, schedule.input_data)
-          .then((run) => onForcedRun(run.graph_exec_id)),
-      ),
+      api
+        .executeGraph(graph.id, graph.version, schedule.input_data)
+        .then((run) => onForcedRun(run.graph_exec_id))
+        .catch(toastOnFail("execute agent")),
     [api, graph, schedule, onForcedRun, toastOnFail],
   );
 

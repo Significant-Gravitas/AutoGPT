@@ -50,42 +50,44 @@ export default function CreditsPage() {
       setIsRefundModalOpen(true);
     });
   };
-  const refundCredits = async (transaction_key: string, reason: string) =>
-    toastOnFail("refund transaction", async () => {
-      const amount = await refundTopUp(transaction_key, reason);
-      if (amount > 0) {
-        toast({
-          title: "Refund approved! 🎉",
-          description: `Your refund has been automatically processed. Based on your remaining balance, the amount of ${formatCredits(amount)} will be credited to your account.`,
-        });
-      } else {
-        toast({
-          title: "Refund Request Received",
-          description:
-            "We have received your refund request. A member of our team will review it and reach out via email shortly.",
-        });
-      }
-    });
+  const refundCredits = (transaction_key: string, reason: string) =>
+    refundTopUp(transaction_key, reason)
+      .then((amount) => {
+        if (amount > 0) {
+          toast({
+            title: "Refund approved! 🎉",
+            description: `Your refund has been automatically processed. Based on your remaining balance, the amount of ${formatCredits(amount)} will be credited to your account.`,
+          });
+        } else {
+          toast({
+            title: "Refund Request Received",
+            description:
+              "We have received your refund request. A member of our team will review it and reach out via email shortly.",
+          });
+        }
+      })
+      .catch(toastOnFail("refund trnsaction"));
 
   useEffect(() => {
     if (api && topupStatus === "success") {
-      toastOnFail("fulfill checkout", () => api.fulfillCheckout());
+      api.fulfillCheckout().catch(toastOnFail("fulfill checkout"));
     }
   }, [api, topupStatus, toastOnFail]);
 
-  const openBillingPortal = async () => {
-    toastOnFail("open billing portal", async () => {
-      const portal = await api.getUserPaymentPortalLink();
-      router.push(portal.url);
-    });
-  };
+  const openBillingPortal = () =>
+    api
+      .getUserPaymentPortalLink()
+      .then((portal) => {
+        router.push(portal.url);
+      })
+      .catch(toastOnFail("open billing portal"));
 
   const submitTopUp = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
     const amount =
       parseInt(new FormData(form).get("topUpAmount") as string) * 100;
-    toastOnFail("request top-up", () => requestTopUp(amount));
+    requestTopUp(amount).catch(toastOnFail("request top-up"));
   };
 
   const submitAutoTopUpConfig = (e: React.FormEvent<HTMLFormElement>) => {
@@ -94,11 +96,11 @@ export default function CreditsPage() {
     const formData = new FormData(form);
     const amount = parseInt(formData.get("topUpAmount") as string) * 100;
     const threshold = parseInt(formData.get("threshold") as string) * 100;
-    toastOnFail("update auto top-up config", () =>
-      updateAutoTopUpConfig(amount, threshold).then(() => {
+    updateAutoTopUpConfig(amount, threshold)
+      .then(() => {
         toast({ title: "Auto top-up config updated! 🎉" });
-      }),
-    );
+      })
+      .catch(toastOnFail("update auto top-up config"));
   };
 
   return (

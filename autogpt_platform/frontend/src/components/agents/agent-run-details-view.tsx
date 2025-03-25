@@ -82,15 +82,15 @@ export default function AgentRunDetailsView({
   const runAgain = useCallback(
     () =>
       agentRunInputs &&
-      toastOnFail("execute agent", () =>
-        api.executeGraph(
+      api
+        .executeGraph(
           graph.id,
           graph.version,
           Object.fromEntries(
             Object.entries(agentRunInputs).map(([k, v]) => [k, v.value]),
           ),
-        ),
-      ),
+        )
+        .catch(toastOnFail("execute agent")),
     [api, graph, agentRunInputs, toastOnFail],
   );
 
