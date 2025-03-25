@@ -253,11 +253,15 @@ export default class BackendAPI {
   }
 
   getExecutions(): Promise<GraphExecutionMeta[]> {
-    return this._get(`/executions`);
+    return this._get(`/executions`).then((results) =>
+      results.map(parseGraphExecutionTimestamps),
+    );
   }
 
   getGraphExecutions(graphID: GraphID): Promise<GraphExecutionMeta[]> {
-    return this._get(`/graphs/${graphID}/executions`);
+    return this._get(`/graphs/${graphID}/executions`).then((results) =>
+      results.map(parseGraphExecutionTimestamps),
+    );
   }
 
   async getGraphExecutionInfo(
@@ -265,10 +269,7 @@ export default class BackendAPI {
     runID: GraphExecutionID,
   ): Promise<GraphExecution> {
     const result = await this._get(`/graphs/${graphID}/executions/${runID}`);
-    result.node_executions = result.node_executions.map(
-      parseNodeExecutionResultTimestamps,
-    );
-    return result;
+    return parseGraphExecutionTimestamps<GraphExecution>(result);
   }
 
   async stopGraphExecution(
@@ -279,10 +280,7 @@ export default class BackendAPI {
       "POST",
       `/graphs/${graphID}/executions/${runID}/stop`,
     );
-    result.node_executions = result.node_executions.map(
-      parseNodeExecutionResultTimestamps,
-    );
-    return result;
+    return parseGraphExecutionTimestamps<GraphExecution>(result);
   }
 
   async deleteGraphExecution(runID: GraphExecutionID): Promise<void> {
@@ -910,7 +908,7 @@ export default class BackendAPI {
           if (message.method === "node_execution_event") {
             message.data = parseNodeExecutionResultTimestamps(message.data);
           } else if (message.method == "graph_execution_event") {
-            message.data = parseGraphExecutionMetaTimestamps(message.data);
+            message.data = parseGraphExecutionTimestamps(message.data);
           }
           this.wsMessageHandlers[message.method]?.forEach((handler) =>
             handler(message.data),
@@ -1001,11 +999,16 @@ type _PydanticValidationError = {
 
 /* *** HELPER FUNCTIONS *** */
 
-function parseGraphExecutionMetaTimestamps(result: any): GraphExecutionMeta {
-  return _parseObjectTimestamps<GraphExecutionMeta>(result, [
-    "started_at",
-    "ended_at",
-  ]);
+function parseGraphExecutionTimestamps<
+  T extends GraphExecutionMeta | GraphExecution,
+>(result: any): T {
+  const fixed = _parseObjectTimestamps<T>(result, ["started_at", "ended_at"]);
+  if ("node_executions" in fixed) {
+    fixed.node_executions = fixed.node_executions.map(
+      parseNodeExecutionResultTimestamps,
+    );
+  }
+  return fixed;
 }
 
 function parseNodeExecutionResultTimestamps(result: any): NodeExecutionResult {

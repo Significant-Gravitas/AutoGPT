@@ -105,11 +105,13 @@ export default function AgentRunsSelectorList({
 
           {activeListTab === "runs"
             ? agentRuns
-                .toSorted((a, b) => Number(b.started_at) - Number(a.started_at))
-                .map((run, i) => (
+                .toSorted(
+                  (a, b) => b.started_at.getTime() - a.started_at.getTime(),
+                )
+                .map((run) => (
                   <AgentRunSummaryCard
                     className="h-28 w-72 lg:h-32 xl:w-80"
-                    key={i}
+                    key={run.id}
                     status={agentRunStatusMap[run.status]}
                     title={agent.name}
                     timestamp={run.started_at}
@@ -120,10 +122,10 @@ export default function AgentRunsSelectorList({
                 ))
             : schedules
                 .filter((schedule) => schedule.graph_id === agent.agent_id)
-                .map((schedule, i) => (
+                .map((schedule) => (
                   <AgentRunSummaryCard
                     className="h-28 w-72 lg:h-32 xl:w-80"
-                    key={i}
+                    key={schedule.id}
                     status="scheduled"
                     title={schedule.name}
                     timestamp={schedule.next_run_time}
