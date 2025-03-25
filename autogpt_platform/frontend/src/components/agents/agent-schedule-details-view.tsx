@@ -11,9 +11,9 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AgentRunStatus } from "@/components/agents/agent-run-status-chip";
+import { useToastOnFail } from "@/components/ui/use-toast";
 import { Button } from "@/components/agptui/Button";
 import { Input } from "@/components/ui/input";
-import { useToastOnFail } from "@/components/ui/use-toast";
 
 export default function AgentScheduleDetailsView({
   graph,
