@@ -599,8 +599,8 @@ def execute_graph(
 )
 async def stop_graph_run(
     graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
-) -> graph_db.GraphExecution:
-    if not await graph_db.get_execution_meta(
+) -> execution_db.GraphExecution:
+    if not await execution_db.get_graph_execution_meta(
         user_id=user_id, execution_id=graph_exec_id
     ):
         raise HTTPException(404, detail=f"Agent execution #{graph_exec_id} not found")
@@ -610,7 +610,9 @@ async def stop_graph_run(
     )
 
     # Retrieve & return canceled graph execution in its final state
-    result = await graph_db.get_execution(execution_id=graph_exec_id, user_id=user_id)
+    result = await execution_db.get_graph_execution(
+        execution_id=graph_exec_id, user_id=user_id
+    )
     if not result:
         raise HTTPException(
             500,
@@ -626,8 +628,8 @@ async def stop_graph_run(
 )
 async def get_graphs_executions(
     user_id: Annotated[str, Depends(get_user_id)],
-) -> list[graph_db.GraphExecutionMeta]:
-    return await graph_db.get_graph_executions(user_id=user_id)
+) -> list[execution_db.GraphExecutionMeta]:
+    return await execution_db.get_graph_executions(user_id=user_id)
 
 
 @v1_router.get(
@@ -638,8 +640,8 @@ async def get_graphs_executions(
 async def get_graph_executions(
     graph_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
-) -> list[graph_db.GraphExecutionMeta]:
-    return await graph_db.get_graph_executions(graph_id=graph_id, user_id=user_id)
+) -> list[execution_db.GraphExecutionMeta]:
+    return await execution_db.get_graph_executions(graph_id=graph_id, user_id=user_id)
 
 
 @v1_router.get(
@@ -651,8 +653,10 @@ async def get_graph_execution(
     graph_id: str,
     graph_exec_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
-) -> graph_db.GraphExecution:
-    result = await graph_db.get_execution(execution_id=graph_exec_id, user_id=user_id)
+) -> execution_db.GraphExecution:
+    result = await execution_db.get_graph_execution(
+        execution_id=graph_exec_id, user_id=user_id
+    )
     if not result or result.graph_id != graph_id:
         raise HTTPException(
             status_code=404, detail=f"Graph execution #{graph_exec_id} not found."
@@ -671,7 +675,9 @@ async def delete_graph_execution(
     graph_exec_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> None:
-    await execution_db.delete_execution(graph_exec_id=graph_exec_id, user_id=user_id)
+    await execution_db.delete_graph_execution(
+        graph_exec_id=graph_exec_id, user_id=user_id
+    )
 
 
 ########################################################

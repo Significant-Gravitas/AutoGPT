@@ -106,24 +106,24 @@ export default function useAgentGraph(
 
   // Subscribe to execution events
   useEffect(() => {
-    api.onWebSocketMessage("execution_event", (data) => {
+    api.onWebSocketMessage("node_execution_event", (data) => {
       if (data.graph_exec_id != flowExecutionID) {
         return;
       }
       setUpdateQueue((prev) => [...prev, data]);
     });
 
-    if (flowID && flowVersion) {
+    if (flowExecutionID) {
       api
-        .subscribeToExecution(flowID, flowVersion)
+        .subscribeToGraphExecution(flowExecutionID)
         .then(() =>
           console.debug(
-            `Subscribed to execution events for ${flowID} v.${flowVersion}`,
+            `Subscribed to updates for execution #${flowExecutionID}`,
           ),
         )
         .catch((error) =>
           console.error(
-            `Failed to subscribe to execution events for ${flowID} v.${flowVersion}:`,
+            `Failed to subscribe to updates for execution #${flowExecutionID}:`,
             error,
           ),
         );
@@ -235,7 +235,7 @@ export default function useAgentGraph(
         return newNodes;
       });
     },
-    [availableNodes, availableFlows, formatEdgeID, getOutputType],
+    [availableNodes, availableFlows, getOutputType],
   );
 
   const getFrontendId = useCallback(
@@ -636,7 +636,7 @@ export default function useAgentGraph(
       // Track execution until completed
       const pendingNodeExecutions: Set<string> = new Set();
       const cancelExecListener = api.onWebSocketMessage(
-        "execution_event",
+        "node_execution_event",
         (nodeResult) => {
           // We are racing the server here, since we need the ID to filter events
           if (nodeResult.graph_exec_id != flowExecutionID) {

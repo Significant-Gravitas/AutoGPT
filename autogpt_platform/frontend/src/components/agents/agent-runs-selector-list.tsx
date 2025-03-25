@@ -111,8 +111,8 @@ export default function AgentRunsSelectorList({
                   status={agentRunStatusMap[run.status]}
                   title={agent.name}
                   timestamp={run.started_at}
-                  selected={selectedView.id === run.execution_id}
-                  onClick={() => onSelectRun(run.execution_id)}
+                  selected={selectedView.id === run.id}
+                  onClick={() => onSelectRun(run.id)}
                   onDelete={() => onDeleteRun(run)}
                 />
               ))

@@ -230,9 +230,9 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
 
 /* Mirror of backend/data/graph.py:GraphExecutionMeta */
 export type GraphExecutionMeta = {
-  execution_id: GraphExecutionID;
-  started_at: number;
-  ended_at: number;
+  id: GraphExecutionID;
+  started_at: Date;
+  ended_at: Date;
   cost?: number;
   duration: number;
   total_run_time: number;

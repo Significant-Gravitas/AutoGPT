@@ -37,17 +37,13 @@ export const FlowRunsList: React.FC<{
         <TableBody data-testid="flow-runs-list-body">
           {executions.map((execution) => (
             <TableRow
-              key={execution.execution_id}
-              data-testid={`flow-run-${execution.execution_id}-graph-${execution.graph_id}`}
-              data-runid={execution.execution_id}
+              key={execution.id}
+              data-testid={`flow-run-${execution.id}-graph-${execution.graph_id}`}
+              data-runid={execution.id}
               data-graphid={execution.graph_id}
               className="cursor-pointer"
               onClick={() => onSelectRun(execution)}
-              data-state={
-                selectedRun?.execution_id == execution.execution_id
-                  ? "selected"
-                  : null
-              }
+              data-state={selectedRun?.id == execution.id ? "selected" : null}
             >
               <TableCell>
                 <TextRenderer

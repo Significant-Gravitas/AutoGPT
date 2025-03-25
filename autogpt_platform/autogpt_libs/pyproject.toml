@@ -16,7 +16,6 @@ pyjwt = "^2.10.1"
 pytest-asyncio = "^0.25.3"
 pytest-mock = "^3.14.0"
 python = ">=3.10,<4.0"
-python-dotenv = "^1.0.1"
 supabase = "^2.13.0"
 
 [tool.poetry.group.dev.dependencies]
