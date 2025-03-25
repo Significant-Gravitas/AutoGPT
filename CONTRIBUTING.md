@@ -2,9 +2,6 @@
 If you are reading this, you are probably looking for the full **[contribution guide]**,
 which is part of our [wiki].
 
-Also check out our [🚀 Roadmap][roadmap] for information about our priorities and associated tasks.
-<!-- You can find our immediate priorities and their progress on our public [kanban board]. -->
-
 [contribution guide]: https://github.com/Significant-Gravitas/AutoGPT/wiki/Contributing
 [wiki]: https://github.com/Significant-Gravitas/AutoGPT/wiki
 [roadmap]: https://github.com/Significant-Gravitas/AutoGPT/discussions/6971

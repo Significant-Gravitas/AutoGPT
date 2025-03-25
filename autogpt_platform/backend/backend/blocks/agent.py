@@ -90,7 +90,9 @@ class AgentExecutorBlock(Block):
         logger.info(f"Starting execution of {log_id}")
 
         for event in event_bus.listen(
-            graph_id=graph_exec.graph_id, graph_exec_id=graph_exec.graph_exec_id
+            user_id=graph_exec.user_id,
+            graph_id=graph_exec.graph_id,
+            graph_exec_id=graph_exec.graph_exec_id,
         ):
             if event.event_type == ExecutionEventType.GRAPH_EXEC_UPDATE:
                 if event.status in [
