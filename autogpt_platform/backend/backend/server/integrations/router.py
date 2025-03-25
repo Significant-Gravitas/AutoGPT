@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Annotated, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
+from starlette.status import HTTP_404_NOT_FOUND
 
 from backend.data.graph import set_node_webhook
 from backend.data.integrations import (
@@ -18,7 +19,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
-from backend.util.exceptions import NeedConfirmation
+from backend.util.exceptions import NeedConfirmation, NotFoundError
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
@@ -282,7 +283,13 @@ async def webhook_ingress_generic(
 ):
     logger.debug(f"Received {provider.value} webhook ingress for ID {webhook_id}")
     webhook_manager = get_webhook_manager(provider)
-    webhook = await get_webhook(webhook_id)
+    try:
+        webhook = await get_webhook(webhook_id)
+    except NotFoundError as e:
+        logger.warning(f"Webhook payload received for unknown webhook: {e}")
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND, detail=f"Webhook #{webhook_id} not found"
+        ) from e
     logger.debug(f"Webhook #{webhook_id}: {webhook}")
     payload, event_type = await webhook_manager.validate_payload(webhook, request)
     logger.debug(
