@@ -1,7 +1,16 @@
 from collections import defaultdict
 from datetime import datetime, timezone
 from multiprocessing import Manager
-from typing import Any, AsyncGenerator, Generator, Generic, Optional, Type, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncGenerator,
+    Generator,
+    Generic,
+    Optional,
+    Type,
+    TypeVar,
+)
 
 from prisma import Json
 from prisma.enums import AgentExecutionStatus
@@ -20,6 +29,9 @@ from backend.data.queue import AsyncRedisEventBus, RedisEventBus
 from backend.server.v2.store.exceptions import DatabaseError
 from backend.util import mock, type
 from backend.util.settings import Config
+
+if TYPE_CHECKING:
+    pass
 
 
 class GraphExecutionEntry(BaseModel):
@@ -197,7 +209,7 @@ async def upsert_execution_input(
     input_name: str,
     input_data: Any,
     node_exec_id: str | None = None,
-) -> tuple[str, BlockInput]:
+) -> tuple[ExecutionResult, BlockInput]:
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Input.
     If there is no AgentNodeExecution that has no `input_name` as input, create new one.
@@ -234,7 +246,7 @@ async def upsert_execution_input(
                 "referencedByInputExecId": existing_execution.id,
             }
         )
-        return existing_execution.id, {
+        return ExecutionResult.from_db(existing_execution), {
             **{
                 input_data.name: type.convert(input_data.data, Type[Any])
                 for input_data in existing_execution.Input or []
@@ -251,7 +263,7 @@ async def upsert_execution_input(
                 "Input": {"create": {"name": input_name, "data": json_input_data}},
             }
         )
-        return result.id, {input_name: input_data}
+        return ExecutionResult.from_db(result), {input_name: input_data}
 
     else:
         raise ValueError(
@@ -556,22 +568,40 @@ def merge_execution_input(data: BlockInput) -> BlockInput:
     return data
 
 
-async def get_latest_execution(node_id: str, graph_eid: str) -> ExecutionResult | None:
-    execution = await AgentNodeExecution.prisma().find_first(
+async def get_output_from_links(
+    links: dict[str, tuple[str, str]], graph_eid: str
+) -> BlockInput:
+    """
+    Get the latest completed node execution output from the graph links.
+
+    Args:
+        links: dict[node_id, (source_name, sink_name)] of the links to get the output from.
+        graph_eid: the id of the graph execution to get the output from.
+
+    Returns:
+        BlockInput: a dict of the latest output from the links.
+    """
+    executions = await AgentNodeExecution.prisma().find_many(
         where={
-            "agentNodeId": node_id,
+            "agentNodeId": {"in": list(links.keys())},
             "agentGraphExecutionId": graph_eid,
             "executionStatus": {"not": ExecutionStatus.INCOMPLETE},  # type: ignore
         },
         order=[
-            {"queuedTime": "desc"},
+            {"queuedTime": "asc"},
             {"addedTime": "desc"},
         ],
         include=EXECUTION_RESULT_INCLUDE,
     )
-    if not execution:
-        return None
-    return ExecutionResult.from_db(execution)
+
+    latest_output = {}
+    for e in executions:
+        execution = ExecutionResult.from_db(e)
+        source_name, sink_name = links[execution.node_id]
+        if value := execution.output_data.get(source_name):
+            latest_output[sink_name] = value[-1]
+
+    return latest_output
 
 
 async def get_incomplete_executions(
