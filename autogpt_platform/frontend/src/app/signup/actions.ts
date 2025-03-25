@@ -5,6 +5,7 @@ import { z } from "zod";
 import * as Sentry from "@sentry/nextjs";
 import getServerSupabase from "@/lib/supabase/getServerSupabase";
 import { signupFormSchema } from "@/types/auth";
+import BackendAPI from "@/lib/autogpt-server-api";
 
 export async function signup(values: z.infer<typeof signupFormSchema>) {
   "use server";
@@ -36,8 +37,13 @@ export async function signup(values: z.infer<typeof signupFormSchema>) {
       if (data.session) {
         await supabase.auth.setSession(data.session);
       }
-      revalidatePath("/onboarding", "layout");
-      redirect("/onboarding");
+      // Don't onboard if disabled
+      if (await new BackendAPI().isOnboardingEnabled()) {
+        revalidatePath("/onboarding", "layout");
+        redirect("/onboarding");
+      }
+      revalidatePath("/", "layout");
+      redirect("/");
     },
   );
 }

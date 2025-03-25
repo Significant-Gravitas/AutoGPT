@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Callable, Optional, cast
 
 from backend.data.block import BlockSchema, BlockWebhookConfig, get_block
 from backend.data.graph import set_node_webhook
-from backend.integrations.webhooks import WEBHOOK_MANAGERS_BY_NAME
+from backend.integrations.webhooks import get_webhook_manager, supports_webhooks
 
 if TYPE_CHECKING:
     from backend.data.graph import GraphModel, NodeModel
@@ -123,7 +123,7 @@ async def on_node_activate(
         return node
 
     provider = block.webhook_config.provider
-    if provider not in WEBHOOK_MANAGERS_BY_NAME:
+    if not supports_webhooks(provider):
         raise ValueError(
             f"Block #{block.id} has webhook_config for provider {provider} "
             "which does not support webhooks"
@@ -133,7 +133,7 @@ async def on_node_activate(
         f"Activating webhook node #{node.id} with config {block.webhook_config}"
     )
 
-    webhooks_manager = WEBHOOK_MANAGERS_BY_NAME[provider]()
+    webhooks_manager = get_webhook_manager(provider)
 
     if auto_setup_webhook := isinstance(block.webhook_config, BlockWebhookConfig):
         try:
@@ -234,13 +234,13 @@ async def on_node_deactivate(
         return node
 
     provider = block.webhook_config.provider
-    if provider not in WEBHOOK_MANAGERS_BY_NAME:
+    if not supports_webhooks(provider):
         raise ValueError(
             f"Block #{block.id} has webhook_config for provider {provider} "
             "which does not support webhooks"
         )
 
-    webhooks_manager = WEBHOOK_MANAGERS_BY_NAME[provider]()
+    webhooks_manager = get_webhook_manager(provider)
 
     if node.webhook_id:
         logger.debug(f"Node #{node.id} has webhook_id {node.webhook_id}")

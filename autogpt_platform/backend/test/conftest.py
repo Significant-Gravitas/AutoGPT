@@ -2,8 +2,11 @@ import logging
 import os
 
 import pytest
+from dotenv import load_dotenv
 
 from backend.util.logging import configure_logging
+
+load_dotenv()
 
 #  NOTE: You can run tests like with the --log-cli-level=INFO to see the logs
 # Set up logging

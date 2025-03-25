@@ -4,7 +4,7 @@ interface OnboardingAgentInputProps {
   className?: string;
   name: string;
   description: string;
-  placeholder: string;
+  placeholder?: string;
   value: string;
   onChange: (value: string) => void;
 }

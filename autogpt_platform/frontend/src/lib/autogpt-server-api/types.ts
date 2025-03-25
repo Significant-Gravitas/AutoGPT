@@ -230,9 +230,9 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
 
 /* Mirror of backend/data/graph.py:GraphExecutionMeta */
 export type GraphExecutionMeta = {
-  execution_id: GraphExecutionID;
-  started_at: number;
-  ended_at: number;
+  id: GraphExecutionID;
+  started_at: Date;
+  ended_at: Date;
   cost?: number;
   duration: number;
   total_run_time: number;
@@ -761,15 +761,22 @@ export interface RefundRequest {
   updated_at: Date;
 }
 
+export type OnboardingStep =
+  | "WELCOME"
+  | "USAGE_REASON"
+  | "INTEGRATIONS"
+  | "AGENT_CHOICE"
+  | "AGENT_NEW_RUN"
+  | "AGENT_INPUT"
+  | "CONGRATS";
+
 export interface UserOnboarding {
-  step: number;
-  usageReason?: string;
+  completedSteps: OnboardingStep[];
+  usageReason: string | null;
   integrations: string[];
-  otherIntegrations?: string;
-  selectedAgentCreator?: string;
-  selectedAgentSlug?: string;
-  agentInput?: { [key: string]: string };
-  isCompleted: boolean;
+  otherIntegrations: string | null;
+  selectedStoreListingVersionId: string | null;
+  agentInput: { [key: string]: string } | null;
 }
 
 /* *** UTILITIES *** */

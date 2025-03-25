@@ -56,6 +56,8 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.block.initialize_blocks()
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
+    # FIXME ERROR: operator does not exist: text ? unknown
+    # await backend.data.graph.migrate_llm_models(LlmModel.GPT4O)
     with launch_darkly_context():
         yield
     await backend.data.db.disconnect()
@@ -175,7 +177,9 @@ class AgentServer(backend.util.service.AppProcess):
 
     @staticmethod
     async def test_get_graph_run_status(graph_exec_id: str, user_id: str):
-        execution = await backend.data.graph.get_execution_meta(
+        from backend.data.execution import get_graph_execution_meta
+
+        execution = await get_graph_execution_meta(
             user_id=user_id, execution_id=graph_exec_id
         )
         if not execution:
