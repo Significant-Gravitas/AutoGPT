@@ -808,16 +808,16 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
 
     def publish_node_exec_update(self, res: NodeExecutionResult):
         event = NodeExecutionEvent.model_validate(res.model_dump())
-        self.publish_event(event, f"{res.graph_id}/{res.graph_exec_id}")
+        self.publish_event(event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}")
 
     def publish_graph_exec_update(self, res: GraphExecutionMeta):
         event = GraphExecutionEvent.model_validate(res.model_dump())
-        self.publish_event(event, f"{res.graph_id}/{res.id}")
+        self.publish_event(event, f"{res.user_id}/{res.graph_id}/{res.id}")
 
     def listen(
-        self, graph_id: str = "*", graph_exec_id: str = "*"
+        self, user_id: str, graph_id: str = "*", graph_exec_id: str = "*"
     ) -> Generator[ExecutionEvent, None, None]:
-        for event in self.listen_events(f"{graph_id}/{graph_exec_id}"):
+        for event in self.listen_events(f"{user_id}/{graph_id}/{graph_exec_id}"):
             yield event
 
 
@@ -836,14 +836,16 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
 
     async def publish_node_exec_update(self, res: NodeExecutionResult):
         event = NodeExecutionEvent.model_validate(res.model_dump())
-        await self.publish_event(event, f"{res.graph_id}/{res.graph_exec_id}")
+        await self.publish_event(
+            event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}"
+        )
 
     async def publish_graph_exec_update(self, res: GraphExecutionMeta):
         event = GraphExecutionEvent.model_validate(res.model_dump())
-        await self.publish_event(event, f"{res.graph_id}/{res.id}")
+        await self.publish_event(event, f"{res.user_id}/{res.graph_id}/{res.id}")
 
     async def listen(
-        self, graph_id: str = "*", graph_exec_id: str = "*"
+        self, user_id: str, graph_id: str = "*", graph_exec_id: str = "*"
     ) -> AsyncGenerator[ExecutionEvent, None]:
-        async for event in self.listen_events(f"{graph_id}/{graph_exec_id}"):
+        async for event in self.listen_events(f"{user_id}/{graph_id}/{graph_exec_id}"):
             yield event
