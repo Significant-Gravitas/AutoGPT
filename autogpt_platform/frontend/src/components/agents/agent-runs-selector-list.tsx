@@ -104,18 +104,20 @@ export default function AgentRunsSelectorList({
           </Button>
 
           {activeListTab === "runs"
-            ? agentRuns.map((run, i) => (
-                <AgentRunSummaryCard
-                  className="h-28 w-72 lg:h-32 xl:w-80"
-                  key={i}
-                  status={agentRunStatusMap[run.status]}
-                  title={agent.name}
-                  timestamp={run.started_at}
-                  selected={selectedView.id === run.id}
-                  onClick={() => onSelectRun(run.id)}
-                  onDelete={() => onDeleteRun(run)}
-                />
-              ))
+            ? agentRuns
+                .toSorted((a, b) => Number(b.started_at) - Number(a.started_at))
+                .map((run, i) => (
+                  <AgentRunSummaryCard
+                    className="h-28 w-72 lg:h-32 xl:w-80"
+                    key={i}
+                    status={agentRunStatusMap[run.status]}
+                    title={agent.name}
+                    timestamp={run.started_at}
+                    selected={selectedView.id === run.id}
+                    onClick={() => onSelectRun(run.id)}
+                    onDelete={() => onDeleteRun(run)}
+                  />
+                ))
             : schedules
                 .filter((schedule) => schedule.graph_id === agent.agent_id)
                 .map((schedule, i) => (
