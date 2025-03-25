@@ -66,7 +66,7 @@ export default function CreditsPage() {
           });
         }
       })
-      .catch(toastOnFail("refund trnsaction"));
+      .catch(toastOnFail("refund transaction"));
 
   useEffect(() => {
     if (api && topupStatus === "success") {
