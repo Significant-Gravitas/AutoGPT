@@ -137,16 +137,19 @@ export default function AgentRunsPage(): React.ReactElement {
             return [...prev, data];
           }
           const newRuns = [...prev];
-          newRuns[index] = data;
+          newRuns[index] = { ...newRuns[index], ...data };
           return newRuns;
         });
+        if (data.id === selectedView.id) {
+          setSelectedRun((prev) => ({ ...prev, ...data }));
+        }
       },
     );
 
     return () => {
       detachExecUpdateHandler();
     };
-  }, [api, agent]);
+  }, [api, agent, selectedView.id]);
 
   // Subscribe to websocket updates for selected run
   useEffect(() => {
