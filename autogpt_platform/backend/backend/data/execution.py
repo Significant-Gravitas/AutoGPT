@@ -579,13 +579,13 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionResult]):
         return config.execution_event_bus_name
 
     def publish(self, res: ExecutionResult):
-        self.publish_event(res, f"{res.graph_id}/{res.graph_exec_id}")
+        self.publish_event(res, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}")
 
     def listen(
-        self, graph_id: str = "*", graph_exec_id: str = "*"
+        self, user_id: str, graph_id: str = "*", graph_exec_id: str = "*"
     ) -> Generator[ExecutionResult, None, None]:
-        for execution_result in self.listen_events(f"{graph_id}/{graph_exec_id}"):
-            yield execution_result
+        for event in self.listen_events(f"{user_id}/{graph_id}/{graph_exec_id}"):
+            yield event
 
 
 class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionResult]):
@@ -596,10 +596,12 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionResult]):
         return config.execution_event_bus_name
 
     async def publish(self, res: ExecutionResult):
-        await self.publish_event(res, f"{res.graph_id}/{res.graph_exec_id}")
+        await self.publish_event(
+            res, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}"
+        )
 
     async def listen(
-        self, graph_id: str = "*", graph_exec_id: str = "*"
+        self, user_id: str, graph_id: str = "*", graph_exec_id: str = "*"
     ) -> AsyncGenerator[ExecutionResult, None]:
-        async for execution_result in self.listen_events(f"{graph_id}/{graph_exec_id}"):
-            yield execution_result
+        async for event in self.listen_events(f"{user_id}/{graph_id}/{graph_exec_id}"):
+            yield event

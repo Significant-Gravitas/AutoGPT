@@ -51,7 +51,7 @@ async def event_broadcaster(manager: ConnectionManager):
     try:
         redis.connect()
         event_queue = AsyncRedisExecutionEventBus()
-        async for event in event_queue.listen():
+        async for event in event_queue.listen("*"):
             await manager.send_execution_result(event)
     except Exception as e:
         logger.exception(f"Event broadcaster error: {e}")
