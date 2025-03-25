@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AgentRunStatus } from "@/components/agents/agent-run-status-chip";
 import { Button } from "@/components/agptui/Button";
 import { Input } from "@/components/ui/input";
+import { useToastOnFail } from "@/components/ui/use-toast";
 
 export default function AgentScheduleDetailsView({
   graph,
@@ -28,6 +29,8 @@ export default function AgentScheduleDetailsView({
   const api = useBackendAPI();
 
   const selectedRunStatus: AgentRunStatus = "scheduled";
+
+  const toastOnFail = useToastOnFail();
 
   const infoStats: { label: string; value: React.ReactNode }[] = useMemo(() => {
     return [
@@ -65,10 +68,12 @@ export default function AgentScheduleDetailsView({
 
   const runNow = useCallback(
     () =>
-      api
-        .executeGraph(graph.id, graph.version, schedule.input_data)
-        .then((run) => onForcedRun(run.graph_exec_id)),
-    [api, graph, schedule, onForcedRun],
+      toastOnFail("execute agent", () =>
+        api
+          .executeGraph(graph.id, graph.version, schedule.input_data)
+          .then((run) => onForcedRun(run.graph_exec_id)),
+      ),
+    [api, graph, schedule, onForcedRun, toastOnFail],
   );
 
   const runActions: { label: string; callback: () => void }[] = useMemo(

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import useCredits from "@/hooks/useCredits";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast, useToastOnFail } from "@/components/ui/use-toast";
 
 import { RefundModal } from "./RefundModal";
 import { CreditTransaction } from "@/lib/autogpt-server-api";
@@ -38,20 +38,7 @@ export default function CreditsPage() {
   const searchParams = useSearchParams();
   const topupStatus = searchParams.get("topup") as "success" | "cancel" | null;
   const { toast } = useToast();
-
-  const toastOnFail = useCallback(
-    (action: string, fn: () => Promise<any>) => {
-      return fn().catch((e) => {
-        toast({
-          title: `Unable to ${action}`,
-          description: e.message,
-          variant: "destructive",
-          duration: 10000,
-        });
-      });
-    },
-    [toast],
-  );
+  const toastOnFail = useToastOnFail();
 
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
   const [topUpTransactions, setTopUpTransactions] = useState<

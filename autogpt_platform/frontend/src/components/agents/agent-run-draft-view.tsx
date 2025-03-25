@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useToastOnFail } from "@/components/ui/use-toast";
 
 export default function AgentRunDraftView({
   graph,
@@ -28,6 +29,7 @@ export default function AgentRunDraftView({
   agentActions: ButtonAction[];
 }): React.ReactNode {
   const api = useBackendAPI();
+  const toastOnFail = useToastOnFail();
 
   const agentInputs = graph.input_schema.properties;
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
@@ -55,10 +57,12 @@ export default function AgentRunDraftView({
 
   const doRun = useCallback(
     () =>
-      api
-        .executeGraph(graph.id, graph.version, inputValues)
-        .then((newRun) => onRun(newRun.graph_exec_id)),
-    [api, graph, inputValues, onRun],
+      toastOnFail("execute agent", () =>
+        api
+          .executeGraph(graph.id, graph.version, inputValues)
+          .then((newRun) => onRun(newRun.graph_exec_id)),
+      ),
+    [api, graph, inputValues, onRun, toastOnFail],
   );
 
   const runActions: ButtonAction[] = useMemo(
