@@ -6,6 +6,9 @@ import { GraphExecutionID, GraphMeta } from "@/lib/autogpt-server-api";
 
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToastOnFail } from "@/components/ui/use-toast";
+import { Pencil2Icon } from "@radix-ui/react-icons";
+import { Textarea } from "@/components/ui/textarea";
 import { IconPlay } from "@/components/ui/icons";
 import { Button } from "@/components/agptui/Button";
 import { TypeBasedInput } from "@/components/TypeBasedInput";
@@ -20,6 +23,7 @@ export default function AgentRunDraftView({
   agentActions: ButtonAction[];
 }): React.ReactNode {
   const api = useBackendAPI();
+  const toastOnFail = useToastOnFail();
 
   const agentInputs = graph.input_schema.properties;
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
@@ -28,8 +32,9 @@ export default function AgentRunDraftView({
     () =>
       api
         .executeGraph(graph.id, graph.version, inputValues)
-        .then((newRun) => onRun(newRun.graph_exec_id)),
-    [api, graph, inputValues, onRun],
+        .then((newRun) => onRun(newRun.graph_exec_id))
+        .catch(toastOnFail("execute agent")),
+    [api, graph, inputValues, onRun, toastOnFail],
   );
 
   const runActions: ButtonAction[] = useMemo(
