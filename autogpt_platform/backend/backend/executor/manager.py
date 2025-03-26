@@ -22,6 +22,7 @@ from backend.data.notifications import (
     NotificationType,
 )
 from backend.util.exceptions import InsufficientBalanceError
+from backend.server.v2.iffy.graph_moderation import moderate_graph_content
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManager
@@ -68,7 +69,6 @@ from backend.util.service import (
 )
 from backend.util.settings import Settings, BehaveAs
 from backend.util.type import convert
-from backend.server.v2.iffy.service import IffyService
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -958,19 +958,6 @@ class ExecutionManager(AppService):
         graph_version: Optional[int] = None,
         preset_id: str | None = None,
     ) -> GraphExecutionEntry:
-        """Add a graph execution to the queue"""
-        return self.run_and_wait(
-            self._add_execution_async(graph_id, data, user_id, graph_version, preset_id)
-        )
-
-    async def _add_execution_async(
-        self,
-        graph_id: str,
-        data: BlockInput,
-        user_id: str,
-        graph_version: Optional[int] = None,
-        preset_id: str | None = None,
-    ) -> GraphExecutionEntry:
         graph: GraphModel | None = self.db_client.get_graph(
             graph_id=graph_id, user_id=user_id, version=graph_version
         )
@@ -1028,12 +1015,14 @@ class ExecutionManager(AppService):
 
         # Right after creating the graph execution, we need to check if the content is safe
         if settings.config.behave_as != BehaveAs.LOCAL:
-            await self._moderate_graph_content(
+            self.run_and_wait(
+                moderate_graph_content(
                 graph=graph,
                 graph_id=graph_id,
                 graph_exec_id=graph_exec_id,
                 nodes_input=nodes_input,
                 user_id=user_id
+                )
             )
 
         starting_node_execs = []
@@ -1144,74 +1133,6 @@ class ExecutionManager(AppService):
                         f"Invalid credentials #{credentials.id} for node #{node.id}: "
                         "type/provider mismatch"
                     )
-
-    async def _moderate_graph_content(
-        self,
-        graph: GraphModel,
-        graph_id: str,
-        graph_exec_id: str,
-        nodes_input: list[tuple[str, BlockInput]],
-        user_id: str
-    ) -> None:
-        """
-        Moderate the content of a graph before execution.
-        
-        Args:
-            graph: The graph model to moderate
-            graph_id: The ID of the graph
-            graph_exec_id: The ID of the graph execution
-            nodes_input: Input data for starting nodes
-            user_id: The ID of the user running the graph
-            
-        Raises:
-            ValueError: If content moderation fails
-        """
-        try:
-            for node in graph.nodes:
-                block = get_block(node.block_id)
-                if not block or block.block_type == BlockType.NOTE:
-                    continue
-
-                # For starting nodes, use their input data
-                if node.id in dict(nodes_input):
-                    input_data = dict(nodes_input)[node.id]
-                else:
-                    # For non-starting nodes, collect their default inputs and static values
-                    input_data = node.input_default.copy()
-                    # Add any static input from connected nodes
-                    for link in node.input_links:
-                        if link.is_static:
-                            source_node = next((n for n in graph.nodes if n.id == link.source_id), None)
-                            if source_node:
-                                source_block = get_block(source_node.block_id)
-                                if source_block:
-                                    input_data[link.sink_name] = source_node.input_default.get(link.source_name)
-                
-                block_content = {
-                    "graph_id": graph_id,
-                    "graph_exec_id": graph_exec_id,
-                    "node_id": node.id,
-                    "block_id": block.id,
-                    "block_name": block.name,
-                    "block_type": block.block_type.value,
-                    "input_data": input_data
-                }
-
-                # Send to Iffy for moderation using the service directly
-                result = await IffyService._moderate_content(user_id, block_content)
-                
-                # CRITICAL: Ensure we never proceed if moderation fails
-                if not result.is_safe:
-                    logger.error(f"Content moderation failed for {block.name}: {result.reason}")
-                    raise ValueError(f"Content moderation failed for {block.name}")
-
-        except ValueError as ve:
-            logger.error(f"Moderation error: {str(ve)}")
-            raise
-            
-        except Exception as e:
-            logger.error(f"Error during content moderation: {str(e)}")
-            raise ValueError(f"Content moderation system error")
 
 
 # ------- UTILITIES ------- #

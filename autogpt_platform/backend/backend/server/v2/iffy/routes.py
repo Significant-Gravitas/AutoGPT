@@ -2,12 +2,12 @@ import hmac
 import hashlib
 import logging
 from typing import Dict, Any
-from fastapi import APIRouter, Request, Response, HTTPException, Header, Depends
+from fastapi import APIRouter, Request, Response, HTTPException, Depends
 from backend.util.settings import Settings
 from backend.util.service import get_service_client
-from backend.executor import ExecutionManager
 from .models import EventType, IffyWebhookEvent
 from autogpt_libs.auth.middleware import HMACValidator
+from autogpt_libs.utils.cache import thread_cached
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -19,6 +19,11 @@ iffy_signature_validator = HMACValidator(
     secret=settings.secrets.iffy_webhook_secret,
     error_message="Invalid Iffy signature"
 )
+
+@thread_cached
+def get_execution_manager():
+    from backend.executor import ExecutionManager
+    return get_service_client(ExecutionManager)
 
 # This handles the webhook events from iffy like stopping an execution if a flagged block is detected.
 async def handle_record_event(event_type: EventType, metadata: Dict[str, Any]) -> Response:
@@ -34,7 +39,7 @@ async def handle_record_event(event_type: EventType, metadata: Dict[str, Any]) -
             f'Content flagged for node "{node_id}" ("{block_name}") '
             f'in execution "{graph_exec_id}"'
         )
-        execution_manager = get_service_client(ExecutionManager)
+        execution_manager = get_execution_manager()
         try:
             execution_manager.cancel_execution(graph_exec_id)
             logger.info(f'Successfully stopped execution "{graph_exec_id}" due to flagged content')

@@ -57,12 +57,14 @@ async def get_user_by_id(user_id: str) -> User:
 
 async def get_user_info_by_id(user_id: str) -> dict:
     try:
-        user = await prisma.user.find_unique(where={"id": user_id})
+        user = await User.prisma().find_unique(where={"id": user_id})
+        if not user:
+            raise ValueError(f"User with ID {user_id} not found")
+        
         return {
-            "id": getattr(user, "id", None),
-            "name": getattr(user, "name", None),
-            "username": getattr(user, "username", None),
-            "email": getattr(user, "email", None),
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
         }
     except Exception as e:
         raise DatabaseError(f"Failed to get user info for user {user_id}: {e}") from e

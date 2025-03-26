@@ -15,7 +15,7 @@ Content to moderate:MODERATION_PROMPT
 
 Respond with only one word from the above choices."""
 
-async def open_router_moderate_content(content: str, user_id: str | None = None) -> Tuple[bool, str]:
+def open_router_moderate_content(content: str, user_id: str | None = None) -> Tuple[bool, str]:
     """
     Use OpenRouter's API to moderate content using an LLM.
     Uses OpenRouter's auto-routing to select the best available model.

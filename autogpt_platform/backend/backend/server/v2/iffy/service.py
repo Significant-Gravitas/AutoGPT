@@ -7,10 +7,12 @@ from backend.util.settings import Settings, BehaveAs
 from backend.util.openrouter import open_router_moderate_content
 from backend.util.service import get_service_client
 from .models import UserData, IffyPayload, ModerationResult
+from autogpt_libs.utils.cache import thread_cached
 
 logger = logging.getLogger(__name__)
 settings = Settings()
 
+@thread_cached
 def get_db():
     from backend.executor.database import DatabaseManager
     return get_service_client(DatabaseManager)
@@ -26,7 +28,6 @@ class IffyService:
             "clientId": user_id,
             "email": None,
             "name": None,
-            "username": None,
         }
 
         try:        
@@ -35,7 +36,6 @@ class IffyService:
                 user_data.update({
                     "id": user["id"],
                     "name": user["name"],
-                    "username": user["username"],
                     "email": user["email"],
                 })
         except Exception as e:
@@ -44,7 +44,7 @@ class IffyService:
         return user_data
 
     @staticmethod
-    async def _moderate_content(user_id: str, block_content: Dict[str, Any]) -> ModerationResult:
+    async def moderate_content(user_id: str, block_content: Dict[str, Any]) -> ModerationResult:
         """
         Send block content to Iffy for content moderation.
         Only used in cloud mode - local mode skips moderation entirely.
@@ -67,7 +67,7 @@ class IffyService:
         # Validate Iffy API URL and key at the start
         if not IFFY_API_URL or not IFFY_API_KEY:
             logger.warning("Iffy API URL or key not configured, falling back to OpenRouter moderation")
-            is_safe, reason = await open_router_moderate_content(json.dumps(block_content.get('input_data', {}), indent=2))
+            is_safe, reason = open_router_moderate_content(json.dumps(block_content.get('input_data', {}), indent=2))
             if not is_safe:
                 logger.error(f"OpenRouter moderation failed after Iffy configuration issue: {reason}")
             return ModerationResult(is_safe=is_safe, reason=f"Iffy not configured. OpenRouter result: {reason}")
@@ -76,7 +76,7 @@ class IffyService:
             # Validate URL format
             if not IFFY_API_URL.startswith(('http://', 'https://')):
                 logger.error(f"Invalid Iffy API URL format: {IFFY_API_URL}")
-                is_safe, reason = await open_router_moderate_content(json.dumps(block_content.get('input_data', {}), indent=2))
+                is_safe, reason = open_router_moderate_content(json.dumps(block_content.get('input_data', {}), indent=2))
                 return ModerationResult(is_safe=is_safe, reason="Invalid Iffy API URL format")
 
             headers = {
@@ -125,7 +125,7 @@ class IffyService:
                     if response.status != 200:
                         logger.info(f"Iffy moderation failed, falling back to OpenRouter. Status: {response.status}, Response: {response_text}")
                         # Fall back to OpenRouter moderation
-                        is_safe, reason = await open_router_moderate_content(input_data)
+                        is_safe, reason = open_router_moderate_content(input_data)
                         if is_safe:
                             logger.info(f"OpenRouter moderation passed. Block: {name}")
                         else:
@@ -139,7 +139,7 @@ class IffyService:
             logger.error(f"Error in primary moderation service: {str(e)}", exc_info=True)
             try:
                 # Last attempt with OpenRouter
-                is_safe, reason = await open_router_moderate_content(json.dumps(block_content.get('input_data', {}), indent=2))
+                is_safe, reason = open_router_moderate_content(json.dumps(block_content.get('input_data', {}), indent=2))
                 if is_safe:
                     logger.info(f"OpenRouter moderation passed after Iffy failure. Block: {name}")
                 else:
@@ -148,4 +148,4 @@ class IffyService:
             except Exception as e2:
                 reason = f"Both moderation services failed. Error: {str(e2)}"
                 logger.error(f"{reason}. Block: {name}", exc_info=True)
-                return ModerationResult(is_safe=False, reason=reason) 
+                return ModerationResult(is_safe=False, reason=reason)
