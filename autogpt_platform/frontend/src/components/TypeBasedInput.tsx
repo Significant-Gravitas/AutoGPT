@@ -21,7 +21,7 @@ import { BlockIOSubSchema } from "@/lib/autogpt-server-api/types";
 export interface TypeBasedInputProps {
   schema: BlockIOSubSchema;
   value?: any;
-  onChange: (e: { target: { value: any } }) => void;
+  onChange: (value: any) => void;
 }
 
 /**
@@ -37,12 +37,6 @@ export const TypeBasedInput: FC<TypeBasedInputProps> = ({
   // Determine which UI to show based on the schema
   const dataType = determineDataType(schema);
 
-  // A small utility for changing the parent:
-  // we unify the "value" in an event-like object.
-  const handleValueChange = (newValue: any) => {
-    onChange(newValue);
-  };
-
   switch (dataType) {
     case DataType.NUMBER:
       // Render a numeric input
@@ -50,7 +44,7 @@ export const TypeBasedInput: FC<TypeBasedInputProps> = ({
         <Input
           type="number"
           value={value ?? ""}
-          onChange={(e) => handleValueChange(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
         />
       );
 
@@ -59,7 +53,7 @@ export const TypeBasedInput: FC<TypeBasedInputProps> = ({
       return (
         <Textarea
           value={value ?? ""}
-          onChange={(e) => handleValueChange(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
         />
       );
 
@@ -68,7 +62,7 @@ export const TypeBasedInput: FC<TypeBasedInputProps> = ({
       return (
         <Switch
           checked={!!value}
-          onCheckedChange={(checked) => handleValueChange(checked)}
+          onCheckedChange={(checked) => onChange(checked)}
         />
       );
 
@@ -79,7 +73,7 @@ export const TypeBasedInput: FC<TypeBasedInputProps> = ({
         <Input
           type="date"
           value={value ?? ""}
-          onChange={(e) => handleValueChange(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
         />
       );
 
@@ -88,7 +82,7 @@ export const TypeBasedInput: FC<TypeBasedInputProps> = ({
         <Input
           type="time"
           value={value ?? ""}
-          onChange={(e) => handleValueChange(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
         />
       );
 
@@ -99,18 +93,18 @@ export const TypeBasedInput: FC<TypeBasedInputProps> = ({
         <Input
           type="datetime-local"
           value={value ?? ""}
-          onChange={(e) => handleValueChange(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
         />
       );
 
     case DataType.FILE:
-      // A simple file input that calls handleValueChange with the File object(s)
+      // A simple file input that calls onChange with the File object(s)
       return (
         <Input
           type="file"
           onChange={(e) => {
             const file = e.target.files?.[0];
-            handleValueChange(file || null);
+            onChange(file || null);
           }}
         />
       );
@@ -121,10 +115,7 @@ export const TypeBasedInput: FC<TypeBasedInputProps> = ({
       console.log(schema);
       if ("enum" in schema && Array.isArray(schema.enum)) {
         return (
-          <Select
-            value={value ?? ""}
-            onValueChange={(val) => handleValueChange(val)}
-          >
+          <Select value={value ?? ""} onValueChange={(val) => onChange(val)}>
             <SelectTrigger>
               <SelectValue placeholder="Select an option" />
             </SelectTrigger>
@@ -143,7 +134,7 @@ export const TypeBasedInput: FC<TypeBasedInputProps> = ({
         <Input
           type="text"
           value={value ?? ""}
-          onChange={(e) => handleValueChange(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
         />
       );
 
@@ -154,7 +145,7 @@ export const TypeBasedInput: FC<TypeBasedInputProps> = ({
         <Input
           type="text"
           value={value ?? ""}
-          onChange={(e) => handleValueChange(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
         />
       );
   }

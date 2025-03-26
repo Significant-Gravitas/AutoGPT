@@ -3,8 +3,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { InputBlock } from "./RunnerInputBlock";
 import { BlockInput } from "./RunnerInputUI";
 
-import { TypeBasedInput } from "@/components/TypeBasedInput";
-
 interface InputListProps {
   blockInputs: BlockInput[];
   onInputChange: (nodeId: string, field: string, value: any) => void;

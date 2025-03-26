@@ -45,7 +45,7 @@ export function InputBlock({
       <TypeBasedInput
         schema={schema}
         value={value}
-        onChange={(e) => onInputChange(id, "value", e.target.value)}
+        onChange={(value) => onInputChange(id, "value", value)}
       />
     </div>
   );
