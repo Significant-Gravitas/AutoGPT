@@ -202,7 +202,11 @@ class BaseGraph(BaseDbModel):
             "type": "object",
             "properties": {
                 p.name: {
-                    **p.generate_schema(),
+                    **{
+                        k: v
+                        for k, v in p.generate_schema().items()
+                        if k not in ["description", "default"]
+                    },
                     "secret": p.secret,
                     # Default value has to be set for advanced fields.
                     "advanced": p.advanced and p.value is not None,

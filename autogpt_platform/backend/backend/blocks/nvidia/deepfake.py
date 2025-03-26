@@ -23,15 +23,12 @@ class NvidiaDeepfakeDetectBlock(Block):
     class Output(BlockSchema):
         status: str = SchemaField(
             description="Detection status (SUCCESS, ERROR, CONTENT_FILTERED)",
-            default="",
         )
         image: MediaFileType = SchemaField(
             description="Processed image with detection markings (if return_image=True)",
-            default="",
         )
         is_deepfake: float = SchemaField(
             description="Probability that the image is a deepfake (0-1)",
-            default=0.0,
         )
 
     def __init__(self):
