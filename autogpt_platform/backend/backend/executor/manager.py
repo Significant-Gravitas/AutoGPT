@@ -175,7 +175,13 @@ def execute_node(
     input_data, error = validate_exec(node, data.data, resolve_input=False)
     if input_data is None:
         log_metadata.error(f"Skip execution, input validation error: {error}")
-        db_client.upsert_execution_output(node_exec_id, "error", error)
+        db_client.upsert_execution_output(
+            user_id=user_id,
+            graph_exec_id=graph_exec_id,
+            node_exec_id=node_exec_id,
+            output_name="error",
+            output_data=error,
+        )
         update_execution(ExecutionStatus.FAILED)
         return
 
@@ -220,7 +226,13 @@ def execute_node(
             output_data = json.convert_pydantic_to_json(output_data)
             output_size += len(json.dumps(output_data))
             log_metadata.info("Node produced output", **{output_name: output_data})
-            db_client.upsert_execution_output(node_exec_id, output_name, output_data)
+            db_client.upsert_execution_output(
+                user_id=user_id,
+                graph_exec_id=graph_exec_id,
+                node_exec_id=node_exec_id,
+                output_name=output_name,
+                output_data=output_data,
+            )
             outputs[output_name] = output_data
             for execution in _enqueue_next_nodes(
                 db_client=db_client,
@@ -238,7 +250,13 @@ def execute_node(
 
     except Exception as e:
         error_msg = str(e)
-        db_client.upsert_execution_output(node_exec_id, "error", error_msg)
+        db_client.upsert_execution_output(
+            user_id=user_id,
+            graph_exec_id=graph_exec_id,
+            node_exec_id=node_exec_id,
+            output_name="error",
+            output_data=error_msg,
+        )
         update_execution(ExecutionStatus.FAILED)
 
         for execution in _enqueue_next_nodes(
@@ -778,11 +796,17 @@ class Executor:
                         execution_stats=exec_stats,
                     )
                 except InsufficientBalanceError as error:
-                    exec_id = exec_data.node_exec_id
-                    cls.db_client.upsert_execution_output(exec_id, "error", str(error))
+                    node_exec_id = exec_data.node_exec_id
+                    cls.db_client.upsert_execution_output(
+                        user_id=graph_exec.user_id,
+                        graph_exec_id=graph_exec.graph_exec_id,
+                        node_exec_id=node_exec_id,
+                        output_name="error",
+                        output_data=str(error),
+                    )
 
                     exec_update = cls.db_client.update_node_execution_status(
-                        exec_id, ExecutionStatus.FAILED
+                        node_exec_id, ExecutionStatus.FAILED
                     )
                     cls.db_client.send_execution_update(exec_update)
 
