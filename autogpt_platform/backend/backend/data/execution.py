@@ -406,7 +406,7 @@ async def update_graph_execution_stats(
     graph_exec_id: str,
     status: ExecutionStatus,
     stats: GraphExecutionStats | None = None,
-) -> GraphExecutionMeta:
+) -> GraphExecutionMeta | None:
     data = stats.model_dump() if stats else {}
     if isinstance(data.get("error"), Exception):
         data["error"] = str(data["error"])
@@ -423,10 +423,8 @@ async def update_graph_execution_stats(
             "stats": Json(data),
         },
     )
-    if not res:
-        raise ValueError(f"Graph execution #{graph_exec_id} not found")
 
-    return GraphExecutionMeta.from_db(res)
+    return GraphExecutionMeta.from_db(res) if res else None
 
 
 async def update_node_execution_stats(node_exec_id: str, stats: NodeExecutionStats):
