@@ -126,8 +126,10 @@ export default function AgentRunsPage(): React.ReactElement {
 
     // Subscribe to all executions for this agent
     api.subscribeToGraphExecutions(agent.agent_id);
+  }, [api, agent]);
 
-    // Handle execution updates
+  // Handle execution updates
+  useEffect(() => {
     const detachExecUpdateHandler = api.onWebSocketMessage(
       "graph_execution_event",
       (data) => {
@@ -149,42 +151,7 @@ export default function AgentRunsPage(): React.ReactElement {
     return () => {
       detachExecUpdateHandler();
     };
-  }, [api, agent, selectedView.id]);
-
-  // Subscribe to websocket updates for selected run
-  useEffect(() => {
-    if (!selectedView.id || selectedView.type !== "run") return;
-
-    // Subscribe to specific execution updates
-    api.subscribeToGraphExecution(selectedView.id);
-
-    // Handle node execution updates
-    const detachNodeExecUpdateHandler = api.onWebSocketMessage(
-      "node_execution_event",
-      (data) => {
-        if (data.graph_exec_id === selectedView.id) {
-          setSelectedRun((prev) => {
-            if (!prev || !("node_executions" in prev) || !prev.node_executions)
-              return prev;
-            const index = prev.node_executions.findIndex(
-              (node) => node.node_exec_id === data.node_exec_id,
-            );
-            const newNodeExecutions = [...prev.node_executions];
-            if (index === -1) {
-              newNodeExecutions.push(data);
-            } else {
-              newNodeExecutions[index] = data;
-            }
-            return { ...prev, node_executions: newNodeExecutions };
-          });
-        }
-      },
-    );
-
-    return () => {
-      detachNodeExecUpdateHandler();
-    };
-  }, [api, selectedView]);
+  }, [api, selectedView.id]);
 
   // load selectedRun based on selectedView
   useEffect(() => {
