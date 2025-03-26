@@ -26,7 +26,7 @@ interface RunSettingsUiProps {
   isOpen: boolean;
   onClose: () => void;
   blockInputs: BlockInput[];
-  onInputChange: (nodeId: string, field: string, value: string) => void;
+  onInputChange: (nodeId: string, field: string, value: any) => void;
   onRun: () => void;
   onSchedule: () => Promise<void>;
   scheduledInput: boolean;

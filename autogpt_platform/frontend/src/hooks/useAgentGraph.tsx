@@ -413,7 +413,9 @@ export default function useAgentGraph(
           ) {
             return;
           }
-          console.warn("Error", error);
+          console.warn(
+            `Error in ${node.data.blockType}: ${error}. Data: ${inputData}, Schema: ${node.data.inputSchema}`,
+          );
           errorMessage = error.message || "Invalid input";
           if (path && error.message) {
             const key = path.slice(1);

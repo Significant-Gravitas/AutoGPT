@@ -44,7 +44,7 @@ export const TypeBasedInput: FC<TypeBasedInputProps> = ({
         <Input
           type="number"
           value={value ?? ""}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={(e) => onChange(Number(e.target.value))}
         />
       );
 

@@ -127,7 +127,7 @@ export const FlowInfo: React.FC<
   };
 
   const handleInputChange = useCallback(
-    (nodeId: string, field: string, value: string) => {
+    (nodeId: string, field: string, value: any) => {
       setNodes((nds) =>
         nds.map((node) => {
           if (node.id === nodeId) {
