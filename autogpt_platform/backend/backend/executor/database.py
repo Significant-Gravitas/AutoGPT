@@ -107,6 +107,7 @@ class DatabaseManager(AppService):
             )
         )
 
+        # Automatically push execution updates for all agent I/O
         if node_exec_id in IO_BLOCK_IDs:
             graph_exec = self.run_and_wait(
                 get_graph_execution(user_id=user_id, execution_id=graph_exec_id)
