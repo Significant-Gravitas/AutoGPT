@@ -12,7 +12,7 @@ class NvidiaDeepfakeDetectBlock(Block):
     class Input(BlockSchema):
         credentials: NvidiaCredentialsInput = NvidiaCredentialsField()
         image_base64: str = SchemaField(
-            description="Image to analyze for deepfakes", image_upload=True
+            description="Image to analyze for deepfakes",
         )
         return_image: bool = SchemaField(
             description="Whether to return the processed image with markings",
@@ -27,7 +27,6 @@ class NvidiaDeepfakeDetectBlock(Block):
         image: str = SchemaField(
             description="Processed image with detection markings (if return_image=True)",
             default="",
-            image_output=True,
         )
         is_deepfake: float = SchemaField(
             description="Probability that the image is a deepfake (0-1)",

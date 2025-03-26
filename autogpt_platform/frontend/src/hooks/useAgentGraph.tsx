@@ -153,10 +153,11 @@ export default function useAgentGraph(
       setAgentDescription(graph.description);
 
       setNodes((prevNodes) => {
-        const newNodes = graph.nodes.map((node) => {
+        const _newNodes = graph.nodes.map((node) => {
           const block = availableNodes.find(
             (block) => block.id === node.block_id,
           )!;
+          if (!block) return null;
           const prevNode = prevNodes.find((n) => n.id === node.id);
           const flow =
             block.uiType == BlockUIType.AGENT
@@ -199,6 +200,7 @@ export default function useAgentGraph(
           };
           return newNode;
         });
+        const newNodes = _newNodes.filter((n) => n !== null);
         setEdges(() =>
           graph.links.map((link) => {
             const adjustedSourceName = link.source_name?.startsWith("tools_^_")

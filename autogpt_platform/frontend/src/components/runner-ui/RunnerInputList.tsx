@@ -3,9 +3,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { InputBlock } from "./RunnerInputBlock";
 import { BlockInput } from "./RunnerInputUI";
 
+import { TypeBasedInput } from "@/components/TypeBasedInput";
+
 interface InputListProps {
   blockInputs: BlockInput[];
-  onInputChange: (nodeId: string, field: string, value: string) => void;
+  onInputChange: (nodeId: string, field: string, value: any) => void;
 }
 
 export function InputList({ blockInputs, onInputChange }: InputListProps) {
@@ -17,6 +19,7 @@ export function InputList({ blockInputs, onInputChange }: InputListProps) {
             <InputBlock
               key={block.id}
               id={block.id}
+              schema={block.inputSchema}
               name={block.hardcodedValues.name}
               description={block.hardcodedValues.description}
               value={block.hardcodedValues.value?.toString() || ""}

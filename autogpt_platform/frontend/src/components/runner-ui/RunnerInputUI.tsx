@@ -19,7 +19,6 @@ export interface BlockInput {
     description: string;
     value: any;
     placeholder_values?: any[];
-    limit_to_placeholder_values?: boolean;
   };
 }
 

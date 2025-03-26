@@ -1,5 +1,6 @@
 import json
-from typing import Any, Type, TypeVar, cast, get_args, get_origin
+from enum import Enum
+from typing import Any, ClassVar, Type, TypeVar, cast, get_args, get_origin
 
 from prisma import Json as PrismaJson
 
@@ -195,3 +196,55 @@ def convert(value: Any, target_type: Type[T]) -> T:
         return cast(T, _try_convert(value, target_type, raise_on_mismatch=False))
     except Exception as e:
         raise ConversionError(f"Failed to convert {value} to {target_type}") from e
+
+
+class InputDataType(Enum):
+    SHORT_TEXT = "short-text"
+    LONG_TEXT = "long-text"
+    NUMBER = "number"
+    DATE = "date"
+    TIME = "time"
+    DATE_TIME = "date-time"
+    FILE = "file"
+    SELECT = "select"
+    MULTI_SELECT = "multi-select"
+    TOGGLE = "toggle"
+    CREDENTIALS = "credentials"
+    OBJECT = "object"
+    KEY_VALUE = "key-value"
+    ARRAY = "array"
+
+
+class FormattedStringType(str):
+    string_format: ClassVar[InputDataType]
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type, handler):
+        return handler(str)
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, core_schema, handler):
+        json_schema = handler(core_schema)
+        json_schema["format"] = cls.string_format
+        return json_schema
+
+
+class MediaFileType(FormattedStringType):
+    """
+    MediaFile is a string that represents a file. It can be one of the following:
+        - Data URI: base64 encoded media file. See https://developer.mozilla.org/en-US/docs/Web/URI/Schemes/data/
+        - URL: Media file hosted on the internet, it starts with http:// or https://.
+        - Local path (anything else): A temporary file path living within graph execution time.
+
+    Note: Replace this type alias into a proper class, when more information is needed.
+    """
+
+    string_format = InputDataType.FILE
+
+
+class LongTextType(FormattedStringType):
+    string_format = InputDataType.LONG_TEXT
+
+
+class ShortTextType(FormattedStringType):
+    string_format = InputDataType.SHORT_TEXT
