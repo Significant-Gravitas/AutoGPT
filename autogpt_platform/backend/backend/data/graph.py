@@ -187,9 +187,8 @@ class BaseGraph(BaseDbModel):
             )
         )
 
-    @classmethod
+    @staticmethod
     def _generate_schema(
-        cls,
         *props: tuple[Type[AgentInputBlock.Input] | Type[AgentOutputBlock.Input], dict],
     ) -> dict[str, Any]:
         schema = []

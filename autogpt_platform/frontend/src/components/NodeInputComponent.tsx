@@ -406,7 +406,7 @@ export const NodeGenericInputField: FC<{
       return (
         <NodeMultiSelectInput
           selfKey={propKey}
-          schema={schema} // Adjust if needed
+          schema={schema}
           selection={Object.entries(currentValue || {})
             .filter(([_, v]) => v)
             .map(([k, _]) => k)}
