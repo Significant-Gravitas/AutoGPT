@@ -164,7 +164,8 @@ export default function AgentRunsPage(): React.ReactElement {
       (data) => {
         if (data.graph_exec_id === selectedView.id) {
           setSelectedRun((prev) => {
-            if (!prev || !("node_executions" in prev)) return prev;
+            if (!prev || !("node_executions" in prev) || !prev.node_executions)
+              return prev;
             const index = prev.node_executions.findIndex(
               (node) => node.node_exec_id === data.node_exec_id,
             );

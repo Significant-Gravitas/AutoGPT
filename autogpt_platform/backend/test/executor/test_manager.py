@@ -64,6 +64,7 @@ async def assert_sample_graph_executions(
         graph_exec_id,
         test_user.id,
     )
+    assert isinstance(graph_run, execution.GraphExecutionWithNodes)
 
     output_list = [{"result": ["Hello"]}, {"result": ["World"]}]
     input_list = [
@@ -206,6 +207,7 @@ async def test_input_pin_always_waited(server: SpinTestServer):
     graph_exec = await server.agent_server.test_get_graph_run_results(
         test_graph.id, graph_exec_id, test_user.id
     )
+    assert isinstance(graph_exec, execution.GraphExecutionWithNodes)
     assert len(graph_exec.node_executions) == 3
     # FindInDictionaryBlock should wait for the input pin to be provided,
     # Hence executing extraction of "key" from {"key1": "value1", "key2": "value2"}
@@ -289,6 +291,7 @@ async def test_static_input_link_on_graph(server: SpinTestServer):
     graph_exec = await server.agent_server.test_get_graph_run_results(
         test_graph.id, graph_exec_id, test_user.id
     )
+    assert isinstance(graph_exec, execution.GraphExecutionWithNodes)
     assert len(graph_exec.node_executions) == 8
     # The last 3 executions will be a+b=4+5=9
     for i, exec_data in enumerate(graph_exec.node_executions[-3:]):

@@ -106,7 +106,7 @@ const Monitor = () => {
       />
       {(selectedRun && (
         <FlowRunInfo
-          flow={
+          agent={
             selectedFlow ||
             flows.find((f) => f.agent_id == selectedRun.graph_id)!
           }

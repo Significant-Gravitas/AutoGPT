@@ -81,7 +81,7 @@ async def wait_execution(
             graph_exec = await AgentServer().test_get_graph_run_results(
                 graph_id, graph_exec_id, user_id
             )
-            return graph_exec.node_executions
+            return graph_exec.node_executions  # type: ignore
         time.sleep(1)
 
     assert False, "Execution did not complete in time."

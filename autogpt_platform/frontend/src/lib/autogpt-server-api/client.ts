@@ -978,7 +978,7 @@ type GraphCreateRequestBody = {
 type WebsocketMessageTypeMap = {
   subscribe_graph_execution: { graph_exec_id: GraphExecutionID };
   subscribe_graph_executions: { graph_id: GraphID };
-  graph_execution_event: GraphExecutionMeta;
+  graph_execution_event: GraphExecution;
   node_execution_event: NodeExecutionResult;
   heartbeat: "ping" | "pong";
 };
@@ -1003,7 +1003,7 @@ function parseGraphExecutionTimestamps<
   T extends GraphExecutionMeta | GraphExecution,
 >(result: any): T {
   const fixed = _parseObjectTimestamps<T>(result, ["started_at", "ended_at"]);
-  if ("node_executions" in fixed) {
+  if ("node_executions" in fixed && fixed.node_executions) {
     fixed.node_executions = fixed.node_executions.map(
       parseNodeExecutionResultTimestamps,
     );

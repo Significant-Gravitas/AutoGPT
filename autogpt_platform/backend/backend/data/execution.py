@@ -36,7 +36,11 @@ from backend.util.settings import Config
 
 from .block import BlockData, BlockInput, BlockType, CompletedBlockOutput, get_block
 from .db import BaseDbModel
-from .includes import EXECUTION_RESULT_INCLUDE, GRAPH_EXECUTION_INCLUDE
+from .includes import (
+    EXECUTION_RESULT_INCLUDE,
+    GRAPH_EXECUTION_INCLUDE_ALL,
+    GRAPH_EXECUTION_INCLUDE_IO_ONLY,
+)
 from .model import GraphExecutionStats, NodeExecutionStats
 from .queue import AsyncRedisEventBus, RedisEventBus
 
@@ -103,7 +107,6 @@ class GraphExecutionMeta(BaseDbModel):
 class GraphExecution(GraphExecutionMeta):
     inputs: BlockInput
     outputs: CompletedBlockOutput
-    node_executions: list["NodeExecutionResult"]
 
     @staticmethod
     def from_db(_graph_exec: AgentGraphExecution):
@@ -158,6 +161,32 @@ class GraphExecution(GraphExecutionMeta):
             },
             inputs=inputs,
             outputs=outputs,
+        )
+
+
+class GraphExecutionWithNodes(GraphExecution):
+    node_executions: list["NodeExecutionResult"]
+
+    @staticmethod
+    def from_db(_graph_exec: AgentGraphExecution):
+        if _graph_exec.AgentNodeExecutions is None:
+            raise ValueError("Node executions must be included in query")
+
+        graph_exec_with_io = GraphExecution.from_db(_graph_exec)
+
+        node_executions = sorted(
+            [
+                NodeExecutionResult.from_db(ne, _graph_exec.userId)
+                for ne in _graph_exec.AgentNodeExecutions
+            ],
+            key=lambda ne: (ne.queue_time is None, ne.queue_time or ne.add_time),
+        )
+
+        return GraphExecutionWithNodes(
+            **{
+                field_name: getattr(graph_exec_with_io, field_name)
+                for field_name in graph_exec_with_io.model_fields
+            },
             node_executions=node_executions,
         )
 
@@ -250,12 +279,26 @@ async def get_graph_execution_meta(
     return GraphExecutionMeta.from_db(execution) if execution else None
 
 
-async def get_graph_execution(user_id: str, execution_id: str) -> GraphExecution | None:
+async def get_graph_execution(
+    user_id: str,
+    execution_id: str,
+    include_node_executions: bool = False,
+) -> GraphExecution | GraphExecutionWithNodes | None:
     execution = await AgentGraphExecution.prisma().find_first(
         where={"id": execution_id, "isDeleted": False, "userId": user_id},
-        include=GRAPH_EXECUTION_INCLUDE,
+        include=(
+            GRAPH_EXECUTION_INCLUDE_ALL
+            if include_node_executions
+            else GRAPH_EXECUTION_INCLUDE_IO_ONLY
+        ),
     )
-    return GraphExecution.from_db(execution) if execution else None
+    return (
+        (
+            GraphExecutionWithNodes if include_node_executions else GraphExecution
+        ).from_db(execution)
+        if execution
+        else None
+    )
 
 
 async def create_graph_execution(
@@ -264,7 +307,7 @@ async def create_graph_execution(
     nodes_input: list[tuple[str, BlockInput]],
     user_id: str,
     preset_id: str | None = None,
-) -> GraphExecution:
+) -> GraphExecutionWithNodes:
     """
     Create a new AgentGraphExecution record.
     Returns:
@@ -294,10 +337,10 @@ async def create_graph_execution(
             "userId": user_id,
             "agentPresetId": preset_id,
         },
-        include=GRAPH_EXECUTION_INCLUDE,
+        include=GRAPH_EXECUTION_INCLUDE_ALL,
     )
 
-    return GraphExecution.from_db(result)
+    return GraphExecutionWithNodes.from_db(result)
 
 
 async def upsert_execution_input(
@@ -319,17 +362,20 @@ async def upsert_execution_input(
         node_exec_id: [Optional] The id of the AgentNodeExecution that has no `input_name` as input. If not provided, it will find the eligible incomplete AgentNodeExecution or create a new one.
 
     Returns:
-        * The id of the created or existing AgentNodeExecution.
-        * Dict of node input data, key is the input name, value is the input data.
+        str: The id of the created or existing AgentNodeExecution.
+        dict[str, Any]: Node input data; key is the input name, value is the input data.
     """
+    existing_exec_query_filter: AgentNodeExecutionWhereInput = {
+        "agentNodeId": node_id,
+        "agentGraphExecutionId": graph_exec_id,
+        "executionStatus": ExecutionStatus.INCOMPLETE,
+        "Input": {"every": {"name": {"not": input_name}}},
+    }
+    if node_exec_id:
+        existing_exec_query_filter["id"] = node_exec_id
+
     existing_execution = await AgentNodeExecution.prisma().find_first(
-        where={  # type: ignore
-            **({"id": node_exec_id} if node_exec_id else {}),
-            "agentNodeId": node_id,
-            "agentGraphExecutionId": graph_exec_id,
-            "executionStatus": ExecutionStatus.INCOMPLETE,
-            "Input": {"every": {"name": {"not": input_name}}},
-        },
+        where=existing_exec_query_filter,
         order={"addedTime": "asc"},
         include={"Input": True},
     )
@@ -385,25 +431,26 @@ async def upsert_execution_output(
     )
 
 
-async def update_graph_execution_start_time(graph_exec_id: str) -> GraphExecutionMeta:
+async def update_graph_execution_start_time(graph_exec_id: str) -> GraphExecution:
     res = await AgentGraphExecution.prisma().update(
         where={"id": graph_exec_id},
         data={
             "executionStatus": ExecutionStatus.RUNNING,
             "startedAt": datetime.now(tz=timezone.utc),
         },
+        include=GRAPH_EXECUTION_INCLUDE_IO_ONLY,
     )
     if not res:
         raise ValueError(f"Graph execution #{graph_exec_id} not found")
 
-    return GraphExecutionMeta.from_db(res)
+    return GraphExecution.from_db(res)
 
 
 async def update_graph_execution_stats(
     graph_exec_id: str,
     status: ExecutionStatus,
     stats: GraphExecutionStats | None = None,
-) -> GraphExecutionMeta:
+) -> GraphExecution:
     data = stats.model_dump() if stats else {}
     if isinstance(data.get("error"), Exception):
         data["error"] = str(data["error"])
@@ -419,11 +466,12 @@ async def update_graph_execution_stats(
             "executionStatus": status,
             "stats": Json(data),
         },
+        include=GRAPH_EXECUTION_INCLUDE_IO_ONLY,
     )
     if not res:
         raise ValueError(f"Graph execution #{graph_exec_id} not found")
 
-    return GraphExecutionMeta.from_db(res)
+    return GraphExecution.from_db(res)
 
 
 async def update_node_execution_stats(node_exec_id: str, stats: NodeExecutionStats):
@@ -532,7 +580,7 @@ async def get_node_execution_results(
 
 async def get_graph_executions_in_timerange(
     user_id: str, start_time: str, end_time: str
-) -> list[GraphExecution]:
+) -> list[GraphExecutionWithNodes]:
     try:
         executions = await AgentGraphExecution.prisma().find_many(
             where={
@@ -543,9 +591,9 @@ async def get_graph_executions_in_timerange(
                 "userId": user_id,
                 "isDeleted": False,
             },
-            include=GRAPH_EXECUTION_INCLUDE,
+            include=GRAPH_EXECUTION_INCLUDE_ALL,
         )
-        return [GraphExecution.from_db(execution) for execution in executions]
+        return [GraphExecutionWithNodes.from_db(execution) for execution in executions]
     except Exception as e:
         raise DatabaseError(
             f"Failed to get executions in timerange {start_time} to {end_time} for user {user_id}: {e}"
@@ -773,7 +821,7 @@ class ExecutionEventType(str, Enum):
     NODE_EXEC_UPDATE = "node_execution_update"
 
 
-class GraphExecutionEvent(GraphExecutionMeta):
+class GraphExecutionEvent(GraphExecution):
     event_type: Literal[ExecutionEventType.GRAPH_EXEC_UPDATE] = (
         ExecutionEventType.GRAPH_EXEC_UPDATE
     )
@@ -797,8 +845,8 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
     def event_bus_name(self) -> str:
         return config.execution_event_bus_name
 
-    def publish(self, res: GraphExecutionMeta | NodeExecutionResult):
-        if isinstance(res, GraphExecutionMeta):
+    def publish(self, res: GraphExecution | NodeExecutionResult):
+        if isinstance(res, GraphExecution):
             self.publish_graph_exec_update(res)
         else:
             self.publish_node_exec_update(res)
@@ -807,7 +855,7 @@ class RedisExecutionEventBus(RedisEventBus[ExecutionEvent]):
         event = NodeExecutionEvent.model_validate(res.model_dump())
         self.publish_event(event, f"{res.user_id}/{res.graph_id}/{res.graph_exec_id}")
 
-    def publish_graph_exec_update(self, res: GraphExecutionMeta):
+    def publish_graph_exec_update(self, res: GraphExecution):
         event = GraphExecutionEvent.model_validate(res.model_dump())
         self.publish_event(event, f"{res.user_id}/{res.graph_id}/{res.id}")
 
