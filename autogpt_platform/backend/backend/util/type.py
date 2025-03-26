@@ -1,6 +1,5 @@
 import json
-from enum import Enum
-from typing import Any, ClassVar, Type, TypeVar, cast, get_args, get_origin
+from typing import Any, Type, TypeVar, cast, get_args, get_origin
 
 from prisma import Json as PrismaJson
 
@@ -198,25 +197,8 @@ def convert(value: Any, target_type: Type[T]) -> T:
         raise ConversionError(f"Failed to convert {value} to {target_type}") from e
 
 
-class InputDataType(Enum):
-    SHORT_TEXT = "short-text"
-    LONG_TEXT = "long-text"
-    NUMBER = "number"
-    DATE = "date"
-    TIME = "time"
-    DATE_TIME = "date-time"
-    FILE = "file"
-    SELECT = "select"
-    MULTI_SELECT = "multi-select"
-    TOGGLE = "toggle"
-    CREDENTIALS = "credentials"
-    OBJECT = "object"
-    KEY_VALUE = "key-value"
-    ARRAY = "array"
-
-
 class FormattedStringType(str):
-    string_format: ClassVar[InputDataType]
+    string_format: str
 
     @classmethod
     def __get_pydantic_core_schema__(cls, source_type, handler):
@@ -239,12 +221,12 @@ class MediaFileType(FormattedStringType):
     Note: Replace this type alias into a proper class, when more information is needed.
     """
 
-    string_format = InputDataType.FILE
+    string_format = "file"
 
 
 class LongTextType(FormattedStringType):
-    string_format = InputDataType.LONG_TEXT
+    string_format = "long-text"
 
 
 class ShortTextType(FormattedStringType):
-    string_format = InputDataType.SHORT_TEXT
+    string_format = "short-text"
