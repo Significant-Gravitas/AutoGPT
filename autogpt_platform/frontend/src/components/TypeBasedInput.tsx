@@ -112,19 +112,24 @@ export const TypeBasedInput: FC<TypeBasedInputProps> = ({
     case DataType.SELECT:
       // If there's an enum present, show a dropdown.
       // This is a single-select example using Shadcn’s Select
-      console.log(schema);
-      if ("enum" in schema && Array.isArray(schema.enum)) {
+      if (
+        "enum" in schema &&
+        Array.isArray(schema.enum) &&
+        schema.enum.length > 0
+      ) {
         return (
           <Select value={value ?? ""} onValueChange={(val) => onChange(val)}>
             <SelectTrigger>
               <SelectValue placeholder="Select an option" />
             </SelectTrigger>
             <SelectContent>
-              {schema.enum.map((opt) => (
-                <SelectItem key={opt} value={opt}>
-                  {String(opt)}
-                </SelectItem>
-              ))}
+              {schema.enum
+                .filter((opt) => opt)
+                .map((opt) => (
+                  <SelectItem key={opt} value={opt}>
+                    {String(opt)}
+                  </SelectItem>
+                ))}
             </SelectContent>
           </Select>
         );

@@ -1062,7 +1062,7 @@ const NodeStringInput: FC<{
   value ||= schema.default || "";
   return (
     <div className={className}>
-      {schema.enum ? (
+      {schema.enum && schema.enum.length > 0 ? (
         <Select
           defaultValue={value}
           onValueChange={(newValue) => handleInputChange(selfKey, newValue)}
