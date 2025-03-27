@@ -1,11 +1,4 @@
 import React from "react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 
 import {
   BlockIOStringSubSchema,
@@ -33,8 +26,7 @@ export function InputBlock({
   onInputChange,
 }: InputBlockProps) {
   if (placeholder_values && placeholder_values.length > 0) {
-    schema = schema as BlockIOStringSubSchema;
-    schema.enum = placeholder_values;
+    schema = { ...schema, enum: placeholder_values } as BlockIOStringSubSchema;
   }
 
   return (

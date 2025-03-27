@@ -1071,11 +1071,13 @@ const NodeStringInput: FC<{
             <SelectValue placeholder={schema.placeholder || displayName} />
           </SelectTrigger>
           <SelectContent className="nodrag">
-            {schema.enum.map((option, index) => (
-              <SelectItem key={index} value={option}>
-                {beautifyString(option)}
-              </SelectItem>
-            ))}
+            {schema.enum
+              .filter((option) => option)
+              .map((option, index) => (
+                <SelectItem key={index} value={option}>
+                  {beautifyString(option)}
+                </SelectItem>
+              ))}
           </SelectContent>
         </Select>
       ) : (
