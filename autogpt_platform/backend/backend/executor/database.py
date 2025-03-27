@@ -1,6 +1,3 @@
-from typing import Any
-
-from backend.blocks.io import IO_BLOCK_IDs
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     GraphExecution,
@@ -17,8 +14,8 @@ from backend.data.execution import (
     update_node_execution_status,
     update_node_execution_status_batch,
     upsert_execution_input,
+    upsert_execution_output,
 )
-from backend.data.execution import upsert_execution_output as _upsert_execution_output
 from backend.data.graph import (
     get_connected_output_nodes,
     get_graph,
@@ -73,6 +70,7 @@ class DatabaseManager(AppService):
         self.execution_event_bus.publish(execution_result)
 
     # Executions
+    get_graph_execution = exposed_run_and_wait(get_graph_execution)
     create_graph_execution = exposed_run_and_wait(create_graph_execution)
     get_node_execution_results = exposed_run_and_wait(get_node_execution_results)
     get_incomplete_node_executions = exposed_run_and_wait(
@@ -89,34 +87,7 @@ class DatabaseManager(AppService):
     update_graph_execution_stats = exposed_run_and_wait(update_graph_execution_stats)
     update_node_execution_stats = exposed_run_and_wait(update_node_execution_stats)
     upsert_execution_input = exposed_run_and_wait(upsert_execution_input)
-
-    @expose
-    def upsert_execution_output(
-        self,
-        user_id: str,
-        graph_exec_id: str,
-        node_exec_id: str,
-        output_name: str,
-        output_data: Any,
-    ):
-        self.run_and_wait(
-            _upsert_execution_output(
-                node_exec_id=node_exec_id,
-                output_name=output_name,
-                output_data=output_data,
-            )
-        )
-
-        # Automatically push execution updates for all agent I/O
-        if node_exec_id in IO_BLOCK_IDs:
-            graph_exec = self.run_and_wait(
-                get_graph_execution(user_id=user_id, execution_id=graph_exec_id)
-            )
-            if not graph_exec:
-                raise ValueError(
-                    f"Graph execution #{graph_exec_id} for user #{user_id} not found"
-                )
-            self.send_execution_update(graph_exec)
+    upsert_execution_output = exposed_run_and_wait(upsert_execution_output)
 
     # Graphs
     get_node = exposed_run_and_wait(get_node)

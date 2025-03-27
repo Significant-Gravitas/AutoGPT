@@ -175,7 +175,8 @@ def execute_node(
     input_data, error = validate_exec(node, data.data, resolve_input=False)
     if input_data is None:
         log_metadata.error(f"Skip execution, input validation error: {error}")
-        db_client.upsert_execution_output(
+        _register_node_execution_output(
+            db_client=db_client,
             user_id=user_id,
             graph_exec_id=graph_exec_id,
             node_exec_id=node_exec_id,
@@ -226,7 +227,8 @@ def execute_node(
             output_data = json.convert_pydantic_to_json(output_data)
             output_size += len(json.dumps(output_data))
             log_metadata.info("Node produced output", **{output_name: output_data})
-            db_client.upsert_execution_output(
+            _register_node_execution_output(
+                db_client=db_client,
                 user_id=user_id,
                 graph_exec_id=graph_exec_id,
                 node_exec_id=node_exec_id,
@@ -250,7 +252,8 @@ def execute_node(
 
     except Exception as e:
         error_msg = str(e)
-        db_client.upsert_execution_output(
+        _register_node_execution_output(
+            db_client=db_client,
             user_id=user_id,
             graph_exec_id=graph_exec_id,
             node_exec_id=node_exec_id,
@@ -286,6 +289,34 @@ def execute_node(
             )
             execution_stats.input_size = input_size
             execution_stats.output_size = output_size
+
+
+def _register_node_execution_output(
+    db_client: "DatabaseManager",
+    user_id: str,
+    graph_exec_id: str,
+    node_exec_id: str,
+    output_name: str,
+    output_data: Any,
+):
+    from backend.blocks.io import IO_BLOCK_IDs
+
+    db_client.upsert_execution_output(
+        node_exec_id=node_exec_id,
+        output_name=output_name,
+        output_data=output_data,
+    )
+
+    # Automatically push execution updates for all agent I/O
+    if node_exec_id in IO_BLOCK_IDs:
+        graph_exec = db_client.get_graph_execution(
+            user_id=user_id, execution_id=graph_exec_id
+        )
+        if not graph_exec:
+            raise ValueError(
+                f"Graph execution #{graph_exec_id} for user #{user_id} not found"
+            )
+        db_client.send_execution_update(graph_exec)
 
 
 def _enqueue_next_nodes(
@@ -795,7 +826,8 @@ class Executor:
                     )
                 except InsufficientBalanceError as error:
                     node_exec_id = exec_data.node_exec_id
-                    cls.db_client.upsert_execution_output(
+                    _register_node_execution_output(
+                        db_client=cls.db_client,
                         user_id=graph_exec.user_id,
                         graph_exec_id=graph_exec.graph_exec_id,
                         node_exec_id=node_exec_id,
