@@ -792,6 +792,8 @@ const NodeKeyValueInput: FC<{
           // because the `key` can change with each input, causing the input to lose focus.
           <div key={index}>
             <NodeHandle
+              title={`#${key}`}
+              className="text-sm text-gray-500"
               keyName={getEntryKey(key)}
               schema={{ type: "string" }}
               isConnected={isConnected(key)}
@@ -923,7 +925,8 @@ const NodeArrayInput: FC<{
         return (
           <div key={entryKey}>
             <NodeHandle
-              title={`${displayName || beautifyString(selfKey)} #${index + 1}`}
+              title={`#${index + 1}`}
+              className="text-sm text-gray-500"
               keyName={entryKey}
               schema={schema.items!}
               isConnected={isConnected}

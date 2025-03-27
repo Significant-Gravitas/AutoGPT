@@ -126,14 +126,13 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
     }
     if (subSchema.type === "object") {
       if (
-        "additionalProperties" in subSchema &&
-        subSchema.additionalProperties
+        ("additionalProperties" in subSchema &&
+          subSchema.additionalProperties) ||
+        !("properties" in subSchema)
       ) {
-        return DataType.KEY_VALUE; // if additionalProperties => key-value
+        return DataType.KEY_VALUE; // if additionalProperties / no properties => key-value
       }
       if (
-        "properties" in subSchema &&
-        subSchema.properties &&
         Object.values(subSchema.properties).every(
           (prop) => prop.type === "boolean",
         )
