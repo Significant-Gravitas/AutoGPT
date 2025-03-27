@@ -180,6 +180,7 @@ def execute_node(
             user_id=user_id,
             graph_exec_id=graph_exec_id,
             node_exec_id=node_exec_id,
+            block_id=node_block.id,
             output_name="error",
             output_data=error,
         )
@@ -232,6 +233,7 @@ def execute_node(
                 user_id=user_id,
                 graph_exec_id=graph_exec_id,
                 node_exec_id=node_exec_id,
+                block_id=node_block.id,
                 output_name=output_name,
                 output_data=output_data,
             )
@@ -257,6 +259,7 @@ def execute_node(
             user_id=user_id,
             graph_exec_id=graph_exec_id,
             node_exec_id=node_exec_id,
+            block_id=node_block.id,
             output_name="error",
             output_data=error_msg,
         )
@@ -296,6 +299,7 @@ def _register_node_execution_output(
     user_id: str,
     graph_exec_id: str,
     node_exec_id: str,
+    block_id: str,
     output_name: str,
     output_data: Any,
 ):
@@ -308,7 +312,7 @@ def _register_node_execution_output(
     )
 
     # Automatically push execution updates for all agent I/O
-    if node_exec_id in IO_BLOCK_IDs:
+    if block_id in IO_BLOCK_IDs:
         graph_exec = db_client.get_graph_execution(
             user_id=user_id, execution_id=graph_exec_id
         )
@@ -831,6 +835,7 @@ class Executor:
                         user_id=graph_exec.user_id,
                         graph_exec_id=graph_exec.graph_exec_id,
                         node_exec_id=node_exec_id,
+                        block_id=exec_data.block_id,
                         output_name="error",
                         output_data=str(error),
                     )
