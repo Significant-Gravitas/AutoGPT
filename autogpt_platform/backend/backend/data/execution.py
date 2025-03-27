@@ -603,7 +603,7 @@ async def get_node_execution_results(
 
 async def get_graph_executions_in_timerange(
     user_id: str, start_time: str, end_time: str
-) -> list[GraphExecutionWithNodes]:
+) -> list[GraphExecution]:
     try:
         executions = await AgentGraphExecution.prisma().find_many(
             where={
@@ -614,9 +614,9 @@ async def get_graph_executions_in_timerange(
                 "userId": user_id,
                 "isDeleted": False,
             },
-            include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
+            include=GRAPH_EXECUTION_INCLUDE,
         )
-        return [GraphExecutionWithNodes.from_db(execution) for execution in executions]
+        return [GraphExecution.from_db(execution) for execution in executions]
     except Exception as e:
         raise DatabaseError(
             f"Failed to get executions in timerange {start_time} to {end_time} for user {user_id}: {e}"
