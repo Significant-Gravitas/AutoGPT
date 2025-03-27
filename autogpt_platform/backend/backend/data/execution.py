@@ -12,6 +12,7 @@ from typing import (
     Literal,
     Optional,
     TypeVar,
+    overload,
 )
 
 from prisma import Json
@@ -277,6 +278,22 @@ async def get_graph_execution_meta(
         where={"id": execution_id, "isDeleted": False, "userId": user_id}
     )
     return GraphExecutionMeta.from_db(execution) if execution else None
+
+
+@overload
+async def get_graph_execution(
+    user_id: str,
+    execution_id: str,
+    include_node_executions: Literal[True],
+) -> GraphExecutionWithNodes | None: ...
+
+
+@overload
+async def get_graph_execution(
+    user_id: str,
+    execution_id: str,
+    include_node_executions: bool = False,
+) -> GraphExecution | None: ...
 
 
 async def get_graph_execution(
