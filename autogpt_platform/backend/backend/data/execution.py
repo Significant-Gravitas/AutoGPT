@@ -292,8 +292,16 @@ async def get_graph_execution(
 async def get_graph_execution(
     user_id: str,
     execution_id: str,
-    include_node_executions: bool = False,
+    include_node_executions: Literal[False] = False,
 ) -> GraphExecution | None: ...
+
+
+@overload
+async def get_graph_execution(
+    user_id: str,
+    execution_id: str,
+    include_node_executions: bool = False,
+) -> GraphExecution | GraphExecutionWithNodes | None: ...
 
 
 async def get_graph_execution(
