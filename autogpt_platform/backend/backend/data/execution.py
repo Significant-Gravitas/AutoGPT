@@ -38,8 +38,8 @@ from .block import BlockData, BlockInput, BlockType, CompletedBlockOutput, get_b
 from .db import BaseDbModel
 from .includes import (
     EXECUTION_RESULT_INCLUDE,
-    GRAPH_EXECUTION_INCLUDE_ALL,
-    GRAPH_EXECUTION_INCLUDE_IO_ONLY,
+    GRAPH_EXECUTION_INCLUDE,
+    GRAPH_EXECUTION_INCLUDE_WITH_NODES,
 )
 from .model import GraphExecutionStats, NodeExecutionStats
 from .queue import AsyncRedisEventBus, RedisEventBus
@@ -287,9 +287,9 @@ async def get_graph_execution(
     execution = await AgentGraphExecution.prisma().find_first(
         where={"id": execution_id, "isDeleted": False, "userId": user_id},
         include=(
-            GRAPH_EXECUTION_INCLUDE_ALL
+            GRAPH_EXECUTION_INCLUDE_WITH_NODES
             if include_node_executions
-            else GRAPH_EXECUTION_INCLUDE_IO_ONLY
+            else GRAPH_EXECUTION_INCLUDE
         ),
     )
     return (
@@ -337,7 +337,7 @@ async def create_graph_execution(
             "userId": user_id,
             "agentPresetId": preset_id,
         },
-        include=GRAPH_EXECUTION_INCLUDE_ALL,
+        include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )
 
     return GraphExecutionWithNodes.from_db(result)
@@ -438,7 +438,7 @@ async def update_graph_execution_start_time(graph_exec_id: str) -> GraphExecutio
             "executionStatus": ExecutionStatus.RUNNING,
             "startedAt": datetime.now(tz=timezone.utc),
         },
-        include=GRAPH_EXECUTION_INCLUDE_IO_ONLY,
+        include=GRAPH_EXECUTION_INCLUDE,
     )
     if not res:
         raise ValueError(f"Graph execution #{graph_exec_id} not found")
@@ -466,7 +466,7 @@ async def update_graph_execution_stats(
             "executionStatus": status,
             "stats": Json(data),
         },
-        include=GRAPH_EXECUTION_INCLUDE_IO_ONLY,
+        include=GRAPH_EXECUTION_INCLUDE,
     )
 
     return GraphExecution.from_db(res) if res else None
@@ -589,7 +589,7 @@ async def get_graph_executions_in_timerange(
                 "userId": user_id,
                 "isDeleted": False,
             },
-            include=GRAPH_EXECUTION_INCLUDE_ALL,
+            include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
         )
         return [GraphExecutionWithNodes.from_db(execution) for execution in executions]
     except Exception as e:

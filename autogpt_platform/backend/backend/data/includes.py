@@ -22,7 +22,7 @@ EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
 
 MAX_NODE_EXECUTIONS_FETCH = 1000
 
-GRAPH_EXECUTION_INCLUDE_ALL: prisma.types.AgentGraphExecutionInclude = {
+GRAPH_EXECUTION_INCLUDE_WITH_NODES: prisma.types.AgentGraphExecutionInclude = {
     "AgentNodeExecutions": {
         "include": {
             "Input": True,
@@ -39,9 +39,9 @@ GRAPH_EXECUTION_INCLUDE_ALL: prisma.types.AgentGraphExecutionInclude = {
     }
 }
 
-GRAPH_EXECUTION_INCLUDE_IO_ONLY: prisma.types.AgentGraphExecutionInclude = {
+GRAPH_EXECUTION_INCLUDE: prisma.types.AgentGraphExecutionInclude = {
     "AgentNodeExecutions": {
-        **GRAPH_EXECUTION_INCLUDE_ALL["AgentNodeExecutions"],  # type: ignore
+        **GRAPH_EXECUTION_INCLUDE_WITH_NODES["AgentNodeExecutions"],  # type: ignore
         "where": {
             "AgentNode": {
                 "AgentBlock": {"id": {"in": IO_BLOCK_IDs}},  # type: ignore
