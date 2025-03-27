@@ -923,6 +923,7 @@ const NodeArrayInput: FC<{
         return (
           <div key={entryKey}>
             <NodeHandle
+              title={`${displayName || beautifyString(selfKey)} #${index + 1}`}
               keyName={entryKey}
               schema={schema.items!}
               isConnected={isConnected}
@@ -940,6 +941,7 @@ const NodeArrayInput: FC<{
                     currentValue={entry}
                     errors={errors}
                     connections={connections}
+                    displayName={displayName || beautifyString(selfKey)}
                     handleInputChange={handleInputChange}
                     handleInputClick={handleInputClick}
                   />
