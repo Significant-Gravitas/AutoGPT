@@ -81,6 +81,9 @@ async def wait_execution(
             graph_exec = await AgentServer().test_get_graph_run_results(
                 graph_id, graph_exec_id, user_id
             )
+            # `graph_exec.node_executions` is not set
+            # if `graph_exec.user_id` != `graph.user_id`.
+            # This isn't relevant for any (current) test case though so we can ignore:
             return graph_exec.node_executions  # type: ignore
         time.sleep(1)
 
