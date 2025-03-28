@@ -108,7 +108,6 @@ ignore_patterns = []
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-asyncio_default_fixture_loop_scope = "session"
 
 [tool.ruff]
 target-version = "py310"
