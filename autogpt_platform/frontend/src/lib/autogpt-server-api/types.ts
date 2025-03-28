@@ -901,9 +901,10 @@ function _handleSingleTypeSchema(subSchema: BlockIOSubSchema): DataType {
     return DataType.NUMBER;
   }
   if (subSchema.type === "array") {
-    if ("items" in subSchema && subSchema.items && "enum" in subSchema.items) {
-      return DataType.MULTI_SELECT; // array + enum => multi-select
-    }
+    /** Commented code below since we haven't yet support rendering of a multi-select with array { items: enum } type */
+    // if ("items" in subSchema && subSchema.items && "enum" in subSchema.items) {
+    //   return DataType.MULTI_SELECT; // array + enum => multi-select
+    // }
     return DataType.ARRAY;
   }
   if (subSchema.type === "object") {
@@ -981,7 +982,7 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
     if (types.includes("array") && types.includes("null")) {
       const arrSchema = schema.anyOf.find((s) => s.type === "array");
       if (arrSchema) return _handleSingleTypeSchema(arrSchema);
-      return DataType.MULTI_SELECT;
+      return DataType.ARRAY;
     }
 
     // (object | null)
