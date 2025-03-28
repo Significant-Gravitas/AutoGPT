@@ -7,6 +7,7 @@ import autogpt_libs.auth.depends
 import autogpt_libs.auth.middleware
 import fastapi
 import fastapi.responses
+from autogpt_libs.auth.depends import auth_middleware, get_user_id
 
 import backend.data.block
 import backend.data.graph
@@ -639,9 +640,7 @@ async def generate_image(
     tags=["store", "public"],
 )
 async def download_agent_file(
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
+    request: fastapi.Request,
     store_listing_version_id: str = fastapi.Path(
         ..., description="The ID of the agent to download"
     ),
@@ -658,6 +657,10 @@ async def download_agent_file(
     Raises:
         HTTPException: If the agent is not found or an unexpected error occurs.
     """
+    try:
+        user_id = get_user_id(await auth_middleware(request))
+    except fastapi.HTTPException:
+        user_id = None
 
     graph_data = await backend.server.v2.store.db.get_agent(
         user_id=user_id,
