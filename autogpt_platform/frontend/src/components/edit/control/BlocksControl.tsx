@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -53,6 +53,123 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedBlockIndex, setSelectedBlockIndex] = useState<number>(-1);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const blockCardsRef = useRef<HTMLDivElement[]>([]);
+  const [isInputFocused, setIsInputFocused] = useState(true);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check if Ctrl+B or Cmd+B was pressed
+      if ((e.ctrlKey || e.metaKey) && e.key === "b") {
+        e.preventDefault();
+        setIsOpen(true);
+        // Focus on the search input after a brief delay to ensure the popover is open
+        setTimeout(() => {
+          searchInputRef.current?.focus();
+          setSelectedBlockIndex(-1);
+          setIsInputFocused(true);
+        }, 10);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, []);
+
+  useEffect(() => {
+    // Reset selected block index when search query changes
+    setSelectedBlockIndex(-1);
+    setIsInputFocused(true);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    // Focus on the search input when popover opens
+    if (isOpen) {
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+        setIsInputFocused(true);
+      }, 10);
+    }
+  }, [isOpen]);
+
+  const handleInputFocus = () => {
+    setIsInputFocused(true);
+  };
+
+  const handleInputBlur = () => {
+    setIsInputFocused(false);
+  };
+
+  const handleKeyNavigation = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+
+      if (isInputFocused) {
+        // When Enter is pressed in search input, select the first block
+        if (filteredAvailableBlocks.length > 0) {
+          setSelectedBlockIndex(0);
+          setIsInputFocused(false);
+        }
+      } else if (
+        selectedBlockIndex >= 0 &&
+        selectedBlockIndex < filteredAvailableBlocks.length
+      ) {
+        // When Enter is pressed on a selected block, add that block
+        const block = filteredAvailableBlocks[selectedBlockIndex];
+        if (!block.notAvailable) {
+          addBlock(block.id, block.name, block?.hardcodedValues || {});
+          setIsOpen(false);
+        }
+      }
+    } else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (isInputFocused && filteredAvailableBlocks.length > 0) {
+        // Move from input to first block
+        setSelectedBlockIndex(0);
+        setIsInputFocused(false);
+      } else {
+        // Navigate blocks downward
+        setSelectedBlockIndex((prev) =>
+          Math.min(prev + 1, filteredAvailableBlocks.length - 1),
+        );
+      }
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (selectedBlockIndex <= 0) {
+        // Go back to input when at first block
+        setSelectedBlockIndex(-1);
+        setIsInputFocused(true);
+        searchInputRef.current?.focus();
+      } else {
+        // Navigate blocks upward
+        setSelectedBlockIndex((prev) => Math.max(prev - 1, 0));
+      }
+    }
+  };
+
+  useEffect(() => {
+    // Scroll selected block into view
+    if (selectedBlockIndex >= 0 && blockCardsRef.current[selectedBlockIndex]) {
+      blockCardsRef.current[selectedBlockIndex].scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+      });
+    }
+  }, [selectedBlockIndex]);
+
+  // Function to focus on the newly added block
+  const handleAddBlock = (
+    id: string,
+    name: string,
+    hardcodedValues: Record<string, any>,
+  ) => {
+    addBlock(id, name, hardcodedValues);
+    setIsOpen(false);
+  };
 
   const graphHasWebhookNodes = nodes.some(
     (n) => n.data.uiType == BlockUIType.WEBHOOK,
@@ -129,6 +246,8 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
   const resetFilters = React.useCallback(() => {
     setSearchQuery("");
     setSelectedCategory(null);
+    setSelectedBlockIndex(-1);
+    setIsInputFocused(true);
   }, []);
 
   // Extract unique categories from blocks
@@ -143,8 +262,11 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
 
   return (
     <Popover
-      open={pinBlocksPopover ? true : undefined}
-      onOpenChange={(open) => open || resetFilters()}
+      open={pinBlocksPopover ? true : isOpen}
+      onOpenChange={(open) => {
+        setIsOpen(open);
+        if (!open) resetFilters();
+      }}
     >
       <Tooltip delayDuration={500}>
         <TooltipTrigger asChild>
@@ -169,6 +291,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
         align="start"
         className="absolute -top-3 w-[17rem] rounded-xl border-none p-0 shadow-none md:w-[30rem]"
         data-id="blocks-control-popover-content"
+        onKeyDown={handleKeyNavigation}
       >
         <Card className="p-3 pb-0 dark:bg-slate-900">
           <CardHeader className="flex flex-col gap-x-8 gap-y-1 p-3 px-2">
@@ -190,8 +313,13 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                 placeholder="Search blocks"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={handleInputFocus}
+                onBlur={handleInputBlur}
                 className="rounded-lg px-8 py-5 dark:bg-slate-800 dark:text-white"
                 data-id="blocks-control-search-input"
+                ref={searchInputRef}
+                autoFocus
+                autoComplete="off"
               />
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -222,19 +350,27 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
               className="h-[60vh] w-full"
               data-id="blocks-control-scroll-area"
             >
-              {filteredAvailableBlocks.map((block) => (
+              {filteredAvailableBlocks.map((block, index) => (
                 <Card
                   key={block.uiKey || block.id}
+                  ref={(el) => {
+                    if (el) blockCardsRef.current[index] = el;
+                  }}
                   className={`m-2 my-4 flex h-20 shadow-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 ${
                     block.notAvailable
                       ? "cursor-not-allowed opacity-50"
                       : "cursor-pointer hover:shadow-lg"
-                  }`}
+                  } ${selectedBlockIndex === index ? "border-2 border-blue-500 dark:border-blue-400" : ""}`}
                   data-id={`block-card-${block.id}`}
-                  onClick={() =>
-                    !block.notAvailable &&
-                    addBlock(block.id, block.name, block?.hardcodedValues || {})
-                  }
+                  onClick={() => {
+                    if (!block.notAvailable) {
+                      handleAddBlock(
+                        block.id,
+                        block.name,
+                        block?.hardcodedValues || {},
+                      );
+                    }
+                  }}
                   title={block.notAvailable ?? undefined}
                 >
                   <div
