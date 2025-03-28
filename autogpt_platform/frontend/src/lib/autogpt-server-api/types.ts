@@ -842,33 +842,32 @@ export type AdminPendingSubmissionsRequest = {
   page_size: number;
 };
 
-export type UserBalance = {
-  user_id: string;
-  user_email: string;
-  balance: number;
-};
+export enum CreditTransactionType {
+  TOP_UP = "TOP_UP",
+  USAGE = "USAGE",
+  GRANT = "GRANT",
+  REFUND = "REFUND",
+  CARD_CHECK = "CARD_CHECK",
+}
 
-export type UserBalancesResponse = {
-  balances: UserBalance[];
-  pagination: Pagination;
-};
-
-export type GrantHistory = {
+export type UserBalanceHistory = {
   user_id: string;
   user_email: string;
   amount: number;
   date: Date;
+  current_balance: number;
   reason: string;
   admin_email: string;
+  type: CreditTransactionType;
+  extra_data?: any;
 };
 
-export type GrantHistoryResponse = {
-  grants: GrantHistory[];
+export type UsersBalanceHistoryResponse = {
+  history: UserBalanceHistory[];
   pagination: Pagination;
 };
 
 export type AddUserCreditsResponse = {
-  success: boolean;
   new_balance: number;
   transaction_key: string;
 };

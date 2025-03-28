@@ -1,9 +1,10 @@
 import datetime
 from typing import List
 
-from backend.server.model import Pagination
 import prisma.enums
 import pydantic
+
+from backend.server.model import Pagination
 
 
 class MyAgent(pydantic.BaseModel):

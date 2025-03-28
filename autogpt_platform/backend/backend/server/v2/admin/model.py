@@ -1,39 +1,30 @@
 from datetime import datetime
 
-from backend.server.model import Pagination
+from prisma.enums import CreditTransactionType
 from pydantic import BaseModel
 
+from backend.server.model import Pagination
 
-class GrantHistory(BaseModel):
+
+class UserHistory(BaseModel):
     user_id: str
     user_email: str
     amount: int
     date: datetime
+    current_balance: int
     reason: str
     admin_email: str
+    type: CreditTransactionType
+    extra_data: str | None = None
 
 
-class GrantHistoryResponse(BaseModel):
+class UserHistoryResponse(BaseModel):
     """Response model for listings with version history"""
 
-    grants: list[GrantHistory]
-    pagination: Pagination
-
-
-class UserBalance(BaseModel):
-    user_id: str
-    user_email: str
-    balance: int
-
-
-class UserBalanceResponse(BaseModel):
-    """Response model for listings with version history"""
-
-    balances: list[UserBalance]
+    history: list[UserHistory]
     pagination: Pagination
 
 
 class AddUserCreditsResponse(BaseModel):
-    success: bool
     new_balance: int
     transaction_key: str

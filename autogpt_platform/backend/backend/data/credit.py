@@ -4,8 +4,6 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from backend.server.model import Pagination
-from backend.server.v2.admin.model import UserBalance, UserBalanceResponse
 import stripe
 from autogpt_libs.utils.cache import thread_cached
 from prisma import Json
@@ -16,11 +14,7 @@ from prisma.enums import (
 )
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditRefundRequest, CreditTransaction, User
-from prisma.types import (
-    CreditTransactionCreateInput,
-    CreditTransactionWhereInput,
-    UserWhereInput,
-)
+from prisma.types import CreditTransactionCreateInput, CreditTransactionWhereInput
 from pydantic import BaseModel
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -36,8 +30,10 @@ from backend.data.model import (
     UserTransaction,
 )
 from backend.data.notifications import NotificationEventDTO, RefundRequestData
-from backend.data.user import get_user_by_id
+from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.notifications import NotificationManager
+from backend.server.model import Pagination
+from backend.server.v2.admin.model import UserHistory, UserHistoryResponse
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
@@ -362,6 +358,7 @@ class UsageTransactionMetadata(BaseModel):
     block_id: str | None = None
     block: str | None = None
     input: BlockInput | None = None
+    reason: str | None = None
 
 
 class UserCredit(UserCreditBase):
@@ -463,6 +460,7 @@ class UserCredit(UserCreditBase):
                     block_id=entry.block_id,
                     block=block.name,
                     input=matching_filter,
+                    reason="Running block: {block.name} for {cost} credits",
                 ).model_dump()
             ),
         )
@@ -695,6 +693,7 @@ class UserCredit(UserCreditBase):
             is_active=False,
             transaction_key=key,
             ceiling_balance=ceiling_balance,
+            metadata=Json({"reason": f"_top_up_credits: {transaction_type.name}"}),
         )
 
         customer_id = await get_stripe_customer_id(user_id)
@@ -954,6 +953,7 @@ class BetaUserCredit(UserCredit):
                 amount=max(self.num_user_credits_refill - balance, 0),
                 transaction_type=CreditTransactionType.GRANT,
                 transaction_key=f"MONTHLY-CREDIT-TOP-UP-{cur_time}",
+                metadata=Json({"reason": "Monthly credit refill"}),
             )
             return balance
         except UniqueViolationError:
@@ -1040,39 +1040,74 @@ async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
     return AutoTopUpConfig.model_validate(user.topUpConfig)
 
 
-async def admin_get_user_balances(
-    page: int = 1, page_size: int = 20, search: str | None = None
-):
+async def admin_get_user_history(
+    page: int = 1,
+    page_size: int = 20,
+    search: str | None = None,
+    transaction_filter: CreditTransactionType | None = None,
+) -> UserHistoryResponse:
 
     if page < 1 or page_size < 1:
         raise ValueError("Invalid pagination input")
 
-    where_clause: UserWhereInput = {}
+    where_clause: CreditTransactionWhereInput = {}
+    if transaction_filter:
+        where_clause["type"] = transaction_filter
     if search:
         where_clause["OR"] = [
-            {"email": {"contains": search, "mode": "insensitive"}},
-            {"name": {"contains": search, "mode": "insensitive"}},
+            {"userId": {"contains": search, "mode": "insensitive"}},
+            {"User": {"is": {"email": {"contains": search, "mode": "insensitive"}}}},
+            {"User": {"is": {"name": {"contains": search, "mode": "insensitive"}}}},
         ]
-    users = await User.prisma().find_many(
-        where=where_clause if search else None,
+    transactions = await CreditTransaction.prisma().find_many(
+        where=where_clause,
         skip=(page - 1) * page_size,
         take=page_size,
+        include={"User": True},
+        order={"createdAt": "desc"},
     )
-    total = await User.prisma().count(where=where_clause)
+    total = await CreditTransaction.prisma().count(where=where_clause)
     total_pages = (total + page_size - 1) // page_size
 
-    balances = []
-    for user in users:
-        balance, last_update = await get_user_credit_model()._get_credits(user.id)
-        balances.append(
-            UserBalance(
-                user_id=user.id,
-                user_email=user.email,
-                balance=balance,
+    history = []
+    for tx in transactions:
+        admin_id = ""
+        admin_email = ""
+        reason = ""
+
+        # this is actually a dict at runtime??????????
+        metadata: dict = tx.metadata or {}  # type: ignore
+
+        if metadata:
+            admin_id = metadata.get("admin_id")
+            admin_email = (
+                (await get_user_email_by_id(admin_id) or f"Unknown Admin: {admin_id}")
+                if admin_id
+                else ""
+            )
+            reason = metadata.get("reason", "No reason provided")
+
+        balance, last_update = await get_user_credit_model()._get_credits(tx.userId)
+
+        history.append(
+            UserHistory(
+                user_id=tx.userId,
+                user_email=(
+                    tx.User.email
+                    if tx.User
+                    else (await get_user_by_id(tx.userId)).email
+                ),
+                current_balance=balance,
+                amount=tx.amount,
+                date=tx.createdAt,
+                reason=reason,
+                admin_email=admin_email,
+                type=tx.type,
+                extra_data=str(metadata),
             )
         )
-    return UserBalanceResponse(
-        balances=balances,
+    return UserHistoryResponse(
+        history=history,
         pagination=Pagination(
             total_items=total,
             total_pages=total_pages,

@@ -22,10 +22,14 @@ export function AddCreditButton({
   userId,
   userEmail,
   currentBalance,
+  defaultAmount,
+  defaultComments,
 }: {
   userId: string;
   userEmail: string;
   currentBalance: number;
+  defaultAmount?: number;
+  defaultComments?: string;
 }) {
   const router = useRouter();
   const [isAddCreditDialogOpen, setIsAddCreditDialogOpen] = useState(false);
@@ -55,25 +59,23 @@ export function AddCreditButton({
         Add Dollars
       </Button>
 
-
       {/* Add $$$ Dialog */}
-      <Dialog open={isAddCreditDialogOpen} onOpenChange={setIsAddCreditDialogOpen}>
+      <Dialog
+        open={isAddCreditDialogOpen}
+        onOpenChange={setIsAddCreditDialogOpen}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add Dollars</DialogTitle>
             <DialogDescription>
-              Are you sure you want to add $$$ to this user?
-              Current balance: {currentBalance}
+              Are you sure you want to add $$$ to this user? Current balance:{" "}
+              {currentBalance}
               User Email: {userEmail}
             </DialogDescription>
           </DialogHeader>
 
           <form action={handleApproveSubmit}>
-            <input
-              type="hidden"
-              name="id"
-              value={userId}
-            />
+            <input type="hidden" name="id" value={userId} />
 
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
@@ -81,6 +83,7 @@ export function AddCreditButton({
                 <Textarea
                   id="amount"
                   name="amount"
+                  defaultValue={defaultAmount || undefined}
                   placeholder="Enter the amount of $$$ to add"
                   required
                 />
@@ -94,7 +97,7 @@ export function AddCreditButton({
                   id="comments"
                   name="comments"
                   placeholder="Why are you adding $$$?"
-                  defaultValue="we love you"
+                  defaultValue={defaultComments || "We love you!"}
                 />
               </div>
             </div>
@@ -112,8 +115,6 @@ export function AddCreditButton({
           </form>
         </DialogContent>
       </Dialog>
-
-
     </>
   );
 }

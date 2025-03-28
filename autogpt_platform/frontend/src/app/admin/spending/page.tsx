@@ -1,27 +1,20 @@
-import { AdminAgentsDataTable } from "@/components/admin/marketplace/admin-agents-data-table";
 import { AdminUserGrantHistory } from "@/components/admin/spending/admin-grant-history-data-table";
-import { AdminUserSpendingBalances } from "@/components/admin/spending/admin-spending-data-table";
-import { SearchAndFilterAdminSpending } from "@/components/admin/spending/search-filter-form";
-import type { SubmissionStatus } from "@/lib/autogpt-server-api";
+import type { CreditTransactionType } from "@/lib/autogpt-server-api";
 import { withRoleAccess } from "@/lib/withRoleAccess";
-import React, { Suspense } from "react";
+import { Suspense } from "react";
 
 function SpendingDashboard({
   searchParams,
 }: {
   searchParams: {
-    userPage?: string;
-    grantPage?: string;
+    page?: string;
+    status?: string;
     search?: string;
   };
 }) {
-  const userPage = searchParams.userPage
-    ? Number.parseInt(searchParams.userPage)
-    : 1;
-  const grantPage = searchParams.grantPage
-    ? Number.parseInt(searchParams.grantPage)
-    : 1;
+  const page = searchParams.page ? Number.parseInt(searchParams.page) : 1;
   const search = searchParams.search;
+  const status = searchParams.status as CreditTransactionType | undefined;
 
   return (
     <div className="mx-auto p-6">
@@ -38,17 +31,9 @@ function SpendingDashboard({
             <div className="py-10 text-center">Loading submissions...</div>
           }
         >
-          <SearchAndFilterAdminSpending
-            initialUserPage={userPage}
-            initialGrantPage={grantPage}
-            initialSearch={search}
-          />
-          <AdminUserSpendingBalances
-            initialPage={userPage}
-            initialSearch={search}
-          />
           <AdminUserGrantHistory
-            initialPage={grantPage}
+            initialPage={page}
+            initialStatus={status}
             initialSearch={search}
           />
         </Suspense>
@@ -61,8 +46,8 @@ export default async function SpendingDashboardPage({
   searchParams,
 }: {
   searchParams: {
-    userPage?: string;
-    grantPage?: string;
+    page?: string;
+    status?: string;
     search?: string;
   };
 }) {
