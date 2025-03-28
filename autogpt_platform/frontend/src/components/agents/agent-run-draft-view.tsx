@@ -10,6 +10,7 @@ import { useToastOnFail } from "@/components/ui/use-toast";
 import { IconPlay } from "@/components/ui/icons";
 import { Button } from "@/components/agptui/Button";
 import { TypeBasedInput } from "@/components/TypeBasedInput";
+import SchemaTooltip from "../SchemaTooltip";
 
 export default function AgentRunDraftView({
   graph,
@@ -61,8 +62,9 @@ export default function AgentRunDraftView({
           <CardContent className="flex flex-col gap-4">
             {Object.entries(agentInputs).map(([key, inputSubSchema]) => (
               <div key={key} className="flex flex-col space-y-2">
-                <label className="text-sm font-medium">
+                <label className="flex items-center gap-1 text-sm font-medium">
                   {inputSubSchema.title || key}
+                  <SchemaTooltip description={inputSubSchema.description} />
                 </label>
 
                 <TypeBasedInput

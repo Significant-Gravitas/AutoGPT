@@ -2,6 +2,8 @@ import React, { FC } from "react";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
+import { Cross2Icon, FileTextIcon } from "@radix-ui/react-icons";
+
 import { Input as DefaultInput } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -109,7 +111,7 @@ const _TypeBasedInput: FC<TypeBasedInputProps> = ({
           value={value}
           placeholder={placeholder}
           onChange={onChange}
-          className={cn(inputClasses, "max-w-xs")}
+          className={cn(inputClasses)}
         />
       );
 
@@ -127,12 +129,10 @@ const _TypeBasedInput: FC<TypeBasedInputProps> = ({
 
     case DataType.FILE:
       return (
-        <Input
-          type="file"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            onChange(file || null);
-          }}
+        <FileInput
+          value={value}
+          placeholder={placeholder}
+          onChange={onChange}
         />
       );
 
@@ -145,7 +145,7 @@ const _TypeBasedInput: FC<TypeBasedInputProps> = ({
         return (
           <Select value={value ?? ""} onValueChange={(val) => onChange(val)}>
             <SelectTrigger
-              className={cn(inputClasses, "max-w-xs text-sm text-gray-500")}
+              className={cn(inputClasses, "text-sm text-gray-500")}
             >
               <SelectValue placeholder="Select an option" />
             </SelectTrigger>
@@ -237,8 +237,6 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
   const pad = (n: number) => n.toString().padStart(2, "0");
   const [hourNum, minuteNum] = value ? value.split(":").map(Number) : [0, 0];
 
-  console.log(">>> hourNum", hourNum, "minuteNum", minuteNum, " value", value);
-
   const meridiem = hourNum >= 12 ? "PM" : "AM";
   const hour = pad(hourNum % 12 || 12);
   const minute = pad(minuteNum);
@@ -307,3 +305,124 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
     </div>
   );
 }
+
+function getFileLabel(value: string) {
+  if (value.startsWith("data:")) {
+    const matches = value.match(/^data:([^;]+);/);
+    if (matches?.[1]) {
+      const mimeParts = matches[1].split("/");
+      if (mimeParts.length > 1) {
+        return `${mimeParts[1].toUpperCase()} file`;
+      }
+      return `${matches[1]} file`;
+    }
+  } else {
+    const pathParts = value.split(".");
+    if (pathParts.length > 1) {
+      const ext = pathParts.pop();
+      if (ext) return `${ext.toUpperCase()} file`;
+    }
+  }
+  return "File";
+}
+
+function getFileSize(value: string) {
+  if (value.startsWith("data:")) {
+    const matches = value.match(/;base64,(.*)/);
+    if (matches?.[1]) {
+      const size = Math.ceil((matches[1].length * 3) / 4);
+      if (size > 1024 * 1024) {
+        return `${(size / (1024 * 1024)).toFixed(2)} MB`;
+      } else {
+        return `${(size / 1024).toFixed(2)} KB`;
+      }
+    }
+  } else {
+    return "";
+  }
+}
+
+interface FileInputProps {
+  value?: string; // base64 string or empty
+  placeholder?: string; // e.g. "Resume", "Document", etc.
+  onChange: (value: string) => void;
+  className?: string;
+}
+
+const FileInput: FC<FileInputProps> = ({
+  value,
+  placeholder,
+  onChange,
+  className,
+}) => {
+  const loadFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64String = e.target?.result as string;
+      onChange(base64String);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) loadFile(file);
+  };
+
+  const handleFileDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const file = event.dataTransfer.files[0];
+    if (file) loadFile(file);
+  };
+
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  return (
+    <div className={cn("w-full", className)}>
+      {value ? (
+        <div className="flex min-h-14 items-center gap-4">
+          <div className="agpt-border-input flex min-h-14 w-full items-center justify-between rounded-[12px] bg-zinc-50 p-4 text-sm text-gray-500">
+            <div className="flex items-center gap-2">
+              <FileTextIcon className="h-7 w-7 text-black" />
+              <div className="flex flex-col gap-0.5">
+                <span className="font-normal text-black">
+                  {getFileLabel(value)}
+                </span>
+                <span>{getFileSize(value)}</span>
+              </div>
+            </div>
+            <Cross2Icon
+              className="h-5 w-5 cursor-pointer text-black"
+              onClick={() => {
+                inputRef.current && (inputRef.current.value = "");
+                onChange("");
+              }}
+            />
+          </div>
+        </div>
+      ) : (
+        <div className="flex min-h-14 items-center gap-4">
+          <div
+            onDrop={handleFileDrop}
+            onDragOver={(e) => e.preventDefault()}
+            className="agpt-border-input flex min-h-14 w-full items-center justify-center rounded-[12px] border-dashed bg-zinc-50 text-sm text-gray-500"
+          >
+            Choose a file or drag and drop it here
+          </div>
+
+          <Button variant="default" onClick={() => inputRef.current?.click()}>
+            Browse File
+          </Button>
+        </div>
+      )}
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="*/*"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+    </div>
+  );
+};
