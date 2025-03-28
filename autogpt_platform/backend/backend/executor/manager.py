@@ -1061,19 +1061,12 @@ class ExecutionManager(AppService):
         )
         self.db_client.send_execution_update(graph_exec)
 
-        # Right after creating the graph execution, we need to check if the content is safe
-        if settings.config.behave_as != BehaveAs.LOCAL:
-            moderate_graph_content(
-                graph=graph,
-                graph_id=graph_id,
-                graph_exec_id=graph_exec_id,
-                nodes_input=nodes_input,
-                user_id=user_id
-            )
-
-        starting_node_execs = []
-        for node_exec in node_execs:
-            starting_node_execs.append(
+        graph_exec_entry = GraphExecutionEntry(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph_version or 0,
+            graph_exec_id=graph_exec.id,
+            start_node_execs=[
                 NodeExecutionEntry(
                     user_id=user_id,
                     graph_exec_id=node_exec.graph_exec_id,
@@ -1086,6 +1079,17 @@ class ExecutionManager(AppService):
                 for node_exec in graph_exec.node_executions
             ],
         )
+
+        # Right after creating the graph execution, we need to check if the content is safe
+        if settings.config.behave_as != BehaveAs.LOCAL:
+            moderate_graph_content(
+                graph=graph,
+                graph_id=graph.id,
+                graph_exec_id=graph_exec.id,
+                nodes_input=nodes_input,
+                user_id=user_id
+            )
+
         self.queue.add(graph_exec_entry)
 
         return graph_exec_entry
