@@ -58,7 +58,12 @@ export const TypeBasedInput: FC<TypeBasedInputProps> = ({
   onChange,
 }) => (
   <div className="no-drag relative flex">
-    {_TypeBasedInput({ schema, value, onChange, placeholder })}
+    <_TypeBasedInput
+      schema={schema}
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+    />
   </div>
 );
 
