@@ -550,3 +550,17 @@ class AgentToggleInputBlock(AgentInputBlock):
                 ("result", False),
             ],
         )
+
+
+IO_BLOCK_IDs = [
+    AgentInputBlock().id,
+    AgentOutputBlock().id,
+    AgentShortTextInputBlock().id,
+    AgentLongTextInputBlock().id,
+    AgentNumberInputBlock().id,
+    AgentDateInputBlock().id,
+    AgentTimeInputBlock().id,
+    AgentFileInputBlock().id,
+    AgentDropdownInputBlock().id,
+    AgentToggleInputBlock().id,
+]
