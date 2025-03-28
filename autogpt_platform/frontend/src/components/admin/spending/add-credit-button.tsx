@@ -1,8 +1,7 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { CheckCircle, XCircle } from "lucide-react";
+import { useState } from "react"
+import { Button } from "@/components/ui/button"
 import {
   Dialog,
   DialogContent,
@@ -10,13 +9,12 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import type { StoreSubmission } from "@/lib/autogpt-server-api/types";
-import { useRouter } from "next/navigation";
-import { approveAgent, rejectAgent } from "@/app/admin/marketplace/actions";
-import { addDollars } from "@/app/admin/spending/actions";
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
+import { useRouter } from "next/navigation"
+import { addDollars } from "@/app/admin/spending/actions"
 
 export function AddCreditButton({
   userId,
@@ -25,68 +23,85 @@ export function AddCreditButton({
   defaultAmount,
   defaultComments,
 }: {
-  userId: string;
-  userEmail: string;
-  currentBalance: number;
-  defaultAmount?: number;
-  defaultComments?: string;
+  userId: string
+  userEmail: string
+  currentBalance: number
+  defaultAmount?: number
+  defaultComments?: string
 }) {
-  const router = useRouter();
-  const [isAddCreditDialogOpen, setIsAddCreditDialogOpen] = useState(false);
+  const router = useRouter()
+  const [isAddCreditDialogOpen, setIsAddCreditDialogOpen] = useState(false)
+  const [dollarAmount, setDollarAmount] = useState(defaultAmount ? Math.abs(defaultAmount / 100).toFixed(2) : "1.00")
+
+  // Calculate credits from dollar amount
+  const calculateCredits = (dollars: string) => {
+    const amount = Number.parseFloat(dollars) || 0
+    return Math.round(amount * 100)
+  }
 
   const handleApproveSubmit = async (formData: FormData) => {
-    setIsAddCreditDialogOpen(false);
+    setIsAddCreditDialogOpen(false)
     try {
-      await addDollars(formData);
-      router.refresh(); // Refresh the current route
+      await addDollars(formData)
+      router.refresh() // Refresh the current route
     } catch (error) {
-      console.error("Error approving agent:", error);
+      console.error("Error adding dollars:", error)
     }
-  };
+  }
 
   return (
     <>
       <Button
         size="sm"
-        variant="outline"
-        className="text-green-600 hover:bg-green-50 hover:text-green-700"
+        variant="default"
         onClick={(e) => {
-          e.stopPropagation();
-          setIsAddCreditDialogOpen(true);
+          e.stopPropagation()
+          setIsAddCreditDialogOpen(true)
         }}
       >
-        <CheckCircle className="mr-2 h-4 w-4" />
         Add Dollars
       </Button>
 
       {/* Add $$$ Dialog */}
-      <Dialog
-        open={isAddCreditDialogOpen}
-        onOpenChange={setIsAddCreditDialogOpen}
-      >
+      <Dialog open={isAddCreditDialogOpen} onOpenChange={setIsAddCreditDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add Dollars</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to add $$$ to this user? Current balance:{" "}
-              {currentBalance}
-              User Email: {userEmail}
+            <DialogDescription className="pt-2">
+              <div className="mb-2">
+                <span className="font-medium">User:</span> {userEmail}
+              </div>
+              <div>
+                <span className="font-medium">Current balance:</span> ${(currentBalance / 100).toFixed(2)}
+              </div>
             </DialogDescription>
           </DialogHeader>
 
           <form action={handleApproveSubmit}>
             <input type="hidden" name="id" value={userId} />
+            <input type="hidden" name="amount" value={calculateCredits(dollarAmount)} />
 
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
-                <Label htmlFor="amount">Amount</Label>
-                <Textarea
-                  id="amount"
-                  name="amount"
-                  defaultValue={defaultAmount || undefined}
-                  placeholder="Enter the amount of $$$ to add"
-                  required
-                />
+                <Label htmlFor="dollarAmount">Amount (in dollars)</Label>
+                <div className="flex">
+                  <div className="flex items-center justify-center rounded-l-md border border-r-0 bg-gray-50 px-3 text-gray-500">
+                    $
+                  </div>
+                  <Input
+                    id="dollarAmount"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className="rounded-l-none"
+                    value={dollarAmount}
+                    onChange={(e) => setDollarAmount(e.target.value)}
+                    placeholder="0.00"
+                  />
+                </div>
+                <p className="text-xs text-gray-500">
+                  This will add {calculateCredits(dollarAmount)} credits (1 credit = 1¢)
+                </p>
               </div>
             </div>
 
@@ -96,18 +111,14 @@ export function AddCreditButton({
                 <Textarea
                   id="comments"
                   name="comments"
-                  placeholder="Why are you adding $$$?"
+                  placeholder="Why are you adding dollars?"
                   defaultValue={defaultComments || "We love you!"}
                 />
               </div>
             </div>
 
             <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsAddCreditDialogOpen(false)}
-              >
+              <Button type="button" variant="outline" onClick={() => setIsAddCreditDialogOpen(false)}>
                 Cancel
               </Button>
               <Button type="submit">Add Dollars</Button>
@@ -116,5 +127,6 @@ export function AddCreditButton({
         </DialogContent>
       </Dialog>
     </>
-  );
+  )
 }
+

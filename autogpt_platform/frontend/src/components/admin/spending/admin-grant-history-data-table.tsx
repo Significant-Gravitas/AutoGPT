@@ -30,6 +30,54 @@ export async function AdminUserGrantHistory({
     initialStatus,
   );
 
+  // Helper function to format the amount with color based on transaction type
+  const formatAmount = (amount: number, type: CreditTransactionType) => {
+    const isPositive = type === CreditTransactionType.GRANT;
+    const isNeutral = type === CreditTransactionType.TOP_UP;
+    const color = isPositive
+      ? "text-green-600"
+      : isNeutral
+        ? "text-blue-600"
+        : "text-red-600";
+    return <span className={color}>${Math.abs(amount / 100)}</span>;
+  };
+
+  // Helper function to format the transaction type with color
+  const formatType = (type: CreditTransactionType) => {
+    const isGrant = type === CreditTransactionType.GRANT;
+    const isPurchased = type === CreditTransactionType.TOP_UP;
+    const isSpent = type === CreditTransactionType.USAGE;
+
+    let displayText = type;
+    let bgColor = "";
+
+    if (isGrant) {
+      bgColor = "bg-green-100 text-green-800";
+    } else if (isPurchased) {
+      bgColor = "bg-blue-100 text-blue-800";
+    } else if (isSpent) {
+      bgColor = "bg-red-100 text-red-800";
+    }
+
+    return (
+      <span className={`rounded-full px-2 py-1 text-xs font-medium ${bgColor}`}>
+        {displayText.valueOf()}
+      </span>
+    );
+  };
+
+  // Helper function to format the date
+  const formatDate = (date: Date) => {
+    return new Intl.DateTimeFormat("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "numeric",
+      hour12: true,
+    }).format(new Date(date));
+  };
+
   return (
     <div className="space-y-4">
       <SearchAndFilterAdminSpending
@@ -37,57 +85,69 @@ export async function AdminUserGrantHistory({
         initialSearch={initialSearch}
       />
 
-      <div className="rounded-md border">
+      <div className="rounded-md border bg-white">
         <Table>
-          <TableHeader>
+          <TableHeader className="bg-gray-50">
             <TableRow>
-              <TableHead>Email</TableHead>
-              <TableHead>Amount</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Date</TableHead>
-              <TableHead>Reason</TableHead>
-              <TableHead>Admin</TableHead>
-              <TableHead>Current Balance</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
+              <TableHead className="font-medium">User</TableHead>
+              <TableHead className="font-medium">Amount</TableHead>
+              <TableHead className="font-medium">Type</TableHead>
+              <TableHead className="font-medium">Date</TableHead>
+              <TableHead className="font-medium">Reason</TableHead>
+              <TableHead className="font-medium">Admin</TableHead>
+              <TableHead className="font-medium">Current Balance</TableHead>
+              <TableHead className="text-right font-medium">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {history.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center">
-                  No submissions found
+                <TableCell
+                  colSpan={8}
+                  className="py-10 text-center text-gray-500"
+                >
+                  No transactions found
                 </TableCell>
               </TableRow>
             ) : (
-              history.map((history) => (
-                <TableRow key={history.user_id}>
+              history.map((transaction) => (
+                <TableRow
+                  key={transaction.user_id}
+                  className="hover:bg-gray-50"
+                >
                   <TableCell className="font-medium">
-                    {history.user_email}
+                    {transaction.user_email}
                   </TableCell>
-                  <TableCell>{history.amount}</TableCell>
-                  <TableCell>{history.type}</TableCell>
-                  <TableCell>{history.date.toString()}</TableCell>
-                  <TableCell>{history.reason}</TableCell>
-                  <TableCell>{history.admin_email}</TableCell>
-                  <TableCell>{history.current_balance}</TableCell>
+                  <TableCell>
+                    {formatAmount(transaction.amount, transaction.type)}
+                  </TableCell>
+                  <TableCell>{formatType(transaction.type)}</TableCell>
+                  <TableCell className="text-gray-600">
+                    {formatDate(transaction.date)}
+                  </TableCell>
+                  <TableCell>{transaction.reason}</TableCell>
+                  <TableCell className="text-gray-600">
+                    {transaction.admin_email}
+                  </TableCell>
+                  <TableCell className="font-medium text-green-600">
+                    ${transaction.current_balance / 100}
+                  </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <AddCreditButton
-                        userId={history.user_id}
-                        userEmail={history.user_email}
-                        currentBalance={history.current_balance}
-                        defaultAmount={
-                          history.type === CreditTransactionType.USAGE
-                            ? -history.amount
-                            : undefined
-                        }
-                        defaultComments={
-                          history.type === CreditTransactionType.USAGE
-                            ? "Refund for usage"
-                            : undefined
-                        }
-                      />
-                    </div>
+                    <AddCreditButton
+                      userId={transaction.user_id}
+                      userEmail={transaction.user_email}
+                      currentBalance={transaction.current_balance}
+                      defaultAmount={
+                        transaction.type === CreditTransactionType.USAGE
+                          ? -transaction.amount
+                          : undefined
+                      }
+                      defaultComments={
+                        transaction.type === CreditTransactionType.USAGE
+                          ? "Refund for usage"
+                          : undefined
+                      }
+                    />
                   </TableCell>
                 </TableRow>
               ))
