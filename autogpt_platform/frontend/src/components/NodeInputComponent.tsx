@@ -125,10 +125,8 @@ const NodeDateTimeInput: FC<{
   hideDate = false,
   hideTime = false,
 }) => {
-  const date = value ? new Date(value) : new Date();
-  const [timeInput, setTimeInput] = useState(
-    value ? format(date, "HH:mm") : "00:00",
-  );
+  const dateInput = value && !hideDate ? new Date(value) : new Date();
+  const timeInput = value && !hideTime ? format(dateInput, "HH:mm") : "00:00";
 
   const handleDateSelect = (newDate: Date | undefined) => {
     if (!newDate) return;
@@ -146,9 +144,6 @@ const NodeDateTimeInput: FC<{
 
   const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newTime = e.target.value;
-    setTimeInput(newTime);
-
-    if (!value) return;
 
     if (hideDate) {
       // Only pass HH:mm if date is hidden
@@ -156,9 +151,8 @@ const NodeDateTimeInput: FC<{
     } else {
       // Otherwise pass full date/time
       const [hours, minutes] = newTime.split(":").map(Number);
-      const newDate = new Date(value);
-      newDate.setHours(hours, minutes);
-      handleInputChange(selfKey, newDate.toISOString());
+      dateInput.setHours(hours, minutes);
+      handleInputChange(selfKey, dateInput.toISOString());
     }
   };
 
@@ -175,13 +169,13 @@ const NodeDateTimeInput: FC<{
               )}
             >
               <CalendarIcon className="mr-2 h-4 w-4" />
-              {value ? format(date, "PPP") : <span>Pick a date</span>}
+              {value ? format(dateInput, "PPP") : <span>Pick a date</span>}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
             <Calendar
               mode="single"
-              selected={date}
+              selected={dateInput}
               onSelect={handleDateSelect}
               autoFocus
             />

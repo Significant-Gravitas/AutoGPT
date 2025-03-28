@@ -5,7 +5,6 @@ import {
   BlockIOSubSchema,
 } from "@/lib/autogpt-server-api";
 import { TypeBasedInput } from "@/components/TypeBasedInput";
-import SchemaTooltip from "../SchemaTooltip";
 
 interface InputBlockProps {
   id: string;
@@ -31,14 +30,14 @@ export function InputBlock({
   }
 
   return (
-    <div className="space-y-1">
-      <label className="flex items-center text-sm font-medium">
+    <div className="space-y-2">
+      <label className="flex text-sm font-medium">
         {name || "Unnamed Input"}
-        <SchemaTooltip description={description} />
       </label>
       <TypeBasedInput
         schema={schema}
         value={value}
+        placeholder={description}
         onChange={(value) => onInputChange(id, "value", value)}
       />
     </div>

@@ -10,7 +10,7 @@ interface InputListProps {
 
 export function InputList({ blockInputs, onInputChange }: InputListProps) {
   return (
-    <ScrollArea className="h-[20vh] overflow-auto pr-4 sm:h-[30vh] md:h-[40vh] lg:h-[50vh]">
+    <ScrollArea className="max-h-[60vh] overflow-auto">
       <div className="space-y-4">
         {blockInputs && blockInputs.length > 0 ? (
           blockInputs.map((block) => (
