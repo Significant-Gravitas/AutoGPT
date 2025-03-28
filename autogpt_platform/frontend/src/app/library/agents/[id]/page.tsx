@@ -22,6 +22,7 @@ import AgentRunDraftView from "@/components/agents/agent-run-draft-view";
 import AgentRunDetailsView from "@/components/agents/agent-run-details-view";
 import AgentRunsSelectorList from "@/components/agents/agent-runs-selector-list";
 import AgentScheduleDetailsView from "@/components/agents/agent-schedule-details-view";
+import LibraryRunLoadingSkeleton from "./loading";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
@@ -219,7 +220,7 @@ export default function AgentRunsPage(): React.ReactElement {
 
   if (!agent || !graph) {
     /* TODO: implement loading indicators / skeleton page */
-    return <span>Loading...</span>;
+    return <LibraryRunLoadingSkeleton />;
   }
 
   return (
