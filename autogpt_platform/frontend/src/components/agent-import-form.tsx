@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { cn } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import React, { useState } from "react";
@@ -15,8 +16,11 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { EnterIcon } from "@radix-ui/react-icons";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { Graph, GraphCreatable } from "@/lib/autogpt-server-api";
-import { cn, sanitizeImportedGraph } from "@/lib/utils";
+import {
+  Graph,
+  GraphCreatable,
+  sanitizeImportedGraph,
+} from "@/lib/autogpt-server-api";
 
 // Add this custom schema for File type
 const fileSchema = z.custom<File>((val) => val instanceof File, {

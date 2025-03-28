@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import { Upload, X } from "lucide-react";
-import { sanitizeImportedGraph } from "@/lib/utils";
 import { Button } from "@/components/agptui/Button";
 import {
   Dialog,
@@ -24,7 +23,11 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Graph, GraphCreatable } from "@/lib/autogpt-server-api";
+import {
+  Graph,
+  GraphCreatable,
+  sanitizeImportedGraph,
+} from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useToast } from "@/components/ui/use-toast";
 
