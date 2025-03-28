@@ -99,7 +99,6 @@ def configure_logging(force_cloud_logging: bool = False) -> None:
         cloud_handler.setLevel(config.level)
         cloud_handler.setFormatter(StructuredLoggingFormatter())
         log_handlers.append(cloud_handler)
-        print("Cloud logging enabled")
     else:
         # Console output handlers
         stdout = logging.StreamHandler(stream=sys.stdout)
@@ -118,7 +117,6 @@ def configure_logging(force_cloud_logging: bool = False) -> None:
             stderr.setFormatter(AGPTFormatter(SIMPLE_LOG_FORMAT))
 
         log_handlers += [stdout, stderr]
-        print("Console logging enabled")
 
     # File logging setup
     if config.enable_file_logging:
@@ -156,7 +154,6 @@ def configure_logging(force_cloud_logging: bool = False) -> None:
         error_log_handler.setLevel(logging.ERROR)
         error_log_handler.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT, no_color=True))
         log_handlers.append(error_log_handler)
-        print("File logging enabled")
 
     # Configure the root logger
     logging.basicConfig(
