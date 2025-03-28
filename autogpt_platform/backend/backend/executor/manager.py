@@ -244,7 +244,6 @@ def execute_node(
             ):
                 yield execution
 
-        # Update execution status and spend credits
         update_execution_status(ExecutionStatus.COMPLETED)
 
     except Exception as e:
