@@ -26,6 +26,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  rabbitmq-test:
+    image: rabbitmq:management
+    container_name: rabbitmq-test
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    environment:
+      - RABBITMQ_DEFAULT_USER=rabbitmq_user_default
+      - RABBITMQ_DEFAULT_PASS=k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7 # CHANGE THIS TO A RANDOM PASSWORD IN PRODUCTION -- everywhere lol
+    ports:
+      - "5672:5672"
+      - "15672:15672"
 
 networks:
      app-network-test:
