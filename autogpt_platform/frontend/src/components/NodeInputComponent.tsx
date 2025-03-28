@@ -21,7 +21,14 @@ import {
   DataType,
   determineDataType,
 } from "@/lib/autogpt-server-api/types";
-import React, { FC, useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  FC,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+} from "react";
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import {
@@ -215,6 +222,7 @@ const NodeFileInput: FC<{
   const handleFileChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
+      console.log(">>> file", file);
       if (!file) return;
 
       const reader = new FileReader();
@@ -247,15 +255,15 @@ const NodeFileInput: FC<{
     return "File";
   }, []);
 
+  const inputRef = useRef<HTMLInputElement>(null);
+
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       <div className="nodrag flex flex-col gap-2">
         <div className="flex items-center gap-2">
           <Button
             variant="outline"
-            onClick={() =>
-              document.getElementById(`${selfKey}-upload`)?.click()
-            }
+            onClick={() => inputRef.current?.click()}
             className="w-full"
           >
             {value ? `Change ${displayName}` : `Upload ${displayName}`}
@@ -264,14 +272,17 @@ const NodeFileInput: FC<{
             <Button
               variant="ghost"
               className="text-red-500 hover:text-red-700"
-              onClick={() => handleInputChange(selfKey, "")}
+              onClick={() => {
+                inputRef.current && (inputRef.current!.value = "");
+                handleInputChange(selfKey, "");
+              }}
             >
               <Cross2Icon className="h-4 w-4" />
             </Button>
           )}
         </div>
         <input
-          id={`${selfKey}-upload`}
+          ref={inputRef}
           type="file"
           accept="*/*"
           onChange={handleFileChange}
