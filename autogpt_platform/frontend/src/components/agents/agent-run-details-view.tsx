@@ -5,6 +5,7 @@ import moment from "moment";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   GraphExecution,
+  GraphExecutionID,
   GraphExecutionMeta,
   GraphMeta,
 } from "@/lib/autogpt-server-api";
@@ -25,11 +26,13 @@ export default function AgentRunDetailsView({
   graph,
   run,
   agentActions,
+  onRun,
   deleteRun,
 }: {
   graph: GraphMeta;
   run: GraphExecution | GraphExecutionMeta;
   agentActions: ButtonAction[];
+  onRun: (runID: GraphExecutionID) => void;
   deleteRun: () => void;
 }): React.ReactNode {
   const api = useBackendAPI();
@@ -90,8 +93,9 @@ export default function AgentRunDetailsView({
             Object.entries(agentRunInputs).map(([k, v]) => [k, v.value]),
           ),
         )
+        .then(({ graph_exec_id }) => onRun(graph_exec_id))
         .catch(toastOnFail("execute agent")),
-    [api, graph, agentRunInputs, toastOnFail],
+    [api, graph, agentRunInputs, onRun, toastOnFail],
   );
 
   const stopRun = useCallback(

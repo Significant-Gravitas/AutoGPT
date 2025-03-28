@@ -126,7 +126,8 @@ export const AgentFlowList = ({
                 if (!a.lastRun) return 1;
                 if (!b.lastRun) return -1;
                 return (
-                  Number(b.lastRun.started_at) - Number(a.lastRun.started_at)
+                  b.lastRun.started_at.getTime() -
+                  a.lastRun.started_at.getTime()
                 );
               })
               .map(({ flow, runCount, lastRun }) => (
