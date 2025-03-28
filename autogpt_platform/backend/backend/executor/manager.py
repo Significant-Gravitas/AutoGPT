@@ -21,6 +21,7 @@ from backend.data.notifications import (
     NotificationType,
 )
 from backend.util.exceptions import InsufficientBalanceError
+from backend.server.v2.iffy.graph_moderation import moderate_graph_content
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManager
@@ -65,7 +66,7 @@ from backend.util.service import (
     expose,
     get_service_client,
 )
-from backend.util.settings import Settings
+from backend.util.settings import Settings, BehaveAs
 from backend.util.type import convert
 
 logger = logging.getLogger(__name__)
@@ -1078,6 +1079,17 @@ class ExecutionManager(AppService):
                 for node_exec in graph_exec.node_executions
             ],
         )
+
+        # Right after creating the graph execution, we need to check if the content is safe
+        if settings.config.behave_as != BehaveAs.LOCAL:
+            moderate_graph_content(
+                graph=graph,
+                graph_id=graph.id,
+                graph_exec_id=graph_exec.id,
+                nodes_input=nodes_input,
+                user_id=user_id
+            )
+
         self.queue.add(graph_exec_entry)
 
         return graph_exec_entry
