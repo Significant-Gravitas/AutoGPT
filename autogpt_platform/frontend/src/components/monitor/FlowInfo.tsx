@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback } from "react";
 import {
   GraphExecutionMeta,
   Graph,
-  safeCopyGraph,
   BlockUIType,
   BlockIORootSchema,
   LibraryAgent,
@@ -242,16 +241,15 @@ export const FlowInfo: React.FC<
               className="px-2.5"
               title="Export to a JSON-file"
               data-testid="export-button"
-              onClick={async () =>
-                exportAsJSONFile(
-                  safeCopyGraph(
-                    flowVersions!.find(
-                      (v) => v.version == selectedFlowVersion!.version,
-                    )!,
-                    await api.getBlocks(),
-                  ),
-                  `${flow.name}_v${selectedFlowVersion!.version}.json`,
-                )
+              onClick={() =>
+                api
+                  .getGraph(flow.agent_id, selectedFlowVersion!.version, true)
+                  .then((graph) =>
+                    exportAsJSONFile(
+                      graph,
+                      `${flow.name}_v${selectedFlowVersion!.version}.json`,
+                    ),
+                  )
               }
             >
               <ExitIcon className="mr-2" /> Export
