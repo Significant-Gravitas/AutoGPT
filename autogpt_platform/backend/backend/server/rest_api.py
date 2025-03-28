@@ -187,14 +187,6 @@ class AgentServer(backend.util.service.AppProcess):
         return execution.status
 
     @staticmethod
-    async def test_get_graph_run_results(
-        graph_id: str, graph_exec_id: str, user_id: str
-    ):
-        return await backend.server.routers.v1.get_graph_execution(
-            graph_id, graph_exec_id, user_id
-        )
-
-    @staticmethod
     async def test_delete_graph(graph_id: str, user_id: str):
         await backend.server.v2.library.db.delete_library_agent_by_graph_id(
             graph_id=graph_id, user_id=user_id
