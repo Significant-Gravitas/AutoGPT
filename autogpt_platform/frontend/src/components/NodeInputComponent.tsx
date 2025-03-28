@@ -435,7 +435,7 @@ export const NodeGenericInputField: FC<{
         />
       );
 
-    case DataType.TOGGLE:
+    case DataType.BOOLEAN:
       return (
         <NodeBooleanInput
           selfKey={propKey}

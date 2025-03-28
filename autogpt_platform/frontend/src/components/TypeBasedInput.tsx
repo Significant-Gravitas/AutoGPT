@@ -92,7 +92,7 @@ const _TypeBasedInput: FC<TypeBasedInputProps> = ({
         />
       );
 
-    case DataType.TOGGLE: {
+    case DataType.BOOLEAN: {
       return (
         <>
           <span className="text-sm text-gray-500">{placeholder}</span>
