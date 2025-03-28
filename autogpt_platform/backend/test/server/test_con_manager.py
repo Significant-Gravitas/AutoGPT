@@ -68,7 +68,7 @@ async def test_unsubscribe(
     channel_key = "user-1|graph_exec#graph-exec-1"
     connection_manager.subscriptions[channel_key] = {mock_websocket}
 
-    await connection_manager.unsubscribe(
+    await connection_manager.unsubscribe_graph_exec(
         user_id="user-1",
         graph_exec_id="graph-exec-1",
         websocket=mock_websocket,
@@ -94,6 +94,14 @@ async def test_send_graph_execution_result(
         total_run_time=0.5,
         started_at=datetime.now(tz=timezone.utc),
         ended_at=datetime.now(tz=timezone.utc),
+        inputs={
+            "input_1": "some input value :)",
+            "input_2": "some *other* input value",
+        },
+        outputs={
+            "the_output": ["some output value"],
+            "other_output": ["sike there was another output"],
+        },
     )
 
     await connection_manager.send_execution_update(result)
