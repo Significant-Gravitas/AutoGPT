@@ -317,12 +317,13 @@ async def get_graph_execution(
             else GRAPH_EXECUTION_INCLUDE
         ),
     )
+    if not execution:
+        return None
+
     return (
-        (
-            GraphExecutionWithNodes if include_node_executions else GraphExecution
-        ).from_db(execution)
-        if execution
-        else None
+        GraphExecutionWithNodes.from_db(execution)
+        if include_node_executions
+        else GraphExecution.from_db(execution)
     )
 
 
