@@ -1013,14 +1013,12 @@ class ExecutionManager(AppService):
 
         # Right after creating the graph execution, we need to check if the content is safe
         if settings.config.behave_as != BehaveAs.LOCAL:
-            self.run_and_wait(
-                moderate_graph_content(
+            moderate_graph_content(
                 graph=graph,
                 graph_id=graph_id,
                 graph_exec_id=graph_exec_id,
                 nodes_input=nodes_input,
                 user_id=user_id
-                )
             )
 
         starting_node_execs = []

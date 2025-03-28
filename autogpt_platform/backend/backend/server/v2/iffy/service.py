@@ -1,6 +1,6 @@
-import aiohttp
 import json
 import logging
+import requests
 from typing import Dict, Any
 
 from backend.util.settings import Settings, BehaveAs
@@ -21,7 +21,7 @@ class IffyService:
     """Service class for handling content moderation through Iffy API"""
 
     @staticmethod
-    async def get_user_data(user_id: str) -> UserData:
+    def get_user_data(user_id: str) -> UserData:
         """Get user data for Iffy API from user_id"""
         # Initialize with default values
         user_data: UserData = {
@@ -44,7 +44,7 @@ class IffyService:
         return user_data
 
     @staticmethod
-    async def moderate_content(user_id: str, block_content: Dict[str, Any]) -> ModerationResult:
+    def moderate_content(user_id: str, block_content: Dict[str, Any]) -> ModerationResult:
         """
         Send block content to Iffy for content moderation.
         Only used in cloud mode - local mode skips moderation entirely.
@@ -67,27 +67,25 @@ class IffyService:
         # Validate Iffy API URL and key at the start
         if not IFFY_API_URL or not IFFY_API_KEY:
             logger.warning("Iffy API URL or key not configured, falling back to OpenRouter moderation")
-            is_safe, reason = open_router_moderate_content(json.dumps(block_content.get('input_data', {}), indent=2))
-            if not is_safe:
-                logger.error(f"OpenRouter moderation failed after Iffy configuration issue: {reason}")
+            input_data = json.dumps(block_content.get('input_data', {}), indent=2)
+            is_safe, reason = open_router_moderate_content(input_data)
             return ModerationResult(is_safe=is_safe, reason=f"Iffy not configured. OpenRouter result: {reason}")
 
         try:
             # Validate URL format
             if not IFFY_API_URL.startswith(('http://', 'https://')):
                 logger.error(f"Invalid Iffy API URL format: {IFFY_API_URL}")
-                is_safe, reason = open_router_moderate_content(json.dumps(block_content.get('input_data', {}), indent=2))
+                input_data = json.dumps(block_content.get('input_data', {}), indent=2)
+                is_safe, reason = open_router_moderate_content(input_data)
                 return ModerationResult(is_safe=is_safe, reason="Invalid Iffy API URL format")
 
             headers = {
                 "Authorization": f"Bearer {IFFY_API_KEY}",
                 "Content-Type": "application/json"
             }
-            
-            input_data = json.dumps(block_content.get('input_data', {}), indent=2)
 
-            # Get user details from the service method
-            user_data = await IffyService.get_user_data(user_id)
+            input_data = json.dumps(block_content.get('input_data', {}), indent=2)
+            user_data = IffyService.get_user_data(user_id)
 
             # Prepare the metadata
             metadata = {
@@ -113,33 +111,30 @@ class IffyService:
                 # Only include user data values that are not None
                 user={k: v for k, v in user_data.items() if v is not None}
             )
-            
+
             logger.info(f"Sending content to Iffy for moderation - User: {user_data['name'] or user_id}, Block: {name}")
-            
-            # Make the API request
-            async with aiohttp.ClientSession() as session:
-                base_url = IFFY_API_URL.rstrip('/')
-                api_path = '/api/v1/ingest'
-                async with session.post(f"{base_url}{api_path}", json=payload.model_dump(), headers=headers) as response:
-                    response_text = await response.text()
-                    if response.status != 200:
-                        logger.info(f"Iffy moderation failed, falling back to OpenRouter. Status: {response.status}, Response: {response_text}")
-                        # Fall back to OpenRouter moderation
-                        is_safe, reason = open_router_moderate_content(input_data)
-                        if is_safe:
-                            logger.info(f"OpenRouter moderation passed. Block: {name}")
-                        else:
-                            logger.info(f"OpenRouter moderation flagged content. Block: {name}, Reason: {reason}")
-                        return ModerationResult(is_safe=is_safe, reason=reason)
-                    else:
-                        logger.info(f"Successfully sent content to Iffy. Block: {name}")
-                        return ModerationResult(is_safe=True, reason="")
-                    
+
+            base_url = IFFY_API_URL.rstrip('/')
+            api_path = '/api/v1/ingest'
+            response = requests.post(f"{base_url}{api_path}", json=payload.model_dump(), headers=headers)
+
+            if response.status_code != 200:
+                logger.info(f"Iffy moderation failed, falling back to OpenRouter. Status: {response.status_code}, Response: {response.text}")
+                is_safe, reason = open_router_moderate_content(input_data)
+                if is_safe:
+                    logger.info(f"OpenRouter moderation passed. Block: {name}")
+                else:
+                    logger.info(f"OpenRouter moderation flagged content. Block: {name}, Reason: {reason}")
+                return ModerationResult(is_safe=is_safe, reason=reason)
+
+            logger.info(f"Successfully sent content to Iffy. Block: {name}")
+            return ModerationResult(is_safe=True, reason="")
+
         except Exception as e:
             logger.error(f"Error in primary moderation service: {str(e)}", exc_info=True)
             try:
-                # Last attempt with OpenRouter
-                is_safe, reason = open_router_moderate_content(json.dumps(block_content.get('input_data', {}), indent=2))
+                input_data = json.dumps(block_content.get('input_data', {}), indent=2)
+                is_safe, reason = open_router_moderate_content(input_data)
                 if is_safe:
                     logger.info(f"OpenRouter moderation passed after Iffy failure. Block: {name}")
                 else:

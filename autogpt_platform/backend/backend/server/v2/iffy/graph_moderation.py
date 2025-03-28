@@ -9,7 +9,7 @@ from backend.util.settings import Settings, BehaveAs
 logger = logging.getLogger(__name__)
 settings = Settings()
 
-async def moderate_graph_content(
+def moderate_graph_content(
     graph: GraphModel,
     graph_id: str,
     graph_exec_id: str,
@@ -61,7 +61,7 @@ async def moderate_graph_content(
             }
 
             # Send to Iffy for moderation
-            result = await IffyService.moderate_content(user_id, block_content)
+            result = IffyService.moderate_content(user_id, block_content)
             
             # CRITICAL: Ensure we never proceed if moderation fails
             if not result.is_safe:
