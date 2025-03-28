@@ -89,9 +89,8 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
         }) satisfies Block,
     );
 
-    // Levenshtein distance Algo
+    // Levenshtein distance Algorithm
     const calculateSimilarity = (str1: string, str2: string): number => {
-      // Simple implementation of Levenshtein distance
       const len1 = str1.length;
       const len2 = str2.length;
       const matrix: number[][] = Array(len1 + 1)
@@ -112,7 +111,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
         }
       }
 
-      // Convert distance to similarity score (lower distance = higher similarity)
+      // Convert distance to similarity score
       return 1 - matrix[len1][len2] / Math.max(len1, len2);
     };
 
