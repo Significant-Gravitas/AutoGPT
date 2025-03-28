@@ -149,7 +149,7 @@ def execute_node(
     node_exec_id = data.node_exec_id
     node_id = data.node_id
 
-    def update_execution(status: ExecutionStatus) -> NodeExecutionResult:
+    def update_execution_status(status: ExecutionStatus) -> NodeExecutionResult:
         """Sets status and fetches+broadcasts the latest state of the node execution"""
         exec_update = db_client.update_node_execution_status(node_exec_id, status)
         db_client.send_execution_update(exec_update)
@@ -161,6 +161,17 @@ def execute_node(
     if not node_block:
         logger.error(f"Block {node.block_id} not found.")
         return
+
+    def push_output(output_name: str, output_data: Any) -> None:
+        _push_node_execution_output(
+            db_client=db_client,
+            user_id=user_id,
+            graph_exec_id=graph_exec_id,
+            node_exec_id=node_exec_id,
+            block_id=node_block.id,
+            output_name=output_name,
+            output_data=output_data,
+        )
 
     log_metadata = LogMetadata(
         user_id=user_id,
@@ -175,16 +186,8 @@ def execute_node(
     input_data, error = validate_exec(node, data.data, resolve_input=False)
     if input_data is None:
         log_metadata.error(f"Skip execution, input validation error: {error}")
-        _register_node_execution_output(
-            db_client=db_client,
-            user_id=user_id,
-            graph_exec_id=graph_exec_id,
-            node_exec_id=node_exec_id,
-            block_id=node_block.id,
-            output_name="error",
-            output_data=error,
-        )
-        update_execution(ExecutionStatus.FAILED)
+        push_output("error", error)
+        update_execution_status(ExecutionStatus.FAILED)
         return
 
     # Re-shape the input data for agent block.
@@ -197,7 +200,7 @@ def execute_node(
     input_data_str = json.dumps(input_data)
     input_size = len(input_data_str)
     log_metadata.info("Executed node with input", input=input_data_str)
-    update_execution(ExecutionStatus.RUNNING)
+    update_execution_status(ExecutionStatus.RUNNING)
 
     # Inject extra execution arguments for the blocks via kwargs
     extra_exec_kwargs: dict = {
@@ -228,15 +231,7 @@ def execute_node(
             output_data = json.convert_pydantic_to_json(output_data)
             output_size += len(json.dumps(output_data))
             log_metadata.info("Node produced output", **{output_name: output_data})
-            _register_node_execution_output(
-                db_client=db_client,
-                user_id=user_id,
-                graph_exec_id=graph_exec_id,
-                node_exec_id=node_exec_id,
-                block_id=node_block.id,
-                output_name=output_name,
-                output_data=output_data,
-            )
+            push_output(output_name, output_data)
             outputs[output_name] = output_data
             for execution in _enqueue_next_nodes(
                 db_client=db_client,
@@ -250,20 +245,12 @@ def execute_node(
                 yield execution
 
         # Update execution status and spend credits
-        update_execution(ExecutionStatus.COMPLETED)
+        update_execution_status(ExecutionStatus.COMPLETED)
 
     except Exception as e:
         error_msg = str(e)
-        _register_node_execution_output(
-            db_client=db_client,
-            user_id=user_id,
-            graph_exec_id=graph_exec_id,
-            node_exec_id=node_exec_id,
-            block_id=node_block.id,
-            output_name="error",
-            output_data=error_msg,
-        )
-        update_execution(ExecutionStatus.FAILED)
+        push_output("error", error_msg)
+        update_execution_status(ExecutionStatus.FAILED)
 
         for execution in _enqueue_next_nodes(
             db_client=db_client,
@@ -294,7 +281,7 @@ def execute_node(
             execution_stats.output_size = output_size
 
 
-def _register_node_execution_output(
+def _push_node_execution_output(
     db_client: "DatabaseManager",
     user_id: str,
     graph_exec_id: str,
@@ -830,7 +817,7 @@ class Executor:
                     )
                 except InsufficientBalanceError as error:
                     node_exec_id = exec_data.node_exec_id
-                    _register_node_execution_output(
+                    _push_node_execution_output(
                         db_client=cls.db_client,
                         user_id=graph_exec.user_id,
                         graph_exec_id=graph_exec.graph_exec_id,
