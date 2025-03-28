@@ -390,7 +390,7 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
   id?: string;
 };
 
-/* Mirror of backend/data/graph.py:GraphExecutionMeta */
+/* Mirror of backend/data/execution.py:GraphExecutionMeta */
 export type GraphExecutionMeta = {
   id: GraphExecutionID;
   started_at: Date;
@@ -406,11 +406,11 @@ export type GraphExecutionMeta = {
 
 export type GraphExecutionID = Brand<string, "GraphExecutionID">;
 
-/* Mirror of backend/data/graph.py:GraphExecution */
+/* Mirror of backend/data/execution.py:GraphExecution */
 export type GraphExecution = GraphExecutionMeta & {
   inputs: Record<string, any>;
   outputs: Record<string, Array<any>>;
-  node_executions: NodeExecutionResult[];
+  node_executions?: NodeExecutionResult[];
 };
 
 export type GraphMeta = {
@@ -460,7 +460,7 @@ export type GraphUpdateable = Omit<
 
 export type GraphCreatable = Omit<GraphUpdateable, "id"> & { id?: string };
 
-/* Mirror of backend/data/execution.py:ExecutionResult */
+/* Mirror of backend/data/execution.py:NodeExecutionResult */
 export type NodeExecutionResult = {
   graph_id: GraphID;
   graph_version: number;

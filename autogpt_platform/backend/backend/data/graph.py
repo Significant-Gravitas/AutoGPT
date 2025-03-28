@@ -540,7 +540,6 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
 
     graph = await AgentGraph.prisma().find_first(
         where=where_clause,
-        include=AGENT_GRAPH_INCLUDE,
         order={"version": "desc"},
     )
 
