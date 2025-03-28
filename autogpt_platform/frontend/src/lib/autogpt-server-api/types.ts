@@ -75,7 +75,7 @@ export enum DataType {
   FILE = "file",
   SELECT = "select",
   MULTI_SELECT = "multi-select",
-  TOGGLE = "toggle",
+  BOOLEAN = "boolean",
   CREDENTIALS = "credentials",
   OBJECT = "object",
   KEY_VALUE = "key-value",
@@ -111,7 +111,7 @@ export function determineDataType(schema: BlockIOSubSchema): DataType {
   function handleSingleTypeSchema(subSchema: BlockIOSubSchema): DataType {
     if (subSchema.type === "string")
       return handleStringSchema(subSchema as BlockIOStringSubSchema);
-    if (subSchema.type === "boolean") return DataType.TOGGLE;
+    if (subSchema.type === "boolean") return DataType.BOOLEAN;
     if (subSchema.type === "number" || subSchema.type === "integer")
       return DataType.NUMBER;
     if (subSchema.type === "array") {
