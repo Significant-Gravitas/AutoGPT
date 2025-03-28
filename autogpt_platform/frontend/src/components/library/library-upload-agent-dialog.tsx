@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import { Upload, X } from "lucide-react";
-import { removeCredentials } from "@/lib/utils";
 import { Button } from "@/components/agptui/Button";
 import {
   Dialog,
@@ -24,8 +23,11 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Graph, GraphCreatable } from "@/lib/autogpt-server-api";
-import { updatedBlockIDMap } from "@/components/agent-import-form";
+import {
+  Graph,
+  GraphCreatable,
+  sanitizeImportedGraph,
+} from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -40,15 +42,6 @@ const formSchema = z.object({
   agentName: z.string().min(1, "Agent name is required"),
   agentDescription: z.string(),
 });
-
-function updateBlockIDs(graph: Graph) {
-  graph.nodes
-    .filter((node) => node.block_id in updatedBlockIDMap)
-    .forEach((node) => {
-      node.block_id = updatedBlockIDMap[node.block_id];
-    });
-  return graph;
-}
 
 export default function LibraryUploadAgentDialog(): React.ReactNode {
   const [isDroped, setisDroped] = useState(false);
@@ -120,8 +113,7 @@ export default function LibraryUploadAgentDialog(): React.ReactNode {
           );
         }
         const agent = obj as Graph;
-        removeCredentials(agent);
-        updateBlockIDs(agent);
+        sanitizeImportedGraph(agent);
         setAgentObject(agent);
         if (!form.getValues("agentName")) {
           form.setValue("agentName", agent.name);

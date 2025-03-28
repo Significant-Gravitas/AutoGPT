@@ -1,6 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { Category } from "./autogpt-server-api/types";
+
+import { Category, Graph } from "@/lib/autogpt-server-api/types";
 import { NodeDimension } from "@/components/Flow";
 
 export function cn(...inputs: ClassValue[]) {
@@ -120,28 +121,9 @@ const applyExceptions = (str: string): string => {
   return str;
 };
 
-/** Recursively remove all "credentials" properties from exported JSON files */
-export function removeCredentials(obj: any) {
-  if (obj && typeof obj === "object") {
-    if (Array.isArray(obj)) {
-      obj.forEach((item) => removeCredentials(item));
-    } else {
-      delete obj.credentials;
-      Object.values(obj).forEach((value) => removeCredentials(value));
-    }
-  }
-  return obj;
-}
-
 export function exportAsJSONFile(obj: object, filename: string): void {
-  // Deep clone the object to avoid modifying the original
-  const sanitizedObj = JSON.parse(JSON.stringify(obj));
-
-  // Sanitize the object
-  removeCredentials(sanitizedObj);
-
   // Create downloadable blob
-  const jsonString = JSON.stringify(sanitizedObj, null, 2);
+  const jsonString = JSON.stringify(obj, null, 2);
   const blob = new Blob([jsonString], { type: "application/json" });
   const url = URL.createObjectURL(blob);
 
