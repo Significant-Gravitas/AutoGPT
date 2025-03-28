@@ -11,6 +11,12 @@ import { DayPicker } from "react-day-picker";
 
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./dropdown-menu";
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
 
@@ -23,12 +29,16 @@ function Calendar({
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
+      captionLayout={"dropdown"}
+      endMonth={new Date(2100, 0)}
+      startMonth={new Date(1900, 0)}
       className={cn("p-3", className)}
       classNames={{
         months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
         month: "space-y-4",
-        month_caption: "flex justify-center pt-1 relative items-center",
-        caption_label: "text-sm font-medium",
+        month_caption:
+          "flex justify-center pt-1 relative items-center text-sm font-medium",
+        caption_label: "hidden",
         nav: "space-x-1 flex items-center",
         button_previous:
           "absolute left-1 h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
@@ -74,6 +84,24 @@ function Calendar({
           } else {
             return <ChevronUpIcon className="h-4 w-4" />;
           }
+        },
+        Dropdown: (props) => {
+          return (
+            <DropdownMenu>
+              <DropdownMenuTrigger>{props.value}</DropdownMenuTrigger>
+              <DropdownMenuContent>
+                {props.options &&
+                  props.options.map((option, index) => (
+                    <DropdownMenuItem
+                      key={index}
+                      onClick={() => props.onChange?.(option.label)}
+                    >
+                      {option.value || option.value}
+                    </DropdownMenuItem>
+                  ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          );
         },
       }}
       {...props}
