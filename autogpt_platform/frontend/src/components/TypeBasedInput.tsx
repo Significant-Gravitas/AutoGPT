@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import { Cross2Icon, FileTextIcon } from "@radix-ui/react-icons";
 
-import { Input as DefaultInput } from "@/components/ui/input";
+import { Input as BaseInput } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
@@ -43,7 +43,7 @@ const Input = function Input({
   className,
   ...props
 }: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <DefaultInput {...props} className={cn(inputClasses, className)} />;
+  return <BaseInput {...props} className={cn(inputClasses, className)} />;
 };
 
 /**
