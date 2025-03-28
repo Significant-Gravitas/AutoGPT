@@ -9,7 +9,6 @@ from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import contextmanager
 from multiprocessing.pool import AsyncResult, Pool
 from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
-import asyncio
 
 from redis.lock import Lock as RedisLock
 
