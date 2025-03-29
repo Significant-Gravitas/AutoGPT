@@ -7,8 +7,8 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
-# This "requests" presumably has additional checks against internal networks for SSRF.
 from backend.util.request import requests
+from backend.util.type import MediaFileType
 
 TEMP_DIR = Path(tempfile.gettempdir()).resolve()
 
@@ -29,30 +29,9 @@ def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
         shutil.rmtree(exec_path)
 
 
-class MediaFile(str):
-    """
-    MediaFile is a string that represents a file. It can be one of the following:
-        - Data URI: base64 encoded media file. See https://developer.mozilla.org/en-US/docs/Web/URI/Schemes/data/
-        - URL: Media file hosted on the internet, it starts with http:// or https://.
-        - Local path (anything else): A temporary file path living within graph execution time.
-
-    Note: Replace this type alias into a proper class, when more information is needed.
-    """
-
-    @classmethod
-    def __get_pydantic_core_schema__(cls, source_type, handler):
-        return handler(str)
-
-    @classmethod
-    def __get_pydantic_json_schema__(cls, core_schema, handler):
-        json_schema = handler(core_schema)
-        json_schema["format"] = "file"
-        return json_schema
-
-
 def store_media_file(
-    graph_exec_id: str, file: MediaFile, return_content: bool = False
-) -> MediaFile:
+    graph_exec_id: str, file: MediaFileType, return_content: bool = False
+) -> MediaFileType:
     """
     Safely handle 'file' (a data URI, a URL, or a local path relative to {temp}/exec_file/{exec_id}),
     placing or verifying it under:
@@ -61,7 +40,7 @@ def store_media_file(
     If 'return_content=True', return a data URI (data:<mime>;base64,<content>).
     Otherwise, returns the file media path relative to the exec_id folder.
 
-    For each MediaFile type:
+    For each MediaFileType type:
     - Data URI:
       -> decode and store in a new random file in that folder
     - URL:
@@ -148,6 +127,6 @@ def store_media_file(
 
     # Return result
     if return_content:
-        return MediaFile(_file_to_data_uri(target_path))
+        return MediaFileType(_file_to_data_uri(target_path))
     else:
-        return MediaFile(_strip_base_prefix(target_path, base_path))
+        return MediaFileType(_strip_base_prefix(target_path, base_path))

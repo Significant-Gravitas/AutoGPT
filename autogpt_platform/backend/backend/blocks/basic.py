@@ -4,19 +4,19 @@ from typing import Any, List
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
 from backend.util import json
-from backend.util.file import MediaFile, store_media_file
+from backend.util.file import store_media_file
 from backend.util.mock import MockObject
-from backend.util.type import convert
+from backend.util.type import MediaFileType, convert
 
 
 class FileStoreBlock(Block):
     class Input(BlockSchema):
-        file_in: MediaFile = SchemaField(
+        file_in: MediaFileType = SchemaField(
             description="The file to store in the temporary directory, it can be a URL, data URI, or local path."
         )
 
     class Output(BlockSchema):
-        file_out: MediaFile = SchemaField(
+        file_out: MediaFileType = SchemaField(
             description="The relative path to the stored file in the temporary directory."
         )
 

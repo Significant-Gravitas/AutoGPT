@@ -8,7 +8,11 @@ import RunnerOutputUI, { BlockOutput } from "./runner-ui/RunnerOutputUI";
 import RunnerInputUI from "./runner-ui/RunnerInputUI";
 import { Node } from "@xyflow/react";
 import { filterBlocksByType } from "@/lib/utils";
-import { BlockIORootSchema, BlockUIType } from "@/lib/autogpt-server-api/types";
+import {
+  BlockIOObjectSubSchema,
+  BlockIORootSchema,
+  BlockUIType,
+} from "@/lib/autogpt-server-api/types";
 import { CustomNode } from "./CustomNode";
 
 interface HardcodedValues {
@@ -16,7 +20,6 @@ interface HardcodedValues {
   description: any;
   value: any;
   placeholder_values: any;
-  limit_to_placeholder_values: any;
 }
 
 export interface InputItem {
@@ -80,16 +83,14 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
           ({
             id: node.id,
             type: "input" as const,
-            inputSchema: node.data.inputSchema as BlockIORootSchema,
+            inputSchema: (node.data.inputSchema as BlockIOObjectSubSchema)
+              .properties.value as BlockIORootSchema,
             hardcodedValues: {
               name: (node.data.hardcodedValues as any).name || "",
               description: (node.data.hardcodedValues as any).description || "",
               value: (node.data.hardcodedValues as any).value,
               placeholder_values:
                 (node.data.hardcodedValues as any).placeholder_values || [],
-              limit_to_placeholder_values:
-                (node.data.hardcodedValues as any)
-                  .limit_to_placeholder_values || false,
             },
           }) satisfies InputItem,
       );
@@ -111,7 +112,7 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
     }, [nodes]);
 
     const handleInputChange = useCallback(
-      (nodeId: string, field: string, value: string) => {
+      (nodeId: string, field: string, value: any) => {
         setNodes((nds) =>
           nds.map((node) => {
             if (node.id === nodeId) {

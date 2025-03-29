@@ -8,13 +8,13 @@ from moviepy.video.io.VideoFileClip import VideoFileClip
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.file import MediaFile, get_exec_file_path, store_media_file
+from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
 
 
 class MediaDurationBlock(Block):
 
     class Input(BlockSchema):
-        media_in: MediaFile = SchemaField(
+        media_in: MediaFileType = SchemaField(
             description="Media input (URL, data URI, or local path)."
         )
         is_video: bool = SchemaField(
@@ -69,7 +69,7 @@ class LoopVideoBlock(Block):
     """
 
     class Input(BlockSchema):
-        video_in: MediaFile = SchemaField(
+        video_in: MediaFileType = SchemaField(
             description="The input video (can be a URL, data URI, or local path)."
         )
         # Provide EITHER a `duration` or `n_loops` or both. We'll demonstrate `duration`.
@@ -137,7 +137,7 @@ class LoopVideoBlock(Block):
         assert isinstance(looped_clip, VideoFileClip)
 
         # 4) Save the looped output
-        output_filename = MediaFile(
+        output_filename = MediaFileType(
             f"{node_exec_id}_looped_{os.path.basename(local_video_path)}"
         )
         output_abspath = get_exec_file_path(graph_exec_id, output_filename)
@@ -162,10 +162,10 @@ class AddAudioToVideoBlock(Block):
     """
 
     class Input(BlockSchema):
-        video_in: MediaFile = SchemaField(
+        video_in: MediaFileType = SchemaField(
             description="Video input (URL, data URI, or local path)."
         )
-        audio_in: MediaFile = SchemaField(
+        audio_in: MediaFileType = SchemaField(
             description="Audio input (URL, data URI, or local path)."
         )
         volume: float = SchemaField(
@@ -178,7 +178,7 @@ class AddAudioToVideoBlock(Block):
         )
 
     class Output(BlockSchema):
-        video_out: MediaFile = SchemaField(
+        video_out: MediaFileType = SchemaField(
             description="Final video (with attached audio), as a path or data URI."
         )
         error: str = SchemaField(
@@ -229,7 +229,7 @@ class AddAudioToVideoBlock(Block):
         final_clip = video_clip.with_audio(audio_clip)
 
         # 4) Write to output file
-        output_filename = MediaFile(
+        output_filename = MediaFileType(
             f"{node_exec_id}_audio_attached_{os.path.basename(local_video_path)}"
         )
         output_abspath = os.path.join(abs_temp_dir, output_filename)

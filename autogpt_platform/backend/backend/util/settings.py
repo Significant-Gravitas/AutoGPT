@@ -228,7 +228,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Whether to use the new agent image generation service",
     )
     enable_agent_input_subtype_blocks: bool = Field(
-        default=False,
+        default=True,
         description="Whether to enable the agent input subtype blocks",
     )
 
