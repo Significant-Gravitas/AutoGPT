@@ -45,9 +45,9 @@ TEST_POSTGRES_CREDENTIALS_INPUT = {
 
 
 class CommandType(str, Enum):
-    TRUNCATE = "TRUNCATE" # Remove all data of a table
-    DELETE = "DELETE" # Delete some data from a table
-    DROP = "DROP" # Remove the data itself
+    TRUNCATE = "TRUNCATE"
+    DELETE = "DELETE"
+    DROP = "DROP"
 
 
 class ConditionOperator(str, Enum):
