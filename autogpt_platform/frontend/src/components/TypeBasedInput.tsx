@@ -39,40 +39,35 @@ export interface TypeBasedInputProps {
 
 const inputClasses = "min-h-11 rounded-[55px] border px-4 py-2.5";
 
-const Input = function Input({
+function Input({
   className,
   ...props
 }: React.InputHTMLAttributes<HTMLInputElement>) {
   return <BaseInput {...props} className={cn(inputClasses, className)} />;
-};
+}
 
 /**
  * A generic, data-type-based input component that uses Shadcn UI.
  * It inspects the schema via `determineDataType` and renders
  * the correct UI component.
  */
-export const TypeBasedInput: FC<TypeBasedInputProps> = ({
-  schema,
-  value,
-  placeholder,
-  onChange,
-}) => (
+export const TypeBasedInput: FC<
+  TypeBasedInputProps & React.HTMLAttributes<HTMLElement>
+> = ({ schema, value, placeholder, onChange, ...props }) => (
   <div className="no-drag relative flex">
     <_TypeBasedInput
       schema={schema}
       value={value}
       onChange={onChange}
       placeholder={placeholder}
+      {...props}
     />
   </div>
 );
 
-const _TypeBasedInput: FC<TypeBasedInputProps> = ({
-  schema,
-  value,
-  placeholder,
-  onChange,
-}) => {
+const _TypeBasedInput: FC<
+  TypeBasedInputProps & React.HTMLAttributes<HTMLElement>
+> = ({ schema, value, placeholder, onChange, ...props }) => {
   // Determine which UI to show based on the schema
   const dataType = determineDataType(schema);
 
@@ -84,6 +79,7 @@ const _TypeBasedInput: FC<TypeBasedInputProps> = ({
           value={value ?? ""}
           placeholder={placeholder}
           onChange={(e) => onChange(Number(e.target.value))}
+          {...props}
         />
       );
 
@@ -94,6 +90,7 @@ const _TypeBasedInput: FC<TypeBasedInputProps> = ({
           value={value ?? ""}
           placeholder={placeholder}
           onChange={(e) => onChange(e.target.value)}
+          {...props}
         />
       );
 
@@ -105,6 +102,7 @@ const _TypeBasedInput: FC<TypeBasedInputProps> = ({
             className={placeholder ? "ml-auto" : "mx-auto"}
             checked={!!value}
             onCheckedChange={(checked) => onChange(checked)}
+            {...props}
           />
         </>
       );
@@ -129,6 +127,7 @@ const _TypeBasedInput: FC<TypeBasedInputProps> = ({
           type="datetime-local"
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
+          {...props}
         />
       );
 
@@ -138,6 +137,7 @@ const _TypeBasedInput: FC<TypeBasedInputProps> = ({
           value={value}
           placeholder={placeholder}
           onChange={onChange}
+          {...props}
         />
       );
 
@@ -172,6 +172,7 @@ const _TypeBasedInput: FC<TypeBasedInputProps> = ({
           type="text"
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
+          {...props}
         />
       );
 
@@ -182,6 +183,7 @@ const _TypeBasedInput: FC<TypeBasedInputProps> = ({
           type="text"
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
+          {...props}
         />
       );
   }

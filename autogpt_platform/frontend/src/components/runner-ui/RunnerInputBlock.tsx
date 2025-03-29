@@ -37,6 +37,8 @@ export function InputBlock({
         <SchemaTooltip description={description} />
       </label>
       <TypeBasedInput
+        id={`${id}-Value`}
+        data-testid={`run-dialog-input-${name}`}
         schema={schema}
         value={value}
         placeholder={description}
