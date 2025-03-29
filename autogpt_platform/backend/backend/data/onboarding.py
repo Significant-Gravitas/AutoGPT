@@ -27,6 +27,7 @@ MIN_AGENT_COUNT = 2  # Minimum number of marketplace agents to enable onboarding
 
 class UserOnboardingUpdate(pydantic.BaseModel):
     completedSteps: Optional[list[OnboardingStep]] = None
+    notified: Optional[list[OnboardingStep]] = None
     usageReason: Optional[str] = None
     integrations: Optional[list[str]] = None
     otherIntegrations: Optional[str] = None
@@ -48,6 +49,8 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     update: UserOnboardingUpdateInput = {}
     if data.completedSteps is not None:
         update["completedSteps"] = list(set(data.completedSteps))
+    if data.notified is not None:
+        update["notified"] = list(set(data.notified))
     if data.usageReason is not None:
         update["usageReason"] = data.usageReason
     if data.integrations is not None:

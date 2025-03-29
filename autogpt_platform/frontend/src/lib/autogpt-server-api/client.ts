@@ -178,7 +178,7 @@ export default class BackendAPI {
     return this._get("/onboarding");
   }
 
-  updateUserOnboarding(onboarding: Partial<UserOnboarding>): Promise<void> {
+  updateUserOnboarding(onboarding: Omit<Partial<UserOnboarding>, "rewardedFor">): Promise<void> {
     return this._request("PATCH", "/onboarding", onboarding);
   }
 

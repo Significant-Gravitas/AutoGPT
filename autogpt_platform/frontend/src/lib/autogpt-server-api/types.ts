@@ -775,10 +775,12 @@ export type OnboardingStep =
   | "MARKETPLACE_RUN_AGENT"
   | "BUILDER_OPEN"
   | "BUILDER_ADD_NODE"
-  | "BUILDER_RUN_AGENT"
+  | "BUILDER_RUN_AGENT";
 
 export interface UserOnboarding {
   completedSteps: OnboardingStep[];
+  notified: OnboardingStep[];
+  rewardedFor: OnboardingStep[];
   usageReason: string | null;
   integrations: string[];
   otherIntegrations: string | null;

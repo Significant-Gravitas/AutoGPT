@@ -6,3 +6,8 @@ ALTER TYPE "OnboardingStep" ADD VALUE 'MARKETPLACE_RUN_AGENT';
 ALTER TYPE "OnboardingStep" ADD VALUE 'BUILDER_OPEN';
 ALTER TYPE "OnboardingStep" ADD VALUE 'BUILDER_ADD_NODE';
 ALTER TYPE "OnboardingStep" ADD VALUE 'BUILDER_RUN_AGENT';
+
+-- Modify the UserOnboarding table
+ALTER TABLE "UserOnboarding"
+  ADD COLUMN "completedSteps" "OnboardingStep"[] DEFAULT '{}',
+  ADD COLUMN "rewardedFor" "OnboardingStep"[] DEFAULT '{}'

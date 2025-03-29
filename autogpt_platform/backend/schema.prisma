@@ -82,6 +82,8 @@ model UserOnboarding {
   createdAt DateTime @default(now())
 
   completedSteps                OnboardingStep[] @default([])
+  notified                      OnboardingStep[] @default([])
+  rewardedFor                   OnboardingStep[] @default([])
   usageReason                   String?
   integrations                  String[]         @default([])
   otherIntegrations             String?
