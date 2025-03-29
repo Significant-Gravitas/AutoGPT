@@ -156,6 +156,7 @@ export const PROVIDER_NAMES = {
   TWITTER: "twitter",
   REPLICATE: "replicate",
   REDDIT: "reddit",
+  REDIS: "redis",
   REVID: "revid",
   UNREAL_SPEECH: "unreal_speech",
   TODOIST: "todoist",
