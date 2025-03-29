@@ -133,6 +133,12 @@ class PostgresDeleteBlock(Block):
                 ("success", True),
                 ("rows_affected", 1)
             ],
+            test_mock={
+                "run": lambda *args, **kwargs: [
+                    ("success", True),
+                    ("rows_affected", 1)
+                ]
+            },
         )
 
     def run(
@@ -237,6 +243,12 @@ class PostgresExecuteQueryBlock(Block):
                 ("success", True),
                 ("result", [{"id": 1, "name": "Test User"}])
             ],
+            test_mock={
+                "run": lambda *args, **kwargs: [
+                    ("success", True),
+                    ("result", [{"id": 1, "name": "Test User"}])
+                ]
+            },
         )
 
     def run(
@@ -315,6 +327,13 @@ class PostgresInsertBlock(Block):
                 ("rows_affected", 1),
                 ("inserted_rows", [{"id": 1, "name": "Test User", "email": "test@example.com"}])
             ],
+            test_mock={
+                "run": lambda *args, **kwargs: [
+                    ("success", True),
+                    ("rows_affected", 1),
+                    ("inserted_rows", [{"id": 1, "name": "Test User", "email": "test@example.com"}])
+                ]
+            },
         )
 
     def run(
@@ -413,6 +432,13 @@ class PostgresInsertOrUpdateBlock(Block):
                 ("rows_affected", 1),
                 ("affected_rows", [{"id": 1, "name": "Updated User", "email": "updated@example.com"}])
             ],
+            test_mock={
+                "run": lambda *args, **kwargs: [
+                    ("success", True),
+                    ("rows_affected", 1),
+                    ("affected_rows", [{"id": 1, "name": "Updated User", "email": "updated@example.com"}])
+                ]
+            },
         )
 
     def run(
@@ -524,6 +550,12 @@ class PostgresSelectBlock(Block):
                 ("success", True),
                 ("rows", [{"id": 1, "name": "Test User", "email": "test@example.com"}])
             ],
+            test_mock={
+                "run": lambda *args, **kwargs: [
+                    ("success", True),
+                    ("rows", [{"id": 1, "name": "Test User", "email": "test@example.com"}])
+                ]
+            },
         )
 
     def run(
@@ -627,6 +659,13 @@ class PostgresUpdateBlock(Block):
                 ("rows_affected", 1),
                 ("updated_rows", [{"id": 1, "name": "Updated User", "email": "updated@example.com"}])
             ],
+            test_mock={
+                "run": lambda *args, **kwargs: [
+                    ("success", True),
+                    ("rows_affected", 1),
+                    ("updated_rows", [{"id": 1, "name": "Updated User", "email": "updated@example.com"}])
+                ]
+            },
         )
 
     def run(
