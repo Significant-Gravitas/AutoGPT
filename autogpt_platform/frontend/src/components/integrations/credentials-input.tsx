@@ -76,6 +76,7 @@ export const providerIcons: Record<
   openweathermap: fallbackIcon,
   open_router: fallbackIcon,
   pinecone: fallbackIcon,
+  postgres: fallbackIcon,
   slant3d: fallbackIcon,
   screenshotone: fallbackIcon,
   smtp: fallbackIcon,
