@@ -198,7 +198,6 @@ class RedisSetBlock(Block):
                 ),
                 decode_responses=True,
             ) as r:
-                # Prepare arguments for set command
                 set_args = {
                     "name": input_data.key,
                     "value": input_data.value,
@@ -288,7 +287,6 @@ class RedisDeleteBlock(Block):
                 ),
                 decode_responses=True,
             ) as r:
-                # Delete the specified keys
                 deleted_count = r.delete(*input_data.keys)
 
                 yield "success", True
@@ -359,7 +357,6 @@ class RedisExistsBlock(Block):
                 ),
                 decode_responses=True,
             ) as r:
-                # Check if the specified keys exist
                 count = r.exists(*input_data.keys)
 
                 yield "success", True
@@ -599,10 +596,9 @@ class RedisListPushBlock(Block):
                 ),
                 decode_responses=True,
             ) as r:
-                # Choose push method based on direction
                 if input_data.direction == ListDirection.LEFT:
                     new_length = r.lpush(input_data.key, *input_data.values)
-                else:  # ListDirection.RIGHT
+                else:
                     new_length = r.rpush(input_data.key, *input_data.values)
 
                 yield "success", True
@@ -781,7 +777,6 @@ class RedisListGetBlock(Block):
                 ),
                 decode_responses=True,
             ) as r:
-                # Get list elements in the specified range
                 values = r.lrange(input_data.key, input_data.start, input_data.end)
 
                 yield "success", True
@@ -852,7 +847,6 @@ class RedisPublishBlock(Block):
                 ),
                 decode_responses=True,
             ) as r:
-                # Publish message to the specified channel
                 receivers = r.publish(input_data.channel, input_data.message)
 
                 yield "success", True
