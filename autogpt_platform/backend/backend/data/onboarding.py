@@ -8,6 +8,7 @@ from prisma.enums import OnboardingStep
 from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingUpdateInput
 
+from backend.data.credit import get_user_credit_model
 from backend.data.block import get_blocks
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
@@ -23,6 +24,8 @@ REASON_MAPPING: dict[str, list[str]] = {
 }
 POINTS_AGENT_COUNT = 50  # Number of agents to calculate points for
 MIN_AGENT_COUNT = 2  # Minimum number of marketplace agents to enable onboarding
+
+user_credit = get_user_credit_model()
 
 
 class UserOnboardingUpdate(pydantic.BaseModel):
@@ -49,6 +52,8 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     update: UserOnboardingUpdateInput = {}
     if data.completedSteps is not None:
         update["completedSteps"] = list(set(data.completedSteps))
+        if OnboardingStep.AGENT_NEW_RUN in data.completedSteps:
+            await reward_user(user_id, OnboardingStep.AGENT_NEW_RUN)
     if data.notified is not None:
         update["notified"] = list(set(data.notified))
     if data.usageReason is not None:
@@ -69,6 +74,45 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
             "update": update,
         },
     )
+
+
+async def reward_user(user_id: str, step: OnboardingStep):
+    reward = 0
+    match step:
+        case OnboardingStep.AGENT_NEW_RUN:
+            reward = 10
+        case OnboardingStep.GET_RESULTS:
+            reward = 1
+        case OnboardingStep.MARKETPLACE_VISIT:
+            reward = 1
+        case OnboardingStep.MARKETPLACE_ADD_AGENT:
+            reward = 1
+        case OnboardingStep.MARKETPLACE_RUN_AGENT:
+            reward = 1
+        case OnboardingStep.BUILDER_OPEN:
+            reward = 1
+        case OnboardingStep.BUILDER_ADD_NODE:
+            reward = 1
+        case OnboardingStep.BUILDER_RUN_AGENT:
+            reward = 1
+
+    if reward == 0:
+        return
+
+    onboarding = await get_user_onboarding(user_id)
+    
+    # Skip if already rewarded
+    if step in onboarding.rewardedFor:
+        return
+    
+    onboarding.rewardedFor.append(step)
+    await UserOnboarding.prisma().update(
+        where={"userId": user_id},
+        data={
+            "rewardedFor": onboarding.rewardedFor,
+        },
+    )
+    await user_credit.top_up_credits(user_id, reward, f"REWARD-{user_id}-{step.name}")
 
 
 def clean_and_split(text: str) -> list[str]:

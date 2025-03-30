@@ -107,13 +107,14 @@ class UserCreditBase(ABC):
         pass
 
     @abstractmethod
-    async def top_up_credits(self, user_id: str, amount: int):
+    async def top_up_credits(self, user_id: str, amount: int, key: str | None = None):
         """
         Top up the credits for the user.
 
         Args:
             user_id (str): The user ID.
             amount (int): The amount to top up.
+            key (str | None): The transaction key. Avoids adding transaction if the key already exists.
         """
         pass
 
@@ -401,8 +402,8 @@ class UserCredit(UserCreditBase):
 
         return balance
 
-    async def top_up_credits(self, user_id: str, amount: int):
-        await self._top_up_credits(user_id, amount)
+    async def top_up_credits(self, user_id: str, amount: int, key: str | None = None):
+        await self._top_up_credits(user_id, amount, key)
 
     async def top_up_refund(
         self, user_id: str, transaction_key: str, metadata: dict[str, str]
