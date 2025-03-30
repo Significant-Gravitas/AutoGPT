@@ -1,7 +1,7 @@
 from pydantic import SecretStr
 import redis
 from enum import Enum
-from typing import List, Optional, Literal, cast
+from typing import  Optional, Literal
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import (
@@ -62,7 +62,6 @@ class RedisGetBlock(Block):
         credentials: RedisCredentialsInput = RedisCredentialsField()
         host: str = SchemaField(description="Redis server host address")
         port: int = SchemaField(description="Redis server port", default=6379,advanced=False)
-        ssl: bool = SchemaField(description="Whether to use SSL for the connection", default=False)
         key: str = SchemaField(description="The key whose value to retrieve.")
 
     class Output(BlockSchema):
@@ -82,7 +81,6 @@ class RedisGetBlock(Block):
                 "credentials": TEST_REDIS_CREDENTIALS_INPUT,
                 "host": "localhost",
                 "port": 6379,
-                "ssl": False,
                 "key": "my_test_key"
             },
             test_output=[
@@ -106,7 +104,6 @@ class RedisGetBlock(Block):
                 port=input_data.port,
                 username=credentials.username.get_secret_value() if credentials.username else "default",
                 password=credentials.password.get_secret_value() if credentials.password else None,
-                ssl=input_data.ssl,
                 decode_responses=True # Decode from bytes to str automatically
             ) as r:
                 value = r.get(input_data.key)
@@ -123,7 +120,6 @@ class RedisSetBlock(Block):
         credentials: RedisCredentialsInput = RedisCredentialsField()
         host: str = SchemaField(description="Redis server host address")
         port: int = SchemaField(description="Redis server port", default=6379, advanced=False)
-        ssl: bool = SchemaField(description="Whether to use SSL for the connection", default=False)
         key: str = SchemaField(description="The key to set.")
         value: str = SchemaField(description="The value to store.")
         expiration_ms: Optional[int] = SchemaField(
@@ -154,7 +150,6 @@ class RedisSetBlock(Block):
                 "credentials": TEST_REDIS_CREDENTIALS_INPUT,
                 "host": "localhost",
                 "port": 6379,
-                "ssl": False,
                 "key": "my_set_key",
                 "value": "some data",
                 "expiration_ms": 60000, # 1 minute
@@ -181,7 +176,6 @@ class RedisSetBlock(Block):
                 port=input_data.port,
                 username=credentials.username.get_secret_value() if credentials.username else "default",
                 password=credentials.password.get_secret_value() if credentials.password else None,
-                ssl=input_data.ssl,
                 decode_responses=True
             ) as r:
                 # Prepare arguments for set command
@@ -212,7 +206,6 @@ class RedisDeleteBlock(Block):
         credentials: RedisCredentialsInput = RedisCredentialsField()
         host: str = SchemaField(description="Redis server host address")
         port: int = SchemaField(description="Redis server port", default=6379, advanced=False)
-        ssl: bool = SchemaField(description="Whether to use SSL for the connection", default=False)
         keys: list[str] = SchemaField(description="The key(s) to delete.")
 
     class Output(BlockSchema):
@@ -232,7 +225,6 @@ class RedisDeleteBlock(Block):
                 "credentials": TEST_REDIS_CREDENTIALS_INPUT,
                 "host": "localhost",
                 "port": 6379,
-                "ssl": False,
                 "keys": ["my_key1", "my_key2"]
             },
             test_output=[
@@ -256,7 +248,6 @@ class RedisDeleteBlock(Block):
                 port=input_data.port,
                 username=credentials.username.get_secret_value() if credentials.username else "default",
                 password=credentials.password.get_secret_value() if credentials.password else None,
-                ssl=input_data.ssl,
                 decode_responses=True
             ) as r:
                 # Delete the specified keys
@@ -276,7 +267,6 @@ class RedisExistsBlock(Block):
         credentials: RedisCredentialsInput = RedisCredentialsField()
         host: str = SchemaField(description="Redis server host address")
         port: int = SchemaField(description="Redis server port", default=6379, advanced=False)
-        ssl: bool = SchemaField(description="Whether to use SSL for the connection", default=False)
         keys: list[str] = SchemaField(description="The key(s) to check for existence.")
 
     class Output(BlockSchema):
@@ -296,7 +286,6 @@ class RedisExistsBlock(Block):
                 "credentials": TEST_REDIS_CREDENTIALS_INPUT,
                 "host": "localhost",
                 "port": 6379,
-                "ssl": False,
                 "keys": ["my_key1", "my_key2"]
             },
             test_output=[
@@ -320,7 +309,6 @@ class RedisExistsBlock(Block):
                 port=input_data.port,
                 username=credentials.username.get_secret_value() if credentials.username else "default",
                 password=credentials.password.get_secret_value() if credentials.password else None,
-                ssl=input_data.ssl,
                 decode_responses=True
             ) as r:
                 # Check if the specified keys exist
@@ -340,7 +328,6 @@ class RedisAtomicCounterBlock(Block):
         credentials: RedisCredentialsInput = RedisCredentialsField()
         host: str = SchemaField(description="Redis server host address")
         port: int = SchemaField(description="Redis server port", default=6379, advanced=False)
-        ssl: bool = SchemaField(description="Whether to use SSL for the connection", default=False)
         key: str = SchemaField(description="The key storing the counter value.")
         increment: int = SchemaField(description="Amount to increment (positive) or decrement (negative).", default=1)
         initial_value: Optional[int] = SchemaField(
@@ -366,7 +353,6 @@ class RedisAtomicCounterBlock(Block):
                 "credentials": TEST_REDIS_CREDENTIALS_INPUT,
                 "host": "localhost",
                 "port": 6379,
-                "ssl": False,
                 "key": "my_counter",
                 "increment": 5,
                 "initial_value": 0
@@ -392,7 +378,6 @@ class RedisAtomicCounterBlock(Block):
                 port=input_data.port,
                 username=credentials.username.get_secret_value() if credentials.username else "default",
                 password=credentials.password.get_secret_value() if credentials.password else None,
-                ssl=input_data.ssl,
                 decode_responses=True
             ) as r:
                 if not r.exists(input_data.key) and input_data.initial_value != 0:
@@ -418,7 +403,6 @@ class RedisInfoBlock(Block):
         credentials: RedisCredentialsInput = RedisCredentialsField()
         host: str = SchemaField(description="Redis server host address")
         port: int = SchemaField(description="Redis server port", default=6379, advanced=False)
-        ssl: bool = SchemaField(description="Whether to use SSL for the connection", default=False)
         section: Optional[str] = SchemaField(
             description="Optional section of information to retrieve (e.g., 'server', 'clients', 'memory'). If not provided, all sections are returned.",
             default=None
@@ -441,7 +425,6 @@ class RedisInfoBlock(Block):
                 "credentials": TEST_REDIS_CREDENTIALS_INPUT,
                 "host": "localhost",
                 "port": 6379,
-                "ssl": False,
                 "section": None
             },
             test_output=[
@@ -465,7 +448,6 @@ class RedisInfoBlock(Block):
                 port=input_data.port,
                 username=credentials.username.get_secret_value() if credentials.username else "default",
                 password=credentials.password.get_secret_value() if credentials.password else None,
-                ssl=input_data.ssl,
                 decode_responses=True
             ) as r:
 
@@ -485,7 +467,6 @@ class RedisListPushBlock(Block):
         credentials: RedisCredentialsInput = RedisCredentialsField()
         host: str = SchemaField(description="Redis server host address")
         port: int = SchemaField(description="Redis server port", default=6379, advanced=False)
-        ssl: bool = SchemaField(description="Whether to use SSL for the connection", default=False)
         key: str = SchemaField(description="The key of the list to push to.")
         values: list[str] = SchemaField(description="The value(s) to push to the list.")
         direction: ListDirection = SchemaField(
@@ -510,7 +491,6 @@ class RedisListPushBlock(Block):
                 "credentials": TEST_REDIS_CREDENTIALS_INPUT,
                 "host": "localhost",
                 "port": 6379,
-                "ssl": False,
                 "key": "my_list",
                 "values": ["value1", "value2"],
                 "direction": ListDirection.RIGHT
@@ -536,7 +516,6 @@ class RedisListPushBlock(Block):
                 port=input_data.port,
                 username=credentials.username.get_secret_value() if credentials.username else "default",
                 password=credentials.password.get_secret_value() if credentials.password else None,
-                ssl=input_data.ssl,
                 decode_responses=True
             ) as r:
                 # Choose push method based on direction
@@ -559,7 +538,6 @@ class RedisListPopBlock(Block):
         credentials: RedisCredentialsInput = RedisCredentialsField()
         host: str = SchemaField(description="Redis server host address")
         port: int = SchemaField(description="Redis server port", default=6379, advanced=False)
-        ssl: bool = SchemaField(description="Whether to use SSL for the connection", default=False)
         key: str = SchemaField(description="The key of the list to pop from.")
         direction: ListDirection = SchemaField(
             description="Direction to pop from: LEFT (beginning) or RIGHT (end).",
@@ -588,7 +566,6 @@ class RedisListPopBlock(Block):
                 "credentials": TEST_REDIS_CREDENTIALS_INPUT,
                 "host": "localhost",
                 "port": 6379,
-                "ssl": False,
                 "key": "my_list",
                 "direction": ListDirection.LEFT,
                 "wait_ms": 0
@@ -614,7 +591,6 @@ class RedisListPopBlock(Block):
                 port=input_data.port,
                 username=credentials.username.get_secret_value() if credentials.username else "default",
                 password=credentials.password.get_secret_value() if credentials.password else None,
-                ssl=input_data.ssl,
                 decode_responses=True
             ) as r:
                 if input_data.wait_ms and input_data.wait_ms > 0:
@@ -638,47 +614,45 @@ class RedisListPopBlock(Block):
             yield "value", None
             yield "error", str(e)
 
-class RedisListRangeBlock(Block):
-    """Retrieves a specified range of elements from a list without removing them."""
+class RedisListGetBlock(Block):
+    """Retrieves elements from a list stored at a key."""
     class Input(BlockSchema):
         credentials: RedisCredentialsInput = RedisCredentialsField()
         host: str = SchemaField(description="Redis server host address")
         port: int = SchemaField(description="Redis server port", default=6379, advanced=False)
-        ssl: bool = SchemaField(description="Whether to use SSL for the connection", default=False)
-        key: str = SchemaField(description="The key of the list to retrieve elements from.")
-        start: int = SchemaField(description="Start index (inclusive, 0-based). Negative indices count from the end of the list.", default=0)
-        end: int = SchemaField(description="End index (inclusive, 0-based). Negative indices count from the end of the list.", default=-1)
+        key: str = SchemaField(description="The key of the list to get elements from.")
+        start: int = SchemaField(description="The starting index (0-based, inclusive).", default=0)
+        end: int = SchemaField(description="The ending index (inclusive). Use -1 for all elements to the end.", default=-1)
 
     class Output(BlockSchema):
         success: bool = SchemaField(description="True if the operation was successful.")
-        elements: list[str] = SchemaField(description="List of elements retrieved from the specified range.")
+        values: list[str] = SchemaField(description="The list elements in the specified range.")
         error: str = SchemaField(description="Error message if operation failed.")
 
     def __init__(self):
         super().__init__(
-            id="b23c4d5e-f6g7-8h9i-j0k1-l2m3n4o5p6q7",
-            description="Retrieves a specified range of elements from a list in Redis without removing them.",
+            id="b2c3d4e5-f6g7-h8i9-j0k1-l2m3n4o5p6q7",
+            description="Retrieves elements from a list stored at a key in Redis.",
             categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=RedisListRangeBlock.Input,
-            output_schema=RedisListRangeBlock.Output,
+            input_schema=RedisListGetBlock.Input,
+            output_schema=RedisListGetBlock.Output,
             test_credentials=TEST_REDIS_CREDENTIALS,
             test_input={
                 "credentials": TEST_REDIS_CREDENTIALS_INPUT,
                 "host": "localhost",
                 "port": 6379,
-                "ssl": False,
                 "key": "my_list",
                 "start": 0,
                 "end": -1
             },
             test_output=[
                 ("success", True),
-                ("elements", ["item1", "item2", "item3"])
+                ("values", ["item1", "item2", "item3"])
             ],
             test_mock={
                 "run": lambda *args, **kwargs: [
                     ("success", True),
-                    ("elements", ["item1", "item2", "item3"])
+                    ("values", ["item1", "item2", "item3"])
                 ]
             },
         )
@@ -692,475 +666,19 @@ class RedisListRangeBlock(Block):
                 port=input_data.port,
                 username=credentials.username.get_secret_value() if credentials.username else "default",
                 password=credentials.password.get_secret_value() if credentials.password else None,
-                ssl=input_data.ssl,
                 decode_responses=True
             ) as r:
-                elements = r.lrange(input_data.key, input_data.start, input_data.end)
-
-                yield "success", True
-                yield "elements", elements
-
-        except Exception as e:
-            yield "success", False
-            yield "elements", []
-            yield "error", str(e)
-
-class RedisHashSetBlock(Block):
-    """Sets or updates one or multiple field-value pairs within a hash."""
-    class Input(BlockSchema):
-        credentials: RedisCredentialsInput = RedisCredentialsField()
-        host: str = SchemaField(description="Redis server host address")
-        port: int = SchemaField(description="Redis server port", default=6379, advanced=False)
-        ssl: bool = SchemaField(description="Whether to use SSL for the connection", default=False)
-        key: str = SchemaField(description="The key of the hash.")
-        fields: dict[str, str] = SchemaField(description="Field-value pairs to set in the hash.")
-        nx: bool = SchemaField(
-            description="Only set fields that do not already exist.",
-            default=False,
-            advanced=True
-        )
-
-    class Output(BlockSchema):
-        success: bool = SchemaField(description="True if the operation was successful.")
-        updated_count: int = SchemaField(description="Number of fields that were added or updated.")
-        error: str = SchemaField(description="Error message if operation failed.")
-
-    def __init__(self):
-        super().__init__(
-            id="c3d4e5f6-g7h8-i9j0-k1l2-m3n4o5p6q7r8",
-            description="Sets or updates one or multiple field-value pairs within a hash in Redis.",
-            categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=RedisHashSetBlock.Input,
-            output_schema=RedisHashSetBlock.Output,
-            test_credentials=TEST_REDIS_CREDENTIALS,
-            test_input={
-                "credentials": TEST_REDIS_CREDENTIALS_INPUT,
-                "host": "localhost",
-                "port": 6379,
-                "ssl": False,
-                "key": "my_hash",
-                "fields": {"field1": "value1", "field2": "value2"},
-                "nx": False
-            },
-            test_output=[
-                ("success", True),
-                ("updated_count", 2)
-            ],
-            test_mock={
-                "run": lambda *args, **kwargs: [
-                    ("success", True),
-                    ("updated_count", 2)
-                ]
-            },
-        )
-
-    def run(
-        self, input_data: Input, *, credentials: RedisCredentials, **kwargs
-    ) -> BlockOutput:
-        try:
-            with redis.Redis(
-                host=input_data.host,
-                port=input_data.port,
-                username=credentials.username.get_secret_value() if credentials.username else "default",
-                password=credentials.password.get_secret_value() if credentials.password else None,
-                ssl=input_data.ssl,
-                decode_responses=True
-            ) as r:
-                if input_data.nx:
-                    # When nx=True, we need to use hsetnx which sets only if field doesn't exist
-                    # We need to call it for each field individually
-                    updated_count = 0
-                    for field, value in input_data.fields.items():
-                        if r.hsetnx(input_data.key, field, value):
-                            updated_count += 1
-                else:
-                    # Standard hset can handle multiple field-value pairs at once
-                    updated_count = r.hset(input_data.key, mapping=input_data.fields)
-
-                yield "success", True
-                yield "updated_count", updated_count
-
-        except Exception as e:
-            yield "success", False
-            yield "updated_count", 0
-            yield "error", str(e)
-
-class RedisHashGetBlock(Block):
-    """Retrieves the value(s) associated with one or more specified fields within a hash."""
-    class Input(BlockSchema):
-        credentials: RedisCredentialsInput = RedisCredentialsField()
-        host: str = SchemaField(description="Redis server host address")
-        port: int = SchemaField(description="Redis server port", default=6379, advanced=False)
-        ssl: bool = SchemaField(description="Whether to use SSL for the connection", default=False)
-        key: str = SchemaField(description="The key of the hash.")
-        fields: list[str] = SchemaField(description="Field names to retrieve values for.")
-        get_all: bool = SchemaField(
-            description="If true, retrieves all fields and values in the hash (ignores 'fields' parameter).",
-            default=False
-        )
-
-    class Output(BlockSchema):
-        success: bool = SchemaField(description="True if the operation was successful.")
-        values: dict[str, str] = SchemaField(description="Dictionary of field-value pairs retrieved from the hash.")
-        error: str = SchemaField(description="Error message if operation failed.")
-
-    def __init__(self):
-        super().__init__(
-            id="d4e5f6g7-h8i9-j0k1-l2m3-n4o5p6q7r8s9",
-            description="Retrieves the value(s) associated with one or more specified fields within a hash in Redis.",
-            categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=RedisHashGetBlock.Input,
-            output_schema=RedisHashGetBlock.Output,
-            test_credentials=TEST_REDIS_CREDENTIALS,
-            test_input={
-                "credentials": TEST_REDIS_CREDENTIALS_INPUT,
-                "host": "localhost",
-                "port": 6379,
-                "ssl": False,
-                "key": "my_hash",
-                "fields": ["field1", "field2"],
-                "get_all": False
-            },
-            test_output=[
-                ("success", True),
-                ("values", {"field1": "value1", "field2": "value2"})
-            ],
-            test_mock={
-                "run": lambda *args, **kwargs: [
-                    ("success", True),
-                    ("values", {"field1": "value1", "field2": "value2"})
-                ]
-            },
-        )
-
-    def run(
-        self, input_data: Input, *, credentials: RedisCredentials, **kwargs
-    ) -> BlockOutput:
-        try:
-            with redis.Redis(
-                host=input_data.host,
-                port=input_data.port,
-                username=credentials.username.get_secret_value() if credentials.username else "default",
-                password=credentials.password.get_secret_value() if credentials.password else None,
-                ssl=input_data.ssl,
-                decode_responses=True
-            ) as r:
-                values = {}
-
-                if input_data.get_all:
-                    # Get all fields and values in the hash
-                    values = r.hgetall(input_data.key)
-                else:
-                    if len(input_data.fields) == 1:
-                        value = r.hget(input_data.key, input_data.fields[0])
-                        if value is not None:
-                            values[input_data.fields[0]] = value
-                    else:
-                        field_values_raw = r.hmget(input_data.key, input_data.fields)
-                        field_values = cast(List[Optional[str]], field_values_raw)
-                        for field, value in zip(input_data.fields, field_values):
-                            if value is not None:
-                                values[field] = value
+                # Get list elements in the specified range
+                values = r.lrange(input_data.key, input_data.start, input_data.end)
 
                 yield "success", True
                 yield "values", values
 
         except Exception as e:
             yield "success", False
-            yield "values", {}
+            yield "values", []
             yield "error", str(e)
 
-class RedisHashGetAllBlock(Block):
-    """Retrieves all field-value pairs stored within a specified hash."""
-    class Input(BlockSchema):
-        credentials: RedisCredentialsInput = RedisCredentialsField()
-        host: str = SchemaField(description="Redis server host address")
-        port: int = SchemaField(description="Redis server port", default=6379, advanced=False)
-        ssl: bool = SchemaField(description="Whether to use SSL for the connection", default=False)
-        key: str = SchemaField(description="The key of the hash to retrieve all fields from.")
-
-    class Output(BlockSchema):
-        success: bool = SchemaField(description="True if the operation was successful.")
-        values: dict[str, str] = SchemaField(description="Dictionary of all field-value pairs in the hash.")
-        error: str = SchemaField(description="Error message if operation failed.")
-
-    def __init__(self):
-        super().__init__(
-            id="e5f6g7h8-i9j0-k1l2-m3n4-o5p6q7r8s9t0",
-            description="Retrieves all field-value pairs stored within a specified hash in Redis.",
-            categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=RedisHashGetAllBlock.Input,
-            output_schema=RedisHashGetAllBlock.Output,
-            test_credentials=TEST_REDIS_CREDENTIALS,
-            test_input={
-                "credentials": TEST_REDIS_CREDENTIALS_INPUT,
-                "host": "localhost",
-                "port": 6379,
-                "ssl": False,
-                "key": "my_hash"
-            },
-            test_output=[
-                ("success", True),
-                ("values", {"field1": "value1", "field2": "value2", "field3": "value3"})
-            ],
-            test_mock={
-                "run": lambda *args, **kwargs: [
-                    ("success", True),
-                    ("values", {"field1": "value1", "field2": "value2", "field3": "value3"})
-                ]
-            },
-        )
-
-    def run(
-        self, input_data: Input, *, credentials: RedisCredentials, **kwargs
-    ) -> BlockOutput:
-        try:
-            with redis.Redis(
-                host=input_data.host,
-                port=input_data.port,
-                username=credentials.username.get_secret_value() if credentials.username else "default",
-                password=credentials.password.get_secret_value() if credentials.password else None,
-                ssl=input_data.ssl,
-                decode_responses=True
-            ) as r:
-                # Get all field-value pairs
-                values = r.hgetall(input_data.key)
-
-                yield "success", True
-                yield "values", values
-
-        except Exception as e:
-            yield "success", False
-            yield "values", {}
-            yield "error", str(e)
-
-class RedisHashDeleteBlock(Block):
-    """Removes one or more specified fields and their values from a hash."""
-    class Input(BlockSchema):
-        credentials: RedisCredentialsInput = RedisCredentialsField()
-        host: str = SchemaField(description="Redis server host address")
-        port: int = SchemaField(description="Redis server port", default=6379, advanced=False)
-        ssl: bool = SchemaField(description="Whether to use SSL for the connection", default=False)
-        key: str = SchemaField(description="The key of the hash.")
-        fields: list[str] = SchemaField(description="Field names to delete from the hash.")
-
-    class Output(BlockSchema):
-        success: bool = SchemaField(description="True if the operation was successful.")
-        deleted_count: int = SchemaField(description="Number of fields that were actually deleted.")
-        error: str = SchemaField(description="Error message if operation failed.")
-
-    def __init__(self):
-        super().__init__(
-            id="f6g7h8i9-j0k1-l2m3-n4o5-p6q7r8s9t0u1",
-            description="Removes one or more specified fields and their values from a hash in Redis.",
-            categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=RedisHashDeleteBlock.Input,
-            output_schema=RedisHashDeleteBlock.Output,
-            test_credentials=TEST_REDIS_CREDENTIALS,
-            test_input={
-                "credentials": TEST_REDIS_CREDENTIALS_INPUT,
-                "host": "localhost",
-                "port": 6379,
-                "ssl": False,
-                "key": "my_hash",
-                "fields": ["field1", "field2"]
-            },
-            test_output=[
-                ("success", True),
-                ("deleted_count", 2)
-            ],
-            test_mock={
-                "run": lambda *args, **kwargs: [
-                    ("success", True),
-                    ("deleted_count", 2)
-                ]
-            },
-        )
-
-    def run(
-        self, input_data: Input, *, credentials: RedisCredentials, **kwargs
-    ) -> BlockOutput:
-        try:
-            with redis.Redis(
-                host=input_data.host,
-                port=input_data.port,
-                username=credentials.username.get_secret_value() if credentials.username else "default",
-                password=credentials.password.get_secret_value() if credentials.password else None,
-                ssl=input_data.ssl,
-                decode_responses=True
-            ) as r:
-                # Delete the specified fields from the hash
-                deleted_count = r.hdel(input_data.key, *input_data.fields)
-
-                yield "success", True
-                yield "deleted_count", deleted_count
-
-        except Exception as e:
-            yield "success", False
-            yield "deleted_count", 0
-            yield "error", str(e)
-
-class RedisSetManageBlock(Block):
-    """Adds or removes specified members from a set (collection of unique items)."""
-    class Input(BlockSchema):
-        credentials: RedisCredentialsInput = RedisCredentialsField()
-        host: str = SchemaField(description="Redis server host address")
-        port: int = SchemaField(description="Redis server port", default=6379, advanced=False)
-        ssl: bool = SchemaField(description="Whether to use SSL for the connection", default=False)
-        key: str = SchemaField(description="The key of the set to manage.")
-        members: list[str] = SchemaField(description="Members to add to or remove from the set.")
-        action: SetAction = SchemaField(
-            description="Action to perform: ADD or REMOVE members.",
-            default=SetAction.ADD
-        )
-
-    class Output(BlockSchema):
-        success: bool = SchemaField(description="True if the operation was successful.")
-        modified_count: int = SchemaField(description="Number of members that were added or removed.")
-        error: str = SchemaField(description="Error message if operation failed.")
-
-    def __init__(self):
-        super().__init__(
-            id="g7h8i9j0-k1l2-m3n4-o5p6-q7r8s9t0u1v2",
-            description="Adds or removes specified members from a set in Redis.",
-            categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=RedisSetManageBlock.Input,
-            output_schema=RedisSetManageBlock.Output,
-            test_credentials=TEST_REDIS_CREDENTIALS,
-            test_input={
-                "credentials": TEST_REDIS_CREDENTIALS_INPUT,
-                "host": "localhost",
-                "port": 6379,
-                "ssl": False,
-                "key": "my_set",
-                "members": ["member1", "member2"],
-                "action": SetAction.ADD
-            },
-            test_output=[
-                ("success", True),
-                ("modified_count", 2)
-            ],
-            test_mock={
-                "run": lambda *args, **kwargs: [
-                    ("success", True),
-                    ("modified_count", 2)
-                ]
-            },
-        )
-
-    def run(
-        self, input_data: Input, *, credentials: RedisCredentials, **kwargs
-    ) -> BlockOutput:
-        try:
-            with redis.Redis(
-                host=input_data.host,
-                port=input_data.port,
-                username=credentials.username.get_secret_value() if credentials.username else "default",
-                password=credentials.password.get_secret_value() if credentials.password else None,
-                ssl=input_data.ssl,
-                decode_responses=True
-            ) as r:
-                modified_count = 0
-
-                if input_data.action == SetAction.ADD:
-                    # Add members to the set
-                    modified_count = r.sadd(input_data.key, *input_data.members)
-                else:  # SetAction.REMOVE
-                    # Remove members from the set
-                    modified_count = r.srem(input_data.key, *input_data.members)
-
-                yield "success", True
-                yield "modified_count", modified_count
-
-        except Exception as e:
-            yield "success", False
-            yield "modified_count", 0
-            yield "error", str(e)
-
-# Having some issue
-class RedisSetQueryBlock(Block):
-    """Queries set members or checks membership in a set."""
-    class Input(BlockSchema):
-        credentials: RedisCredentialsInput = RedisCredentialsField()
-        host: str = SchemaField(description="Redis server host address")
-        port: int = SchemaField(description="Redis server port", default=6379, advanced=False)
-        ssl: bool = SchemaField(description="Whether to use SSL for the connection", default=False)
-        key: str = SchemaField(description="The key of the set to query.")
-        action: SetQueryAction = SchemaField(
-            description="Query action: GET_ALL to retrieve all members, IS_MEMBER to check membership.",
-            default=SetQueryAction.GET_ALL
-        )
-        member: Optional[str] = SchemaField(
-            description="Member to check (required for IS_MEMBER action).",
-            default=None
-        )
-
-    class Output(BlockSchema):
-        success: bool = SchemaField(description="True if the operation was successful.")
-        members: list[str] = SchemaField(description="List of all members in the set (for GET_ALL action).")
-        is_member: bool = SchemaField(description="True if the specified member exists in the set (for IS_MEMBER action).")
-        error: str = SchemaField(description="Error message if operation failed.")
-
-    def __init__(self):
-        super().__init__(
-            id="h8i9j0k1-l2m3-n4o5-p6q7-r8s9t0u1v2w3",
-            description="Queries set members or checks membership in a set in Redis.",
-            categories={BlockCategory.DEVELOPER_TOOLS},
-            input_schema=RedisSetQueryBlock.Input,
-            output_schema=RedisSetQueryBlock.Output,
-            test_credentials=TEST_REDIS_CREDENTIALS,
-            test_input={
-                "credentials": TEST_REDIS_CREDENTIALS_INPUT,
-                "host": "localhost",
-                "port": 6379,
-                "ssl": False,
-                "key": "my_set",
-                "action": SetQueryAction.GET_ALL,
-                "member": None
-            },
-            test_output=[
-                ("success", True),
-                ("members", ["member1", "member2", "member3"])
-            ],
-            test_mock={
-                "run": lambda *args, **kwargs: [
-                    ("success", True),
-                    ("members", ["member1", "member2", "member3"])
-                ]
-            },
-        )
-
-    def run(
-        self, input_data: Input, *, credentials: RedisCredentials, **kwargs
-    ) -> BlockOutput:
-        try:
-            with redis.Redis(
-                host=input_data.host,
-                port=input_data.port,
-                username=credentials.username.get_secret_value() if credentials.username else "default",
-                password=credentials.password.get_secret_value() if credentials.password else None,
-                ssl=input_data.ssl,
-                decode_responses=True
-            ) as r:
-                if input_data.action == SetQueryAction.GET_ALL:
-                    members = r.smembers(input_data.key)
-                    yield "success", True
-                    yield "members", members
-                    yield "is_member", False
-                else:
-                    if not input_data.member:
-                        raise ValueError("Member must be specified for IS_MEMBER action")
-                    # Check if member exists in the set
-                    is_member = r.sismember(input_data.key, input_data.member)
-                    yield "success", True
-                    yield "members", []  # Default value for IS_MEMBER action
-                    yield "is_member", bool(is_member)
-
-        except Exception as e:
-            yield "success", False
-            yield "members", []
-            yield "is_member", False
-            yield "error", str(e)
 
 class RedisPublishBlock(Block):
     """Sends (publishes) a message to a specific communication channel."""
@@ -1168,7 +686,6 @@ class RedisPublishBlock(Block):
         credentials: RedisCredentialsInput = RedisCredentialsField()
         host: str = SchemaField(description="Redis server host address")
         port: int = SchemaField(description="Redis server port", default=6379, advanced=False)
-        ssl: bool = SchemaField(description="Whether to use SSL for the connection", default=False)
         channel: str = SchemaField(description="The channel to publish the message to.")
         message: str = SchemaField(description="The message to publish.")
 
@@ -1189,7 +706,6 @@ class RedisPublishBlock(Block):
                 "credentials": TEST_REDIS_CREDENTIALS_INPUT,
                 "host": "localhost",
                 "port": 6379,
-                "ssl": False,
                 "channel": "my_channel",
                 "message": "Hello Redis!"
             },
@@ -1214,7 +730,6 @@ class RedisPublishBlock(Block):
                 port=input_data.port,
                 username=credentials.username.get_secret_value() if credentials.username else "default",
                 password=credentials.password.get_secret_value() if credentials.password else None,
-                ssl=input_data.ssl,
                 decode_responses=True
             ) as r:
                 # Publish message to the specified channel
