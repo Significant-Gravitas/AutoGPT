@@ -86,12 +86,8 @@ jobs:
           BASE_POETRY_VERSION=$((git show "$BASE_REF":./poetry.lock; true) | head -n 1 | grep -oP '(?<=Poetry )[0-9]+\.[0-9]+\.[0-9]+')
           echo "Found Poetry version ${BASE_POETRY_VERSION} in backend/poetry.lock on ${BASE_REF}"
 
-          # Use version used in base branch unless version in HEAD is newer
-          if [ "$(printf '%s\n' "$HEAD_POETRY_VERSION" "$BASE_POETRY_VERSION" | sort -V | tail -n1)" = "$HEAD_POETRY_VERSION" ]; then
-            POETRY_VERSION=$HEAD_POETRY_VERSION
-          else
-            POETRY_VERSION=$BASE_POETRY_VERSION
-          fi
+          # Use newest version out of the two found above
+          POETRY_VERSION=$(printf '%s\n' "$HEAD_POETRY_VERSION" "$BASE_POETRY_VERSION" | sort -V | tail -n1)
           echo "Using Poetry version ${POETRY_VERSION}"
 
           # Install Poetry
