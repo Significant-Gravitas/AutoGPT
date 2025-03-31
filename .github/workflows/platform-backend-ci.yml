@@ -80,12 +80,19 @@ jobs:
 
       - name: Install Poetry (Unix)
         run: |
-          curl -sSL https://install.python-poetry.org | python3 -
+          # Extract Poetry version from backend/poetry.lock
+          POETRY_VERSION=$(git show "$BASE_REF":autogpt_platform/backend/poetry.lock | head -n 1 | grep -oP '(?<=Poetry )[0-9]+\.[0-9]+\.[0-9]+')
+          echo "Found Poetry version ${POETRY_VERSION} in backend/poetry.lock"
+
+          # Install Poetry
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$POETRY_VERSION python3 -
 
           if [ "${{ runner.os }}" = "macOS" ]; then
             PATH="$HOME/.local/bin:$PATH"
             echo "$HOME/.local/bin" >> $GITHUB_PATH
           fi
+        env:
+          BASE_REF: ${{ github.base_ref }}
 
       - name: Check poetry.lock
         run: |
