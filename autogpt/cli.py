@@ -60,6 +60,11 @@ import click
     is_flag=True,
     help="Installs external dependencies for 3rd party plugins.",
 )
+@click.option(
+    "--web-interface",
+    is_flag=True,
+    help="Start the Flask web interface",
+)
 @click.pass_context
 def main(
     ctx: click.Context,
@@ -77,6 +82,7 @@ def main(
     skip_news: bool,
     workspace_directory: str,
     install_plugin_deps: bool,
+    web_interface: bool,
 ) -> None:
     """
     Welcome to AutoGPT an experimental open-source application showcasing the capabilities of the GPT-4 pushing the boundaries of AI.
@@ -85,6 +91,11 @@ def main(
     """
     # Put imports inside function to avoid importing everything when starting the CLI
     from autogpt.main import run_auto_gpt
+
+    if web_interface:
+        from autogpt.web_interface import app
+        app.run()
+        return
 
     if ctx.invoked_subcommand is None:
         run_auto_gpt(

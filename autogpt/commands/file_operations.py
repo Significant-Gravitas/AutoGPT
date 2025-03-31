@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import os
 import os.path
+import json
+import csv
 from typing import Generator
 
 import requests
@@ -128,12 +130,13 @@ def ingest_file(
 
 
 @command("write_to_file", "Write to file", '"filename": "<filename>", "text": "<text>"')
-def write_to_file(filename: str, text: str) -> str:
+def write_to_file(filename: str, text: str, format: str = "txt") -> str:
     """Write text to a file
 
     Args:
         filename (str): The name of the file to write to
         text (str): The text to write to the file
+        format (str): The format to write the file in (txt, json, csv)
 
     Returns:
         str: A message indicating success or failure
@@ -144,8 +147,18 @@ def write_to_file(filename: str, text: str) -> str:
         directory = os.path.dirname(filename)
         if not os.path.exists(directory):
             os.makedirs(directory)
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(text)
+        
+        if format == "json":
+            with open(filename, "w", encoding="utf-8") as f:
+                json.dump(text, f)
+        elif format == "csv":
+            with open(filename, "w", encoding="utf-8", newline='') as f:
+                writer = csv.writer(f)
+                writer.writerows(text)
+        else:
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(text)
+        
         log_operation("write", filename)
         return "File written to successfully."
     except Exception as e:

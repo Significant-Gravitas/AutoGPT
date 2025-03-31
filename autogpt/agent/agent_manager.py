@@ -7,6 +7,7 @@ from autogpt.config.config import Config
 from autogpt.llm_utils import create_chat_completion
 from autogpt.singleton import Singleton
 from autogpt.types.openai import Message
+from autogpt.commands.file_operations import write_to_file, read_file
 
 
 class AgentManager(metaclass=Singleton):
@@ -144,3 +145,40 @@ class AgentManager(metaclass=Singleton):
             return True
         except KeyError:
             return False
+
+    def save_agent_information(self, key: str | int, filename: str, format: str = "txt") -> str:
+        """Save agent information to a file
+
+        Args:
+            key: The key of the agent
+            filename: The name of the file to save the information
+            format: The format to save the file in (txt, json, csv)
+
+        Returns:
+            A message indicating success or failure
+        """
+        try:
+            task, messages, model = self.agents[int(key)]
+            agent_info = {
+                "task": task,
+                "messages": messages,
+                "model": model
+            }
+            return write_to_file(filename, agent_info, format)
+        except KeyError:
+            return "Error: Agent not found."
+
+    def retrieve_agent_information(self, filename: str) -> dict:
+        """Retrieve agent information from a file
+
+        Args:
+            filename: The name of the file to read the information from
+
+        Returns:
+            A dictionary containing the agent information
+        """
+        try:
+            content = read_file(filename)
+            return content
+        except Exception as e:
+            return {"Error": str(e)}
