@@ -96,6 +96,7 @@ export async function AdminUserGrantHistory({
               <TableHead className="font-medium">Reason</TableHead>
               <TableHead className="font-medium">Admin</TableHead>
               <TableHead className="font-medium">Current Balance</TableHead>
+              <TableHead className="font-medium">Running Balance</TableHead>
               <TableHead className="text-right font-medium">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -131,6 +132,9 @@ export async function AdminUserGrantHistory({
                   </TableCell>
                   <TableCell className="font-medium text-green-600">
                     ${transaction.current_balance / 100}
+                  </TableCell>
+                  <TableCell className="font-medium text-green-600">
+                    ${transaction.running_balance / 100}
                   </TableCell>
                   <TableCell className="text-right">
                     <AddCreditButton

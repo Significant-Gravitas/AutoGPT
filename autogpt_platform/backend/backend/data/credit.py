@@ -460,7 +460,7 @@ class UserCredit(UserCreditBase):
                     block_id=entry.block_id,
                     block=block.name,
                     input=matching_filter,
-                    reason="Running block: {block.name} for {cost} credits",
+                    reason=f"Running block: {block.name} for {cost} credits",
                 ).model_dump()
             ),
         )
@@ -476,6 +476,7 @@ class UserCredit(UserCreditBase):
                     # Avoid multiple auto top-ups within the same graph execution.
                     key=f"AUTO-TOP-UP-{user_id}-{entry.graph_exec_id}",
                     ceiling_balance=auto_top_up.threshold,
+                    is_auto_top_up=True,
                 )
             except Exception as e:
                 # Failed top-up is not critical, we can move on.
@@ -670,6 +671,7 @@ class UserCredit(UserCreditBase):
         amount: int,
         key: str | None = None,
         ceiling_balance: int | None = None,
+        is_auto_top_up: bool = False,
     ):
         if amount < 0:
             raise ValueError(f"Top up amount must not be negative: {amount}")
@@ -693,7 +695,11 @@ class UserCredit(UserCreditBase):
             is_active=False,
             transaction_key=key,
             ceiling_balance=ceiling_balance,
-            metadata=Json({"reason": f"_top_up_credits: {transaction_type.name}"}),
+            metadata=(
+                Json({"reason": f"Top up credits for {user_id}"})
+                if not is_auto_top_up
+                else Json({"reason": f"Auto top up credits for {user_id}"})
+            ),
         )
 
         customer_id = await get_stripe_customer_id(user_id)
@@ -1098,6 +1104,7 @@ async def admin_get_user_history(
                     else (await get_user_by_id(tx.userId)).email
                 ),
                 current_balance=balance,
+                running_balance=tx.runningBalance or 0,
                 amount=tx.amount,
                 date=tx.createdAt,
                 reason=reason,

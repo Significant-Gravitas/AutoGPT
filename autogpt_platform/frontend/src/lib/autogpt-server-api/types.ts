@@ -856,6 +856,7 @@ export type UserBalanceHistory = {
   amount: number;
   date: Date;
   current_balance: number;
+  running_balance: number;
   reason: string;
   admin_email: string;
   type: CreditTransactionType;

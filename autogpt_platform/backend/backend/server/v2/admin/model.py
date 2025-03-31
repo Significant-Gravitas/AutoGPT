@@ -12,6 +12,7 @@ class UserHistory(BaseModel):
     amount: int
     date: datetime
     current_balance: int
+    running_balance: int
     reason: str
     admin_email: str
     type: CreditTransactionType
