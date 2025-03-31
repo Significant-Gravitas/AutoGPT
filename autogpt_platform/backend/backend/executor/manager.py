@@ -149,7 +149,7 @@ def execute_node(
     node_exec_id = data.node_exec_id
     node_id = data.node_id
 
-    def update_execution(status: ExecutionStatus) -> NodeExecutionResult:
+    def update_execution_status(status: ExecutionStatus) -> NodeExecutionResult:
         """Sets status and fetches+broadcasts the latest state of the node execution"""
         exec_update = db_client.update_node_execution_status(node_exec_id, status)
         db_client.send_execution_update(exec_update)
@@ -161,6 +161,17 @@ def execute_node(
     if not node_block:
         logger.error(f"Block {node.block_id} not found.")
         return
+
+    def push_output(output_name: str, output_data: Any) -> None:
+        _push_node_execution_output(
+            db_client=db_client,
+            user_id=user_id,
+            graph_exec_id=graph_exec_id,
+            node_exec_id=node_exec_id,
+            block_id=node_block.id,
+            output_name=output_name,
+            output_data=output_data,
+        )
 
     log_metadata = LogMetadata(
         user_id=user_id,
@@ -175,8 +186,8 @@ def execute_node(
     input_data, error = validate_exec(node, data.data, resolve_input=False)
     if input_data is None:
         log_metadata.error(f"Skip execution, input validation error: {error}")
-        db_client.upsert_execution_output(node_exec_id, "error", error)
-        update_execution(ExecutionStatus.FAILED)
+        push_output("error", error)
+        update_execution_status(ExecutionStatus.FAILED)
         return
 
     # Re-shape the input data for agent block.
@@ -189,7 +200,7 @@ def execute_node(
     input_data_str = json.dumps(input_data)
     input_size = len(input_data_str)
     log_metadata.info("Executed node with input", input=input_data_str)
-    update_execution(ExecutionStatus.RUNNING)
+    update_execution_status(ExecutionStatus.RUNNING)
 
     # Inject extra execution arguments for the blocks via kwargs
     extra_exec_kwargs: dict = {
@@ -220,7 +231,7 @@ def execute_node(
             output_data = json.convert_pydantic_to_json(output_data)
             output_size += len(json.dumps(output_data))
             log_metadata.info("Node produced output", **{output_name: output_data})
-            db_client.upsert_execution_output(node_exec_id, output_name, output_data)
+            push_output(output_name, output_data)
             outputs[output_name] = output_data
             for execution in _enqueue_next_nodes(
                 db_client=db_client,
@@ -233,13 +244,12 @@ def execute_node(
             ):
                 yield execution
 
-        # Update execution status and spend credits
-        update_execution(ExecutionStatus.COMPLETED)
+        update_execution_status(ExecutionStatus.COMPLETED)
 
     except Exception as e:
         error_msg = str(e)
-        db_client.upsert_execution_output(node_exec_id, "error", error_msg)
-        update_execution(ExecutionStatus.FAILED)
+        push_output("error", error_msg)
+        update_execution_status(ExecutionStatus.FAILED)
 
         for execution in _enqueue_next_nodes(
             db_client=db_client,
@@ -268,6 +278,35 @@ def execute_node(
             )
             execution_stats.input_size = input_size
             execution_stats.output_size = output_size
+
+
+def _push_node_execution_output(
+    db_client: "DatabaseManager",
+    user_id: str,
+    graph_exec_id: str,
+    node_exec_id: str,
+    block_id: str,
+    output_name: str,
+    output_data: Any,
+):
+    from backend.blocks.io import IO_BLOCK_IDs
+
+    db_client.upsert_execution_output(
+        node_exec_id=node_exec_id,
+        output_name=output_name,
+        output_data=output_data,
+    )
+
+    # Automatically push execution updates for all agent I/O
+    if block_id in IO_BLOCK_IDs:
+        graph_exec = db_client.get_graph_execution(
+            user_id=user_id, execution_id=graph_exec_id
+        )
+        if not graph_exec:
+            raise ValueError(
+                f"Graph execution #{graph_exec_id} for user #{user_id} not found"
+            )
+        db_client.send_execution_update(graph_exec)
 
 
 def _enqueue_next_nodes(
@@ -627,7 +666,10 @@ class Executor:
             node_eid="*",
             block_name="-",
         )
-        cls.db_client.update_graph_execution_start_time(graph_exec.graph_exec_id)
+        exec_meta = cls.db_client.update_graph_execution_start_time(
+            graph_exec.graph_exec_id
+        )
+        cls.db_client.send_execution_update(exec_meta)
         timing_info, (exec_stats, status, error) = cls._on_graph_execution(
             graph_exec, cancel, log_metadata
         )
@@ -635,12 +677,12 @@ class Executor:
         exec_stats.cputime = timing_info.cpu_time
         exec_stats.error = str(error)
 
-        if result := cls.db_client.update_graph_execution_stats(
+        if graph_exec_result := cls.db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
             status=status,
             stats=exec_stats,
         ):
-            cls.db_client.send_execution_update(result)
+            cls.db_client.send_execution_update(graph_exec_result)
 
         cls._handle_agent_run_notif(graph_exec, exec_stats)
 
@@ -773,11 +815,19 @@ class Executor:
                         execution_stats=exec_stats,
                     )
                 except InsufficientBalanceError as error:
-                    exec_id = exec_data.node_exec_id
-                    cls.db_client.upsert_execution_output(exec_id, "error", str(error))
+                    node_exec_id = exec_data.node_exec_id
+                    _push_node_execution_output(
+                        db_client=cls.db_client,
+                        user_id=graph_exec.user_id,
+                        graph_exec_id=graph_exec.graph_exec_id,
+                        node_exec_id=node_exec_id,
+                        block_id=exec_data.block_id,
+                        output_name="error",
+                        output_data=str(error),
+                    )
 
                     exec_update = cls.db_client.update_node_execution_status(
-                        exec_id, ExecutionStatus.FAILED
+                        node_exec_id, ExecutionStatus.FAILED
                     )
                     cls.db_client.send_execution_update(exec_update)
 
@@ -1001,17 +1051,21 @@ class ExecutionManager(AppService):
                 "No starting nodes found for the graph, make sure an AgentInput or blocks with no inbound links are present as starting nodes."
             )
 
-        graph_exec_id, node_execs = self.db_client.create_graph_execution(
+        graph_exec = self.db_client.create_graph_execution(
             graph_id=graph_id,
             graph_version=graph.version,
             nodes_input=nodes_input,
             user_id=user_id,
             preset_id=preset_id,
         )
+        self.db_client.send_execution_update(graph_exec)
 
-        starting_node_execs = []
-        for node_exec in node_execs:
-            starting_node_execs.append(
+        graph_exec_entry = GraphExecutionEntry(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph_version or 0,
+            graph_exec_id=graph_exec.id,
+            start_node_execs=[
                 NodeExecutionEntry(
                     user_id=user_id,
                     graph_exec_id=node_exec.graph_exec_id,
@@ -1021,18 +1075,12 @@ class ExecutionManager(AppService):
                     block_id=node_exec.block_id,
                     data=node_exec.input_data,
                 )
-            )
-
-        graph_exec = GraphExecutionEntry(
-            user_id=user_id,
-            graph_id=graph_id,
-            graph_version=graph_version or 0,
-            graph_exec_id=graph_exec_id,
-            start_node_execs=starting_node_execs,
+                for node_exec in graph_exec.node_executions
+            ],
         )
-        self.queue.add(graph_exec)
+        self.queue.add(graph_exec_entry)
 
-        return graph_exec
+        return graph_exec_entry
 
     @expose
     def cancel_execution(self, graph_exec_id: str) -> None:
