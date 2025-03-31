@@ -52,7 +52,6 @@ def test():
             "docker-compose.test.yaml",
             "up",
             "-d",
-            "postgres-test",
         ]
     )
 
