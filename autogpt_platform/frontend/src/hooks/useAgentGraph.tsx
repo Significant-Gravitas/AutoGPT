@@ -631,7 +631,10 @@ export default function useAgentGraph(
           activeExecutionID: flowExecutionID,
         });
       }
-      setUpdateQueue((prev) => [...prev, ...execution.node_executions]);
+      setUpdateQueue((prev) => {
+        if (!execution.node_executions) return prev;
+        return [...prev, ...execution.node_executions];
+      });
 
       // Track execution until completed
       const pendingNodeExecutions: Set<string> = new Set();
