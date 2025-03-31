@@ -83,7 +83,7 @@ jobs:
           # Extract Poetry version from backend/poetry.lock;
           HEAD_POETRY_VERSION=$(head -n 1 poetry.lock | grep -oP '(?<=Poetry )[0-9]+\.[0-9]+\.[0-9]+')
           echo "Found Poetry version ${HEAD_POETRY_VERSION} in backend/poetry.lock"
-          BASE_POETRY_VERSION=$(git show "$BASE_REF":./poetry.lock | head -n 1 | grep -oP '(?<=Poetry )[0-9]+\.[0-9]+\.[0-9]+')
+          BASE_POETRY_VERSION=$(git show "$BASE_REF":autogpt_platform/backend/poetry.lock | head -n 1 | grep -oP '(?<=Poetry )[0-9]+\.[0-9]+\.[0-9]+')
           echo "Found Poetry version ${BASE_POETRY_VERSION} in backend/poetry.lock on ${BASE_REF}"
 
           # Use version used in base branch unless version in HEAD is newer
