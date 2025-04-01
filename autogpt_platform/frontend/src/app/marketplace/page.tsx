@@ -148,6 +148,20 @@ export default async function Page({}: {}) {
   // Get data server-side
   const { featuredAgents, topAgents, featuredCreators } = await getStoreData();
 
+  // Mark marketplace visit task as completed
+  const api = new BackendAPI();
+  if (await api.isOnboardingEnabled()) {
+    const onboarding = await api.getUserOnboarding();
+    if (!onboarding.completedSteps.includes("MARKETPLACE_VISIT")) {
+      api.updateUserOnboarding({
+        completedSteps: [
+          ...onboarding.completedSteps,
+          "MARKETPLACE_VISIT",
+        ],
+      });
+    }
+  }
+
   return (
     <div className="mx-auto w-screen max-w-[1360px]">
       <main className="px-4">

@@ -19,6 +19,7 @@ const OnboardingContext = createContext<
       ) => void;
       step: number;
       setStep: (step: number) => void;
+      completeStep: (step: OnboardingStep) => void;
     }
   | undefined
 >(undefined);
@@ -112,8 +113,20 @@ export default function OnboardingProvider({
     [api, setState],
   );
 
+  const completeStep = useCallback(
+    (step: OnboardingStep) => {
+      if (!state || state.completedSteps.includes(step))
+        return;
+
+      updateState({
+        completedSteps: [...state.completedSteps, step],
+      });
+    },
+    [api, state],
+  );
+
   return (
-    <OnboardingContext.Provider value={{ state, updateState, step, setStep }}>
+    <OnboardingContext.Provider value={{ state, updateState, step, setStep, completeStep }}>
       {children}
     </OnboardingContext.Provider>
   );

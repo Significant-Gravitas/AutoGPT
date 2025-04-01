@@ -119,6 +119,7 @@ async def reward_user(user_id: str, step: OnboardingStep):
     await UserOnboarding.prisma().update(
         where={"userId": user_id},
         data={
+            "completedSteps": list(set(onboarding.completedSteps + [step])),
             "rewardedFor": onboarding.rewardedFor,
         },
     )
