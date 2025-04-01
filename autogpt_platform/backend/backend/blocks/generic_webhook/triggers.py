@@ -31,8 +31,8 @@ class GenericWebhookTriggerBlock(Block):
     def __init__(self):
         super().__init__(
             id="8fa8c167-2002-47ce-aba8-97572fc5d387",
-            description="This block will output the contents of the compass transcription.",
-            categories={BlockCategory.HARDWARE},
+            description="This block will output the contents of the generic input for the webhook.",
+            categories={BlockCategory.INPUT},
             input_schema=GenericWebhookTriggerBlock.Input,
             output_schema=GenericWebhookTriggerBlock.Output,
             webhook_config=BlockManualWebhookConfig(
