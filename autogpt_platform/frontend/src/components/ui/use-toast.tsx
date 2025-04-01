@@ -188,4 +188,26 @@ function useToast() {
   };
 }
 
-export { useToast, toast };
+interface ToastOnFailOptions {
+  rethrow?: boolean;
+}
+
+function useToastOnFail() {
+  return React.useCallback(
+    (action: string, { rethrow = false }: ToastOnFailOptions = {}) =>
+      (error: any) => {
+        toast({
+          title: `Unable to ${action}`,
+          description: (error as Error)?.message ?? "Something went wrong",
+          variant: "destructive",
+          duration: 10000,
+        });
+        if (rethrow) {
+          throw error;
+        }
+      },
+    [],
+  );
+}
+
+export { useToast, toast, useToastOnFail };

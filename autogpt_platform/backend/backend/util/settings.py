@@ -81,6 +81,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=3,
         description="The default number of retries for Pyro client connections.",
     )
+    rpc_client_call_timeout: int = Field(
+        default=300,
+        description="The default timeout in seconds, for RPC client calls.",
+    )
     enable_auth: bool = Field(
         default=True,
         description="If authentication is enabled or not",
@@ -108,6 +112,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     refund_request_time_key_format: str = Field(
         default="%Y-%W",  # This will allow for weekly refunds per user.
         description="Time key format for refund requests.",
+    )
+    execution_cost_count_threshold: int = Field(
+        default=100,
+        description="Number of executions after which the cost is calculated.",
+    )
+    execution_cost_per_threshold: int = Field(
+        default=1,
+        description="Cost per execution in cents after each threshold.",
     )
 
     model_config = SettingsConfigDict(
@@ -214,6 +226,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     use_agent_image_generation_v2: bool = Field(
         default=True,
         description="Whether to use the new agent image generation service",
+    )
+    enable_agent_input_subtype_blocks: bool = Field(
+        default=True,
+        description="Whether to enable the agent input subtype blocks",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")

@@ -253,9 +253,6 @@ class Scheduler(AppService):
         self, graph_id: str | None = None, user_id: str | None = None
     ) -> list[ExecutionJobInfo]:
         schedules = []
-        logger.info(
-            f"Getting schedules for graph {graph_id} and user {user_id} on jobstore {Jobstores.EXECUTION.value}"
-        )
         for job in self.scheduler.get_jobs(jobstore=Jobstores.EXECUTION.value):
             logger.info(
                 f"Found job {job.id} with cron schedule {job.trigger} and args {job.kwargs}"

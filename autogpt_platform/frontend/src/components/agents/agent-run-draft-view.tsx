@@ -6,8 +6,11 @@ import { GraphExecutionID, GraphMeta } from "@/lib/autogpt-server-api";
 
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button, ButtonProps } from "@/components/agptui/Button";
-import { Input } from "@/components/ui/input";
+import { TypeBasedInput } from "@/components/type-based-input";
+import { useToastOnFail } from "@/components/ui/use-toast";
+import SchemaTooltip from "@/components/SchemaTooltip";
+import { IconPlay } from "@/components/ui/icons";
+import { Button } from "@/components/agptui/Button";
 
 export default function AgentRunDraftView({
   graph,
@@ -19,6 +22,7 @@ export default function AgentRunDraftView({
   agentActions: ButtonAction[];
 }): React.ReactNode {
   const api = useBackendAPI();
+  const toastOnFail = useToastOnFail();
 
   const agentInputs = graph.input_schema.properties;
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
@@ -27,16 +31,24 @@ export default function AgentRunDraftView({
     () =>
       api
         .executeGraph(graph.id, graph.version, inputValues)
-        .then((newRun) => onRun(newRun.graph_exec_id)),
-    [api, graph, inputValues, onRun],
+        .then((newRun) => onRun(newRun.graph_exec_id))
+        .catch(toastOnFail("execute agent")),
+    [api, graph, inputValues, onRun, toastOnFail],
   );
 
-  const runActions: {
-    label: string;
-    variant?: ButtonProps["variant"];
-    callback: () => void;
-  }[] = useMemo(
-    () => [{ label: "Run", variant: "accent", callback: () => doRun() }],
+  const runActions: ButtonAction[] = useMemo(
+    () => [
+      {
+        label: (
+          <>
+            <IconPlay className="mr-2 size-5" />
+            Run
+          </>
+        ),
+        variant: "accent",
+        callback: doRun,
+      },
+    ],
     [doRun],
   );
 
@@ -49,18 +61,21 @@ export default function AgentRunDraftView({
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {Object.entries(agentInputs).map(([key, inputSubSchema]) => (
-              <div key={key} className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium">
+              <div key={key} className="flex flex-col space-y-2">
+                <label className="flex items-center gap-1 text-sm font-medium">
                   {inputSubSchema.title || key}
+                  <SchemaTooltip description={inputSubSchema.description} />
                 </label>
-                <Input
-                  // TODO: render specific inputs based on input types
-                  defaultValue={
-                    "default" in inputSubSchema ? inputSubSchema.default : ""
-                  }
-                  className="rounded-full"
-                  onChange={(e) =>
-                    setInputValues((obj) => ({ ...obj, [key]: e.target.value }))
+
+                <TypeBasedInput
+                  schema={inputSubSchema}
+                  value={inputValues[key] ?? inputSubSchema.default}
+                  placeholder={inputSubSchema.description}
+                  onChange={(value) =>
+                    setInputValues((obj) => ({
+                      ...obj,
+                      [key]: value,
+                    }))
                   }
                 />
               </div>

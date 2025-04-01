@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Button } from "../agptui/Button";
 import { IconClose, IconPlus } from "../ui/icons";
 import BackendAPI from "@/lib/autogpt-server-api";
+import { toast } from "../ui/use-toast";
 
 export interface PublishAgentInfoInitialData {
   agent_id: string;
@@ -40,13 +41,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
   initialData,
 }) => {
   const [agentId, setAgentId] = React.useState<string | null>(null);
-  const [images, setImages] = React.useState<string[]>(
-    initialData?.additionalImages
-      ? [initialData.thumbnailSrc, ...initialData.additionalImages]
-      : initialData?.thumbnailSrc
-        ? [initialData.thumbnailSrc]
-        : [],
-  );
+  const [images, setImages] = React.useState<string[]>([]);
   const [selectedImage, setSelectedImage] = React.useState<string | null>(
     initialData?.thumbnailSrc || null,
   );
@@ -66,7 +61,10 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
   React.useEffect(() => {
     if (initialData) {
       setAgentId(initialData.agent_id);
-      setImagesWithValidation(initialData.additionalImages || []);
+      setImagesWithValidation([
+        ...(initialData?.thumbnailSrc ? [initialData.thumbnailSrc] : []),
+        ...(initialData.additionalImages || []),
+      ]);
       setSelectedImage(initialData.thumbnailSrc || null);
       setTitle(initialData.title);
       setSubheader(initialData.subheader);
@@ -94,8 +92,6 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
     }
     if (newImages.length === 0) {
       setSelectedImage(null);
-    } else {
-      console.log("images", newImages);
     }
   };
 
@@ -134,7 +130,10 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         setSelectedImage(imageUrl);
       }
     } catch (error) {
-      console.error("Error uploading image:", error);
+      toast({
+        title: "Failed to upload image",
+        description: `Error: ${error}`,
+      });
     }
   };
 
@@ -150,7 +149,6 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         throw new Error("Agent ID is required");
       }
       const { image_url } = await api.generateStoreSubmissionImage(agentId);
-      console.log("image_url", image_url);
       setImagesWithValidation([...images, image_url]);
     } catch (error) {
       console.error("Failed to generate image:", error);
