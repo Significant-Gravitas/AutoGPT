@@ -35,7 +35,7 @@ function Calendar({
       startMonth={new Date(1900, 0)}
       className={cn("p-3", className)}
       classNames={{
-        months: "flex flex-col sm:flex-row sm:space-x-4 sm:space-y-0",
+        months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
         month: "space-y-4",
         month_caption: "flex  items-center justify-center text-sm font-medium",
         dropdowns: "flex gap-2 ",
