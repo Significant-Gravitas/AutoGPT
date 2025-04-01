@@ -93,8 +93,6 @@ async def reward_user(user_id: str, step: OnboardingStep):
             reward = 10
         case OnboardingStep.GET_RESULTS:
             reward = 1
-        case OnboardingStep.MARKETPLACE_VISIT:
-            reward = 1
         case OnboardingStep.MARKETPLACE_ADD_AGENT:
             reward = 1
         case OnboardingStep.MARKETPLACE_RUN_AGENT:
