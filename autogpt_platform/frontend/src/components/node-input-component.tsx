@@ -176,7 +176,11 @@ const NodeDateTimeInput: FC<{
               )}
             >
               <CalendarIcon className="mr-2 h-4 w-4" />
-              {value ? format(dateInput, "PPP") : <span>Pick a date</span>}
+              {value && dateInput ? (
+                format(dateInput, "PPP")
+              ) : (
+                <span>Pick a date</span>
+              )}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
