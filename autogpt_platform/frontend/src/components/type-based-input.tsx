@@ -63,24 +63,26 @@ export const TypeBasedInput: FC<
         <Input
           type="number"
           value={value ?? ""}
-          placeholder={placeholder}
+          placeholder={placeholder || "Enter number"}
           onChange={(e) => onChange(Number(e.target.value))}
           {...props}
         />
       );
+      break;
 
     case DataType.LONG_TEXT:
       innerInputElement = (
         <Textarea
           className="rounded-[12px] px-3 py-2"
           value={value ?? ""}
-          placeholder={placeholder}
+          placeholder={placeholder || "Enter text"}
           onChange={(e) => onChange(e.target.value)}
           {...props}
         />
       );
+      break;
 
-    case DataType.BOOLEAN: {
+    case DataType.BOOLEAN:
       innerInputElement = (
         <>
           <span className="text-sm text-gray-500">{placeholder}</span>
@@ -92,7 +94,7 @@ export const TypeBasedInput: FC<
           />
         </>
       );
-    }
+      break;
 
     case DataType.DATE:
       innerInputElement = (
@@ -103,11 +105,13 @@ export const TypeBasedInput: FC<
           className={cn(inputClasses)}
         />
       );
+      break;
 
     case DataType.TIME:
       innerInputElement = (
         <TimePicker value={value?.toString()} onChange={onChange} />
       );
+      break;
 
     case DataType.DATE_TIME:
       innerInputElement = (
@@ -115,9 +119,11 @@ export const TypeBasedInput: FC<
           type="datetime-local"
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder || "Enter date and time"}
           {...props}
         />
       );
+      break;
 
     case DataType.FILE:
       innerInputElement = (
@@ -128,6 +134,7 @@ export const TypeBasedInput: FC<
           {...props}
         />
       );
+      break;
 
     case DataType.SELECT:
       if (
@@ -140,7 +147,7 @@ export const TypeBasedInput: FC<
             <SelectTrigger
               className={cn(inputClasses, "text-sm text-gray-500")}
             >
-              <SelectValue placeholder="Select an option" />
+              <SelectValue placeholder={placeholder || "Select an option"} />
             </SelectTrigger>
             <SelectContent className="rounded-[12px] border">
               {schema.enum
@@ -153,16 +160,8 @@ export const TypeBasedInput: FC<
             </SelectContent>
           </Select>
         );
+        break;
       }
-
-      innerInputElement = (
-        <Input
-          type="text"
-          value={value ?? ""}
-          onChange={(e) => onChange(e.target.value)}
-          {...props}
-        />
-      );
 
     case DataType.SHORT_TEXT:
     default:
@@ -171,6 +170,7 @@ export const TypeBasedInput: FC<
           type="text"
           value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder || "Enter text"}
           {...props}
         />
       );
