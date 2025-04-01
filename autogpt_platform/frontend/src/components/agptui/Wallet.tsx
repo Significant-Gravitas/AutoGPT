@@ -1,8 +1,5 @@
 "use client";
 
-import { IconRefresh } from "@/components/ui/icons";
-import { useState } from "react";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import useCredits from "@/hooks/useCredits";
 import {
   Popover,
@@ -13,27 +10,35 @@ import { X } from "lucide-react";
 import { PopoverClose } from "@radix-ui/react-popover";
 import { TaskGroups } from "../onboarding/WalletTaskGroups";
 import { ScrollArea } from "../ui/scroll-area";
+import { useOnboarding } from "../onboarding/onboarding-provider";
+import { useCallback } from "react";
 
-export default function CreditsCard() {
-  const [hasNotification, setHasNotification] = useState(true);
+export default function Wallet() {
   const { credits, formatCredits, fetchCredits } = useCredits({
     fetchInitialCredits: true,
   });
-  const api = useBackendAPI();
+  const { state, updateState } = useOnboarding();
 
-  const onRefresh = async () => {
+  const onWalletOpen = useCallback(async () => {
+    if (state?.notificationDot) {
+      updateState({ notificationDot: false });
+    }
+    // Refresh credits when the wallet is opened
     fetchCredits();
-  };
+  }, [state?.notificationDot, updateState, fetchCredits]);
 
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button className="relative flex items-center gap-1 rounded-md bg-zinc-200 px-3 py-2 text-sm transition-colors duration-200 hover:bg-zinc-300">
+        <button
+          className="relative flex items-center gap-1 rounded-md bg-zinc-200 px-3 py-2 text-sm transition-colors duration-200 hover:bg-zinc-300"
+          onClick={onWalletOpen}
+        >
           Wallet{" "}
           <span className="text-sm font-semibold">
             {formatCredits(credits)}
           </span>
-          {hasNotification && (
+          {state?.notificationDot && (
             <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
           )}
         </button>
