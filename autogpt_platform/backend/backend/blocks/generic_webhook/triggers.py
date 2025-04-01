@@ -6,6 +6,7 @@ from backend.data.block import (
     BlockSchema,
 )
 from backend.data.model import SchemaField
+from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.generic import GenericWebhookType
 
 
@@ -35,7 +36,7 @@ class GenericWebhookTriggerBlock(Block):
             input_schema=GenericWebhookTriggerBlock.Input,
             output_schema=GenericWebhookTriggerBlock.Output,
             webhook_config=BlockManualWebhookConfig(
-                provider="generic_webhook",
+                provider=ProviderName.GENERIC_WEBHOOK,
                 webhook_type=GenericWebhookType.PLAIN,
             ),
             test_input=[
