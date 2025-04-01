@@ -12,15 +12,15 @@ from backend.integrations.webhooks.generic import GenericWebhookType
 
 class GenericWebhookTriggerBlock(Block):
     class Input(BlockSchema):
-        payload: dict = SchemaField(hidden=True)
+        payload: dict = SchemaField(hidden=True, default={})
         constants: dict = SchemaField(
             description="The constants to be set when the block is put on the graph",
             default={},
         )
 
     class Output(BlockSchema):
-        output: dict = SchemaField(
-            description="The contents of the message AutoGPT received."
+        payload: dict = SchemaField(
+            description="The complete webhook payload that was received from the generic webhook."
         )
         constants: dict = SchemaField(
             description="The constants to be set when the block is put on the graph"
@@ -39,16 +39,13 @@ class GenericWebhookTriggerBlock(Block):
                 provider=ProviderName.GENERIC_WEBHOOK,
                 webhook_type=GenericWebhookType.PLAIN,
             ),
-            test_input=[
-                {"constants": {"key": "value"}},
-                {"payload": self.example_payload},
-            ],
+            test_input={"constants": {"key": "value"}, "payload": self.example_payload},
             test_output=[
-                ("output", self.example_payload),
                 ("constants", {"key": "value"}),
+                ("payload", self.example_payload),
             ],
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        yield "output", input_data.payload
         yield "constants", input_data.constants
+        yield "payload", input_data.payload
