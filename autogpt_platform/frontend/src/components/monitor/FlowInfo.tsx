@@ -49,27 +49,8 @@ export const FlowInfo: React.FC<
     refresh: () => void;
   }
 > = ({ flow, executions, flowVersion, refresh, ...props }) => {
-  const {
-    agentName,
-    setAgentName,
-    agentDescription,
-    setAgentDescription,
-    savedAgent,
-    availableNodes,
-    availableFlows,
-    getOutputType,
-    requestSave,
-    requestSaveAndRun,
-    requestStopRun,
-    scheduleRunner,
-    isRunning,
-    isScheduling,
-    setIsScheduling,
-    nodes,
-    setNodes,
-    edges,
-    setEdges,
-  } = useAgentGraph(flow.agent_id, flow.agent_version, undefined, false);
+  const { requestSaveAndRun, requestStopRun, isRunning, nodes, setNodes } =
+    useAgentGraph(flow.agent_id, flow.agent_version, undefined, false);
 
   const api = useBackendAPI();
   const { toast } = useToast();
@@ -85,7 +66,6 @@ export const FlowInfo: React.FC<
   );
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [openCron, setOpenCron] = useState(false);
   const [isRunnerInputOpen, setIsRunnerInputOpen] = useState(false);
   const isDisabled = !selectedFlowVersion;
 
@@ -110,9 +90,6 @@ export const FlowInfo: React.FC<
         value: (node.data.hardcodedValues as any).value,
         placeholder_values:
           (node.data.hardcodedValues as any).placeholder_values || [],
-        limit_to_placeholder_values:
-          (node.data.hardcodedValues as any).limit_to_placeholder_values ||
-          false,
       },
     }));
 
@@ -132,17 +109,6 @@ export const FlowInfo: React.FC<
     return { inputs, outputs };
   }, [nodes]);
 
-  const handleScheduleButton = () => {
-    if (!selectedFlowVersion) {
-      toast({
-        title: "Please select a flow version before scheduling",
-        duration: 2000,
-      });
-      return;
-    }
-    setOpenCron(true);
-  };
-
   useEffect(() => {
     api
       .getGraphAllVersions(flow.agent_id)
@@ -161,7 +127,7 @@ export const FlowInfo: React.FC<
   };
 
   const handleInputChange = useCallback(
-    (nodeId: string, field: string, value: string) => {
+    (nodeId: string, field: string, value: any) => {
       setNodes((nds) =>
         nds.map((node) => {
           if (node.id === nodeId) {
