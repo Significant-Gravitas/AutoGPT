@@ -1,7 +1,7 @@
 import logging
 import time
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Callable
+from typing import Callable
 
 import aio_pika
 from aio_pika.exceptions import QueueEmpty
@@ -32,9 +32,6 @@ from backend.data.user import generate_unsubscribe_link
 from backend.notifications.email import EmailSender
 from backend.util.service import AppService, expose, get_service_client
 from backend.util.settings import Settings
-
-if TYPE_CHECKING:
-    from backend.executor import Scheduler
 
 logger = logging.getLogger(__name__)
 settings = Settings()
