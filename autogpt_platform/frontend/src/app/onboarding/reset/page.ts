@@ -5,6 +5,7 @@ export default async function OnboardingResetPage() {
   const api = new BackendAPI();
   await api.updateUserOnboarding({
     completedSteps: [],
+    notified: [],
     usageReason: null,
     integrations: [],
     otherIntegrations: "",

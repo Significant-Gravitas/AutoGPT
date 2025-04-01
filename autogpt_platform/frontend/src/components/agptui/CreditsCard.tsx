@@ -31,7 +31,7 @@ export default function CreditsCard() {
         <button className="relative flex items-center gap-1 rounded-md bg-zinc-200 px-3 py-2 text-sm transition-colors duration-200 hover:bg-zinc-300">
           Wallet{" "}
           <span className="text-sm font-semibold">
-            ${formatCredits(credits)}
+            {formatCredits(credits)}
           </span>
           {hasNotification && (
             <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
@@ -46,7 +46,7 @@ export default function CreditsCard() {
             </span>
             <div className="flex items-center gap-1 font-inter text-sm font-semibold text-violet-700">
               Wallet
-              <span className="font-semibold">${formatCredits(credits)}</span>
+              <span className="font-semibold">{formatCredits(credits)}</span>
               <PopoverClose>
                 <X className="ml-[3.4rem] h-5 w-5 text-zinc-800 hover:text-foreground" />
               </PopoverClose>

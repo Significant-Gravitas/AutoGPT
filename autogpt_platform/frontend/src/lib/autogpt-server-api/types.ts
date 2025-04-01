@@ -779,6 +779,7 @@ export type OnboardingStep =
 
 export interface UserOnboarding {
   completedSteps: OnboardingStep[];
+  notificationDot: boolean;
   notified: OnboardingStep[];
   rewardedFor: OnboardingStep[];
   usageReason: string | null;
@@ -786,6 +787,7 @@ export interface UserOnboarding {
   otherIntegrations: string | null;
   selectedStoreListingVersionId: string | null;
   agentInput: { [key: string]: string } | null;
+  onboardingAgentExecutionId: GraphExecutionID | null;
 }
 
 /* *** UTILITIES *** */

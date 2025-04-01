@@ -30,12 +30,14 @@ user_credit = get_user_credit_model()
 
 class UserOnboardingUpdate(pydantic.BaseModel):
     completedSteps: Optional[list[OnboardingStep]] = None
+    notificationDot: Optional[bool] = None
     notified: Optional[list[OnboardingStep]] = None
     usageReason: Optional[str] = None
     integrations: Optional[list[str]] = None
     otherIntegrations: Optional[str] = None
     selectedStoreListingVersionId: Optional[str] = None
     agentInput: Optional[dict[str, Any]] = None
+    onboardingAgentExecutionId: Optional[str] = None
 
 
 async def get_user_onboarding(user_id: str):
@@ -52,8 +54,12 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     update: UserOnboardingUpdateInput = {}
     if data.completedSteps is not None:
         update["completedSteps"] = list(set(data.completedSteps))
+        # Reward user when they clicked New Run during onboarding
+        # This is because they need credits before scheduling a run (next step)
         if OnboardingStep.AGENT_NEW_RUN in data.completedSteps:
             await reward_user(user_id, OnboardingStep.AGENT_NEW_RUN)
+    if data.notificationDot is not None:
+        update["notificationDot"] = data.notificationDot
     if data.notified is not None:
         update["notified"] = list(set(data.notified))
     if data.usageReason is not None:
@@ -66,6 +72,8 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         update["selectedStoreListingVersionId"] = data.selectedStoreListingVersionId
     if data.agentInput is not None:
         update["agentInput"] = Json(data.agentInput)
+    if data.onboardingAgentExecutionId is not None:
+        update["onboardingAgentExecutionId"] = data.onboardingAgentExecutionId
 
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
