@@ -14,7 +14,9 @@ import {
 const OnboardingContext = createContext<
   | {
       state: UserOnboarding | null;
-      updateState: (state: Omit<Partial<UserOnboarding>, "rewardedFor">) => void;
+      updateState: (
+        state: Omit<Partial<UserOnboarding>, "rewardedFor">,
+      ) => void;
       step: number;
       setStep: (step: number) => void;
     }

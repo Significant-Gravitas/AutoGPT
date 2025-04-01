@@ -58,6 +58,8 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         # This is because they need credits before scheduling a run (next step)
         if OnboardingStep.AGENT_NEW_RUN in data.completedSteps:
             await reward_user(user_id, OnboardingStep.AGENT_NEW_RUN)
+        if OnboardingStep.GET_RESULTS in data.completedSteps:
+            await reward_user(user_id, OnboardingStep.GET_RESULTS)
     if data.notificationDot is not None:
         update["notificationDot"] = data.notificationDot
     if data.notified is not None:

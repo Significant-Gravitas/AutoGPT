@@ -82,6 +82,7 @@ model UserOnboarding {
   createdAt DateTime @default(now())
 
   completedSteps                OnboardingStep[] @default([])
+  notificationDot               Boolean          @default(true)
   notified                      OnboardingStep[] @default([])
   rewardedFor                   OnboardingStep[] @default([])
   usageReason                   String?
@@ -89,6 +90,7 @@ model UserOnboarding {
   otherIntegrations             String?
   selectedStoreListingVersionId String?
   agentInput                    Json?
+  onboardingAgentExecutionId    String?
 
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
