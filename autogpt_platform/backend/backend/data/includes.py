@@ -1,5 +1,7 @@
 import prisma
 
+from backend.blocks.io import IO_BLOCK_IDs
+
 AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
     "Input": True,
     "Output": True,
@@ -18,16 +20,36 @@ EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
     "AgentGraphExecution": True,
 }
 
-GRAPH_EXECUTION_INCLUDE: prisma.types.AgentGraphExecutionInclude = {
+MAX_NODE_EXECUTIONS_FETCH = 1000
+
+GRAPH_EXECUTION_INCLUDE_WITH_NODES: prisma.types.AgentGraphExecutionInclude = {
     "AgentNodeExecutions": {
         "include": {
             "Input": True,
             "Output": True,
             "AgentNode": True,
             "AgentGraphExecution": True,
-        }
+        },
+        "order_by": [
+            {"queuedTime": "desc"},
+            # Fallback: Incomplete execs has no queuedTime.
+            {"addedTime": "desc"},
+        ],
+        "take": MAX_NODE_EXECUTIONS_FETCH,  # Avoid loading excessive node executions.
     }
 }
+
+GRAPH_EXECUTION_INCLUDE: prisma.types.AgentGraphExecutionInclude = {
+    "AgentNodeExecutions": {
+        **GRAPH_EXECUTION_INCLUDE_WITH_NODES["AgentNodeExecutions"],  # type: ignore
+        "where": {
+            "AgentNode": {
+                "AgentBlock": {"id": {"in": IO_BLOCK_IDs}},  # type: ignore
+            },
+        },
+    }
+}
+
 
 INTEGRATION_WEBHOOK_INCLUDE: prisma.types.IntegrationWebhookInclude = {
     "AgentNodes": {"include": AGENT_NODE_INCLUDE}  # type: ignore

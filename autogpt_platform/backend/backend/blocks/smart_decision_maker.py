@@ -186,7 +186,7 @@ class SmartDecisionMakerBlock(Block):
         @classmethod
         def get_missing_links(cls, data: BlockInput, links: list["Link"]) -> set[str]:
             # conversation_history & last_tool_output validation is handled differently
-            return super().get_missing_links(
+            missing_links = super().get_missing_links(
                 data,
                 [
                     link
@@ -195,6 +195,19 @@ class SmartDecisionMakerBlock(Block):
                     not in ["conversation_history", "last_tool_output"]
                 ],
             )
+
+            # Avoid executing the block if the last_tool_output is connected to a static
+            # link, like StoreValueBlock or AgentInputBlock.
+            if any(link.sink_name == "conversation_history" for link in links) and any(
+                link.sink_name == "last_tool_output" and link.is_static
+                for link in links
+            ):
+                raise ValueError(
+                    "Last Tool Output can't be connected to a static (dashed line) "
+                    "link like the output of `StoreValue` or `AgentInput` block"
+                )
+
+            return missing_links
 
         @classmethod
         def get_missing_input(cls, data: BlockInput) -> set[str]:
@@ -441,7 +454,7 @@ class SmartDecisionMakerBlock(Block):
             )
 
         # Fallback on adding tool output in the conversation history as user prompt.
-        if len(tool_output) == 0:
+        if len(tool_output) == 0 and input_data.last_tool_output:
             logger.warning(
                 f"[SmartDecisionMakerBlock-node_exec_id={node_exec_id}] "
                 f"No pending tool calls found. This may indicate an issue with the "

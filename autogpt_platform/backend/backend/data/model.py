@@ -144,6 +144,7 @@ def SchemaField(
     depends_on: list[str] | None = None,
     image_upload: Optional[bool] = None,
     image_output: Optional[bool] = None,
+    json_schema_extra: dict[str, Any] | None = None,
     **kwargs,
 ) -> T:
     if default is PydanticUndefined and default_factory is None:
@@ -151,7 +152,7 @@ def SchemaField(
     elif advanced is None:
         advanced = True
 
-    json_extra = {
+    json_schema_extra = {
         k: v
         for k, v in {
             "placeholder": placeholder,
@@ -161,6 +162,7 @@ def SchemaField(
             "depends_on": depends_on,
             "image_upload": image_upload,
             "image_output": image_output,
+            **(json_schema_extra or {}),
         }.items()
         if v is not None
     }
@@ -172,7 +174,7 @@ def SchemaField(
         title=title,
         description=description,
         exclude=exclude,
-        json_schema_extra=json_extra,
+        json_schema_extra=json_schema_extra,
         **kwargs,
     )  # type: ignore
 
@@ -409,11 +411,11 @@ class NodeExecutionStats(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
+        extra = "allow"
 
     error: Optional[Exception | str] = None
     walltime: float = 0
     cputime: float = 0
-    cost: float = 0
     input_size: int = 0
     output_size: int = 0
     llm_call_count: int = 0
@@ -427,12 +429,19 @@ class GraphExecutionStats(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
+        extra = "allow"
 
     error: Optional[Exception | str] = None
-    walltime: float = 0
+    walltime: float = Field(
+        default=0, description="Time between start and end of run (seconds)"
+    )
     cputime: float = 0
-    nodes_walltime: float = 0
+    nodes_walltime: float = Field(
+        default=0, description="Total node execution time (seconds)"
+    )
     nodes_cputime: float = 0
-    node_count: int = 0
-    node_error_count: int = 0
-    cost: float = 0
+    node_count: int = Field(default=0, description="Total number of node executions")
+    node_error_count: int = Field(
+        default=0, description="Total number of errors generated"
+    )
+    cost: int = Field(default=0, description="Total execution cost (cents)")

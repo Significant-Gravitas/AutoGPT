@@ -1,3 +1,15 @@
+export enum SubmissionStatus {
+  DRAFT = "DRAFT",
+  PENDING = "PENDING",
+  APPROVED = "APPROVED",
+  REJECTED = "REJECTED",
+}
+export type ReviewSubmissionRequest = {
+  store_listing_version_id: string;
+  is_approved: boolean;
+  comments: string; // External comments visible to creator
+  internal_comments?: string; // Admin-only comments
+};
 export type Category = {
   category: string;
   description: string;
@@ -216,11 +228,11 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
   id?: string;
 };
 
-/* Mirror of backend/data/graph.py:GraphExecutionMeta */
+/* Mirror of backend/data/execution.py:GraphExecutionMeta */
 export type GraphExecutionMeta = {
-  execution_id: GraphExecutionID;
-  started_at: number;
-  ended_at: number;
+  id: GraphExecutionID;
+  started_at: Date;
+  ended_at: Date;
   cost?: number;
   duration: number;
   total_run_time: number;
@@ -232,11 +244,11 @@ export type GraphExecutionMeta = {
 
 export type GraphExecutionID = Brand<string, "GraphExecutionID">;
 
-/* Mirror of backend/data/graph.py:GraphExecution */
+/* Mirror of backend/data/execution.py:GraphExecution */
 export type GraphExecution = GraphExecutionMeta & {
   inputs: Record<string, any>;
   outputs: Record<string, Array<any>>;
-  node_executions: NodeExecutionResult[];
+  node_executions?: NodeExecutionResult[];
 };
 
 export type GraphMeta = {
@@ -285,7 +297,7 @@ export type GraphUpdateable = Omit<
 
 export type GraphCreatable = Omit<GraphUpdateable, "id"> & { id?: string };
 
-/* Mirror of backend/data/execution.py:ExecutionResult */
+/* Mirror of backend/data/execution.py:NodeExecutionResult */
 export type NodeExecutionResult = {
   graph_id: GraphID;
   graph_version: number;
@@ -500,11 +512,11 @@ export enum BlockUIType {
   WEBHOOK = "Webhook",
   WEBHOOK_MANUAL = "Webhook (manual)",
   AGENT = "Agent",
+  AI = "AI",
 }
 
 export enum SpecialBlockID {
   AGENT = "e189baac-8c20-45a1-94a7-55177ea42565",
-  INPUT = "c0a8e994-ebf1-4a9c-a4d8-89d09c86741b",
   OUTPUT = "363ae599-353e-4804-937e-b2ee3cef3da4",
 }
 
@@ -559,6 +571,11 @@ export type StoreAgentDetails = {
   runs: number;
   rating: number;
   versions: string[];
+
+  // Approval and status fields
+  active_version_id?: string;
+  has_approved_version?: boolean;
+  is_available?: boolean;
 };
 
 export type Creator = {
@@ -595,9 +612,19 @@ export type StoreSubmission = {
   description: string;
   image_urls: string[];
   date_submitted: string;
-  status: string;
+  status: SubmissionStatus;
   runs: number;
   rating: number;
+  slug: string;
+  store_listing_version_id?: string;
+  version?: number; // Actual version number from the database
+
+  // Review information
+  reviewer_id?: string;
+  review_comments?: string;
+  internal_comments?: string; // Admin-only comments
+  reviewed_at?: string;
+  changes_summary?: string;
 };
 
 export type StoreSubmissionsResponse = {
@@ -615,6 +642,7 @@ export type StoreSubmissionRequest = {
   image_urls: string[];
   description: string;
   categories: string[];
+  changes_summary?: string;
 };
 
 export type ProfileDetails = {
@@ -649,6 +677,7 @@ export type MyAgent = {
   agent_id: GraphID;
   agent_version: number;
   agent_name: string;
+  agent_image: string | null;
   last_edited: string;
   description: string;
 };
@@ -732,15 +761,22 @@ export interface RefundRequest {
   updated_at: Date;
 }
 
+export type OnboardingStep =
+  | "WELCOME"
+  | "USAGE_REASON"
+  | "INTEGRATIONS"
+  | "AGENT_CHOICE"
+  | "AGENT_NEW_RUN"
+  | "AGENT_INPUT"
+  | "CONGRATS";
+
 export interface UserOnboarding {
-  step: number;
-  usageReason?: string;
+  completedSteps: OnboardingStep[];
+  usageReason: string | null;
   integrations: string[];
-  otherIntegrations?: string;
-  selectedAgentCreator?: string;
-  selectedAgentSlug?: string;
-  agentInput?: { [key: string]: string };
-  isCompleted: boolean;
+  otherIntegrations: string | null;
+  selectedStoreListingVersionId: string | null;
+  agentInput: { [key: string]: string } | null;
 }
 
 /* *** UTILITIES *** */
@@ -759,6 +795,7 @@ export interface OttoResponse {
   answer: string;
   documents: OttoDocument[];
   success: boolean;
+  error: boolean;
 }
 
 export interface OttoQuery {
@@ -768,3 +805,43 @@ export interface OttoQuery {
   include_graph_data: boolean;
   graph_id?: string;
 }
+
+export interface StoreListingWithVersions {
+  listing_id: string;
+  slug: string;
+  agent_id: string;
+  agent_version: number;
+  active_version_id: string | null;
+  has_approved_version: boolean;
+  creator_email: string | null;
+  latest_version: StoreSubmission | null;
+  versions: StoreSubmission[];
+}
+
+export interface StoreListingsWithVersionsResponse {
+  listings: StoreListingWithVersions[];
+  pagination: Pagination;
+}
+
+// Admin API Types
+export type AdminSubmissionsRequest = {
+  status?: SubmissionStatus;
+  search?: string;
+  page: number;
+  page_size: number;
+};
+
+export type AdminListingHistoryRequest = {
+  listing_id: string;
+  page: number;
+  page_size: number;
+};
+
+export type AdminSubmissionDetailsRequest = {
+  store_listing_version_id: string;
+};
+
+export type AdminPendingSubmissionsRequest = {
+  page: number;
+  page_size: number;
+};
