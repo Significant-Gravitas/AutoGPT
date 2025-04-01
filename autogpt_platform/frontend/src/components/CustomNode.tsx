@@ -38,7 +38,7 @@ import NodeHandle from "./NodeHandle";
 import {
   NodeGenericInputField,
   NodeTextBoxInput,
-} from "./node-input-component";
+} from "./node-input-components";
 import { getPrimaryCategoryColor } from "@/lib/utils";
 import { FlowContext } from "./Flow";
 import { Badge } from "./ui/badge";
