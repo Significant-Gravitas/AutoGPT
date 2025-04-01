@@ -245,20 +245,26 @@ class NotificationManager(AppService):
                             continue
 
                         unsub_link = generate_unsubscribe_link(batch.user_id)
-
-                        events = [
-                            NotificationEventModel[
-                                get_notif_data_type(db_event.type)
-                            ].model_validate(
-                                {
-                                    "user_id": batch.user_id,
-                                    "type": db_event.type,
-                                    "data": db_event.data,
-                                    "created_at": db_event.created_at,
-                                }
-                            )
-                            for db_event in batch_data.notifications
-                        ]
+                        events = []
+                        for db_event in batch_data.notifications:
+                            try:
+                                events.append(
+                                    NotificationEventModel[
+                                        get_notif_data_type(db_event.type)
+                                    ].model_validate(
+                                        {
+                                            "user_id": batch.user_id,
+                                            "type": db_event.type,
+                                            "data": db_event.data,
+                                            "created_at": db_event.created_at,
+                                        }
+                                    )
+                                )
+                            except Exception as e:
+                                logger.exception(
+                                    f"Error parsing notification event: {e=}, {db_event=}"
+                                )
+                                continue
                         logger.info(f"{events=}")
 
                         self.email_sender.send_templated(
