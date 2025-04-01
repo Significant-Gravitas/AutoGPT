@@ -865,24 +865,19 @@ export type AdminPendingSubmissionsRequest = {
   page_size: number;
 };
 
+const _stringFormatToDataTypeMap: Partial<Record<string, DataType>> = {
+  date: DataType.DATE,
+  time: DataType.TIME,
+  file: DataType.FILE,
+  "date-time": DataType.DATE_TIME,
+  "short-text": DataType.SHORT_TEXT,
+  "long-text": DataType.LONG_TEXT,
+};
+
 function _handleStringSchema(strSchema: BlockIOStringSubSchema): DataType {
-  if ("format" in strSchema && strSchema.format) {
-    switch (strSchema.format) {
-      case "date":
-        return DataType.DATE;
-      case "time":
-        return DataType.TIME;
-      case "date-time":
-        return DataType.DATE_TIME;
-      case "file":
-        return DataType.FILE;
-      case "short-text":
-        return DataType.SHORT_TEXT;
-      case "long-text":
-        return DataType.LONG_TEXT;
-      default:
-        break;
-    }
+  if (strSchema.format) {
+    const type = _stringFormatToDataTypeMap[strSchema.format];
+    if (type) return type;
   }
   if (strSchema.enum) return DataType.SELECT;
   if (strSchema.maxLength && strSchema.maxLength > 200)

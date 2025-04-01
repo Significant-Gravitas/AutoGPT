@@ -6,7 +6,7 @@ import { GraphExecutionID, GraphMeta } from "@/lib/autogpt-server-api";
 
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TypeBasedInput } from "@/components/TypeBasedInput";
+import { TypeBasedInput } from "@/components/type-based-input";
 import { useToastOnFail } from "@/components/ui/use-toast";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { IconPlay } from "@/components/ui/icons";

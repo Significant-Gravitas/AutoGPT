@@ -37,7 +37,7 @@ export interface TypeBasedInputProps {
   onChange: (value: any) => void;
 }
 
-const inputClasses = "min-h-11 rounded-[55px] border px-4 py-2.5";
+const inputClasses = "min-h-11 rounded-full border px-4 py-2.5";
 
 function Input({
   className,
@@ -53,27 +53,13 @@ function Input({
  */
 export const TypeBasedInput: FC<
   TypeBasedInputProps & React.HTMLAttributes<HTMLElement>
-> = ({ schema, value, placeholder, onChange, ...props }) => (
-  <div className="no-drag relative flex">
-    <_TypeBasedInput
-      schema={schema}
-      value={value}
-      onChange={onChange}
-      placeholder={placeholder}
-      {...props}
-    />
-  </div>
-);
-
-const _TypeBasedInput: FC<
-  TypeBasedInputProps & React.HTMLAttributes<HTMLElement>
 > = ({ schema, value, placeholder, onChange, ...props }) => {
-  // Determine which UI to show based on the schema
   const dataType = determineDataType(schema);
 
+  let innerInputElement: React.ReactNode = null;
   switch (dataType) {
     case DataType.NUMBER:
-      return (
+      innerInputElement = (
         <Input
           type="number"
           value={value ?? ""}
@@ -84,7 +70,7 @@ const _TypeBasedInput: FC<
       );
 
     case DataType.LONG_TEXT:
-      return (
+      innerInputElement = (
         <Textarea
           className="rounded-[12px] px-3 py-2"
           value={value ?? ""}
@@ -95,7 +81,7 @@ const _TypeBasedInput: FC<
       );
 
     case DataType.BOOLEAN: {
-      return (
+      innerInputElement = (
         <>
           <span className="text-sm text-gray-500">{placeholder}</span>
           <Switch
@@ -109,7 +95,7 @@ const _TypeBasedInput: FC<
     }
 
     case DataType.DATE:
-      return (
+      innerInputElement = (
         <DatePicker
           value={value}
           placeholder={placeholder}
@@ -119,10 +105,12 @@ const _TypeBasedInput: FC<
       );
 
     case DataType.TIME:
-      return <TimePicker value={value?.toString()} onChange={onChange} />;
+      innerInputElement = (
+        <TimePicker value={value?.toString()} onChange={onChange} />
+      );
 
     case DataType.DATE_TIME:
-      return (
+      innerInputElement = (
         <Input
           type="datetime-local"
           value={value ?? ""}
@@ -132,7 +120,7 @@ const _TypeBasedInput: FC<
       );
 
     case DataType.FILE:
-      return (
+      innerInputElement = (
         <FileInput
           value={value}
           placeholder={placeholder}
@@ -147,7 +135,7 @@ const _TypeBasedInput: FC<
         Array.isArray(schema.enum) &&
         schema.enum.length > 0
       ) {
-        return (
+        innerInputElement = (
           <Select value={value ?? ""} onValueChange={(val) => onChange(val)}>
             <SelectTrigger
               className={cn(inputClasses, "text-sm text-gray-500")}
@@ -167,7 +155,7 @@ const _TypeBasedInput: FC<
         );
       }
 
-      return (
+      innerInputElement = (
         <Input
           type="text"
           value={value ?? ""}
@@ -178,7 +166,7 @@ const _TypeBasedInput: FC<
 
     case DataType.SHORT_TEXT:
     default:
-      return (
+      innerInputElement = (
         <Input
           type="text"
           value={value ?? ""}
@@ -187,6 +175,8 @@ const _TypeBasedInput: FC<
         />
       );
   }
+
+  return <div className="no-drag relative flex">{innerInputElement}</div>;
 };
 
 interface DatePickerProps {

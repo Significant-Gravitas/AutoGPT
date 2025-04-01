@@ -4,7 +4,7 @@ import {
   BlockIOStringSubSchema,
   BlockIOSubSchema,
 } from "@/lib/autogpt-server-api";
-import { TypeBasedInput } from "@/components/TypeBasedInput";
+import { TypeBasedInput } from "@/components/type-based-input";
 import SchemaTooltip from "../SchemaTooltip";
 
 interface InputBlockProps {

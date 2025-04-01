@@ -35,7 +35,10 @@ import { Switch } from "@/components/ui/switch";
 import { TextRenderer } from "@/components/ui/render";
 import { history } from "./history";
 import NodeHandle from "./NodeHandle";
-import { NodeGenericInputField, NodeTextBoxInput } from "./NodeInputComponent";
+import {
+  NodeGenericInputField,
+  NodeTextBoxInput,
+} from "./node-input-component";
 import { getPrimaryCategoryColor } from "@/lib/utils";
 import { FlowContext } from "./Flow";
 import { Badge } from "./ui/badge";
