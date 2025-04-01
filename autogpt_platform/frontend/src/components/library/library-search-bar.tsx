@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { Search, X } from "lucide-react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useLibraryPageContext } from "@/app/library/state-provider";
-import { motion, AnimatePresence } from "framer-motion";
 
 export default function LibrarySearchBar(): React.ReactNode {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -40,62 +39,36 @@ export default function LibrarySearchBar(): React.ReactNode {
       onClick={() => inputRef.current?.focus()}
       className="relative z-[21] mx-auto flex h-[50px] w-full max-w-[500px] flex-1 cursor-pointer items-center rounded-[45px] bg-[#EDEDED] px-[24px] py-[10px]"
     >
-      <div className="w-[30px] overflow-hidden">
-        <AnimatePresence mode="wait">
-          {!isFocused ? (
-            <motion.div
-              key="search"
-              initial={{ x: -50 }}
-              animate={{ x: 0 }}
-              exit={{ x: -50 }}
-              transition={{
-                duration: 0.2,
-                ease: "easeInOut",
-              }}
-            >
-              <Search
-                className="h-[29px] w-[29px] text-neutral-900"
-                strokeWidth={1.25}
-              />
-            </motion.div>
-          ) : (
-            <motion.div
-              key="close"
-              initial={{ x: 50 }}
-              animate={{ x: 0 }}
-              exit={{ x: 50 }}
-              transition={{
-                duration: 0.2,
-                ease: "easeInOut",
-              }}
-            >
-              <X
-                className="h-[29px] w-[29px] cursor-pointer text-neutral-900"
-                strokeWidth={1.25}
-                onClick={(e) => {
-                  if (inputRef.current) {
-                    debouncedSearch("");
-                    inputRef.current.value = "";
-                    inputRef.current.blur();
-                    e.preventDefault();
-                  }
-                  setIsFocused(false);
-                }}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      <Search
+        className="mr-2 h-[29px] w-[29px] text-neutral-900"
+        strokeWidth={1.25}
+      />
 
       <Input
         ref={inputRef}
         onFocus={() => setIsFocused(true)}
         onBlur={() => !inputRef.current?.value && setIsFocused(false)}
         onChange={handleSearchInput}
-        className="border-none font-sans text-[16px] font-normal leading-7 shadow-none focus:shadow-none"
+        className="flex-1 border-none font-sans text-[16px] font-normal leading-7 shadow-none focus:shadow-none"
         type="text"
         placeholder="Search agents"
       />
+
+      {isFocused && inputRef.current?.value && (
+        <X
+          className="ml-2 h-[29px] w-[29px] cursor-pointer text-neutral-900"
+          strokeWidth={1.25}
+          onClick={(e: React.MouseEvent) => {
+            if (inputRef.current) {
+              debouncedSearch("");
+              inputRef.current.value = "";
+              inputRef.current.blur();
+              e.preventDefault();
+            }
+            setIsFocused(false);
+          }}
+        />
+      )}
     </div>
   );
 }
