@@ -38,6 +38,59 @@ def _get_headers(credentials: GithubCredentials) -> dict[str, str]:
     }
 
 
+def convert_comment_url_to_api_endpoint(comment_url: str) -> str:
+    """
+    Converts a GitHub comment URL (web interface) to the appropriate API endpoint URL.
+
+    Handles:
+    1. Issue/PR comments: #issuecomment-{id}
+    2. PR review comments: #discussion_r{id}
+
+    Returns the appropriate API endpoint path for the comment.
+    """
+    # First, check if this is already an API URL
+    parsed_url = urlparse(comment_url)
+    if parsed_url.hostname == "api.github.com":
+        return comment_url
+
+    # Replace pull with issues for comment endpoints
+    if "/pull/" in comment_url:
+        comment_url = comment_url.replace("/pull/", "/issues/")
+
+    # Handle issue/PR comments (#issuecomment-xxx)
+    if "#issuecomment-" in comment_url:
+        base_url, comment_part = comment_url.split("#issuecomment-")
+        comment_id = comment_part
+
+        # Extract repo information from base URL
+        parsed_url = urlparse(base_url)
+        path_parts = parsed_url.path.strip("/").split("/")
+        owner, repo = path_parts[0], path_parts[1]
+
+        # Construct API URL for issue comments
+        return (
+            f"https://api.github.com/repos/{owner}/{repo}/issues/comments/{comment_id}"
+        )
+
+    # Handle PR review comments (#discussion_r)
+    elif "#discussion_r" in comment_url:
+        base_url, comment_part = comment_url.split("#discussion_r")
+        comment_id = comment_part
+
+        # Extract repo information from base URL
+        parsed_url = urlparse(base_url)
+        path_parts = parsed_url.path.strip("/").split("/")
+        owner, repo = path_parts[0], path_parts[1]
+
+        # Construct API URL for PR review comments
+        return (
+            f"https://api.github.com/repos/{owner}/{repo}/pulls/comments/{comment_id}"
+        )
+
+    # If no specific comment identifiers are found, use the general URL conversion
+    return _convert_to_api_url(comment_url)
+
+
 def get_api(
     credentials: GithubCredentials | GithubFineGrainedAPICredentials,
     convert_urls: bool = True,

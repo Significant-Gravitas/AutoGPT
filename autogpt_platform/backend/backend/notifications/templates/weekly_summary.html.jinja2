@@ -1,0 +1,27 @@
+{# Weekly Summary #}
+{# Template variables:
+data: the stuff below
+data.start_date: the start date of the summary
+data.end_date: the end date of the summary
+data.total_credits_used: the total credits used during the summary
+data.total_executions: the total number of executions during the summary
+data.most_used_agent: the most used agent's nameduring the summary
+data.total_execution_time: the total execution time during the summary
+data.successful_runs: the total number of successful runs during the summary
+data.failed_runs: the total number of failed runs during the summary
+data.average_execution_time: the average execution time during the summary
+data.cost_breakdown: the cost breakdown during the summary
+#}
+
+<h1>Weekly Summary</h1>
+
+<p>Start Date: {{ data.start_date }}</p>
+<p>End Date: {{ data.end_date }}</p>
+<p>Total Credits Used: {{ data.total_credits_used }}</p>
+<p>Total Executions: {{ data.total_executions }}</p>
+<p>Most Used Agent: {{ data.most_used_agent }}</p>
+<p>Total Execution Time: {{ data.total_execution_time }}</p>
+<p>Successful Runs: {{ data.successful_runs }}</p>
+<p>Failed Runs: {{ data.failed_runs }}</p>
+<p>Average Execution Time: {{ data.average_execution_time }}</p>
+<p>Cost Breakdown: {{ data.cost_breakdown }}</p>

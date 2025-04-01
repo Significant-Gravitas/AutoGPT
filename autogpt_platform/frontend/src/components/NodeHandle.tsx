@@ -1,6 +1,7 @@
 import { BlockIOSubSchema } from "@/lib/autogpt-server-api/types";
+import { cn } from "@/lib/utils";
 import { beautifyString, getTypeBgColor, getTypeTextColor } from "@/lib/utils";
-import { FC } from "react";
+import { FC, memo, useCallback } from "react";
 import { Handle, Position } from "@xyflow/react";
 import SchemaTooltip from "./SchemaTooltip";
 
@@ -11,7 +12,34 @@ type HandleProps = {
   isRequired?: boolean;
   side: "left" | "right";
   title?: string;
+  className?: string;
 };
+
+// Move the constant out of the component to avoid re-creation on every render.
+const TYPE_NAME: Record<string, string> = {
+  string: "text",
+  number: "number",
+  integer: "integer",
+  boolean: "true/false",
+  object: "object",
+  array: "list",
+  null: "null",
+};
+
+// Extract and memoize the Dot component so that it doesn't re-render unnecessarily.
+const Dot: FC<{ isConnected: boolean; type?: string }> = memo(
+  ({ isConnected, type }) => {
+    const color = isConnected
+      ? getTypeBgColor(type || "any")
+      : "border-gray-300 dark:border-gray-600";
+    return (
+      <div
+        className={`${color} m-1 h-4 w-4 rounded-full border-2 bg-white transition-colors duration-100 group-hover:bg-gray-300 dark:bg-slate-800 dark:group-hover:bg-gray-700`}
+      />
+    );
+  },
+);
+Dot.displayName = "Dot";
 
 const NodeHandle: FC<HandleProps> = ({
   keyName,
@@ -20,45 +48,45 @@ const NodeHandle: FC<HandleProps> = ({
   isRequired,
   side,
   title,
+  className,
 }) => {
-  const typeName: Record<string, string> = {
-    string: "text",
-    number: "number",
-    integer: "integer",
-    boolean: "true/false",
-    object: "object",
-    array: "list",
-    null: "null",
-  };
-
-  const typeClass = `text-sm ${getTypeTextColor(schema.type || "any")} ${side === "left" ? "text-left" : "text-right"}`;
+  const typeClass = `text-sm ${getTypeTextColor(schema.type || "any")} ${
+    side === "left" ? "text-left" : "text-right"
+  }`;
 
   const label = (
     <div className="flex flex-grow flex-row">
-      <span className="text-m green flex items-end pr-2 text-gray-900 dark:text-gray-100">
+      <span
+        className={cn(
+          "text-m green flex items-end pr-2 text-gray-900 dark:text-gray-100",
+          className,
+        )}
+      >
         {title || schema.title || beautifyString(keyName.toLowerCase())}
         {isRequired ? "*" : ""}
       </span>
       <span className={`${typeClass} flex items-end`}>
-        ({typeName[schema.type as keyof typeof typeName] || "any"})
+        ({TYPE_NAME[schema.type as keyof typeof TYPE_NAME] || "any"})
       </span>
     </div>
   );
 
-  const Dot = () => {
-    const color = isConnected
-      ? getTypeBgColor(schema.type || "any")
-      : "border-gray-300 dark:border-gray-600";
-    return (
-      <div
-        className={`${color} m-1 h-4 w-4 rounded-full border-2 bg-white transition-colors duration-100 group-hover:bg-gray-300 dark:bg-slate-800 dark:group-hover:bg-gray-700`}
-      />
-    );
-  };
+  // Use a native HTML onContextMenu handler instead of wrapping a large node with a Radix ContextMenu trigger.
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      // Optionally, you can trigger a custom, lightweight context menu here.
+    },
+    [],
+  );
 
   if (side === "left") {
     return (
-      <div key={keyName} className="handle-container">
+      <div
+        key={keyName}
+        className="handle-container"
+        onContextMenu={handleContextMenu}
+      >
         <Handle
           type="target"
           data-testid={`input-handle-${keyName}`}
@@ -67,7 +95,7 @@ const NodeHandle: FC<HandleProps> = ({
           className="group -ml-[38px]"
         >
           <div className="pointer-events-none flex items-center">
-            <Dot />
+            <Dot isConnected={isConnected} type={schema.type} />
             {label}
           </div>
         </Handle>
@@ -76,7 +104,11 @@ const NodeHandle: FC<HandleProps> = ({
     );
   } else {
     return (
-      <div key={keyName} className="handle-container justify-end">
+      <div
+        key={keyName}
+        className="handle-container justify-end"
+        onContextMenu={handleContextMenu}
+      >
         <Handle
           type="source"
           data-testid={`output-handle-${keyName}`}
@@ -86,7 +118,7 @@ const NodeHandle: FC<HandleProps> = ({
         >
           <div className="pointer-events-none flex items-center">
             {label}
-            <Dot />
+            <Dot isConnected={isConnected} type={schema.type} />
           </div>
         </Handle>
       </div>
@@ -94,4 +126,4 @@ const NodeHandle: FC<HandleProps> = ({
   }
 };
 
-export default NodeHandle;
+export default memo(NodeHandle);

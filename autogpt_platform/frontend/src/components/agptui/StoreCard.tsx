@@ -46,20 +46,24 @@ export const StoreCard: React.FC<StoreCardProps> = ({
     >
       {/* Header Image Section with Avatar */}
       <div className="relative h-[200px] w-full overflow-hidden rounded-[20px]">
-        <Image
-          src={agentImage}
-          alt={`${agentName} preview image`}
-          fill
-          className="object-cover"
-          priority
-        />
+        {agentImage && (
+          <Image
+            src={agentImage}
+            alt={`${agentName} preview image`}
+            fill
+            className="object-cover"
+            priority
+          />
+        )}
         {!hideAvatar && (
           <div className="absolute bottom-4 left-4">
             <Avatar className="h-16 w-16 border-2 border-white dark:border-gray-800">
-              <AvatarImage
-                src={avatarSrc}
-                alt={`${creatorName || agentName} creator avatar`}
-              />
+              {avatarSrc && (
+                <AvatarImage
+                  src={avatarSrc}
+                  alt={`${creatorName || agentName} creator avatar`}
+                />
+              )}
               <AvatarFallback>
                 {(creatorName || agentName).charAt(0)}
               </AvatarFallback>
@@ -71,7 +75,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
       {/* Content Section */}
       <div className="w-full px-2 py-4">
         {/* Title and Creator */}
-        <h3 className="font-poppins mb-0.5 text-2xl font-semibold leading-tight text-[#272727] dark:text-neutral-100">
+        <h3 className="mb-0.5 font-poppins text-2xl font-semibold leading-tight text-[#272727] dark:text-neutral-100">
           {agentName}
         </h3>
         {!hideAvatar && creatorName && (

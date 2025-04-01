@@ -18,6 +18,7 @@ const CREDENTIALS_PROVIDER_NAMES = Object.values(
 // --8<-- [start:CredentialsProviderNames]
 const providerDisplayNames: Record<CredentialsProviderName, string> = {
   anthropic: "Anthropic",
+  apollo: "Apollo",
   discord: "Discord",
   d_id: "D-ID",
   e2b: "E2B",
@@ -40,7 +41,9 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   openweathermap: "OpenWeatherMap",
   open_router: "Open Router",
   pinecone: "Pinecone",
+  screenshotone: "ScreenshotOne",
   slant3d: "Slant3D",
+  smartlead: "SmartLead",
   smtp: "SMTP",
   reddit: "Reddit",
   replicate: "Replicate",
@@ -48,6 +51,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   twitter: "Twitter",
   todoist: "Todoist",
   unreal_speech: "Unreal Speech",
+  zerobounce: "ZeroBounce",
 } as const;
 // --8<-- [end:CredentialsProviderNames]
 

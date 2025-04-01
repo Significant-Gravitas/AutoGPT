@@ -5,10 +5,15 @@ from typing import Sequence, cast
 
 from backend.data import db
 from backend.data.block import Block, BlockSchema, initialize_blocks
-from backend.data.execution import ExecutionResult, ExecutionStatus
+from backend.data.execution import (
+    ExecutionStatus,
+    NodeExecutionResult,
+    get_graph_execution,
+)
 from backend.data.model import _BaseCredentials
 from backend.data.user import create_default_user
-from backend.executor import DatabaseManager, ExecutionManager, ExecutionScheduler
+from backend.executor import DatabaseManager, ExecutionManager, Scheduler
+from backend.notifications.notifications import NotificationManager
 from backend.server.rest_api import AgentServer
 from backend.server.utils import get_user_id
 
@@ -20,7 +25,8 @@ class SpinTestServer:
         self.db_api = DatabaseManager()
         self.exec_manager = ExecutionManager()
         self.agent_server = AgentServer()
-        self.scheduler = ExecutionScheduler()
+        self.scheduler = Scheduler()
+        self.notif_manager = NotificationManager()
 
     @staticmethod
     def test_get_user_id():
@@ -32,6 +38,7 @@ class SpinTestServer:
         self.agent_server.__enter__()
         self.exec_manager.__enter__()
         self.scheduler.__enter__()
+        self.notif_manager.__enter__()
 
         await db.connect()
         await initialize_blocks()
@@ -46,6 +53,7 @@ class SpinTestServer:
         self.exec_manager.__exit__(exc_type, exc_val, exc_tb)
         self.agent_server.__exit__(exc_type, exc_val, exc_tb)
         self.db_api.__exit__(exc_type, exc_val, exc_tb)
+        self.notif_manager.__exit__(exc_type, exc_val, exc_tb)
 
     def setup_dependency_overrides(self):
         # Override get_user_id for testing
@@ -56,10 +64,9 @@ class SpinTestServer:
 
 async def wait_execution(
     user_id: str,
-    graph_id: str,
     graph_exec_id: str,
     timeout: int = 30,
-) -> Sequence[ExecutionResult]:
+) -> Sequence[NodeExecutionResult]:
     async def is_execution_completed():
         status = await AgentServer().test_get_graph_run_status(graph_exec_id, user_id)
         log.info(f"Execution status: {status}")
@@ -74,9 +81,13 @@ async def wait_execution(
     # Wait for the executions to complete
     for i in range(timeout):
         if await is_execution_completed():
-            return await AgentServer().test_get_graph_run_node_execution_results(
-                graph_id, graph_exec_id, user_id
+            graph_exec = await get_graph_execution(
+                user_id=user_id,
+                execution_id=graph_exec_id,
+                include_node_executions=True,
             )
+            assert graph_exec, f"Graph execution #{graph_exec_id} not found"
+            return graph_exec.node_executions
         time.sleep(1)
 
     assert False, "Execution did not complete in time."
@@ -106,11 +117,11 @@ def execute_block_test(block: Block):
 
     # Populate credentials argument(s)
     extra_exec_kwargs: dict = {
-        "graph_id": uuid.uuid4(),
-        "node_id": uuid.uuid4(),
-        "graph_exec_id": uuid.uuid4(),
-        "node_exec_id": uuid.uuid4(),
-        "user_id": uuid.uuid4(),
+        "graph_id": str(uuid.uuid4()),
+        "node_id": str(uuid.uuid4()),
+        "graph_exec_id": str(uuid.uuid4()),
+        "node_exec_id": str(uuid.uuid4()),
+        "user_id": str(uuid.uuid4()),
     }
     input_model = cast(type[BlockSchema], block.input_schema)
     credentials_input_fields = input_model.get_credentials_fields()

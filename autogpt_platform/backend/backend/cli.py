@@ -220,8 +220,8 @@ def event():
 
 @test.command()
 @click.argument("server_address")
-@click.argument("graph_id")
-def websocket(server_address: str, graph_id: str):
+@click.argument("graph_exec_id")
+def websocket(server_address: str, graph_exec_id: str):
     """
     Tests the websocket connection.
     """
@@ -229,15 +229,21 @@ def websocket(server_address: str, graph_id: str):
 
     import websockets.asyncio.client
 
-    from backend.server.ws_api import ExecutionSubscription, Methods, WsMessage
+    from backend.server.ws_api import (
+        WSMessage,
+        WSMethod,
+        WSSubscribeGraphExecutionRequest,
+    )
 
     async def send_message(server_address: str):
         uri = f"ws://{server_address}"
         async with websockets.asyncio.client.connect(uri) as websocket:
             try:
-                msg = WsMessage(
-                    method=Methods.SUBSCRIBE,
-                    data=ExecutionSubscription(graph_id=graph_id).model_dump(),
+                msg = WSMessage(
+                    method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
+                    data=WSSubscribeGraphExecutionRequest(
+                        graph_exec_id=graph_exec_id,
+                    ).model_dump(),
                 ).model_dump_json()
                 await websocket.send(msg)
                 print(f"Sending: {msg}")
