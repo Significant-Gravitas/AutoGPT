@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING
 
+
 if TYPE_CHECKING:
     from ..providers import ProviderName
     from ._base import BaseWebhooksManager
@@ -15,6 +16,7 @@ def load_webhook_managers() -> dict["ProviderName", type["BaseWebhooksManager"]]
     from .compass import CompassWebhookManager
     from .github import GithubWebhooksManager
     from .slant3d import Slant3DWebhooksManager
+    from .generic import GenericWebhooksManager
 
     _WEBHOOK_MANAGERS.update(
         {
@@ -24,7 +26,6 @@ def load_webhook_managers() -> dict["ProviderName", type["BaseWebhooksManager"]]
                 GithubWebhooksManager,
                 Slant3DWebhooksManager,
                 GenericWebhooksManager,
-
             ]
         }
     )
@@ -43,4 +44,3 @@ def supports_webhooks(provider_name: "ProviderName") -> bool:
 
 
 __all__ = ["get_webhook_manager", "supports_webhooks"]
-
