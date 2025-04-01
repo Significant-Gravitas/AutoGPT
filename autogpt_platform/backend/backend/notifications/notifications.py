@@ -668,6 +668,8 @@ class NotificationManager(AppService):
 
         except QueueEmpty:
             logger.debug(f"Queue {error_queue_name} empty")
+        except TimeoutError:
+            logger.debug(f"Queue {error_queue_name} timed out")
         except Exception as e:
             if message:
                 logger.error(
@@ -676,7 +678,7 @@ class NotificationManager(AppService):
                 self.run_and_wait(message.reject(requeue=False))
             else:
                 logger.error(
-                    f"Error in notification service loop, message unable to be rejected, and will have to be manually removed to free space in the queue: {e}"
+                    f"Error in notification service loop, message unable to be rejected, and will have to be manually removed to free space in the queue: {e=}"
                 )
 
     def run_service(self):
