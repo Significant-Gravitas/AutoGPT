@@ -8,7 +8,6 @@ import {
   CarouselItem,
 } from "@/components/ui/carousel";
 import { useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
 
 export interface Agent {
   slug: string;
