@@ -73,6 +73,9 @@ class AppProcess(ABC):
             self.run()
         except (KeyboardInterrupt, SystemExit) as e:
             logger.warning(f"[{self.service_name}] Terminated: {e}; quitting...")
+        finally:
+            self.cleanup()
+            logger.info(f"[{self.service_name}] Terminated.")
 
     def _self_terminate(self, signum: int, frame):
         self.cleanup()
