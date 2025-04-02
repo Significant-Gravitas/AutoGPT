@@ -416,9 +416,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     smartlead_api_key: str = Field(default="", description="SmartLead API Key")
     zerobounce_api_key: str = Field(default="", description="ZeroBounce API Key")
 
-    iffy_api_url: str = Field(
-        default="", description="Iffy API URL"
-    )
+    iffy_api_url: str = Field(default="", description="Iffy API URL")
     iffy_api_key: str = Field(
         default="",
         description="Iffy API Key",
