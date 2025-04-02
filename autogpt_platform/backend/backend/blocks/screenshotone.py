@@ -12,7 +12,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.file import MediaFile, store_media_file
+from backend.util.file import MediaFileType, store_media_file
 from backend.util.request import Requests
 
 
@@ -57,7 +57,7 @@ class ScreenshotWebPageBlock(Block):
         )
 
     class Output(BlockSchema):
-        image: MediaFile = SchemaField(description="The screenshot image data")
+        image: MediaFileType = SchemaField(description="The screenshot image data")
         error: str = SchemaField(description="Error message if the screenshot failed")
 
     def __init__(self):
@@ -142,7 +142,7 @@ class ScreenshotWebPageBlock(Block):
         return {
             "image": store_media_file(
                 graph_exec_id=graph_exec_id,
-                file=MediaFile(
+                file=MediaFileType(
                     f"data:image/{format.value};base64,{b64encode(response.content).decode('utf-8')}"
                 ),
                 return_content=True,
