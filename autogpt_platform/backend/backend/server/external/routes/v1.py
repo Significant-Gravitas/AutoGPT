@@ -12,7 +12,7 @@ from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.api_key import APIKey
 from backend.data.block import BlockInput, CompletedBlockOutput
-from backend.data.execution import ExecutionResult
+from backend.data.execution import NodeExecutionResult
 from backend.executor import ExecutionManager
 from backend.server.external.middleware import require_permission
 from backend.util.service import get_service_client
@@ -53,7 +53,7 @@ class GraphExecutionResult(TypedDict):
     output: Optional[List[Dict[str, str]]]
 
 
-def get_outputs_with_names(results: List[ExecutionResult]) -> List[Dict[str, str]]:
+def get_outputs_with_names(results: list[NodeExecutionResult]) -> list[dict[str, str]]:
     outputs = []
     for result in results:
         if "output" in result.output_data:
@@ -71,7 +71,7 @@ def get_outputs_with_names(results: List[ExecutionResult]) -> List[Dict[str, str
 )
 def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     blocks = [block() for block in backend.data.block.get_blocks().values()]
-    return [b.to_dict() for b in blocks]
+    return [b.to_dict() for b in blocks if not b.disabled]
 
 
 @v1_router.post(
@@ -130,7 +130,7 @@ async def get_graph_execution_results(
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
-    results = await execution_db.get_execution_results(graph_exec_id)
+    results = await execution_db.get_node_execution_results(graph_exec_id)
     last_result = results[-1] if results else None
     execution_status = (
         last_result.status if last_result else AgentExecutionStatus.INCOMPLETE

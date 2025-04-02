@@ -75,6 +75,8 @@ class AgentExecutorBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        from backend.data.execution import ExecutionEventType
+
         executor_manager = get_executor_manager_client()
         event_bus = get_event_bus()
 
@@ -92,11 +94,7 @@ class AgentExecutorBlock(Block):
             graph_id=graph_exec.graph_id,
             graph_exec_id=graph_exec.graph_exec_id,
         ):
-            logger.info(
-                f"Execution {log_id} produced input {event.input_data} output {event.output_data}"
-            )
-
-            if not event.node_id:
+            if event.event_type == ExecutionEventType.GRAPH_EXEC_UPDATE:
                 if event.status in [
                     ExecutionStatus.COMPLETED,
                     ExecutionStatus.TERMINATED,
@@ -106,6 +104,10 @@ class AgentExecutorBlock(Block):
                     break
                 else:
                     continue
+
+            logger.info(
+                f"Execution {log_id} produced input {event.input_data} output {event.output_data}"
+            )
 
             if not event.block_id:
                 logger.warning(f"{log_id} received event without block_id {event}")

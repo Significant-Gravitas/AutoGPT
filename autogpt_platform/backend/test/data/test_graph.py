@@ -6,7 +6,8 @@ import fastapi.exceptions
 import pytest
 
 import backend.server.v2.store.model as store
-from backend.blocks.basic import AgentInputBlock, AgentOutputBlock, StoreValueBlock
+from backend.blocks.basic import StoreValueBlock
+from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.data.block import BlockSchema
 from backend.data.graph import Graph, Link, Node
 from backend.data.model import SchemaField
@@ -242,7 +243,7 @@ async def test_access_store_listing_graph(server: SpinTestServer):
     store_submission_request = store.StoreSubmissionRequest(
         agent_id=created_graph.id,
         agent_version=created_graph.version,
-        slug="test-slug",
+        slug=created_graph.id,
         name="Test name",
         sub_heading="Test sub heading",
         video_url=None,

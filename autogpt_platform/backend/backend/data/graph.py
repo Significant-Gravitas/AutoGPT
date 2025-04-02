@@ -1,35 +1,27 @@
 import logging
 import uuid
 from collections import defaultdict
-from datetime import datetime, timezone
 from typing import Any, Literal, Optional, Type
 
 import prisma
 from prisma import Json
-from prisma.models import (
-    AgentGraph,
-    AgentGraphExecution,
-    AgentNode,
-    AgentNodeLink,
-    StoreListingVersion,
-)
-from prisma.types import AgentGraphExecutionWhereInput, AgentGraphWhereInput
-from pydantic.fields import Field, computed_field
+from prisma.enums import SubmissionStatus
+from prisma.models import AgentGraph, AgentNode, AgentNodeLink, StoreListingVersion
+from prisma.types import AgentGraphWhereInput
+from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
-from backend.blocks.basic import AgentInputBlock, AgentOutputBlock
+from backend.blocks.io import AgentInputBlock, AgentOutputBlock
+from backend.blocks.llm import LlmModel
+from backend.data.db import prisma as db
 from backend.util import type as type_utils
 
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
 from .db import BaseDbModel, transaction
-from .execution import ExecutionResult, ExecutionStatus
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 from .integrations import Webhook
 
 logger = logging.getLogger(__name__)
-
-_INPUT_BLOCK_ID = AgentInputBlock().id
-_OUTPUT_BLOCK_ID = AgentOutputBlock().id
 
 
 class Link(BaseDbModel):
@@ -161,100 +153,6 @@ class NodeModel(Node):
 Webhook.model_rebuild()
 
 
-class GraphExecutionMeta(BaseDbModel):
-    execution_id: str
-    started_at: datetime
-    ended_at: datetime
-    cost: Optional[int] = Field(..., description="Execution cost in credits")
-    duration: float
-    total_run_time: float
-    status: ExecutionStatus
-    graph_id: str
-    graph_version: int
-    preset_id: Optional[str]
-
-    @staticmethod
-    def from_db(_graph_exec: AgentGraphExecution):
-        now = datetime.now(timezone.utc)
-        start_time = _graph_exec.startedAt or _graph_exec.createdAt
-        end_time = _graph_exec.updatedAt or now
-        duration = (end_time - start_time).total_seconds()
-        total_run_time = duration
-
-        try:
-            stats = type_utils.convert(_graph_exec.stats or {}, dict[str, Any])
-        except ValueError:
-            stats = {}
-
-        duration = stats.get("walltime", duration)
-        total_run_time = stats.get("nodes_walltime", total_run_time)
-
-        return GraphExecutionMeta(
-            id=_graph_exec.id,
-            execution_id=_graph_exec.id,
-            started_at=start_time,
-            ended_at=end_time,
-            cost=stats.get("cost", None),
-            duration=duration,
-            total_run_time=total_run_time,
-            status=ExecutionStatus(_graph_exec.executionStatus),
-            graph_id=_graph_exec.agentGraphId,
-            graph_version=_graph_exec.agentGraphVersion,
-            preset_id=_graph_exec.agentPresetId,
-        )
-
-
-class GraphExecution(GraphExecutionMeta):
-    inputs: dict[str, Any]
-    outputs: dict[str, list[Any]]
-    node_executions: list[ExecutionResult]
-
-    @staticmethod
-    def from_db(_graph_exec: AgentGraphExecution):
-        if _graph_exec.AgentNodeExecutions is None:
-            raise ValueError("Node executions must be included in query")
-
-        graph_exec = GraphExecutionMeta.from_db(_graph_exec)
-
-        node_executions = [
-            ExecutionResult.from_db(ne, _graph_exec.userId)
-            for ne in _graph_exec.AgentNodeExecutions
-        ]
-
-        inputs = {
-            **{
-                # inputs from Agent Input Blocks
-                exec.input_data["name"]: exec.input_data.get("value")
-                for exec in node_executions
-                if exec.block_id == _INPUT_BLOCK_ID
-            },
-            **{
-                # input from webhook-triggered block
-                "payload": exec.input_data["payload"]
-                for exec in node_executions
-                if (block := get_block(exec.block_id))
-                and block.block_type in [BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL]
-            },
-        }
-
-        outputs: dict[str, list] = defaultdict(list)
-        for exec in node_executions:
-            if exec.block_id == _OUTPUT_BLOCK_ID:
-                outputs[exec.input_data["name"]].append(
-                    exec.input_data.get("value", None)
-                )
-
-        return GraphExecution(
-            **{
-                field_name: getattr(graph_exec, field_name)
-                for field_name in graph_exec.model_fields
-            },
-            inputs=inputs,
-            outputs=outputs,
-            node_executions=node_executions,
-        )
-
-
 class BaseGraph(BaseDbModel):
     version: int = 1
     is_active: bool = True
@@ -267,46 +165,48 @@ class BaseGraph(BaseDbModel):
     @property
     def input_schema(self) -> dict[str, Any]:
         return self._generate_schema(
-            AgentInputBlock.Input,
-            [
-                node.input_default
+            *(
+                (b.input_schema, node.input_default)
                 for node in self.nodes
                 if (b := get_block(node.block_id))
                 and b.block_type == BlockType.INPUT
-                and "name" in node.input_default
-            ],
+                and issubclass(b.input_schema, AgentInputBlock.Input)
+            )
         )
 
     @computed_field
     @property
     def output_schema(self) -> dict[str, Any]:
         return self._generate_schema(
-            AgentOutputBlock.Input,
-            [
-                node.input_default
+            *(
+                (b.input_schema, node.input_default)
                 for node in self.nodes
                 if (b := get_block(node.block_id))
                 and b.block_type == BlockType.OUTPUT
-                and "name" in node.input_default
-            ],
+                and issubclass(b.input_schema, AgentOutputBlock.Input)
+            )
         )
 
     @staticmethod
     def _generate_schema(
-        type_class: Type[AgentInputBlock.Input] | Type[AgentOutputBlock.Input],
-        data: list[dict],
+        *props: tuple[Type[AgentInputBlock.Input] | Type[AgentOutputBlock.Input], dict],
     ) -> dict[str, Any]:
-        props = []
-        for p in data:
+        schema = []
+        for type_class, input_default in props:
             try:
-                props.append(type_class(**p))
+                schema.append(type_class(**input_default))
             except Exception as e:
-                logger.warning(f"Invalid {type_class}: {p}, {e}")
+                logger.warning(f"Invalid {type_class}: {input_default}, {e}")
 
         return {
             "type": "object",
             "properties": {
                 p.name: {
+                    **{
+                        k: v
+                        for k, v in p.generate_schema().items()
+                        if k not in ["description", "default"]
+                    },
                     "secret": p.secret,
                     # Default value has to be set for advanced fields.
                     "advanced": p.advanced and p.value is not None,
@@ -314,9 +214,9 @@ class BaseGraph(BaseDbModel):
                     **({"description": p.description} if p.description else {}),
                     **({"default": p.value} if p.value is not None else {}),
                 }
-                for p in props
+                for p in schema
             },
-            "required": [p.name for p in props if p.value is None],
+            "required": [p.name for p in schema if p.value is None],
         }
 
 
@@ -630,52 +530,6 @@ async def get_graphs(
     return graph_models
 
 
-async def get_graph_executions(
-    graph_id: Optional[str] = None,
-    user_id: Optional[str] = None,
-) -> list[GraphExecutionMeta]:
-    where_filter: AgentGraphExecutionWhereInput = {
-        "isDeleted": False,
-    }
-    if user_id:
-        where_filter["userId"] = user_id
-    if graph_id:
-        where_filter["agentGraphId"] = graph_id
-
-    executions = await AgentGraphExecution.prisma().find_many(
-        where=where_filter,
-        order={"createdAt": "desc"},
-    )
-    return [GraphExecutionMeta.from_db(execution) for execution in executions]
-
-
-async def get_execution_meta(
-    user_id: str, execution_id: str
-) -> GraphExecutionMeta | None:
-    execution = await AgentGraphExecution.prisma().find_first(
-        where={"id": execution_id, "isDeleted": False, "userId": user_id}
-    )
-    return GraphExecutionMeta.from_db(execution) if execution else None
-
-
-async def get_execution(user_id: str, execution_id: str) -> GraphExecution | None:
-    execution = await AgentGraphExecution.prisma().find_first(
-        where={"id": execution_id, "isDeleted": False, "userId": user_id},
-        include={
-            "AgentNodeExecutions": {
-                "include": {"AgentNode": True, "Input": True, "Output": True},
-                "order_by": [
-                    {"queuedTime": "asc"},
-                    {  # Fallback: Incomplete execs has no queuedTime.
-                        "addedTime": "asc"
-                    },
-                ],
-            },
-        },
-    )
-    return GraphExecution.from_db(execution) if execution else None
-
-
 async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph | None:
     where_clause: AgentGraphWhereInput = {
         "id": graph_id,
@@ -686,7 +540,6 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
 
     graph = await AgentGraph.prisma().find_first(
         where=where_clause,
-        include=AGENT_GRAPH_INCLUDE,
         order={"version": "desc"},
     )
 
@@ -736,7 +589,7 @@ async def get_graph(
                     "agentId": graph_id,
                     "agentVersion": version or graph.version,
                     "isDeleted": False,
-                    "StoreListing": {"is": {"isApproved": True}},
+                    "submissionStatus": SubmissionStatus.APPROVED,
                 }
             )
         )
@@ -744,7 +597,7 @@ async def get_graph(
         return None
 
     if for_export:
-        sub_graphs = await _get_sub_graphs(graph)
+        sub_graphs = await get_sub_graphs(graph)
         return GraphModel.from_db(
             graph=graph,
             sub_graphs=sub_graphs,
@@ -754,7 +607,7 @@ async def get_graph(
     return GraphModel.from_db(graph, for_export)
 
 
-async def _get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
+async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
     """
     Iteratively fetches all sub-graphs of a given graph, and flattens them into a list.
     This call involves a DB fetch in batch, breadth-first, per-level of graph depth.
@@ -1021,3 +874,40 @@ async def fix_llm_provider_credentials():
             where={"id": node_id},
             data={"constantInput": Json(node_preset_input)},
         )
+
+
+async def migrate_llm_models(migrate_to: LlmModel):
+    """
+    Update all LLM models in all AI blocks that don't exist in the enum.
+    Note: Only updates top level LlmModel SchemaFields of blocks (won't update nested fields).
+    """
+    logger.info("Migrating LLM models")
+    # Scan all blocks and search for LlmModel fields
+    llm_model_fields: dict[str, str] = {}  # {block_id: field_name}
+
+    # Search for all LlmModel fields
+    for block_type in get_blocks().values():
+        block = block_type()
+        from pydantic.fields import FieldInfo
+
+        fields: dict[str, FieldInfo] = block.input_schema.model_fields
+
+        # Collect top-level LlmModel fields
+        for field_name, field in fields.items():
+            if field.annotation == LlmModel:
+                llm_model_fields[block.id] = field_name
+
+    # Update each block
+    for id, path in llm_model_fields.items():
+        # Convert enum values to a list of strings for the SQL query
+        enum_values = [v.value for v in LlmModel.__members__.values()]
+
+        query = f"""
+            UPDATE "AgentNode"
+            SET "constantInput" = jsonb_set("constantInput", '{{{path}}}', '"{migrate_to.value}"', true)
+            WHERE "agentBlockId" = '{id}'
+            AND "constantInput" ? '{path}'
+            AND "constantInput"->>'{path}' NOT IN ({','.join(f"'{value}'" for value in enum_values)})
+            """
+
+        await db.execute_raw(query)
