@@ -238,10 +238,12 @@ export type GraphExecutionMeta = {
   status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
   started_at: Date;
   ended_at: Date;
-  cost?: number;
-  duration: number;
-  total_run_time: number;
-  node_execution_count?: number;
+  stats?: {
+    cost: number;
+    duration: number;
+    node_exec_time: number;
+    node_exec_count: number;
+  };
 };
 
 export type GraphExecutionID = Brand<string, "GraphExecutionID">;

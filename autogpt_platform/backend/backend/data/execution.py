@@ -66,19 +66,20 @@ class GraphExecutionMeta(BaseDbModel):
     started_at: datetime
     ended_at: datetime
 
-    # Stats
-    cost: Optional[int] = Field(..., description="Execution cost in credits")
-    duration: float = Field(..., description="Seconds from start to end of run")
-    total_run_time: float = Field(..., description="Seconds of node runtime")
-    node_execution_count: Optional[int]
+    class Stats(BaseModel):
+        cost: int = Field(..., description="Execution cost (cents)")
+        duration: float = Field(..., description="Seconds from start to end of run")
+        node_exec_time: float = Field(..., description="Seconds of total node runtime")
+        node_exec_count: int = Field(..., description="Number of node executions")
+
+    stats: Stats | None
 
     @staticmethod
     def from_db(_graph_exec: AgentGraphExecution):
         now = datetime.now(timezone.utc)
+        # TODO: make started_at and ended_at optional
         start_time = _graph_exec.startedAt or _graph_exec.createdAt
         end_time = _graph_exec.updatedAt or now
-        duration = (end_time - start_time).total_seconds()
-        total_run_time = duration
 
         try:
             stats = GraphExecutionStats.model_validate(_graph_exec.stats)
@@ -90,10 +91,6 @@ class GraphExecutionMeta(BaseDbModel):
                 )
             stats = None
 
-        duration = stats.walltime if stats else duration
-        total_run_time = stats.nodes_walltime if stats else total_run_time
-        node_execution_count = stats.node_count if stats else None
-
         return GraphExecutionMeta(
             id=_graph_exec.id,
             user_id=_graph_exec.userId,
@@ -103,10 +100,16 @@ class GraphExecutionMeta(BaseDbModel):
             status=ExecutionStatus(_graph_exec.executionStatus),
             started_at=start_time,
             ended_at=end_time,
-            cost=stats.cost if stats else None,
-            duration=duration,
-            total_run_time=total_run_time,
-            node_execution_count=node_execution_count,
+            stats=(
+                GraphExecutionMeta.Stats(
+                    cost=stats.cost,
+                    duration=stats.walltime,
+                    node_exec_time=stats.nodes_walltime,
+                    node_exec_count=stats.node_count,
+                )
+                if stats
+                else None
+            ),
         )
 
 
