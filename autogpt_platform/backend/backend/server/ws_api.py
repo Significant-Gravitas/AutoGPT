@@ -25,7 +25,6 @@ from backend.util.service import AppProcess, get_service_client
 from backend.util.settings import AppEnvironment, Config, Settings
 
 logger = logging.getLogger(__name__)
-configure_logging()
 settings = Settings()
 
 
