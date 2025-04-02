@@ -4,6 +4,7 @@ from typing import List, Tuple
 from backend.data.block import BlockInput, BlockType, get_block
 from backend.data.graph import GraphModel
 from backend.server.v2.iffy.service import IffyService
+from backend.server.v2.iffy.models import BlockContentForModeration
 from backend.util.settings import Settings, BehaveAs
 
 logger = logging.getLogger(__name__)
@@ -43,22 +44,28 @@ def moderate_graph_content(
                 input_data = node.input_default.copy()
                 # Add any static input from connected nodes
                 for link in node.input_links:
-                    if link.is_static:
-                        source_node = next((n for n in graph.nodes if n.id == link.source_id), None)
-                        if source_node:
-                            source_block = get_block(source_node.block_id)
-                            if source_block:
-                                input_data[link.sink_name] = source_node.input_default.get(link.source_name)
+                    if not link.is_static:
+                        continue
+
+                    source_node = next((n for n in graph.nodes if n.id == link.source_id), None)
+                    if not source_node:
+                        continue
+
+                    source_block = get_block(source_node.block_id)                    
+                    if not source_block:
+                        continue
+                    
+                    input_data[link.sink_name] = source_node.input_default.get(link.source_name)
             
-            block_content = {
-                "graph_id": graph_id,
-                "graph_exec_id": graph_exec_id,
-                "node_id": node.id,
-                "block_id": block.id,
-                "block_name": block.name,
-                "block_type": block.block_type.value,
-                "input_data": input_data
-            }
+            block_content = BlockContentForModeration(
+                graph_id=graph_id,
+                graph_exec_id=graph_exec_id,
+                node_id=node.id,
+                block_id=block.id,
+                block_name=block.name,
+                block_type=block.block_type.value,
+                input_data=input_data
+            )
 
             # Send to Iffy for moderation
             result = IffyService.moderate_content(user_id, block_content)
@@ -68,10 +75,6 @@ def moderate_graph_content(
                 logger.error(f"Content moderation failed for {block.name}: {result.reason}")
                 raise ValueError(f"Content moderation failed for {block.name}")
 
-    except ValueError as e:
-        logger.error(f"Moderation error: {str(e)}")
-        raise
-        
     except Exception as e:
         logger.error(f"Error during content moderation: {str(e)}")
         raise ValueError(f"Content moderation system error")

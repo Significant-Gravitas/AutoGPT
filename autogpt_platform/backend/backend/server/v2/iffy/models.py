@@ -34,3 +34,12 @@ class IffyPayload(BaseModel):
 class ModerationResult(BaseModel):
     is_safe: bool
     reason: str 
+
+class BlockContentForModeration(BaseModel):
+    graph_id: str
+    graph_exec_id: str
+    node_id: str
+    block_id: str
+    block_name: str
+    block_type: str
+    input_data: Dict[str, Any] 

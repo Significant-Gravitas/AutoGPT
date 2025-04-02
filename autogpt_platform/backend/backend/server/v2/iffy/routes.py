@@ -1,11 +1,9 @@
-import hmac
-import hashlib
 import logging
 from typing import Dict, Any
 from fastapi import APIRouter, Request, Response, HTTPException, Depends
 from backend.util.settings import Settings
 from backend.util.service import get_service_client
-from .models import EventType, IffyWebhookEvent
+from .models import EventType, IffyWebhookEvent, BlockContentForModeration, UserData
 from autogpt_libs.auth.middleware import HMACValidator
 from autogpt_libs.utils.cache import thread_cached
 
@@ -26,45 +24,41 @@ def get_execution_manager():
     return get_service_client(ExecutionManager)
 
 # This handles the webhook events from iffy like stopping an execution if a flagged block is detected.
-async def handle_record_event(event_type: EventType, metadata: Dict[str, Any]) -> Response:
+async def handle_record_event(event_type: EventType, block_content: BlockContentForModeration) -> Response:
     """Handle record-related webhook events
         If any blocks are flagged, we stop the execution and log the event."""
-    
-    graph_exec_id = metadata.get("graphExecutionId")
-    node_id = metadata.get("nodeId")
-    block_name = metadata.get("blockName", "Unknown Block")
 
     if event_type == EventType.RECORD_FLAGGED:
         logger.warning(
-            f'Content flagged for node "{node_id}" ("{block_name}") '
-            f'in execution "{graph_exec_id}"'
+            f'Content flagged for node "{block_content.node_id}" ("{block_content.block_name}") '
+            f'in execution "{block_content.graph_exec_id}"'
         )
         execution_manager = get_execution_manager()
         try:
-            execution_manager.cancel_execution(graph_exec_id)
-            logger.info(f'Successfully stopped execution "{graph_exec_id}" due to flagged content')
+            execution_manager.cancel_execution(block_content.graph_exec_id)
+            logger.info(f'Successfully stopped execution "{block_content.graph_exec_id}" due to flagged content')
         except Exception as e:
             if "not active/running" not in str(e):
                 logger.error(f"Error cancelling execution processes: {str(e)}")
                 raise
-            logger.info(f'Execution "{graph_exec_id}" was already completed/cancelled')
+            logger.info(f'Execution "{block_content.graph_exec_id}" was already completed/cancelled')
         
         return Response(status_code=200)
     
     elif event_type in (EventType.RECORD_COMPLIANT, EventType.RECORD_UNFLAGGED):
         logger.info(
-            f'Content cleared for node "{node_id}" ("{block_name}") '
-            f'in execution "{graph_exec_id}"'
+            f'Content cleared for node "{block_content.node_id}" ("{block_content.block_name}") '
+            f'in execution "{block_content.graph_exec_id}"'
         )
 
     return Response(status_code=200)
 
-async def handle_user_event(event_type: EventType, payload: Dict[str, Any]) -> Response:
+async def handle_user_event(event_type: EventType, user_payload: UserData) -> Response:
     """Handle user-related webhook events
         For now we are just logging these events from iffy
         and replying with a 200 status code to keep iffy happy and to prevent it from retrying the request."""
     
-    user_id = payload.get("clientId")
+    user_id = user_payload.clientId
     if not user_id:
         logger.error("Received user event without user ID")
         raise HTTPException(
@@ -72,8 +66,8 @@ async def handle_user_event(event_type: EventType, payload: Dict[str, Any]) -> R
             detail="Missing required field 'clientId' in user event payload"
         )
 
-    status_updated_at = payload.get("statusUpdatedAt")
-    status_updated_via = payload.get("statusUpdatedVia")
+    status_updated_at = user_payload.get("statusUpdatedAt", "unknown time")
+    status_updated_via = user_payload.get("statusUpdatedVia", "unknown method")
 
     event_messages = {
         EventType.USER_SUSPENDED: f'User "{user_id}" has been SUSPENDED via {status_updated_via} at {status_updated_at}',
@@ -105,9 +99,21 @@ async def handle_iffy_webhook(
 
     try:
         if event_data.event.startswith("record."):
-            return await handle_record_event(event_data.event, event_data.payload.get("metadata", {}))
+            metadata = event_data.payload.get("metadata", {})
+            block_content = BlockContentForModeration(
+                graph_id=metadata.get("graphId", ""),
+                graph_exec_id=metadata.get("graphExecutionId", ""),
+                node_id=metadata.get("nodeId", ""),
+                block_id=metadata.get("blockId", ""),
+                block_name=metadata.get("blockName", "Unknown Block"),
+                block_type=metadata.get("blockType", ""),
+                input_data=metadata.get("inputData", {})
+            )
+            return await handle_record_event(event_data.event, block_content)
         elif event_data.event.startswith("user."):
-            return await handle_user_event(event_data.event, event_data.payload)
+            # Create UserData from payload
+            user_data = UserData(**event_data.payload)
+            return await handle_user_event(event_data.event, user_data)
         else:
             logger.info(f"Received unhandled Iffy event: {event_data.event}")
             return Response(status_code=200)

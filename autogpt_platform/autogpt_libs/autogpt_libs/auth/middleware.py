@@ -212,6 +212,9 @@ class HMACValidator:
         return True
 
     def get_dependency(self):
+        """
+        Returns a callable dependency that FastAPI will recognize as a security scheme
+        """
         async def validate_signature(request: Request, signature: str = Security(self.header)) -> bool:
             return await self(request, signature)
 

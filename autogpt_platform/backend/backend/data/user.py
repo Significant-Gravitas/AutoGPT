@@ -56,6 +56,7 @@ async def get_user_by_id(user_id: str) -> User:
 
 
 async def get_user_info_by_id(user_id: str) -> dict:
+    # TODO: Change return type to a Pydantic model instead of a dict
     try:
         user = await User.prisma().find_unique(where={"id": user_id})
         if not user:
