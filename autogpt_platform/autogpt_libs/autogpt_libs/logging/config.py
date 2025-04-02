@@ -8,7 +8,7 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .filters import BelowLevelFilter
-from .formatters import AGPTFormatter, StructuredLoggingFormatter
+from .formatters import AGPTFormatter
 
 LOG_DIR = Path(__file__).parent.parent.parent.parent / "logs"
 LOG_FILE = "activity.log"
@@ -114,7 +114,6 @@ def configure_logging(force_cloud_logging: bool = False) -> None:
             transport=SyncTransport,
         )
         cloud_handler.setLevel(config.level)
-        cloud_handler.setFormatter(StructuredLoggingFormatter())
         log_handlers.append(cloud_handler)
 
     # File logging setup
