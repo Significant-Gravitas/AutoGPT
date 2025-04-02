@@ -299,12 +299,12 @@ develop = true
 colorama = "^0.4.6"
 expiringdict = "^1.2.2"
 google-cloud-logging = "^3.11.4"
-pydantic = "^2.10.6"
-pydantic-settings = "^2.7.1"
+pydantic = "^2.11.1"
+pydantic-settings = "^2.8.1"
 pyjwt = "^2.10.1"
-pytest-asyncio = "^0.25.3"
+pytest-asyncio = "^0.26.0"
 pytest-mock = "^3.14.0"
-supabase = "^2.13.0"
+supabase = "^2.15.0"
 
 [package.source]
 type = "directory"
@@ -4138,14 +4138,14 @@ dev = ["argcomplete", "attrs (>=19.2)", "hypothesis (>=3.56)", "mock", "pygments
 
 [[package]]
 name = "pytest-asyncio"
-version = "0.25.3"
+version = "0.26.0"
 description = "Pytest support for asyncio"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "pytest_asyncio-0.25.3-py3-none-any.whl", hash = "sha256:9e89518e0f9bd08928f97a3482fdc4e244df17529460bc038291ccaf8f85c7c3"},
-    {file = "pytest_asyncio-0.25.3.tar.gz", hash = "sha256:fc1da2cf9f125ada7e710b4ddad05518d4cee187ae9412e9ac9271003497f07a"},
+    {file = "pytest_asyncio-0.26.0-py3-none-any.whl", hash = "sha256:7b51ed894f4fbea1340262bdae5135797ebbe21d8638978e35d31c6d19f72fb0"},
+    {file = "pytest_asyncio-0.26.0.tar.gz", hash = "sha256:c4df2a697648241ff39e7f0e4a73050b03f123f760673956cf0d72a4990e312f"},
 ]
 
 [package.dependencies]
@@ -6179,4 +6179,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "f8d11b70f26a2a6060e6354c5bea94b9fad6ad2f322810f1e2e59910fd1bde37"
+content-hash = "426771224ecf6f06ea0a50f19363e21a2d55636821646f78fd289803c1ec6b8d"
