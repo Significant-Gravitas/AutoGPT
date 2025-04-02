@@ -154,10 +154,7 @@ export default async function Page({}: {}) {
     const onboarding = await api.getUserOnboarding();
     if (!onboarding.completedSteps.includes("MARKETPLACE_VISIT")) {
       api.updateUserOnboarding({
-        completedSteps: [
-          ...onboarding.completedSteps,
-          "MARKETPLACE_VISIT",
-        ],
+        completedSteps: [...onboarding.completedSteps, "MARKETPLACE_VISIT"],
       });
     }
   }

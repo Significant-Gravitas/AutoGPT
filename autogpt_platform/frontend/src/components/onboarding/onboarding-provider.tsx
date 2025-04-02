@@ -115,8 +115,7 @@ export default function OnboardingProvider({
 
   const completeStep = useCallback(
     (step: OnboardingStep) => {
-      if (!state || state.completedSteps.includes(step))
-        return;
+      if (!state || state.completedSteps.includes(step)) return;
 
       updateState({
         completedSteps: [...state.completedSteps, step],
@@ -126,7 +125,9 @@ export default function OnboardingProvider({
   );
 
   return (
-    <OnboardingContext.Provider value={{ state, updateState, step, setStep, completeStep }}>
+    <OnboardingContext.Provider
+      value={{ state, updateState, step, setStep, completeStep }}
+    >
       {children}
     </OnboardingContext.Provider>
   );

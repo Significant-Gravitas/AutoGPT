@@ -8,8 +8,8 @@ from prisma.enums import OnboardingStep
 from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingUpdateInput
 
-from backend.data.credit import get_user_credit_model
 from backend.data.block import get_blocks
+from backend.data.credit import get_user_credit_model
 from backend.data.graph import GraphModel
 from backend.data.model import CredentialsMetaInput
 from backend.server.v2.store.model import StoreAgentDetails
@@ -111,11 +111,11 @@ async def reward_user(user_id: str, step: OnboardingStep):
         return
 
     onboarding = await get_user_onboarding(user_id)
-    
+
     # Skip if already rewarded
     if step in onboarding.rewardedFor:
         return
-    
+
     onboarding.rewardedFor.append(step)
     await UserOnboarding.prisma().update(
         where={"userId": user_id},

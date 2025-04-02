@@ -55,18 +55,15 @@ export default function AgentRunDraftView({
     closeInputPopout();
   }, [expandedInputKey, tempInputValue, closeInputPopout]);
 
-  const doRun = useCallback(
-    () => {
-      api
-        .executeGraph(graph.id, graph.version, inputValues)
-        .then((newRun) => onRun(newRun.graph_exec_id))
-      // Mark run agent onboarding step as completed
-      if (state?.completedSteps.includes("MARKETPLACE_ADD_AGENT")) {
-        completeStep("MARKETPLACE_RUN_AGENT");
-      }
-    },
-    [api, graph, inputValues, onRun, state],
-  );
+  const doRun = useCallback(() => {
+    api
+      .executeGraph(graph.id, graph.version, inputValues)
+      .then((newRun) => onRun(newRun.graph_exec_id));
+    // Mark run agent onboarding step as completed
+    if (state?.completedSteps.includes("MARKETPLACE_ADD_AGENT")) {
+      completeStep("MARKETPLACE_RUN_AGENT");
+    }
+  }, [api, graph, inputValues, onRun, state]);
 
   const runActions: ButtonAction[] = useMemo(
     () => [

@@ -6,10 +6,10 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from prisma.enums import OnboardingStep
 
-from backend.data.onboarding import reward_user
 import backend.server.v2.library.db as library_db
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
+from backend.data.onboarding import reward_user
 
 logger = logging.getLogger(__name__)
 
