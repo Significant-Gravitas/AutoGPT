@@ -261,7 +261,7 @@ class NotificationManager(AppService):
                                     )
                                 )
                             except Exception as e:
-                                logger.exception(
+                                logger.error(
                                     f"Error parsing notification event: {e=}, {db_event=}"
                                 )
                                 continue
@@ -683,7 +683,7 @@ class NotificationManager(AppService):
                 )
                 self.run_and_wait(message.reject(requeue=False))
             else:
-                logger.error(
+                logger.exception(
                     f"Error in notification service loop, message unable to be rejected, and will have to be manually removed to free space in the queue: {e=}"
                 )
 
