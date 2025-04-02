@@ -78,7 +78,7 @@ export default function useAgentGraph(
     useState(false);
   const [nodes, setNodes] = useState<CustomNode[]>([]);
   const [edges, setEdges] = useState<CustomEdge[]>([]);
-  const { completeStep } = useOnboarding();
+  const { state, completeStep } = useOnboarding();
 
   const api = useMemo(
     () => new BackendAPI(process.env.NEXT_PUBLIC_AGPT_SERVER_URL!),
@@ -573,6 +573,9 @@ export default function useAgentGraph(
             path.set("flowVersion", savedAgent.version.toString());
             path.set("flowExecutionID", graphExecution.graph_exec_id);
             router.push(`${pathname}?${path.toString()}`);
+            if (state?.completedSteps.includes("BUILDER_SAVE_AGENT")) {
+              completeStep("BUILDER_RUN_AGENT");
+            }
           })
           .catch((error) => {
             const errorMessage =
