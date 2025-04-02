@@ -3,8 +3,10 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Protocol
 
+from backend.util.logging import configure_logging
 import uvicorn
 from autogpt_libs.auth import parse_jwt_token
+from autogpt_libs.logging.config import get_log_config
 from autogpt_libs.utils.cache import thread_cached
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
@@ -23,6 +25,7 @@ from backend.util.service import AppProcess, get_service_client
 from backend.util.settings import AppEnvironment, Config, Settings
 
 logger = logging.getLogger(__name__)
+configure_logging()
 settings = Settings()
 
 
@@ -286,8 +289,15 @@ class WebsocketServer(AppProcess):
             allow_methods=["*"],
             allow_headers=["*"],
         )
+        import uvicorn.config
+
+        log_config = dict(uvicorn.config.LOGGING_CONFIG)
+        log_config["loggers"]["uvicorn"] = {"handlers": []}
+        log_config["loggers"]["uvicorn.error"] = {"handlers": []}
+        log_config["loggers"]["uvicorn.access"] = {"handlers": []}
         uvicorn.run(
             server_app,
             host=Config().websocket_server_host,
             port=Config().websocket_server_port,
+            log_config=log_config,
         )
