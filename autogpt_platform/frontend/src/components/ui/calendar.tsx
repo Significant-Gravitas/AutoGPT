@@ -42,8 +42,8 @@ function Calendar({
         caption_label: "hidden",
         nav: "hidden",
         button_previous:
-          "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100 ",
-        button_next: " h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
+          "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
+        button_next: "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
         month_grid: "w-full border-collapse space-y-1",
         weekdays: "flex",
         weekday:

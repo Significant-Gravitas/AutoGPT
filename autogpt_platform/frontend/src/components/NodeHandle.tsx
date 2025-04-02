@@ -1,4 +1,5 @@
 import { BlockIOSubSchema } from "@/lib/autogpt-server-api/types";
+import { cn } from "@/lib/utils";
 import { beautifyString, getTypeBgColor, getTypeTextColor } from "@/lib/utils";
 import { FC, memo, useCallback } from "react";
 import { Handle, Position } from "@xyflow/react";
@@ -11,6 +12,7 @@ type HandleProps = {
   isRequired?: boolean;
   side: "left" | "right";
   title?: string;
+  className?: string;
 };
 
 // Move the constant out of the component to avoid re-creation on every render.
@@ -46,6 +48,7 @@ const NodeHandle: FC<HandleProps> = ({
   isRequired,
   side,
   title,
+  className,
 }) => {
   const typeClass = `text-sm ${getTypeTextColor(schema.type || "any")} ${
     side === "left" ? "text-left" : "text-right"
@@ -53,7 +56,12 @@ const NodeHandle: FC<HandleProps> = ({
 
   const label = (
     <div className="flex flex-grow flex-row">
-      <span className="text-m green flex items-end pr-2 text-gray-900 dark:text-gray-100">
+      <span
+        className={cn(
+          "text-m green flex items-end pr-2 text-gray-900 dark:text-gray-100",
+          className,
+        )}
+      >
         {title || schema.title || beautifyString(keyName.toLowerCase())}
         {isRequired ? "*" : ""}
       </span>
