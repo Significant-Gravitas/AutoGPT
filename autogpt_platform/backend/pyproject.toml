@@ -13,7 +13,7 @@ aio-pika = "^9.5.5"
 anthropic = "^0.49.0"
 apscheduler = "^3.11.0"
 autogpt-libs = { path = "../autogpt_libs", develop = true }
-bleach = {extras = ["css"], version = "^6.2.0"}
+bleach = { extras = ["css"], version = "^6.2.0" }
 click = "^8.1.7"
 cryptography = "^43.0"
 discord-py = "^2.5.2"
@@ -43,11 +43,11 @@ praw = "~7.8.1"
 prisma = "^0.15.0"
 psutil = "^7.0.0"
 psycopg2-binary = "^2.9.10"
-pydantic = {extras = ["email"], version = "^2.11.1"}
+pydantic = { extras = ["email"], version = "^2.11.1" }
 pydantic-settings = "^2.8.1"
 pyro5 = "^5.15"
 pytest = "^8.3.5"
-pytest-asyncio = "^0.25.3"
+pytest-asyncio = "^0.26.0"
 python-dotenv = "^1.1.0"
 python-multipart = "^0.0.20"
 redis = "^5.2.0"
