@@ -404,9 +404,6 @@ async def create_or_add_to_user_notification_batch(
         # Serialize the data
         json_data: Json = Json(notification_data.data.model_dump())
 
-        if not json_data.data:
-            raise ValueError("Notification data must be provided")
-
         # First try to find existing batch
         existing_batch = await UserNotificationBatch.prisma().find_unique(
             where={
