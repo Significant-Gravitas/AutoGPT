@@ -12,6 +12,7 @@ import { TaskGroups } from "../onboarding/WalletTaskGroups";
 import { ScrollArea } from "../ui/scroll-area";
 import { useOnboarding } from "../onboarding/onboarding-provider";
 import { useCallback } from "react";
+import { cn } from "@/lib/utils";
 
 export default function Wallet() {
   const { credits, formatCredits, fetchCredits } = useCredits({
@@ -43,21 +44,28 @@ export default function Wallet() {
           )}
         </button>
       </PopoverTrigger>
-      <PopoverContent className="absolute -right-[8.8rem] -top-[3.1rem] z-50 w-[28.5rem] rounded-xl border-[0.05rem] border-b-[0.2rem] border-zinc-200 bg-zinc-50 p-3 shadow-none shadow-zinc-400">
+      <PopoverContent
+        className={cn(
+          "absolute -right-[7.9rem] -top-[3.2rem] z-50 w-[28.5rem] px-[0.625rem] py-2",
+          "rounded-xl border-zinc-200 bg-zinc-50 shadow-[0_3px_3px] shadow-zinc-300",
+        )}
+      >
         <div>
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mx-1 flex items-center justify-between border-b border-zinc-300 pb-2">
             <span className="font-poppins font-medium text-zinc-900">
               Your wallet
             </span>
-            <div className="flex items-center gap-1 font-inter text-sm font-semibold text-violet-700">
-              Wallet
-              <span className="font-semibold">{formatCredits(credits)}</span>
+            <div className="flex items-center font-inter text-sm font-semibold text-violet-700">
+              <div className="rounded-lg bg-violet-100 px-3 py-2">
+                Wallet{" "}
+                <span className="font-semibold">{formatCredits(credits)}</span>
+              </div>
               <PopoverClose>
-                <X className="ml-[3.4rem] h-5 w-5 text-zinc-800 hover:text-foreground" />
+                <X className="ml-[2.8rem] h-5 w-5 text-zinc-800 hover:text-foreground" />
               </PopoverClose>
             </div>
           </div>
-          <p className="mt-6 font-inter text-xs text-muted-foreground text-zinc-400">
+          <p className="mx-1 mt-3 font-inter text-xs text-muted-foreground text-zinc-400">
             Complete the following tasks to earn more credits!
           </p>
         </div>

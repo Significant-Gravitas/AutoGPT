@@ -127,7 +127,10 @@ export function TaskGroups() {
   return (
     <div className="space-y-2">
       {groups.map((group) => (
-        <div key={group.name} className="mt-2 overflow-hidden rounded-lg">
+        <div
+          key={group.name}
+          className="mt-3 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100"
+        >
           {/* Group Header - unchanged */}
           <div
             className="flex cursor-pointer items-center justify-between p-3"
@@ -184,7 +187,10 @@ export function TaskGroups() {
             )}
           >
             {group.tasks.map((task) => (
-              <div key={task.id} className="mt-1 px-4 py-1">
+              <div
+                key={task.id}
+                className="mx-3 border-t border-zinc-300 px-1 pb-1 pt-3"
+              >
                 <div className="flex items-center justify-between">
                   {/* Checkmark and name */}
                   <div className="flex items-center gap-2">
