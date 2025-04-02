@@ -15,10 +15,10 @@ LOG_FILE = "activity.log"
 DEBUG_LOG_FILE = "debug.log"
 ERROR_LOG_FILE = "error.log"
 
-SIMPLE_LOG_FORMAT = "horse %(asctime)s %(levelname)s  %(title)s%(message)s"
+SIMPLE_LOG_FORMAT = "%(asctime)s %(levelname)s  %(title)s%(message)s"
 
 DEBUG_LOG_FORMAT = (
-    "horse %(asctime)s %(levelname)s %(filename)s:%(lineno)d  %(title)s%(message)s"
+    "%(asctime)s %(levelname)s %(filename)s:%(lineno)d  %(title)s%(message)s"
 )
 
 
