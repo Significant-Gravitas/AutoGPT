@@ -231,15 +231,17 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
 /* Mirror of backend/data/execution.py:GraphExecutionMeta */
 export type GraphExecutionMeta = {
   id: GraphExecutionID;
+  user_id: UserID;
+  graph_id: GraphID;
+  graph_version: number;
+  preset_id?: string;
+  status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
   started_at: Date;
   ended_at: Date;
   cost?: number;
   duration: number;
   total_run_time: number;
-  status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
-  graph_id: GraphID;
-  graph_version: number;
-  preset_id?: string;
+  node_execution_count?: number;
 };
 
 export type GraphExecutionID = Brand<string, "GraphExecutionID">;
@@ -500,9 +502,11 @@ export type Webhook = {
 };
 
 export type User = {
-  id: string;
+  id: UserID;
   email: string;
 };
+
+export type UserID = Brand<string, "UserID">;
 
 export enum BlockUIType {
   STANDARD = "Standard",

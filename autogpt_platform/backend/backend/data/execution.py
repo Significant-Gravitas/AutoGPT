@@ -59,15 +59,18 @@ ExecutionStatus = AgentExecutionStatus
 
 class GraphExecutionMeta(BaseDbModel):
     user_id: str
-    started_at: datetime
-    ended_at: datetime
-    cost: Optional[int] = Field(..., description="Execution cost in credits")
-    duration: float = Field(..., description="Seconds from start to end of run")
-    total_run_time: float = Field(..., description="Seconds of node runtime")
-    status: ExecutionStatus
     graph_id: str
     graph_version: int
     preset_id: Optional[str] = None
+    status: ExecutionStatus
+    started_at: datetime
+    ended_at: datetime
+
+    # Stats
+    cost: Optional[int] = Field(..., description="Execution cost in credits")
+    duration: float = Field(..., description="Seconds from start to end of run")
+    total_run_time: float = Field(..., description="Seconds of node runtime")
+    node_execution_count: Optional[int]
 
     @staticmethod
     def from_db(_graph_exec: AgentGraphExecution):
@@ -89,19 +92,21 @@ class GraphExecutionMeta(BaseDbModel):
 
         duration = stats.walltime if stats else duration
         total_run_time = stats.nodes_walltime if stats else total_run_time
+        node_execution_count = stats.node_count if stats else None
 
         return GraphExecutionMeta(
             id=_graph_exec.id,
             user_id=_graph_exec.userId,
+            graph_id=_graph_exec.agentGraphId,
+            graph_version=_graph_exec.agentGraphVersion,
+            preset_id=_graph_exec.agentPresetId,
+            status=ExecutionStatus(_graph_exec.executionStatus),
             started_at=start_time,
             ended_at=end_time,
             cost=stats.cost if stats else None,
             duration=duration,
             total_run_time=total_run_time,
-            status=ExecutionStatus(_graph_exec.executionStatus),
-            graph_id=_graph_exec.agentGraphId,
-            graph_version=_graph_exec.agentGraphVersion,
-            preset_id=_graph_exec.agentPresetId,
+            node_execution_count=node_execution_count,
         )
 
 

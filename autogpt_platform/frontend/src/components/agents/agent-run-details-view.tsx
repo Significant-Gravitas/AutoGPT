@@ -59,6 +59,9 @@ export default function AgentRunDetailsView({
         label: "Duration",
         value: moment.duration(run.duration, "seconds").humanize(),
       },
+      ...(run.node_execution_count
+        ? [{ label: "Steps", value: run.node_execution_count }]
+        : []),
       ...(run.cost ? [{ label: "Cost", value: `${run.cost} credits` }] : []),
     ];
   }, [run, runStatus]);
