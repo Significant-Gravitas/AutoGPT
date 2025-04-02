@@ -1,8 +1,8 @@
-import json
 import logging
 import requests
 from typing import Dict, Any
 
+from backend.util import json
 from backend.util.settings import Settings, BehaveAs
 from backend.util.openrouter import open_router_moderate_content
 from backend.util.service import get_service_client
@@ -67,7 +67,7 @@ class IffyService:
         # Validate Iffy API URL and key at the start
         if not IFFY_API_URL or not IFFY_API_KEY:
             logger.warning("Iffy API URL or key not configured, falling back to OpenRouter moderation")
-            input_data = json.dumps(block_content.input_data, indent=2)
+            input_data = json.dumps(block_content.input_data)
             is_safe, reason = open_router_moderate_content(input_data)
             return ModerationResult(is_safe=is_safe, reason=f"Iffy not configured. OpenRouter result: {reason}")
 
@@ -75,7 +75,7 @@ class IffyService:
             # Validate URL format
             if not IFFY_API_URL.startswith(('http://', 'https://')):
                 logger.error(f"Invalid Iffy API URL format: {IFFY_API_URL}")
-                input_data = json.dumps(block_content.input_data, indent=2)
+                input_data = json.dumps(block_content.input_data)
                 is_safe, reason = open_router_moderate_content(input_data)
                 return ModerationResult(is_safe=is_safe, reason="Invalid Iffy API URL format")
 
@@ -84,7 +84,7 @@ class IffyService:
                 "Content-Type": "application/json"
             }
 
-            input_data = json.dumps(block_content.input_data, indent=2)
+            input_data = json.dumps(block_content.input_data)
             user_data = IffyService.get_user_data(user_id)
 
             # Prepare the metadata
@@ -133,14 +133,16 @@ class IffyService:
         except Exception as e:
             logger.error(f"Error in primary moderation service: {str(e)}", exc_info=True)
             try:
-                input_data = json.dumps(block_content.input_data, indent=2)
+                block_name = f"{block_content.block_name}-{block_content.block_id}"
+                input_data = json.dumps(block_content.input_data)
                 is_safe, reason = open_router_moderate_content(input_data)
                 if is_safe:
-                    logger.info(f"OpenRouter moderation passed after Iffy failure. Block: {name}")
+                    logger.info(f"OpenRouter moderation passed after Iffy failure. Block: {block_name}")
                 else:
-                    logger.warning(f"OpenRouter moderation flagged content after Iffy failure. Block: {name}, Reason: {reason}")
+                    logger.warning(f"OpenRouter moderation flagged content after Iffy failure. Block: {block_name}, Reason: {reason}")
                 return ModerationResult(is_safe=is_safe, reason=reason)
             except Exception as e2:
+                block_name = getattr(block_content, 'block_name', 'unknown') + '-' + str(getattr(block_content, 'block_id', 'unknown'))
                 reason = f"Both moderation services failed. Error: {str(e2)}"
-                logger.error(f"{reason}. Block: {name}", exc_info=True)
+                logger.error(f"{reason}. Block: {block_name}", exc_info=True)
                 return ModerationResult(is_safe=False, reason=reason)
