@@ -774,7 +774,7 @@ export type OnboardingStep =
   | "MARKETPLACE_ADD_AGENT"
   | "MARKETPLACE_RUN_AGENT"
   | "BUILDER_OPEN"
-  | "BUILDER_ADD_NODE"
+  | "BUILDER_SAVE_AGENT"
   | "BUILDER_RUN_AGENT";
 
 export interface UserOnboarding {

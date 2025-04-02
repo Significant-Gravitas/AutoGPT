@@ -58,7 +58,8 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
             OnboardingStep.AGENT_NEW_RUN,
             OnboardingStep.GET_RESULTS,
             OnboardingStep.MARKETPLACE_RUN_AGENT,
-            OnboardingStep.BUILDER_OPEN,
+            OnboardingStep.BUILDER_SAVE_AGENT,
+            OnboardingStep.BUILDER_RUN_AGENT,
         ):
             if step in data.completedSteps:
                 await reward_user(user_id, step)
@@ -94,16 +95,14 @@ async def reward_user(user_id: str, step: OnboardingStep):
         # Reward user when they clicked New Run during onboarding
         # This is because they need credits before scheduling a run (next step)
         case OnboardingStep.AGENT_NEW_RUN:
-            reward = 10
+            reward = 3
         case OnboardingStep.GET_RESULTS:
-            reward = 1
+            reward = 3
         case OnboardingStep.MARKETPLACE_ADD_AGENT:
             reward = 1
         case OnboardingStep.MARKETPLACE_RUN_AGENT:
             reward = 1
-        case OnboardingStep.BUILDER_OPEN:
-            reward = 1
-        case OnboardingStep.BUILDER_ADD_NODE:
+        case OnboardingStep.BUILDER_SAVE_AGENT:
             reward = 1
         case OnboardingStep.BUILDER_RUN_AGENT:
             reward = 1

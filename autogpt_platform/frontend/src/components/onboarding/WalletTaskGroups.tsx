@@ -28,15 +28,15 @@ export function TaskGroups() {
         {
           id: "CONGRATS",
           name: "Finish onboarding",
-          amount: 10,
+          amount: 3,
           details: "Go through our step by step tutorial",
         },
         {
           id: "GET_RESULTS",
           name: "Get results from first agent",
-          amount: 1,
+          amount: 3,
           details:
-            "Sit back and relax - your agent is running and will finish soon!",
+            "Sit back and relax - your agent is running and will finish soon! See the results in the Library once it's done",
         },
       ],
     },
@@ -47,7 +47,7 @@ export function TaskGroups() {
         {
           id: "MARKETPLACE_VISIT",
           name: "Go to Marketplace",
-          amount: 1,
+          amount: 0,
           details: "Click Marketplace in the top navigation",
         },
         {
@@ -55,14 +55,14 @@ export function TaskGroups() {
           name: "Find an agent",
           amount: 1,
           details:
-            "Search for an agent in the Marketplace, like a code generator or research assistant",
+            "Search for an agent in the Marketplace, like a code generator or research assistant and add it to your Library",
         },
         {
           id: "MARKETPLACE_RUN_AGENT",
           name: "Try out your agent",
           amount: 1,
           details:
-            "Run the agent you found in the Marketplace - whether it's a writing assistant, data analyzer, or something else",
+            "Run the agent you found in the Marketplace from the Library - whether it's a writing assistant, data analyzer, or something else",
         },
       ],
     },
@@ -73,21 +73,21 @@ export function TaskGroups() {
         {
           id: "BUILDER_OPEN",
           name: "Open the Builder",
-          amount: 1,
+          amount: 0,
           details: "Click Builder in the top navigation",
         },
         {
-          id: "BUILDER_ADD_NODE",
-          name: "Place your first blocks",
+          id: "BUILDER_SAVE_AGENT",
+          name: "Place your first blocks and save your agent",
           amount: 1,
           details:
-            "Open block library on the left and add a block to the canvas",
+            "Open block library on the left and add a block to the canvas then save your agent",
         },
         {
           id: "BUILDER_RUN_AGENT",
           name: "Run your agent",
           amount: 1,
-          details: "Save your agent and then run it",
+          details: "Run your agent from the Builder",
         },
       ],
     },
