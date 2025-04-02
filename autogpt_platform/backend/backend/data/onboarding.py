@@ -58,6 +58,7 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
             OnboardingStep.AGENT_NEW_RUN,
             OnboardingStep.GET_RESULTS,
             OnboardingStep.MARKETPLACE_RUN_AGENT,
+            OnboardingStep.BUILDER_OPEN,
         ):
             if step in data.completedSteps:
                 await reward_user(user_id, step)
