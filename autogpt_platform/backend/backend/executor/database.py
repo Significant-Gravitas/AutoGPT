@@ -1,16 +1,18 @@
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
-    ExecutionResult,
+    GraphExecution,
+    NodeExecutionResult,
     RedisExecutionEventBus,
     create_graph_execution,
-    get_execution_results,
-    get_incomplete_executions,
-    get_latest_execution,
-    update_execution_status,
-    update_execution_status_batch,
+    get_graph_execution,
+    get_incomplete_node_executions,
+    get_latest_node_execution,
+    get_node_execution_results,
     update_graph_execution_start_time,
     update_graph_execution_stats,
     update_node_execution_stats,
+    update_node_execution_status,
+    update_node_execution_status_batch,
     upsert_execution_input,
     upsert_execution_output,
 )
@@ -55,23 +57,30 @@ class DatabaseManager(AppService):
         super().__init__()
         self.use_db = True
         self.use_redis = True
-        self.event_queue = RedisExecutionEventBus()
+        self.execution_event_bus = RedisExecutionEventBus()
 
     @classmethod
     def get_port(cls) -> int:
         return config.database_api_port
 
     @expose
-    def send_execution_update(self, execution_result: ExecutionResult):
-        self.event_queue.publish(execution_result)
+    def send_execution_update(
+        self, execution_result: GraphExecution | NodeExecutionResult
+    ):
+        self.execution_event_bus.publish(execution_result)
 
     # Executions
+    get_graph_execution = exposed_run_and_wait(get_graph_execution)
     create_graph_execution = exposed_run_and_wait(create_graph_execution)
-    get_execution_results = exposed_run_and_wait(get_execution_results)
-    get_incomplete_executions = exposed_run_and_wait(get_incomplete_executions)
-    get_latest_execution = exposed_run_and_wait(get_latest_execution)
-    update_execution_status = exposed_run_and_wait(update_execution_status)
-    update_execution_status_batch = exposed_run_and_wait(update_execution_status_batch)
+    get_node_execution_results = exposed_run_and_wait(get_node_execution_results)
+    get_incomplete_node_executions = exposed_run_and_wait(
+        get_incomplete_node_executions
+    )
+    get_latest_node_execution = exposed_run_and_wait(get_latest_node_execution)
+    update_node_execution_status = exposed_run_and_wait(update_node_execution_status)
+    update_node_execution_status_batch = exposed_run_and_wait(
+        update_node_execution_status_batch
+    )
     update_graph_execution_start_time = exposed_run_and_wait(
         update_graph_execution_start_time
     )

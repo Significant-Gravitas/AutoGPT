@@ -1,8 +1,6 @@
 import asyncio
-import json
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime
 from typing import Any, AsyncGenerator, Generator, Generic, Optional, TypeVar
 
 from pydantic import BaseModel
@@ -12,13 +10,6 @@ from redis.client import PubSub
 from backend.data import redis
 
 logger = logging.getLogger(__name__)
-
-
-class DateTimeEncoder(json.JSONEncoder):
-    def default(self, o):
-        if isinstance(o, datetime):
-            return o.isoformat()
-        return super().default(o)
 
 
 M = TypeVar("M", bound=BaseModel)
@@ -32,8 +23,12 @@ class BaseRedisEventBus(Generic[M], ABC):
     def event_bus_name(self) -> str:
         pass
 
+    @property
+    def Message(self) -> type["_EventPayloadWrapper[M]"]:
+        return _EventPayloadWrapper[self.Model]
+
     def _serialize_message(self, item: M, channel_key: str) -> tuple[str, str]:
-        message = json.dumps(item.model_dump(), cls=DateTimeEncoder)
+        message = self.Message(payload=item).model_dump_json()
         channel_name = f"{self.event_bus_name}/{channel_key}"
         logger.debug(f"[{channel_name}] Publishing an event to Redis {message}")
         return message, channel_name
@@ -43,9 +38,8 @@ class BaseRedisEventBus(Generic[M], ABC):
         if msg["type"] != message_type:
             return None
         try:
-            data = json.loads(msg["data"])
-            logger.debug(f"Consuming an event from Redis {data}")
-            return self.Model(**data)
+            logger.debug(f"[{channel_key}] Consuming an event from Redis {msg['data']}")
+            return self.Message.model_validate_json(msg["data"]).payload
         except Exception as e:
             logger.error(f"Failed to parse event result from Redis {msg} {e}")
 
@@ -57,9 +51,16 @@ class BaseRedisEventBus(Generic[M], ABC):
         return pubsub, full_channel_name
 
 
-class RedisEventBus(BaseRedisEventBus[M], ABC):
-    Model: type[M]
+class _EventPayloadWrapper(BaseModel, Generic[M]):
+    """
+    Wrapper model to allow `RedisEventBus.Model` to be a discriminated union
+    of multiple event types.
+    """
 
+    payload: M
+
+
+class RedisEventBus(BaseRedisEventBus[M], ABC):
     @property
     def connection(self) -> redis.Redis:
         return redis.get_redis()
@@ -85,8 +86,6 @@ class RedisEventBus(BaseRedisEventBus[M], ABC):
 
 
 class AsyncRedisEventBus(BaseRedisEventBus[M], ABC):
-    Model: type[M]
-
     @property
     async def connection(self) -> redis.AsyncRedis:
         return await redis.get_redis_async()

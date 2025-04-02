@@ -214,14 +214,20 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
               <div className="h-full overflow-y-auto">
                 <PublishAgentSelect
                   agents={
-                    myAgents?.agents.map((agent) => ({
-                      name: agent.agent_name,
-                      id: agent.agent_id,
-                      version: agent.agent_version,
-                      lastEdited: agent.last_edited,
-                      imageSrc:
-                        agent.agent_image || "https://picsum.photos/300/200",
-                    })) || []
+                    myAgents?.agents
+                      .map((agent) => ({
+                        name: agent.agent_name,
+                        id: agent.agent_id,
+                        version: agent.agent_version,
+                        lastEdited: agent.last_edited,
+                        imageSrc:
+                          agent.agent_image || "https://picsum.photos/300/200",
+                      }))
+                      .sort(
+                        (a, b) =>
+                          new Date(b.lastEdited).getTime() -
+                          new Date(a.lastEdited).getTime(),
+                      ) || []
                   }
                   onSelect={handleAgentSelect}
                   onCancel={handleClose}
