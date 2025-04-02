@@ -54,12 +54,13 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     update: UserOnboardingUpdateInput = {}
     if data.completedSteps is not None:
         update["completedSteps"] = list(set(data.completedSteps))
-        # Reward user when they clicked New Run during onboarding
-        # This is because they need credits before scheduling a run (next step)
-        if OnboardingStep.AGENT_NEW_RUN in data.completedSteps:
-            await reward_user(user_id, OnboardingStep.AGENT_NEW_RUN)
-        if OnboardingStep.GET_RESULTS in data.completedSteps:
-            await reward_user(user_id, OnboardingStep.GET_RESULTS)
+        for step in (
+            OnboardingStep.AGENT_NEW_RUN,
+            OnboardingStep.GET_RESULTS,
+            OnboardingStep.MARKETPLACE_RUN_AGENT,
+        ):
+            if step in data.completedSteps:
+                await reward_user(user_id, step)
     if data.notificationDot is not None:
         update["notificationDot"] = data.notificationDot
     if data.notified is not None:
@@ -89,6 +90,8 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
 async def reward_user(user_id: str, step: OnboardingStep):
     reward = 0
     match step:
+        # Reward user when they clicked New Run during onboarding
+        # This is because they need credits before scheduling a run (next step)
         case OnboardingStep.AGENT_NEW_RUN:
             reward = 10
         case OnboardingStep.GET_RESULTS:

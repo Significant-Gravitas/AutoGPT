@@ -17,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { useOnboarding } from "../onboarding/onboarding-provider";
 
 export default function AgentRunDraftView({
   graph,
@@ -33,6 +34,7 @@ export default function AgentRunDraftView({
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
   const [expandedInputKey, setExpandedInputKey] = useState<string | null>(null);
   const [tempInputValue, setTempInputValue] = useState("");
+  const { state, completeStep } = useOnboarding();
 
   const openInputPopout = useCallback(
     (key: string) => {
@@ -54,11 +56,16 @@ export default function AgentRunDraftView({
   }, [expandedInputKey, tempInputValue, closeInputPopout]);
 
   const doRun = useCallback(
-    () =>
+    () => {
       api
         .executeGraph(graph.id, graph.version, inputValues)
-        .then((newRun) => onRun(newRun.graph_exec_id)),
-    [api, graph, inputValues, onRun],
+        .then((newRun) => onRun(newRun.graph_exec_id))
+      // Mark run agent onboarding step as completed
+      if (state?.completedSteps.includes("MARKETPLACE_ADD_AGENT")) {
+        completeStep("MARKETPLACE_RUN_AGENT");
+      }
+    },
+    [api, graph, inputValues, onRun, state],
   );
 
   const runActions: ButtonAction[] = useMemo(
