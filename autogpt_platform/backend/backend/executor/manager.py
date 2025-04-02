@@ -20,8 +20,8 @@ from backend.data.notifications import (
     NotificationEventDTO,
     NotificationType,
 )
-from backend.util.exceptions import InsufficientBalanceError
 from backend.server.v2.iffy.graph_moderation import moderate_graph_content
+from backend.util.exceptions import InsufficientBalanceError
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManager
@@ -66,7 +66,7 @@ from backend.util.service import (
     expose,
     get_service_client,
 )
-from backend.util.settings import Settings, BehaveAs
+from backend.util.settings import Settings
 from backend.util.type import convert
 
 logger = logging.getLogger(__name__)
@@ -1086,7 +1086,7 @@ class ExecutionManager(AppService):
             graph_id=graph.id,
             graph_exec_id=graph_exec.id,
             nodes_input=nodes_input,
-            user_id=user_id
+            user_id=user_id,
         )
 
         self.queue.add(graph_exec_entry)

@@ -1,8 +1,8 @@
+import hashlib
+import hmac
 import inspect
 import logging
 from typing import Any, Callable, Optional
-import hmac
-import hashlib
 
 from fastapi import HTTPException, Request, Security
 from fastapi.security import APIKeyHeader, HTTPBearer
@@ -136,6 +136,7 @@ class APIKeyValidator:
         validate_api_key.__name__ = f"validate_{self.security_scheme.model.name}"
         return validate_api_key
 
+
 class HMACValidator:
     """
     Configurable HMAC-based validator for FastAPI applications.
@@ -178,13 +179,12 @@ class HMACValidator:
         error_message (str): Error message to return when validation fails.
     """
 
-
     def __init__(
         self,
         header_name: str,
         secret: str,
         error_status: int = HTTP_401_UNAUTHORIZED,
-        error_message: str = "Invalid HMAC signature"
+        error_message: str = "Invalid HMAC signature",
     ):
         self.secret = secret
         self.header = APIKeyHeader(name=header_name)
@@ -194,19 +194,16 @@ class HMACValidator:
     async def __call__(
         self,
         request: Request,
-        signature: str = Security(APIKeyHeader(name="X-Signature"))
+        signature: str = Security(APIKeyHeader(name="X-Signature")),
     ) -> bool:
         body = await request.body()
         computed_signature = hmac.new(
-            self.secret.encode(),
-            body,
-            hashlib.sha256
+            self.secret.encode(), body, hashlib.sha256
         ).hexdigest()
 
         if not hmac.compare_digest(computed_signature, signature):
             raise HTTPException(
-                status_code=self.error_status,
-                detail=self.error_message
+                status_code=self.error_status, detail=self.error_message
             )
 
         return True
@@ -215,7 +212,10 @@ class HMACValidator:
         """
         Returns a callable dependency that FastAPI will recognize as a security scheme
         """
-        async def validate_signature(request: Request, signature: str = Security(self.header)) -> bool:
+
+        async def validate_signature(
+            request: Request, signature: str = Security(self.header)
+        ) -> bool:
             return await self(request, signature)
 
         validate_signature.__name__ = f"validate_{self.header.model.name}"

@@ -1,6 +1,8 @@
-from typing import Dict, Any, Optional, TypedDict
-from pydantic import BaseModel
 from enum import Enum
+from typing import Any, Dict, Optional, TypedDict
+
+from pydantic import BaseModel
+
 
 class EventType(str, Enum):
     RECORD_FLAGGED = "record.flagged"
@@ -12,16 +14,19 @@ class EventType(str, Enum):
     USER_UNBANNED = "user.unbanned"
     USER_COMPLIANT = "user.compliant"
 
+
 class IffyWebhookEvent(BaseModel):
     event: EventType
     payload: Dict[str, Any]
     timestamp: str
+
 
 class UserData(TypedDict):
     clientId: str
     email: Optional[str]
     name: Optional[str]
     username: Optional[str]
+
 
 class IffyPayload(BaseModel):
     clientId: str
@@ -31,9 +36,11 @@ class IffyPayload(BaseModel):
     content: Dict[str, Any]
     user: Dict[str, Any]
 
+
 class ModerationResult(BaseModel):
     is_safe: bool
-    reason: str 
+    reason: str
+
 
 class BlockContentForModeration(BaseModel):
     graph_id: str
@@ -42,4 +49,4 @@ class BlockContentForModeration(BaseModel):
     block_id: str
     block_name: str
     block_type: str
-    input_data: Dict[str, Any] 
+    input_data: Dict[str, Any]

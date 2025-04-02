@@ -19,6 +19,7 @@ import backend.data.user
 import backend.server.integrations.router
 import backend.server.routers.v1
 import backend.server.v2.admin.store_admin_routes
+import backend.server.v2.iffy.routes
 import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
@@ -26,7 +27,6 @@ import backend.server.v2.otto.routes
 import backend.server.v2.postmark.postmark
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
-import backend.server.v2.iffy.routes
 import backend.util.service
 import backend.util.settings
 from backend.data.model import Credentials
@@ -122,10 +122,8 @@ app.include_router(
 )
 
 app.include_router(
-    backend.server.v2.iffy.routes.iffy_router,
-    tags=["v2", "iffy"],
-    prefix="/api/iffy"
-    )
+    backend.server.v2.iffy.routes.iffy_router, tags=["v2", "iffy"], prefix="/api/iffy"
+)
 
 app.mount("/external-api", external_app)
 

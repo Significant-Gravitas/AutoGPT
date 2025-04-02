@@ -61,7 +61,7 @@ async def get_user_info_by_id(user_id: str) -> dict:
         user = await User.prisma().find_unique(where={"id": user_id})
         if not user:
             raise ValueError(f"User with ID {user_id} not found")
-        
+
         return {
             "id": user.id,
             "name": user.name,
