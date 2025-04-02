@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { ChevronDown, Check } from "lucide-react";
 import { OnboardingStep } from "@/lib/autogpt-server-api";
 import { useOnboarding } from "./onboarding-provider";
@@ -95,21 +95,34 @@ export function TaskGroups() {
 
   const { state } = useOnboarding();
 
-  const toggleGroup = (name: string) => {
-    setGroups(
-      groups.map((group) =>
+  const toggleGroup = useCallback((name: string) => {
+    setGroups((prevGroups) =>
+      prevGroups.map((group) =>
         group.name === name ? { ...group, isOpen: !group.isOpen } : group,
       ),
     );
-  };
+  }, []);
 
-  const isTaskCompleted = (task: Task) => {
-    return state?.completedSteps?.includes(task.id) || false;
-  };
+  const isTaskCompleted = useCallback(
+    (task: Task) => {
+      return state?.completedSteps?.includes(task.id) || false;
+    },
+    [state?.completedSteps],
+  );
 
-  const getCompletedCount = (tasks: Task[]) => {
-    return tasks.filter((task) => isTaskCompleted(task)).length;
-  };
+  const getCompletedCount = useCallback(
+    (tasks: Task[]) => {
+      return tasks.filter((task) => isTaskCompleted(task)).length;
+    },
+    [isTaskCompleted],
+  );
+
+  const isGroupCompleted = useCallback(
+    (group: TaskGroup) => {
+      return group.tasks.every((task) => isTaskCompleted(task));
+    },
+    [isTaskCompleted],
+  );
 
   return (
     <div className="space-y-2">
@@ -122,17 +135,32 @@ export function TaskGroups() {
           >
             {/* Name and completed count */}
             <div className="flex-1">
-              <div className="text-sm font-medium text-zinc-900">
+              <div
+                className={cn(
+                  "text-sm font-medium text-zinc-900",
+                  isGroupCompleted(group) ? "text-zinc-600 line-through" : "",
+                )}
+              >
                 {group.name}
               </div>
-              <div className="mt-1 text-xs font-normal leading-tight text-zinc-500">
+              <div
+                className={cn(
+                  "mt-1 text-xs font-normal leading-tight text-zinc-500",
+                  isGroupCompleted(group) ? "line-through" : "",
+                )}
+              >
                 {getCompletedCount(group.tasks)} of {group.tasks.length}{" "}
                 completed
               </div>
             </div>
             {/* Reward and chevron */}
             <div className="flex items-center gap-2">
-              <div className="text-xs font-medium leading-tight text-violet-600">
+              <div
+                className={cn(
+                  "text-xs font-medium leading-tight text-violet-600",
+                  isGroupCompleted(group) ? "line-through" : "",
+                )}
+              >
                 $
                 {group.tasks
                   .reduce((sum, task) => sum + task.amount, 0)
@@ -146,8 +174,15 @@ export function TaskGroups() {
             </div>
           </div>
 
-          {/* Always visible tasks */}
-          <div className="">
+          {/* Tasks */}
+          <div
+            className={cn(
+              "overflow-hidden transition-all duration-300 ease-in-out",
+              group.isOpen || !isGroupCompleted(group)
+                ? "max-h-[1000px] opacity-100"
+                : "max-h-0 opacity-0",
+            )}
+          >
             {group.tasks.map((task) => (
               <div key={task.id} className="mt-1 px-4 py-1">
                 <div className="flex items-center justify-between">
@@ -177,14 +212,16 @@ export function TaskGroups() {
                     </span>
                   </div>
                   {/* Reward */}
-                  <span
-                    className={cn(
-                      "text-xs font-normal text-zinc-500",
-                      isTaskCompleted(task) ? "line-through" : "",
-                    )}
-                  >
-                    ${task.amount.toFixed(2)}
-                  </span>
+                  {task.amount > 0 && (
+                    <span
+                      className={cn(
+                        "text-xs font-normal text-zinc-500",
+                        isTaskCompleted(task) ? "line-through" : "",
+                      )}
+                    >
+                      ${task.amount.toFixed(2)}
+                    </span>
+                  )}
                 </div>
 
                 {/* Details section */}
