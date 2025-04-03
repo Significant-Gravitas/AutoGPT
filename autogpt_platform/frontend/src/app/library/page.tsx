@@ -18,7 +18,7 @@ import LibraryAgentList from "@/components/library/library-agent-list";
 
 export default function LibraryPage() {
   return (
-    <main className="container min-h-screen space-y-4 sm:px-8 md:px-12">
+    <main className="container min-h-screen space-y-4 pb-20 sm:px-8 md:px-12">
       <LibraryPageStateProvider>
         {/* Header section containing notifications, search functionality and upload mechanism */}
         <LibraryActionHeader />
