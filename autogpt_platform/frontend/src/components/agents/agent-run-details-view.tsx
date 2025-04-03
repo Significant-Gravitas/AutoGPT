@@ -4,10 +4,10 @@ import moment from "moment";
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
+  Graph,
   GraphExecution,
   GraphExecutionID,
   GraphExecutionMeta,
-  GraphMeta,
 } from "@/lib/autogpt-server-api";
 
 import type { ButtonAction } from "@/components/agptui/types";
@@ -29,7 +29,7 @@ export default function AgentRunDetailsView({
   onRun,
   deleteRun,
 }: {
-  graph: GraphMeta;
+  graph: Graph;
   run: GraphExecution | GraphExecutionMeta;
   agentActions: ButtonAction[];
   onRun: (runID: GraphExecutionID) => void;
@@ -155,7 +155,8 @@ export default function AgentRunDetailsView({
             },
           ] satisfies ButtonAction[])
         : []),
-      ...(["success", "failed", "stopped"].includes(runStatus)
+      ...(["success", "failed", "stopped"].includes(runStatus) &&
+      !graph.has_webhook_trigger
         ? [
             {
               label: (
