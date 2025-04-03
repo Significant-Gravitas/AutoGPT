@@ -124,10 +124,11 @@ class GraphExecution(GraphExecutionMeta):
 
         graph_exec = GraphExecutionMeta.from_db(_graph_exec)
 
-        node_executions = sorted(
+        complete_node_executions = sorted(
             [
                 NodeExecutionResult.from_db(ne, _graph_exec.userId)
                 for ne in _graph_exec.AgentNodeExecutions
+                if ne.executionStatus != ExecutionStatus.INCOMPLETE
             ],
             key=lambda ne: (ne.queue_time is None, ne.queue_time or ne.add_time),
         )
@@ -136,7 +137,7 @@ class GraphExecution(GraphExecutionMeta):
             **{
                 # inputs from Agent Input Blocks
                 exec.input_data["name"]: exec.input_data.get("value")
-                for exec in node_executions
+                for exec in complete_node_executions
                 if (
                     (block := get_block(exec.block_id))
                     and block.block_type == BlockType.INPUT
@@ -145,7 +146,7 @@ class GraphExecution(GraphExecutionMeta):
             **{
                 # input from webhook-triggered block
                 "payload": exec.input_data["payload"]
-                for exec in node_executions
+                for exec in complete_node_executions
                 if (
                     (block := get_block(exec.block_id))
                     and block.block_type
@@ -155,7 +156,7 @@ class GraphExecution(GraphExecutionMeta):
         }
 
         outputs: CompletedBlockOutput = defaultdict(list)
-        for exec in node_executions:
+        for exec in complete_node_executions:
             if (
                 block := get_block(exec.block_id)
             ) and block.block_type == BlockType.OUTPUT:

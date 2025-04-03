@@ -163,12 +163,8 @@ def execute_node(
         return
 
     def push_output(output_name: str, output_data: Any) -> None:
-        _push_node_execution_output(
-            db_client=db_client,
-            user_id=user_id,
-            graph_exec_id=graph_exec_id,
+        db_client.upsert_execution_output(
             node_exec_id=node_exec_id,
-            block_id=node_block.id,
             output_name=output_name,
             output_data=output_data,
         )
@@ -278,35 +274,6 @@ def execute_node(
             )
             execution_stats.input_size = input_size
             execution_stats.output_size = output_size
-
-
-def _push_node_execution_output(
-    db_client: "DatabaseManager",
-    user_id: str,
-    graph_exec_id: str,
-    node_exec_id: str,
-    block_id: str,
-    output_name: str,
-    output_data: Any,
-):
-    from backend.blocks.io import IO_BLOCK_IDs
-
-    db_client.upsert_execution_output(
-        node_exec_id=node_exec_id,
-        output_name=output_name,
-        output_data=output_data,
-    )
-
-    # Automatically push execution updates for all agent I/O
-    if block_id in IO_BLOCK_IDs:
-        graph_exec = db_client.get_graph_execution(
-            user_id=user_id, execution_id=graph_exec_id
-        )
-        if not graph_exec:
-            raise ValueError(
-                f"Graph execution #{graph_exec_id} for user #{user_id} not found"
-            )
-        db_client.send_execution_update(graph_exec)
 
 
 def _enqueue_next_nodes(
@@ -748,15 +715,19 @@ class Executor:
             Exception | None: The error that occurred during the execution, if any.
         """
         log_metadata.info(f"Start graph execution {graph_exec.graph_exec_id}")
-        exec_stats = GraphExecutionStats()
+        execution_stats = GraphExecutionStats()
+        execution_status = ExecutionStatus.RUNNING
         error = None
         finished = False
 
         def cancel_handler():
+            nonlocal execution_status
+
             while not cancel.is_set():
                 cancel.wait(1)
             if finished:
                 return
+            execution_status = ExecutionStatus.TERMINATED
             cls.executor.terminate()
             log_metadata.info(f"Terminated graph execution {graph_exec.graph_exec_id}")
             cls._init_node_executor_pool()
@@ -779,18 +750,34 @@ class Executor:
                     if not isinstance(result, NodeExecutionStats):
                         return
 
-                    nonlocal exec_stats
-                    exec_stats.node_count += 1
-                    exec_stats.nodes_cputime += result.cputime
-                    exec_stats.nodes_walltime += result.walltime
+                    nonlocal execution_stats
+                    execution_stats.node_count += 1
+                    execution_stats.nodes_cputime += result.cputime
+                    execution_stats.nodes_walltime += result.walltime
                     if (err := result.error) and isinstance(err, Exception):
-                        exec_stats.node_error_count += 1
+                        execution_stats.node_error_count += 1
+
+                    if _graph_exec := cls.db_client.update_graph_execution_stats(
+                        graph_exec_id=exec_data.graph_exec_id,
+                        status=execution_status,
+                        stats=execution_stats,
+                    ):
+                        cls.db_client.send_execution_update(_graph_exec)
+                    else:
+                        logger.error(
+                            "Callback for "
+                            f"finished node execution #{exec_data.node_exec_id} "
+                            "could not update execution stats "
+                            f"for graph execution #{exec_data.graph_exec_id}; "
+                            f"triggered while graph exec status = {execution_status}"
+                        )
 
                 return callback
 
             while not queue.empty():
                 if cancel.is_set():
-                    return exec_stats, ExecutionStatus.TERMINATED, error
+                    execution_status = ExecutionStatus.TERMINATED
+                    return execution_stats, execution_status, error
 
                 exec_data = queue.get()
 
@@ -812,29 +799,26 @@ class Executor:
                     exec_cost_counter = cls._charge_usage(
                         node_exec=exec_data,
                         execution_count=exec_cost_counter + 1,
-                        execution_stats=exec_stats,
+                        execution_stats=execution_stats,
                     )
                 except InsufficientBalanceError as error:
                     node_exec_id = exec_data.node_exec_id
-                    _push_node_execution_output(
-                        db_client=cls.db_client,
-                        user_id=graph_exec.user_id,
-                        graph_exec_id=graph_exec.graph_exec_id,
+                    cls.db_client.upsert_execution_output(
                         node_exec_id=node_exec_id,
-                        block_id=exec_data.block_id,
                         output_name="error",
                         output_data=str(error),
                     )
 
+                    execution_status = ExecutionStatus.FAILED
                     exec_update = cls.db_client.update_node_execution_status(
-                        node_exec_id, ExecutionStatus.FAILED
+                        node_exec_id, execution_status
                     )
                     cls.db_client.send_execution_update(exec_update)
 
                     cls._handle_low_balance_notif(
                         graph_exec.user_id,
                         graph_exec.graph_id,
-                        exec_stats,
+                        execution_stats,
                         error,
                     )
                     raise
@@ -852,7 +836,8 @@ class Executor:
                     )
                     for node_id, execution in list(running_executions.items()):
                         if cancel.is_set():
-                            return exec_stats, ExecutionStatus.TERMINATED, error
+                            execution_status = ExecutionStatus.TERMINATED
+                            return execution_stats, execution_status, error
 
                         if not queue.empty():
                             break  # yield to parent loop to execute new queue items
@@ -879,7 +864,7 @@ class Executor:
             cancel_thread.join()
             clean_exec_files(graph_exec.graph_exec_id)
 
-            return exec_stats, execution_status, error
+            return execution_stats, execution_status, error
 
     @classmethod
     def _handle_agent_run_notif(
