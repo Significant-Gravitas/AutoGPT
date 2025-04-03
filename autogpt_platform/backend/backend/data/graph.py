@@ -226,8 +226,8 @@ class GraphModel(Graph):
 
     @computed_field
     @property
-    def webhook_id(self) -> str | None:
-        return self.webhook_input_node.webhook_id if self.webhook_input_node else None
+    def has_webhook_trigger(self) -> bool:
+        return self.webhook_input_node is not None
 
     @property
     def starting_nodes(self) -> list[NodeModel]:

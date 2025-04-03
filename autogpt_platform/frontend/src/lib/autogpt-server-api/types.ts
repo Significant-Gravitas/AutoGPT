@@ -282,12 +282,17 @@ export type GraphIOSubSchema = Omit<
 export type Graph = GraphMeta & {
   nodes: Array<Node>;
   links: Array<Link>;
-  webhook_id?: string;
+  has_webhook_trigger: boolean;
 };
 
 export type GraphUpdateable = Omit<
   Graph,
-  "version" | "is_active" | "links" | "input_schema" | "output_schema"
+  | "version"
+  | "is_active"
+  | "links"
+  | "input_schema"
+  | "output_schema"
+  | "has_webhook_trigger"
 > & {
   version?: number;
   is_active?: boolean;
