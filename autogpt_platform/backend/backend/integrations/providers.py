@@ -4,12 +4,14 @@ from enum import Enum
 # --8<-- [start:ProviderName]
 class ProviderName(str, Enum):
     ANTHROPIC = "anthropic"
+    APOLLO = "apollo"
     COMPASS = "compass"
     DISCORD = "discord"
     D_ID = "d_id"
     E2B = "e2b"
     EXA = "exa"
     FAL = "fal"
+    GENERIC_WEBHOOK = "generic_webhook"
     GITHUB = "github"
     GOOGLE = "google"
     GOOGLE_MAPS = "google_maps"
@@ -32,8 +34,10 @@ class ProviderName(str, Enum):
     REVID = "revid"
     SCREENSHOTONE = "screenshotone"
     SLANT3D = "slant3d"
+    SMARTLEAD = "smartlead"
     SMTP = "smtp"
     TWITTER = "twitter"
     TODOIST = "todoist"
     UNREAL_SPEECH = "unreal_speech"
+    ZEROBOUNCE = "zerobounce"
     # --8<-- [end:ProviderName]

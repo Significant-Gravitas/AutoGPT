@@ -18,17 +18,17 @@ export const HeroSection: React.FC = () => {
       <div className="w-full max-w-3xl lg:max-w-4xl xl:max-w-5xl">
         <div className="mb-4 text-center md:mb-8">
           <h1 className="text-center">
-            <span className="font-poppin text-[48px] font-semibold leading-[54px] text-neutral-950 dark:text-neutral-50">
+            <span className="font-poppins text-[48px] font-semibold leading-[54px] text-neutral-950 dark:text-neutral-50">
               Explore AI agents built for{" "}
             </span>
-            <span className="font-poppin text-[48px] font-semibold leading-[54px] text-violet-600">
+            <span className="font-poppins text-[48px] font-semibold leading-[54px] text-violet-600">
               you
             </span>
             <br />
-            <span className="font-poppin text-[48px] font-semibold leading-[54px] text-neutral-950 dark:text-neutral-50">
+            <span className="font-poppins text-[48px] font-semibold leading-[54px] text-neutral-950 dark:text-neutral-50">
               by the{" "}
             </span>
-            <span className="font-poppin text-[48px] font-semibold leading-[54px] text-blue-500">
+            <span className="font-poppins text-[48px] font-semibold leading-[54px] text-blue-500">
               community
             </span>
           </h1>
@@ -36,7 +36,7 @@ export const HeroSection: React.FC = () => {
         <h3 className="mb:text-2xl mb-6 text-center font-sans text-xl font-normal leading-loose text-neutral-700 dark:text-neutral-300 md:mb-12">
           Bringing you AI agents designed by thinkers from around the world
         </h3>
-        <div className="mb-4 flex justify-center sm:mb-5 md:mb-6">
+        <div className="mb-4 flex justify-center sm:mb-5">
           <SearchBar height="h-[74px]" />
         </div>
         <div>

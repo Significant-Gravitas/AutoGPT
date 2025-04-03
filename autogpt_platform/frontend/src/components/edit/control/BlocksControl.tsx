@@ -219,7 +219,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
           </CardHeader>
           <CardContent className="overflow-scroll border-t border-t-gray-200 p-0 dark:border-t-slate-700">
             <ScrollArea
-              className="h-[60vh] w-fit"
+              className="h-[60vh] w-full"
               data-id="blocks-control-scroll-area"
             >
               {filteredAvailableBlocks.map((block) => (
@@ -246,6 +246,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
                       <span
                         className="block truncate pb-1 text-sm font-semibold dark:text-white"
                         data-id={`block-name-${block.id}`}
+                        data-type={block.uiType}
                         data-testid={`block-name-${block.id}`}
                       >
                         <TextRenderer

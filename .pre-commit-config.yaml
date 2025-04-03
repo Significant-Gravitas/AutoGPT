@@ -140,7 +140,7 @@ repos:
         language: system
 
   - repo: https://github.com/psf/black
-    rev: 23.12.1
+    rev: 24.10.0
     # Black has sensible defaults, doesn't need package context, and ignores
     # everything in .gitignore, so it works fine without any config or arguments.
     hooks:
@@ -169,6 +169,16 @@ repos:
         alias: flake8-classic-benchmark
         files: ^classic/benchmark/(agbenchmark|tests)/((?!reports).)*[/.]
         args: [--config=classic/benchmark/.flake8]
+
+  - repo: local
+    hooks:
+      - id: prettier
+        name: Format (Prettier) - AutoGPT Platform - Frontend
+        alias: format-platform-frontend
+        entry: bash -c 'cd autogpt_platform/frontend && npx prettier --write $(echo "$@" | sed "s|autogpt_platform/frontend/||g")' --
+        files: ^autogpt_platform/frontend/
+        types: [file]
+        language: system
 
   - repo: local
     # To have watertight type checking, we check *all* the files in an affected
@@ -217,6 +227,16 @@ repos:
         alias: pyright-classic-benchmark
         entry: poetry -C classic/benchmark run pyright
         files: ^classic/benchmark/(agbenchmark/|tests/|poetry\.lock$)
+        types: [file]
+        language: system
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: tsc
+        name: Typecheck - AutoGPT Platform - Frontend
+        entry: bash -c 'cd autogpt_platform/frontend && npm run type-check'
+        files: ^autogpt_platform/frontend/
         types: [file]
         language: system
         pass_filenames: false

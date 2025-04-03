@@ -10,7 +10,6 @@ class BlockCostType(str, Enum):
     RUN = "run"  # cost X credits per run
     BYTE = "byte"  # cost X credits per byte
     SECOND = "second"  # cost X credits per second
-    DOLLAR = "dollar"  # cost X dollars per run
 
 
 class BlockCost(BaseModel):

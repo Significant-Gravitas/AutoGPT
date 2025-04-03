@@ -1,4 +1,4 @@
-import { GraphExecution, GraphMeta } from "@/lib/autogpt-server-api";
+import { GraphExecutionMeta, LibraryAgent } from "@/lib/autogpt-server-api";
 import {
   ComposedChart,
   DefaultLegendContentProps,
@@ -22,8 +22,8 @@ export const FlowRunsTimeline = ({
   dataMin,
   className,
 }: {
-  flows: GraphMeta[];
-  executions: GraphExecution[];
+  flows: LibraryAgent[];
+  executions: GraphExecutionMeta[];
   dataMin: "dataMin" | number;
   className?: string;
 }) => (
@@ -60,9 +60,11 @@ export const FlowRunsTimeline = ({
       <Tooltip
         content={({ payload, label }) => {
           if (payload && payload.length) {
-            const data: GraphExecution & { time: number; _duration: number } =
-              payload[0].payload;
-            const flow = flows.find((f) => f.id === data.graph_id);
+            const data: GraphExecutionMeta & {
+              time: number;
+              _duration: number;
+            } = payload[0].payload;
+            const flow = flows.find((f) => f.agent_id === data.graph_id);
             return (
               <Card className="p-2 text-xs leading-normal">
                 <p>
@@ -94,10 +96,10 @@ export const FlowRunsTimeline = ({
         <Scatter
           key={flow.id}
           data={executions
-            .filter((e) => e.graph_id == flow.id)
+            .filter((e) => e.graph_id == flow.agent_id)
             .map((e) => ({
               ...e,
-              time: e.started_at + e.total_run_time * 1000,
+              time: e.started_at.getTime() + e.total_run_time * 1000,
               _duration: e.total_run_time,
             }))}
           name={flow.name}
@@ -106,14 +108,18 @@ export const FlowRunsTimeline = ({
       ))}
       {executions.map((execution) => (
         <Line
-          key={execution.execution_id}
+          key={execution.id}
           type="linear"
           dataKey="_duration"
           data={[
-            { ...execution, time: execution.started_at, _duration: 0 },
             {
               ...execution,
-              time: execution.ended_at,
+              time: execution.started_at.getTime(),
+              _duration: 0,
+            },
+            {
+              ...execution,
+              time: execution.ended_at.getTime(),
               _duration: execution.total_run_time,
             },
           ]}

@@ -27,13 +27,18 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
     >
       <div className="flex w-full flex-col items-start justify-start gap-3.5 sm:h-[218px]">
         <Avatar className="h-[100px] w-[100px] sm:h-[130px] sm:w-[130px]">
-          <AvatarImage src={avatarSrc} alt={`${username}'s avatar`} />
+          <AvatarImage
+            width={130}
+            height={130}
+            src={avatarSrc}
+            alt={`${username}'s avatar`}
+          />
           <AvatarFallback className="h-[100px] w-[100px] sm:h-[130px] sm:w-[130px]">
             {username.charAt(0)}
           </AvatarFallback>
         </Avatar>
         <div className="flex w-full flex-col items-start justify-start gap-1.5">
-          <div className="font-poppins w-full text-[35px] font-medium leading-10 text-neutral-900 dark:text-neutral-100 sm:text-[35px] sm:leading-10">
+          <div className="w-full font-poppins text-[35px] font-medium leading-10 text-neutral-900 dark:text-neutral-100 sm:text-[35px] sm:leading-10">
             {username}
           </div>
           <div className="font-geist w-full text-lg font-normal leading-6 text-neutral-800 dark:text-neutral-200 sm:text-xl sm:leading-7">
