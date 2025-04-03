@@ -282,6 +282,7 @@ export type GraphIOSubSchema = Omit<
 export type Graph = GraphMeta & {
   nodes: Array<Node>;
   links: Array<Link>;
+  webhook_id?: string;
 };
 
 export type GraphUpdateable = Omit<

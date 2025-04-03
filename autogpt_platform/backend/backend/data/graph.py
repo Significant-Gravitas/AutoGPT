@@ -53,21 +53,20 @@ class Node(BaseDbModel):
     input_links: list[Link] = []
     output_links: list[Link] = []
 
-    webhook_id: Optional[str] = None
-
-
-class NodeModel(Node):
-    graph_id: str
-    graph_version: int
-
-    webhook: Optional[Webhook] = None
-
     @property
     def block(self) -> Block[BlockSchema, BlockSchema]:
         block = get_block(self.block_id)
         if not block:
             raise ValueError(f"Block #{self.block_id} does not exist")
         return block
+
+
+class NodeModel(Node):
+    graph_id: str
+    graph_version: int
+
+    webhook_id: Optional[str] = None
+    webhook: Optional[Webhook] = None
 
     @staticmethod
     def from_db(node: AgentNode, for_export: bool = False) -> "NodeModel":
@@ -164,30 +163,15 @@ class BaseGraph(BaseDbModel):
     @computed_field
     @property
     def input_schema(self) -> dict[str, Any]:
-        webhook_input_block = next(
-            (
-                block
-                for node in self.nodes
-                if (block := get_block(node.block_id))
-                and block.block_type in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
-            ),
-            None,
-        )
         return self._generate_schema(
             AgentInputBlock.Input,
-            (
-                [
-                    node.input_default
-                    for node in self.nodes
-                    if (b := get_block(node.block_id))
-                    and b.block_type == BlockType.INPUT
-                    and "name" in node.input_default
-                ]
-                if not webhook_input_block
-                else [
-                    {"name": "payload", "title": f"{webhook_input_block.name} payload"}
-                ]
-            ),
+            [
+                node.input_default
+                for node in self.nodes
+                if (b := get_block(node.block_id))
+                and b.block_type == BlockType.INPUT
+                and "name" in node.input_default
+            ],
         )
 
     @computed_field
@@ -241,8 +225,13 @@ class GraphModel(Graph):
     user_id: str
     nodes: list[NodeModel] = []  # type: ignore
 
+    @computed_field
     @property
-    def starting_nodes(self) -> list[Node]:
+    def webhook_id(self) -> str | None:
+        return self.webhook_input_node.webhook_id if self.webhook_input_node else None
+
+    @property
+    def starting_nodes(self) -> list[NodeModel]:
         outbound_nodes = {link.sink_id for link in self.links}
         input_nodes = {
             v.id
@@ -254,6 +243,18 @@ class GraphModel(Graph):
             for node in self.nodes
             if node.id not in outbound_nodes or node.id in input_nodes
         ]
+
+    @property
+    def webhook_input_node(self) -> NodeModel | None:
+        return next(
+            (
+                node
+                for node in self.nodes
+                if node.block.block_type
+                in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
+            ),
+            None,
+        )
 
     def reassign_ids(self, user_id: str, reassign_graph_id: bool = False):
         """
@@ -761,7 +762,6 @@ async def __create_graph(tx, graph: Graph, user_id: str):
                 "agentBlockId": node.block_id,
                 "constantInput": Json(node.input_default),
                 "metadata": Json(node.metadata),
-                "webhookId": node.webhook_id,
             }
             for graph in graphs
             for node in graph.nodes

@@ -8,8 +8,8 @@ import {
   GraphExecution,
   GraphExecutionID,
   GraphExecutionMeta,
+  Graph,
   GraphID,
-  GraphMeta,
   LibraryAgent,
   LibraryAgentID,
   Schedule,
@@ -30,7 +30,7 @@ export default function AgentRunsPage(): React.ReactElement {
 
   // ============================ STATE =============================
 
-  const [graph, setGraph] = useState<GraphMeta | null>(null);
+  const [graph, setGraph] = useState<Graph | null>(null);
   const [agent, setAgent] = useState<LibraryAgent | null>(null);
   const [agentRuns, setAgentRuns] = useState<GraphExecutionMeta[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -63,9 +63,7 @@ export default function AgentRunsPage(): React.ReactElement {
     setSelectedSchedule(schedule);
   }, []);
 
-  const [graphVersions, setGraphVersions] = useState<Record<number, GraphMeta>>(
-    {},
-  );
+  const [graphVersions, setGraphVersions] = useState<Record<number, Graph>>({});
   const getGraphVersion = useCallback(
     async (graphID: GraphID, version: number) => {
       if (graphVersions[version]) return graphVersions[version];
@@ -232,6 +230,7 @@ export default function AgentRunsPage(): React.ReactElement {
         agentRuns={agentRuns}
         schedules={schedules}
         selectedView={selectedView}
+        allowDraftNewRun={!graph.webhook_id}
         onSelectRun={selectRun}
         onSelectSchedule={selectSchedule}
         onSelectDraftNewRun={openRunDraftView}

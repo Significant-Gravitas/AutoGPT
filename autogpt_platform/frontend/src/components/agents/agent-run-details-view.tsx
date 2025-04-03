@@ -68,7 +68,7 @@ export default function AgentRunDetailsView({
       Object.entries(run.inputs).map(([k, v]) => [
         k,
         {
-          title: graph.input_schema.properties[k].title,
+          title: graph.input_schema.properties[k]?.title,
           // type: graph.input_schema.properties[k].type, // TODO: implement typed graph inputs
           value: v,
         },
