@@ -302,6 +302,7 @@ export type GraphIOSubSchema = Omit<
 export type Graph = GraphMeta & {
   nodes: Array<Node>;
   links: Array<Link>;
+  has_webhook_trigger: boolean;
 };
 
 export type GraphUpdateable = Omit<
@@ -312,6 +313,7 @@ export type GraphUpdateable = Omit<
   | "links"
   | "input_schema"
   | "output_schema"
+  | "has_webhook_trigger"
 > & {
   version?: number;
   is_active?: boolean;
