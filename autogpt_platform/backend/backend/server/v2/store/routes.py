@@ -7,6 +7,7 @@ import autogpt_libs.auth.depends
 import autogpt_libs.auth.middleware
 import fastapi
 import fastapi.responses
+from autogpt_libs.auth.depends import auth_middleware, get_user_id
 
 import backend.data.block
 import backend.data.graph
@@ -193,6 +194,55 @@ async def get_agent(username: str, agent_name: str):
             content={
                 "detail": "An error occurred while retrieving the store agent details"
             },
+        )
+
+
+@router.get(
+    "/graph/{store_listing_version_id}",
+    tags=["store"],
+)
+async def get_graph_meta_by_store_listing_version_id(
+    store_listing_version_id: str,
+    _: typing.Annotated[str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)],
+):
+    """
+    Get Agent Graph from Store Listing Version ID.
+    """
+    try:
+        graph = await backend.server.v2.store.db.get_available_graph(
+            store_listing_version_id
+        )
+        return graph
+    except Exception:
+        logger.exception("Exception occurred whilst getting agent graph")
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={"detail": "An error occurred while retrieving the agent graph"},
+        )
+
+
+@router.get(
+    "/agents/{store_listing_version_id}",
+    tags=["store"],
+    response_model=backend.server.v2.store.model.StoreAgentDetails,
+)
+async def get_store_agent(
+    store_listing_version_id: str,
+    _: typing.Annotated[str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)],
+):
+    """
+    Get Store Agent Details from Store Listing Version ID.
+    """
+    try:
+        agent = await backend.server.v2.store.db.get_store_agent_by_version_id(
+            store_listing_version_id
+        )
+        return agent
+    except Exception:
+        logger.exception("Exception occurred whilst getting store agent")
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={"detail": "An error occurred while retrieving the store agent"},
         )
 
 
@@ -590,9 +640,7 @@ async def generate_image(
     tags=["store", "public"],
 )
 async def download_agent_file(
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
+    request: fastapi.Request,
     store_listing_version_id: str = fastapi.Path(
         ..., description="The ID of the agent to download"
     ),
@@ -609,6 +657,10 @@ async def download_agent_file(
     Raises:
         HTTPException: If the agent is not found or an unexpected error occurs.
     """
+    try:
+        user_id = get_user_id(await auth_middleware(request))
+    except fastapi.HTTPException:
+        user_id = None
 
     graph_data = await backend.server.v2.store.db.get_agent(
         user_id=user_id,

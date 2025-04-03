@@ -1,13 +1,16 @@
 from datetime import date, time
-from typing import Any
+from typing import Any, Optional
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
-from backend.util.file import MediaFile, store_media_file
+from backend.util.file import store_media_file
 from backend.util.mock import MockObject
+from backend.util.settings import Config
 from backend.util.text import TextFormatter
+from backend.util.type import LongTextType, MediaFileType, ShortTextType
 
 formatter = TextFormatter()
+config = Config()
 
 
 class AgentInputBlock(Block):
@@ -37,11 +40,7 @@ class AgentInputBlock(Block):
             description="The placeholder values to be passed as input.",
             default=[],
             advanced=True,
-        )
-        limit_to_placeholder_values: bool = SchemaField(
-            description="Whether to limit the selection to placeholder values.",
-            default=False,
-            advanced=True,
+            hidden=True,
         )
         advanced: bool = SchemaField(
             description="Whether to show the input in the advanced section, if the field is not required.",
@@ -53,6 +52,12 @@ class AgentInputBlock(Block):
             default=False,
             advanced=True,
         )
+
+        def generate_schema(self):
+            schema = self.get_field_schema("value")
+            if possible_values := self.placeholder_values:
+                schema["enum"] = possible_values
+            return schema
 
     class Output(BlockSchema):
         result: Any = SchemaField(description="The value passed as input.")
@@ -70,14 +75,12 @@ class AgentInputBlock(Block):
                         "name": "input_1",
                         "description": "Example test input.",
                         "placeholder_values": [],
-                        "limit_to_placeholder_values": False,
                     },
                     {
                         "value": "Hello, World!",
                         "name": "input_2",
                         "description": "Example test input with placeholders.",
                         "placeholder_values": ["Hello, World!"],
-                        "limit_to_placeholder_values": True,
                     },
                 ],
                 "test_output": [
@@ -92,7 +95,8 @@ class AgentInputBlock(Block):
         )
 
     def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
-        yield "result", input_data.value
+        if input_data.value is not None:
+            yield "result", input_data.value
 
 
 class AgentOutputBlock(Block):
@@ -137,6 +141,9 @@ class AgentOutputBlock(Block):
             default=False,
             advanced=True,
         )
+
+        def generate_schema(self):
+            return self.get_field_schema("value")
 
     class Output(BlockSchema):
         output: Any = SchemaField(description="The value recorded as output.")
@@ -197,10 +204,11 @@ class AgentOutputBlock(Block):
 
 class AgentShortTextInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: str = SchemaField(
+        value: Optional[ShortTextType] = SchemaField(
             description="Short text input.",
-            default="Short text",
-            json_schema_extra={"format": "short-text"},
+            default=None,
+            advanced=False,
+            title="Default Value",
         )
 
     class Output(AgentInputBlock.Output):
@@ -210,6 +218,7 @@ class AgentShortTextInputBlock(AgentInputBlock):
         super().__init__(
             id="7fcd3bcb-8e1b-4e69-903d-32d3d4a92158",
             description="Block for short text input (single-line).",
+            disabled=not config.enable_agent_input_subtype_blocks,
             input_schema=AgentShortTextInputBlock.Input,
             output_schema=AgentShortTextInputBlock.Output,
             test_input=[
@@ -218,14 +227,12 @@ class AgentShortTextInputBlock(AgentInputBlock):
                     "name": "short_text_1",
                     "description": "Short text example 1",
                     "placeholder_values": [],
-                    "limit_to_placeholder_values": False,
                 },
                 {
                     "value": "Quick test",
                     "name": "short_text_2",
                     "description": "Short text example 2",
                     "placeholder_values": ["Quick test", "Another option"],
-                    "limit_to_placeholder_values": True,
                 },
             ],
             test_output=[
@@ -237,10 +244,11 @@ class AgentShortTextInputBlock(AgentInputBlock):
 
 class AgentLongTextInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: str = SchemaField(
+        value: Optional[LongTextType] = SchemaField(
             description="Long text input (potentially multi-line).",
-            default="Longer text can go here.",
-            json_schema_extra={"format": "long-text"},
+            default=None,
+            advanced=False,
+            title="Default Value",
         )
 
     class Output(AgentInputBlock.Output):
@@ -250,6 +258,7 @@ class AgentLongTextInputBlock(AgentInputBlock):
         super().__init__(
             id="90a56ffb-7024-4b2b-ab50-e26c5e5ab8ba",
             description="Block for long text input (multi-line).",
+            disabled=not config.enable_agent_input_subtype_blocks,
             input_schema=AgentLongTextInputBlock.Input,
             output_schema=AgentLongTextInputBlock.Output,
             test_input=[
@@ -258,14 +267,12 @@ class AgentLongTextInputBlock(AgentInputBlock):
                     "name": "long_text_1",
                     "description": "Long text example 1",
                     "placeholder_values": [],
-                    "limit_to_placeholder_values": False,
                 },
                 {
                     "value": "Another multiline text input.",
                     "name": "long_text_2",
                     "description": "Long text example 2",
                     "placeholder_values": ["Another multiline text input."],
-                    "limit_to_placeholder_values": True,
                 },
             ],
             test_output=[
@@ -277,7 +284,12 @@ class AgentLongTextInputBlock(AgentInputBlock):
 
 class AgentNumberInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: int = SchemaField(description="Number input.")
+        value: Optional[int] = SchemaField(
+            description="Number input.",
+            default=None,
+            advanced=False,
+            title="Default Value",
+        )
 
     class Output(AgentInputBlock.Output):
         result: int = SchemaField(description="Number result.")
@@ -286,6 +298,7 @@ class AgentNumberInputBlock(AgentInputBlock):
         super().__init__(
             id="96dae2bb-97a2-41c2-bd2f-13a3b5a8ea98",
             description="Block for number input.",
+            disabled=not config.enable_agent_input_subtype_blocks,
             input_schema=AgentNumberInputBlock.Input,
             output_schema=AgentNumberInputBlock.Output,
             test_input=[
@@ -294,14 +307,12 @@ class AgentNumberInputBlock(AgentInputBlock):
                     "name": "number_input_1",
                     "description": "Number example 1",
                     "placeholder_values": [],
-                    "limit_to_placeholder_values": False,
                 },
                 {
                     "value": 314,
                     "name": "number_input_2",
                     "description": "Number example 2",
                     "placeholder_values": [314, 2718],
-                    "limit_to_placeholder_values": True,
                 },
             ],
             test_output=[
@@ -313,8 +324,11 @@ class AgentNumberInputBlock(AgentInputBlock):
 
 class AgentDateInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: date = SchemaField(
+        value: Optional[date] = SchemaField(
             description="Date input (YYYY-MM-DD).",
+            default=None,
+            advanced=False,
+            title="Default Value",
         )
 
     class Output(AgentInputBlock.Output):
@@ -324,6 +338,7 @@ class AgentDateInputBlock(AgentInputBlock):
         super().__init__(
             id="7e198b09-4994-47db-8b4d-952d98241817",
             description="Block for date input.",
+            disabled=not config.enable_agent_input_subtype_blocks,
             input_schema=AgentDateInputBlock.Input,
             output_schema=AgentDateInputBlock.Output,
             test_input=[
@@ -348,8 +363,11 @@ class AgentDateInputBlock(AgentInputBlock):
 
 class AgentTimeInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: time = SchemaField(
+        value: Optional[time] = SchemaField(
             description="Time input (HH:MM:SS).",
+            default=None,
+            advanced=False,
+            title="Default Value",
         )
 
     class Output(AgentInputBlock.Output):
@@ -359,6 +377,7 @@ class AgentTimeInputBlock(AgentInputBlock):
         super().__init__(
             id="2a1c757e-86cf-4c7e-aacf-060dc382e434",
             description="Block for time input.",
+            disabled=not config.enable_agent_input_subtype_blocks,
             input_schema=AgentTimeInputBlock.Input,
             output_schema=AgentTimeInputBlock.Output,
             test_input=[
@@ -387,8 +406,11 @@ class AgentFileInputBlock(AgentInputBlock):
     """
 
     class Input(AgentInputBlock.Input):
-        value: MediaFile = SchemaField(
+        value: Optional[MediaFileType] = SchemaField(
             description="Path or reference to an uploaded file.",
+            default=None,
+            advanced=False,
+            title="Default Value",
         )
 
     class Output(AgentInputBlock.Output):
@@ -398,6 +420,7 @@ class AgentFileInputBlock(AgentInputBlock):
         super().__init__(
             id="95ead23f-8283-4654-aef3-10c053b74a31",
             description="Block for file upload input (string path for example).",
+            disabled=not config.enable_agent_input_subtype_blocks,
             input_schema=AgentFileInputBlock.Input,
             output_schema=AgentFileInputBlock.Output,
             test_input=[
@@ -419,6 +442,9 @@ class AgentFileInputBlock(AgentInputBlock):
         graph_exec_id: str,
         **kwargs,
     ) -> BlockOutput:
+        if not input_data.value:
+            return
+
         file_path = store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.value,
@@ -429,22 +455,21 @@ class AgentFileInputBlock(AgentInputBlock):
 
 class AgentDropdownInputBlock(AgentInputBlock):
     """
-    A specialized text input block that relies on placeholder_values +
-    limit_to_placeholder_values to present a dropdown.
+    A specialized text input block that relies on placeholder_values to present a dropdown.
     """
 
     class Input(AgentInputBlock.Input):
-        value: str = SchemaField(
-            description="Text selected from a dropdown.", default="Option A"
+        value: Optional[str] = SchemaField(
+            description="Text selected from a dropdown.",
+            default=None,
+            advanced=False,
+            title="Default Value",
         )
         placeholder_values: list = SchemaField(
-            description="Possible placeholder values for the input.",
-            default=["Option A", "Option B", "Option C"],
+            description="Possible values for the dropdown.",
+            default=[],
             advanced=False,
-        )
-        limit_to_placeholder_values: bool = SchemaField(
-            description="Whether the selection is limited to placeholder values.",
-            default=True,
+            title="Dropdown Options",
         )
 
     class Output(AgentInputBlock.Output):
@@ -454,6 +479,7 @@ class AgentDropdownInputBlock(AgentInputBlock):
         super().__init__(
             id="655d6fdf-a334-421c-b733-520549c07cd1",
             description="Block for dropdown text selection.",
+            disabled=not config.enable_agent_input_subtype_blocks,
             input_schema=AgentDropdownInputBlock.Input,
             output_schema=AgentDropdownInputBlock.Output,
             test_input=[
@@ -461,14 +487,12 @@ class AgentDropdownInputBlock(AgentInputBlock):
                     "value": "Option A",
                     "name": "dropdown_1",
                     "placeholder_values": ["Option A", "Option B", "Option C"],
-                    "limit_to_placeholder_values": True,
                     "description": "Dropdown example 1",
                 },
                 {
                     "value": "Option C",
                     "name": "dropdown_2",
                     "placeholder_values": ["Option A", "Option B", "Option C"],
-                    "limit_to_placeholder_values": True,
                     "description": "Dropdown example 2",
                 },
             ],
@@ -481,7 +505,12 @@ class AgentDropdownInputBlock(AgentInputBlock):
 
 class AgentToggleInputBlock(AgentInputBlock):
     class Input(AgentInputBlock.Input):
-        value: bool = SchemaField(description="Boolean toggle input.", default=False)
+        value: bool = SchemaField(
+            description="Boolean toggle input.",
+            default=False,
+            advanced=False,
+            title="Default Value",
+        )
 
     class Output(AgentInputBlock.Output):
         result: bool = SchemaField(description="Boolean toggle result.")
@@ -490,6 +519,7 @@ class AgentToggleInputBlock(AgentInputBlock):
         super().__init__(
             id="cbf36ab5-df4a-43b6-8a7f-f7ed8652116e",
             description="Block for boolean toggle input.",
+            disabled=not config.enable_agent_input_subtype_blocks,
             input_schema=AgentToggleInputBlock.Input,
             output_schema=AgentToggleInputBlock.Output,
             test_input=[
@@ -509,3 +539,17 @@ class AgentToggleInputBlock(AgentInputBlock):
                 ("result", False),
             ],
         )
+
+
+IO_BLOCK_IDs = [
+    AgentInputBlock().id,
+    AgentOutputBlock().id,
+    AgentShortTextInputBlock().id,
+    AgentLongTextInputBlock().id,
+    AgentNumberInputBlock().id,
+    AgentDateInputBlock().id,
+    AgentTimeInputBlock().id,
+    AgentFileInputBlock().id,
+    AgentDropdownInputBlock().id,
+    AgentToggleInputBlock().id,
+]

@@ -2,6 +2,10 @@ class MissingConfigError(Exception):
     """The attempted operation requires configuration which is not available"""
 
 
+class NotFoundError(ValueError):
+    """The requested record was not found, resulting in an error condition"""
+
+
 class NeedConfirmation(Exception):
     """The user must explicitly confirm that they want to proceed"""
 

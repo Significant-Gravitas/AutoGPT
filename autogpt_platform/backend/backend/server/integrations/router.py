@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Annotated, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
+from starlette.status import HTTP_404_NOT_FOUND
 
 from backend.data.graph import set_node_webhook
 from backend.data.integrations import (
@@ -17,8 +18,8 @@ from backend.executor.manager import ExecutionManager
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
-from backend.integrations.webhooks import WEBHOOK_MANAGERS_BY_NAME
-from backend.util.exceptions import NeedConfirmation
+from backend.integrations.webhooks import get_webhook_manager
+from backend.util.exceptions import NeedConfirmation, NotFoundError
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
@@ -281,8 +282,14 @@ async def webhook_ingress_generic(
     webhook_id: Annotated[str, Path(title="Our ID for the webhook")],
 ):
     logger.debug(f"Received {provider.value} webhook ingress for ID {webhook_id}")
-    webhook_manager = WEBHOOK_MANAGERS_BY_NAME[provider]()
-    webhook = await get_webhook(webhook_id)
+    webhook_manager = get_webhook_manager(provider)
+    try:
+        webhook = await get_webhook(webhook_id)
+    except NotFoundError as e:
+        logger.warning(f"Webhook payload received for unknown webhook: {e}")
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND, detail=f"Webhook #{webhook_id} not found"
+        ) from e
     logger.debug(f"Webhook #{webhook_id}: {webhook}")
     payload, event_type = await webhook_manager.validate_payload(webhook, request)
     logger.debug(
@@ -323,7 +330,7 @@ async def webhook_ping(
     user_id: Annotated[str, Depends(get_user_id)],  # require auth
 ):
     webhook = await get_webhook(webhook_id)
-    webhook_manager = WEBHOOK_MANAGERS_BY_NAME[webhook.provider]()
+    webhook_manager = get_webhook_manager(webhook.provider)
 
     credentials = (
         creds_manager.get(user_id, webhook.credentials_id)
@@ -358,14 +365,6 @@ async def remove_all_webhooks_for_credentials(
         NeedConfirmation: If any of the webhooks are still in use and `force` is `False`
     """
     webhooks = await get_all_webhooks_by_creds(credentials.id)
-    if credentials.provider not in WEBHOOK_MANAGERS_BY_NAME:
-        if webhooks:
-            logger.error(
-                f"Credentials #{credentials.id} for provider {credentials.provider} "
-                f"are attached to {len(webhooks)} webhooks, "
-                f"but there is no available WebhooksHandler for {credentials.provider}"
-            )
-        return
     if any(w.attached_nodes for w in webhooks) and not force:
         raise NeedConfirmation(
             "Some webhooks linked to these credentials are still in use by an agent"
@@ -376,7 +375,7 @@ async def remove_all_webhooks_for_credentials(
             await set_node_webhook(node.id, None)
 
         # Prune the webhook
-        webhook_manager = WEBHOOK_MANAGERS_BY_NAME[credentials.provider]()
+        webhook_manager = get_webhook_manager(ProviderName(credentials.provider))
         success = await webhook_manager.prune_webhook_if_dangling(
             webhook.id, credentials
         )

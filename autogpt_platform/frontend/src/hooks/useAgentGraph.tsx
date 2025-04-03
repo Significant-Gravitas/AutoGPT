@@ -106,24 +106,24 @@ export default function useAgentGraph(
 
   // Subscribe to execution events
   useEffect(() => {
-    api.onWebSocketMessage("execution_event", (data) => {
+    api.onWebSocketMessage("node_execution_event", (data) => {
       if (data.graph_exec_id != flowExecutionID) {
         return;
       }
       setUpdateQueue((prev) => [...prev, data]);
     });
 
-    if (flowID && flowVersion) {
+    if (flowExecutionID) {
       api
-        .subscribeToExecution(flowID, flowVersion)
+        .subscribeToGraphExecution(flowExecutionID)
         .then(() =>
           console.debug(
-            `Subscribed to execution events for ${flowID} v.${flowVersion}`,
+            `Subscribed to updates for execution #${flowExecutionID}`,
           ),
         )
         .catch((error) =>
           console.error(
-            `Failed to subscribe to execution events for ${flowID} v.${flowVersion}:`,
+            `Failed to subscribe to updates for execution #${flowExecutionID}:`,
             error,
           ),
         );
@@ -153,10 +153,11 @@ export default function useAgentGraph(
       setAgentDescription(graph.description);
 
       setNodes((prevNodes) => {
-        const newNodes = graph.nodes.map((node) => {
+        const _newNodes = graph.nodes.map((node) => {
           const block = availableNodes.find(
             (block) => block.id === node.block_id,
           )!;
+          if (!block) return null;
           const prevNode = prevNodes.find((n) => n.id === node.id);
           const flow =
             block.uiType == BlockUIType.AGENT
@@ -199,6 +200,7 @@ export default function useAgentGraph(
           };
           return newNode;
         });
+        const newNodes = _newNodes.filter((n) => n !== null);
         setEdges(() =>
           graph.links.map((link) => {
             const adjustedSourceName = link.source_name?.startsWith("tools_^_")
@@ -235,7 +237,7 @@ export default function useAgentGraph(
         return newNodes;
       });
     },
-    [availableNodes, availableFlows, formatEdgeID, getOutputType],
+    [availableNodes, availableFlows, getOutputType],
   );
 
   const getFrontendId = useCallback(
@@ -411,7 +413,10 @@ export default function useAgentGraph(
           ) {
             return;
           }
-          console.warn("Error", error);
+          console.warn(`Error in ${node.data.blockType}: ${error}`, {
+            data: inputData,
+            schema: node.data.inputSchema,
+          });
           errorMessage = error.message || "Invalid input";
           if (path && error.message) {
             const key = path.slice(1);
@@ -631,12 +636,15 @@ export default function useAgentGraph(
           activeExecutionID: flowExecutionID,
         });
       }
-      setUpdateQueue((prev) => [...prev, ...execution.node_executions]);
+      setUpdateQueue((prev) => {
+        if (!execution.node_executions) return prev;
+        return [...prev, ...execution.node_executions];
+      });
 
       // Track execution until completed
       const pendingNodeExecutions: Set<string> = new Set();
       const cancelExecListener = api.onWebSocketMessage(
-        "execution_event",
+        "node_execution_event",
         (nodeResult) => {
           // We are racing the server here, since we need the ID to filter events
           if (nodeResult.graph_exec_id != flowExecutionID) {
