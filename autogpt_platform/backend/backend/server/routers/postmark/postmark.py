@@ -10,7 +10,7 @@ from backend.data.user import (
     set_user_email_verification,
     unsubscribe_user_by_token,
 )
-from backend.server.v2.postmark.models import (
+from backend.server.routers.postmark.models import (
     PostmarkBounceEnum,
     PostmarkBounceWebhook,
     PostmarkClickWebhook,
