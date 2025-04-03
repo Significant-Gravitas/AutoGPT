@@ -102,7 +102,7 @@ jobs:
             echo "$HOME/.local/bin" >> $GITHUB_PATH
           fi
         env:
-          BASE_REF: ${{ github.event.merge_group.base_ref || github.event.pull_request.base.ref }}
+          BASE_REF: ${{ github.base_ref || github.event.merge_group.base_ref }}
 
       - name: Check poetry.lock
         run: |
