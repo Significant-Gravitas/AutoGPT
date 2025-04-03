@@ -14,7 +14,7 @@ import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconRefresh, IconSquare } from "@/components/ui/icons";
 import { useToastOnFail } from "@/components/ui/use-toast";
-import { Button } from "@/components/agptui/Button";
+import ActionButtonGroup from "@/components/agptui/action-button-group";
 import { Input } from "@/components/ui/input";
 
 import {
@@ -254,31 +254,9 @@ export default function AgentRunDetailsView({
       {/* Run / Agent Actions */}
       <aside className="w-48 xl:w-56">
         <div className="flex flex-col gap-8">
-          <div className="flex flex-col gap-3">
-            <h3 className="text-sm font-medium">Run actions</h3>
-            {runActions.map((action, i) => (
-              <Button
-                key={i}
-                variant={action.variant ?? "outline"}
-                onClick={action.callback}
-              >
-                {action.label}
-              </Button>
-            ))}
-          </div>
+          <ActionButtonGroup title="Run actions" actions={runActions} />
 
-          <div className="flex flex-col gap-3">
-            <h3 className="text-sm font-medium">Agent actions</h3>
-            {agentActions.map((action, i) => (
-              <Button
-                key={i}
-                variant={action.variant ?? "outline"}
-                onClick={action.callback}
-              >
-                {action.label}
-              </Button>
-            ))}
-          </div>
+          <ActionButtonGroup title="Agent actions" actions={agentActions} />
         </div>
       </aside>
     </div>

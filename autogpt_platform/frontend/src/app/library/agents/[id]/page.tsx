@@ -227,11 +227,7 @@ export default function AgentRunsPage(): React.ReactElement {
         ? [
             {
               label: "Open in builder",
-              callback: () =>
-                agent &&
-                router.push(
-                  `/build?flowID=${agent.agent_id}&flowVersion=${agent.agent_version}`,
-                ),
+              href: `/build?flowID=${agent.agent_id}&flowVersion=${agent.agent_version}`,
             },
             { label: "Export agent to file", callback: downloadGraph },
           ]
@@ -242,7 +238,7 @@ export default function AgentRunsPage(): React.ReactElement {
         callback: () => setAgentDeleteDialogOpen(true),
       },
     ],
-    [agent, router, downloadGraph],
+    [agent, downloadGraph],
   );
 
   if (!agent || !graph) {
