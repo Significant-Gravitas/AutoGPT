@@ -15,7 +15,11 @@
 > Setting up and hosting the AutoGPT Platform yourself is a technical process. 
 > If you'd rather something that just works, we recommend [joining the waitlist](https://bit.ly/3ZDijAI) for the cloud-hosted beta.
 
-https://github.com/user-attachments/assets/d04273a5-b36a-4a37-818e-f631ce72d603
+### Updated Setup Instructions:
+We’ve moved to a fully maintained and regularly updated documentation site.
+
+👉 [Follow the official self-hosting guide here](https://docs.agpt.co/platform/getting-started/)
+
 
 This tutorial assumes you have Docker, VSCode, git and npm installed.
 
