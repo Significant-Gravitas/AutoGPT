@@ -1,3 +1,6 @@
+import logging
+
+from backend.data import db, redis
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     GraphExecution,
@@ -44,6 +47,7 @@ from backend.util.settings import Config
 
 config = Config()
 _user_credit_model = get_user_credit_model()
+logger = logging.getLogger(__name__)
 
 
 async def _spend_credits(
@@ -55,9 +59,21 @@ async def _spend_credits(
 class DatabaseManager(AppService):
     def __init__(self):
         super().__init__()
-        self.use_db = True
-        self.use_redis = True
         self.execution_event_bus = RedisExecutionEventBus()
+
+    def run_service(self) -> None:
+        logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
+        self.shared_event_loop.run_until_complete(db.connect())
+        logger.info(f"[{self.service_name}] ⏳ Connecting to Redis...")
+        redis.connect()
+        super().run_service()
+
+    def cleanup(self):
+        super().cleanup()
+        logger.info(f"[{self.service_name}] ⏳ Disconnecting Redis...")
+        redis.disconnect()
+        logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
+        self.run_and_wait(db.disconnect())
 
     @classmethod
     def get_port(cls) -> int:

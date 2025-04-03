@@ -9,6 +9,7 @@ from autogpt_libs.utils.cache import thread_cached
 from prisma.enums import NotificationType
 from pydantic import BaseModel
 
+from backend.data import rabbitmq
 from backend.data.notifications import (
     BaseSummaryData,
     BaseSummaryParams,
@@ -127,6 +128,20 @@ class NotificationManager(AppService):
         self.rabbitmq_config = create_notification_config()
         self.running = True
         self.email_sender = EmailSender()
+
+    @property
+    def rabbit(self) -> rabbitmq.AsyncRabbitMQ:
+        """Access the RabbitMQ service. Will raise if not configured."""
+        if not self.rabbitmq_service:
+            raise RuntimeError("RabbitMQ not configured for this service")
+        return self.rabbitmq_service
+
+    @property
+    def rabbit_config(self) -> rabbitmq.RabbitMQConfig:
+        """Access the RabbitMQ config. Will raise if not configured."""
+        if not self.rabbitmq_config:
+            raise RuntimeError("RabbitMQ not configured for this service")
+        return self.rabbitmq_config
 
     @classmethod
     def get_port(cls) -> int:
@@ -680,10 +695,14 @@ class NotificationManager(AppService):
                 )
 
     def run_service(self):
+        logger.info(f"[{self.service_name}] ⏳ Configuring RabbitMQ...")
+        self.rabbitmq_service = rabbitmq.AsyncRabbitMQ(self.rabbitmq_config)
+        self.shared_event_loop.run_until_complete(self.rabbitmq_service.connect())
+
         logger.info(f"[{self.service_name}] Started notification service")
 
         # Set up scheduler for batch processing of all notification types
-        # this can be changed later to spawn differnt cleanups on different schedules
+        # this can be changed later to spawn different cleanups on different schedules
         try:
             get_scheduler().add_batched_notification_schedule(
                 notification_types=list(NotificationType),
@@ -745,3 +764,5 @@ class NotificationManager(AppService):
         """Cleanup service resources"""
         self.running = False
         super().cleanup()
+        logger.info(f"[{self.service_name}] ⏳ Disconnecting RabbitMQ...")
+        self.shared_event_loop.run_until_complete(self.rabbitmq_service.disconnect())

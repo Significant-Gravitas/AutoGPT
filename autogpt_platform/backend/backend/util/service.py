@@ -41,12 +41,11 @@ from pydantic import BaseModel, TypeAdapter, create_model
 from Pyro5 import api as pyro
 from Pyro5 import config as pyro_config
 
-from backend.data import db, rabbitmq, redis
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import to_dict
 from backend.util.process import AppProcess, get_service_name
 from backend.util.retry import conn_retry
-from backend.util.settings import Config, Secrets
+from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -177,11 +176,6 @@ else:
 # --------------------------------------------------
 class BaseAppService(AppProcess, ABC):
     shared_event_loop: asyncio.AbstractEventLoop
-    use_db: bool = False
-    use_redis: bool = False
-    rabbitmq_config: Optional[rabbitmq.RabbitMQConfig] = None
-    rabbitmq_service: Optional[rabbitmq.AsyncRabbitMQ] = None
-    use_supabase: bool = False
 
     @classmethod
     @abstractmethod
@@ -202,20 +196,6 @@ class BaseAppService(AppProcess, ABC):
 
         return target_host
 
-    @property
-    def rabbit(self) -> rabbitmq.AsyncRabbitMQ:
-        """Access the RabbitMQ service. Will raise if not configured."""
-        if not self.rabbitmq_service:
-            raise RuntimeError("RabbitMQ not configured for this service")
-        return self.rabbitmq_service
-
-    @property
-    def rabbit_config(self) -> rabbitmq.RabbitMQConfig:
-        """Access the RabbitMQ config. Will raise if not configured."""
-        if not self.rabbitmq_config:
-            raise RuntimeError("RabbitMQ not configured for this service")
-        return self.rabbitmq_config
-
     def run_service(self) -> None:
         while True:
             time.sleep(10)
@@ -225,31 +205,6 @@ class BaseAppService(AppProcess, ABC):
 
     def run(self):
         self.shared_event_loop = asyncio.get_event_loop()
-        if self.use_db:
-            self.shared_event_loop.run_until_complete(db.connect())
-        if self.use_redis:
-            redis.connect()
-        if self.rabbitmq_config:
-            logger.info(f"[{self.__class__.__name__}] ⏳ Configuring RabbitMQ...")
-            self.rabbitmq_service = rabbitmq.AsyncRabbitMQ(self.rabbitmq_config)
-            self.shared_event_loop.run_until_complete(self.rabbitmq_service.connect())
-        if self.use_supabase:
-            from supabase import create_client
-
-            secrets = Secrets()
-            self.supabase = create_client(
-                secrets.supabase_url, secrets.supabase_service_role_key
-            )
-
-    def cleanup(self):
-        if self.use_db:
-            logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting DB...")
-            self.run_and_wait(db.disconnect())
-        if self.use_redis:
-            logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting Redis...")
-            redis.disconnect()
-        if self.rabbitmq_config:
-            logger.info(f"[{self.__class__.__name__}] ⏳ Disconnecting RabbitMQ...")
 
 
 class RemoteCallError(BaseModel):
