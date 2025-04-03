@@ -7,10 +7,17 @@ import {
   ChevronRightIcon,
   ChevronUpIcon,
 } from "@radix-ui/react-icons";
-import { DayPicker } from "react-day-picker";
+import { DayPicker, DropdownProps } from "react-day-picker";
 
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./select";
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
 
@@ -23,17 +30,20 @@ function Calendar({
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
+      captionLayout={"dropdown"}
+      endMonth={new Date(2100, 0)}
+      startMonth={new Date(1900, 0)}
       className={cn("p-3", className)}
       classNames={{
         months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
         month: "space-y-4",
-        month_caption: "flex justify-center pt-1 relative items-center",
-        caption_label: "text-sm font-medium",
-        nav: "space-x-1 flex items-center",
+        month_caption: "flex  items-center justify-center text-sm font-medium",
+        dropdowns: "flex gap-2 ",
+        caption_label: "hidden",
+        nav: "hidden",
         button_previous:
-          "absolute left-1 h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
-        button_next:
-          "absolute right-1 h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
+          "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
+        button_next: "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
         month_grid: "w-full border-collapse space-y-1",
         weekdays: "flex",
         weekday:
@@ -52,7 +62,7 @@ function Calendar({
         range_start: "range-start",
         range_end: "range-end",
         selected:
-          "bg-neutral-900 text-neutral-50 hover:bg-neutral-900 hover:text-neutral-50 focus:bg-neutral-700 focus:text-neutral-50 dark:bg-neutral-50 dark:text-neutral-900 dark:hover:bg-neutral-50 dark:hover:text-neutral-900 dark:focus:bg-neutral-50 dark:focus:text-neutral-900",
+          "bg-neutral-900 text-neutral-100 hover:bg-neutral-900 hover:text-neutral-50 focus:bg-neutral-700 focus:text-neutral-50 dark:bg-neutral-50 dark:text-neutral-900 dark:hover:bg-neutral-50 dark:hover:text-neutral-900 dark:focus:bg-neutral-50 dark:focus:text-neutral-900",
         today:
           "bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50",
         outside:
@@ -75,11 +85,55 @@ function Calendar({
             return <ChevronUpIcon className="h-4 w-4" />;
           }
         },
+        Dropdown: (props) => <CustomDropdown {...props} />,
       }}
       {...props}
     />
   );
 }
 Calendar.displayName = "Calendar";
+
+const CustomDropdown = ({
+  options,
+  value,
+  onChange,
+  name,
+  disabled,
+}: DropdownProps) => {
+  const handleValueChange = (newValue: string) => {
+    if (onChange) {
+      const syntheticEvent = {
+        target: {
+          name,
+          value: newValue,
+        },
+      } as React.ChangeEvent<HTMLSelectElement>;
+      onChange(syntheticEvent);
+    }
+  };
+
+  return (
+    <Select
+      value={value?.toString()}
+      onValueChange={handleValueChange}
+      disabled={disabled}
+    >
+      <SelectTrigger className="w-[120px] space-x-2 bg-white text-sm">
+        <SelectValue placeholder="Select" />
+      </SelectTrigger>
+      <SelectContent className="bg-white">
+        {options?.map((option) => (
+          <SelectItem
+            key={option.value}
+            value={option.value.toString()}
+            disabled={option.disabled}
+          >
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+};
 
 export { Calendar };
