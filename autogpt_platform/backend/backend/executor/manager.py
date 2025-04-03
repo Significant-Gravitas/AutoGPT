@@ -711,6 +711,7 @@ class Executor:
                     block_id=node_exec.block_id,
                     block=block.name,
                     input=matching_filter,
+                    reason=f"Ran block {node_exec.block_id} {block.name}",
                 ),
             )
             execution_stats.cost += cost
@@ -727,6 +728,7 @@ class Executor:
                         "execution_count": execution_count,
                         "charge": "Execution Cost",
                     },
+                    reason=f"Execution Cost for ex_id:{node_exec.graph_exec_id} g_id:{node_exec.graph_id}",
                 ),
             )
             execution_stats.cost += cost
