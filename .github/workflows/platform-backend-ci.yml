@@ -98,7 +98,7 @@ jobs:
             echo "$HOME/.local/bin" >> $GITHUB_PATH
           fi
         env:
-          BASE_REF: "origin/${{ github.base_ref }}"
+          BASE_REF: "origin/${{ github.event.base_ref }}"
 
       - name: Check poetry.lock
         run: |
