@@ -47,7 +47,7 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
 
   return (
     <section className="mx-auto w-full max-w-7xl px-4 pb-16">
-      <h2 className="mb-8 font-poppins text-2xl font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+      <h2 className="mb-8 text-left font-poppins text-[18px] font-[600] leading-9 text-[#282828] dark:text-neutral-200">
         Featured agents
       </h2>
 
