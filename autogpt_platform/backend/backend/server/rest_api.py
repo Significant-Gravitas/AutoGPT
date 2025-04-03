@@ -3,6 +3,7 @@ import logging
 from typing import Any, Optional
 
 import autogpt_libs.auth.models
+from autogpt_libs.logging.utils import generate_uvicorn_config
 import fastapi
 import fastapi.responses
 import starlette.middleware.cors
@@ -141,6 +142,7 @@ class AgentServer(backend.util.service.AppProcess):
             server_app,
             host=backend.util.settings.Config().agent_api_host,
             port=backend.util.settings.Config().agent_api_port,
+            log_config=generate_uvicorn_config(),
         )
 
     @staticmethod
