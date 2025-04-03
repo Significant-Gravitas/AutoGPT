@@ -19,6 +19,30 @@ https://github.com/user-attachments/assets/d04273a5-b36a-4a37-818e-f631ce72d603
 
 This tutorial assumes you have Docker, VSCode, git and npm installed.
 
+### 📌 Windows Installation Note
+
+When installing Docker on Windows, it is **highly recommended** to select **WSL 2** instead of Hyper-V. Using Hyper-V can cause compatibility issues with Supabase, leading to the `supabase-db` container being marked as **unhealthy**.
+
+#### **Steps to enable WSL 2 for Docker:**
+1. Install [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install).
+2. Ensure that your Docker settings use WSL 2 as the default backend:
+   - Open **Docker Desktop**.
+   - Navigate to **Settings > General**.
+   - Check **Use the WSL 2 based engine**.
+3. Restart **Docker Desktop**.
+
+#### **Already Installed Docker with Hyper-V?**
+If you initially installed Docker with Hyper-V, you **don’t need to reinstall** it. You can switch to WSL 2 by following these steps:
+1. Open **Docker Desktop**.
+2. Go to **Settings > General**.
+3. Enable **Use the WSL 2 based engine**.
+4. Restart Docker.
+
+🚨 **Warning:** Enabling WSL 2 may **erase your existing containers and build history**. If you have important containers, consider backing them up before switching.
+
+For more details, refer to [Docker's official documentation](https://docs.docker.com/desktop/windows/wsl/).
+
+
 ### 🧱 AutoGPT Frontend
 
 The AutoGPT frontend is where users interact with our powerful AI automation platform. It offers multiple ways to engage with and leverage our AI agents. This is the interface where you'll bring your AI automation ideas to life:
