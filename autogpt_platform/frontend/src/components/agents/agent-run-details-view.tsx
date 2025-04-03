@@ -4,10 +4,10 @@ import moment from "moment";
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
+  Graph,
   GraphExecution,
   GraphExecutionID,
   GraphExecutionMeta,
-  GraphMeta,
 } from "@/lib/autogpt-server-api";
 
 import type { ButtonAction } from "@/components/agptui/types";
@@ -29,7 +29,7 @@ export default function AgentRunDetailsView({
   onRun,
   deleteRun,
 }: {
-  graph: GraphMeta;
+  graph: Graph;
   run: GraphExecution | GraphExecutionMeta;
   agentActions: ButtonAction[];
   onRun: (runID: GraphExecutionID) => void;
@@ -64,7 +64,14 @@ export default function AgentRunDetailsView({
   }, [run, runStatus]);
 
   const agentRunInputs:
-    | Record<string, { title?: string; /* type: BlockIOSubType; */ value: any }>
+    | Record<
+        string,
+        {
+          title?: string;
+          /* type: BlockIOSubType; */
+          value: string | number | undefined;
+        }
+      >
     | undefined = useMemo(() => {
     if (!("inputs" in run)) return undefined;
     // TODO: show (link to) preset - https://github.com/Significant-Gravitas/AutoGPT/issues/9168
@@ -74,9 +81,9 @@ export default function AgentRunDetailsView({
       Object.entries(run.inputs).map(([k, v]) => [
         k,
         {
-          title: graph.input_schema.properties[k].title,
+          title: graph.input_schema.properties[k]?.title,
           // type: graph.input_schema.properties[k].type, // TODO: implement typed graph inputs
-          value: v,
+          value: typeof v == "object" ? JSON.stringify(v, undefined, 2) : v,
         },
       ]),
     );
@@ -106,7 +113,11 @@ export default function AgentRunDetailsView({
   const agentRunOutputs:
     | Record<
         string,
-        { title?: string; /* type: BlockIOSubType; */ values: Array<any> }
+        {
+          title?: string;
+          /* type: BlockIOSubType; */
+          values: Array<React.ReactNode>;
+        }
       >
     | null
     | undefined = useMemo(() => {
@@ -115,12 +126,14 @@ export default function AgentRunDetailsView({
 
     // Add type info from agent input schema
     return Object.fromEntries(
-      Object.entries(run.outputs).map(([k, v]) => [
+      Object.entries(run.outputs).map(([k, vv]) => [
         k,
         {
           title: graph.output_schema.properties[k].title,
           /* type: agent.output_schema.properties[k].type */
-          values: v,
+          values: vv.map((v) =>
+            typeof v == "object" ? JSON.stringify(v, undefined, 2) : v,
+          ),
         },
       ]),
     );
@@ -142,7 +155,8 @@ export default function AgentRunDetailsView({
             },
           ] satisfies ButtonAction[])
         : []),
-      ...(["success", "failed", "stopped"].includes(runStatus)
+      ...(["success", "failed", "stopped"].includes(runStatus) &&
+      !graph.has_webhook_trigger
         ? [
             {
               label: (
