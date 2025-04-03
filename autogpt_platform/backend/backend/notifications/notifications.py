@@ -245,20 +245,26 @@ class NotificationManager(AppService):
                             continue
 
                         unsub_link = generate_unsubscribe_link(batch.user_id)
-
-                        events = [
-                            NotificationEventModel[
-                                get_notif_data_type(db_event.type)
-                            ].model_validate(
-                                {
-                                    "user_id": batch.user_id,
-                                    "type": db_event.type,
-                                    "data": db_event.data,
-                                    "created_at": db_event.created_at,
-                                }
-                            )
-                            for db_event in batch_data.notifications
-                        ]
+                        events = []
+                        for db_event in batch_data.notifications:
+                            try:
+                                events.append(
+                                    NotificationEventModel[
+                                        get_notif_data_type(db_event.type)
+                                    ].model_validate(
+                                        {
+                                            "user_id": batch.user_id,
+                                            "type": db_event.type,
+                                            "data": db_event.data,
+                                            "created_at": db_event.created_at,
+                                        }
+                                    )
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    f"Error parsing notification event: {e=}, {db_event=}"
+                                )
+                                continue
                         logger.info(f"{events=}")
 
                         self.email_sender.send_templated(
@@ -668,6 +674,8 @@ class NotificationManager(AppService):
 
         except QueueEmpty:
             logger.debug(f"Queue {error_queue_name} empty")
+        except TimeoutError:
+            logger.debug(f"Queue {error_queue_name} timed out")
         except Exception as e:
             if message:
                 logger.error(
@@ -675,8 +683,8 @@ class NotificationManager(AppService):
                 )
                 self.run_and_wait(message.reject(requeue=False))
             else:
-                logger.error(
-                    f"Error in notification service loop, message unable to be rejected, and will have to be manually removed to free space in the queue: {e}"
+                logger.exception(
+                    f"Error in notification service loop, message unable to be rejected, and will have to be manually removed to free space in the queue: {e=}"
                 )
 
     def run_service(self):
