@@ -55,11 +55,16 @@ export default function AgentRunDetailsView({
         label: "Started",
         value: `${moment(run.started_at).fromNow()}, ${moment(run.started_at).format("HH:mm")}`,
       },
-      {
-        label: "Duration",
-        value: moment.duration(run.duration, "seconds").humanize(),
-      },
-      ...(run.cost ? [{ label: "Cost", value: `${run.cost} credits` }] : []),
+      ...(run.stats
+        ? [
+            {
+              label: "Duration",
+              value: moment.duration(run.stats.duration, "seconds").humanize(),
+            },
+            { label: "Steps", value: run.stats.node_exec_count },
+            { label: "Cost", value: `${run.stats.cost} credits` },
+          ]
+        : []),
     ];
   }, [run, runStatus]);
 
