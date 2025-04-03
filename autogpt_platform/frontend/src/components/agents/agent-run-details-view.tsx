@@ -8,6 +8,7 @@ import {
   GraphExecution,
   GraphExecutionID,
   GraphExecutionMeta,
+  LibraryAgent,
 } from "@/lib/autogpt-server-api";
 
 import type { ButtonAction } from "@/components/agptui/types";
@@ -23,12 +24,14 @@ import {
 } from "@/components/agents/agent-run-status-chip";
 
 export default function AgentRunDetailsView({
+  agent,
   graph,
   run,
   agentActions,
   onRun,
   deleteRun,
 }: {
+  agent: LibraryAgent;
   graph: Graph;
   run: GraphExecution | GraphExecutionMeta;
   agentActions: ButtonAction[];
@@ -174,9 +177,27 @@ export default function AgentRunDetailsView({
             },
           ]
         : []),
+      ...(agent.can_access_graph
+        ? [
+            {
+              label: "Open in builder",
+              href: `/build?flowID=${run.graph_id}&flowVersion=${run.graph_version}&flowExecutionID=${run.id}`,
+            },
+          ]
+        : []),
       { label: "Delete run", variant: "secondary", callback: deleteRun },
     ],
-    [runStatus, runAgain, stopRun, deleteRun],
+    [
+      runStatus,
+      runAgain,
+      stopRun,
+      deleteRun,
+      graph.has_webhook_trigger,
+      agent.can_access_graph,
+      run.graph_id,
+      run.graph_version,
+      run.id,
+    ],
   );
 
   return (
