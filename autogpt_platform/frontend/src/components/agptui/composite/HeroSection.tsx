@@ -36,7 +36,7 @@ export const HeroSection: React.FC = () => {
         <h3 className="mb:text-2xl mb-6 text-center font-sans text-xl font-normal leading-loose text-neutral-700 dark:text-neutral-300 md:mb-12">
           Bringing you AI agents designed by thinkers from around the world
         </h3>
-        <div className="mb-4 flex justify-center sm:mb-5 md:mb-6">
+        <div className="mb-4 flex justify-center sm:mb-5">
           <SearchBar height="h-[74px]" />
         </div>
         <div>
