@@ -157,10 +157,7 @@ def execute_node(
 
     node = db_client.get_node(node_id)
 
-    node_block = get_block(node.block_id)
-    if not node_block:
-        logger.error(f"Block {node.block_id} not found.")
-        return
+    node_block = node.block
 
     log_metadata = LogMetadata(
         user_id=user_id,
@@ -968,10 +965,10 @@ class ExecutionManager(AppService):
         nodes_input = []
         for node in graph.starting_nodes:
             input_data = {}
-            block = get_block(node.block_id)
+            block = node.block
 
-            # Invalid block & Note block should never be executed.
-            if not block or block.block_type == BlockType.NOTE:
+            # Note block should never be executed.
+            if block.block_type == BlockType.NOTE:
                 continue
 
             # Extract request input data, and assign it to the input pin.
@@ -1081,9 +1078,7 @@ class ExecutionManager(AppService):
         """Checks all credentials for all nodes of the graph"""
 
         for node in graph.nodes:
-            block = get_block(node.block_id)
-            if not block:
-                raise ValueError(f"Unknown block {node.block_id} for node #{node.id}")
+            block = node.block
 
             # Find any fields of type CredentialsMetaInput
             credentials_fields = cast(

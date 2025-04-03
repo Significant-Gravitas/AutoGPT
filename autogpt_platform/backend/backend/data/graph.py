@@ -57,7 +57,9 @@ class Node(BaseDbModel):
     def block(self) -> Block[BlockSchema, BlockSchema]:
         block = get_block(self.block_id)
         if not block:
-            raise ValueError(f"Block #{self.block_id} does not exist")
+            raise ValueError(
+                f"Block #{self.block_id} does not exist -> Node #{self.id} is invalid"
+            )
         return block
 
 
@@ -87,8 +89,7 @@ class NodeModel(Node):
         return obj
 
     def is_triggered_by_event_type(self, event_type: str) -> bool:
-        if not (block := get_block(self.block_id)):
-            raise ValueError(f"Block #{self.block_id} not found for node #{self.id}")
+        block = self.block
         if not block.webhook_config:
             raise TypeError("This method can't be used on non-webhook blocks")
         if not block.webhook_config.event_filter_input:
@@ -168,8 +169,7 @@ class BaseGraph(BaseDbModel):
             [
                 node.input_default
                 for node in self.nodes
-                if (b := get_block(node.block_id))
-                and b.block_type == BlockType.INPUT
+                if node.block.block_type == BlockType.INPUT
                 and "name" in node.input_default
             ],
         )
@@ -182,8 +182,7 @@ class BaseGraph(BaseDbModel):
             [
                 node.input_default
                 for node in self.nodes
-                if (b := get_block(node.block_id))
-                and b.block_type == BlockType.OUTPUT
+                if node.block.block_type == BlockType.OUTPUT
                 and "name" in node.input_default
             ],
         )
@@ -234,9 +233,7 @@ class GraphModel(Graph):
     def starting_nodes(self) -> list[NodeModel]:
         outbound_nodes = {link.sink_id for link in self.links}
         input_nodes = {
-            v.id
-            for v in self.nodes
-            if (b := get_block(v.block_id)) and b.block_type == BlockType.INPUT
+            node.id for node in self.nodes if node.block.block_type == BlockType.INPUT
         }
         return [
             node
@@ -405,9 +402,7 @@ class GraphModel(Graph):
         node_map = {v.id: v for v in graph.nodes}
 
         def is_static_output_block(nid: str) -> bool:
-            bid = node_map[nid].block_id
-            b = get_block(bid)
-            return b.static_output if b else False
+            return node_map[nid].block.static_output
 
         # Links: links are connected and the connected pin data type are compatible.
         for link in graph.links:
