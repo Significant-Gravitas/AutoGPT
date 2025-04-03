@@ -99,6 +99,7 @@ jobs:
           fi
         env:
           BASE_REF: "origin/${{ github.base_ref || github.event.merge_group.base_ref }}"
+          DEBUG: ${{ toJson(github.event) }}
 
       - name: Check poetry.lock
         run: |
