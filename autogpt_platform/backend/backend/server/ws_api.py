@@ -5,7 +5,6 @@ from typing import Protocol
 
 from autogpt_libs.logging.utils import generate_uvicorn_config
 import uvicorn
-import uvicorn.config
 from autogpt_libs.auth import parse_jwt_token
 from autogpt_libs.utils.cache import thread_cached
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
@@ -289,10 +288,9 @@ class WebsocketServer(AppProcess):
             allow_headers=["*"],
         )
 
-        log_config = generate_uvicorn_config()
         uvicorn.run(
             server_app,
             host=Config().websocket_server_host,
             port=Config().websocket_server_port,
-            log_config=log_config,
+            log_config=generate_uvicorn_config(),
         )

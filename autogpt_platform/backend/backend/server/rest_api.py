@@ -8,7 +8,6 @@ import fastapi
 import fastapi.responses
 import starlette.middleware.cors
 import uvicorn
-import uvicorn.config
 from autogpt_libs.feature_flag.client import (
     initialize_launchdarkly,
     shutdown_launchdarkly,
@@ -139,12 +138,11 @@ class AgentServer(backend.util.service.AppProcess):
             allow_methods=["*"],  # Allows all methods
             allow_headers=["*"],  # Allows all headers
         )
-        log_config = generate_uvicorn_config()
         uvicorn.run(
             server_app,
             host=backend.util.settings.Config().agent_api_host,
             port=backend.util.settings.Config().agent_api_port,
-            log_config=log_config,
+            log_config=generate_uvicorn_config(),
         )
 
     @staticmethod
