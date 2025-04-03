@@ -3,6 +3,7 @@ import logging
 from typing import Any, Optional
 
 import autogpt_libs.auth.models
+from autogpt_libs.logging.utils import generate_uvicorn_config
 import fastapi
 import fastapi.responses
 import starlette.middleware.cors
@@ -138,10 +139,7 @@ class AgentServer(backend.util.service.AppProcess):
             allow_methods=["*"],  # Allows all methods
             allow_headers=["*"],  # Allows all headers
         )
-        log_config = dict(uvicorn.config.LOGGING_CONFIG)
-        log_config["loggers"]["uvicorn"] = {"handlers": []}
-        log_config["loggers"]["uvicorn.error"] = {"handlers": []}
-        log_config["loggers"]["uvicorn.access"] = {"handlers": []}
+        log_config = generate_uvicorn_config()
         uvicorn.run(
             server_app,
             host=backend.util.settings.Config().agent_api_host,

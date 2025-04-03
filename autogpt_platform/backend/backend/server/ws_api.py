@@ -3,7 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Protocol
 
-from backend.util.logging import configure_logging
+from autogpt_libs.logging.utils import generate_uvicorn_config
 import uvicorn
 import uvicorn.config
 from autogpt_libs.auth import parse_jwt_token
@@ -289,10 +289,7 @@ class WebsocketServer(AppProcess):
             allow_headers=["*"],
         )
 
-        log_config = dict(uvicorn.config.LOGGING_CONFIG)
-        log_config["loggers"]["uvicorn"] = {"handlers": []}
-        log_config["loggers"]["uvicorn.error"] = {"handlers": []}
-        log_config["loggers"]["uvicorn.access"] = {"handlers": []}
+        log_config = generate_uvicorn_config()
         uvicorn.run(
             server_app,
             host=Config().websocket_server_host,
