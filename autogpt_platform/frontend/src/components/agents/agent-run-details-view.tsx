@@ -180,7 +180,7 @@ export default function AgentRunDetailsView({
       ...(agent.can_access_graph
         ? [
             {
-              label: "Open in builder",
+              label: "Open run in builder",
               href: `/build?flowID=${run.graph_id}&flowVersion=${run.graph_version}&flowExecutionID=${run.id}`,
             },
           ]

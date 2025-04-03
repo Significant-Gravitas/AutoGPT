@@ -226,7 +226,7 @@ export default function AgentRunsPage(): React.ReactElement {
       ...(agent?.can_access_graph
         ? [
             {
-              label: "Open in builder",
+              label: "Open graph in builder",
               href: `/build?flowID=${agent.agent_id}&flowVersion=${agent.agent_version}`,
             },
             { label: "Export agent to file", callback: downloadGraph },
