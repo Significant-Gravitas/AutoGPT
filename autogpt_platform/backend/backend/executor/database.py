@@ -63,7 +63,7 @@ class DatabaseManager(AppService):
 
     def run_service(self) -> None:
         logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
-        self.shared_event_loop.run_until_complete(db.connect())
+        self.run_and_wait(db.connect())
         logger.info(f"[{self.service_name}] ⏳ Connecting to Redis...")
         redis.connect()
         super().run_service()

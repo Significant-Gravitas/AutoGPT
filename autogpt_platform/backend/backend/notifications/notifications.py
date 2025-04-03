@@ -705,7 +705,7 @@ class NotificationManager(AppService):
     def run_service(self):
         logger.info(f"[{self.service_name}] ⏳ Configuring RabbitMQ...")
         self.rabbitmq_service = rabbitmq.AsyncRabbitMQ(self.rabbitmq_config)
-        self.shared_event_loop.run_until_complete(self.rabbitmq_service.connect())
+        self.run_and_wait(self.rabbitmq_service.connect())
 
         logger.info(f"[{self.service_name}] Started notification service")
 
@@ -773,4 +773,4 @@ class NotificationManager(AppService):
         self.running = False
         super().cleanup()
         logger.info(f"[{self.service_name}] ⏳ Disconnecting RabbitMQ...")
-        self.shared_event_loop.run_until_complete(self.rabbitmq_service.disconnect())
+        self.run_and_wait(self.rabbitmq_service.disconnect())
