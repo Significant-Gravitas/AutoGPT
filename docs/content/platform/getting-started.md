@@ -1,9 +1,5 @@
 # Getting Started with AutoGPT: Self-Hosting Guide
 
-This tutorial will walk you through the process of setting up AutoGPT locally on your machine.
-
-<center><iframe width="560" height="315" src="https://www.youtube.com/embed/4Bycr6_YAMI?si=dXGhFeWrCK2UkKgj" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></center>
-
 ## Introduction
 
 This guide will help you setup the server and builder for the project.
