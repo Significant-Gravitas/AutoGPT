@@ -249,15 +249,19 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
 /* Mirror of backend/data/execution.py:GraphExecutionMeta */
 export type GraphExecutionMeta = {
   id: GraphExecutionID;
-  started_at: Date;
-  ended_at: Date;
-  cost?: number;
-  duration: number;
-  total_run_time: number;
-  status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
+  user_id: UserID;
   graph_id: GraphID;
   graph_version: number;
   preset_id?: string;
+  status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
+  started_at: Date;
+  ended_at: Date;
+  stats?: {
+    cost: number;
+    duration: number;
+    node_exec_time: number;
+    node_exec_count: number;
+  };
 };
 
 export type GraphExecutionID = Brand<string, "GraphExecutionID">;

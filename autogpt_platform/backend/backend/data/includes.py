@@ -1,4 +1,5 @@
-import prisma
+import prisma.enums
+import prisma.types
 
 from backend.blocks.io import IO_BLOCK_IDs
 
@@ -45,6 +46,9 @@ GRAPH_EXECUTION_INCLUDE: prisma.types.AgentGraphExecutionInclude = {
         "where": {
             "AgentNode": {
                 "AgentBlock": {"id": {"in": IO_BLOCK_IDs}},  # type: ignore
+            },
+            "NOT": {
+                "executionStatus": prisma.enums.AgentExecutionStatus.INCOMPLETE,
             },
         },
     }
