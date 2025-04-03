@@ -269,6 +269,7 @@ If you run into issues with dangling orphans, try:
 ```sh
 docker compose down --volumes --remove-orphans && docker-compose up --force-recreate --renew-anon-volumes --remove-orphans  
 ```
+
 ### 📌 Windows Installation Note
 
 When installing Docker on Windows, it is **highly recommended** to select **WSL 2** instead of Hyper-V. Using Hyper-V can cause compatibility issues with Supabase, leading to the `supabase-db` container being marked as **unhealthy**.
