@@ -165,46 +165,48 @@ class BaseGraph(BaseDbModel):
     @property
     def input_schema(self) -> dict[str, Any]:
         return self._generate_schema(
-            AgentInputBlock.Input,
-            [
-                node.input_default
+            *(
+                (b.input_schema, node.input_default)
                 for node in self.nodes
                 if (b := get_block(node.block_id))
                 and b.block_type == BlockType.INPUT
-                and "name" in node.input_default
-            ],
+                and issubclass(b.input_schema, AgentInputBlock.Input)
+            )
         )
 
     @computed_field
     @property
     def output_schema(self) -> dict[str, Any]:
         return self._generate_schema(
-            AgentOutputBlock.Input,
-            [
-                node.input_default
+            *(
+                (b.input_schema, node.input_default)
                 for node in self.nodes
                 if (b := get_block(node.block_id))
                 and b.block_type == BlockType.OUTPUT
-                and "name" in node.input_default
-            ],
+                and issubclass(b.input_schema, AgentOutputBlock.Input)
+            )
         )
 
     @staticmethod
     def _generate_schema(
-        type_class: Type[AgentInputBlock.Input] | Type[AgentOutputBlock.Input],
-        data: list[dict],
+        *props: tuple[Type[AgentInputBlock.Input] | Type[AgentOutputBlock.Input], dict],
     ) -> dict[str, Any]:
-        props = []
-        for p in data:
+        schema = []
+        for type_class, input_default in props:
             try:
-                props.append(type_class(**p))
+                schema.append(type_class(**input_default))
             except Exception as e:
-                logger.warning(f"Invalid {type_class}: {p}, {e}")
+                logger.warning(f"Invalid {type_class}: {input_default}, {e}")
 
         return {
             "type": "object",
             "properties": {
                 p.name: {
+                    **{
+                        k: v
+                        for k, v in p.generate_schema().items()
+                        if k not in ["description", "default"]
+                    },
                     "secret": p.secret,
                     # Default value has to be set for advanced fields.
                     "advanced": p.advanced and p.value is not None,
@@ -212,9 +214,9 @@ class BaseGraph(BaseDbModel):
                     **({"description": p.description} if p.description else {}),
                     **({"default": p.value} if p.value is not None else {}),
                 }
-                for p in props
+                for p in schema
             },
-            "required": [p.name for p in props if p.value is None],
+            "required": [p.name for p in schema if p.value is None],
         }
 
 
@@ -538,7 +540,6 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
 
     graph = await AgentGraph.prisma().find_first(
         where=where_clause,
-        include=AGENT_GRAPH_INCLUDE,
         order={"version": "desc"},
     )
 
