@@ -85,9 +85,11 @@ export const TypeBasedInput: FC<
     case DataType.BOOLEAN:
       innerInputElement = (
         <>
-          <span className="text-sm text-gray-500">{placeholder}</span>
+          <span className="text-sm text-gray-500">
+            {placeholder || (value ? "Enabled" : "Disabled")}
+          </span>
           <Switch
-            className={placeholder ? "ml-auto" : "mx-auto"}
+            className="ml-auto"
             checked={!!value}
             onCheckedChange={(checked) => onChange(checked)}
             {...props}
@@ -254,7 +256,7 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
           onValueChange={(val) => changeTime(val, minute, meridiem)}
         >
           <SelectTrigger
-            className={cn("agpt-border-input text-center", inputClasses)}
+            className={cn("agpt-border-input ml-1 text-center", inputClasses)}
           >
             <SelectValue />
           </SelectTrigger>
