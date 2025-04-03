@@ -302,7 +302,7 @@ const CarouselIndicator = React.forwardRef<
   return (
     <div
       ref={ref}
-      className={cn("relative top-6 flex h-3 items-center gap-2", className)}
+      className={cn("relative top-7 flex h-3 items-center gap-2", className)}
       {...props}
     >
       {scrollSnaps.map((_, index) => (
