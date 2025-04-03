@@ -45,9 +45,9 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
   };
 
   return (
-    <div className="flex flex-col items-center justify-center py-4 lg:py-8">
+    <div className="flex flex-col items-center justify-center pb-4 lg:pb-8">
       <div className="w-full max-w-[1360px]">
-        <div className="decoration-skip-ink-none mb-8 text-left font-poppins text-[18px] font-[600] leading-7 text-[#282828] underline-offset-[from-font] dark:text-neutral-200">
+        <div className="decoration-skip-ink-none mb-8 mt-[25px] text-left font-poppins text-[18px] font-[600] leading-7 text-[#282828] underline-offset-[from-font] dark:text-neutral-200">
           {sectionTitle}
         </div>
         {!displayedAgents || displayedAgents.length === 0 ? (
