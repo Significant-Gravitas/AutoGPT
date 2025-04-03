@@ -32,22 +32,30 @@ class ConnectionManager:
     async def subscribe_graph_exec(
         self, *, user_id: str, graph_exec_id: str, websocket: WebSocket
     ) -> str:
-        key = _graph_exec_channel_key(user_id, graph_exec_id)
-        if key not in self.subscriptions:
-            self.subscriptions[key] = set()
-        self.subscriptions[key].add(websocket)
-        return key
+        return await self._subscribe(
+            _graph_exec_channel_key(user_id, graph_exec_id=graph_exec_id), websocket
+        )
 
-    async def unsubscribe(
+    async def subscribe_graph_execs(
+        self, *, user_id: str, graph_id: str, websocket: WebSocket
+    ) -> str:
+        return await self._subscribe(
+            _graph_execs_channel_key(user_id, graph_id=graph_id), websocket
+        )
+
+    async def unsubscribe_graph_exec(
         self, *, user_id: str, graph_exec_id: str, websocket: WebSocket
     ) -> str | None:
-        key = _graph_exec_channel_key(user_id, graph_exec_id)
-        if key in self.subscriptions:
-            self.subscriptions[key].discard(websocket)
-            if not self.subscriptions[key]:
-                del self.subscriptions[key]
-            return key
-        return None
+        return await self._unsubscribe(
+            _graph_exec_channel_key(user_id, graph_exec_id=graph_exec_id), websocket
+        )
+
+    async def unsubscribe_graph_execs(
+        self, *, user_id: str, graph_id: str, websocket: WebSocket
+    ) -> str | None:
+        return await self._unsubscribe(
+            _graph_execs_channel_key(user_id, graph_id=graph_id), websocket
+        )
 
     async def send_execution_update(
         self, exec_event: GraphExecutionEvent | NodeExecutionEvent
@@ -57,21 +65,51 @@ class ConnectionManager:
             if isinstance(exec_event, GraphExecutionEvent)
             else exec_event.graph_exec_id
         )
-        key = _graph_exec_channel_key(exec_event.user_id, graph_exec_id)
 
         n_sent = 0
-        if key in self.subscriptions:
+
+        channels: set[str] = {
+            # Send update to listeners for this graph execution
+            _graph_exec_channel_key(exec_event.user_id, graph_exec_id=graph_exec_id)
+        }
+        if isinstance(exec_event, GraphExecutionEvent):
+            # Send update to listeners for all executions of this graph
+            channels.add(
+                _graph_execs_channel_key(
+                    exec_event.user_id, graph_id=exec_event.graph_id
+                )
+            )
+
+        for channel in channels.intersection(self.subscriptions.keys()):
             message = WSMessage(
                 method=_EVENT_TYPE_TO_METHOD_MAP[exec_event.event_type],
-                channel=key,
+                channel=channel,
                 data=exec_event.model_dump(),
             ).model_dump_json()
-            for connection in self.subscriptions[key]:
+            for connection in self.subscriptions[channel]:
                 await connection.send_text(message)
                 n_sent += 1
 
         return n_sent
 
+    async def _subscribe(self, channel_key: str, websocket: WebSocket) -> str:
+        if channel_key not in self.subscriptions:
+            self.subscriptions[channel_key] = set()
+        self.subscriptions[channel_key].add(websocket)
+        return channel_key
 
-def _graph_exec_channel_key(user_id: str, graph_exec_id: str) -> str:
+    async def _unsubscribe(self, channel_key: str, websocket: WebSocket) -> str | None:
+        if channel_key in self.subscriptions:
+            self.subscriptions[channel_key].discard(websocket)
+            if not self.subscriptions[channel_key]:
+                del self.subscriptions[channel_key]
+            return channel_key
+        return None
+
+
+def _graph_exec_channel_key(user_id: str, *, graph_exec_id: str) -> str:
     return f"{user_id}|graph_exec#{graph_exec_id}"
+
+
+def _graph_execs_channel_key(user_id: str, *, graph_id: str) -> str:
+    return f"{user_id}|graph#{graph_id}|executions"

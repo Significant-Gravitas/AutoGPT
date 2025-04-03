@@ -13,6 +13,7 @@ def load_webhook_managers() -> dict["ProviderName", type["BaseWebhooksManager"]]
         return _WEBHOOK_MANAGERS
 
     from .compass import CompassWebhookManager
+    from .generic import GenericWebhooksManager
     from .github import GithubWebhooksManager
     from .slant3d import Slant3DWebhooksManager
 
@@ -23,6 +24,7 @@ def load_webhook_managers() -> dict["ProviderName", type["BaseWebhooksManager"]]
                 CompassWebhookManager,
                 GithubWebhooksManager,
                 Slant3DWebhooksManager,
+                GenericWebhooksManager,
             ]
         }
     )
