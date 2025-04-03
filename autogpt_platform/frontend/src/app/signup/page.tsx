@@ -36,7 +36,6 @@ export default function SignupPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   //TODO: Remove after closed beta
-  const [showErrorPrompt, setShowErrorPrompt] = useState(false);
 
   const form = useForm<z.infer<typeof signupFormSchema>>({
     resolver: zodResolver(signupFormSchema),
@@ -64,13 +63,11 @@ export default function SignupPage() {
           setFeedback("User with this email already exists");
           return;
         } else {
-          setShowErrorPrompt(true);
           setFeedback(error);
         }
         return;
       }
       setFeedback(null);
-      setShowErrorPrompt(false);
     },
     [form],
   );
@@ -193,7 +190,6 @@ export default function SignupPage() {
       <AuthFeedback
         message={feedback}
         isError={!!feedback}
-        showErrorPrompt={showErrorPrompt}
         behaveAs={getBehaveAs()}
       />
 
