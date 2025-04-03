@@ -15,7 +15,7 @@ export default function ActionButtonGroup({
   title: React.ReactNode;
 }): React.ReactElement {
   return (
-    <div className={cn(className, "flex flex-col gap-3")}>
+    <div className={cn("flex flex-col gap-3", className)}>
       <h3 className="text-sm font-medium">{title}</h3>
       {actions.map((action, i) =>
         "callback" in action ? (
