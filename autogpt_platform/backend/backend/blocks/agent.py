@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from autogpt_libs.utils.cache import thread_cached
 
@@ -13,6 +14,7 @@ from backend.data.block import (
 )
 from backend.data.execution import ExecutionStatus
 from backend.data.model import SchemaField
+from backend.util import json
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,23 @@ class AgentExecutorBlock(Block):
         input_schema: dict = SchemaField(description="Input schema for the graph")
         output_schema: dict = SchemaField(description="Output schema for the graph")
 
+        @classmethod
+        def get_input_schema(cls, data: BlockInput) -> dict[str, Any]:
+            return data.get("input_schema", {})
+
+        @classmethod
+        def get_input_defaults(cls, data: BlockInput) -> BlockInput:
+            return data.get("data", {})
+
+        @classmethod
+        def get_missing_input(cls, data: BlockInput) -> set[str]:
+            required_fields = cls.get_input_schema(data).get("required", [])
+            return set(required_fields) - set(data)
+
+        @classmethod
+        def get_mismatch_error(cls, data: BlockInput) -> str | None:
+            return json.validate_with_jsonschema(cls.get_input_schema(data), data)
+
     class Output(BlockSchema):
         pass
 
@@ -56,6 +75,8 @@ class AgentExecutorBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        from backend.data.execution import ExecutionEventType
+
         executor_manager = get_executor_manager_client()
         event_bus = get_event_bus()
 
@@ -69,13 +90,11 @@ class AgentExecutorBlock(Block):
         logger.info(f"Starting execution of {log_id}")
 
         for event in event_bus.listen(
-            graph_id=graph_exec.graph_id, graph_exec_id=graph_exec.graph_exec_id
+            user_id=graph_exec.user_id,
+            graph_id=graph_exec.graph_id,
+            graph_exec_id=graph_exec.graph_exec_id,
         ):
-            logger.info(
-                f"Execution {log_id} produced input {event.input_data} output {event.output_data}"
-            )
-
-            if not event.node_id:
+            if event.event_type == ExecutionEventType.GRAPH_EXEC_UPDATE:
                 if event.status in [
                     ExecutionStatus.COMPLETED,
                     ExecutionStatus.TERMINATED,
@@ -85,6 +104,10 @@ class AgentExecutorBlock(Block):
                     break
                 else:
                     continue
+
+            logger.info(
+                f"Execution {log_id} produced input {event.input_data} output {event.output_data}"
+            )
 
             if not event.block_id:
                 logger.warning(f"{log_id} received event without block_id {event}")

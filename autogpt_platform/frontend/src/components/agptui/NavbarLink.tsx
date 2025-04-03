@@ -1,7 +1,6 @@
 "use client";
 import Link from "next/link";
 import {
-  IconType,
   IconShoppingCart,
   IconBoxes,
   IconLibrary,
@@ -47,13 +46,13 @@ export const NavbarLink = ({ name, href }: NavbarLinkProps) => {
             className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
           />
         )}
-        {href === "/monitoring" && (
+        {href === "/library" && (
           <IconLibrary
             className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
           />
         )}
         <div
-          className={`font-poppins text-[20px] font-medium leading-[28px] ${
+          className={`hidden font-poppins text-[20px] font-medium leading-[28px] lg:block ${
             activeLink === href
               ? "text-neutral-50 dark:text-neutral-900"
               : "text-neutral-900 dark:text-neutral-50"

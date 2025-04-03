@@ -1,5 +1,5 @@
 import React from "react";
-import { GraphExecution, GraphMeta } from "@/lib/autogpt-server-api";
+import { GraphExecutionMeta, LibraryAgent } from "@/lib/autogpt-server-api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -14,11 +14,11 @@ import { FlowRunStatusBadge } from "@/components/monitor/FlowRunStatusBadge";
 import { TextRenderer } from "../ui/render";
 
 export const FlowRunsList: React.FC<{
-  flows: GraphMeta[];
-  executions: GraphExecution[];
+  flows: LibraryAgent[];
+  executions: GraphExecutionMeta[];
   className?: string;
-  selectedRun?: GraphExecution | null;
-  onSelectRun: (r: GraphExecution) => void;
+  selectedRun?: GraphExecutionMeta | null;
+  onSelectRun: (r: GraphExecutionMeta) => void;
 }> = ({ flows, executions, selectedRun, onSelectRun, className }) => (
   <Card className={className}>
     <CardHeader>
@@ -37,21 +37,19 @@ export const FlowRunsList: React.FC<{
         <TableBody data-testid="flow-runs-list-body">
           {executions.map((execution) => (
             <TableRow
-              key={execution.execution_id}
-              data-testid={`flow-run-${execution.execution_id}-graph-${execution.graph_id}`}
-              data-runid={execution.execution_id}
+              key={execution.id}
+              data-testid={`flow-run-${execution.id}-graph-${execution.graph_id}`}
+              data-runid={execution.id}
               data-graphid={execution.graph_id}
               className="cursor-pointer"
               onClick={() => onSelectRun(execution)}
-              data-state={
-                selectedRun?.execution_id == execution.execution_id
-                  ? "selected"
-                  : null
-              }
+              data-state={selectedRun?.id == execution.id ? "selected" : null}
             >
               <TableCell>
                 <TextRenderer
-                  value={flows.find((f) => f.id == execution.graph_id)?.name}
+                  value={
+                    flows.find((f) => f.agent_id == execution.graph_id)?.name
+                  }
                   truncateLengthLimit={30}
                 />
               </TableCell>
@@ -59,7 +57,10 @@ export const FlowRunsList: React.FC<{
                 {moment(execution.started_at).format("HH:mm")}
               </TableCell>
               <TableCell>
-                <FlowRunStatusBadge status={execution.status} />
+                <FlowRunStatusBadge
+                  status={execution.status}
+                  className="w-full justify-center"
+                />
               </TableCell>
               <TableCell>{formatDuration(execution.duration)}</TableCell>
             </TableRow>

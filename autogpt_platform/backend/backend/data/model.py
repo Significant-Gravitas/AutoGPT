@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import base64
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -141,9 +141,8 @@ def SchemaField(
     secret: bool = False,
     exclude: bool = False,
     hidden: Optional[bool] = None,
-    depends_on: list[str] | None = None,
-    image_upload: Optional[bool] = None,
-    image_output: Optional[bool] = None,
+    depends_on: Optional[list[str]] = None,
+    json_schema_extra: Optional[dict[str, Any]] = None,
     **kwargs,
 ) -> T:
     if default is PydanticUndefined and default_factory is None:
@@ -151,7 +150,7 @@ def SchemaField(
     elif advanced is None:
         advanced = True
 
-    json_extra = {
+    json_schema_extra = {
         k: v
         for k, v in {
             "placeholder": placeholder,
@@ -159,8 +158,7 @@ def SchemaField(
             "advanced": advanced,
             "hidden": hidden,
             "depends_on": depends_on,
-            "image_upload": image_upload,
-            "image_output": image_output,
+            **(json_schema_extra or {}),
         }.items()
         if v is not None
     }
@@ -172,7 +170,7 @@ def SchemaField(
         title=title,
         description=description,
         exclude=exclude,
-        json_schema_extra=json_extra,
+        json_schema_extra=json_schema_extra,
         **kwargs,
     )  # type: ignore
 
@@ -375,7 +373,8 @@ class AutoTopUpConfig(BaseModel):
 
 
 class UserTransaction(BaseModel):
-    transaction_time: datetime = datetime.min
+    transaction_key: str = ""
+    transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
     transaction_type: CreditTransactionType = CreditTransactionType.USAGE
     amount: int = 0
     balance: int = 0
@@ -383,9 +382,62 @@ class UserTransaction(BaseModel):
     usage_graph_id: str | None = None
     usage_execution_id: str | None = None
     usage_node_count: int = 0
-    usage_start_time: datetime = datetime.max
+    usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
 
 
 class TransactionHistory(BaseModel):
     transactions: list[UserTransaction]
     next_transaction_time: datetime | None
+
+
+class RefundRequest(BaseModel):
+    id: str
+    user_id: str
+    transaction_key: str
+    amount: int
+    reason: str
+    result: str | None = None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class NodeExecutionStats(BaseModel):
+    """Execution statistics for a node execution."""
+
+    class Config:
+        arbitrary_types_allowed = True
+        extra = "allow"
+
+    error: Optional[Exception | str] = None
+    walltime: float = 0
+    cputime: float = 0
+    input_size: int = 0
+    output_size: int = 0
+    llm_call_count: int = 0
+    llm_retry_count: int = 0
+    input_token_count: int = 0
+    output_token_count: int = 0
+
+
+class GraphExecutionStats(BaseModel):
+    """Execution statistics for a graph execution."""
+
+    class Config:
+        arbitrary_types_allowed = True
+        extra = "allow"
+
+    error: Optional[Exception | str] = None
+    walltime: float = Field(
+        default=0, description="Time between start and end of run (seconds)"
+    )
+    cputime: float = 0
+    nodes_walltime: float = Field(
+        default=0, description="Total node execution time (seconds)"
+    )
+    nodes_cputime: float = 0
+    node_count: int = Field(default=0, description="Total number of node executions")
+    node_error_count: int = Field(
+        default=0, description="Total number of errors generated"
+    )
+    cost: int = Field(default=0, description="Total execution cost (cents)")

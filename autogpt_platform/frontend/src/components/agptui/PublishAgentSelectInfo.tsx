@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Button } from "../agptui/Button";
 import { IconClose, IconPlus } from "../ui/icons";
 import BackendAPI from "@/lib/autogpt-server-api";
+import { toast } from "../ui/use-toast";
 
 export interface PublishAgentInfoInitialData {
   agent_id: string;
@@ -40,13 +41,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
   initialData,
 }) => {
   const [agentId, setAgentId] = React.useState<string | null>(null);
-  const [images, setImages] = React.useState<string[]>(
-    initialData?.additionalImages
-      ? [initialData.thumbnailSrc, ...initialData.additionalImages]
-      : initialData?.thumbnailSrc
-        ? [initialData.thumbnailSrc]
-        : [],
-  );
+  const [images, setImages] = React.useState<string[]>([]);
   const [selectedImage, setSelectedImage] = React.useState<string | null>(
     initialData?.thumbnailSrc || null,
   );
@@ -66,7 +61,10 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
   React.useEffect(() => {
     if (initialData) {
       setAgentId(initialData.agent_id);
-      setImagesWithValidation(initialData.additionalImages || []);
+      setImagesWithValidation([
+        ...(initialData?.thumbnailSrc ? [initialData.thumbnailSrc] : []),
+        ...(initialData.additionalImages || []),
+      ]);
       setSelectedImage(initialData.thumbnailSrc || null);
       setTitle(initialData.title);
       setSubheader(initialData.subheader);
@@ -94,8 +92,6 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
     }
     if (newImages.length === 0) {
       setSelectedImage(null);
-    } else {
-      console.log("images", newImages);
     }
   };
 
@@ -134,7 +130,10 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         setSelectedImage(imageUrl);
       }
     } catch (error) {
-      console.error("Error uploading image:", error);
+      toast({
+        title: "Failed to upload image",
+        description: `Error: ${error}`,
+      });
     }
   };
 
@@ -150,7 +149,6 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         throw new Error("Agent ID is required");
       }
       const { image_url } = await api.generateStoreSubmissionImage(agentId);
-      console.log("image_url", image_url);
       setImagesWithValidation([...images, image_url]);
     } catch (error) {
       console.error("Failed to generate image:", error);
@@ -220,7 +218,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="A tagline for your agent"
             value={subheader}
             onChange={(e) => setSubheader(e.target.value)}
-            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-sans text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           />
         </div>
 
@@ -237,7 +235,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="URL-friendly name for your agent"
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
-            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-sans text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           />
         </div>
 
@@ -256,7 +254,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                 className="rounded-md"
               />
             ) : (
-              <p className="font-['Geist'] text-sm font-normal text-neutral-600 dark:text-neutral-400">
+              <p className="font-sans text-sm font-normal text-neutral-600 dark:text-neutral-400">
                 No images yet
               </p>
             )}
@@ -284,7 +282,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                       size="lg"
                       className="text-neutral-600 dark:text-neutral-300"
                     />
-                    <span className="mt-1 font-['Geist'] text-xs font-normal text-neutral-600 dark:text-neutral-300">
+                    <span className="mt-1 font-sans text-xs font-normal text-neutral-600 dark:text-neutral-300">
                       Add image
                     </span>
                   </label>
@@ -325,7 +323,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                       size="lg"
                       className="text-neutral-600 dark:text-neutral-300"
                     />
-                    <span className="mt-1 font-['Geist'] text-xs font-normal text-neutral-600 dark:text-neutral-300">
+                    <span className="mt-1 font-sans text-xs font-normal text-neutral-600 dark:text-neutral-300">
                       Add image
                     </span>
                   </Button>
@@ -344,8 +342,6 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
               You can use AI to generate a cover image for you
             </p>
             <Button
-              variant="default"
-              size="sm"
               className={`bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 ${
                 images.length >= 5 ? "cursor-not-allowed opacity-50" : ""
               }`}
@@ -374,7 +370,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="Paste a video link here"
             value={youtubeLink}
             onChange={(e) => setYoutubeLink(e.target.value)}
-            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-sans text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           />
         </div>
 
@@ -389,7 +385,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             id="category"
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="w-full appearance-none rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-5 font-['Geist'] text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="w-full appearance-none rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-5 font-sans text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           >
             <option value="">Select a category for your agent</option>
             <option value="productivity">Productivity</option>
@@ -418,7 +414,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="Describe your agent and what it does"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="h-[100px] w-full resize-none rounded-2xl border border-slate-200 bg-white py-2.5 pl-4 pr-14 font-['Geist'] text-base font-normal leading-normal text-slate-900 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="h-[100px] w-full resize-none rounded-2xl border border-slate-200 bg-white py-2.5 pl-4 pr-14 font-sans text-base font-normal leading-normal text-slate-900 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
           ></textarea>
         </div>
       </div>
@@ -426,16 +422,14 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
       <div className="flex justify-between gap-4 border-t border-slate-200 p-6 dark:border-slate-700">
         <Button
           onClick={onBack}
-          variant="outline"
-          size="default"
+          size="lg"
           className="w-full dark:border-slate-700 dark:text-slate-300 sm:flex-1"
         >
           Back
         </Button>
         <Button
           onClick={handleSubmit}
-          variant="default"
-          size="default"
+          size="lg"
           className="w-full bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 sm:flex-1"
         >
           Submit for review

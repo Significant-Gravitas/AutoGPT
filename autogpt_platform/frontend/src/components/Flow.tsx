@@ -26,7 +26,12 @@ import {
 import "@xyflow/react/dist/style.css";
 import { CustomNode } from "./CustomNode";
 import "./flow.css";
-import { BlockUIType, Link } from "@/lib/autogpt-server-api";
+import {
+  BlockUIType,
+  formatEdgeID,
+  GraphExecutionID,
+  GraphID,
+} from "@/lib/autogpt-server-api";
 import { getTypeColor, findNewlyAddedBlockCoordinates } from "@/lib/utils";
 import { history } from "./history";
 import { CustomEdge } from "./CustomEdge";
@@ -69,9 +74,10 @@ export type NodeDimension = {
 export const FlowContext = createContext<FlowContextType | null>(null);
 
 const FlowEditor: React.FC<{
-  flowID?: string;
+  flowID?: GraphID;
+  flowVersion?: string;
   className?: string;
-}> = ({ flowID, className }) => {
+}> = ({ flowID, flowVersion, className }) => {
   const {
     addNodes,
     addEdges,
@@ -85,6 +91,9 @@ const FlowEditor: React.FC<{
   const [visualizeBeads, setVisualizeBeads] = useState<
     "no" | "static" | "animate"
   >("animate");
+  const [flowExecutionID, setFlowExecutionID] = useState<
+    GraphExecutionID | undefined
+  >();
   const {
     agentName,
     setAgentName,
@@ -107,7 +116,12 @@ const FlowEditor: React.FC<{
     setNodes,
     edges,
     setEdges,
-  } = useAgentGraph(flowID, visualizeBeads !== "no");
+  } = useAgentGraph(
+    flowID,
+    flowVersion ? parseInt(flowVersion) : undefined,
+    flowExecutionID,
+    visualizeBeads !== "no",
+  );
 
   const router = useRouter();
   const pathname = usePathname();
@@ -157,6 +171,9 @@ const FlowEditor: React.FC<{
     if (params.get("open_scheduling") === "true") {
       setOpenCron(true);
     }
+    setFlowExecutionID(
+      (params.get("flowExecutionID") as GraphExecutionID) || undefined,
+    );
   }, [params]);
 
   useEffect(() => {
@@ -266,14 +283,6 @@ const FlowEditor: React.FC<{
     },
     [deleteElements, setNodes, nodes, edges, addNodes],
   );
-
-  const formatEdgeID = useCallback((conn: Link | Connection): string => {
-    if ("sink_id" in conn) {
-      return `${conn.source_id}_${conn.source_name}_${conn.sink_id}_${conn.sink_name}`;
-    } else {
-      return `${conn.source}_${conn.sourceHandle}_${conn.target}_${conn.targetHandle}`;
-    }
-  }, []);
 
   const onConnect: OnConnect = useCallback(
     (connection: Connection) => {
@@ -452,6 +461,37 @@ const FlowEditor: React.FC<{
     });
   }, [nodes, setViewport, x, y]);
 
+  const fillDefaults = useCallback((obj: any, schema: any) => {
+    // Iterate over the schema properties
+    for (const key in schema.properties) {
+      if (schema.properties.hasOwnProperty(key)) {
+        const propertySchema = schema.properties[key];
+
+        // If the property is not in the object, initialize it with the default value
+        if (!obj.hasOwnProperty(key)) {
+          if (propertySchema.default !== undefined) {
+            obj[key] = propertySchema.default;
+          } else if (propertySchema.type === "object") {
+            // Recursively fill defaults for nested objects
+            obj[key] = fillDefaults({}, propertySchema);
+          } else if (propertySchema.type === "array") {
+            // Recursively fill defaults for arrays
+            obj[key] = fillDefaults([], propertySchema);
+          }
+        } else {
+          // If the property exists, recursively fill defaults for nested objects/arrays
+          if (propertySchema.type === "object") {
+            obj[key] = fillDefaults(obj[key], propertySchema);
+          } else if (propertySchema.type === "array") {
+            obj[key] = fillDefaults(obj[key], propertySchema);
+          }
+        }
+      }
+    }
+
+    return obj;
+  }, []);
+
   const addNode = useCallback(
     (blockId: string, nodeType: string, hardcodedValues: any = {}) => {
       const nodeSchema = availableNodes.find((node) => node.id === blockId);
@@ -498,7 +538,10 @@ const FlowEditor: React.FC<{
           categories: nodeSchema.categories,
           inputSchema: nodeSchema.inputSchema,
           outputSchema: nodeSchema.outputSchema,
-          hardcodedValues: hardcodedValues,
+          hardcodedValues: {
+            ...fillDefaults({}, nodeSchema.inputSchema),
+            ...hardcodedValues,
+          },
           connections: [],
           isOutputOpen: false,
           block_id: blockId,

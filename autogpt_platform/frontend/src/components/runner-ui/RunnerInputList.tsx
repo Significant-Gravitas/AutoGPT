@@ -5,21 +5,22 @@ import { BlockInput } from "./RunnerInputUI";
 
 interface InputListProps {
   blockInputs: BlockInput[];
-  onInputChange: (nodeId: string, field: string, value: string) => void;
+  onInputChange: (nodeId: string, field: string, value: any) => void;
 }
 
 export function InputList({ blockInputs, onInputChange }: InputListProps) {
   return (
-    <ScrollArea className="h-[20vh] overflow-auto pr-4 sm:h-[30vh] md:h-[40vh] lg:h-[50vh]">
+    <ScrollArea className="max-h-[60vh] overflow-auto">
       <div className="space-y-4">
         {blockInputs && blockInputs.length > 0 ? (
           blockInputs.map((block) => (
             <InputBlock
               key={block.id}
               id={block.id}
+              schema={block.inputSchema}
               name={block.hardcodedValues.name}
               description={block.hardcodedValues.description}
-              value={block.hardcodedValues.value?.toString() || ""}
+              value={block.hardcodedValues.value || ""}
               placeholder_values={block.hardcodedValues.placeholder_values}
               onInputChange={onInputChange}
             />

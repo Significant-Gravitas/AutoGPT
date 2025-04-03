@@ -1,4 +1,4 @@
-import { Schedule } from "@/lib/autogpt-server-api";
+import { LibraryAgent, Schedule, ScheduleID } from "@/lib/autogpt-server-api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -21,7 +21,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { GraphMeta } from "@/lib/autogpt-server-api";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
@@ -31,11 +30,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { TextRenderer } from "../ui/render";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 
 interface SchedulesTableProps {
   schedules: Schedule[];
-  agents: GraphMeta[];
-  onRemoveSchedule: (scheduleId: string, enabled: boolean) => void;
+  agents: LibraryAgent[];
+  onRemoveSchedule: (scheduleId: ScheduleID, enabled: boolean) => void;
   sortColumn: keyof Schedule;
   sortDirection: "asc" | "desc";
   onSort: (column: keyof Schedule) => void;
@@ -52,10 +53,12 @@ export const SchedulesTable = ({
   const { toast } = useToast();
   const router = useRouter();
   const cron_manager = new CronExpressionManager();
-  const [selectedAgent, setSelectedAgent] = useState<string>("");
+  const [selectedAgent, setSelectedAgent] = useState<string>(""); // Library Agent ID
+  const [selectedVersion, setSelectedVersion] = useState<number>(0); // Graph version
+  const [maxVersion, setMaxVersion] = useState<number>(0);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedFilter, setSelectedFilter] = useState<string>("");
+  const [selectedFilter, setSelectedFilter] = useState<string>(""); // Graph ID
 
   const filteredAndSortedSchedules = [...schedules]
     .filter(
@@ -70,7 +73,7 @@ export const SchedulesTable = ({
       return String(bValue).localeCompare(String(aValue));
     });
 
-  const handleToggleSchedule = (scheduleId: string, enabled: boolean) => {
+  const handleToggleSchedule = (scheduleId: ScheduleID, enabled: boolean) => {
     onRemoveSchedule(scheduleId, enabled);
     if (!enabled) {
       toast({
@@ -86,13 +89,39 @@ export const SchedulesTable = ({
 
   const handleAgentSelect = (agentId: string) => {
     setSelectedAgent(agentId);
+    const agent = agents.find((a) => a.id === agentId);
+    setMaxVersion(agent!.agent_version);
+    setSelectedVersion(agent!.agent_version);
+  };
+
+  const handleVersionSelect = (version: string) => {
+    setSelectedVersion(parseInt(version));
   };
 
   const handleSchedule = async () => {
+    if (!selectedAgent || !selectedVersion) {
+      toast({
+        title: "Invalid Input",
+        description: "Please select an agent and a version.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (selectedVersion < 1 || selectedVersion > maxVersion) {
+      toast({
+        title: "Invalid Version",
+        description: `Please select a version between 1 and ${maxVersion}.`,
+        variant: "destructive",
+      });
+      return;
+    }
     setIsLoading(true);
+    const agent = agents.find((a) => a.id == selectedAgent)!;
     try {
       await new Promise((resolve) => setTimeout(resolve, 100));
-      router.push(`/build?flowID=${selectedAgent}&open_scheduling=true`);
+      router.push(
+        `/build?flowID=${agent.agent_id}&flowVersion=${agent.agent_version}&open_scheduling=true`,
+      );
     } catch (error) {
       console.error("Navigation error:", error);
     }
@@ -117,6 +146,18 @@ export const SchedulesTable = ({
               ))}
             </SelectContent>
           </Select>
+          <Label className="mt-4">
+            Select version between 1 and {maxVersion}
+          </Label>
+          <Input
+            type="number"
+            min={1}
+            max={selectedAgent ? maxVersion : 0}
+            value={selectedVersion}
+            onChange={(e) => handleVersionSelect(e.target.value)}
+            placeholder="Select version"
+            className="w-full"
+          />
           <Button
             onClick={handleSchedule}
             disabled={isLoading || !selectedAgent}
@@ -136,14 +177,14 @@ export const SchedulesTable = ({
 
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-lg font-semibold">Schedules</h3>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Select onValueChange={setSelectedFilter}>
             <SelectTrigger className="h-8 w-[180px] rounded-md px-3 text-xs">
               <SelectValue placeholder="Filter by graph" />
             </SelectTrigger>
             <SelectContent className="text-xs">
               {agents.map((agent) => (
-                <SelectItem key={agent.id} value={agent.id}>
+                <SelectItem key={agent.id} value={agent.agent_id}>
                   {agent.name}
                 </SelectItem>
               ))}
@@ -165,6 +206,7 @@ export const SchedulesTable = ({
               >
                 Graph Name
               </TableHead>
+              <TableHead className="cursor-pointer">Graph Version</TableHead>
               <TableHead
                 onClick={() => onSort("next_run_time")}
                 className="cursor-pointer"
@@ -195,11 +237,12 @@ export const SchedulesTable = ({
               filteredAndSortedSchedules.map((schedule) => (
                 <TableRow key={schedule.id}>
                   <TableCell className="font-medium">
-                    {agents.find((a) => a.id === schedule.graph_id)?.name ||
-                      schedule.graph_id}
+                    {agents.find((a) => a.agent_id === schedule.graph_id)
+                      ?.name || schedule.graph_id}
                   </TableCell>
+                  <TableCell>{schedule.graph_version}</TableCell>
                   <TableCell>
-                    {new Date(schedule.next_run_time).toLocaleString()}
+                    {schedule.next_run_time.toLocaleString()}
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">

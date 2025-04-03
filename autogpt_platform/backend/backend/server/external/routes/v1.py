@@ -1,9 +1,9 @@
 import logging
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Annotated, Any, Dict, List, Optional, Sequence
 
 from autogpt_libs.utils.cache import thread_cached
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from prisma.enums import AgentExecutionStatus, APIKeyPermission
 from typing_extensions import TypedDict
 
@@ -12,7 +12,7 @@ from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.api_key import APIKey
 from backend.data.block import BlockInput, CompletedBlockOutput
-from backend.data.execution import ExecutionResult
+from backend.data.execution import NodeExecutionResult
 from backend.executor import ExecutionManager
 from backend.server.external.middleware import require_permission
 from backend.util.service import get_service_client
@@ -53,7 +53,7 @@ class GraphExecutionResult(TypedDict):
     output: Optional[List[Dict[str, str]]]
 
 
-def get_outputs_with_names(results: List[ExecutionResult]) -> List[Dict[str, str]]:
+def get_outputs_with_names(results: list[NodeExecutionResult]) -> list[dict[str, str]]:
     outputs = []
     for result in results:
         if "output" in result.output_data:
@@ -71,7 +71,7 @@ def get_outputs_with_names(results: List[ExecutionResult]) -> List[Dict[str, str
 )
 def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     blocks = [block() for block in backend.data.block.get_blocks().values()]
-    return [b.to_dict() for b in blocks]
+    return [b.to_dict() for b in blocks if not b.disabled]
 
 
 @v1_router.post(
@@ -95,21 +95,25 @@ def execute_graph_block(
 
 
 @v1_router.post(
-    path="/graphs/{graph_id}/execute",
+    path="/graphs/{graph_id}/execute/{graph_version}",
     tags=["graphs"],
 )
 def execute_graph(
     graph_id: str,
-    node_input: dict[Any, Any],
+    graph_version: int,
+    node_input: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
     api_key: APIKey = Depends(require_permission(APIKeyPermission.EXECUTE_GRAPH)),
 ) -> dict[str, Any]:
     try:
         graph_exec = execution_manager_client().add_execution(
-            graph_id, node_input, user_id=api_key.user_id
+            graph_id,
+            graph_version=graph_version,
+            data=node_input,
+            user_id=api_key.user_id,
         )
         return {"id": graph_exec.graph_exec_id}
     except Exception as e:
-        msg = e.__str__().encode().decode("unicode_escape")
+        msg = str(e).encode().decode("unicode_escape")
         raise HTTPException(status_code=400, detail=msg)
 
 
@@ -126,7 +130,7 @@ async def get_graph_execution_results(
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
-    results = await execution_db.get_execution_results(graph_exec_id)
+    results = await execution_db.get_node_execution_results(graph_exec_id)
     last_result = results[-1] if results else None
     execution_status = (
         last_result.status if last_result else AgentExecutionStatus.INCOMPLETE
