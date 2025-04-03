@@ -1,9 +1,10 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, Check } from "lucide-react";
 import { OnboardingStep } from "@/lib/autogpt-server-api";
 import { useOnboarding } from "./onboarding-provider";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import * as party from "party-js";
 
 interface Task {
   id: OnboardingStep;
@@ -92,8 +93,8 @@ export function TaskGroups() {
       ],
     },
   ]);
-
-  const { state } = useOnboarding();
+  const { state, updateState } = useOnboarding();
+  const refs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const toggleGroup = useCallback((name: string) => {
     setGroups((prevGroups) =>
@@ -124,11 +125,61 @@ export function TaskGroups() {
     [isTaskCompleted],
   );
 
+  const setRef = (name: string) => (el: HTMLDivElement | null) => {
+    if (el) {
+      refs.current[name] = el;
+    }
+  };
+
+  useEffect(() => {
+    groups.forEach((group) => {
+      const groupCompleted = isGroupCompleted(group);
+      // Check if the last task in the group is completed
+      const alreadyCelebrated = state?.notified.includes(
+        group.tasks[group.tasks.length - 1].id,
+      );
+
+      if (groupCompleted) {
+        const el = refs.current[group.name];
+        if (el && !alreadyCelebrated) {
+          party.confetti(el, {
+            count: 50,
+            spread: 120,
+            shapes: ["square", "circle"],
+            size: party.variation.range(1, 2),
+            speed: party.variation.range(200, 300),
+          });
+          // Update the state to include all group tasks as notified
+          // This ensures that the confetti effect isn't perpetually triggered on Wallet
+          const notifiedTasks = group.tasks.map((task) => task.id);
+          updateState({ notified: [...(state?.notified || []), ...notifiedTasks] });
+        }
+        return;
+      }
+
+      group.tasks.forEach((task) => {
+        const el = refs.current[task.id];
+        if (el && isTaskCompleted(task) && !state?.notified.includes(task.id)) {
+          party.confetti(el, {
+            count: 40,
+            spread: 120,
+            shapes: ["square", "circle"],
+            size: party.variation.range(1, 1.5),
+            speed: party.variation.range(200, 300),
+          });
+          // Update the state to include the task as notified
+          updateState({ notified: [...(state?.notified || []), task.id] });
+        }
+      });
+    });
+  }, [state?.completedSteps]);
+
   return (
     <div className="space-y-2">
       {groups.map((group) => (
         <div
           key={group.name}
+          ref={setRef(group.name)}
           className="mt-3 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100"
         >
           {/* Group Header - unchanged */}
@@ -189,6 +240,7 @@ export function TaskGroups() {
             {group.tasks.map((task) => (
               <div
                 key={task.id}
+                ref={setRef(task.id)}
                 className="mx-3 border-t border-zinc-300 px-1 pb-1 pt-3"
               >
                 <div className="flex items-center justify-between">

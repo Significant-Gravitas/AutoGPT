@@ -11,5 +11,5 @@ ALTER TYPE "OnboardingStep" ADD VALUE 'BUILDER_RUN_AGENT';
 ALTER TABLE "UserOnboarding"
   ADD COLUMN "notificationDot" BOOLEAN NOT NULL DEFAULT true,
   ADD COLUMN "notified" "OnboardingStep"[] DEFAULT '{}',
-  ADD COLUMN "rewardedFor" "OnboardingStep"[] DEFAULT '{}'
+  ADD COLUMN "rewardedFor" "OnboardingStep"[] DEFAULT '{}',
   ADD COLUMN "onboardingAgentExecutionId" TEXT

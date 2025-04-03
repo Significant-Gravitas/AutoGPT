@@ -11,14 +11,16 @@ import { PopoverClose } from "@radix-ui/react-popover";
 import { TaskGroups } from "../onboarding/WalletTaskGroups";
 import { ScrollArea } from "../ui/scroll-area";
 import { useOnboarding } from "../onboarding/onboarding-provider";
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
+import * as party from "party-js";
 
 export default function Wallet() {
   const { credits, formatCredits, fetchCredits } = useCredits({
     fetchInitialCredits: true,
   });
   const { state, updateState } = useOnboarding();
+  const walletRef = useRef<HTMLButtonElement | null>(null);
 
   const onWalletOpen = useCallback(async () => {
     if (state?.notificationDot) {
@@ -28,10 +30,35 @@ export default function Wallet() {
     fetchCredits();
   }, [state?.notificationDot, updateState, fetchCredits]);
 
+  const fadeOut = new party.ModuleBuilder()
+    .drive("opacity")
+    .by((t) => 1 - t)
+    .through("lifetime")
+    .build();
+
+  useEffect(() => {
+    // Check if there are any completed tasks (state?.completedTasks) that
+    // are not in the state?.notified array and play confetti if so
+    const pending = state?.completedSteps.filter(
+      (step) => !state?.notified.includes(step),
+    );
+    if ((pending?.length || 0) > 0 && walletRef.current) {
+      party.confetti(walletRef.current, {
+        count: 30,
+        spread: 120,
+        shapes: ["square", "circle"],
+        size: party.variation.range(1, 2),
+        speed: party.variation.range(200, 300),
+        modules: [fadeOut],
+      });
+    }
+  }, [state?.completedSteps, state?.notified]);
+
   return (
     <Popover>
       <PopoverTrigger asChild>
         <button
+          ref={walletRef}
           className="relative flex items-center gap-1 rounded-md bg-zinc-200 px-3 py-2 text-sm transition-colors duration-200 hover:bg-zinc-300"
           onClick={onWalletOpen}
         >

@@ -1,24 +1,26 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { finishOnboarding } from "./actions";
-import confetti from "canvas-confetti";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import * as party from "party-js";
 
 export default function Page() {
   useOnboarding(7, "AGENT_INPUT");
   const [showText, setShowText] = useState(false);
   const [showSubtext, setShowSubtext] = useState(false);
+  const divRef = useRef(null);
 
   useEffect(() => {
-    confetti({
-      particleCount: 120,
-      spread: 360,
-      shapes: ["square", "circle"],
-      scalar: 2,
-      decay: 0.93,
-      origin: { y: 0.38, x: 0.51 },
-    });
+    if (divRef.current) {
+      party.confetti(divRef.current, {
+        count: 100,
+        spread: 180,
+        shapes: ["square", "circle"],
+        size: party.variation.range(2, 2), // scalar: 2
+        speed: party.variation.range(300, 1000),
+      });
+    }
 
     const timer0 = setTimeout(() => {
       setShowText(true);
@@ -42,6 +44,7 @@ export default function Page() {
   return (
     <div className="flex h-screen w-screen flex-col items-center justify-center bg-violet-100">
       <div
+        ref={divRef}
         className={cn(
           "z-10 -mb-16 text-9xl duration-500",
           showText ? "opacity-100" : "opacity-0",
