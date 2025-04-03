@@ -271,6 +271,7 @@ export type GraphExecution = GraphExecutionMeta & {
 
 export type GraphMeta = {
   id: GraphID;
+  user_id: UserID;
   version: number;
   is_active: boolean;
   name: string;
@@ -305,7 +306,12 @@ export type Graph = GraphMeta & {
 
 export type GraphUpdateable = Omit<
   Graph,
-  "version" | "is_active" | "links" | "input_schema" | "output_schema"
+  | "user_id"
+  | "version"
+  | "is_active"
+  | "links"
+  | "input_schema"
+  | "output_schema"
 > & {
   version?: number;
   is_active?: boolean;
@@ -499,7 +505,7 @@ export type NotificationPreferenceDTO = {
 };
 
 export type NotificationPreference = NotificationPreferenceDTO & {
-  user_id: string;
+  user_id: UserID;
   emails_sent_today: number;
   last_reset_date: Date;
 };
@@ -519,9 +525,11 @@ export type Webhook = {
 };
 
 export type User = {
-  id: string;
+  id: UserID;
   email: string;
 };
+
+export type UserID = Brand<string, "UserID">;
 
 export enum BlockUIType {
   STANDARD = "Standard",
@@ -676,7 +684,7 @@ export type Schedule = {
   id: ScheduleID;
   name: string;
   cron: string;
-  user_id: string;
+  user_id: UserID;
   graph_id: GraphID;
   graph_version: number;
   input_data: { [key: string]: any };
@@ -770,7 +778,7 @@ export interface TransactionHistory {
 
 export interface RefundRequest {
   id: string;
-  user_id: string;
+  user_id: UserID;
   transaction_key: string;
   amount: number;
   reason: string;
