@@ -213,7 +213,7 @@ const CarouselPrevious = React.forwardRef<
         className={cn(
           "absolute h-[52px] w-[52px] rounded-full",
           orientation === "horizontal"
-            ? "-bottom-20 right-24 -translate-y-1/2"
+            ? "right-24 top-0"
             : "-top-12 left-1/2 -translate-x-1/2 rotate-90",
           className,
         )}
@@ -259,7 +259,7 @@ const CarouselNext = React.forwardRef<
         className={cn(
           "absolute h-[52px] w-[52px] rounded-full",
           orientation === "horizontal"
-            ? "-bottom-20 right-4 -translate-y-1/2"
+            ? "right-4 top-0"
             : "-bottom-12 left-1/2 -translate-x-1/2 rotate-90",
           className,
         )}
@@ -302,7 +302,7 @@ const CarouselIndicator = React.forwardRef<
   return (
     <div
       ref={ref}
-      className={cn("relative top-10 flex h-3 items-center gap-2", className)}
+      className={cn("relative top-7 flex h-3 items-center gap-2", className)}
       {...props}
     >
       {scrollSnaps.map((_, index) => (
