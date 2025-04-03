@@ -6,13 +6,13 @@ import { Button, buttonVariants } from "@/components/agptui/Button";
 import Link from "next/link";
 
 export default function ActionButtonGroup({
+  title,
   actions,
   className,
-  title,
 }: {
+  title: React.ReactNode;
   actions: ButtonAction[];
   className?: string;
-  title: React.ReactNode;
 }): React.ReactElement {
   return (
     <div className={cn("flex flex-col gap-3", className)}>
