@@ -10,7 +10,7 @@ from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.feature_flag.client import feature_flag
 from autogpt_libs.utils.cache import thread_cached
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
-from starlette.status import HTTP_204_NO_CONTENT
+from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
 import backend.data.block
@@ -653,9 +653,17 @@ async def get_graph_execution(
     graph_id: str,
     graph_exec_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
-) -> execution_db.GraphExecution:
+) -> execution_db.GraphExecution | execution_db.GraphExecutionWithNodes:
+    graph = await graph_db.get_graph(graph_id=graph_id, user_id=user_id)
+    if not graph:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
+        )
+
     result = await execution_db.get_graph_execution(
-        execution_id=graph_exec_id, user_id=user_id
+        user_id=user_id,
+        execution_id=graph_exec_id,
+        include_node_executions=graph.user_id == user_id,
     )
     if not result or result.graph_id != graph_id:
         raise HTTPException(

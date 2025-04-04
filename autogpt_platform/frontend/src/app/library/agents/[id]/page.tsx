@@ -8,8 +8,8 @@ import {
   GraphExecution,
   GraphExecutionID,
   GraphExecutionMeta,
+  Graph,
   GraphID,
-  GraphMeta,
   LibraryAgent,
   LibraryAgentID,
   Schedule,
@@ -30,7 +30,7 @@ export default function AgentRunsPage(): React.ReactElement {
 
   // ============================ STATE =============================
 
-  const [graph, setGraph] = useState<GraphMeta | null>(null);
+  const [graph, setGraph] = useState<Graph | null>(null);
   const [agent, setAgent] = useState<LibraryAgent | null>(null);
   const [agentRuns, setAgentRuns] = useState<GraphExecutionMeta[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -63,9 +63,7 @@ export default function AgentRunsPage(): React.ReactElement {
     setSelectedSchedule(schedule);
   }, []);
 
-  const [graphVersions, setGraphVersions] = useState<Record<number, GraphMeta>>(
-    {},
-  );
+  const [graphVersions, setGraphVersions] = useState<Record<number, Graph>>({});
   const getGraphVersion = useCallback(
     async (graphID: GraphID, version: number) => {
       if (graphVersions[version]) return graphVersions[version];
@@ -89,20 +87,23 @@ export default function AgentRunsPage(): React.ReactElement {
           (graph && graph.version == _graph.version) || setGraph(_graph),
       );
       api.getGraphExecutions(agent.agent_id).then((agentRuns) => {
-        const sortedRuns = agentRuns.toSorted(
-          (a, b) => Number(b.started_at) - Number(a.started_at),
-        );
-        setAgentRuns(sortedRuns);
+        setAgentRuns(agentRuns);
 
         // Preload the corresponding graph versions
-        new Set(sortedRuns.map((run) => run.graph_version)).forEach((version) =>
+        new Set(agentRuns.map((run) => run.graph_version)).forEach((version) =>
           getGraphVersion(agent.agent_id, version),
         );
 
-        if (!selectedView.id && isFirstLoad && sortedRuns.length > 0) {
+        if (!selectedView.id && isFirstLoad && agentRuns.length > 0) {
           // only for first load or first execution
           setIsFirstLoad(false);
-          selectView({ type: "run", id: sortedRuns[0].id });
+
+          const latestRun = agentRuns.reduce((latest, current) => {
+            if (latest.started_at && !current.started_at) return current;
+            else if (!latest.started_at) return latest;
+            return latest.started_at > current.started_at ? latest : current;
+          }, agentRuns[0]);
+          selectView({ type: "run", id: latestRun.id });
         }
       });
     });
@@ -116,6 +117,39 @@ export default function AgentRunsPage(): React.ReactElement {
   useEffect(() => {
     fetchAgents();
   }, []);
+
+  // Subscribe to websocket updates for agent runs
+  useEffect(() => {
+    if (!agent) return;
+
+    // Subscribe to all executions for this agent
+    api.subscribeToGraphExecutions(agent.agent_id);
+  }, [api, agent]);
+
+  // Handle execution updates
+  useEffect(() => {
+    const detachExecUpdateHandler = api.onWebSocketMessage(
+      "graph_execution_event",
+      (data) => {
+        setAgentRuns((prev) => {
+          const index = prev.findIndex((run) => run.id === data.id);
+          if (index === -1) {
+            return [...prev, data];
+          }
+          const newRuns = [...prev];
+          newRuns[index] = { ...newRuns[index], ...data };
+          return newRuns;
+        });
+        if (data.id === selectedView.id) {
+          setSelectedRun((prev) => ({ ...prev, ...data }));
+        }
+      },
+    );
+
+    return () => {
+      detachExecUpdateHandler();
+    };
+  }, [api, selectedView.id]);
 
   // load selectedRun based on selectedView
   useEffect(() => {
@@ -148,12 +182,6 @@ export default function AgentRunsPage(): React.ReactElement {
   useEffect(() => {
     fetchSchedules();
   }, [fetchSchedules]);
-
-  /* TODO: use websockets instead of polling - https://github.com/Significant-Gravitas/AutoGPT/issues/8782 */
-  useEffect(() => {
-    const intervalId = setInterval(() => fetchAgents(), 5000);
-    return () => clearInterval(intervalId);
-  }, [fetchAgents]);
 
   // =========================== ACTIONS ============================
 
@@ -198,12 +226,8 @@ export default function AgentRunsPage(): React.ReactElement {
       ...(agent?.can_access_graph
         ? [
             {
-              label: "Open in builder",
-              callback: () =>
-                agent &&
-                router.push(
-                  `/build?flowID=${agent.agent_id}&flowVersion=${agent.agent_version}`,
-                ),
+              label: "Open graph in builder",
+              href: `/build?flowID=${agent.agent_id}&flowVersion=${agent.agent_version}`,
             },
             { label: "Export agent to file", callback: downloadGraph },
           ]
@@ -214,7 +238,7 @@ export default function AgentRunsPage(): React.ReactElement {
         callback: () => setAgentDeleteDialogOpen(true),
       },
     ],
-    [agent, router, downloadGraph],
+    [agent, downloadGraph],
   );
 
   if (!agent || !graph) {
@@ -232,6 +256,7 @@ export default function AgentRunsPage(): React.ReactElement {
         agentRuns={agentRuns}
         schedules={schedules}
         selectedView={selectedView}
+        allowDraftNewRun={!graph.has_webhook_trigger}
         onSelectRun={selectRun}
         onSelectSchedule={selectSchedule}
         onSelectDraftNewRun={openRunDraftView}
@@ -253,9 +278,11 @@ export default function AgentRunsPage(): React.ReactElement {
         {(selectedView.type == "run" && selectedView.id ? (
           selectedRun && (
             <AgentRunDetailsView
+              agent={agent}
               graph={graphVersions[selectedRun.graph_version] ?? graph}
               run={selectedRun}
               agentActions={agentActions}
+              onRun={(runID) => selectRun(runID)}
               deleteRun={() => setConfirmingDeleteAgentRun(selectedRun)}
             />
           )

@@ -17,59 +17,39 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export const FlowRunInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {
-    flow: LibraryAgent;
+    agent: LibraryAgent;
     execution: GraphExecutionMeta;
   }
-> = ({ flow, execution, ...props }) => {
+> = ({ agent, execution, ...props }) => {
   const [isOutputOpen, setIsOutputOpen] = useState(false);
   const [blockOutputs, setBlockOutputs] = useState<BlockOutput[]>([]);
   const api = useBackendAPI();
 
   const fetchBlockResults = useCallback(async () => {
-    const executionResults = (
-      await api.getGraphExecutionInfo(flow.agent_id, execution.id)
-    ).node_executions;
-
-    // Create a map of the latest COMPLETED execution results of output nodes by node_id
-    const latestCompletedResults = executionResults
-      .filter(
-        (result) =>
-          result.status === "COMPLETED" &&
-          result.block_id === SpecialBlockID.OUTPUT,
-      )
-      .reduce((acc, result) => {
-        const existing = acc.get(result.node_id);
-
-        // Compare dates if there's an existing result
-        if (existing) {
-          const existingDate = existing.end_time || existing.add_time;
-          const currentDate = result.end_time || result.add_time;
-
-          if (currentDate > existingDate) {
-            acc.set(result.node_id, result);
-          }
-        } else {
-          acc.set(result.node_id, result);
-        }
-
-        return acc;
-      }, new Map<string, NodeExecutionResult>());
+    const graph = await api.getGraph(agent.agent_id, agent.agent_version);
+    const graphExecution = await api.getGraphExecutionInfo(
+      agent.agent_id,
+      execution.id,
+    );
 
     // Transform results to BlockOutput format
     setBlockOutputs(
-      Array.from(latestCompletedResults.values()).map((result) => ({
-        id: result.node_id,
-        type: "output" as const,
-        hardcodedValues: {
-          name: result.input_data.name || "Output",
-          description: result.input_data.description || "Output from the agent",
-          value: result.input_data.value,
-        },
-        // Change this line to extract the array directly
-        result: result.output_data?.output || undefined,
-      })),
+      Object.entries(graphExecution.outputs).flatMap(([key, values]) =>
+        values.map(
+          (value) =>
+            ({
+              metadata: {
+                name: graph.output_schema.properties[key].title || "Output",
+                description:
+                  graph.output_schema.properties[key].description ||
+                  "Output from the agent",
+              },
+              result: value,
+            }) satisfies BlockOutput,
+        ),
+      ),
     );
-  }, [api, flow.agent_id, execution.id]);
+  }, [api, agent.agent_id, agent.agent_version, execution.id]);
 
   // Fetch graph and execution data
   useEffect(() => {
@@ -77,15 +57,15 @@ export const FlowRunInfo: React.FC<
     fetchBlockResults();
   }, [isOutputOpen, fetchBlockResults]);
 
-  if (execution.graph_id != flow.agent_id) {
+  if (execution.graph_id != agent.agent_id) {
     throw new Error(
       `FlowRunInfo can't be used with non-matching execution.graph_id and flow.id`,
     );
   }
 
   const handleStopRun = useCallback(() => {
-    api.stopGraphExecution(flow.agent_id, execution.id);
-  }, [api, flow.agent_id, execution.id]);
+    api.stopGraphExecution(agent.agent_id, execution.id);
+  }, [api, agent.agent_id, execution.id]);
 
   return (
     <>
@@ -93,7 +73,7 @@ export const FlowRunInfo: React.FC<
         <CardHeader className="flex-row items-center justify-between space-x-3 space-y-0">
           <div>
             <CardTitle>
-              {flow.name}{" "}
+              {agent.name}{" "}
               <span className="font-light">v{execution.graph_version}</span>
             </CardTitle>
           </div>
@@ -106,7 +86,7 @@ export const FlowRunInfo: React.FC<
             <Button onClick={() => setIsOutputOpen(true)} variant="outline">
               <ExitIcon className="mr-2" /> View Outputs
             </Button>
-            {flow.can_access_graph && (
+            {agent.can_access_graph && (
               <Link
                 className={buttonVariants({ variant: "default" })}
                 href={`/build?flowID=${execution.graph_id}&flowVersion=${execution.graph_version}&flowExecutionID=${execution.id}`}
@@ -118,7 +98,7 @@ export const FlowRunInfo: React.FC<
         </CardHeader>
         <CardContent>
           <p className="hidden">
-            <strong>Agent ID:</strong> <code>{flow.agent_id}</code>
+            <strong>Agent ID:</strong> <code>{agent.agent_id}</code>
           </p>
           <p className="hidden">
             <strong>Run ID:</strong> <code>{execution.id}</code>
@@ -135,11 +115,13 @@ export const FlowRunInfo: React.FC<
             <strong>Finished:</strong>{" "}
             {moment(execution.ended_at).format("YYYY-MM-DD HH:mm:ss")}
           </p>
-          <p>
-            <strong>Duration (run time):</strong>{" "}
-            {execution.duration.toFixed(1)} (
-            {execution.total_run_time.toFixed(1)}) seconds
-          </p>
+          {execution.stats && (
+            <p>
+              <strong>Duration (run time):</strong>{" "}
+              {execution.stats.duration.toFixed(1)} (
+              {execution.stats.node_exec_time.toFixed(1)}) seconds
+            </p>
+          )}
         </CardContent>
       </Card>
       <RunnerOutputUI
