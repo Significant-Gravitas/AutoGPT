@@ -17,7 +17,7 @@ from backend.usecases.sample import create_test_user
 from backend.util.test import SpinTestServer
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_graph_creation(server: SpinTestServer):
     """
     Test the creation of a graph with nodes and links.
@@ -71,7 +71,7 @@ async def test_graph_creation(server: SpinTestServer):
     assert links[0].sink_id in {nodes[0].id, nodes[1].id, nodes[2].id}
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_get_input_schema(server: SpinTestServer):
     """
     Test the get_input_schema method of a created graph.
@@ -167,7 +167,7 @@ async def test_get_input_schema(server: SpinTestServer):
     assert output_schema == ExpectedOutputSchema.jsonschema()
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_clean_graph(server: SpinTestServer):
     """
     Test the clean_graph function that:
@@ -211,7 +211,7 @@ async def test_clean_graph(server: SpinTestServer):
     assert input_node.input_default["value"] == ""
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_access_store_listing_graph(server: SpinTestServer):
     """
     Test the access of a store listing graph.

@@ -167,14 +167,16 @@ class AppService(BaseAppService, ABC):
 
             async def async_endpoint(body: RequestBodyModel):  # type: ignore #RequestBodyModel being variable
                 return await f(
-                    **{name: getattr(body, name) for name in body.model_fields}
+                    **{name: getattr(body, name) for name in type(body).model_fields}
                 )
 
             return async_endpoint
         else:
 
             def sync_endpoint(body: RequestBodyModel):  # type: ignore #RequestBodyModel being variable
-                return f(**{name: getattr(body, name) for name in body.model_fields})
+                return f(
+                    **{name: getattr(body, name) for name in type(body).model_fields}
+                )
 
             return sync_endpoint
 
