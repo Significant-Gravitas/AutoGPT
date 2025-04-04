@@ -879,6 +879,36 @@ export type AdminPendingSubmissionsRequest = {
   page_size: number;
 };
 
+export enum CreditTransactionType {
+  TOP_UP = "TOP_UP",
+  USAGE = "USAGE",
+  GRANT = "GRANT",
+  REFUND = "REFUND",
+  CARD_CHECK = "CARD_CHECK",
+}
+
+export type UserBalanceHistory = {
+  user_id: string;
+  user_email: string;
+  amount: number;
+  date: Date;
+  current_balance: number;
+  running_balance: number;
+  reason: string;
+  admin_email: string;
+  type: CreditTransactionType;
+  extra_data?: any;
+};
+
+export type UsersBalanceHistoryResponse = {
+  history: UserBalanceHistory[];
+  pagination: Pagination;
+};
+
+export type AddUserCreditsResponse = {
+  new_balance: number;
+  transaction_key: string;
+};
 const _stringFormatToDataTypeMap: Partial<Record<string, DataType>> = {
   date: DataType.DATE,
   time: DataType.TIME,
