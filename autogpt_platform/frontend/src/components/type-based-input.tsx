@@ -73,7 +73,7 @@ export const TypeBasedInput: FC<
     case DataType.LONG_TEXT:
       innerInputElement = (
         <Textarea
-          className="rounded-[12px] px-3 py-2"
+          className="rounded-xl px-3 py-2"
           value={value ?? ""}
           placeholder={placeholder || "Enter text"}
           onChange={(e) => onChange(e.target.value)}
@@ -85,9 +85,11 @@ export const TypeBasedInput: FC<
     case DataType.BOOLEAN:
       innerInputElement = (
         <>
-          <span className="text-sm text-gray-500">{placeholder}</span>
+          <span className="text-sm text-gray-500">
+            {placeholder || (value ? "Enabled" : "Disabled")}
+          </span>
           <Switch
-            className={placeholder ? "ml-auto" : "mx-auto"}
+            className="ml-auto"
             checked={!!value}
             onCheckedChange={(checked) => onChange(checked)}
             {...props}
@@ -145,11 +147,14 @@ export const TypeBasedInput: FC<
         innerInputElement = (
           <Select value={value ?? ""} onValueChange={(val) => onChange(val)}>
             <SelectTrigger
-              className={cn(inputClasses, "text-sm text-gray-500")}
+              className={cn(
+                inputClasses,
+                "agpt-border-input text-sm text-gray-500",
+              )}
             >
               <SelectValue placeholder={placeholder || "Select an option"} />
             </SelectTrigger>
-            <SelectContent className="rounded-[12px] border">
+            <SelectContent className="rounded-xl">
               {schema.enum
                 .filter((opt) => opt)
                 .map((opt) => (
@@ -198,7 +203,7 @@ export function DatePicker({
         <Button
           variant="outline"
           className={cn(
-            "w-full justify-start font-normal",
+            "agpt-border-input w-full justify-start font-normal",
             !value && "text-muted-foreground",
             className,
           )}
@@ -250,7 +255,9 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
           value={hour}
           onValueChange={(val) => changeTime(val, minute, meridiem)}
         >
-          <SelectTrigger className={cn("text-center", inputClasses)}>
+          <SelectTrigger
+            className={cn("agpt-border-input ml-1 text-center", inputClasses)}
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -272,7 +279,9 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
           value={minute}
           onValueChange={(val) => changeTime(hour, val, meridiem)}
         >
-          <SelectTrigger className={cn("text-center", inputClasses)}>
+          <SelectTrigger
+            className={cn("agpt-border-input text-center", inputClasses)}
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -290,7 +299,9 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
           value={meridiem}
           onValueChange={(val) => changeTime(hour, minute, val)}
         >
-          <SelectTrigger className={cn("text-center", inputClasses)}>
+          <SelectTrigger
+            className={cn("agpt-border-input text-center", inputClasses)}
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -378,7 +389,7 @@ const FileInput: FC<FileInputProps> = ({
     <div className={cn("w-full", className)}>
       {value ? (
         <div className="flex min-h-14 items-center gap-4">
-          <div className="agpt-border-input flex min-h-14 w-full items-center justify-between rounded-[12px] bg-zinc-50 p-4 text-sm text-gray-500">
+          <div className="agpt-border-input flex min-h-14 w-full items-center justify-between rounded-xl bg-zinc-50 p-4 text-sm text-gray-500">
             <div className="flex items-center gap-2">
               <FileTextIcon className="h-7 w-7 text-black" />
               <div className="flex flex-col gap-0.5">
@@ -402,7 +413,7 @@ const FileInput: FC<FileInputProps> = ({
           <div
             onDrop={handleFileDrop}
             onDragOver={(e) => e.preventDefault()}
-            className="agpt-border-input flex min-h-14 w-full items-center justify-center rounded-[12px] border-dashed bg-zinc-50 text-sm text-gray-500"
+            className="agpt-border-input flex min-h-14 w-full items-center justify-center rounded-xl border-dashed bg-zinc-50 text-sm text-gray-500"
           >
             Choose a file or drag and drop it here
           </div>

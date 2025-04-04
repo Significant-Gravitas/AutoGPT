@@ -5,6 +5,7 @@ from typing import Protocol
 
 import uvicorn
 from autogpt_libs.auth import parse_jwt_token
+from autogpt_libs.logging.utils import generate_uvicorn_config
 from autogpt_libs.utils.cache import thread_cached
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
@@ -286,8 +287,10 @@ class WebsocketServer(AppProcess):
             allow_methods=["*"],
             allow_headers=["*"],
         )
+
         uvicorn.run(
             server_app,
             host=Config().websocket_server_host,
             port=Config().websocket_server_port,
+            log_config=generate_uvicorn_config(),
         )

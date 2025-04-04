@@ -24,6 +24,7 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { changePassword, sendResetEmail } from "./actions";
 import Spinner from "@/components/Spinner";
+import { getBehaveAs } from "@/lib/utils";
 
 export default function ResetPasswordPage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -151,7 +152,11 @@ export default function ResetPasswordPage() {
               >
                 Update password
               </AuthButton>
-              <AuthFeedback message={feedback} isError={isError} />
+              <AuthFeedback
+                message={feedback}
+                isError={isError}
+                behaveAs={getBehaveAs()}
+              />
             </Form>
           </form>
         ) : (
@@ -178,7 +183,11 @@ export default function ResetPasswordPage() {
               >
                 Send reset email
               </AuthButton>
-              <AuthFeedback message={feedback} isError={isError} />
+              <AuthFeedback
+                message={feedback}
+                isError={isError}
+                behaveAs={getBehaveAs()}
+              />
             </Form>
           </form>
         )}

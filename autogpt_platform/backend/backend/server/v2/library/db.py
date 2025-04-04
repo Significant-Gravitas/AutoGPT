@@ -6,6 +6,7 @@ import prisma.errors
 import prisma.fields
 import prisma.models
 import prisma.types
+from prisma.types import AgentPresetCreateInput
 
 import backend.data.graph
 import backend.server.model
@@ -228,16 +229,16 @@ async def create_library_agent(
 
     try:
         return await prisma.models.LibraryAgent.prisma().create(
-            data={
-                "isCreatedByUser": (user_id == graph.user_id),
-                "useGraphIsActiveVersion": True,
-                "User": {"connect": {"id": user_id}},
-                "Agent": {
+            data=prisma.types.LibraryAgentCreateInput(
+                isCreatedByUser=(user_id == graph.user_id),
+                useGraphIsActiveVersion=True,
+                User={"connect": {"id": user_id}},
+                Agent={
                     "connect": {
                         "graphVersionId": {"id": graph.id, "version": graph.version}
                     }
                 },
-            }
+            )
         )
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error creating agent in library: {e}")
@@ -418,12 +419,12 @@ async def add_store_agent_to_library(
 
             # Create LibraryAgent entry
             added_agent = await prisma.models.LibraryAgent.prisma().create(
-                data={
-                    "userId": user_id,
-                    "agentId": graph.id,
-                    "agentVersion": graph.version,
-                    "isCreatedByUser": False,
-                },
+                data=prisma.types.LibraryAgentCreateInput(
+                    userId=user_id,
+                    agentId=graph.id,
+                    agentVersion=graph.version,
+                    isCreatedByUser=False,
+                ),
                 include=library_agent_include(user_id),
             )
             logger.debug(
@@ -601,17 +602,17 @@ async def upsert_preset(
             # Update existing preset
             updated = await prisma.models.AgentPreset.prisma().update(
                 where={"id": preset_id},
-                data={
-                    "name": preset.name,
-                    "description": preset.description,
-                    "isActive": preset.is_active,
-                    "InputPresets": {
+                data=AgentPresetCreateInput(
+                    name=preset.name,
+                    description=preset.description,
+                    isActive=preset.is_active,
+                    InputPresets={
                         "create": [
                             {"name": name, "data": prisma.fields.Json(data)}
                             for name, data in preset.inputs.items()
                         ]
                     },
-                },
+                ),
                 include={"InputPresets": True},
             )
             if not updated:
@@ -620,20 +621,20 @@ async def upsert_preset(
         else:
             # Create new preset
             new_preset = await prisma.models.AgentPreset.prisma().create(
-                data={
-                    "userId": user_id,
-                    "name": preset.name,
-                    "description": preset.description,
-                    "agentId": preset.agent_id,
-                    "agentVersion": preset.agent_version,
-                    "isActive": preset.is_active,
-                    "InputPresets": {
+                data=prisma.types.AgentPresetCreateInput(
+                    userId=user_id,
+                    name=preset.name,
+                    description=preset.description,
+                    agentId=preset.agent_id,
+                    agentVersion=preset.agent_version,
+                    isActive=preset.is_active,
+                    InputPresets={
                         "create": [
                             {"name": name, "data": prisma.fields.Json(data)}
                             for name, data in preset.inputs.items()
                         ]
                     },
-                },
+                ),
                 include={"InputPresets": True},
             )
         return library_model.LibraryAgentPreset.from_db(new_preset)
