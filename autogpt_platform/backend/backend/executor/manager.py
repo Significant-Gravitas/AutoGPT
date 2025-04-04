@@ -5,6 +5,7 @@ import os
 import signal
 import sys
 import threading
+import time
 from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import contextmanager
 from multiprocessing.pool import AsyncResult, Pool
@@ -19,6 +20,13 @@ from backend.data.notifications import (
     LowBalanceData,
     NotificationEventDTO,
     NotificationType,
+)
+from backend.data.rabbitmq import (
+    Exchange,
+    ExchangeType,
+    Queue,
+    RabbitMQConfig,
+    SyncRabbitMQ,
 )
 from backend.util.exceptions import InsufficientBalanceError
 
@@ -452,6 +460,48 @@ def validate_exec(
         return None, error_message
 
     return data, node_block.name
+
+
+GRAPH_EXECUTION_EXCHANGE = Exchange(
+    name="graph_execution",
+    type=ExchangeType.DIRECT,
+    durable=True,
+    auto_delete=False,
+)
+
+GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
+    name="graph_execution_cancel",
+    type=ExchangeType.FANOUT,
+    durable=True,
+    auto_delete=True,
+)
+
+
+def create_execution_config() -> RabbitMQConfig:
+    """
+    Define two exchanges and queues:
+    - 'graph_execution' (DIRECT) for run tasks.
+    - 'graph_execution_cancel' (FANOUT) for cancel requests.
+    """
+    run_queue = Queue(
+        name="graph_execution_queue",
+        exchange=GRAPH_EXECUTION_EXCHANGE,
+        routing_key="graph_execution.run",
+        durable=True,
+        auto_delete=False,
+    )
+    cancel_queue = Queue(
+        name="graph_execution_cancel_queue",
+        exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
+        routing_key="",  # not used for FANOUT
+        durable=True,
+        auto_delete=False,
+    )
+    return RabbitMQConfig(
+        vhost="/",
+        exchanges=[GRAPH_EXECUTION_EXCHANGE, GRAPH_EXECUTION_CANCEL_EXCHANGE],
+        queues=[run_queue, cancel_queue],
+    )
 
 
 class Executor:
@@ -931,8 +981,10 @@ class ExecutionManager(AppService):
     def __init__(self):
         super().__init__()
         self.pool_size = settings.config.num_graph_workers
-        self.queue = ExecutionQueue[GraphExecutionEntry]()
-        self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
+        self.rabbit_config = create_execution_config()
+        self.rabbitmq_service = SyncRabbitMQ(self.rabbit_config)
+        self.running = True
+        self.active_graph_runs: dict[str, tuple[Future, threading.Event, int]] = {}
 
     @classmethod
     def get_port(cls) -> int:
@@ -943,6 +995,10 @@ class ExecutionManager(AppService):
 
         self.credentials_store = IntegrationCredentialsStore()
 
+        logger.info(f"[{self.service_name}] ⏳ Connecting to RabbitMQ...")
+        self.rabbitmq_service.connect()
+        channel = self.rabbitmq_service.get_channel()
+
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
@@ -952,30 +1008,107 @@ class ExecutionManager(AppService):
         logger.info(f"[{self.service_name}] ⏳ Connecting to Redis...")
         redis.connect()
 
-        sync_manager = multiprocessing.Manager()
+        logger.info(f"[{self.service_name}] Ready to consume messages...")
         while True:
-            graph_exec_data = self.queue.get()
-            graph_exec_id = graph_exec_data.graph_exec_id
-            logger.debug(
-                f"[ExecutionManager] Dispatching graph execution {graph_exec_id}"
+            # cancel graph execution requests
+            method_frame, _, body = channel.basic_get(
+                queue="graph_execution_cancel_queue", auto_ack=True
             )
-            cancel_event = sync_manager.Event()
-            future = self.executor.submit(
-                Executor.on_graph_execution, graph_exec_data, cancel_event
+            if method_frame:
+                self._handle_cancel_message(body)
+
+            # start graph execution requests
+            method_frame, _, body = channel.basic_get(
+                queue="graph_execution_queue", auto_ack=False
             )
-            self.active_graph_runs[graph_exec_id] = (future, cancel_event)
-            future.add_done_callback(
-                lambda _: self.active_graph_runs.pop(graph_exec_id, None)
+            if method_frame:
+                self._handle_run_message(channel, method_frame, body)
+            else:
+                time.sleep(0.1)
+
+    def _handle_cancel_message(self, body: bytes):
+        try:
+            graph_exec_id = json.loads(body).get("graph_exec_id")
+            if not graph_exec_id:
+                logger.warning(
+                    f"[{self.service_name}] Cancel message missing 'graph_exec_id'"
+                )
+                return
+            if graph_exec_id not in self.active_graph_runs:
+                logger.debug(
+                    f"[{self.service_name}] Cancel received for {graph_exec_id} but not active."
+                )
+                return
+
+            _, cancel_event, _ = self.active_graph_runs[graph_exec_id]
+            logger.info(f"[{self.service_name}] Received cancel for {graph_exec_id}")
+            if not cancel_event.is_set():
+                cancel_event.set()
+            else:
+                logger.debug(
+                    f"[{self.service_name}] Cancel already set for {graph_exec_id}"
+                )
+
+        except Exception as e:
+            logger.exception(f"Error handling cancel message: {e}")
+
+    def _handle_run_message(self, channel, method_frame, body: bytes):
+        delivery_tag = method_frame.delivery_tag
+        try:
+            raw_data = json.loads(body)
+            graph_exec_entry = GraphExecutionEntry(**raw_data)
+        except Exception as e:
+            logger.error(f"[{self.service_name}] Could not parse run message: {e}")
+            channel.basic_nack(delivery_tag, requeue=False)
+            return
+
+        graph_exec_id = graph_exec_entry.graph_exec_id
+        logger.info(
+            f"[{self.service_name}] Received RUN for graph_exec_id={graph_exec_id}"
+        )
+        if graph_exec_id in self.active_graph_runs:
+            logger.warning(
+                f"[{self.service_name}] Graph {graph_exec_id} already running; rejecting duplicate run."
             )
+            channel.basic_nack(delivery_tag, requeue=False)
+            return
+
+        cancel_event = multiprocessing.Manager().Event()
+        future = self.executor.submit(
+            Executor.on_graph_execution, graph_exec_entry, cancel_event
+        )
+        self.active_graph_runs[graph_exec_id] = (future, cancel_event, delivery_tag)
+
+        def _on_run_done(f: Future):
+            logger.info(f"[{self.service_name}] Run completed for {graph_exec_id}")
+            info = self.active_graph_runs.pop(graph_exec_id, None)
+            if not info:
+                return
+            _, _, delivery_tag = info
+            if future.exception():
+                logger.error(
+                    f"[{self.service_name}] Execution for {graph_exec_id} failed: {future.exception()}"
+                )
+                channel.basic_nack(delivery_tag, requeue=False)
+            else:
+                channel.basic_ack(delivery_tag)
+
+        future.add_done_callback(_on_run_done)
 
     def cleanup(self):
         super().cleanup()
+
+        logger.info(f"[{self.service_name}] ⏳ Shutting down service loop...")
+        self.running = False
 
         logger.info(f"[{self.service_name}] ⏳ Shutting down graph executor pool...")
         self.executor.shutdown(cancel_futures=True)
 
         logger.info(f"[{self.service_name}] ⏳ Disconnecting Redis...")
         redis.disconnect()
+
+        logger.info(f"[{self.service_name}] ⏳ Disconnecting RabbitMQ...")
+        self.rabbitmq_service.disconnect()
 
     @property
     def db_client(self) -> "DatabaseManager":
@@ -1064,8 +1197,11 @@ class ExecutionManager(AppService):
                 for node_exec in graph_exec.node_executions
             ],
         )
-        self.queue.add(graph_exec_entry)
-
+        self.rabbitmq_service.publish_message(
+            routing_key="graph_execution.run",
+            message=json.dumps(graph_exec_entry),
+            exchange=GRAPH_EXECUTION_EXCHANGE,
+        )
         return graph_exec_entry
 
     @expose
@@ -1077,16 +1213,12 @@ class ExecutionManager(AppService):
            reinitializes worker pool, and returns.
         3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
         """
-        if graph_exec_id not in self.active_graph_runs:
-            logger.warning(
-                f"Graph execution #{graph_exec_id} not active/running: "
-                "possibly already completed/cancelled."
-            )
-        else:
-            future, cancel_event = self.active_graph_runs[graph_exec_id]
-            if not cancel_event.is_set():
-                cancel_event.set()
-                future.result()
+        cancel_msg = json.dumps({"graph_exec_id": graph_exec_id})
+        self.rabbitmq_service.publish_message(
+            routing_key="",
+            message=cancel_msg,
+            exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
+        )
 
         # Update the status of the graph & node executions
         self.db_client.update_graph_execution_stats(
