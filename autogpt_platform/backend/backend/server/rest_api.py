@@ -3,7 +3,6 @@ import logging
 from typing import Any, Optional
 
 import autogpt_libs.auth.models
-from autogpt_libs.logging.utils import generate_uvicorn_config
 import fastapi
 import fastapi.responses
 import starlette.middleware.cors
@@ -12,6 +11,7 @@ from autogpt_libs.feature_flag.client import (
     initialize_launchdarkly,
     shutdown_launchdarkly,
 )
+from autogpt_libs.logging.utils import generate_uvicorn_config
 
 import backend.data.block
 import backend.data.db

@@ -81,7 +81,7 @@ async def test_get_library_agents(mocker):
     assert result.pagination.page_size == 50
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_add_agent_to_library(mocker):
     await connect()
     # Mock data
@@ -165,7 +165,7 @@ async def test_add_agent_to_library(mocker):
     )
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_add_agent_to_library_not_found(mocker):
     await connect()
     # Mock prisma calls

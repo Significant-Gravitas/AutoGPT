@@ -27,7 +27,6 @@ class HubSpotEngagementBlock(Block):
         timeframe_days: int = SchemaField(
             description="Number of days to look back for engagement",
             default=30,
-            optional=True,
         )
 
     class Output(BlockSchema):

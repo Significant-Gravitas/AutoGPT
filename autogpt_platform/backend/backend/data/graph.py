@@ -7,7 +7,12 @@ import prisma
 from prisma import Json
 from prisma.enums import SubmissionStatus
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink, StoreListingVersion
-from prisma.types import AgentGraphWhereInput
+from prisma.types import (
+    AgentGraphCreateInput,
+    AgentGraphWhereInput,
+    AgentNodeCreateInput,
+    AgentNodeLinkCreateInput,
+)
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -737,28 +742,28 @@ async def __create_graph(tx, graph: Graph, user_id: str):
 
     await AgentGraph.prisma(tx).create_many(
         data=[
-            {
-                "id": graph.id,
-                "version": graph.version,
-                "name": graph.name,
-                "description": graph.description,
-                "isActive": graph.is_active,
-                "userId": user_id,
-            }
+            AgentGraphCreateInput(
+                id=graph.id,
+                version=graph.version,
+                name=graph.name,
+                description=graph.description,
+                isActive=graph.is_active,
+                userId=user_id,
+            )
             for graph in graphs
         ]
     )
 
     await AgentNode.prisma(tx).create_many(
         data=[
-            {
-                "id": node.id,
-                "agentGraphId": graph.id,
-                "agentGraphVersion": graph.version,
-                "agentBlockId": node.block_id,
-                "constantInput": Json(node.input_default),
-                "metadata": Json(node.metadata),
-            }
+            AgentNodeCreateInput(
+                id=node.id,
+                agentGraphId=graph.id,
+                agentGraphVersion=graph.version,
+                agentBlockId=node.block_id,
+                constantInput=Json(node.input_default),
+                metadata=Json(node.metadata),
+            )
             for graph in graphs
             for node in graph.nodes
         ]
@@ -766,14 +771,14 @@ async def __create_graph(tx, graph: Graph, user_id: str):
 
     await AgentNodeLink.prisma(tx).create_many(
         data=[
-            {
-                "id": str(uuid.uuid4()),
-                "sourceName": link.source_name,
-                "sinkName": link.sink_name,
-                "agentNodeSourceId": link.source_id,
-                "agentNodeSinkId": link.sink_id,
-                "isStatic": link.is_static,
-            }
+            AgentNodeLinkCreateInput(
+                id=str(uuid.uuid4()),
+                sourceName=link.source_name,
+                sinkName=link.sink_name,
+                agentNodeSourceId=link.source_id,
+                agentNodeSinkId=link.sink_id,
+                isStatic=link.is_static,
+            )
             for graph in graphs
             for link in graph.links
         ]

@@ -39,7 +39,6 @@ class TwitterUnpinListBlock(Block):
         list_id: str = SchemaField(
             description="The ID of the List to unpin",
             placeholder="Enter list ID",
-            required=True,
         )
 
     class Output(BlockSchema):
@@ -103,7 +102,6 @@ class TwitterPinListBlock(Block):
         list_id: str = SchemaField(
             description="The ID of the List to pin",
             placeholder="Enter list ID",
-            required=True,
         )
 
     class Output(BlockSchema):

@@ -1,6 +1,7 @@
 import logging
 import re
 from typing import Any
+
 import uvicorn.config
 from colorama import Fore
 
