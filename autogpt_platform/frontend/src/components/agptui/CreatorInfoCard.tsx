@@ -33,7 +33,10 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
             src={avatarSrc}
             alt={`${username}'s avatar`}
           />
-          <AvatarFallback className="h-[100px] w-[100px] sm:h-[130px] sm:w-[130px]">
+          <AvatarFallback
+            size={130}
+            className="h-[100px] w-[100px] sm:h-[130px] sm:w-[130px]"
+          >
             {username.charAt(0)}
           </AvatarFallback>
         </Avatar>
