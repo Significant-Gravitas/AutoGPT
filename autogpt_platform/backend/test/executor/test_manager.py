@@ -127,7 +127,7 @@ async def assert_sample_graph_executions(
     assert exec.node_id == test_graph.nodes[3].id
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_agent_execution(server: SpinTestServer):
     logger.info("Starting test_agent_execution")
     test_user = await create_test_user()
@@ -144,7 +144,7 @@ async def test_agent_execution(server: SpinTestServer):
     logger.info("Completed test_agent_execution")
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_input_pin_always_waited(server: SpinTestServer):
     """
     This test is asserting that the input pin should always be waited for the execution,
@@ -211,7 +211,7 @@ async def test_input_pin_always_waited(server: SpinTestServer):
     logger.info("Completed test_input_pin_always_waited")
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_static_input_link_on_graph(server: SpinTestServer):
     """
     This test is asserting the behaviour of static input link, e.g: reusable input link.
@@ -296,7 +296,7 @@ async def test_static_input_link_on_graph(server: SpinTestServer):
     logger.info("Completed test_static_input_link_on_graph")
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_execute_preset(server: SpinTestServer):
     """
     Test executing a preset.
@@ -392,7 +392,7 @@ async def test_execute_preset(server: SpinTestServer):
     assert executions[3].output_data == {"output": ["World"]}
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_execute_preset_with_clash(server: SpinTestServer):
     """
     Test executing a preset with clashing input data.
@@ -482,7 +482,7 @@ async def test_execute_preset_with_clash(server: SpinTestServer):
     assert executions[3].output_data == {"output": ["Hello"]}
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_store_listing_graph(server: SpinTestServer):
     logger.info("Starting test_agent_execution")
     test_user = await create_test_user()

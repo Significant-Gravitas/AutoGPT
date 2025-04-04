@@ -28,7 +28,6 @@ class TwitterDeleteListBlock(Block):
         list_id: str = SchemaField(
             description="The ID of the List to be deleted",
             placeholder="Enter list ID",
-            required=True,
         )
 
     class Output(BlockSchema):

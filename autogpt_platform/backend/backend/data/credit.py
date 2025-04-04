@@ -14,7 +14,11 @@ from prisma.enums import (
 )
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditRefundRequest, CreditTransaction, User
-from prisma.types import CreditTransactionCreateInput, CreditTransactionWhereInput
+from prisma.types import (
+    CreditRefundRequestCreateInput,
+    CreditTransactionCreateInput,
+    CreditTransactionWhereInput,
+)
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from backend.data import db
@@ -331,15 +335,15 @@ class UserCreditBase(ABC):
                 amount = min(-user_balance, 0)
 
             # Create the transaction
-            transaction_data: CreditTransactionCreateInput = {
-                "userId": user_id,
-                "amount": amount,
-                "runningBalance": user_balance + amount,
-                "type": transaction_type,
-                "metadata": metadata,
-                "isActive": is_active,
-                "createdAt": self.time_now(),
-            }
+            transaction_data = CreditTransactionCreateInput(
+                userId=user_id,
+                amount=amount,
+                runningBalance=user_balance + amount,
+                type=transaction_type,
+                metadata=metadata,
+                isActive=is_active,
+                createdAt=self.time_now(),
+            )
             if transaction_key:
                 transaction_data["transactionKey"] = transaction_key
             tx = await CreditTransaction.prisma().create(data=transaction_data)
@@ -422,15 +426,15 @@ class UserCredit(UserCreditBase):
 
         try:
             refund_request = await CreditRefundRequest.prisma().create(
-                data={
-                    "id": refund_key,
-                    "transactionKey": transaction_key,
-                    "userId": user_id,
-                    "amount": amount,
-                    "reason": metadata.get("reason", ""),
-                    "status": CreditRefundRequestStatus.PENDING,
-                    "result": "The refund request is under review.",
-                }
+                data=CreditRefundRequestCreateInput(
+                    id=refund_key,
+                    transactionKey=transaction_key,
+                    userId=user_id,
+                    amount=amount,
+                    reason=metadata.get("reason", ""),
+                    status=CreditRefundRequestStatus.PENDING,
+                    result="The refund request is under review.",
+                )
             )
         except UniqueViolationError:
             raise ValueError(
