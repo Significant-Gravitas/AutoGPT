@@ -245,6 +245,19 @@ export function getBehaveAs(): BehaveAs {
     : BehaveAs.LOCAL;
 }
 
+export enum AppEnv {
+  DEV = "dev",
+  PROD = "prod",
+}
+
+export function getAppEnv(): AppEnv {
+  return process.env.NEXT_PUBLIC_APP_ENV === "prod" ? AppEnv.PROD : AppEnv.DEV;
+}
+
+export function getEnvironmentStr(): string {
+  return `app:${getAppEnv()}-behave:${getBehaveAs()}`;
+}
+
 function rectanglesOverlap(
   rect1: { x: number; y: number; width: number; height?: number },
   rect2: { x: number; y: number; width: number; height?: number },

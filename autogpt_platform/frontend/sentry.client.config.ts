@@ -2,12 +2,14 @@
 // The config you add here will be used whenever a users loads a page in their browser.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
+import { getEnvironmentStr } from "@/lib/utils";
 import * as Sentry from "@sentry/nextjs";
 
 Sentry.init({
   dsn: "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288",
 
   enabled: process.env.DISABLE_SENTRY !== "true",
+  environment: getEnvironmentStr(),
 
   // Add optional integrations for additional features
   integrations: [
