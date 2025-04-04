@@ -156,7 +156,25 @@ class NotificationJobInfo(NotificationJobArgs):
 class Scheduler(AppService):
     scheduler: BlockingScheduler
 
-    def __init__(self):
+    @classmethod
+    def get_port(cls) -> int:
+        return config.execution_scheduler_port
+
+    @classmethod
+    def db_pool_size(cls) -> int:
+        return config.scheduler_db_pool_size
+
+    @property
+    @thread_cached
+    def execution_client(self) -> ExecutionManager:
+        return get_service_client(ExecutionManager)
+
+    @property
+    @thread_cached
+    def notification_client(self) -> NotificationManager:
+        return get_service_client(NotificationManager)
+
+    def run_service(self):
         load_dotenv()
         db_schema, db_url = _extract_schema_from_url(os.getenv("DATABASE_URL"))
         self.scheduler = BlockingScheduler(
@@ -185,33 +203,14 @@ class Scheduler(AppService):
                 Jobstores.WEEKLY_NOTIFICATIONS.value: MemoryJobStore(),
             }
         )
-
-    @classmethod
-    def get_port(cls) -> int:
-        return config.execution_scheduler_port
-
-    @classmethod
-    def db_pool_size(cls) -> int:
-        return config.scheduler_db_pool_size
-
-    @property
-    @thread_cached
-    def execution_client(self) -> ExecutionManager:
-        return get_service_client(ExecutionManager)
-
-    @property
-    @thread_cached
-    def notification_client(self) -> NotificationManager:
-        return get_service_client(NotificationManager)
-
-    def run_service(self):
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.start()
 
     def cleanup(self):
         super().cleanup()
         logger.info(f"[{self.service_name}] ⏳ Shutting down scheduler...")
-        self.scheduler.shutdown(wait=False)
+        if self.scheduler:
+            self.scheduler.shutdown(wait=False)
 
     @expose
     def add_execution_schedule(
