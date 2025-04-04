@@ -48,6 +48,7 @@ class AppProcess(ABC):
     def service_name(cls) -> str:
         return cls.__name__
 
+    @abstractmethod
     def cleanup(self):
         """
         Implement this method on a subclass to do post-execution cleanup,

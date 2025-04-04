@@ -4099,21 +4099,6 @@ dev = ["twine (>=3.4.1)"]
 nodejs = ["nodejs-wheel-binaries"]
 
 [[package]]
-name = "pyro5"
-version = "5.15"
-description = "Remote object communication library, fifth major version"
-optional = false
-python-versions = ">=3.7"
-groups = ["main"]
-files = [
-    {file = "Pyro5-5.15-py3-none-any.whl", hash = "sha256:4d85428ed75985e63f159d2486ad5680743ea76f766340fd30b65dd20f83d471"},
-    {file = "Pyro5-5.15.tar.gz", hash = "sha256:82c3dfc9860b49f897b28ff24fe6716c841672c600af8fe40d0e3a7fac9a3f5e"},
-]
-
-[package.dependencies]
-serpent = ">=1.41"
-
-[[package]]
 name = "pytest"
 version = "8.3.5"
 description = "pytest: simple powerful testing with Python"
@@ -4962,18 +4947,6 @@ starlite = ["starlite (>=1.48)"]
 statsig = ["statsig (>=0.55.3)"]
 tornado = ["tornado (>=6)"]
 unleash = ["UnleashClient (>=6.0.1)"]
-
-[[package]]
-name = "serpent"
-version = "1.41"
-description = "Serialization based on ast.literal_eval"
-optional = false
-python-versions = ">=3.2"
-groups = ["main"]
-files = [
-    {file = "serpent-1.41-py3-none-any.whl", hash = "sha256:5fd776b3420441985bc10679564c2c9b4a19f77bea59f018e473441d98ae5dd7"},
-    {file = "serpent-1.41.tar.gz", hash = "sha256:0407035fe3c6644387d48cff1467d5aa9feff814d07372b78677ed0ee3ed7095"},
-]
 
 [[package]]
 name = "setuptools"
@@ -6337,4 +6310,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "648b5a17a37ea000d19d74a65a4b9aaa8f5c6bf73b05f13fc202648cb2b287f0"
+content-hash = "781f77ec77cfce78b34fb57063dcc81df8e9c5a4be9a644033a0c197e0063730"

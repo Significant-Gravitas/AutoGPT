@@ -9,6 +9,9 @@ class ServiceTest(AppService):
     def __init__(self):
         super().__init__()
 
+    def cleanup(self):
+        pass
+
     @classmethod
     def get_port(cls) -> int:
         return TEST_SERVICE_PORT
