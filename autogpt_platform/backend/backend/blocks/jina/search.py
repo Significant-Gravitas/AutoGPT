@@ -1,4 +1,4 @@
-from groq._utils._utils import quote
+from urllib.parse import quote
 
 from backend.blocks.jina._auth import (
     TEST_CREDENTIALS,

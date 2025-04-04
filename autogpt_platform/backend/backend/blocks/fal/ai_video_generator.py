@@ -42,7 +42,7 @@ class AIVideoGeneratorBlock(Block):
             description="Error message if video generation failed."
         )
         logs: list[str] = SchemaField(
-            description="Generation progress logs.", optional=True
+            description="Generation progress logs.",
         )
 
     def __init__(self):

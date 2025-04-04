@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from prisma import Json
 from prisma.enums import NotificationType
 from prisma.models import User
-from prisma.types import UserUpdateInput
+from prisma.types import UserCreateInput, UserUpdateInput
 
 from backend.data.db import prisma
 from backend.data.model import UserIntegrations, UserMetadata, UserMetadataRaw
@@ -36,11 +36,11 @@ async def get_or_create_user(user_data: dict) -> User:
         user = await prisma.user.find_unique(where={"id": user_id})
         if not user:
             user = await prisma.user.create(
-                data={
-                    "id": user_id,
-                    "email": user_email,
-                    "name": user_data.get("user_metadata", {}).get("name"),
-                }
+                data=UserCreateInput(
+                    id=user_id,
+                    email=user_email,
+                    name=user_data.get("user_metadata", {}).get("name"),
+                )
             )
 
         return User.model_validate(user)
@@ -84,11 +84,11 @@ async def create_default_user() -> Optional[User]:
     user = await prisma.user.find_unique(where={"id": DEFAULT_USER_ID})
     if not user:
         user = await prisma.user.create(
-            data={
-                "id": DEFAULT_USER_ID,
-                "email": "default@example.com",
-                "name": "Default User",
-            }
+            data=UserCreateInput(
+                id=DEFAULT_USER_ID,
+                email="default@example.com",
+                name="Default User",
+            )
         )
     return User.model_validate(user)
 
