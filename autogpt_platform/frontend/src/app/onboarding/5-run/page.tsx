@@ -9,12 +9,14 @@ import StarRating from "@/components/onboarding/StarRating";
 import { Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useState } from "react";
-import OnboardingAgentInput from "@/components/onboarding/OnboardingAgentInput";
 import Image from "next/image";
 import { GraphMeta, StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useRouter } from "next/navigation";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import SchemaTooltip from "@/components/SchemaTooltip";
+import { TypeBasedInput } from "@/components/type-based-input";
 
 export default function Page() {
   const { state, updateState, setStep } = useOnboarding(
@@ -59,7 +61,6 @@ export default function Page() {
         updateState({
           agentInput: update,
         });
-        console.log("setting default input", update);
       });
   }, [api, setAgent, updateState, state?.selectedStoreListingVersionId]);
 
@@ -79,7 +80,6 @@ export default function Page() {
     if (!agent) {
       return;
     }
-    console.log("running with", state?.agentInput);
     api.addMarketplaceAgentToLibrary(
       storeAgent?.store_listing_version_id || "",
     );
@@ -196,28 +196,37 @@ export default function Page() {
               <span className="mt-4 text-base font-normal leading-normal text-zinc-600">
                 When you&apos;re done, click <b>Run Agent</b>.
               </span>
-              <div className="mt-12 inline-flex w-[492px] flex-col items-start justify-start gap-2 rounded-[20px] border border-zinc-300 bg-white p-6">
-                <OnboardingText className="mb-3 font-semibold" variant="header">
-                  Input
-                </OnboardingText>
-                {Object.entries(agent?.input_schema?.properties || {}).map(
-                  ([key, value]) => (
-                    <OnboardingAgentInput
-                      key={key}
-                      name={value.title!}
-                      description={value.description || ""}
-                      value={state?.agentInput?.[key] || ""}
-                      onChange={(v) => setAgentInput(key, v)}
-                    />
-                  ),
-                )}
-              </div>
+              <Card className="agpt-box mt-4">
+                <CardHeader>
+                  <CardTitle className="font-poppins text-lg">Input</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4">
+                  {Object.entries(agent?.input_schema.properties || {}).map(
+                    ([key, inputSubSchema]) => (
+                      <div key={key} className="flex flex-col space-y-2">
+                        <label className="flex items-center gap-1 text-sm font-medium">
+                          {inputSubSchema.title || key}
+                          <SchemaTooltip
+                            description={inputSubSchema.description}
+                          />
+                        </label>
+                        <TypeBasedInput
+                          schema={inputSubSchema}
+                          value={state?.agentInput?.[key]}
+                          placeholder={inputSubSchema.description}
+                          onChange={(value) => setAgentInput(key, value)}
+                        />
+                      </div>
+                    ),
+                  )}
+                </CardContent>
+              </Card>
               <OnboardingButton
                 variant="violet"
                 className="mt-8 w-[136px]"
                 disabled={
                   Object.values(state?.agentInput || {}).some(
-                    (value) => value.trim() === "",
+                    (value) => String(value).trim() === "",
                   ) || !agent
                 }
                 onClick={runAgent}
