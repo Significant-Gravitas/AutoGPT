@@ -28,7 +28,10 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
       <div className="flex w-full flex-col items-start justify-start gap-3.5 sm:h-[218px]">
         <Avatar className="h-[100px] w-[100px] sm:h-[130px] sm:w-[130px]">
           <AvatarImage src={avatarSrc} alt={`${username}'s avatar`} />
-          <AvatarFallback className="h-[100px] w-[100px] sm:h-[130px] sm:w-[130px]">
+          <AvatarFallback
+            size={130}
+            className="h-[100px] w-[100px] sm:h-[130px] sm:w-[130px]"
+          >
             {username.charAt(0)}
           </AvatarFallback>
         </Avatar>
@@ -77,7 +80,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
                 Average rating
               </div>
               <div className="inline-flex items-center gap-2">
-                <div className="font-geist text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
+                <div className="font-sans text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
                   {averageRating.toFixed(1)}
                 </div>
                 <div
@@ -93,7 +96,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
               <div className="w-full font-neue text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
                 Number of runs
               </div>
-              <div className="font-geist text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
+              <div className="font-sans text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
                 {new Intl.NumberFormat().format(totalRuns)} runs
               </div>
             </div>
