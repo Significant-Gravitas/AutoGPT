@@ -255,7 +255,7 @@ export function getAppEnv(): AppEnv {
 }
 
 export function getEnvironmentStr(): string {
-  return `app:${getAppEnv()}-behave:${getBehaveAs()}`;
+  return `app:${getAppEnv().toLowerCase()}-behave:${getBehaveAs().toLowerCase()}`;
 }
 
 function rectanglesOverlap(
