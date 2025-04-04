@@ -45,13 +45,11 @@ class TwitterRemoveListMemberBlock(Block):
         list_id: str = SchemaField(
             description="The ID of the List to remove the member from",
             placeholder="Enter list ID",
-            required=True,
         )
 
         user_id: str = SchemaField(
             description="The ID of the user to remove from the List",
             placeholder="Enter user ID to remove",
-            required=True,
         )
 
     class Output(BlockSchema):
@@ -120,13 +118,11 @@ class TwitterAddListMemberBlock(Block):
         list_id: str = SchemaField(
             description="The ID of the List to add the member to",
             placeholder="Enter list ID",
-            required=True,
         )
 
         user_id: str = SchemaField(
             description="The ID of the user to add to the List",
             placeholder="Enter user ID to add",
-            required=True,
         )
 
     class Output(BlockSchema):
@@ -195,7 +191,6 @@ class TwitterGetListMembersBlock(Block):
         list_id: str = SchemaField(
             description="The ID of the List to get members from",
             placeholder="Enter list ID",
-            required=True,
         )
 
         max_results: int | None = SchemaField(
@@ -376,7 +371,6 @@ class TwitterGetListMembershipsBlock(Block):
         user_id: str = SchemaField(
             description="The ID of the user whose List memberships to retrieve",
             placeholder="Enter user ID",
-            required=True,
         )
 
         max_results: int | None = SchemaField(

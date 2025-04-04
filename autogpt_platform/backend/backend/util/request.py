@@ -142,7 +142,7 @@ def validate_url(
 
     # Resolve all IP addresses for the hostname
     try:
-        ip_list = [res[4][0] for res in socket.getaddrinfo(ascii_hostname, None)]
+        ip_list = [str(res[4][0]) for res in socket.getaddrinfo(ascii_hostname, None)]
         ipv4 = [ip for ip in ip_list if ":" not in ip]
         ipv6 = [ip for ip in ip_list if ":" in ip]
         ip_addresses = ipv4 + ipv6  # Prefer IPv4 over IPv6

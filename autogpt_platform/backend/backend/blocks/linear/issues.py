@@ -28,8 +28,8 @@ class LinearCreateIssueBlock(Block):
         priority: int | None = SchemaField(
             description="Priority of the issue",
             default=None,
-            minimum=0,
-            maximum=4,
+            ge=0,
+            le=4,
         )
         project_name: str | None = SchemaField(
             description="Name of the project to create the issue on",
