@@ -15,7 +15,7 @@ apscheduler = "^3.11.0"
 autogpt-libs = { path = "../autogpt_libs", develop = true }
 bleach = { extras = ["css"], version = "^6.2.0" }
 click = "^8.1.7"
-cryptography = "^43.0"
+cryptography = "^44.0"
 discord-py = "^2.5.2"
 e2b-code-interpreter = "^1.1.1"
 fastapi = "^0.115.12"
