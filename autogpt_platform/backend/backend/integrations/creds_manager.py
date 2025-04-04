@@ -159,8 +159,8 @@ def _get_provider_oauth_handler(provider_name_str: str) -> "BaseOAuthHandler":
     if provider_name not in HANDLERS_BY_NAME:
         raise KeyError(f"Unknown provider '{provider_name}'")
 
-    client_id = getattr(settings.secrets, f"{provider_name}_client_id")
-    client_secret = getattr(settings.secrets, f"{provider_name}_client_secret")
+    client_id = getattr(settings.secrets, f"{provider_name.value}_client_id")
+    client_secret = getattr(settings.secrets, f"{provider_name.value}_client_secret")
     if not (client_id and client_secret):
         raise MissingConfigError(
             f"Integration with provider '{provider_name}' is not configured",
