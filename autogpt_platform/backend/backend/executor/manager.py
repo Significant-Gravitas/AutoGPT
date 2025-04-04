@@ -468,6 +468,8 @@ GRAPH_EXECUTION_EXCHANGE = Exchange(
     durable=True,
     auto_delete=False,
 )
+GRAPH_EXECUTION_QUEUE_NAME = "graph_execution_queue"
+GRAPH_EXECUTION_ROUTING_KEY = "graph_execution.run"
 
 GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
     name="graph_execution_cancel",
@@ -475,6 +477,7 @@ GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
     durable=True,
     auto_delete=True,
 )
+GRAPH_EXECUTION_CANCEL_QUEUE_NAME = "graph_execution_cancel_queue"
 
 
 def create_execution_config() -> RabbitMQConfig:
@@ -484,14 +487,14 @@ def create_execution_config() -> RabbitMQConfig:
     - 'graph_execution_cancel' (FANOUT) for cancel requests.
     """
     run_queue = Queue(
-        name="graph_execution_queue",
+        name=GRAPH_EXECUTION_QUEUE_NAME,
         exchange=GRAPH_EXECUTION_EXCHANGE,
-        routing_key="graph_execution.run",
+        routing_key=GRAPH_EXECUTION_ROUTING_KEY,
         durable=True,
         auto_delete=False,
     )
     cancel_queue = Queue(
-        name="graph_execution_cancel_queue",
+        name=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
         exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
         routing_key="",  # not used for FANOUT
         durable=True,
@@ -1012,14 +1015,16 @@ class ExecutionManager(AppService):
         while True:
             # cancel graph execution requests
             method_frame, _, body = channel.basic_get(
-                queue="graph_execution_cancel_queue", auto_ack=True
+                queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+                auto_ack=True,
             )
             if method_frame:
                 self._handle_cancel_message(body)
 
             # start graph execution requests
             method_frame, _, body = channel.basic_get(
-                queue="graph_execution_queue", auto_ack=False
+                queue=GRAPH_EXECUTION_QUEUE_NAME,
+                auto_ack=False,
             )
             if method_frame:
                 self._handle_run_message(channel, method_frame, body)
@@ -1198,7 +1203,7 @@ class ExecutionManager(AppService):
             ],
         )
         self.rabbitmq_service.publish_message(
-            routing_key="graph_execution.run",
+            routing_key=GRAPH_EXECUTION_ROUTING_KEY,
             message=json.dumps(graph_exec_entry),
             exchange=GRAPH_EXECUTION_EXCHANGE,
         )
