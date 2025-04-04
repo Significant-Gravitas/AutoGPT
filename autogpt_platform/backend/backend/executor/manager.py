@@ -11,6 +11,9 @@ from contextlib import contextmanager
 from multiprocessing.pool import AsyncResult, Pool
 from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
 
+from pika.adapters.blocking_connection import BlockingChannel
+from pika.spec import Basic
+from pydantic import BaseModel
 from redis.lock import Lock as RedisLock
 
 from backend.blocks.io import AgentOutputBlock
@@ -980,6 +983,10 @@ class Executor:
         )
 
 
+class CancelExecutionEvent(BaseModel):
+    graph_exec_id: str
+
+
 class ExecutionManager(AppService):
     def __init__(self):
         super().__init__()
@@ -1033,7 +1040,8 @@ class ExecutionManager(AppService):
 
     def _handle_cancel_message(self, body: bytes):
         try:
-            graph_exec_id = json.loads(body).get("graph_exec_id")
+            request = CancelExecutionEvent.model_validate_json(body)
+            graph_exec_id = request.graph_exec_id
             if not graph_exec_id:
                 logger.warning(
                     f"[{self.service_name}] Cancel message missing 'graph_exec_id'"
@@ -1057,11 +1065,12 @@ class ExecutionManager(AppService):
         except Exception as e:
             logger.exception(f"Error handling cancel message: {e}")
 
-    def _handle_run_message(self, channel, method_frame, body: bytes):
+    def _handle_run_message(
+        self, channel: BlockingChannel, method_frame: Basic.GetOk, body: bytes
+    ):
         delivery_tag = method_frame.delivery_tag
         try:
-            raw_data = json.loads(body)
-            graph_exec_entry = GraphExecutionEntry(**raw_data)
+            graph_exec_entry = GraphExecutionEntry.model_validate_json(body)
         except Exception as e:
             logger.error(f"[{self.service_name}] Could not parse run message: {e}")
             channel.basic_nack(delivery_tag, requeue=False)
@@ -1218,10 +1227,9 @@ class ExecutionManager(AppService):
            reinitializes worker pool, and returns.
         3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
         """
-        cancel_msg = json.dumps({"graph_exec_id": graph_exec_id})
         self.rabbitmq_service.publish_message(
             routing_key="",
-            message=cancel_msg,
+            message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
             exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
         )
 
