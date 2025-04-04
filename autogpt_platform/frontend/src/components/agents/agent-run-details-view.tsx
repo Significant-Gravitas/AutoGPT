@@ -8,13 +8,14 @@ import {
   GraphExecution,
   GraphExecutionID,
   GraphExecutionMeta,
+  LibraryAgent,
 } from "@/lib/autogpt-server-api";
 
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconRefresh, IconSquare } from "@/components/ui/icons";
 import { useToastOnFail } from "@/components/ui/use-toast";
-import { Button } from "@/components/agptui/Button";
+import ActionButtonGroup from "@/components/agptui/action-button-group";
 import { Input } from "@/components/ui/input";
 
 import {
@@ -23,12 +24,14 @@ import {
 } from "@/components/agents/agent-run-status-chip";
 
 export default function AgentRunDetailsView({
+  agent,
   graph,
   run,
   agentActions,
   onRun,
   deleteRun,
 }: {
+  agent: LibraryAgent;
   graph: Graph;
   run: GraphExecution | GraphExecutionMeta;
   agentActions: ButtonAction[];
@@ -55,11 +58,16 @@ export default function AgentRunDetailsView({
         label: "Started",
         value: `${moment(run.started_at).fromNow()}, ${moment(run.started_at).format("HH:mm")}`,
       },
-      {
-        label: "Duration",
-        value: moment.duration(run.duration, "seconds").humanize(),
-      },
-      ...(run.cost ? [{ label: "Cost", value: `${run.cost} credits` }] : []),
+      ...(run.stats
+        ? [
+            {
+              label: "Duration",
+              value: moment.duration(run.stats.duration, "seconds").humanize(),
+            },
+            { label: "Steps", value: run.stats.node_exec_count },
+            { label: "Cost", value: `${run.stats.cost} credits` },
+          ]
+        : []),
     ];
   }, [run, runStatus]);
 
@@ -169,9 +177,27 @@ export default function AgentRunDetailsView({
             },
           ]
         : []),
+      ...(agent.can_access_graph
+        ? [
+            {
+              label: "Open run in builder",
+              href: `/build?flowID=${run.graph_id}&flowVersion=${run.graph_version}&flowExecutionID=${run.id}`,
+            },
+          ]
+        : []),
       { label: "Delete run", variant: "secondary", callback: deleteRun },
     ],
-    [runStatus, runAgain, stopRun, deleteRun],
+    [
+      runStatus,
+      runAgain,
+      stopRun,
+      deleteRun,
+      graph.has_webhook_trigger,
+      agent.can_access_graph,
+      run.graph_id,
+      run.graph_version,
+      run.id,
+    ],
   );
 
   return (
@@ -249,31 +275,9 @@ export default function AgentRunDetailsView({
       {/* Run / Agent Actions */}
       <aside className="w-48 xl:w-56">
         <div className="flex flex-col gap-8">
-          <div className="flex flex-col gap-3">
-            <h3 className="text-sm font-medium">Run actions</h3>
-            {runActions.map((action, i) => (
-              <Button
-                key={i}
-                variant={action.variant ?? "outline"}
-                onClick={action.callback}
-              >
-                {action.label}
-              </Button>
-            ))}
-          </div>
+          <ActionButtonGroup title="Run actions" actions={runActions} />
 
-          <div className="flex flex-col gap-3">
-            <h3 className="text-sm font-medium">Agent actions</h3>
-            {agentActions.map((action, i) => (
-              <Button
-                key={i}
-                variant={action.variant ?? "outline"}
-                onClick={action.callback}
-              >
-                {action.label}
-              </Button>
-            ))}
-          </div>
+          <ActionButtonGroup title="Agent actions" actions={agentActions} />
         </div>
       </aside>
     </div>

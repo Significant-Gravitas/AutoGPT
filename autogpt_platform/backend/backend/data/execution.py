@@ -59,23 +59,27 @@ ExecutionStatus = AgentExecutionStatus
 
 class GraphExecutionMeta(BaseDbModel):
     user_id: str
-    started_at: datetime
-    ended_at: datetime
-    cost: Optional[int] = Field(..., description="Execution cost in credits")
-    duration: float = Field(..., description="Seconds from start to end of run")
-    total_run_time: float = Field(..., description="Seconds of node runtime")
-    status: ExecutionStatus
     graph_id: str
     graph_version: int
     preset_id: Optional[str] = None
+    status: ExecutionStatus
+    started_at: datetime
+    ended_at: datetime
+
+    class Stats(BaseModel):
+        cost: int = Field(..., description="Execution cost (cents)")
+        duration: float = Field(..., description="Seconds from start to end of run")
+        node_exec_time: float = Field(..., description="Seconds of total node runtime")
+        node_exec_count: int = Field(..., description="Number of node executions")
+
+    stats: Stats | None
 
     @staticmethod
     def from_db(_graph_exec: AgentGraphExecution):
         now = datetime.now(timezone.utc)
+        # TODO: make started_at and ended_at optional
         start_time = _graph_exec.startedAt or _graph_exec.createdAt
         end_time = _graph_exec.updatedAt or now
-        duration = (end_time - start_time).total_seconds()
-        total_run_time = duration
 
         try:
             stats = GraphExecutionStats.model_validate(_graph_exec.stats)
@@ -87,21 +91,25 @@ class GraphExecutionMeta(BaseDbModel):
                 )
             stats = None
 
-        duration = stats.walltime if stats else duration
-        total_run_time = stats.nodes_walltime if stats else total_run_time
-
         return GraphExecutionMeta(
             id=_graph_exec.id,
             user_id=_graph_exec.userId,
-            started_at=start_time,
-            ended_at=end_time,
-            cost=stats.cost if stats else None,
-            duration=duration,
-            total_run_time=total_run_time,
-            status=ExecutionStatus(_graph_exec.executionStatus),
             graph_id=_graph_exec.agentGraphId,
             graph_version=_graph_exec.agentGraphVersion,
             preset_id=_graph_exec.agentPresetId,
+            status=ExecutionStatus(_graph_exec.executionStatus),
+            started_at=start_time,
+            ended_at=end_time,
+            stats=(
+                GraphExecutionMeta.Stats(
+                    cost=stats.cost,
+                    duration=stats.walltime,
+                    node_exec_time=stats.nodes_walltime,
+                    node_exec_count=stats.node_count,
+                )
+                if stats
+                else None
+            ),
         )
 
 
@@ -116,10 +124,11 @@ class GraphExecution(GraphExecutionMeta):
 
         graph_exec = GraphExecutionMeta.from_db(_graph_exec)
 
-        node_executions = sorted(
+        complete_node_executions = sorted(
             [
                 NodeExecutionResult.from_db(ne, _graph_exec.userId)
                 for ne in _graph_exec.AgentNodeExecutions
+                if ne.executionStatus != ExecutionStatus.INCOMPLETE
             ],
             key=lambda ne: (ne.queue_time is None, ne.queue_time or ne.add_time),
         )
@@ -128,7 +137,7 @@ class GraphExecution(GraphExecutionMeta):
             **{
                 # inputs from Agent Input Blocks
                 exec.input_data["name"]: exec.input_data.get("value")
-                for exec in node_executions
+                for exec in complete_node_executions
                 if (
                     (block := get_block(exec.block_id))
                     and block.block_type == BlockType.INPUT
@@ -137,7 +146,7 @@ class GraphExecution(GraphExecutionMeta):
             **{
                 # input from webhook-triggered block
                 "payload": exec.input_data["payload"]
-                for exec in node_executions
+                for exec in complete_node_executions
                 if (
                     (block := get_block(exec.block_id))
                     and block.block_type
@@ -147,7 +156,7 @@ class GraphExecution(GraphExecutionMeta):
         }
 
         outputs: CompletedBlockOutput = defaultdict(list)
-        for exec in node_executions:
+        for exec in complete_node_executions:
             if (
                 block := get_block(exec.block_id)
             ) and block.block_type == BlockType.OUTPUT:

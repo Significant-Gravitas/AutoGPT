@@ -226,12 +226,8 @@ export default function AgentRunsPage(): React.ReactElement {
       ...(agent?.can_access_graph
         ? [
             {
-              label: "Open in builder",
-              callback: () =>
-                agent &&
-                router.push(
-                  `/build?flowID=${agent.agent_id}&flowVersion=${agent.agent_version}`,
-                ),
+              label: "Open graph in builder",
+              href: `/build?flowID=${agent.agent_id}&flowVersion=${agent.agent_version}`,
             },
             { label: "Export agent to file", callback: downloadGraph },
           ]
@@ -242,7 +238,7 @@ export default function AgentRunsPage(): React.ReactElement {
         callback: () => setAgentDeleteDialogOpen(true),
       },
     ],
-    [agent, router, downloadGraph],
+    [agent, downloadGraph],
   );
 
   if (!agent || !graph) {
@@ -282,6 +278,7 @@ export default function AgentRunsPage(): React.ReactElement {
         {(selectedView.type == "run" && selectedView.id ? (
           selectedRun && (
             <AgentRunDetailsView
+              agent={agent}
               graph={graphVersions[selectedRun.graph_version] ?? graph}
               run={selectedRun}
               agentActions={agentActions}

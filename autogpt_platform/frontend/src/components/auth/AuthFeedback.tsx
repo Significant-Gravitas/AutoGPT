@@ -7,14 +7,12 @@ import { BehaveAs } from "@/lib/utils";
 interface Props {
   message?: string | null;
   isError?: boolean;
-  showErrorPrompt?: boolean;
   behaveAs?: BehaveAs;
 }
 
 export default function AuthFeedback({
   message = "",
   isError = false,
-  showErrorPrompt = false,
   behaveAs = BehaveAs.CLOUD,
 }: Props) {
   // If there's no message but isError is true, show a default error message
@@ -41,7 +39,7 @@ export default function AuthFeedback({
       )}
 
       {/* Cloud-specific help */}
-      {showErrorPrompt && behaveAs === BehaveAs.CLOUD && (
+      {isError && behaveAs === BehaveAs.CLOUD && (
         <div className="mt-2 space-y-2 text-sm">
           <span className="block text-center font-medium text-red-500">
             The provided email may not be allowed to sign up.
@@ -85,7 +83,7 @@ export default function AuthFeedback({
       )}
 
       {/* Local-specific help */}
-      {showErrorPrompt && behaveAs === BehaveAs.LOCAL && (
+      {isError && behaveAs === BehaveAs.LOCAL && (
         <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
           <CardContent className="p-0">
             <div className="space-y-4 divide-y divide-slate-100">
