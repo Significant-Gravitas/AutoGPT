@@ -3,7 +3,6 @@ import { ChevronDown, Check } from "lucide-react";
 import { OnboardingStep } from "@/lib/autogpt-server-api";
 import { useOnboarding } from "./onboarding-provider";
 import { cn } from "@/lib/utils";
-import Image from "next/image";
 import * as party from "party-js";
 
 interface Task {
@@ -11,7 +10,7 @@ interface Task {
   name: string;
   amount: number;
   details: string;
-  gif?: string;
+  video?: string;
 }
 
 interface TaskGroup {
@@ -38,6 +37,7 @@ export function TaskGroups() {
           amount: 3,
           details:
             "Sit back and relax - your agent is running and will finish soon! See the results in the Library once it's done",
+          video: "/onboarding/get-results.mp4",
         },
       ],
     },
@@ -50,6 +50,7 @@ export function TaskGroups() {
           name: "Go to Marketplace",
           amount: 0,
           details: "Click Marketplace in the top navigation",
+          video: "/onboarding/marketplace-visit.mp4",
         },
         {
           id: "MARKETPLACE_ADD_AGENT",
@@ -57,6 +58,7 @@ export function TaskGroups() {
           amount: 1,
           details:
             "Search for an agent in the Marketplace, like a code generator or research assistant and add it to your Library",
+          video: "/onboarding/marketplace-add.mp4",
         },
         {
           id: "MARKETPLACE_RUN_AGENT",
@@ -64,6 +66,7 @@ export function TaskGroups() {
           amount: 1,
           details:
             "Run the agent you found in the Marketplace from the Library - whether it's a writing assistant, data analyzer, or something else",
+          video: "/onboarding/marketplace-run.mp4",
         },
       ],
     },
@@ -76,6 +79,7 @@ export function TaskGroups() {
           name: "Open the Builder",
           amount: 0,
           details: "Click Builder in the top navigation",
+          video: "/onboarding/builder-open.mp4",
         },
         {
           id: "BUILDER_SAVE_AGENT",
@@ -83,12 +87,14 @@ export function TaskGroups() {
           amount: 1,
           details:
             "Open block library on the left and add a block to the canvas then save your agent",
+          video: "/onboarding/builder-save.mp4",
         },
         {
           id: "BUILDER_RUN_AGENT",
           name: "Run your agent",
           amount: 1,
           details: "Run your agent from the Builder",
+          video: "/onboarding/builder-run.mp4",
         },
       ],
     },
@@ -296,7 +302,7 @@ export function TaskGroups() {
                 >
                   {task.details}
                 </div>
-                {true && (
+                {task.video && (
                   <div
                     className={cn(
                       "relative mx-6 aspect-video overflow-hidden rounded-lg transition-all duration-300 ease-in-out",
@@ -305,12 +311,14 @@ export function TaskGroups() {
                         : "max-h-0 opacity-0",
                     )}
                   >
-                    <Image
-                      src={task.gif || "/rat-spinning.gif"}
-                      alt="GIF task instructions"
-                      fill
-                      className={cn("object-cover object-center")}
-                    />
+                    <video
+                      src={task.video}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      className={cn("h-full w-full object-cover object-center")}
+                    ></video>
                   </div>
                 )}
               </div>
