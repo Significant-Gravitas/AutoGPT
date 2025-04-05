@@ -115,11 +115,13 @@ export const FlowRunInfo: React.FC<
             <strong>Finished:</strong>{" "}
             {moment(execution.ended_at).format("YYYY-MM-DD HH:mm:ss")}
           </p>
-          <p>
-            <strong>Duration (run time):</strong>{" "}
-            {execution.duration.toFixed(1)} (
-            {execution.total_run_time.toFixed(1)}) seconds
-          </p>
+          {execution.stats && (
+            <p>
+              <strong>Duration (run time):</strong>{" "}
+              {execution.stats.duration.toFixed(1)} (
+              {execution.stats.node_exec_time.toFixed(1)}) seconds
+            </p>
+          )}
         </CardContent>
       </Card>
       <RunnerOutputUI

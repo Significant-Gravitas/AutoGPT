@@ -52,7 +52,7 @@ async def spend_credits(entry: NodeExecutionEntry) -> int:
     return cost
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_block_credit_usage(server: SpinTestServer):
     await disable_test_user_transactions()
     await top_up(100)
@@ -95,7 +95,7 @@ async def test_block_credit_usage(server: SpinTestServer):
     assert new_credit == current_credit - spending_amount_1 - spending_amount_2
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_block_credit_top_up(server: SpinTestServer):
     await disable_test_user_transactions()
     current_credit = await user_credit.get_credits(DEFAULT_USER_ID)
@@ -106,7 +106,7 @@ async def test_block_credit_top_up(server: SpinTestServer):
     assert new_credit == current_credit + 100
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_block_credit_reset(server: SpinTestServer):
     await disable_test_user_transactions()
     month1 = 1
@@ -133,7 +133,7 @@ async def test_block_credit_reset(server: SpinTestServer):
     assert await user_credit.get_credits(DEFAULT_USER_ID) == month2credit
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_credit_refill(server: SpinTestServer):
     await disable_test_user_transactions()
     balance = await user_credit.get_credits(DEFAULT_USER_ID)

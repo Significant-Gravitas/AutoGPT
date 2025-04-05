@@ -8,8 +8,8 @@ import {
   GraphExecution,
   GraphExecutionID,
   GraphExecutionMeta,
+  Graph,
   GraphID,
-  GraphMeta,
   LibraryAgent,
   LibraryAgentID,
   Schedule,
@@ -31,7 +31,7 @@ export default function AgentRunsPage(): React.ReactElement {
 
   // ============================ STATE =============================
 
-  const [graph, setGraph] = useState<GraphMeta | null>(null);
+  const [graph, setGraph] = useState<Graph | null>(null);
   const [agent, setAgent] = useState<LibraryAgent | null>(null);
   const [agentRuns, setAgentRuns] = useState<GraphExecutionMeta[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -65,9 +65,7 @@ export default function AgentRunsPage(): React.ReactElement {
     setSelectedSchedule(schedule);
   }, []);
 
-  const [graphVersions, setGraphVersions] = useState<Record<number, GraphMeta>>(
-    {},
-  );
+  const [graphVersions, setGraphVersions] = useState<Record<number, Graph>>({});
   const getGraphVersion = useCallback(
     async (graphID: GraphID, version: number) => {
       if (graphVersions[version]) return graphVersions[version];
@@ -242,12 +240,8 @@ export default function AgentRunsPage(): React.ReactElement {
       ...(agent?.can_access_graph
         ? [
             {
-              label: "Open in builder",
-              callback: () =>
-                agent &&
-                router.push(
-                  `/build?flowID=${agent.agent_id}&flowVersion=${agent.agent_version}`,
-                ),
+              label: "Open graph in builder",
+              href: `/build?flowID=${agent.agent_id}&flowVersion=${agent.agent_version}`,
             },
             { label: "Export agent to file", callback: downloadGraph },
           ]
@@ -258,7 +252,7 @@ export default function AgentRunsPage(): React.ReactElement {
         callback: () => setAgentDeleteDialogOpen(true),
       },
     ],
-    [agent, router, downloadGraph],
+    [agent, downloadGraph],
   );
 
   if (!agent || !graph) {
@@ -276,6 +270,7 @@ export default function AgentRunsPage(): React.ReactElement {
         agentRuns={agentRuns}
         schedules={schedules}
         selectedView={selectedView}
+        allowDraftNewRun={!graph.has_webhook_trigger}
         onSelectRun={selectRun}
         onSelectSchedule={selectSchedule}
         onSelectDraftNewRun={openRunDraftView}
@@ -297,6 +292,7 @@ export default function AgentRunsPage(): React.ReactElement {
         {(selectedView.type == "run" && selectedView.id ? (
           selectedRun && (
             <AgentRunDetailsView
+              agent={agent}
               graph={graphVersions[selectedRun.graph_version] ?? graph}
               run={selectedRun}
               agentActions={agentActions}

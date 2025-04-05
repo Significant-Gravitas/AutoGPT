@@ -77,7 +77,7 @@ export default async function Page({
               <CreatorLinks links={creator.links} />
             </div>
           </div>
-          <div className="mt-8 sm:mt-12 md:mt-16">
+          <div className="mt-8 sm:mt-12 md:mt-16 lg:pb-[58px]">
             <hr className="w-full bg-neutral-700" />
             <AgentsSection
               agents={creatorAgents.agents}

@@ -207,7 +207,7 @@ export default class BackendAPI {
     return this._get(`/graphs`);
   }
 
-  getGraph(
+  async getGraph(
     id: GraphID,
     version?: number,
     for_export?: boolean,
@@ -219,7 +219,9 @@ export default class BackendAPI {
     if (for_export !== undefined) {
       query["for_export"] = for_export;
     }
-    return this._get(`/graphs/${id}`, query);
+    const graph = await this._get(`/graphs/${id}`, query);
+    if (for_export) delete graph.user_id;
+    return graph;
   }
 
   getGraphAllVersions(id: GraphID): Promise<Graph[]> {
