@@ -22,6 +22,7 @@ import AgentRunDraftView from "@/components/agents/agent-run-draft-view";
 import AgentRunDetailsView from "@/components/agents/agent-run-details-view";
 import AgentRunsSelectorList from "@/components/agents/agent-runs-selector-list";
 import AgentScheduleDetailsView from "@/components/agents/agent-schedule-details-view";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
@@ -49,6 +50,7 @@ export default function AgentRunsPage(): React.ReactElement {
     useState<boolean>(false);
   const [confirmingDeleteAgentRun, setConfirmingDeleteAgentRun] =
     useState<GraphExecutionMeta | null>(null);
+  const { state, updateState } = useOnboarding();
 
   const openRunDraftView = useCallback(() => {
     selectView({ type: "run" });
@@ -77,6 +79,18 @@ export default function AgentRunsPage(): React.ReactElement {
     },
     [api, graphVersions],
   );
+
+  // Reward user for viewing results of their onboarding agent
+  useEffect(() => {
+    if (!state || !selectedRun || state.completedSteps.includes("GET_RESULTS"))
+      return;
+
+    if (selectedRun.id === state.onboardingAgentExecutionId) {
+      updateState({
+        completedSteps: [...state.completedSteps, "GET_RESULTS"],
+      });
+    }
+  }, [selectedRun, state]);
 
   const fetchAgents = useCallback(() => {
     api.getLibraryAgent(agentID).then((agent) => {

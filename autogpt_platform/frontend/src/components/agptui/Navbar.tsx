@@ -4,7 +4,7 @@ import { ProfilePopoutMenu } from "./ProfilePopoutMenu";
 import { IconType, IconLogIn, IconAutoGPTLogo } from "@/components/ui/icons";
 import { MobileNavBar } from "./MobileNavBar";
 import { Button } from "./Button";
-import CreditsCard from "./CreditsCard";
+import Wallet from "./Wallet";
 import { ProfileDetails } from "@/lib/autogpt-server-api/types";
 import { NavbarLink } from "./NavbarLink";
 import getServerUser from "@/lib/supabase/getServerUser";
@@ -61,7 +61,7 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
         <div className="flex items-center gap-4">
           {isLoggedIn ? (
             <div className="flex items-center gap-4">
-              {profile && <CreditsCard />}
+              {profile && <Wallet />}
               <ProfilePopoutMenu
                 menuItemGroups={menuItemGroups}
                 userName={profile?.username}

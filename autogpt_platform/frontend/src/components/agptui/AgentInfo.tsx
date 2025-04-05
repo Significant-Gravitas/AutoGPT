@@ -10,6 +10,7 @@ import { useToast } from "@/components/ui/use-toast";
 
 import useSupabase from "@/hooks/useSupabase";
 import { DownloadIcon, LoaderIcon } from "lucide-react";
+import { useOnboarding } from "../onboarding/onboarding-provider";
 interface AgentInfoProps {
   name: string;
   creator: string;
@@ -39,6 +40,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   const api = React.useMemo(() => new BackendAPI(), []);
   const { user } = useSupabase();
   const { toast } = useToast();
+  const { completeStep } = useOnboarding();
 
   const [downloading, setDownloading] = React.useState(false);
 
@@ -47,6 +49,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
       const newLibraryAgent = await api.addMarketplaceAgentToLibrary(
         storeListingVersionId,
       );
+      completeStep("MARKETPLACE_ADD_AGENT");
       router.push(`/library/agents/${newLibraryAgent.id}`);
     } catch (error) {
       console.error("Failed to add agent to library:", error);
