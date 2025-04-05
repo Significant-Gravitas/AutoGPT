@@ -95,17 +95,17 @@ async def reward_user(user_id: str, step: OnboardingStep):
         # Reward user when they clicked New Run during onboarding
         # This is because they need credits before scheduling a run (next step)
         case OnboardingStep.AGENT_NEW_RUN:
-            reward = 3
+            reward = 300
         case OnboardingStep.GET_RESULTS:
-            reward = 3
+            reward = 300
         case OnboardingStep.MARKETPLACE_ADD_AGENT:
-            reward = 1
+            reward = 100
         case OnboardingStep.MARKETPLACE_RUN_AGENT:
-            reward = 1
+            reward = 100
         case OnboardingStep.BUILDER_SAVE_AGENT:
-            reward = 1
+            reward = 100
         case OnboardingStep.BUILDER_RUN_AGENT:
-            reward = 1
+            reward = 100
 
     if reward == 0:
         return
@@ -117,6 +117,7 @@ async def reward_user(user_id: str, step: OnboardingStep):
         return
 
     onboarding.rewardedFor.append(step)
+    await user_credit.onboarding_reward(user_id, reward, step)
     await UserOnboarding.prisma().update(
         where={"userId": user_id},
         data={
@@ -124,7 +125,6 @@ async def reward_user(user_id: str, step: OnboardingStep):
             "rewardedFor": onboarding.rewardedFor,
         },
     )
-    await user_credit.top_up_credits(user_id, reward, f"REWARD-{user_id}-{step.name}")
 
 
 def clean_and_split(text: str) -> list[str]:
