@@ -819,7 +819,7 @@ export interface UserOnboarding {
   integrations: string[];
   otherIntegrations: string | null;
   selectedStoreListingVersionId: string | null;
-  agentInput: { [key: string]: string } | null;
+  agentInput: { [key: string]: string | number } | null;
   onboardingAgentExecutionId: GraphExecutionID | null;
 }
 

@@ -152,7 +152,9 @@ export function TaskGroups() {
           // Update the state to include all group tasks as notified
           // This ensures that the confetti effect isn't perpetually triggered on Wallet
           const notifiedTasks = group.tasks.map((task) => task.id);
-          updateState({ notified: [...(state?.notified || []), ...notifiedTasks] });
+          updateState({
+            notified: [...(state?.notified || []), ...notifiedTasks],
+          });
         }
         return;
       }

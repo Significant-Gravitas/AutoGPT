@@ -85,7 +85,7 @@ export default function AgentRunsPage(): React.ReactElement {
     if (!state || !selectedRun || state.completedSteps.includes("GET_RESULTS"))
       return;
 
-    if (selectedRun.execution_id === state.onboardingAgentExecutionId) {
+    if (selectedRun.id === state.onboardingAgentExecutionId) {
       updateState({
         completedSteps: [...state.completedSteps, "GET_RESULTS"],
       });
