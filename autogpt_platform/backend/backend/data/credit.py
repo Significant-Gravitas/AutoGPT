@@ -422,19 +422,21 @@ class UserCredit(UserCreditBase):
         await self._top_up_credits(user_id, amount)
 
     async def onboarding_reward(self, user_id: str, credits: int, step: OnboardingStep):
+        key = f"REWARD-{user_id}-{step.value}"
         if not await CreditTransaction.prisma().find_first(
             where={
                 "userId": user_id,
-                "type": CreditTransactionType.GRANT,
-                "transactionKey": step.value,
+                "transactionKey": key,
             }
         ):
             await self._add_transaction(
                 user_id=user_id,
                 amount=credits,
                 transaction_type=CreditTransactionType.GRANT,
-                transaction_key=f"REWARD-{user_id}-{step.value}",
-                metadata=Json({"reason": f"Reward for completing {step.value} onboarding step."}),
+                transaction_key=key,
+                metadata=Json(
+                    {"reason": f"Reward for completing {step.value} onboarding step."}
+                ),
             )
 
     async def top_up_refund(

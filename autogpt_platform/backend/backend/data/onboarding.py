@@ -8,6 +8,7 @@ from prisma.enums import OnboardingStep
 from prisma.models import UserOnboarding
 from prisma.types import UserOnboardingUpdateInput
 
+from backend.data import db
 from backend.data.block import get_blocks
 from backend.data.credit import get_user_credit_model
 from backend.data.graph import GraphModel
@@ -57,6 +58,7 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         for step in (
             OnboardingStep.AGENT_NEW_RUN,
             OnboardingStep.GET_RESULTS,
+            OnboardingStep.MARKETPLACE_ADD_AGENT,
             OnboardingStep.MARKETPLACE_RUN_AGENT,
             OnboardingStep.BUILDER_SAVE_AGENT,
             OnboardingStep.BUILDER_RUN_AGENT,
@@ -90,41 +92,42 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
 
 
 async def reward_user(user_id: str, step: OnboardingStep):
-    reward = 0
-    match step:
-        # Reward user when they clicked New Run during onboarding
-        # This is because they need credits before scheduling a run (next step)
-        case OnboardingStep.AGENT_NEW_RUN:
-            reward = 300
-        case OnboardingStep.GET_RESULTS:
-            reward = 300
-        case OnboardingStep.MARKETPLACE_ADD_AGENT:
-            reward = 100
-        case OnboardingStep.MARKETPLACE_RUN_AGENT:
-            reward = 100
-        case OnboardingStep.BUILDER_SAVE_AGENT:
-            reward = 100
-        case OnboardingStep.BUILDER_RUN_AGENT:
-            reward = 100
+    async with db.locked_transaction(f"usr_trx_{user_id}-reward"):
+        reward = 0
+        match step:
+            # Reward user when they clicked New Run during onboarding
+            # This is because they need credits before scheduling a run (next step)
+            case OnboardingStep.AGENT_NEW_RUN:
+                reward = 300
+            case OnboardingStep.GET_RESULTS:
+                reward = 300
+            case OnboardingStep.MARKETPLACE_ADD_AGENT:
+                reward = 100
+            case OnboardingStep.MARKETPLACE_RUN_AGENT:
+                reward = 100
+            case OnboardingStep.BUILDER_SAVE_AGENT:
+                reward = 100
+            case OnboardingStep.BUILDER_RUN_AGENT:
+                reward = 100
 
-    if reward == 0:
-        return
+        if reward == 0:
+            return
 
-    onboarding = await get_user_onboarding(user_id)
+        onboarding = await get_user_onboarding(user_id)
 
-    # Skip if already rewarded
-    if step in onboarding.rewardedFor:
-        return
+        # Skip if already rewarded
+        if step in onboarding.rewardedFor:
+            return
 
-    onboarding.rewardedFor.append(step)
-    await user_credit.onboarding_reward(user_id, reward, step)
-    await UserOnboarding.prisma().update(
-        where={"userId": user_id},
-        data={
-            "completedSteps": list(set(onboarding.completedSteps + [step])),
-            "rewardedFor": onboarding.rewardedFor,
-        },
-    )
+        onboarding.rewardedFor.append(step)
+        await user_credit.onboarding_reward(user_id, reward, step)
+        await UserOnboarding.prisma().update(
+            where={"userId": user_id},
+            data={
+                "completedSteps": list(set(onboarding.completedSteps + [step])),
+                "rewardedFor": onboarding.rewardedFor,
+            },
+        )
 
 
 def clean_and_split(text: str) -> list[str]:

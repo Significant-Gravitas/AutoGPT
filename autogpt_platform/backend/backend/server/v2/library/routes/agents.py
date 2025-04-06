@@ -4,12 +4,10 @@ from typing import Optional
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
-from prisma.enums import OnboardingStep
 
 import backend.server.v2.library.db as library_db
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
-from backend.data.onboarding import reward_user
 
 logger = logging.getLogger(__name__)
 
@@ -115,12 +113,10 @@ async def add_marketplace_agent_to_library(
         HTTPException(500): If a server/database error occurs.
     """
     try:
-        agent = await library_db.add_store_agent_to_library(
+        return await library_db.add_store_agent_to_library(
             store_listing_version_id=store_listing_version_id,
             user_id=user_id,
         )
-        await reward_user(user_id, OnboardingStep.MARKETPLACE_ADD_AGENT)
-        return agent
 
     except store_exceptions.AgentNotFoundError:
         logger.warning(f"Agent not found: {store_listing_version_id}")
