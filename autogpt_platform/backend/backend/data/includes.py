@@ -11,7 +11,7 @@ AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
 }
 
 AGENT_GRAPH_INCLUDE: prisma.types.AgentGraphInclude = {
-    "AgentNodes": {"include": AGENT_NODE_INCLUDE}  # type: ignore
+    "Nodes": {"include": AGENT_NODE_INCLUDE}  # type: ignore
 }
 
 EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
@@ -42,9 +42,9 @@ GRAPH_EXECUTION_INCLUDE_WITH_NODES: prisma.types.AgentGraphExecutionInclude = {
 
 GRAPH_EXECUTION_INCLUDE: prisma.types.AgentGraphExecutionInclude = {
     "NodeExecutions": {
-        **GRAPH_EXECUTION_INCLUDE_WITH_NODES["AgentNodeExecutions"],  # type: ignore
+        **GRAPH_EXECUTION_INCLUDE_WITH_NODES["NodeExecutions"],  # type: ignore
         "where": {
-            "AgentNode": {
+            "Node": {
                 "AgentBlock": {"id": {"in": IO_BLOCK_IDs}},  # type: ignore
             },
             "NOT": {
