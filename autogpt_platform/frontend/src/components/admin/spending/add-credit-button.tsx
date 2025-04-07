@@ -1,7 +1,7 @@
-"use client"
+"use client";
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -9,12 +9,12 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Input } from "@/components/ui/input"
-import { useRouter } from "next/navigation"
-import { addDollars } from "@/app/admin/spending/actions"
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { useRouter } from "next/navigation";
+import { addDollars } from "@/app/admin/spending/actions";
 
 export function AddCreditButton({
   userId,
@@ -23,31 +23,33 @@ export function AddCreditButton({
   defaultAmount,
   defaultComments,
 }: {
-  userId: string
-  userEmail: string
-  currentBalance: number
-  defaultAmount?: number
-  defaultComments?: string
+  userId: string;
+  userEmail: string;
+  currentBalance: number;
+  defaultAmount?: number;
+  defaultComments?: string;
 }) {
-  const router = useRouter()
-  const [isAddCreditDialogOpen, setIsAddCreditDialogOpen] = useState(false)
-  const [dollarAmount, setDollarAmount] = useState(defaultAmount ? Math.abs(defaultAmount / 100).toFixed(2) : "1.00")
+  const router = useRouter();
+  const [isAddCreditDialogOpen, setIsAddCreditDialogOpen] = useState(false);
+  const [dollarAmount, setDollarAmount] = useState(
+    defaultAmount ? Math.abs(defaultAmount / 100).toFixed(2) : "1.00",
+  );
 
   // Calculate credits from dollar amount
   const calculateCredits = (dollars: string) => {
-    const amount = Number.parseFloat(dollars) || 0
-    return Math.round(amount * 100)
-  }
+    const amount = Number.parseFloat(dollars) || 0;
+    return Math.round(amount * 100);
+  };
 
   const handleApproveSubmit = async (formData: FormData) => {
-    setIsAddCreditDialogOpen(false)
+    setIsAddCreditDialogOpen(false);
     try {
-      await addDollars(formData)
-      router.refresh() // Refresh the current route
+      await addDollars(formData);
+      router.refresh(); // Refresh the current route
     } catch (error) {
-      console.error("Error adding dollars:", error)
+      console.error("Error adding dollars:", error);
     }
-  }
+  };
 
   return (
     <>
@@ -55,15 +57,18 @@ export function AddCreditButton({
         size="sm"
         variant="default"
         onClick={(e) => {
-          e.stopPropagation()
-          setIsAddCreditDialogOpen(true)
+          e.stopPropagation();
+          setIsAddCreditDialogOpen(true);
         }}
       >
         Add Dollars
       </Button>
 
       {/* Add $$$ Dialog */}
-      <Dialog open={isAddCreditDialogOpen} onOpenChange={setIsAddCreditDialogOpen}>
+      <Dialog
+        open={isAddCreditDialogOpen}
+        onOpenChange={setIsAddCreditDialogOpen}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add Dollars</DialogTitle>
@@ -72,14 +77,19 @@ export function AddCreditButton({
                 <span className="font-medium">User:</span> {userEmail}
               </div>
               <div>
-                <span className="font-medium">Current balance:</span> ${(currentBalance / 100).toFixed(2)}
+                <span className="font-medium">Current balance:</span> $
+                {(currentBalance / 100).toFixed(2)}
               </div>
             </DialogDescription>
           </DialogHeader>
 
           <form action={handleApproveSubmit}>
             <input type="hidden" name="id" value={userId} />
-            <input type="hidden" name="amount" value={calculateCredits(dollarAmount)} />
+            <input
+              type="hidden"
+              name="amount"
+              value={calculateCredits(dollarAmount)}
+            />
 
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
@@ -100,7 +110,8 @@ export function AddCreditButton({
                   />
                 </div>
                 <p className="text-xs text-gray-500">
-                  This will add {calculateCredits(dollarAmount)} credits (1 credit = 1¢)
+                  This will add {calculateCredits(dollarAmount)} credits (1
+                  credit = 1¢)
                 </p>
               </div>
             </div>
@@ -118,7 +129,11 @@ export function AddCreditButton({
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsAddCreditDialogOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsAddCreditDialogOpen(false)}
+              >
                 Cancel
               </Button>
               <Button type="submit">Add Dollars</Button>
@@ -127,6 +142,5 @@ export function AddCreditButton({
         </DialogContent>
       </Dialog>
     </>
-  )
+  );
 }
-
