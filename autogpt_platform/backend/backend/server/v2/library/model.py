@@ -83,7 +83,7 @@ class LibraryAgent(pydantic.BaseModel):
         week_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
             days=7
         )
-        executions = agent.AgentGraph.AgentGraphExecutions or []
+        executions = agent.AgentGraph.Executions or []
         status_result = _calculate_agent_status(executions, week_ago)
         status = status_result.status
         new_output = status_result.new_output

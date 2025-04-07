@@ -17,19 +17,19 @@ AGENT_GRAPH_INCLUDE: prisma.types.AgentGraphInclude = {
 EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
     "Input": True,
     "Output": True,
-    "AgentNode": True,
-    "AgentGraphExecution": True,
+    "Node": True,
+    "GraphExecution": True,
 }
 
 MAX_NODE_EXECUTIONS_FETCH = 1000
 
 GRAPH_EXECUTION_INCLUDE_WITH_NODES: prisma.types.AgentGraphExecutionInclude = {
-    "AgentNodeExecutions": {
+    "NodeExecutions": {
         "include": {
             "Input": True,
             "Output": True,
-            "AgentNode": True,
-            "AgentGraphExecution": True,
+            "Node": True,
+            "GraphExecution": True,
         },
         "order_by": [
             {"queuedTime": "desc"},
@@ -41,7 +41,7 @@ GRAPH_EXECUTION_INCLUDE_WITH_NODES: prisma.types.AgentGraphExecutionInclude = {
 }
 
 GRAPH_EXECUTION_INCLUDE: prisma.types.AgentGraphExecutionInclude = {
-    "AgentNodeExecutions": {
+    "NodeExecutions": {
         **GRAPH_EXECUTION_INCLUDE_WITH_NODES["AgentNodeExecutions"],  # type: ignore
         "where": {
             "AgentNode": {
@@ -65,7 +65,7 @@ def library_agent_include(user_id: str) -> prisma.types.LibraryAgentInclude:
         "AgentGraph": {
             "include": {
                 **AGENT_GRAPH_INCLUDE,
-                "AgentGraphExecutions": {"where": {"userId": user_id}},
+                "Executions": {"where": {"userId": user_id}},
             }
         },
         "Creator": True,

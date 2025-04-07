@@ -465,13 +465,11 @@ class GraphModel(Graph):
             is_active=graph.isActive,
             name=graph.name or "",
             description=graph.description or "",
-            nodes=[
-                NodeModel.from_db(node, for_export) for node in graph.AgentNodes or []
-            ],
+            nodes=[NodeModel.from_db(node, for_export) for node in graph.Nodes or []],
             links=list(
                 {
                     Link.from_db(link)
-                    for node in graph.AgentNodes or []
+                    for node in graph.Nodes or []
                     for link in (node.Input or []) + (node.Output or [])
                 }
             ),
@@ -602,8 +600,8 @@ async def get_graph(
         and not (
             await StoreListingVersion.prisma().find_first(
                 where={
-                    "agentId": graph_id,
-                    "agentVersion": version or graph.version,
+                    "agentGraphId": graph_id,
+                    "agentGraphVersion": version or graph.version,
                     "isDeleted": False,
                     "submissionStatus": SubmissionStatus.APPROVED,
                 }
@@ -637,7 +635,7 @@ async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
         sub_graph_ids = [
             (graph_id, graph_version)
             for graph in search_graphs
-            for node in graph.AgentNodes or []
+            for node in graph.Nodes or []
             if (
                 node.AgentBlock
                 and node.AgentBlock.id == agent_block_id

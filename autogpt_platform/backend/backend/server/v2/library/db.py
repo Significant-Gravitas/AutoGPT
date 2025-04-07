@@ -378,10 +378,10 @@ async def add_store_agent_to_library(
         async with locked_transaction(f"add_agent_trx_{user_id}"):
             store_listing_version = (
                 await prisma.models.StoreListingVersion.prisma().find_unique(
-                    where={"id": store_listing_version_id}, include={"Agent": True}
+                    where={"id": store_listing_version_id}, include={"AgentGraph": True}
                 )
             )
-            if not store_listing_version or not store_listing_version.Agent:
+            if not store_listing_version or not store_listing_version.AgentGraph:
                 logger.warning(
                     f"Store listing version not found: {store_listing_version_id}"
                 )
@@ -389,7 +389,7 @@ async def add_store_agent_to_library(
                     f"Store listing version {store_listing_version_id} not found or invalid"
                 )
 
-            graph = store_listing_version.Agent
+            graph = store_listing_version.AgentGraph
             if graph.userId == user_id:
                 logger.warning(
                     f"User #{user_id} attempted to add their own agent to their library"

@@ -121,7 +121,7 @@ class GraphExecution(GraphExecutionMeta):
 
     @staticmethod
     def from_db(_graph_exec: AgentGraphExecution):
-        if _graph_exec.AgentNodeExecutions is None:
+        if _graph_exec.NodeExecutions is None:
             raise ValueError("Node executions must be included in query")
 
         graph_exec = GraphExecutionMeta.from_db(_graph_exec)
@@ -129,7 +129,7 @@ class GraphExecution(GraphExecutionMeta):
         complete_node_executions = sorted(
             [
                 NodeExecutionResult.from_db(ne, _graph_exec.userId)
-                for ne in _graph_exec.AgentNodeExecutions
+                for ne in _graph_exec.NodeExecutions
                 if ne.executionStatus != ExecutionStatus.INCOMPLETE
             ],
             key=lambda ne: (ne.queue_time is None, ne.queue_time or ne.add_time),
@@ -181,7 +181,7 @@ class GraphExecutionWithNodes(GraphExecution):
 
     @staticmethod
     def from_db(_graph_exec: AgentGraphExecution):
-        if _graph_exec.AgentNodeExecutions is None:
+        if _graph_exec.NodeExecutions is None:
             raise ValueError("Node executions must be included in query")
 
         graph_exec_with_io = GraphExecution.from_db(_graph_exec)
@@ -189,7 +189,7 @@ class GraphExecutionWithNodes(GraphExecution):
         node_executions = sorted(
             [
                 NodeExecutionResult.from_db(ne, _graph_exec.userId)
-                for ne in _graph_exec.AgentNodeExecutions
+                for ne in _graph_exec.NodeExecutions
             ],
             key=lambda ne: (ne.queue_time is None, ne.queue_time or ne.add_time),
         )
@@ -220,21 +220,21 @@ class NodeExecutionResult(BaseModel):
     end_time: datetime | None
 
     @staticmethod
-    def from_db(execution: AgentNodeExecution, user_id: Optional[str] = None):
-        if execution.executionData:
+    def from_db(_node_exec: AgentNodeExecution, user_id: Optional[str] = None):
+        if _node_exec.executionData:
             # Execution that has been queued for execution will persist its data.
-            input_data = type_utils.convert(execution.executionData, dict[str, Any])
+            input_data = type_utils.convert(_node_exec.executionData, dict[str, Any])
         else:
             # For incomplete execution, executionData will not be yet available.
             input_data: BlockInput = defaultdict()
-            for data in execution.Input or []:
+            for data in _node_exec.Input or []:
                 input_data[data.name] = type_utils.convert(data.data, type[Any])
 
         output_data: CompletedBlockOutput = defaultdict(list)
-        for data in execution.Output or []:
+        for data in _node_exec.Output or []:
             output_data[data.name].append(type_utils.convert(data.data, type[Any]))
 
-        graph_execution: AgentGraphExecution | None = execution.AgentGraphExecution
+        graph_execution: AgentGraphExecution | None = _node_exec.GraphExecution
         if graph_execution:
             user_id = graph_execution.userId
         elif not user_id:
@@ -246,17 +246,17 @@ class NodeExecutionResult(BaseModel):
             user_id=user_id,
             graph_id=graph_execution.agentGraphId if graph_execution else "",
             graph_version=graph_execution.agentGraphVersion if graph_execution else 0,
-            graph_exec_id=execution.agentGraphExecutionId,
-            block_id=execution.AgentNode.agentBlockId if execution.AgentNode else "",
-            node_exec_id=execution.id,
-            node_id=execution.agentNodeId,
-            status=execution.executionStatus,
+            graph_exec_id=_node_exec.agentGraphExecutionId,
+            block_id=_node_exec.Node.agentBlockId if _node_exec.Node else "",
+            node_exec_id=_node_exec.id,
+            node_id=_node_exec.agentNodeId,
+            status=_node_exec.executionStatus,
             input_data=input_data,
             output_data=output_data,
-            add_time=execution.addedTime,
-            queue_time=execution.queuedTime,
-            start_time=execution.startedTime,
-            end_time=execution.endedTime,
+            add_time=_node_exec.addedTime,
+            queue_time=_node_exec.queuedTime,
+            start_time=_node_exec.startedTime,
+            end_time=_node_exec.endedTime,
         )
 
 
@@ -355,7 +355,7 @@ async def create_graph_execution(
             "agentGraphId": graph_id,
             "agentGraphVersion": graph_version,
             "executionStatus": ExecutionStatus.QUEUED,
-            "AgentNodeExecutions": {
+            "NodeExecutions": {
                 "create": [  # type: ignore
                     {
                         "agentNodeId": node_id,
@@ -600,7 +600,7 @@ async def get_node_execution_results(
         "agentGraphExecutionId": graph_exec_id,
     }
     if block_ids:
-        where_clause["AgentNode"] = {"is": {"agentBlockId": {"in": block_ids}}}
+        where_clause["Node"] = {"is": {"agentBlockId": {"in": block_ids}}}
     if statuses:
         where_clause["OR"] = [{"executionStatus": status} for status in statuses]
 

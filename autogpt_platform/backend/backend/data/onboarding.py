@@ -186,11 +186,11 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
         where={
             "id": {"in": [agent.storeListingVersionId for agent in storeAgents]},
         },
-        include={"Agent": True},
+        include={"AgentGraph": True},
     )
 
     for listing in agentListings:
-        agent = listing.Agent
+        agent = listing.AgentGraph
         if agent is None:
             continue
         graph = GraphModel.from_db(agent)
