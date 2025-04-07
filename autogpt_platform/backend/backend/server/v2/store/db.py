@@ -1087,7 +1087,7 @@ async def review_store_submission(
                 where={"id": store_listing_version_id},
                 include={
                     "StoreListing": True,
-                    "Agent": {"include": AGENT_GRAPH_INCLUDE},  # type: ignore
+                    "AgentGraph": {"include": AGENT_GRAPH_INCLUDE},  # type: ignore
                 },
             )
         )
