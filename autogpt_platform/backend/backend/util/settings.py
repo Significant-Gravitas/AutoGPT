@@ -31,12 +31,12 @@ class UpdateTrackingModel(BaseModel, Generic[T]):
     _updated_fields: Set[str] = PrivateAttr(default_factory=set)
 
     def __setattr__(self, name: str, value) -> None:
-        if name in self.model_fields:
+        if name in UpdateTrackingModel.model_fields:
             self._updated_fields.add(name)
         super().__setattr__(name, value)
 
     def mark_updated(self, field_name: str) -> None:
-        if field_name in self.model_fields:
+        if field_name in UpdateTrackingModel.model_fields:
             self._updated_fields.add(field_name)
 
     def clear_updates(self) -> None:
@@ -228,7 +228,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Whether to use the new agent image generation service",
     )
     enable_agent_input_subtype_blocks: bool = Field(
-        default=False,
+        default=True,
         description="Whether to enable the agent input subtype blocks",
     )
 

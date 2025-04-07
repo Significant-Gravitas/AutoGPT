@@ -1,4 +1,7 @@
-import prisma
+import prisma.enums
+import prisma.types
+
+from backend.blocks.io import IO_BLOCK_IDs
 
 AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
     "Input": True,
@@ -20,7 +23,7 @@ EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
 
 MAX_NODE_EXECUTIONS_FETCH = 1000
 
-GRAPH_EXECUTION_INCLUDE: prisma.types.AgentGraphExecutionInclude = {
+GRAPH_EXECUTION_INCLUDE_WITH_NODES: prisma.types.AgentGraphExecutionInclude = {
     "AgentNodeExecutions": {
         "include": {
             "Input": True,
@@ -34,6 +37,20 @@ GRAPH_EXECUTION_INCLUDE: prisma.types.AgentGraphExecutionInclude = {
             {"addedTime": "desc"},
         ],
         "take": MAX_NODE_EXECUTIONS_FETCH,  # Avoid loading excessive node executions.
+    }
+}
+
+GRAPH_EXECUTION_INCLUDE: prisma.types.AgentGraphExecutionInclude = {
+    "AgentNodeExecutions": {
+        **GRAPH_EXECUTION_INCLUDE_WITH_NODES["AgentNodeExecutions"],  # type: ignore
+        "where": {
+            "AgentNode": {
+                "AgentBlock": {"id": {"in": IO_BLOCK_IDs}},  # type: ignore
+            },
+            "NOT": {
+                "executionStatus": prisma.enums.AgentExecutionStatus.INCOMPLETE,
+            },
+        },
     }
 }
 

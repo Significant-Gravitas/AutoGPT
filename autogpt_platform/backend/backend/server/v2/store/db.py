@@ -1005,7 +1005,7 @@ async def get_my_agents(
 
 
 async def get_agent(
-    user_id: str,
+    user_id: str | None,
     store_listing_version_id: str,
 ) -> GraphModel:
     """Get agent using the version ID and store listing version ID."""

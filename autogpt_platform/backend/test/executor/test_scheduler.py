@@ -8,7 +8,7 @@ from backend.util.service import get_service_client
 from backend.util.test import SpinTestServer
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_agent_schedule(server: SpinTestServer):
     await db.connect()
     test_user = await create_test_user()

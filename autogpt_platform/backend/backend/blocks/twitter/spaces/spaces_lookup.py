@@ -227,7 +227,6 @@ class TwitterGetSpaceByIdBlock(Block):
         space_id: str = SchemaField(
             description="Space ID to lookup",
             placeholder="Enter Space ID",
-            required=True,
         )
 
     class Output(BlockSchema):
@@ -389,7 +388,6 @@ class TwitterGetSpaceBuyersBlock(Block):
         space_id: str = SchemaField(
             description="Space ID to lookup buyers for",
             placeholder="Enter Space ID",
-            required=True,
         )
 
     class Output(BlockSchema):
@@ -517,7 +515,6 @@ class TwitterGetSpaceTweetsBlock(Block):
         space_id: str = SchemaField(
             description="Space ID to lookup tweets for",
             placeholder="Enter Space ID",
-            required=True,
         )
 
     class Output(BlockSchema):

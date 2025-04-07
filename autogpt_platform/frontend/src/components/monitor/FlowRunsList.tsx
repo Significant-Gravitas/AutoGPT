@@ -62,7 +62,11 @@ export const FlowRunsList: React.FC<{
                   className="w-full justify-center"
                 />
               </TableCell>
-              <TableCell>{formatDuration(execution.duration)}</TableCell>
+              <TableCell>
+                {execution.stats
+                  ? formatDuration(execution.stats.duration)
+                  : ""}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>

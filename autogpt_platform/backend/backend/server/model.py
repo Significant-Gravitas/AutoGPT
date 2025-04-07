@@ -9,6 +9,7 @@ from backend.data.graph import Graph
 
 class WSMethod(enum.Enum):
     SUBSCRIBE_GRAPH_EXEC = "subscribe_graph_execution"
+    SUBSCRIBE_GRAPH_EXECS = "subscribe_graph_executions"
     UNSUBSCRIBE = "unsubscribe"
     GRAPH_EXECUTION_EVENT = "graph_execution_event"
     NODE_EXECUTION_EVENT = "node_execution_event"
@@ -26,6 +27,10 @@ class WSMessage(pydantic.BaseModel):
 
 class WSSubscribeGraphExecutionRequest(pydantic.BaseModel):
     graph_exec_id: str
+
+
+class WSSubscribeGraphExecutionsRequest(pydantic.BaseModel):
+    graph_id: str
 
 
 class ExecuteGraphResponse(pydantic.BaseModel):
