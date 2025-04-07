@@ -3783,6 +3783,11 @@
   dependencies:
     "@types/istanbul-lib-report" "*"
 
+"@types/jaro-winkler@^0.2.4":
+  version "0.2.4"
+  resolved "https://registry.yarnpkg.com/@types/jaro-winkler/-/jaro-winkler-0.2.4.tgz#fb8d9df08a984f99aef8e5a96ded3f662c738241"
+  integrity sha512-TNVu6vL0Z3h+hYcW78IRloINA0y0MTVJ1PFVtVpBSgk+ejmaH5aVfcVghzNXZ0fa6gXe4zapNMQtMGWOJKTLig==
+
 "@types/json-schema@*", "@types/json-schema@^7.0.8", "@types/json-schema@^7.0.9":
   version "7.0.15"
   resolved "https://registry.yarnpkg.com/@types/json-schema/-/json-schema-7.0.15.tgz#596a1747233694d50f6ad8a7869fcb6f56cf5841"
@@ -7857,6 +7862,11 @@ jackspeak@^3.1.2:
     "@isaacs/cliui" "^8.0.2"
   optionalDependencies:
     "@pkgjs/parseargs" "^0.11.0"
+
+jaro-winkler@^0.2.8:
+  version "0.2.8"
+  resolved "https://registry.yarnpkg.com/jaro-winkler/-/jaro-winkler-0.2.8.tgz#6727e0d0b7091e2436f9356de9bf88fad23e534a"
+  integrity sha512-yr+mElb6dWxA1mzFu0+26njV5DWAQRNTi5pB6fFMm79zHrfAs3d0qjhe/IpZI4AHIUJkzvu5QXQRWOw2O0GQyw==
 
 jest-changed-files@^29.7.0:
   version "29.7.0"
