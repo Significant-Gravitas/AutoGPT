@@ -228,17 +228,17 @@ async def create_library_agent(
 
     try:
         return await prisma.models.LibraryAgent.prisma().create(
-            data={
-                "isCreatedByUser": (user_id == graph.user_id),
-                "useGraphIsActiveVersion": True,
-                "User": {"connect": {"id": user_id}},
-                # "Creator": {"connect": {"id": graph.user_id}},
-                "AgentGraph": {
+            data=prisma.types.LibraryAgentCreateInput(
+                isCreatedByUser=(user_id == graph.user_id),
+                useGraphIsActiveVersion=True,
+                User={"connect": {"id": user_id}},
+                # Creator={"connect": {"id": graph.user_id}},
+                AgentGraph={
                     "connect": {
                         "graphVersionId": {"id": graph.id, "version": graph.version}
                     }
                 },
-            }
+            )
         )
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error creating agent in library: {e}")
@@ -424,12 +424,15 @@ async def add_store_agent_to_library(
 
             # Create LibraryAgent entry
             added_agent = await prisma.models.LibraryAgent.prisma().create(
-                data={
-                    "userId": user_id,
-                    "agentGraphId": graph.id,
-                    "agentGraphVersion": graph.version,
-                    "isCreatedByUser": False,
-                },
+                data=prisma.types.LibraryAgentCreateInput(
+                    userId=user_id,
+                    AgentGraph={
+                        "connect": {
+                            "graphVersionId": {"id": graph.id, "version": graph.version}
+                        }
+                    },
+                    isCreatedByUser=False,
+                ),
                 include=library_agent_include(user_id),
             )
             logger.debug(
@@ -606,6 +609,12 @@ async def upsert_preset(
         f"Upserting preset #{preset_id} ({repr(preset.name)}) for user #{user_id}",
     )
     try:
+        inputs: list[
+            prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput
+        ] = [
+            {"name": name, "data": prisma.fields.Json(data)}  # type: ignore
+            for name, data in preset.inputs.items()
+        ]
         if preset_id:
             # Update existing preset
             updated = await prisma.models.AgentPreset.prisma().update(
@@ -614,12 +623,7 @@ async def upsert_preset(
                     "name": preset.name,
                     "description": preset.description,
                     "isActive": preset.is_active,
-                    "InputPresets": {
-                        "create": [
-                            {"name": name, "data": prisma.fields.Json(data)}
-                            for name, data in preset.inputs.items()
-                        ]
-                    },
+                    "InputPresets": {"create": inputs},
                 },
                 include={"InputPresets": True},
             )
@@ -629,20 +633,15 @@ async def upsert_preset(
         else:
             # Create new preset
             new_preset = await prisma.models.AgentPreset.prisma().create(
-                data={
-                    "userId": user_id,
-                    "name": preset.name,
-                    "description": preset.description,
-                    "agentGraphId": preset.graph_id,
-                    "agentGraphVersion": preset.graph_version,
-                    "isActive": preset.is_active,
-                    "InputPresets": {
-                        "create": [
-                            {"name": name, "data": prisma.fields.Json(data)}
-                            for name, data in preset.inputs.items()
-                        ]
-                    },
-                },
+                data=prisma.types.AgentPresetCreateInput(
+                    userId=user_id,
+                    name=preset.name,
+                    description=preset.description,
+                    agentGraphId=preset.graph_id,
+                    agentGraphVersion=preset.graph_version,
+                    isActive=preset.is_active,
+                    InputPresets={"create": inputs},
+                ),
                 include={"InputPresets": True},
             )
         return library_model.LibraryAgentPreset.from_db(new_preset)

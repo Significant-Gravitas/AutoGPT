@@ -15,6 +15,7 @@ from prisma.types import (
     AnalyticsMetricsCreateInput,
     APIKeyCreateInput,
     CreditTransactionCreateInput,
+    LibraryAgentCreateInput,
     ProfileCreateInput,
     StoreListingCreateInput,
     StoreListingReviewCreateInput,
@@ -159,15 +160,15 @@ async def main():
             graph = random.choice(agent_graphs)
             preset = random.choice(agent_presets)
             user_agent = await db.libraryagent.create(
-                data={
-                    "userId": user.id,
-                    "agentGraphId": graph.id,
-                    "agentGraphVersion": graph.version,
-                    "isFavorite": random.choice([True, False]),
-                    "isCreatedByUser": random.choice([True, False]),
-                    "isArchived": random.choice([True, False]),
-                    "isDeleted": random.choice([True, False]),
-                }
+                data=LibraryAgentCreateInput(
+                    userId=user.id,
+                    agentGraphId=graph.id,
+                    agentGraphVersion=graph.version,
+                    isFavorite=random.choice([True, False]),
+                    isCreatedByUser=random.choice([True, False]),
+                    isArchived=random.choice([True, False]),
+                    isDeleted=random.choice([True, False]),
+                )
             )
             user_agents.append(user_agent)
 
