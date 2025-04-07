@@ -6,10 +6,14 @@ from typing import Annotated, Any, Generic, Optional, TypeVar, Union
 from prisma import Json
 from prisma.enums import NotificationType
 from prisma.models import NotificationEvent, UserNotificationBatch
-from prisma.types import UserNotificationBatchWhereInput
+from prisma.types import (
+    NotificationEventCreateInput,
+    UserNotificationBatchCreateInput,
+    UserNotificationBatchWhereInput,
+)
 
 # from backend.notifications.models import NotificationEvent
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from backend.server.v2.store.exceptions import DatabaseError
 
@@ -35,8 +39,7 @@ class QueueType(Enum):
 
 
 class BaseNotificationData(BaseModel):
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class AgentRunData(BaseNotificationData):
@@ -398,6 +401,8 @@ async def create_or_add_to_user_notification_batch(
         logger.info(
             f"Creating or adding to notification batch for {user_id} with type {notification_type} and data {notification_data}"
         )
+        if not notification_data.data:
+            raise ValueError("Notification data must be provided")
 
         # Serialize the data
         json_data: Json = Json(notification_data.data.model_dump())
@@ -416,30 +421,30 @@ async def create_or_add_to_user_notification_batch(
         if not existing_batch:
             async with transaction() as tx:
                 notification_event = await tx.notificationevent.create(
-                    data={
-                        "type": notification_type,
-                        "data": json_data,
-                    }
+                    data=NotificationEventCreateInput(
+                        type=notification_type,
+                        data=json_data,
+                    )
                 )
 
                 # Create new batch
                 resp = await tx.usernotificationbatch.create(
-                    data={
-                        "userId": user_id,
-                        "type": notification_type,
-                        "Notifications": {"connect": [{"id": notification_event.id}]},
-                    },
+                    data=UserNotificationBatchCreateInput(
+                        userId=user_id,
+                        type=notification_type,
+                        Notifications={"connect": [{"id": notification_event.id}]},
+                    ),
                     include={"Notifications": True},
                 )
                 return UserNotificationBatchDTO.from_db(resp)
         else:
             async with transaction() as tx:
                 notification_event = await tx.notificationevent.create(
-                    data={
-                        "type": notification_type,
-                        "data": json_data,
-                        "UserNotificationBatch": {"connect": {"id": existing_batch.id}},
-                    }
+                    data=NotificationEventCreateInput(
+                        type=notification_type,
+                        data=json_data,
+                        UserNotificationBatch={"connect": {"id": existing_batch.id}},
+                    )
                 )
                 # Add to existing batch
                 resp = await tx.usernotificationbatch.update(

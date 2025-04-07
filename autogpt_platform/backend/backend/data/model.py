@@ -142,8 +142,12 @@ def SchemaField(
     exclude: bool = False,
     hidden: Optional[bool] = None,
     depends_on: Optional[list[str]] = None,
+    ge: Optional[float] = None,
+    le: Optional[float] = None,
+    min_length: Optional[int] = None,
+    max_length: Optional[int] = None,
+    discriminator: Optional[str] = None,
     json_schema_extra: Optional[dict[str, Any]] = None,
-    **kwargs,
 ) -> T:
     if default is PydanticUndefined and default_factory is None:
         advanced = False
@@ -170,8 +174,12 @@ def SchemaField(
         title=title,
         description=description,
         exclude=exclude,
+        ge=ge,
+        le=le,
+        min_length=min_length,
+        max_length=max_length,
+        discriminator=discriminator,
         json_schema_extra=json_schema_extra,
-        **kwargs,
     )  # type: ignore
 
 
@@ -405,9 +413,10 @@ class RefundRequest(BaseModel):
 class NodeExecutionStats(BaseModel):
     """Execution statistics for a node execution."""
 
-    class Config:
-        arbitrary_types_allowed = True
-        extra = "allow"
+    model_config = ConfigDict(
+        extra="allow",
+        arbitrary_types_allowed=True,
+    )
 
     error: Optional[Exception | str] = None
     walltime: float = 0
@@ -423,9 +432,10 @@ class NodeExecutionStats(BaseModel):
 class GraphExecutionStats(BaseModel):
     """Execution statistics for a graph execution."""
 
-    class Config:
-        arbitrary_types_allowed = True
-        extra = "allow"
+    model_config = ConfigDict(
+        extra="allow",
+        arbitrary_types_allowed=True,
+    )
 
     error: Optional[Exception | str] = None
     walltime: float = Field(

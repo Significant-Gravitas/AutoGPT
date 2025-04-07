@@ -14,7 +14,6 @@ from backend.data.block import (
     BlockOutput,
     BlockSchema,
     BlockType,
-    get_block,
 )
 from backend.data.model import SchemaField
 from backend.util import json
@@ -264,9 +263,7 @@ class SmartDecisionMakerBlock(Block):
         Raises:
             ValueError: If the block specified by sink_node.block_id is not found.
         """
-        block = get_block(sink_node.block_id)
-        if not block:
-            raise ValueError(f"Block not found: {sink_node.block_id}")
+        block = sink_node.block
 
         tool_function: dict[str, Any] = {
             "name": re.sub(r"[^a-zA-Z0-9_-]", "_", block.name).lower(),

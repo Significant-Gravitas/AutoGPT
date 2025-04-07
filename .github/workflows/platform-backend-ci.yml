@@ -80,18 +80,35 @@ jobs:
 
       - name: Install Poetry (Unix)
         run: |
-          curl -sSL https://install.python-poetry.org | python3 -
+          # Extract Poetry version from backend/poetry.lock
+          HEAD_POETRY_VERSION=$(head -n 1 poetry.lock | grep -oP '(?<=Poetry )[0-9]+\.[0-9]+\.[0-9]+')
+          echo "Found Poetry version ${HEAD_POETRY_VERSION} in backend/poetry.lock"
+
+          if [ -n "$BASE_REF" ]; then
+            BASE_BRANCH=${BASE_REF/refs\/heads\//}
+            BASE_POETRY_VERSION=$((git show "origin/$BASE_BRANCH":./poetry.lock; true) | head -n 1 | grep -oP '(?<=Poetry )[0-9]+\.[0-9]+\.[0-9]+')
+            echo "Found Poetry version ${BASE_POETRY_VERSION} in backend/poetry.lock on ${BASE_REF}"
+            POETRY_VERSION=$(printf '%s\n' "$HEAD_POETRY_VERSION" "$BASE_POETRY_VERSION" | sort -V | tail -n1)
+          else
+            POETRY_VERSION=$HEAD_POETRY_VERSION
+          fi
+          echo "Using Poetry version ${POETRY_VERSION}"
+
+          # Install Poetry
+          curl -sSL https://install.python-poetry.org | POETRY_VERSION=$POETRY_VERSION python3 -
 
           if [ "${{ runner.os }}" = "macOS" ]; then
             PATH="$HOME/.local/bin:$PATH"
             echo "$HOME/.local/bin" >> $GITHUB_PATH
           fi
+        env:
+          BASE_REF: ${{ github.base_ref || github.event.merge_group.base_ref }}
 
       - name: Check poetry.lock
         run: |
           poetry lock
 
-          if ! git diff --quiet poetry.lock; then
+          if ! git diff --quiet --ignore-matching-lines="^# " poetry.lock; then
             echo "Error: poetry.lock not up to date."
             echo
             git diff poetry.lock

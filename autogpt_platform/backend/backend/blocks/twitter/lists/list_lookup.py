@@ -39,7 +39,6 @@ class TwitterGetListBlock(Block):
         list_id: str = SchemaField(
             description="The ID of the List to lookup",
             placeholder="Enter list ID",
-            required=True,
         )
 
     class Output(BlockSchema):
@@ -184,7 +183,6 @@ class TwitterGetOwnedListsBlock(Block):
         user_id: str = SchemaField(
             description="The user ID whose owned Lists to retrieve",
             placeholder="Enter user ID",
-            required=True,
         )
 
         max_results: int | None = SchemaField(
