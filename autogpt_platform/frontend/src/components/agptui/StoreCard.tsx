@@ -72,21 +72,21 @@ export const StoreCard: React.FC<StoreCardProps> = ({
         )}
       </div>
 
-      <div className="mt-[12px] flex w-full flex-1 flex-col px-4">
+      <div className="mt-3 flex w-full flex-1 flex-col px-4">
         {/* Second Section: Agent Name and Creator Name */}
         <div className="flex w-full flex-col">
           <h3 className="line-clamp-2 font-poppins text-2xl font-semibold text-[#272727] dark:text-neutral-100">
             {agentName}
           </h3>
           {!hideAvatar && creatorName && (
-            <p className="mt-[12px] truncate font-sans text-xl font-normal text-neutral-600 dark:text-neutral-400">
+            <p className="mt-3 truncate font-sans text-xl font-normal text-neutral-600 dark:text-neutral-400">
               by {creatorName}
             </p>
           )}
         </div>
 
         {/* Third Section: Description */}
-        <div className="mt-[10px] flex w-full flex-col">
+        <div className="mt-2.5 flex w-full flex-col">
           <p className="line-clamp-3 font-sans text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400">
             {description}
           </p>
@@ -96,13 +96,13 @@ export const StoreCard: React.FC<StoreCardProps> = ({
         {/* Spacer to push stats to bottom */}
 
         {/* Fourth Section: Stats Row - aligned to bottom */}
-        <div className="mt-[20px] w-full">
+        <div className="mt-5 w-full">
           <div className="flex items-center justify-between">
             <div className="font-sans text-lg font-semibold text-neutral-800 dark:text-neutral-200">
               {runs.toLocaleString()} runs
             </div>
             <div className="flex items-center gap-2">
-              <span className="font-geist text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+              <span className="font-sans text-lg font-semibold text-neutral-800 dark:text-neutral-200">
                 {rating.toFixed(1)}
               </span>
               <div
