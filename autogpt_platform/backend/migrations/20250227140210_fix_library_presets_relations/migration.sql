@@ -24,14 +24,12 @@ ALTER TABLE "LibraryAgent" DROP CONSTRAINT "LibraryAgent_agentId_agentVersion_fk
 ALTER TABLE "LibraryAgent" DROP CONSTRAINT "LibraryAgent_agentPresetId_fkey";
 
 -- Rename columns in AgentPreset
-ALTER TABLE "AgentPreset"
-RENAME COLUMN "agentId"      TO "agentGraphId",
-RENAME COLUMN "agentVersion" TO "agentGraphVersion";
+ALTER TABLE "AgentPreset" RENAME COLUMN "agentId"      TO "agentGraphId";
+ALTER TABLE "AgentPreset" RENAME COLUMN "agentVersion" TO "agentGraphVersion";
 
 -- Rename columns in LibraryAgent
-ALTER TABLE "LibraryAgent"
-RENAME COLUMN "agentId"      TO "agentGraphId",
-RENAME COLUMN "agentVersion" TO "agentGraphVersion";
+ALTER TABLE "LibraryAgent" RENAME COLUMN "agentId"      TO "agentGraphId";
+ALTER TABLE "LibraryAgent" RENAME COLUMN "agentVersion" TO "agentGraphVersion";
 
 -- Drop LibraryAgent.agentPresetId column
 ALTER TABLE "LibraryAgent" DROP COLUMN "agentPresetId";
