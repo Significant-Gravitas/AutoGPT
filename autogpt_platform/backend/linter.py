@@ -41,7 +41,7 @@ def lint():
 
     if lint_error:
         print("Lint failed, try running `poetry run format` to fix the issues")
-        raise lint_error
+        sys.exit(1)
 
 
 def format():
