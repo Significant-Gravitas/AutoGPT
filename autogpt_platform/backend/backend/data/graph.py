@@ -7,7 +7,12 @@ import prisma
 from prisma import Json
 from prisma.enums import SubmissionStatus
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink, StoreListingVersion
-from prisma.types import AgentGraphWhereInput
+from prisma.types import (
+    AgentGraphCreateInput,
+    AgentGraphWhereInput,
+    AgentNodeCreateInput,
+    AgentNodeLinkCreateInput,
+)
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -53,21 +58,22 @@ class Node(BaseDbModel):
     input_links: list[Link] = []
     output_links: list[Link] = []
 
-    webhook_id: Optional[str] = None
+    @property
+    def block(self) -> Block[BlockSchema, BlockSchema]:
+        block = get_block(self.block_id)
+        if not block:
+            raise ValueError(
+                f"Block #{self.block_id} does not exist -> Node #{self.id} is invalid"
+            )
+        return block
 
 
 class NodeModel(Node):
     graph_id: str
     graph_version: int
 
+    webhook_id: Optional[str] = None
     webhook: Optional[Webhook] = None
-
-    @property
-    def block(self) -> Block[BlockSchema, BlockSchema]:
-        block = get_block(self.block_id)
-        if not block:
-            raise ValueError(f"Block #{self.block_id} does not exist")
-        return block
 
     @staticmethod
     def from_db(node: AgentNode, for_export: bool = False) -> "NodeModel":
@@ -88,8 +94,7 @@ class NodeModel(Node):
         return obj
 
     def is_triggered_by_event_type(self, event_type: str) -> bool:
-        if not (block := get_block(self.block_id)):
-            raise ValueError(f"Block #{self.block_id} not found for node #{self.id}")
+        block = self.block
         if not block.webhook_config:
             raise TypeError("This method can't be used on non-webhook blocks")
         if not block.webhook_config.event_filter_input:
@@ -165,46 +170,46 @@ class BaseGraph(BaseDbModel):
     @property
     def input_schema(self) -> dict[str, Any]:
         return self._generate_schema(
-            AgentInputBlock.Input,
-            [
-                node.input_default
+            *(
+                (block.input_schema, node.input_default)
                 for node in self.nodes
-                if (b := get_block(node.block_id))
-                and b.block_type == BlockType.INPUT
-                and "name" in node.input_default
-            ],
+                if (block := node.block).block_type == BlockType.INPUT
+                and issubclass(block.input_schema, AgentInputBlock.Input)
+            )
         )
 
     @computed_field
     @property
     def output_schema(self) -> dict[str, Any]:
         return self._generate_schema(
-            AgentOutputBlock.Input,
-            [
-                node.input_default
+            *(
+                (block.input_schema, node.input_default)
                 for node in self.nodes
-                if (b := get_block(node.block_id))
-                and b.block_type == BlockType.OUTPUT
-                and "name" in node.input_default
-            ],
+                if (block := node.block).block_type == BlockType.OUTPUT
+                and issubclass(block.input_schema, AgentOutputBlock.Input)
+            )
         )
 
     @staticmethod
     def _generate_schema(
-        type_class: Type[AgentInputBlock.Input] | Type[AgentOutputBlock.Input],
-        data: list[dict],
+        *props: tuple[Type[AgentInputBlock.Input] | Type[AgentOutputBlock.Input], dict],
     ) -> dict[str, Any]:
-        props = []
-        for p in data:
+        schema = []
+        for type_class, input_default in props:
             try:
-                props.append(type_class(**p))
+                schema.append(type_class(**input_default))
             except Exception as e:
-                logger.warning(f"Invalid {type_class}: {p}, {e}")
+                logger.warning(f"Invalid {type_class}: {input_default}, {e}")
 
         return {
             "type": "object",
             "properties": {
                 p.name: {
+                    **{
+                        k: v
+                        for k, v in p.generate_schema().items()
+                        if k not in ["description", "default"]
+                    },
                     "secret": p.secret,
                     # Default value has to be set for advanced fields.
                     "advanced": p.advanced and p.value is not None,
@@ -212,9 +217,9 @@ class BaseGraph(BaseDbModel):
                     **({"description": p.description} if p.description else {}),
                     **({"default": p.value} if p.value is not None else {}),
                 }
-                for p in props
+                for p in schema
             },
-            "required": [p.name for p in props if p.value is None],
+            "required": [p.name for p in schema if p.value is None],
         }
 
 
@@ -226,19 +231,34 @@ class GraphModel(Graph):
     user_id: str
     nodes: list[NodeModel] = []  # type: ignore
 
+    @computed_field
     @property
-    def starting_nodes(self) -> list[Node]:
+    def has_webhook_trigger(self) -> bool:
+        return self.webhook_input_node is not None
+
+    @property
+    def starting_nodes(self) -> list[NodeModel]:
         outbound_nodes = {link.sink_id for link in self.links}
         input_nodes = {
-            v.id
-            for v in self.nodes
-            if (b := get_block(v.block_id)) and b.block_type == BlockType.INPUT
+            node.id for node in self.nodes if node.block.block_type == BlockType.INPUT
         }
         return [
             node
             for node in self.nodes
             if node.id not in outbound_nodes or node.id in input_nodes
         ]
+
+    @property
+    def webhook_input_node(self) -> NodeModel | None:
+        return next(
+            (
+                node
+                for node in self.nodes
+                if node.block.block_type
+                in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
+            ),
+            None,
+        )
 
     def reassign_ids(self, user_id: str, reassign_graph_id: bool = False):
         """
@@ -389,9 +409,7 @@ class GraphModel(Graph):
         node_map = {v.id: v for v in graph.nodes}
 
         def is_static_output_block(nid: str) -> bool:
-            bid = node_map[nid].block_id
-            b = get_block(bid)
-            return b.static_output if b else False
+            return node_map[nid].block.static_output
 
         # Links: links are connected and the connected pin data type are compatible.
         for link in graph.links:
@@ -538,7 +556,6 @@ async def get_graph_metadata(graph_id: str, version: int | None = None) -> Graph
 
     graph = await AgentGraph.prisma().find_first(
         where=where_clause,
-        include=AGENT_GRAPH_INCLUDE,
         order={"version": "desc"},
     )
 
@@ -725,29 +742,28 @@ async def __create_graph(tx, graph: Graph, user_id: str):
 
     await AgentGraph.prisma(tx).create_many(
         data=[
-            {
-                "id": graph.id,
-                "version": graph.version,
-                "name": graph.name,
-                "description": graph.description,
-                "isActive": graph.is_active,
-                "userId": user_id,
-            }
+            AgentGraphCreateInput(
+                id=graph.id,
+                version=graph.version,
+                name=graph.name,
+                description=graph.description,
+                isActive=graph.is_active,
+                userId=user_id,
+            )
             for graph in graphs
         ]
     )
 
     await AgentNode.prisma(tx).create_many(
         data=[
-            {
-                "id": node.id,
-                "agentGraphId": graph.id,
-                "agentGraphVersion": graph.version,
-                "agentBlockId": node.block_id,
-                "constantInput": Json(node.input_default),
-                "metadata": Json(node.metadata),
-                "webhookId": node.webhook_id,
-            }
+            AgentNodeCreateInput(
+                id=node.id,
+                agentGraphId=graph.id,
+                agentGraphVersion=graph.version,
+                agentBlockId=node.block_id,
+                constantInput=Json(node.input_default),
+                metadata=Json(node.metadata),
+            )
             for graph in graphs
             for node in graph.nodes
         ]
@@ -755,14 +771,14 @@ async def __create_graph(tx, graph: Graph, user_id: str):
 
     await AgentNodeLink.prisma(tx).create_many(
         data=[
-            {
-                "id": str(uuid.uuid4()),
-                "sourceName": link.source_name,
-                "sinkName": link.sink_name,
-                "agentNodeSourceId": link.source_id,
-                "agentNodeSinkId": link.sink_id,
-                "isStatic": link.is_static,
-            }
+            AgentNodeLinkCreateInput(
+                id=str(uuid.uuid4()),
+                sourceName=link.source_name,
+                sinkName=link.sink_name,
+                agentNodeSourceId=link.source_id,
+                agentNodeSinkId=link.sink_id,
+                isStatic=link.is_static,
+            )
             for graph in graphs
             for link in graph.links
         ]

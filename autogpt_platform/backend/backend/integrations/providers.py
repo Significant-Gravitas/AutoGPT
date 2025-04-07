@@ -11,6 +11,7 @@ class ProviderName(str, Enum):
     E2B = "e2b"
     EXA = "exa"
     FAL = "fal"
+    GENERIC_WEBHOOK = "generic_webhook"
     GITHUB = "github"
     GOOGLE = "google"
     GOOGLE_MAPS = "google_maps"
