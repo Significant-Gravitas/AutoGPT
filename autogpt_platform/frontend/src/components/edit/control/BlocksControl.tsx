@@ -22,6 +22,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { GraphMeta } from "@/lib/autogpt-server-api";
+import jaro from "jaro-winkler";
 
 interface BlocksControlProps {
   blocks: Block[];
@@ -89,32 +90,6 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
         }) satisfies Block,
     );
 
-    // Levenshtein distance Algorithm
-    const calculateSimilarity = (str1: string, str2: string): number => {
-      const len1 = str1.length;
-      const len2 = str2.length;
-      const matrix: number[][] = Array(len1 + 1)
-        .fill(null)
-        .map(() => Array(len2 + 1).fill(null));
-
-      for (let i = 0; i <= len1; i++) matrix[i][0] = i;
-      for (let j = 0; j <= len2; j++) matrix[0][j] = j;
-
-      for (let i = 1; i <= len1; i++) {
-        for (let j = 1; j <= len2; j++) {
-          const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j] + 1,
-            matrix[i][j - 1] + 1,
-            matrix[i - 1][j - 1] + cost,
-          );
-        }
-      }
-
-      // Convert distance to similarity score
-      return 1 - matrix[len1][len2] / Math.max(len1, len2);
-    };
-
     /**
      * Evaluates how well a block matches the search query and returns a relevance score.
      * The scoring algorithm works as follows:
@@ -122,7 +97,7 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
      * - Normalized query for case-insensitive matching
      * - Returns 3 for exact substring matches in block name (highest priority)
      * - Returns 2 when all query words appear in the block name (regardless of order)
-     * - Returns 1.X for blocks with names similar to query using Levenshtein distance (X is similarity score)
+     * - Returns 1.X for blocks with names similar to query using Jaro-Winkler distance (X is similarity score)
      * - Returns 0.5 when all query words appear in the block description (lowest priority)
      * - Returns 0 for no match
      *
@@ -150,13 +125,10 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
       );
       if (allWordsInName) return 2;
 
-      // 3. Similarity with name (Levenshtein)
-      const similarityThreshold = 0.3;
-      const nameSimilarity = calculateSimilarity(blockName, normalizedQuery);
-      const beautifiedSimilarity = calculateSimilarity(
-        beautifiedName,
-        normalizedQuery,
-      );
+      // 3. Similarity with name (Jaro-Winkler)
+      const similarityThreshold = 0.65;
+      const nameSimilarity = jaro(blockName, normalizedQuery);
+      const beautifiedSimilarity = jaro(beautifiedName, normalizedQuery);
       const maxSimilarity = Math.max(nameSimilarity, beautifiedSimilarity);
       if (maxSimilarity > similarityThreshold) {
         return 1 + maxSimilarity; // Score between 1 and 2
