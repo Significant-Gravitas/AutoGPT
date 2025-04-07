@@ -17,6 +17,7 @@ from typing import (
 import jsonref
 import jsonschema
 from prisma.models import AgentBlock
+from prisma.types import AgentBlockCreateInput
 from pydantic import BaseModel
 
 from backend.data.model import NodeExecutionStats
@@ -480,12 +481,12 @@ async def initialize_blocks() -> None:
         )
         if not existing_block:
             await AgentBlock.prisma().create(
-                data={
-                    "id": block.id,
-                    "name": block.name,
-                    "inputSchema": json.dumps(block.input_schema.jsonschema()),
-                    "outputSchema": json.dumps(block.output_schema.jsonschema()),
-                }
+                data=AgentBlockCreateInput(
+                    id=block.id,
+                    name=block.name,
+                    inputSchema=json.dumps(block.input_schema.jsonschema()),
+                    outputSchema=json.dumps(block.output_schema.jsonschema()),
+                )
             )
             continue
 

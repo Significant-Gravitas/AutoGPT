@@ -24,6 +24,8 @@ from prisma.models import (
 )
 from prisma.types import (
     AgentGraphExecutionWhereInput,
+    AgentNodeExecutionCreateInput,
+    AgentNodeExecutionInputOutputCreateInput,
     AgentNodeExecutionUpdateInput,
     AgentNodeExecutionWhereInput,
 )
@@ -167,7 +169,7 @@ class GraphExecution(GraphExecutionMeta):
         return GraphExecution(
             **{
                 field_name: getattr(graph_exec, field_name)
-                for field_name in graph_exec.model_fields
+                for field_name in GraphExecutionMeta.model_fields
             },
             inputs=inputs,
             outputs=outputs,
@@ -195,7 +197,7 @@ class GraphExecutionWithNodes(GraphExecution):
         return GraphExecutionWithNodes(
             **{
                 field_name: getattr(graph_exec_with_io, field_name)
-                for field_name in graph_exec_with_io.model_fields
+                for field_name in GraphExecution.model_fields
             },
             node_executions=node_executions,
         )
@@ -418,11 +420,11 @@ async def upsert_execution_input(
 
     if existing_execution:
         await AgentNodeExecutionInputOutput.prisma().create(
-            data={
-                "name": input_name,
-                "data": json_input_data,
-                "referencedByInputExecId": existing_execution.id,
-            }
+            data=AgentNodeExecutionInputOutputCreateInput(
+                name=input_name,
+                data=json_input_data,
+                referencedByInputExecId=existing_execution.id,
+            )
         )
         return existing_execution.id, {
             **{
@@ -434,12 +436,12 @@ async def upsert_execution_input(
 
     elif not node_exec_id:
         result = await AgentNodeExecution.prisma().create(
-            data={
-                "agentNodeId": node_id,
-                "agentGraphExecutionId": graph_exec_id,
-                "executionStatus": ExecutionStatus.INCOMPLETE,
-                "Input": {"create": {"name": input_name, "data": json_input_data}},
-            }
+            data=AgentNodeExecutionCreateInput(
+                agentNodeId=node_id,
+                agentGraphExecutionId=graph_exec_id,
+                executionStatus=ExecutionStatus.INCOMPLETE,
+                Input={"create": {"name": input_name, "data": json_input_data}},
+            )
         )
         return result.id, {input_name: input_data}
 
@@ -458,11 +460,11 @@ async def upsert_execution_output(
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Output.
     """
     await AgentNodeExecutionInputOutput.prisma().create(
-        data={
-            "name": output_name,
-            "data": Json(output_data),
-            "referencedByOutputExecId": node_exec_id,
-        }
+        data=AgentNodeExecutionInputOutputCreateInput(
+            name=output_name,
+            data=Json(output_data),
+            referencedByOutputExecId=node_exec_id,
+        )
     )
 
 
