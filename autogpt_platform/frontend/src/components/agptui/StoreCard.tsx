@@ -44,8 +44,8 @@ export const StoreCard: React.FC<StoreCardProps> = ({
         }
       }}
     >
-      {/* Header Image Section with Avatar */}
-      <div className="relative h-[200px] w-full overflow-hidden rounded-[20px]">
+      {/* Header Image Section with Avatar*/}
+      <div className="relative aspect-[2.17/1] w-full overflow-hidden rounded-[20px]">
         {agentImage && (
           <Image
             src={agentImage}
@@ -75,16 +75,16 @@ export const StoreCard: React.FC<StoreCardProps> = ({
       {/* Content Section */}
       <div className="w-full px-2 py-4">
         {/* Title and Creator */}
-        <h3 className="mb-0.5 font-poppins text-2xl font-semibold text-[#272727] dark:text-neutral-100">
+        <h3 className="mb-0.5 line-clamp-2 h-[60px] font-poppins text-2xl font-semibold text-[#272727] dark:text-neutral-100">
           {agentName}
         </h3>
         {!hideAvatar && creatorName && (
-          <p className="mb-2.5 font-sans text-xl font-normal text-neutral-600 dark:text-neutral-400">
+          <p className="mb-2.5 h-[28px] truncate font-sans text-xl font-normal text-neutral-600 dark:text-neutral-400">
             by {creatorName}
           </p>
         )}
         {/* Description */}
-        <p className="mb-4 font-sans text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400">
+        <p className="mb-4 line-clamp-3 h-[72px] font-sans text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400">
           {description}
         </p>
 
