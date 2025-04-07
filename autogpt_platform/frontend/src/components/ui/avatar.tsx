@@ -71,7 +71,7 @@ const AvatarFallback = React.forwardRef<
     {...props}
   >
     <BoringAvatar
-      size={size !== undefined ? size : getAvatarSize(className)}
+      size={size || getAvatarSize(className)}
       name={props.children?.toString() || "User"}
       variant="marble"
       colors={["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"]}
