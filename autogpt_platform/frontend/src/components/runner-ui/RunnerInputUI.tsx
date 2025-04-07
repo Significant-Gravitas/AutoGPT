@@ -19,7 +19,6 @@ export interface BlockInput {
     description: string;
     value: any;
     placeholder_values?: any[];
-    limit_to_placeholder_values?: boolean;
   };
 }
 
@@ -27,7 +26,7 @@ interface RunSettingsUiProps {
   isOpen: boolean;
   onClose: () => void;
   blockInputs: BlockInput[];
-  onInputChange: (nodeId: string, field: string, value: string) => void;
+  onInputChange: (nodeId: string, field: string, value: any) => void;
   onRun: () => void;
   onSchedule: () => Promise<void>;
   scheduledInput: boolean;
@@ -58,8 +57,8 @@ export function RunnerInputUI({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="flex max-h-[80vh] flex-col overflow-hidden sm:max-w-[400px] md:max-w-[500px] lg:max-w-[600px]">
-        <DialogHeader className="px-4 py-4">
+      <DialogContent className="flex flex-col px-10 py-8">
+        <DialogHeader>
           <DialogTitle className="text-2xl">
             {scheduledInput ? "Schedule Settings" : "Run Settings"}
           </DialogTitle>
@@ -67,14 +66,14 @@ export function RunnerInputUI({
             Configure settings for running your agent.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex-grow overflow-y-auto px-4 py-4">
+        <div className="flex-grow overflow-y-auto">
           <InputList blockInputs={blockInputs} onInputChange={onInputChange} />
         </div>
-        <DialogFooter className="px-6 py-4">
+        <DialogFooter>
           <Button
             data-testid="run-dialog-run-button"
             onClick={scheduledInput ? handleSchedule : handleRun}
-            className="px-8 py-2 text-lg"
+            className="text-lg"
             disabled={scheduledInput ? isScheduling : isRunning}
           >
             {scheduledInput ? "Schedule" : isRunning ? "Running..." : "Run"}

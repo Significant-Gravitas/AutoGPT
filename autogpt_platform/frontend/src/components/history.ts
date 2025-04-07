@@ -1,4 +1,3 @@
-// history.ts
 import { CustomNodeData } from "./CustomNode";
 import { CustomEdgeData } from "./CustomEdge";
 import { Edge } from "@xyflow/react";

@@ -1,9 +1,10 @@
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
-    GraphExecutionMeta,
+    GraphExecution,
     NodeExecutionResult,
     RedisExecutionEventBus,
     create_graph_execution,
+    get_graph_execution,
     get_incomplete_node_executions,
     get_latest_node_execution,
     get_node_execution_results,
@@ -64,11 +65,12 @@ class DatabaseManager(AppService):
 
     @expose
     def send_execution_update(
-        self, execution_result: GraphExecutionMeta | NodeExecutionResult
+        self, execution_result: GraphExecution | NodeExecutionResult
     ):
         self.execution_event_bus.publish(execution_result)
 
     # Executions
+    get_graph_execution = exposed_run_and_wait(get_graph_execution)
     create_graph_execution = exposed_run_and_wait(create_graph_execution)
     get_node_execution_results = exposed_run_and_wait(get_node_execution_results)
     get_incomplete_node_executions = exposed_run_and_wait(

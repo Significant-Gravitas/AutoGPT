@@ -12,12 +12,12 @@ async def log_raw_analytics(
     data_index: str,
 ):
     details = await prisma.models.AnalyticsDetails.prisma().create(
-        data={
-            "userId": user_id,
-            "type": type,
-            "data": prisma.Json(data),
-            "dataIndex": data_index,
-        }
+        data=prisma.types.AnalyticsDetailsCreateInput(
+            userId=user_id,
+            type=type,
+            data=prisma.Json(data),
+            dataIndex=data_index,
+        )
     )
     return details
 
@@ -32,12 +32,12 @@ async def log_raw_metric(
         raise ValueError("metric_value must be non-negative")
 
     result = await prisma.models.AnalyticsMetrics.prisma().create(
-        data={
-            "value": metric_value,
-            "analyticMetric": metric_name,
-            "userId": user_id,
-            "dataString": data_string,
-        },
+        data=prisma.types.AnalyticsMetricsCreateInput(
+            value=metric_value,
+            analyticMetric=metric_name,
+            userId=user_id,
+            dataString=data_string,
+        )
     )
 
     return result
