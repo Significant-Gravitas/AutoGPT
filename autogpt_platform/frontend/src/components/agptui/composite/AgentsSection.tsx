@@ -82,7 +82,7 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
               </CarouselContent>
             </Carousel>
 
-            <div className="hidden grid-cols-1 place-items-center gap-6 md:grid md:grid-cols-2 lg:grid-cols-4">
+            <div className="hidden grid-cols-1 place-items-center gap-6 md:grid md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
               {displayedAgents.map((agent, index) => (
                 <StoreCard
                   key={index}

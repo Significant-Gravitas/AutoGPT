@@ -32,7 +32,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
 
   return (
     <div
-      className="inline-flex w-full max-w-[434px] cursor-pointer flex-col items-start justify-start gap-2.5 rounded-[26px] bg-white transition-all duration-300 hover:shadow-lg dark:bg-transparent dark:hover:shadow-gray-700"
+      className="flex h-[433px] w-full max-w-[434px] cursor-pointer flex-col items-start rounded-[26px] bg-white transition-all duration-300 hover:shadow-lg dark:bg-transparent dark:hover:shadow-gray-700"
       onClick={handleClick}
       data-testid="store-card"
       role="button"
@@ -44,8 +44,8 @@ export const StoreCard: React.FC<StoreCardProps> = ({
         }
       }}
     >
-      {/* Header Image Section with Avatar*/}
-      <div className="relative aspect-[2.17/1] w-full overflow-hidden rounded-[20px]">
+      {/* First Section: Image with Avatar */}
+      <div className="relative aspect-[2/1.2] w-full overflow-hidden rounded-[20px] md:aspect-[2.17/1]">
         {agentImage && (
           <Image
             src={agentImage}
@@ -72,37 +72,46 @@ export const StoreCard: React.FC<StoreCardProps> = ({
         )}
       </div>
 
-      {/* Content Section */}
-      <div className="w-full px-2 py-4">
-        {/* Title and Creator */}
-        <h3 className="mb-0.5 line-clamp-2 h-[60px] font-poppins text-2xl font-semibold text-[#272727] dark:text-neutral-100">
-          {agentName}
-        </h3>
-        {!hideAvatar && creatorName && (
-          <p className="mb-2.5 h-[28px] truncate font-sans text-xl font-normal text-neutral-600 dark:text-neutral-400">
-            by {creatorName}
-          </p>
-        )}
-        {/* Description */}
-        <p className="mb-4 line-clamp-3 h-[72px] font-sans text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400">
-          {description}
-        </p>
+      <div className="mt-[12px] flex w-full flex-1 flex-col px-4">
+        {/* Second Section: Agent Name and Creator Name */}
+        <div className="flex w-full flex-col">
+          <h3 className="line-clamp-2 font-poppins text-2xl font-semibold text-[#272727] dark:text-neutral-100">
+            {agentName}
+          </h3>
+          {!hideAvatar && creatorName && (
+            <p className="mt-[12px] truncate font-sans text-xl font-normal text-neutral-600 dark:text-neutral-400">
+              by {creatorName}
+            </p>
+          )}
+        </div>
 
-        {/* Stats Row */}
-        <div className="flex items-center justify-between">
-          <div className="font-sans text-lg font-semibold text-neutral-800 dark:text-neutral-200">
-            {runs.toLocaleString()} runs
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="font-geist text-lg font-semibold text-neutral-800 dark:text-neutral-200">
-              {rating.toFixed(1)}
-            </span>
-            <div
-              className="inline-flex items-center"
-              role="img"
-              aria-label={`Rating: ${rating.toFixed(1)} out of 5 stars`}
-            >
-              {StarRatingIcons(rating)}
+        {/* Third Section: Description */}
+        <div className="mt-[10px] flex w-full flex-col">
+          <p className="line-clamp-3 font-sans text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400">
+            {description}
+          </p>
+        </div>
+
+        <div className="flex-grow" />
+        {/* Spacer to push stats to bottom */}
+
+        {/* Fourth Section: Stats Row - aligned to bottom */}
+        <div className="mt-[20px] w-full">
+          <div className="flex items-center justify-between">
+            <div className="font-sans text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+              {runs.toLocaleString()} runs
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-geist text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+                {rating.toFixed(1)}
+              </span>
+              <div
+                className="inline-flex items-center"
+                role="img"
+                aria-label={`Rating: ${rating.toFixed(1)} out of 5 stars`}
+              >
+                {StarRatingIcons(rating)}
+              </div>
             </div>
           </div>
         </div>
