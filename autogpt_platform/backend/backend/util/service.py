@@ -47,6 +47,7 @@ from backend.util.json import to_dict
 from backend.util.process import AppProcess, get_service_name
 from backend.util.retry import conn_retry
 from backend.util.settings import Config, Secrets
+from backend.util.metrics import sentry_init
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -354,6 +355,7 @@ class FastApiAppService(BaseAppService, ABC):
 
     def run(self):
         super().run()
+        sentry_init()
         self.fastapi_app = FastAPI()
 
         # Register the exposed API routes.
