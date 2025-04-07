@@ -11,12 +11,14 @@ from autogpt_libs.feature_flag.client import (
     initialize_launchdarkly,
     shutdown_launchdarkly,
 )
+from autogpt_libs.logging.utils import generate_uvicorn_config
 
 import backend.data.block
 import backend.data.db
 import backend.data.graph
 import backend.data.user
 import backend.server.integrations.router
+import backend.server.routers.postmark.postmark
 import backend.server.routers.v1
 import backend.server.v2.admin.credit_admin_routes
 import backend.server.v2.admin.store_admin_routes
@@ -24,7 +26,6 @@ import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
 import backend.server.v2.otto.routes
-import backend.server.v2.postmark.postmark
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
 import backend.util.service
@@ -121,8 +122,8 @@ app.include_router(
 )
 
 app.include_router(
-    backend.server.v2.postmark.postmark.router,
-    tags=["v2", "email"],
+    backend.server.routers.postmark.postmark.router,
+    tags=["v1", "email"],
     prefix="/api/email",
 )
 
@@ -147,6 +148,7 @@ class AgentServer(backend.util.service.AppProcess):
             server_app,
             host=backend.util.settings.Config().agent_api_host,
             port=backend.util.settings.Config().agent_api_port,
+            log_config=generate_uvicorn_config(),
         )
 
     @staticmethod

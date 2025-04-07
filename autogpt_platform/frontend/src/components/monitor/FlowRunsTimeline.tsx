@@ -81,11 +81,13 @@ export const FlowRunsTimeline = ({
                   <strong>Started:</strong>{" "}
                   {moment(data.started_at).format("YYYY-MM-DD HH:mm:ss")}
                 </p>
-                <p>
-                  <strong>Duration / run time:</strong>{" "}
-                  {formatDuration(data.duration)} /{" "}
-                  {formatDuration(data.total_run_time)}
-                </p>
+                {data.stats && (
+                  <p>
+                    <strong>Duration / run time:</strong>{" "}
+                    {formatDuration(data.stats.duration)} /{" "}
+                    {formatDuration(data.stats.node_exec_time)}
+                  </p>
+                )}
               </Card>
             );
           }
@@ -99,8 +101,9 @@ export const FlowRunsTimeline = ({
             .filter((e) => e.graph_id == flow.agent_id)
             .map((e) => ({
               ...e,
-              time: e.started_at.getTime() + e.total_run_time * 1000,
-              _duration: e.total_run_time,
+              time:
+                e.started_at.getTime() + (e.stats?.node_exec_time ?? 0) * 1000,
+              _duration: e.stats?.node_exec_time ?? 0,
             }))}
           name={flow.name}
           fill={`hsl(${(hashString(flow.id) * 137.5) % 360}, 70%, 50%)`}
@@ -120,7 +123,7 @@ export const FlowRunsTimeline = ({
             {
               ...execution,
               time: execution.ended_at.getTime(),
-              _duration: execution.total_run_time,
+              _duration: execution.stats?.node_exec_time ?? 0,
             },
           ]}
           stroke={`hsl(${(hashString(execution.graph_id) * 137.5) % 360}, 70%, 50%)`}

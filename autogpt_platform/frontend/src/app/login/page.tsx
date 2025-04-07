@@ -26,6 +26,7 @@ import {
   PasswordInput,
 } from "@/components/auth";
 import { loginFormSchema } from "@/types/auth";
+import { getBehaveAs } from "@/lib/utils";
 
 export default function LoginPage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -147,7 +148,11 @@ export default function LoginPage() {
             Login
           </AuthButton>
         </form>
-        <AuthFeedback message={feedback} isError={true} />
+        <AuthFeedback
+          message={feedback}
+          isError={!!feedback}
+          behaveAs={getBehaveAs()}
+        />
       </Form>
       <AuthBottomText
         text="Don't have an account?"
