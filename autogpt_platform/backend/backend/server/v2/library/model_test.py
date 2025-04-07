@@ -2,18 +2,21 @@ import datetime
 
 import prisma.fields
 import prisma.models
+import pytest
 
 import backend.server.v2.library.model as library_model
+from backend.util import json
 
 
-def test_agent_preset_from_db():
+@pytest.mark.asyncio
+async def test_agent_preset_from_db():
     # Create mock DB agent
     db_agent = prisma.models.AgentPreset(
         id="test-agent-123",
         createdAt=datetime.datetime.now(),
         updatedAt=datetime.datetime.now(),
-        agentId="agent-123",
-        agentVersion=1,
+        agentGraphId="agent-123",
+        agentGraphVersion=1,
         name="Test Agent",
         description="Test agent description",
         isActive=True,
@@ -24,7 +27,7 @@ def test_agent_preset_from_db():
                 id="input-123",
                 time=datetime.datetime.now(),
                 name="input1",
-                data=prisma.fields.Json({"type": "string", "value": "test value"}),
+                data=json.dumps({"type": "string", "value": "test value"}),  # type: ignore
             )
         ],
     )

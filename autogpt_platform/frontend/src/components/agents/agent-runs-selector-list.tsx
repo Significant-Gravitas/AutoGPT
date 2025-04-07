@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import {
   GraphExecutionID,
   GraphExecutionMeta,
-  GraphMeta,
+  LibraryAgent,
   LibraryAgentPreset,
   LibraryAgentPresetID,
   Schedule,
@@ -22,16 +22,17 @@ import { agentRunStatusMap } from "@/components/agents/agent-run-status-chip";
 import AgentRunSummaryCard from "@/components/agents/agent-run-summary-card";
 
 interface AgentRunsSelectorListProps {
-  agent: GraphMeta;
+  agent: LibraryAgent;
   agentRuns: GraphExecutionMeta[];
   agentPresets: LibraryAgentPreset[];
   schedules: Schedule[];
   selectedView: AgentRunsViewSelection;
+  allowDraftNewRun?: boolean;
   onSelectRun: (id: GraphExecutionID) => void;
   onSelectPreset: (id: LibraryAgentPresetID) => void;
   onSelectSchedule: (schedule: Schedule) => void;
   onSelectDraftNewRun: () => void;
-  onDeleteRun: (id: GraphExecutionID) => void;
+  onDeleteRun: (id: GraphExecutionMeta) => void;
   onDeleteSchedule: (id: ScheduleID) => void;
   onPinAsPreset: (run: GraphExecutionMeta) => void;
   className?: string;
@@ -43,6 +44,7 @@ export default function AgentRunsSelectorList({
   agentPresets,
   schedules,
   selectedView,
+  allowDraftNewRun = true,
   onSelectRun,
   onSelectPreset,
   onSelectSchedule,
@@ -58,19 +60,21 @@ export default function AgentRunsSelectorList({
 
   return (
     <aside className={cn("flex flex-col gap-4", className)}>
-      <Button
-        size="card"
-        className={
-          "mb-4 hidden h-16 w-72 items-center gap-2 py-6 lg:flex xl:w-80 " +
-          (selectedView.type == "run" && !selectedView.id
-            ? "agpt-card-selected text-accent"
-            : "")
-        }
-        onClick={onSelectDraftNewRun}
-      >
-        <Plus className="h-6 w-6" />
-        <span>New run</span>
-      </Button>
+      {allowDraftNewRun && (
+        <Button
+          size="card"
+          className={
+            "mb-4 hidden h-16 w-72 items-center gap-2 py-6 lg:flex xl:w-80 " +
+            (selectedView.type == "run" && !selectedView.id
+              ? "agpt-card-selected text-accent"
+              : "")
+          }
+          onClick={onSelectDraftNewRun}
+        >
+          <Plus className="h-6 w-6" />
+          <span>New run</span>
+        </Button>
+      )}
 
       <div className="flex gap-2">
         <Badge
@@ -89,7 +93,7 @@ export default function AgentRunsSelectorList({
         >
           <span>Scheduled</span>
           <span className="text-neutral-600">
-            {schedules.filter((s) => s.graph_id === agent.id).length}
+            {schedules.filter((s) => s.graph_id === agent.graph_id).length}
           </span>
         </Badge>
       </div>
@@ -98,40 +102,46 @@ export default function AgentRunsSelectorList({
       <ScrollArea className="lg:h-[calc(100vh-200px)]">
         <div className="flex gap-2 lg:flex-col">
           {/* New Run button - only in small layouts */}
-          <Button
-            size="card"
-            className={
-              "flex h-28 w-40 items-center gap-2 py-6 lg:hidden " +
-              (selectedView.type == "run" && !selectedView.id
-                ? "agpt-card-selected text-accent"
-                : "")
-            }
-            onClick={onSelectDraftNewRun}
-          >
-            <Plus className="h-6 w-6" />
-            <span>New run</span>
-          </Button>
+          {allowDraftNewRun && (
+            <Button
+              size="card"
+              className={
+                "flex h-28 w-40 items-center gap-2 py-6 lg:hidden " +
+                (selectedView.type == "run" && !selectedView.id
+                  ? "agpt-card-selected text-accent"
+                  : "")
+              }
+              onClick={onSelectDraftNewRun}
+            >
+              <Plus className="h-6 w-6" />
+              <span>New run</span>
+            </Button>
+          )}
 
           {activeListTab === "runs"
-            ? /* FIXME: list presets at the top */ agentRuns.map((run, i) => (
-                <AgentRunSummaryCard
-                  className="h-28 w-72 lg:h-32 xl:w-80"
-                  key={i}
-                  status={agentRunStatusMap[run.status]}
-                  title={agent.name}
-                  timestamp={run.started_at}
-                  selected={selectedView.id === run.execution_id}
-                  onClick={() => onSelectRun(run.execution_id)}
-                  onDelete={() => onDeleteRun(run.execution_id)}
-                  onPinAsPreset={() => onPinAsPreset(run)}
-                />
-              ))
-            : schedules
-                .filter((schedule) => schedule.graph_id === agent.id)
-                .map((schedule, i) => (
+            ? /* FIXME: list presets at the top */ agentRuns
+                .toSorted(
+                  (a, b) => b.started_at.getTime() - a.started_at.getTime(),
+                )
+                .map((run) => (
                   <AgentRunSummaryCard
                     className="h-28 w-72 lg:h-32 xl:w-80"
-                    key={i}
+                    key={run.id}
+                    status={agentRunStatusMap[run.status]}
+                    title={agent.name}
+                    timestamp={run.started_at}
+                    selected={selectedView.id === run.id}
+                    onClick={() => onSelectRun(run.id)}
+                    onDelete={() => onDeleteRun(run)}
+                    onPinAsPreset={() => onPinAsPreset(run)}
+                  />
+                ))
+            : schedules
+                .filter((schedule) => schedule.graph_id === agent.graph_id)
+                .map((schedule) => (
+                  <AgentRunSummaryCard
+                    className="h-28 w-72 lg:h-32 xl:w-80"
+                    key={schedule.id}
                     status="scheduled"
                     title={schedule.name}
                     timestamp={schedule.next_run_time}

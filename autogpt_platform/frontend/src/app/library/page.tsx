@@ -4,6 +4,7 @@ import {
   ArrowBottomRightIcon,
   QuestionMarkCircledIcon,
 } from "@radix-ui/react-icons";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 import { LibraryPageStateProvider } from "./state-provider";
 import LibraryActionSubHeader from "@/components/library/library-action-sub-header";
@@ -17,7 +18,7 @@ import LibraryAgentList from "@/components/library/library-agent-list";
 
 export default function LibraryPage() {
   return (
-    <main className="mx-auto w-screen max-w-[1600px] space-y-4 bg-neutral-50 p-4 px-2 dark:bg-neutral-900 sm:px-8 md:px-12">
+    <main className="container min-h-screen space-y-4 pb-20 sm:px-8 md:px-12">
       <LibraryPageStateProvider>
         {/* Header section containing notifications, search functionality and upload mechanism */}
         <LibraryActionHeader />
@@ -29,8 +30,11 @@ export default function LibraryPage() {
         <LibraryAgentList />
       </LibraryPageStateProvider>
 
-      <div className="!mb-8 !mt-12 flex w-full justify-center">
-        <p className="rounded-xl bg-white p-4 text-neutral-600">
+      <Alert
+        variant="default"
+        className="fixed bottom-2 left-1/2 hidden max-w-4xl -translate-x-1/2 md:block"
+      >
+        <AlertDescription className="text-center">
           Prefer the old experience? Click{" "}
           <Link href="/monitoring" className="underline">
             here
@@ -38,8 +42,8 @@ export default function LibraryPage() {
           to go to it. Please do let us know why by clicking the{" "}
           <QuestionMarkCircledIcon className="inline-block size-6 rounded-full bg-[rgba(65,65,64,1)] p-1 align-bottom text-neutral-50" />{" "}
           in the bottom right corner <ArrowBottomRightIcon className="inline" />
-        </p>
-      </div>
+        </AlertDescription>
+      </Alert>
     </main>
   );
 }

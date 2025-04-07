@@ -2,19 +2,24 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
+import { exportAsJSONFile } from "@/lib/utils";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   GraphExecution,
   GraphExecutionID,
   GraphExecutionMeta,
+  Graph,
   GraphID,
-  GraphMeta,
+  LibraryAgent,
+  LibraryAgentID,
   LibraryAgentPreset,
   LibraryAgentPresetID,
   Schedule,
   ScheduleID,
 } from "@/lib/autogpt-server-api";
 
+import type { ButtonAction } from "@/components/agptui/types";
+import DeleteConfirmDialog from "@/components/agptui/delete-confirm-dialog";
 import AgentRunDraftView from "@/components/agents/agent-run-draft-view";
 import AgentRunDetailsView from "@/components/agents/agent-run-details-view";
 import AgentRunsSelectorList from "@/components/agents/agent-runs-selector-list";
@@ -35,13 +40,14 @@ export type AgentRunsViewSelection =
     };
 
 export default function AgentRunsPage(): React.ReactElement {
-  const { id: agentID }: { id: GraphID } = useParams();
+  const { id: agentID }: { id: LibraryAgentID } = useParams();
   const router = useRouter();
   const api = useBackendAPI();
 
   // ============================ STATE =============================
 
-  const [agent, setAgent] = useState<GraphMeta | null>(null);
+  const [graph, setGraph] = useState<Graph | null>(null);
+  const [agent, setAgent] = useState<LibraryAgent | null>(null);
   const [agentRuns, setAgentRuns] = useState<GraphExecutionMeta[]>([]);
   const [agentPresets, setAgentPresets] = useState<LibraryAgentPreset[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -55,6 +61,10 @@ export default function AgentRunsPage(): React.ReactElement {
     null,
   );
   const [isFirstLoad, setIsFirstLoad] = useState<boolean>(true);
+  const [agentDeleteDialogOpen, setAgentDeleteDialogOpen] =
+    useState<boolean>(false);
+  const [confirmingDeleteAgentRun, setConfirmingDeleteAgentRun] =
+    useState<GraphExecutionMeta | null>(null);
 
   const openRunDraftView = useCallback(() => {
     selectView({ type: "run" });
@@ -73,38 +83,103 @@ export default function AgentRunsPage(): React.ReactElement {
     setSelectedSchedule(schedule);
   }, []);
 
-  const fetchAgents = useCallback(() => {
-    api.getGraph(agentID).then(setAgent);
-    api.getGraphExecutions(agentID).then((agentRuns) => {
-      const sortedRuns = agentRuns.toSorted(
-        (a, b) => b.started_at - a.started_at,
-      );
-      setAgentRuns(sortedRuns);
+  const [graphVersions, setGraphVersions] = useState<Record<number, Graph>>({});
+  const getGraphVersion = useCallback(
+    async (graphID: GraphID, version: number) => {
+      if (graphVersions[version]) return graphVersions[version];
 
-      if (!selectedView.id && isFirstLoad && sortedRuns.length > 0) {
-        // only for first load or first execution
-        setIsFirstLoad(false);
-        selectView({ type: "run", id: sortedRuns[0].execution_id });
-        setSelectedRun(sortedRuns[0]);
-      }
+      const graphVersion = await api.getGraph(graphID, version);
+      setGraphVersions((prev) => ({
+        ...prev,
+        [version]: graphVersion,
+      }));
+      return graphVersion;
+    },
+    [api, graphVersions],
+  );
+
+  const fetchAgents = useCallback(() => {
+    api.getLibraryAgent(agentID).then((agent) => {
+      setAgent(agent);
+
+      getGraphVersion(agent.graph_id, agent.graph_version).then(
+        (_graph) =>
+          (graph && graph.version == _graph.version) || setGraph(_graph),
+      );
+      api.getGraphExecutions(agent.graph_id).then((agentRuns) => {
+        setAgentRuns(agentRuns);
+
+        // Preload the corresponding graph versions
+        new Set(agentRuns.map((run) => run.graph_version)).forEach((version) =>
+          getGraphVersion(agent.graph_id, version),
+        );
+
+        if (!selectedView.id && isFirstLoad && agentRuns.length > 0) {
+          // only for first load or first execution
+          setIsFirstLoad(false);
+
+          const latestRun = agentRuns.reduce((latest, current) => {
+            if (latest.started_at && !current.started_at) return current;
+            else if (!latest.started_at) return latest;
+            return latest.started_at > current.started_at ? latest : current;
+          }, agentRuns[0]);
+          selectView({ type: "run", id: latestRun.id });
+        }
+      });
     });
-    if (selectedView.type == "run" && selectedView.id) {
-      api.getGraphExecutionInfo(agentID, selectedView.id).then(setSelectedRun);
+    if (selectedView.type == "run" && selectedView.id && agent) {
+      api
+        .getGraphExecutionInfo(agent.graph_id, selectedView.id)
+        .then(setSelectedRun);
     }
-  }, [api, agentID, selectedView, isFirstLoad]);
+  }, [api, agentID, getGraphVersion, graph, selectedView, isFirstLoad, agent]);
 
   useEffect(() => {
     fetchAgents();
   }, []);
 
+  // Subscribe to websocket updates for agent runs
+  useEffect(() => {
+    if (!agent) return;
+
+    // Subscribe to all executions for this agent
+    api.subscribeToGraphExecutions(agent.graph_id);
+  }, [api, agent]);
+
+  // Handle execution updates
+  useEffect(() => {
+    const detachExecUpdateHandler = api.onWebSocketMessage(
+      "graph_execution_event",
+      (data) => {
+        setAgentRuns((prev) => {
+          const index = prev.findIndex((run) => run.id === data.id);
+          if (index === -1) {
+            return [...prev, data];
+          }
+          const newRuns = [...prev];
+          newRuns[index] = { ...newRuns[index], ...data };
+          return newRuns;
+        });
+        if (data.id === selectedView.id) {
+          setSelectedRun((prev) => ({ ...prev, ...data }));
+        }
+      },
+    );
+
+    return () => {
+      detachExecUpdateHandler();
+    };
+  }, [api, selectedView.id]);
+
   const fetchPresets = useCallback(async () => {
+    if (!agent) return;
     await api
-      .listLibraryAgentPresets({ graph_id: agentID })
+      .listLibraryAgentPresets({ graph_id: agent.graph_id })
       .then(
         (response) =>
           setAgentPresets(response.presets) /* TODO: handle pagination */,
       );
-  }, [api, agentID]);
+  }, [api, agent]);
 
   useEffect(() => {
     fetchPresets();
@@ -112,43 +187,52 @@ export default function AgentRunsPage(): React.ReactElement {
 
   // load selectedRun based on selectedView
   useEffect(() => {
-    if (selectedView.type != "run" || !selectedView.id) return;
+    if (selectedView.type != "run" || !selectedView.id || !agent) return;
 
-    // pull partial data from "cache" while waiting for the rest to load
-    if (selectedView.id !== selectedRun?.execution_id) {
-      setSelectedRun(
-        agentRuns.find((r) => r.execution_id == selectedView.id) ?? null,
-      );
+    const newSelectedRun = agentRuns.find((run) => run.id == selectedView.id);
+    if (selectedView.id !== selectedRun?.id) {
+      // Pull partial data from "cache" while waiting for the rest to load
+      setSelectedRun(newSelectedRun ?? null);
+
+      // Ensure corresponding graph version is available before rendering I/O
+      api
+        .getGraphExecutionInfo(agent.graph_id, selectedView.id)
+        .then(async (run) => {
+          await getGraphVersion(run.graph_id, run.graph_version);
+          setSelectedRun(run);
+        });
     }
-
-    api.getGraphExecutionInfo(agentID, selectedView.id).then(setSelectedRun);
-  }, [api, selectedView, agentRuns, agentID]);
+  }, [api, selectedView, agent, agentRuns, selectedRun?.id, getGraphVersion]);
 
   const fetchSchedules = useCallback(async () => {
+    if (!agent) return;
+
     // TODO: filter in backend - https://github.com/Significant-Gravitas/AutoGPT/issues/9183
     setSchedules(
-      (await api.listSchedules()).filter((s) => s.graph_id == agentID),
+      (await api.listSchedules()).filter((s) => s.graph_id == agent.graph_id),
     );
-  }, [api, agentID]);
+  }, [api, agent]);
 
   useEffect(() => {
     fetchSchedules();
   }, [fetchSchedules]);
 
-  /* TODO: use websockets instead of polling - https://github.com/Significant-Gravitas/AutoGPT/issues/8782 */
-  useEffect(() => {
-    const intervalId = setInterval(() => fetchAgents(), 5000);
-    return () => clearInterval(intervalId);
-  }, [fetchAgents, agent]);
-
   // =========================== ACTIONS ============================
 
   const deleteRun = useCallback(
-    async (graphExecID: GraphExecutionID) => {
-      await api.deleteGraphExecution(graphExecID);
-      setAgentRuns(agentRuns.filter((r) => r.execution_id !== graphExecID));
+    async (run: GraphExecutionMeta) => {
+      if (run.status == "RUNNING" || run.status == "QUEUED") {
+        await api.stopGraphExecution(run.graph_id, run.id);
+      }
+      await api.deleteGraphExecution(run.id);
+
+      setConfirmingDeleteAgentRun(null);
+      if (selectedView.type == "run" && selectedView.id == run.id) {
+        openRunDraftView();
+      }
+      setAgentRuns(agentRuns.filter((r) => r.id !== run.id));
     },
-    [agentRuns, api],
+    [agentRuns, api, selectedView, openRunDraftView],
   );
 
   const deleteSchedule = useCallback(
@@ -159,12 +243,22 @@ export default function AgentRunsPage(): React.ReactElement {
     [schedules, api],
   );
 
+  const downloadGraph = useCallback(
+    async () =>
+      agent &&
+      // Export sanitized graph from backend
+      api
+        .getGraph(agent.graph_id, agent.graph_version, true)
+        .then((graph) =>
+          exportAsJSONFile(graph, `${graph.name}_v${graph.version}.json`),
+        ),
+    [api, agent],
+  );
+
   const createPresetFromRun = useCallback(
     async (run: GraphExecutionMeta) => {
-      const execution = await api.getGraphExecutionInfo(
-        run.graph_id,
-        run.execution_id,
-      );
+      // TODO: make a dedicated endpoint for this
+      const execution = await api.getGraphExecutionInfo(run.graph_id, run.id);
       const createdPreset = await api.createLibraryAgentPreset({
         /* FIXME: add dialog to enter name and description */
         name: agent!.name,
@@ -179,17 +273,27 @@ export default function AgentRunsPage(): React.ReactElement {
     [agent, api],
   );
 
-  const agentActions: { label: string; callback: () => void }[] = useMemo(
+  const agentActions: ButtonAction[] = useMemo(
     () => [
+      ...(agent?.can_access_graph
+        ? [
+            {
+              label: "Open graph in builder",
+              href: `/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`,
+            },
+            { label: "Export agent to file", callback: downloadGraph },
+          ]
+        : []),
       {
-        label: "Open in builder",
-        callback: () => agent && router.push(`/build?flowID=${agent.id}`),
+        label: "Delete agent",
+        variant: "destructive",
+        callback: () => setAgentDeleteDialogOpen(true),
       },
     ],
-    [agent, router],
+    [agent, downloadGraph],
   );
 
-  if (!agent) {
+  if (!agent || !graph) {
     /* TODO: implement loading indicators / skeleton page */
     return <span>Loading...</span>;
   }
@@ -205,13 +309,14 @@ export default function AgentRunsPage(): React.ReactElement {
         agentPresets={agentPresets}
         schedules={schedules}
         selectedView={selectedView}
+        allowDraftNewRun={!graph.has_webhook_trigger}
         onSelectRun={selectRun}
         onSelectPreset={selectPreset}
         onSelectSchedule={selectSchedule}
         onSelectDraftNewRun={openRunDraftView}
-        onDeleteRun={(id) => deleteRun(id)}
-        onDeleteSchedule={(id) => deleteSchedule(id)}
-        onPinAsPreset={(run) => createPresetFromRun(run)}
+        onPinAsPreset={createPresetFromRun}
+        onDeleteRun={setConfirmingDeleteAgentRun}
+        onDeleteSchedule={deleteSchedule}
       />
 
       <div className="flex-1">
@@ -229,26 +334,50 @@ export default function AgentRunsPage(): React.ReactElement {
           selectedRun && (
             <AgentRunDetailsView
               agent={agent}
+              graph={graphVersions[selectedRun.graph_version] ?? graph}
               run={selectedRun}
               agentActions={agentActions}
+              onRun={(runID) => selectRun(runID)}
+              deleteRun={() => setConfirmingDeleteAgentRun(selectedRun)}
             />
           )
         ) : selectedView.type == "run" ? (
           <AgentRunDraftView
-            agent={agent}
+            graph={graph}
             onRun={(runID) => selectRun(runID)}
             agentActions={agentActions}
           />
         ) : selectedView.type == "schedule" ? (
           selectedSchedule && (
             <AgentScheduleDetailsView
-              agent={agent}
+              graph={graph}
               schedule={selectedSchedule}
               onForcedRun={(runID) => selectRun(runID)}
               agentActions={agentActions}
             />
           )
         ) : null) || <p>Loading...</p>}
+
+        <DeleteConfirmDialog
+          entityType="agent"
+          open={agentDeleteDialogOpen}
+          onOpenChange={setAgentDeleteDialogOpen}
+          onDoDelete={() =>
+            agent &&
+            api
+              .updateLibraryAgent(agent.id, { is_deleted: true })
+              .then(() => router.push("/library"))
+          }
+        />
+
+        <DeleteConfirmDialog
+          entityType="agent run"
+          open={!!confirmingDeleteAgentRun}
+          onOpenChange={(open) => !open && setConfirmingDeleteAgentRun(null)}
+          onDoDelete={() =>
+            confirmingDeleteAgentRun && deleteRun(confirmingDeleteAgentRun)
+          }
+        />
       </div>
     </div>
   );

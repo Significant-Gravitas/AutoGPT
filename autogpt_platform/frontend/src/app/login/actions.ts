@@ -31,6 +31,14 @@ export async function logout() {
   );
 }
 
+async function shouldShowOnboarding() {
+  const api = new BackendAPI();
+  return (
+    !(await api.isOnboardingEnabled()) ||
+    (await api.getUserOnboarding()).completedSteps.includes("CONGRATS")
+  );
+}
+
 export async function login(values: z.infer<typeof loginFormSchema>) {
   return await Sentry.withServerActionInstrumentation("login", {}, async () => {
     const supabase = getServerSupabase();
@@ -49,11 +57,15 @@ export async function login(values: z.infer<typeof loginFormSchema>) {
     }
 
     await api.createUser();
+    // Don't onboard if disabled or already onboarded
+    if (await shouldShowOnboarding()) {
+      revalidatePath("/onboarding", "layout");
+      redirect("/onboarding");
+    }
 
     if (data.session) {
       await supabase.auth.setSession(data.session);
     }
-    console.log("Logged in");
     revalidatePath("/", "layout");
     redirect("/");
   });
@@ -86,7 +98,11 @@ export async function providerLogin(provider: LoginProvider) {
       }
 
       await api.createUser();
-      console.log("Logged in");
+      // Don't onboard if disabled or already onboarded
+      if (await shouldShowOnboarding()) {
+        revalidatePath("/onboarding", "layout");
+        redirect("/onboarding");
+      }
     },
   );
 }

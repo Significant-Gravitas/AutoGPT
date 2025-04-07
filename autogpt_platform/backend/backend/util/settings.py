@@ -31,12 +31,12 @@ class UpdateTrackingModel(BaseModel, Generic[T]):
     _updated_fields: Set[str] = PrivateAttr(default_factory=set)
 
     def __setattr__(self, name: str, value) -> None:
-        if name in self.model_fields:
+        if name in UpdateTrackingModel.model_fields:
             self._updated_fields.add(name)
         super().__setattr__(name, value)
 
     def mark_updated(self, field_name: str) -> None:
-        if field_name in self.model_fields:
+        if field_name in UpdateTrackingModel.model_fields:
             self._updated_fields.add(field_name)
 
     def clear_updates(self) -> None:
@@ -81,6 +81,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=3,
         description="The default number of retries for Pyro client connections.",
     )
+    rpc_client_call_timeout: int = Field(
+        default=300,
+        description="The default timeout in seconds, for RPC client calls.",
+    )
     enable_auth: bool = Field(
         default=True,
         description="If authentication is enabled or not",
@@ -108,6 +112,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     refund_request_time_key_format: str = Field(
         default="%Y-%W",  # This will allow for weekly refunds per user.
         description="Time key format for refund requests.",
+    )
+    execution_cost_count_threshold: int = Field(
+        default=100,
+        description="Number of executions after which the cost is calculated.",
+    )
+    execution_cost_per_threshold: int = Field(
+        default=1,
+        description="Cost per execution in cents after each threshold.",
     )
 
     model_config = SettingsConfigDict(
@@ -160,6 +172,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The port for notification service daemon to run on",
     )
 
+    otto_api_url: str = Field(
+        default="",
+        description="The URL for the Otto API service",
+    )
+
     platform_base_url: str = Field(
         default="",
         description="Must be set so the application knows where it's hosted at. "
@@ -204,6 +221,15 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     postmark_sender_email: str = Field(
         default="invalid@invalid.com",
         description="The email address to use for sending emails",
+    )
+
+    use_agent_image_generation_v2: bool = Field(
+        default=True,
+        description="Whether to use the new agent image generation service",
+    )
+    enable_agent_input_subtype_blocks: bool = Field(
+        default=True,
+        description="Whether to enable the agent input subtype blocks",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")
@@ -309,6 +335,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     postmark_webhook_token: str = Field(
         default="",
         description="The token to use for the Postmark webhook",
+    )
+
+    unsubscribe_secret_key: str = Field(
+        default="",
+        description="The secret key to use for the unsubscribe user by token",
     )
 
     # OAuth server credentials for integrations

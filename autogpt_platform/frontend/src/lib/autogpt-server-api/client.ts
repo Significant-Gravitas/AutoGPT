@@ -39,6 +39,7 @@ import {
   ScheduleID,
   StoreAgentDetails,
   StoreAgentsResponse,
+  StoreListingsWithVersionsResponse,
   StoreReview,
   StoreReviewCreate,
   StoreSubmission,
@@ -47,6 +48,11 @@ import {
   TransactionHistory,
   User,
   UserPasswordCredentials,
+  OttoQuery,
+  OttoResponse,
+  UserOnboarding,
+  ReviewSubmissionRequest,
+  SubmissionStatus,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -98,6 +104,10 @@ export default class BackendAPI {
   updateUserEmail(email: string): Promise<{ email: string }> {
     return this._request("POST", "/auth/user/email", { email });
   }
+
+  ////////////////////////////////////////
+  /////////////// CREDITS ////////////////
+  ////////////////////////////////////////
 
   getUserCredit(): Promise<{ credits: number }> {
     try {
@@ -162,6 +172,31 @@ export default class BackendAPI {
     return this._request("PATCH", "/credits");
   }
 
+  ////////////////////////////////////////
+  ////////////// ONBOARDING //////////////
+  ////////////////////////////////////////
+
+  getUserOnboarding(): Promise<UserOnboarding> {
+    return this._get("/onboarding");
+  }
+
+  updateUserOnboarding(onboarding: Partial<UserOnboarding>): Promise<void> {
+    return this._request("PATCH", "/onboarding", onboarding);
+  }
+
+  getOnboardingAgents(): Promise<StoreAgentDetails[]> {
+    return this._get("/onboarding/agents");
+  }
+
+  /** Check if onboarding is enabled not if user finished it or not. */
+  isOnboardingEnabled(): Promise<boolean> {
+    return this._get("/onboarding/enabled");
+  }
+
+  ////////////////////////////////////////
+  //////////////// GRAPHS ////////////////
+  ////////////////////////////////////////
+
   getBlocks(): Promise<Block[]> {
     return this._get("/blocks");
   }
@@ -170,19 +205,21 @@ export default class BackendAPI {
     return this._get(`/graphs`);
   }
 
-  getGraph(
+  async getGraph(
     id: GraphID,
     version?: number,
-    hide_credentials?: boolean,
+    for_export?: boolean,
   ): Promise<Graph> {
     let query: Record<string, any> = {};
     if (version !== undefined) {
       query["version"] = version;
     }
-    if (hide_credentials !== undefined) {
-      query["hide_credentials"] = hide_credentials;
+    if (for_export !== undefined) {
+      query["for_export"] = for_export;
     }
-    return this._get(`/graphs/${id}`, query);
+    const graph = await this._get(`/graphs/${id}`, query);
+    if (for_export) delete graph.user_id;
+    return graph;
   }
 
   getGraphAllVersions(id: GraphID): Promise<Graph[]> {
@@ -218,11 +255,15 @@ export default class BackendAPI {
   }
 
   getExecutions(): Promise<GraphExecutionMeta[]> {
-    return this._get(`/executions`);
+    return this._get(`/executions`).then((results) =>
+      results.map(parseGraphExecutionTimestamps),
+    );
   }
 
   getGraphExecutions(graphID: GraphID): Promise<GraphExecutionMeta[]> {
-    return this._get(`/graphs/${graphID}/executions`);
+    return this._get(`/graphs/${graphID}/executions`).then((results) =>
+      results.map(parseGraphExecutionTimestamps),
+    );
   }
 
   async getGraphExecutionInfo(
@@ -230,10 +271,7 @@ export default class BackendAPI {
     runID: GraphExecutionID,
   ): Promise<GraphExecution> {
     const result = await this._get(`/graphs/${graphID}/executions/${runID}`);
-    result.node_executions = result.node_executions.map(
-      parseNodeExecutionResultTimestamps,
-    );
-    return result;
+    return parseGraphExecutionTimestamps<GraphExecution>(result);
   }
 
   async stopGraphExecution(
@@ -244,10 +282,7 @@ export default class BackendAPI {
       "POST",
       `/graphs/${graphID}/executions/${runID}/stop`,
     );
-    result.node_executions = result.node_executions.map(
-      parseNodeExecutionResultTimestamps,
-    );
-    return result;
+    return parseGraphExecutionTimestamps<GraphExecution>(result);
   }
 
   async deleteGraphExecution(runID: GraphExecutionID): Promise<void> {
@@ -366,9 +401,9 @@ export default class BackendAPI {
     return this._request("POST", "/analytics/log_raw_analytics", analytic);
   }
 
-  ///////////////////////////////////////////
-  /////////// V2 STORE API /////////////////
-  /////////////////////////////////////////
+  ////////////////////////////////////////
+  ///////////// V2 STORE API /////////////
+  ////////////////////////////////////////
 
   getStoreProfile(): Promise<ProfileDetails | null> {
     try {
@@ -401,6 +436,18 @@ export default class BackendAPI {
         agentName,
       )}`,
     );
+  }
+
+  getAgentMetaByStoreListingVersionId(
+    storeListingVersionID: string,
+  ): Promise<GraphMeta> {
+    return this._get(`/store/graph/${storeListingVersionID}`);
+  }
+
+  getStoreAgentByVersionId(
+    storeListingVersionID: string,
+  ): Promise<StoreAgentDetails> {
+    return this._get(`/store/agents/${storeListingVersionID}`);
   }
 
   getStoreCreators(params?: {
@@ -458,7 +505,6 @@ export default class BackendAPI {
     agentName: string,
     review: StoreReviewCreate,
   ): Promise<StoreReview> {
-    console.log("Reviewing agent: ", username, agentName, review);
     return this._request(
       "POST",
       `/store/agents/${encodeURIComponent(username)}/${encodeURIComponent(
@@ -486,9 +532,33 @@ export default class BackendAPI {
     return this._get(url);
   }
 
-  /////////////////////////////////////////
-  /////////// V2 LIBRARY API //////////////
-  /////////////////////////////////////////
+  ////////////////////////////////////////
+  ////////////// Admin API ///////////////
+  ////////////////////////////////////////
+
+  getAdminListingsWithVersions(params?: {
+    status?: SubmissionStatus;
+    search?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<StoreListingsWithVersionsResponse> {
+    return this._get("/store/admin/listings", params);
+  }
+
+  reviewSubmissionAdmin(
+    storeListingVersionId: string,
+    review: ReviewSubmissionRequest,
+  ): Promise<StoreSubmission> {
+    return this._request(
+      "POST",
+      `/store/admin/submissions/${storeListingVersionId}/review`,
+      review,
+    );
+  }
+
+  ////////////////////////////////////////
+  //////////// V2 LIBRARY API ////////////
+  ////////////////////////////////////////
 
   listLibraryAgents(params?: {
     search_term?: string;
@@ -497,6 +567,10 @@ export default class BackendAPI {
     page_size?: number;
   }): Promise<LibraryAgentResponse> {
     return this._get("/library/agents", params);
+  }
+
+  getLibraryAgent(id: LibraryAgentID): Promise<LibraryAgent> {
+    return this._get(`/library/agents/${id}`);
   }
 
   addMarketplaceAgentToLibrary(
@@ -561,7 +635,9 @@ export default class BackendAPI {
     });
   }
 
-  /////////////////////// SCHEDULES ////////////////////////
+  //////////////////////////////////
+  /////////// SCHEDULES ////////////
+  //////////////////////////////////
 
   async createSchedule(schedule: ScheduleCreatable): Promise<Schedule> {
     return this._request("POST", `/schedules`, schedule).then(
@@ -579,12 +655,16 @@ export default class BackendAPI {
     );
   }
 
-  ///////////////////////////////////////////
-  /////////// INTERNAL FUNCTIONS ////////////
-  //////////////////////////////??///////////
+  ////////////////////////////////////////
+  ////////// INTERNAL FUNCTIONS //////////
+  ////////////////////////////////////////
 
   private _get(path: string, query?: Record<string, any>) {
     return this._request("GET", path, query);
+  }
+
+  async askOtto(query: OttoQuery): Promise<OttoResponse> {
+    return this._request("POST", "/otto/ask", query);
   }
 
   private async _uploadFile(path: string, file: File): Promise<string> {
@@ -739,43 +819,55 @@ export default class BackendAPI {
     }
   }
 
-  startHeartbeat() {
-    this.stopHeartbeat();
-    this.heartbeatInterval = window.setInterval(() => {
-      if (this.webSocket?.readyState === WebSocket.OPEN) {
-        this.webSocket.send(
-          JSON.stringify({
-            method: "heartbeat",
-            data: "ping",
-            success: true,
-          }),
-        );
+  ////////////////////////////////////////
+  ////////////// WEBSOCKETS //////////////
+  ////////////////////////////////////////
 
-        this.heartbeatTimeoutId = window.setTimeout(() => {
-          console.log("Heartbeat timeout - reconnecting");
-          this.webSocket?.close();
-          this.connectWebSocket();
-        }, this.HEARTBEAT_TIMEOUT);
-      }
-    }, this.HEARTBEAT_INTERVAL);
+  subscribeToGraphExecution(graphExecID: GraphExecutionID): Promise<void> {
+    return this.sendWebSocketMessage("subscribe_graph_execution", {
+      graph_exec_id: graphExecID,
+    });
   }
 
-  stopHeartbeat() {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
-    }
-    if (this.heartbeatTimeoutId) {
-      clearTimeout(this.heartbeatTimeoutId);
-      this.heartbeatTimeoutId = null;
-    }
+  subscribeToGraphExecutions(graphID: GraphID): Promise<void> {
+    return this.sendWebSocketMessage("subscribe_graph_executions", {
+      graph_id: graphID,
+    });
   }
 
-  handleHeartbeatResponse() {
-    if (this.heartbeatTimeoutId) {
-      clearTimeout(this.heartbeatTimeoutId);
-      this.heartbeatTimeoutId = null;
+  async sendWebSocketMessage<M extends keyof WebsocketMessageTypeMap>(
+    method: M,
+    data: WebsocketMessageTypeMap[M],
+    callCount = 0,
+    callCountLimit = 4,
+  ): Promise<void> {
+    if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
+      this.webSocket.send(JSON.stringify({ method, data }));
+      return;
     }
+    if (callCount >= callCountLimit) {
+      throw new Error(
+        `WebSocket connection not open after ${callCountLimit} attempts`,
+      );
+    }
+    await this.connectWebSocket();
+    if (callCount === 0) {
+      return this.sendWebSocketMessage(method, data, callCount + 1);
+    }
+    const delayMs = 2 ** (callCount - 1) * 1000;
+    await new Promise((res) => setTimeout(res, delayMs));
+    return this.sendWebSocketMessage(method, data, callCount + 1);
+  }
+
+  onWebSocketMessage<M extends keyof WebsocketMessageTypeMap>(
+    method: M,
+    handler: (data: WebsocketMessageTypeMap[M]) => void,
+  ): () => void {
+    this.wsMessageHandlers[method] ??= new Set();
+    this.wsMessageHandlers[method].add(handler);
+
+    // Return detacher
+    return () => this.wsMessageHandlers[method].delete(handler);
   }
 
   async connectWebSocket(): Promise<void> {
@@ -788,22 +880,22 @@ export default class BackendAPI {
         this.webSocket = new WebSocket(wsUrlWithToken);
 
         this.webSocket.onopen = () => {
-          console.log("WebSocket connection established");
-          this.startHeartbeat(); // Start heartbeat when connection opens
+          this._startWSHeartbeat(); // Start heartbeat when connection opens
           resolve();
         };
 
         this.webSocket.onclose = (event) => {
-          console.log("WebSocket connection closed", event);
-          this.stopHeartbeat(); // Stop heartbeat when connection closes
-          this.webSocket = null;
+          console.warn("WebSocket connection closed", event);
+          this._stopWSHeartbeat(); // Stop heartbeat when connection closes
+          this.wsConnecting = null;
           // Attempt to reconnect after a delay
           setTimeout(() => this.connectWebSocket(), 1000);
         };
 
         this.webSocket.onerror = (error) => {
           console.error("WebSocket error:", error);
-          this.stopHeartbeat(); // Stop heartbeat on error
+          this._stopWSHeartbeat(); // Stop heartbeat on error
+          this.wsConnecting = null;
           reject(error);
         };
 
@@ -812,12 +904,14 @@ export default class BackendAPI {
 
           // Handle heartbeat response
           if (message.method === "heartbeat" && message.data === "pong") {
-            this.handleHeartbeatResponse();
+            this._handleWSHeartbeatResponse();
             return;
           }
 
-          if (message.method === "execution_event") {
+          if (message.method === "node_execution_event") {
             message.data = parseNodeExecutionResultTimestamps(message.data);
+          } else if (message.method == "graph_execution_event") {
+            message.data = parseGraphExecutionTimestamps(message.data);
           }
           this.wsMessageHandlers[message.method]?.forEach((handler) =>
             handler(message.data),
@@ -832,49 +926,49 @@ export default class BackendAPI {
   }
 
   disconnectWebSocket() {
-    this.stopHeartbeat(); // Stop heartbeat when disconnecting
+    this._stopWSHeartbeat(); // Stop heartbeat when disconnecting
     if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
       this.webSocket.close();
     }
   }
 
-  sendWebSocketMessage<M extends keyof WebsocketMessageTypeMap>(
-    method: M,
-    data: WebsocketMessageTypeMap[M],
-    callCount = 0,
-  ) {
-    if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
-      this.webSocket.send(JSON.stringify({ method, data }));
-    } else {
-      this.connectWebSocket().then(() => {
-        callCount == 0
-          ? this.sendWebSocketMessage(method, data, callCount + 1)
-          : setTimeout(
-              () => {
-                this.sendWebSocketMessage(method, data, callCount + 1);
-              },
-              2 ** (callCount - 1) * 1000,
-            );
-      });
+  _startWSHeartbeat() {
+    this._stopWSHeartbeat();
+    this.heartbeatInterval = window.setInterval(() => {
+      if (this.webSocket?.readyState === WebSocket.OPEN) {
+        this.webSocket.send(
+          JSON.stringify({
+            method: "heartbeat",
+            data: "ping",
+            success: true,
+          }),
+        );
+
+        this.heartbeatTimeoutId = window.setTimeout(() => {
+          console.warn("Heartbeat timeout - reconnecting");
+          this.webSocket?.close();
+          this.connectWebSocket();
+        }, this.HEARTBEAT_TIMEOUT);
+      }
+    }, this.HEARTBEAT_INTERVAL);
+  }
+
+  _stopWSHeartbeat() {
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval);
+      this.heartbeatInterval = null;
+    }
+    if (this.heartbeatTimeoutId) {
+      clearTimeout(this.heartbeatTimeoutId);
+      this.heartbeatTimeoutId = null;
     }
   }
 
-  onWebSocketMessage<M extends keyof WebsocketMessageTypeMap>(
-    method: M,
-    handler: (data: WebsocketMessageTypeMap[M]) => void,
-  ): () => void {
-    this.wsMessageHandlers[method] ??= new Set();
-    this.wsMessageHandlers[method].add(handler);
-
-    // Return detacher
-    return () => this.wsMessageHandlers[method].delete(handler);
-  }
-
-  subscribeToExecution(graphId: string, graphVersion: number) {
-    this.sendWebSocketMessage("subscribe", {
-      graph_id: graphId,
-      graph_version: graphVersion,
-    });
+  _handleWSHeartbeatResponse() {
+    if (this.heartbeatTimeoutId) {
+      clearTimeout(this.heartbeatTimeoutId);
+      this.heartbeatTimeoutId = null;
+    }
   }
 }
 
@@ -885,8 +979,10 @@ type GraphCreateRequestBody = {
 };
 
 type WebsocketMessageTypeMap = {
-  subscribe: { graph_id: string; graph_version: number };
-  execution_event: NodeExecutionResult;
+  subscribe_graph_execution: { graph_exec_id: GraphExecutionID };
+  subscribe_graph_executions: { graph_id: GraphID };
+  graph_execution_event: GraphExecution;
+  node_execution_event: NodeExecutionResult;
   heartbeat: "ping" | "pong";
 };
 
@@ -906,19 +1002,35 @@ type _PydanticValidationError = {
 
 /* *** HELPER FUNCTIONS *** */
 
+function parseGraphExecutionTimestamps<
+  T extends GraphExecutionMeta | GraphExecution,
+>(result: any): T {
+  const fixed = _parseObjectTimestamps<T>(result, ["started_at", "ended_at"]);
+  if ("node_executions" in fixed && fixed.node_executions) {
+    fixed.node_executions = fixed.node_executions.map(
+      parseNodeExecutionResultTimestamps,
+    );
+  }
+  return fixed;
+}
+
 function parseNodeExecutionResultTimestamps(result: any): NodeExecutionResult {
-  return {
-    ...result,
-    add_time: new Date(result.add_time),
-    queue_time: result.queue_time ? new Date(result.queue_time) : undefined,
-    start_time: result.start_time ? new Date(result.start_time) : undefined,
-    end_time: result.end_time ? new Date(result.end_time) : undefined,
-  };
+  return _parseObjectTimestamps<NodeExecutionResult>(result, [
+    "add_time",
+    "queue_time",
+    "start_time",
+    "end_time",
+  ]);
 }
 
 function parseScheduleTimestamp(result: any): Schedule {
-  return {
-    ...result,
-    next_run_time: new Date(result.next_run_time),
-  };
+  return _parseObjectTimestamps<Schedule>(result, ["next_run_time"]);
+}
+
+function _parseObjectTimestamps<T>(obj: any, keys: (keyof T)[]): T {
+  const result = { ...obj };
+  keys.forEach(
+    (key) => (result[key] = result[key] ? new Date(result[key]) : undefined),
+  );
+  return result;
 }

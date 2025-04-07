@@ -7,21 +7,19 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { BlockIORootSchema } from "@/lib/autogpt-server-api/types";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Clipboard } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
-export interface BlockOutput {
-  id: string;
-  hardcodedValues: {
+export type BlockOutput = {
+  metadata: {
     name: string;
     description: string;
   };
   result?: any;
-}
+};
 
 interface OutputModalProps {
   isOpen: boolean;
@@ -87,15 +85,15 @@ export function RunnerOutputUI({
           <ScrollArea className="h-full overflow-auto pr-4">
             <div className="space-y-4">
               {blockOutputs && blockOutputs.length > 0 ? (
-                blockOutputs.map((block) => (
-                  <div key={block.id} className="space-y-1">
+                blockOutputs.map((block, i) => (
+                  <div key={i} className="space-y-1">
                     <Label className="text-base font-semibold">
-                      {block.hardcodedValues.name || "Unnamed Output"}
+                      {block.metadata.name || "Unnamed Output"}
                     </Label>
 
-                    {block.hardcodedValues.description && (
+                    {block.metadata.description && (
                       <Label className="block text-sm text-gray-600">
-                        {block.hardcodedValues.description}
+                        {block.metadata.description}
                       </Label>
                     )}
 
@@ -106,7 +104,7 @@ export function RunnerOutputUI({
                         size="icon"
                         onClick={() =>
                           copyOutput(
-                            block.hardcodedValues.name || "Unnamed Output",
+                            block.metadata.name || "Unnamed Output",
                             block.result,
                           )
                         }

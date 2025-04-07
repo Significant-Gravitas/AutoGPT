@@ -4,29 +4,25 @@ from abc import ABC
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, Iterable, List, Literal, NamedTuple, Optional
-
-from pydantic import BaseModel, SecretStr
-
-from backend.integrations.providers import ProviderName
-
-if TYPE_CHECKING:
-    from enum import _EnumMemberT
+from typing import Any, Iterable, List, Literal, NamedTuple, Optional
 
 import anthropic
 import ollama
 import openai
-from anthropic._types import NotGiven
+from anthropic import NotGiven
 from anthropic.types import ToolParam
 from groq import Groq
+from pydantic import BaseModel, SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import (
     APIKeyCredentials,
     CredentialsField,
     CredentialsMetaInput,
+    NodeExecutionStats,
     SchemaField,
 )
+from backend.integrations.providers import ProviderName
 from backend.util import json
 from backend.util.settings import BehaveAs, Settings
 from backend.util.text import TextFormatter
@@ -76,12 +72,10 @@ class ModelMetadata(NamedTuple):
 
 class LlmModelMeta(EnumMeta):
     @property
-    def __members__(
-        self: type["_EnumMemberT"],
-    ) -> MappingProxyType[str, "_EnumMemberT"]:
+    def __members__(self) -> MappingProxyType:
         if Settings().config.behave_as == BehaveAs.LOCAL:
             members = super().__members__
-            return members
+            return MappingProxyType(members)
         else:
             removed_providers = ["ollama"]
             existing_members = super().__members__
@@ -229,17 +223,6 @@ for model in LlmModel:
         raise ValueError(f"Missing MODEL_METADATA metadata for model: {model}")
 
 
-class MessageRole(str, Enum):
-    SYSTEM = "system"
-    USER = "user"
-    ASSISTANT = "assistant"
-
-
-class Message(BlockSchema):
-    role: MessageRole
-    content: str
-
-
 class ToolCall(BaseModel):
     name: str
     arguments: str
@@ -252,7 +235,8 @@ class ToolContentBlock(BaseModel):
 
 
 class LLMResponse(BaseModel):
-    prompt: str
+    raw_response: Any
+    prompt: List[Any]
     response: str
     tool_calls: Optional[List[ToolContentBlock]] | None
     prompt_tokens: int
@@ -362,7 +346,8 @@ def llm_call(
             tool_calls = None
 
         return LLMResponse(
-            prompt=json.dumps(prompt),
+            raw_response=response.choices[0].message,
+            prompt=prompt,
             response=response.choices[0].message.content or "",
             tool_calls=tool_calls,
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
@@ -379,12 +364,16 @@ def llm_call(
         last_role = None
         for p in prompt:
             if p["role"] in ["user", "assistant"]:
-                if p["role"] != last_role:
+                if (
+                    p["role"] == last_role
+                    and isinstance(messages[-1]["content"], str)
+                    and isinstance(p["content"], str)
+                ):
+                    # If the role is the same as the last one, combine the content
+                    messages[-1]["content"] += p["content"]
+                else:
                     messages.append({"role": p["role"], "content": p["content"]})
                     last_role = p["role"]
-                else:
-                    # If the role is the same as the last one, combine the content
-                    messages[-1]["content"] += "\n" + p["content"]
 
         client = anthropic.Anthropic(api_key=credentials.api_key.get_secret_value())
         try:
@@ -423,11 +412,12 @@ def llm_call(
                 )
 
             return LLMResponse(
-                prompt=json.dumps(prompt),
+                raw_response=resp,
+                prompt=prompt,
                 response=(
                     resp.content[0].name
                     if isinstance(resp.content[0], anthropic.types.ToolUseBlock)
-                    else resp.content[0].text
+                    else getattr(resp.content[0], "text", "")
                 ),
                 tool_calls=tool_calls,
                 prompt_tokens=resp.usage.input_tokens,
@@ -450,7 +440,8 @@ def llm_call(
             max_tokens=max_tokens,
         )
         return LLMResponse(
-            prompt=json.dumps(prompt),
+            raw_response=response.choices[0].message,
+            prompt=prompt,
             response=response.choices[0].message.content or "",
             tool_calls=None,
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
@@ -469,7 +460,8 @@ def llm_call(
             stream=False,
         )
         return LLMResponse(
-            prompt=json.dumps(prompt),
+            raw_response=response.get("response") or "",
+            prompt=prompt,
             response=response.get("response") or "",
             tool_calls=None,
             prompt_tokens=response.get("prompt_eval_count") or 0,
@@ -515,7 +507,8 @@ def llm_call(
             tool_calls = None
 
         return LLMResponse(
-            prompt=json.dumps(prompt),
+            raw_response=response.choices[0].message,
+            prompt=prompt,
             response=response.choices[0].message.content or "",
             tool_calls=tool_calls,
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
@@ -528,7 +521,7 @@ def llm_call(
 class AIBlockBase(Block, ABC):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.prompt = ""
+        self.prompt = []
 
     def merge_llm_stats(self, block: "AIBlockBase"):
         self.merge_stats(block.execution_stats)
@@ -557,7 +550,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             default="",
             description="The system prompt to provide additional context to the model.",
         )
-        conversation_history: list[Message] = SchemaField(
+        conversation_history: list[dict] = SchemaField(
             default=[],
             description="The conversation history to provide context for the prompt.",
         )
@@ -587,7 +580,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         response: dict[str, Any] = SchemaField(
             description="The response object generated by the language model."
         )
-        prompt: str = SchemaField(description="The prompt sent to the language model.")
+        prompt: list = SchemaField(description="The prompt sent to the language model.")
         error: str = SchemaField(description="Error message if the API call failed.")
 
     def __init__(self):
@@ -609,11 +602,12 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("response", {"key1": "key1Value", "key2": "key2Value"}),
-                ("prompt", str),
+                ("prompt", list),
             ],
             test_mock={
                 "llm_call": lambda *args, **kwargs: LLMResponse(
-                    prompt="",
+                    raw_response="",
+                    prompt=[""],
                     response=json.dumps(
                         {
                             "key1": "key1Value",
@@ -641,6 +635,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         Test mocks work only on class functions, this wraps the llm_call function
         so that it can be mocked withing the block testing framework.
         """
+        self.prompt = prompt
         return llm_call(
             credentials=credentials,
             llm_model=llm_model,
@@ -655,7 +650,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         logger.debug(f"Calling LLM with input data: {input_data}")
-        prompt = [p.model_dump() for p in input_data.conversation_history]
+        prompt = [json.to_dict(p) for p in input_data.conversation_history]
 
         def trim_prompt(s: str) -> str:
             lines = s.strip().split("\n")
@@ -715,10 +710,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 )
                 response_text = llm_response.response
                 self.merge_stats(
-                    {
-                        "input_token_count": llm_response.prompt_tokens,
-                        "output_token_count": llm_response.completion_tokens,
-                    }
+                    NodeExecutionStats(
+                        input_token_count=llm_response.prompt_tokens,
+                        output_token_count=llm_response.completion_tokens,
+                    )
                 )
                 logger.info(f"LLM attempt-{retry_count} response: {response_text}")
 
@@ -761,10 +756,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 retry_prompt = f"Error calling LLM: {e}"
             finally:
                 self.merge_stats(
-                    {
-                        "llm_call_count": retry_count + 1,
-                        "llm_retry_count": retry_count,
-                    }
+                    NodeExecutionStats(
+                        llm_call_count=retry_count + 1,
+                        llm_retry_count=retry_count,
+                    )
                 )
 
         raise RuntimeError(retry_prompt)
@@ -813,7 +808,7 @@ class AITextGeneratorBlock(AIBlockBase):
         response: str = SchemaField(
             description="The response generated by the language model."
         )
-        prompt: str = SchemaField(description="The prompt sent to the language model.")
+        prompt: list = SchemaField(description="The prompt sent to the language model.")
         error: str = SchemaField(description="Error message if the API call failed.")
 
     def __init__(self):
@@ -830,7 +825,7 @@ class AITextGeneratorBlock(AIBlockBase):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("response", "Response text"),
-                ("prompt", str),
+                ("prompt", list),
             ],
             test_mock={"llm_call": lambda *args, **kwargs: "Response text"},
         )
@@ -849,7 +844,10 @@ class AITextGeneratorBlock(AIBlockBase):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         object_input_data = AIStructuredResponseGeneratorBlock.Input(
-            **{attr: getattr(input_data, attr) for attr in input_data.model_fields},
+            **{
+                attr: getattr(input_data, attr)
+                for attr in AITextGeneratorBlock.Input.model_fields
+            },
             expected_format={},
         )
         yield "response", self.llm_call(object_input_data, credentials)
@@ -906,7 +904,7 @@ class AITextSummarizerBlock(AIBlockBase):
 
     class Output(BlockSchema):
         summary: str = SchemaField(description="The final summary of the text.")
-        prompt: str = SchemaField(description="The prompt sent to the language model.")
+        prompt: list = SchemaField(description="The prompt sent to the language model.")
         error: str = SchemaField(description="Error message if the API call failed.")
 
     def __init__(self):
@@ -923,7 +921,7 @@ class AITextSummarizerBlock(AIBlockBase):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 ("summary", "Final summary of a long text"),
-                ("prompt", str),
+                ("prompt", list),
             ],
             test_mock={
                 "llm_call": lambda input_data, credentials: (
@@ -1032,8 +1030,14 @@ class AITextSummarizerBlock(AIBlockBase):
 
 class AIConversationBlock(AIBlockBase):
     class Input(BlockSchema):
-        messages: List[Message] = SchemaField(
-            description="List of messages in the conversation.", min_length=1
+        prompt: str = SchemaField(
+            description="The prompt to send to the language model.",
+            placeholder="Enter your prompt here...",
+            default="",
+            advanced=False,
+        )
+        messages: List[Any] = SchemaField(
+            description="List of messages in the conversation.",
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
@@ -1056,7 +1060,7 @@ class AIConversationBlock(AIBlockBase):
         response: str = SchemaField(
             description="The model's response to the conversation."
         )
-        prompt: str = SchemaField(description="The prompt sent to the language model.")
+        prompt: list = SchemaField(description="The prompt sent to the language model.")
         error: str = SchemaField(description="Error message if the API call failed.")
 
     def __init__(self):
@@ -1085,7 +1089,7 @@ class AIConversationBlock(AIBlockBase):
                     "response",
                     "The 2020 World Series was played at Globe Life Field in Arlington, Texas.",
                 ),
-                ("prompt", str),
+                ("prompt", list),
             ],
             test_mock={
                 "llm_call": lambda *args, **kwargs: "The 2020 World Series was played at Globe Life Field in Arlington, Texas."
@@ -1107,7 +1111,7 @@ class AIConversationBlock(AIBlockBase):
     ) -> BlockOutput:
         response = self.llm_call(
             AIStructuredResponseGeneratorBlock.Input(
-                prompt="",
+                prompt=input_data.prompt,
                 credentials=input_data.credentials,
                 model=input_data.model,
                 conversation_history=input_data.messages,
@@ -1165,7 +1169,7 @@ class AIListGeneratorBlock(AIBlockBase):
         list_item: str = SchemaField(
             description="Each individual item in the list.",
         )
-        prompt: str = SchemaField(description="The prompt sent to the language model.")
+        prompt: list = SchemaField(description="The prompt sent to the language model.")
         error: str = SchemaField(
             description="Error message if the list generation failed."
         )
@@ -1197,7 +1201,7 @@ class AIListGeneratorBlock(AIBlockBase):
                     "generated_list",
                     ["Zylora Prime", "Kharon-9", "Vortexia", "Oceara", "Draknos"],
                 ),
-                ("prompt", str),
+                ("prompt", list),
                 ("list_item", "Zylora Prime"),
                 ("list_item", "Kharon-9"),
                 ("list_item", "Vortexia"),

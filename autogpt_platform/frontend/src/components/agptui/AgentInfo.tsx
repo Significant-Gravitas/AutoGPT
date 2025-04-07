@@ -47,8 +47,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
       const newLibraryAgent = await api.addMarketplaceAgentToLibrary(
         storeListingVersionId,
       );
-      console.log("Agent added to library successfully");
-      router.push(`/library/agents/${newLibraryAgent.graph_id}`);
+      router.push(`/library/agents/${newLibraryAgent.id}`);
     } catch (error) {
       console.error("Failed to add agent to library:", error);
     }

@@ -2,6 +2,7 @@ import inspect
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import (
+    TYPE_CHECKING,
     Any,
     ClassVar,
     Generator,
@@ -16,8 +17,11 @@ from typing import (
 import jsonref
 import jsonschema
 from prisma.models import AgentBlock
+from prisma.types import AgentBlockCreateInput
 from pydantic import BaseModel
 
+from backend.data.model import NodeExecutionStats
+from backend.integrations.providers import ProviderName
 from backend.util import json
 from backend.util.settings import Config
 
@@ -27,6 +31,9 @@ from .model import (
     CredentialsMetaInput,
     is_credentials_field_name,
 )
+
+if TYPE_CHECKING:
+    from .graph import Link
 
 app_config = Config()
 
@@ -111,20 +118,29 @@ class BlockSchema(BaseModel):
         return json.validate_with_jsonschema(schema=cls.jsonschema(), data=data)
 
     @classmethod
+    def get_mismatch_error(cls, data: BlockInput) -> str | None:
+        return cls.validate_data(data)
+
+    @classmethod
+    def get_field_schema(cls, field_name: str) -> dict[str, Any]:
+        model_schema = cls.jsonschema().get("properties", {})
+        if not model_schema:
+            raise ValueError(f"Invalid model schema {cls}")
+
+        property_schema = model_schema.get(field_name)
+        if not property_schema:
+            raise ValueError(f"Invalid property name {field_name}")
+
+        return property_schema
+
+    @classmethod
     def validate_field(cls, field_name: str, data: BlockInput) -> str | None:
         """
         Validate the data against a specific property (one of the input/output name).
         Returns the validation error message if the data does not match the schema.
         """
-        model_schema = cls.jsonschema().get("properties", {})
-        if not model_schema:
-            return f"Invalid model schema {cls}"
-
-        property_schema = model_schema.get(field_name)
-        if not property_schema:
-            return f"Invalid property name {field_name}"
-
         try:
+            property_schema = cls.get_field_schema(field_name)
             jsonschema.validate(json.to_dict(data), property_schema)
             return None
         except jsonschema.ValidationError as e:
@@ -187,6 +203,19 @@ class BlockSchema(BaseModel):
             )
         }
 
+    @classmethod
+    def get_input_defaults(cls, data: BlockInput) -> BlockInput:
+        return data  # Return as is, by default.
+
+    @classmethod
+    def get_missing_links(cls, data: BlockInput, links: list["Link"]) -> set[str]:
+        input_fields_from_nodes = {link.sink_name for link in links}
+        return input_fields_from_nodes - set(data)
+
+    @classmethod
+    def get_missing_input(cls, data: BlockInput) -> set[str]:
+        return cls.get_required_fields() - set(data)
+
 
 BlockSchemaInputType = TypeVar("BlockSchemaInputType", bound=BlockSchema)
 BlockSchemaOutputType = TypeVar("BlockSchemaOutputType", bound=BlockSchema)
@@ -203,7 +232,7 @@ class BlockManualWebhookConfig(BaseModel):
     the user has to manually set up the webhook at the provider.
     """
 
-    provider: str
+    provider: ProviderName
     """The service provider that the webhook connects to"""
 
     webhook_type: str
@@ -295,7 +324,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         self.static_output = static_output
         self.block_type = block_type
         self.webhook_config = webhook_config
-        self.execution_stats = {}
+        self.execution_stats: NodeExecutionStats = NodeExecutionStats()
 
         if self.webhook_config:
             if isinstance(self.webhook_config, BlockWebhookConfig):
@@ -373,18 +402,29 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 return data
         raise ValueError(f"{self.name} did not produce any output for {output}")
 
-    def merge_stats(self, stats: dict[str, Any]) -> dict[str, Any]:
-        for key, value in stats.items():
-            if isinstance(value, dict):
-                self.execution_stats.setdefault(key, {}).update(value)
-            elif isinstance(value, (int, float)):
-                self.execution_stats.setdefault(key, 0)
-                self.execution_stats[key] += value
-            elif isinstance(value, list):
-                self.execution_stats.setdefault(key, [])
-                self.execution_stats[key].extend(value)
+    def merge_stats(self, stats: NodeExecutionStats) -> NodeExecutionStats:
+        stats_dict = stats.model_dump()
+        current_stats = self.execution_stats.model_dump()
+
+        for key, value in stats_dict.items():
+            if key not in current_stats:
+                # Field doesn't exist yet, just set it, but this will probably
+                # not happen, just in case though so we throw for invalid when
+                # converting back in
+                current_stats[key] = value
+            elif isinstance(value, dict) and isinstance(current_stats[key], dict):
+                current_stats[key].update(value)
+            elif isinstance(value, (int, float)) and isinstance(
+                current_stats[key], (int, float)
+            ):
+                current_stats[key] += value
+            elif isinstance(value, list) and isinstance(current_stats[key], list):
+                current_stats[key].extend(value)
             else:
-                self.execution_stats[key] = value
+                current_stats[key] = value
+
+        self.execution_stats = NodeExecutionStats(**current_stats)
+
         return self.execution_stats
 
     @property
@@ -407,7 +447,6 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         }
 
     def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
-        # Merge the input data with the extra execution arguments, preferring the args for security
         if error := self.input_schema.validate_data(input_data):
             raise ValueError(
                 f"Unable to execute block with invalid input data: {error}"
@@ -429,9 +468,9 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
 
 
 def get_blocks() -> dict[str, Type[Block]]:
-    from backend.blocks import AVAILABLE_BLOCKS  # noqa: E402
+    from backend.blocks import load_all_blocks
 
-    return AVAILABLE_BLOCKS
+    return load_all_blocks()
 
 
 async def initialize_blocks() -> None:
@@ -442,12 +481,12 @@ async def initialize_blocks() -> None:
         )
         if not existing_block:
             await AgentBlock.prisma().create(
-                data={
-                    "id": block.id,
-                    "name": block.name,
-                    "inputSchema": json.dumps(block.input_schema.jsonschema()),
-                    "outputSchema": json.dumps(block.output_schema.jsonschema()),
-                }
+                data=AgentBlockCreateInput(
+                    id=block.id,
+                    name=block.name,
+                    inputSchema=json.dumps(block.input_schema.jsonschema()),
+                    outputSchema=json.dumps(block.output_schema.jsonschema()),
+                )
             )
             continue
 

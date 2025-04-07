@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from backend.data.model import SchemaField
 
@@ -143,11 +143,12 @@ class ContactEmail(BaseModel):
 class EmploymentHistory(BaseModel):
     """An employment history in Apollo"""
 
-    class Config:
-        extra = "allow"
-        arbitrary_types_allowed = True
-        from_attributes = True
-        populate_by_name = True
+    model_config = ConfigDict(
+        extra="allow",
+        arbitrary_types_allowed=True,
+        from_attributes=True,
+        populate_by_name=True,
+    )
 
     _id: Optional[str] = None
     created_at: Optional[str] = None
@@ -188,11 +189,12 @@ class TypedCustomField(BaseModel):
 class Pagination(BaseModel):
     """Pagination in Apollo"""
 
-    class Config:
-        extra = "allow"  # Allow extra fields
-        arbitrary_types_allowed = True  # Allow any type
-        from_attributes = True  # Allow from_orm
-        populate_by_name = True  # Allow field aliases to work both ways
+    model_config = ConfigDict(
+        extra="allow",
+        arbitrary_types_allowed=True,
+        from_attributes=True,
+        populate_by_name=True,
+    )
 
     page: int = 0
     per_page: int = 0
@@ -230,11 +232,12 @@ class PhoneNumber(BaseModel):
 class Organization(BaseModel):
     """An organization in Apollo"""
 
-    class Config:
-        extra = "allow"
-        arbitrary_types_allowed = True
-        from_attributes = True
-        populate_by_name = True
+    model_config = ConfigDict(
+        extra="allow",
+        arbitrary_types_allowed=True,
+        from_attributes=True,
+        populate_by_name=True,
+    )
 
     id: Optional[str] = "N/A"
     name: Optional[str] = "N/A"
@@ -268,11 +271,12 @@ class Organization(BaseModel):
 class Contact(BaseModel):
     """A contact in Apollo"""
 
-    class Config:
-        extra = "allow"
-        arbitrary_types_allowed = True
-        from_attributes = True
-        populate_by_name = True
+    model_config = ConfigDict(
+        extra="allow",
+        arbitrary_types_allowed=True,
+        from_attributes=True,
+        populate_by_name=True,
+    )
 
     contact_roles: list[Any] = []
     id: Optional[str] = None
@@ -522,11 +526,12 @@ Use the page parameter to search the different pages of data.""",
 class SearchPeopleResponse(BaseModel):
     """Response from Apollo's search people API"""
 
-    class Config:
-        extra = "allow"  # Allow extra fields
-        arbitrary_types_allowed = True  # Allow any type
-        from_attributes = True  # Allow from_orm
-        populate_by_name = True  # Allow field aliases to work both ways
+    model_config = ConfigDict(
+        extra="allow",
+        arbitrary_types_allowed=True,
+        from_attributes=True,
+        populate_by_name=True,
+    )
 
     breadcrumbs: list[Breadcrumb] = []
     partial_results_only: bool = True

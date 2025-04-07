@@ -1,6 +1,6 @@
 import datetime
 from enum import Enum
-from typing import Any
+from typing import Any, Optional
 
 import prisma.enums
 import prisma.models
@@ -245,11 +245,15 @@ class LibraryAgentUpdateRequest(pydantic.BaseModel):
     archiving, or deleting.
     """
 
-    auto_update_version: bool = pydantic.Field(
-        False, description="Auto-update the agent version"
+    auto_update_version: Optional[bool] = pydantic.Field(
+        default=None, description="Auto-update the agent version"
     )
-    is_favorite: bool = pydantic.Field(
-        False, description="Mark the agent as a favorite"
+    is_favorite: Optional[bool] = pydantic.Field(
+        default=None, description="Mark the agent as a favorite"
     )
-    is_archived: bool = pydantic.Field(False, description="Archive the agent")
-    is_deleted: bool = pydantic.Field(False, description="Delete the agent")
+    is_archived: Optional[bool] = pydantic.Field(
+        default=None, description="Archive the agent"
+    )
+    is_deleted: Optional[bool] = pydantic.Field(
+        default=None, description="Delete the agent"
+    )

@@ -141,17 +141,20 @@ def SchemaField(
     secret: bool = False,
     exclude: bool = False,
     hidden: Optional[bool] = None,
-    depends_on: list[str] | None = None,
-    image_upload: Optional[bool] = None,
-    image_output: Optional[bool] = None,
-    **kwargs,
+    depends_on: Optional[list[str]] = None,
+    ge: Optional[float] = None,
+    le: Optional[float] = None,
+    min_length: Optional[int] = None,
+    max_length: Optional[int] = None,
+    discriminator: Optional[str] = None,
+    json_schema_extra: Optional[dict[str, Any]] = None,
 ) -> T:
     if default is PydanticUndefined and default_factory is None:
         advanced = False
     elif advanced is None:
         advanced = True
 
-    json_extra = {
+    json_schema_extra = {
         k: v
         for k, v in {
             "placeholder": placeholder,
@@ -159,8 +162,7 @@ def SchemaField(
             "advanced": advanced,
             "hidden": hidden,
             "depends_on": depends_on,
-            "image_upload": image_upload,
-            "image_output": image_output,
+            **(json_schema_extra or {}),
         }.items()
         if v is not None
     }
@@ -172,8 +174,12 @@ def SchemaField(
         title=title,
         description=description,
         exclude=exclude,
-        json_schema_extra=json_extra,
-        **kwargs,
+        ge=ge,
+        le=le,
+        min_length=min_length,
+        max_length=max_length,
+        discriminator=discriminator,
+        json_schema_extra=json_schema_extra,
     )  # type: ignore
 
 
@@ -402,3 +408,46 @@ class RefundRequest(BaseModel):
     status: str
     created_at: datetime
     updated_at: datetime
+
+
+class NodeExecutionStats(BaseModel):
+    """Execution statistics for a node execution."""
+
+    model_config = ConfigDict(
+        extra="allow",
+        arbitrary_types_allowed=True,
+    )
+
+    error: Optional[Exception | str] = None
+    walltime: float = 0
+    cputime: float = 0
+    input_size: int = 0
+    output_size: int = 0
+    llm_call_count: int = 0
+    llm_retry_count: int = 0
+    input_token_count: int = 0
+    output_token_count: int = 0
+
+
+class GraphExecutionStats(BaseModel):
+    """Execution statistics for a graph execution."""
+
+    model_config = ConfigDict(
+        extra="allow",
+        arbitrary_types_allowed=True,
+    )
+
+    error: Optional[Exception | str] = None
+    walltime: float = Field(
+        default=0, description="Time between start and end of run (seconds)"
+    )
+    cputime: float = 0
+    nodes_walltime: float = Field(
+        default=0, description="Total node execution time (seconds)"
+    )
+    nodes_cputime: float = 0
+    node_count: int = Field(default=0, description="Total number of node executions")
+    node_error_count: int = Field(
+        default=0, description="Total number of errors generated"
+    )
+    cost: int = Field(default=0, description="Total execution cost (cents)")

@@ -10,6 +10,7 @@ from backend.data import redis
 from backend.data.model import Credentials
 from backend.integrations.credentials_store import IntegrationCredentialsStore
 from backend.integrations.oauth import HANDLERS_BY_NAME
+from backend.integrations.providers import ProviderName
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Settings
 
@@ -153,7 +154,8 @@ class IntegrationCredentialsManager:
         self.store.locks.release_all_locks()
 
 
-def _get_provider_oauth_handler(provider_name: str) -> "BaseOAuthHandler":
+def _get_provider_oauth_handler(provider_name_str: str) -> "BaseOAuthHandler":
+    provider_name = ProviderName(provider_name_str)
     if provider_name not in HANDLERS_BY_NAME:
         raise KeyError(f"Unknown provider '{provider_name}'")
 

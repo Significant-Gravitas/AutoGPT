@@ -10,7 +10,7 @@ from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.feature_flag.client import feature_flag
 from autogpt_libs.utils.cache import thread_cached
 from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
-from starlette.status import HTTP_204_NO_CONTENT
+from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
 import backend.data.block
@@ -38,18 +38,24 @@ from backend.data.credit import (
     TransactionHistory,
     get_auto_top_up,
     get_block_costs,
-    get_stripe_customer_id,
     get_user_credit_model,
     set_auto_top_up,
 )
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
+from backend.data.onboarding import (
+    UserOnboardingUpdate,
+    get_recommended_agents,
+    get_user_onboarding,
+    onboarding_enabled,
+    update_user_onboarding,
+)
 from backend.data.user import (
     get_or_create_user,
     get_user_notification_preference,
     update_user_email,
     update_user_notification_preference,
 )
-from backend.executor import ExecutionManager, ExecutionScheduler, scheduler
+from backend.executor import ExecutionManager, Scheduler, scheduler
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_activate,
@@ -78,8 +84,8 @@ def execution_manager_client() -> ExecutionManager:
 
 
 @thread_cached
-def execution_scheduler_client() -> ExecutionScheduler:
-    return get_service_client(ExecutionScheduler)
+def execution_scheduler_client() -> Scheduler:
+    return get_service_client(Scheduler)
 
 
 settings = Settings()
@@ -153,6 +159,47 @@ async def update_preferences(
 
 
 ########################################################
+##################### Onboarding #######################
+########################################################
+
+
+@v1_router.get(
+    "/onboarding", tags=["onboarding"], dependencies=[Depends(auth_middleware)]
+)
+async def get_onboarding(user_id: Annotated[str, Depends(get_user_id)]):
+    return await get_user_onboarding(user_id)
+
+
+@v1_router.patch(
+    "/onboarding", tags=["onboarding"], dependencies=[Depends(auth_middleware)]
+)
+async def update_onboarding(
+    user_id: Annotated[str, Depends(get_user_id)], data: UserOnboardingUpdate
+):
+    return await update_user_onboarding(user_id, data)
+
+
+@v1_router.get(
+    "/onboarding/agents",
+    tags=["onboarding"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def get_onboarding_agents(
+    user_id: Annotated[str, Depends(get_user_id)],
+):
+    return await get_recommended_agents(user_id)
+
+
+@v1_router.get(
+    "/onboarding/enabled",
+    tags=["onboarding", "public"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def is_onboarding_enabled():
+    return await onboarding_enabled()
+
+
+########################################################
 ##################### Blocks ###########################
 ########################################################
 
@@ -161,7 +208,9 @@ async def update_preferences(
 def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     blocks = [block() for block in backend.data.block.get_blocks().values()]
     costs = get_block_costs()
-    return [{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks]
+    return [
+        {**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks if not b.disabled
+    ]
 
 
 @v1_router.post(
@@ -303,15 +352,7 @@ async def stripe_webhook(request: Request):
 async def manage_payment_method(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, str]:
-    session = stripe.billing_portal.Session.create(
-        customer=await get_stripe_customer_id(user_id),
-        return_url=settings.config.frontend_base_url + "/profile/credits",
-    )
-    if not session:
-        raise HTTPException(
-            status_code=400, detail="Failed to create billing portal session"
-        )
-    return {"url": session.url}
+    return {"url": await _user_credit_model.create_billing_portal_session(user_id)}
 
 
 @v1_router.get(path="/credits/transactions", dependencies=[Depends(auth_middleware)])
@@ -367,10 +408,10 @@ async def get_graph(
     graph_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
     version: int | None = None,
-    hide_credentials: bool = False,
+    for_export: bool = False,
 ) -> graph_db.GraphModel:
     graph = await graph_db.get_graph(
-        graph_id, version, user_id=user_id, for_export=hide_credentials
+        graph_id, version, user_id=user_id, for_export=for_export
     )
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
@@ -395,18 +436,19 @@ async def get_graph_all_versions(
     path="/graphs", tags=["graphs"], dependencies=[Depends(auth_middleware)]
 )
 async def create_new_graph(
-    create_graph: CreateGraph, user_id: Annotated[str, Depends(get_user_id)]
+    create_graph: CreateGraph,
+    user_id: Annotated[str, Depends(get_user_id)],
 ) -> graph_db.GraphModel:
     graph = graph_db.make_graph_model(create_graph.graph, user_id)
     graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
+    graph.validate_graph(for_run=False)
 
     graph = await graph_db.create_graph(graph, user_id=user_id)
 
     # Create a library agent for the new graph
-    await library_db.create_library_agent(
-        graph.id,
-        graph.version,
-        user_id,
+    library_agent = await library_db.create_library_agent(graph, user_id)
+    _ = asyncio.create_task(
+        library_db.add_generated_agent_image(graph, library_agent.id)
     )
 
     graph = await on_graph_activate(
@@ -451,17 +493,10 @@ async def update_graph(
     latest_version_number = max(g.version for g in existing_versions)
     graph.version = latest_version_number + 1
 
-    latest_version_graph = next(
-        v for v in existing_versions if v.version == latest_version_number
-    )
     current_active_version = next((v for v in existing_versions if v.is_active), None)
-    if latest_version_graph.is_template != graph.is_template:
-        raise HTTPException(
-            400, detail="Changing is_template on an existing graph is forbidden"
-        )
-    graph.is_active = not graph.is_template
     graph = graph_db.make_graph_model(graph, user_id)
-    graph.reassign_ids(user_id=user_id)
+    graph.reassign_ids(user_id=user_id, reassign_graph_id=False)
+    graph.validate_graph(for_run=False)
 
     new_graph_version = await graph_db.create_graph(graph, user_id=user_id)
 
@@ -551,14 +586,10 @@ def execute_graph(
     user_id: Annotated[str, Depends(get_user_id)],
     graph_version: Optional[int] = None,
 ) -> ExecuteGraphResponse:
-    try:
-        graph_exec = execution_manager_client().add_execution(
-            graph_id, node_input, user_id=user_id, graph_version=graph_version
-        )
-        return ExecuteGraphResponse(graph_exec_id=graph_exec.graph_exec_id)
-    except Exception as e:
-        msg = str(e).encode().decode("unicode_escape")
-        raise HTTPException(status_code=400, detail=msg)
+    graph_exec = execution_manager_client().add_execution(
+        graph_id, node_input, user_id=user_id, graph_version=graph_version
+    )
+    return ExecuteGraphResponse(graph_exec_id=graph_exec.graph_exec_id)
 
 
 @v1_router.post(
@@ -568,8 +599,8 @@ def execute_graph(
 )
 async def stop_graph_run(
     graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
-) -> graph_db.GraphExecution:
-    if not await graph_db.get_execution_meta(
+) -> execution_db.GraphExecution:
+    if not await execution_db.get_graph_execution_meta(
         user_id=user_id, execution_id=graph_exec_id
     ):
         raise HTTPException(404, detail=f"Agent execution #{graph_exec_id} not found")
@@ -579,7 +610,9 @@ async def stop_graph_run(
     )
 
     # Retrieve & return canceled graph execution in its final state
-    result = await graph_db.get_execution(execution_id=graph_exec_id, user_id=user_id)
+    result = await execution_db.get_graph_execution(
+        execution_id=graph_exec_id, user_id=user_id
+    )
     if not result:
         raise HTTPException(
             500,
@@ -595,8 +628,8 @@ async def stop_graph_run(
 )
 async def get_graphs_executions(
     user_id: Annotated[str, Depends(get_user_id)],
-) -> list[graph_db.GraphExecutionMeta]:
-    return await graph_db.get_graphs_executions(user_id=user_id)
+) -> list[execution_db.GraphExecutionMeta]:
+    return await execution_db.get_graph_executions(user_id=user_id)
 
 
 @v1_router.get(
@@ -607,8 +640,8 @@ async def get_graphs_executions(
 async def get_graph_executions(
     graph_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
-) -> list[graph_db.GraphExecutionMeta]:
-    return await graph_db.get_graph_executions(graph_id=graph_id, user_id=user_id)
+) -> list[execution_db.GraphExecutionMeta]:
+    return await execution_db.get_graph_executions(graph_id=graph_id, user_id=user_id)
 
 
 @v1_router.get(
@@ -620,14 +653,22 @@ async def get_graph_execution(
     graph_id: str,
     graph_exec_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
-) -> graph_db.GraphExecution:
-    graph = await graph_db.get_graph(graph_id, user_id=user_id)
+) -> execution_db.GraphExecution | execution_db.GraphExecutionWithNodes:
+    graph = await graph_db.get_graph(graph_id=graph_id, user_id=user_id)
     if not graph:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND, detail=f"Graph #{graph_id} not found"
+        )
 
-    result = await graph_db.get_execution(execution_id=graph_exec_id, user_id=user_id)
-    if not result:
-        raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
+    result = await execution_db.get_graph_execution(
+        user_id=user_id,
+        execution_id=graph_exec_id,
+        include_node_executions=graph.user_id == user_id,
+    )
+    if not result or result.graph_id != graph_id:
+        raise HTTPException(
+            status_code=404, detail=f"Graph execution #{graph_exec_id} not found."
+        )
 
     return result
 
@@ -642,7 +683,9 @@ async def delete_graph_execution(
     graph_exec_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> None:
-    await execution_db.delete_execution(graph_exec_id=graph_exec_id, user_id=user_id)
+    await execution_db.delete_graph_execution(
+        graph_exec_id=graph_exec_id, user_id=user_id
+    )
 
 
 ########################################################
@@ -665,7 +708,7 @@ class ScheduleCreationRequest(pydantic.BaseModel):
 async def create_schedule(
     user_id: Annotated[str, Depends(get_user_id)],
     schedule: ScheduleCreationRequest,
-) -> scheduler.JobInfo:
+) -> scheduler.ExecutionJobInfo:
     graph = await graph_db.get_graph(
         schedule.graph_id, schedule.graph_version, user_id=user_id
     )
@@ -707,7 +750,7 @@ def delete_schedule(
 def get_execution_schedules(
     user_id: Annotated[str, Depends(get_user_id)],
     graph_id: str | None = None,
-) -> list[scheduler.JobInfo]:
+) -> list[scheduler.ExecutionJobInfo]:
     return execution_scheduler_client().get_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,

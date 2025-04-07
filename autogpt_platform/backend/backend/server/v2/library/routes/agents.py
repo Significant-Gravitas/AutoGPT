@@ -24,14 +24,14 @@ router = APIRouter(
         500: {"description": "Server error", "content": {"application/json": {}}},
     },
 )
-async def get_library_agents(
+async def list_library_agents(
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
     search_term: Optional[str] = Query(
         None, description="Search term to filter agents"
     ),
     sort_by: library_model.LibraryAgentSort = Query(
         library_model.LibraryAgentSort.UPDATED_AT,
-        description="Sort results by criteria",
+        description="Criteria to sort results by",
     ),
     page: int = Query(
         1,
@@ -62,7 +62,7 @@ async def get_library_agents(
         HTTPException: If a server/database error occurs.
     """
     try:
-        return await library_db.get_library_agents(
+        return await library_db.list_library_agents(
             user_id=user_id,
             search_term=search_term,
             sort_by=sort_by,
@@ -75,6 +75,14 @@ async def get_library_agents(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get library agents",
         ) from e
+
+
+@router.get("/{library_agent_id}")
+async def get_library_agent(
+    library_agent_id: str,
+    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+) -> library_model.LibraryAgent:
+    return await library_db.get_library_agent(id=library_agent_id, user_id=user_id)
 
 
 @router.post(
@@ -98,7 +106,7 @@ async def add_marketplace_agent_to_library(
         user_id: ID of the authenticated user.
 
     Returns:
-        201 (Created) on success.
+        library_model.LibraryAgent: Agent added to the library
 
     Raises:
         HTTPException(404): If the listing version is not found.
