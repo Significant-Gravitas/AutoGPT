@@ -14,6 +14,12 @@ Sentry.init({
 
   // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
   tracesSampleRate: 1,
+  tracePropagationTargets: [
+    "localhost",
+    "localhost:8006",
+    /^https:\/\/dev\-builder\.agpt\.co\/api/,
+    /^https:\/\/.*\.agpt\.co\/api/,
+  ],
 
   // Setting this option to true will print useful information to the console while you're setting up Sentry.
   debug: false,

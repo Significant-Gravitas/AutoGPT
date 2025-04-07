@@ -30,7 +30,9 @@ Sentry.init({
   // Set `tracePropagationTargets` to control for which URLs trace propagation should be enabled
   tracePropagationTargets: [
     "localhost",
+    "localhost:8006",
     /^https:\/\/dev\-builder\.agpt\.co\/api/,
+    /^https:\/\/.*\.agpt\.co\/api/,
   ],
 
   // Define how likely Replay events are sampled.
