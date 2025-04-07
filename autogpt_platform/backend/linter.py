@@ -49,4 +49,3 @@ def format():
     run("ruff", "format", LIBS_DIR)
     run("isort", "--profile", "black", BACKEND_DIR)
     run("black", BACKEND_DIR)
-    run("pyright", *TARGET_DIRS)
