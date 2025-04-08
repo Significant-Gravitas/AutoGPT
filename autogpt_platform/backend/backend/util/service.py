@@ -73,7 +73,7 @@ def fastapi_expose(func: C) -> C:
 
 
 def fastapi_exposed_run_and_wait(
-    f: Callable[P, Coroutine[None, None, R]]
+    f: Callable[P, Coroutine[None, None, R]],
 ) -> Callable[Concatenate[object, P], R]:
     # TODO:
     #  This function lies about its return type to make the DynamicClient
@@ -148,7 +148,7 @@ def _make_custom_deserializer(model: Type[BaseModel]):
 
 
 def pyro_exposed_run_and_wait(
-    f: Callable[P, Coroutine[None, None, R]]
+    f: Callable[P, Coroutine[None, None, R]],
 ) -> Callable[Concatenate[object, P], R]:
     @expose
     @wraps(f)
@@ -354,8 +354,8 @@ class FastApiAppService(BaseAppService, ABC):
         self.shared_event_loop.run_until_complete(server.serve())
 
     def run(self):
-        super().run()
         sentry_init()
+        super().run()
         self.fastapi_app = FastAPI()
 
         # Register the exposed API routes.
