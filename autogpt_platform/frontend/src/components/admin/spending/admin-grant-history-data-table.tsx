@@ -90,13 +90,14 @@ export async function AdminUserGrantHistory({
           <TableHeader className="bg-gray-50">
             <TableRow>
               <TableHead className="font-medium">User</TableHead>
-              <TableHead className="font-medium">Amount</TableHead>
               <TableHead className="font-medium">Type</TableHead>
               <TableHead className="font-medium">Date</TableHead>
               <TableHead className="font-medium">Reason</TableHead>
               <TableHead className="font-medium">Admin</TableHead>
-              <TableHead className="font-medium">Current Balance</TableHead>
-              <TableHead className="font-medium">Running Balance</TableHead>
+              <TableHead className="font-medium">Starting Balance</TableHead>
+              <TableHead className="font-medium">Amount</TableHead>
+              <TableHead className="font-medium">Ending Balance</TableHead>
+              {/* <TableHead className="font-medium">Current Balance</TableHead> */}
               <TableHead className="text-right font-medium">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -119,9 +120,7 @@ export async function AdminUserGrantHistory({
                   <TableCell className="font-medium">
                     {transaction.user_email}
                   </TableCell>
-                  <TableCell>
-                    {formatAmount(transaction.amount, transaction.type)}
-                  </TableCell>
+
                   <TableCell>{formatType(transaction.type)}</TableCell>
                   <TableCell className="text-gray-600">
                     {formatDate(transaction.date)}
@@ -131,11 +130,17 @@ export async function AdminUserGrantHistory({
                     {transaction.admin_email}
                   </TableCell>
                   <TableCell className="font-medium text-green-600">
-                    ${transaction.current_balance / 100}
+                    ${(transaction.running_balance + -transaction.amount) / 100}
+                  </TableCell>
+                  <TableCell>
+                    {formatAmount(transaction.amount, transaction.type)}
                   </TableCell>
                   <TableCell className="font-medium text-green-600">
                     ${transaction.running_balance / 100}
                   </TableCell>
+                  {/* <TableCell className="font-medium text-green-600">
+                    ${transaction.current_balance / 100}
+                  </TableCell> */}
                   <TableCell className="text-right">
                     <AddCreditButton
                       userId={transaction.user_id}
