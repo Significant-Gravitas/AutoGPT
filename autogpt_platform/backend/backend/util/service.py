@@ -44,10 +44,10 @@ from Pyro5 import config as pyro_config
 from backend.data import db, rabbitmq, redis
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import to_dict
+from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess, get_service_name
 from backend.util.retry import conn_retry
 from backend.util.settings import Config, Secrets
-from backend.util.metrics import sentry_init
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
