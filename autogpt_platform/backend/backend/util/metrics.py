@@ -1,12 +1,14 @@
 import logging
-from typing import cast
+from typing import TYPE_CHECKING, cast
 
 import sentry_sdk
-from sentry_sdk.consts import Experiments
 from sentry_sdk.integrations.anthropic import AnthropicIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
 from backend.util.settings import Settings
+
+if TYPE_CHECKING:
+    from sentry_sdk.consts import Experiments
 
 
 def sentry_init():
