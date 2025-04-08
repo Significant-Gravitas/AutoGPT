@@ -206,6 +206,12 @@ class Scheduler(AppService):
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.start()
 
+    def cleanup(self):
+        super().cleanup()
+        logger.info(f"[{self.service_name}] ⏳ Shutting down scheduler...")
+        if self.scheduler:
+            self.scheduler.shutdown(wait=False)
+
     @expose
     def add_execution_schedule(
         self,
