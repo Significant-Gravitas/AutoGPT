@@ -1213,7 +1213,7 @@ class ExecutionManager(AppService):
         )
         self.rabbitmq_service.publish_message(
             routing_key=GRAPH_EXECUTION_ROUTING_KEY,
-            message=json.dumps(graph_exec_entry),
+            message=graph_exec_entry.model_dump_json(),
             exchange=GRAPH_EXECUTION_EXCHANGE,
         )
         return graph_exec_entry

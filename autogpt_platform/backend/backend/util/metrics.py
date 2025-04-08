@@ -1,10 +1,12 @@
 import logging
+from typing import cast
+
 import sentry_sdk
+from sentry_sdk.consts import Experiments
+from sentry_sdk.integrations.anthropic import AnthropicIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
 
 from backend.util.settings import Settings
-from sentry_sdk.integrations.anthropic import AnthropicIntegration
-from sentry_sdk.integrations.launchdarkly import LaunchDarklyIntegration
-from sentry_sdk.integrations.logging import LoggingIntegration
 
 
 def sentry_init():
@@ -14,9 +16,7 @@ def sentry_init():
         traces_sample_rate=1.0,
         profiles_sample_rate=1.0,
         environment=f"app:{Settings().config.app_env.value}-behave:{Settings().config.behave_as.value}",
-        _experiments={
-            "enable_logs": True,
-        },
+        _experiments=cast(Experiments, {"enable_logs": True}),
         integrations=[
             LoggingIntegration(sentry_logs_level=logging.INFO),
             AnthropicIntegration(
