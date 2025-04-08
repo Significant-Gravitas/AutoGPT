@@ -1124,6 +1124,12 @@ class ExecutionManager(AppService):
         logger.info(f"[{self.service_name}] ⏳ Disconnecting RabbitMQ...")
         self.rabbitmq_service.disconnect()
 
+        logger.info(f"[{self.service_name}] ⏳ Shutting down graph executor pool...")
+        self.executor.shutdown(cancel_futures=True)
+
+        logger.info(f"[{self.service_name}] ⏳ Disconnecting Redis...")
+        redis.disconnect()
+
     @property
     def db_client(self) -> "DatabaseManager":
         return get_db_client()
