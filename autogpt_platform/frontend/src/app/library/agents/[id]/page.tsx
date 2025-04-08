@@ -316,6 +316,7 @@ export default function AgentRunsPage(): React.ReactElement {
         onSelectDraftNewRun={openRunDraftView}
         onPinAsPreset={createPresetFromRun}
         onDeleteRun={setConfirmingDeleteAgentRun}
+        // TODO: onDeletePreset={deletePreset}
         onDeleteSchedule={deleteSchedule}
       />
 

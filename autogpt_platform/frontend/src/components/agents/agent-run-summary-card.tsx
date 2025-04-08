@@ -1,6 +1,6 @@
 import React from "react";
 import moment from "moment";
-import { MoreVertical } from "lucide-react";
+import { MoreVertical, PinIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -17,19 +17,22 @@ import AgentRunStatusChip, {
   AgentRunStatus,
 } from "@/components/agents/agent-run-status-chip";
 
-export type AgentRunSummaryProps = {
-  status: AgentRunStatus;
+export type AgentRunSummaryProps = (
+  | { type: "run"; status: AgentRunStatus }
+  | { type: "preset" | "schedule"; status?: undefined }
+) & {
   title: string;
-  timestamp: number | Date;
+  timestamp?: number | Date;
   selected?: boolean;
   onClick?: () => void;
   onPinAsPreset?: () => void;
   // onRename: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
   className?: string;
 };
 
 export default function AgentRunSummaryCard({
+  type,
   status,
   title,
   timestamp,
@@ -50,9 +53,17 @@ export default function AgentRunSummaryCard({
       onClick={onClick}
     >
       <CardContent className="relative p-2.5 lg:p-4">
-        <AgentRunStatusChip status={status} />
+        {type == "run" ? (
+          <AgentRunStatusChip status={status} />
+        ) : type == "schedule" ? (
+          <AgentRunStatusChip status="scheduled" />
+        ) : (
+          <div className="flex items-center text-sm text-neutral-700">
+            <PinIcon className="mr-2 size-4" /> Template run
+          </div>
+        )}
 
-        <div className="mt-5 flex items-center justify-between">
+        <div className="mt-3 flex items-center justify-between">
           <h3 className="truncate pr-2 text-base font-medium text-neutral-900">
             {title}
           </h3>
@@ -72,17 +83,22 @@ export default function AgentRunSummaryCard({
 
               {/* <DropdownMenuItem onClick={onRename}>Rename</DropdownMenuItem> */}
 
-              <DropdownMenuItem onClick={onDelete}>Delete</DropdownMenuItem>
+              {onDelete && (
+                <DropdownMenuItem onClick={onDelete}>Delete</DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
 
-        <p
-          className="mt-1 text-sm font-normal text-neutral-500"
-          title={moment(timestamp).toString()}
-        >
-          Ran {moment(timestamp).fromNow()}
-        </p>
+        {timestamp && (
+          <p
+            className="mt-1 text-sm font-normal text-neutral-500"
+            title={moment(timestamp).toString()}
+          >
+            {{ run: "Ran", schedule: "Next run", preset: "Last updated" }[type]}{" "}
+            {moment(timestamp).fromNow()}
+          </p>
+        )}
       </CardContent>
     </Card>
   );
