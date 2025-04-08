@@ -7,8 +7,6 @@ import {
   GraphExecutionID,
   GraphExecutionMeta,
   LibraryAgent,
-  LibraryAgentPreset,
-  LibraryAgentPresetID,
   Schedule,
   ScheduleID,
 } from "@/lib/autogpt-server-api";
@@ -17,41 +15,34 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/agptui/Button";
 import { Badge } from "@/components/ui/badge";
 
-import { AgentRunsViewSelection } from "@/app/library/agents/[id]/page";
 import { agentRunStatusMap } from "@/components/agents/agent-run-status-chip";
 import AgentRunSummaryCard from "@/components/agents/agent-run-summary-card";
 
 interface AgentRunsSelectorListProps {
   agent: LibraryAgent;
   agentRuns: GraphExecutionMeta[];
-  agentPresets: LibraryAgentPreset[];
   schedules: Schedule[];
-  selectedView: AgentRunsViewSelection;
+  selectedView: { type: "run" | "schedule"; id?: string };
   allowDraftNewRun?: boolean;
   onSelectRun: (id: GraphExecutionID) => void;
-  onSelectPreset: (id: LibraryAgentPresetID) => void;
   onSelectSchedule: (schedule: Schedule) => void;
   onSelectDraftNewRun: () => void;
   onDeleteRun: (id: GraphExecutionMeta) => void;
   onDeleteSchedule: (id: ScheduleID) => void;
-  onPinAsPreset: (run: GraphExecutionMeta) => void;
   className?: string;
 }
 
 export default function AgentRunsSelectorList({
   agent,
   agentRuns,
-  agentPresets,
   schedules,
   selectedView,
   allowDraftNewRun = true,
   onSelectRun,
-  onSelectPreset,
   onSelectSchedule,
   onSelectDraftNewRun,
   onDeleteRun,
   onDeleteSchedule,
-  onPinAsPreset,
   className,
 }: AgentRunsSelectorListProps): React.ReactElement {
   const [activeListTab, setActiveListTab] = useState<"runs" | "scheduled">(
@@ -119,7 +110,7 @@ export default function AgentRunsSelectorList({
           )}
 
           {activeListTab === "runs"
-            ? /* FIXME: list presets at the top */ agentRuns
+            ? agentRuns
                 .toSorted(
                   (a, b) => b.started_at.getTime() - a.started_at.getTime(),
                 )
@@ -133,7 +124,6 @@ export default function AgentRunsSelectorList({
                     selected={selectedView.id === run.id}
                     onClick={() => onSelectRun(run.id)}
                     onDelete={() => onDeleteRun(run)}
-                    onPinAsPreset={() => onPinAsPreset(run)}
                   />
                 ))
             : schedules
