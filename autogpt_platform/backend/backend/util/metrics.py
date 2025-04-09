@@ -1,10 +1,10 @@
 import logging
+
 import sentry_sdk
+from sentry_sdk.integrations.anthropic import AnthropicIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
 
 from backend.util.settings import Settings
-from sentry_sdk.integrations.anthropic import AnthropicIntegration
-from sentry_sdk.integrations.launchdarkly import LaunchDarklyIntegration
-from sentry_sdk.integrations.logging import LoggingIntegration
 
 
 def sentry_init():
