@@ -44,7 +44,7 @@ class SpaceList(BaseModel):
     space_ids: list[str] = SchemaField(
         description="List of Space IDs to lookup (up to 100)",
         placeholder="Enter Space IDs",
-        default=[],
+        default_factory=list,
         advanced=False,
     )
 
@@ -54,7 +54,7 @@ class UserList(BaseModel):
     user_ids: list[str] = SchemaField(
         description="List of user IDs to lookup their Spaces (up to 100)",
         placeholder="Enter user IDs",
-        default=[],
+        default_factory=list,
         advanced=False,
     )
 

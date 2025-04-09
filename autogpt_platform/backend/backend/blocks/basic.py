@@ -151,7 +151,7 @@ class FindInDictionaryBlock(Block):
 class AddToDictionaryBlock(Block):
     class Input(BlockSchema):
         dictionary: dict[Any, Any] = SchemaField(
-            default={},
+            default_factory=dict,
             description="The dictionary to add the entry to. If not provided, a new dictionary will be created.",
         )
         key: str = SchemaField(
@@ -167,7 +167,7 @@ class AddToDictionaryBlock(Block):
             advanced=False,
         )
         entries: dict[Any, Any] = SchemaField(
-            default={},
+            default_factory=dict,
             description="The entries to add to the dictionary. This is the batch version of the `key` and `value` fields.",
             advanced=True,
         )
@@ -229,7 +229,7 @@ class AddToDictionaryBlock(Block):
 class AddToListBlock(Block):
     class Input(BlockSchema):
         list: List[Any] = SchemaField(
-            default=[],
+            default_factory=list,
             advanced=False,
             description="The list to add the entry to. If not provided, a new list will be created.",
         )
@@ -239,7 +239,7 @@ class AddToListBlock(Block):
             default=None,
         )
         entries: List[Any] = SchemaField(
-            default=[],
+            default_factory=List,
             description="The entries to add to the list. This is the batch version of the `entry` field.",
             advanced=True,
         )
