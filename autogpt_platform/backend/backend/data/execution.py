@@ -44,7 +44,7 @@ from .includes import (
     GRAPH_EXECUTION_INCLUDE,
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
 )
-from .model import GraphExecutionStats, NodeExecutionStats
+from .model import CredentialsMetaInput, GraphExecutionStats, NodeExecutionStats
 from .queue import AsyncRedisEventBus, RedisEventBus
 
 T = TypeVar("T")
@@ -678,6 +678,7 @@ class GraphExecutionEntry(BaseModel):
     graph_id: str
     graph_version: int
     start_node_execs: list["NodeExecutionEntry"]
+    node_credentials_map: Optional[dict[str, dict[str, CredentialsMetaInput]]]
 
 
 class NodeExecutionEntry(BaseModel):

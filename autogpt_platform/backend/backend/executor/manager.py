@@ -13,7 +13,11 @@ from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
 from redis.lock import Lock as RedisLock
 
 from backend.blocks.io import AgentOutputBlock
-from backend.data.model import GraphExecutionStats, NodeExecutionStats
+from backend.data.model import (
+    CredentialsMetaInput,
+    GraphExecutionStats,
+    NodeExecutionStats,
+)
 from backend.data.notifications import (
     AgentRunData,
     LowBalanceData,
@@ -776,10 +780,10 @@ class Executor:
                     execution_status = ExecutionStatus.TERMINATED
                     return execution_stats, execution_status, error
 
-                exec_data = queue.get()
+                queued_node_exec = queue.get()
 
                 # Avoid parallel execution of the same node.
-                execution = running_executions.get(exec_data.node_id)
+                execution = running_executions.get(queued_node_exec.node_id)
                 if execution and not execution.ready():
                     # TODO (performance improvement):
                     #   Wait for the completion of the same node execution is blocking.
@@ -788,18 +792,18 @@ class Executor:
                     execution.wait()
 
                 log_metadata.debug(
-                    f"Dispatching node execution {exec_data.node_exec_id} "
-                    f"for node {exec_data.node_id}",
+                    f"Dispatching node execution {queued_node_exec.node_exec_id} "
+                    f"for node {queued_node_exec.node_id}",
                 )
 
                 try:
                     exec_cost_counter = cls._charge_usage(
-                        node_exec=exec_data,
+                        node_exec=queued_node_exec,
                         execution_count=exec_cost_counter + 1,
                         execution_stats=execution_stats,
                     )
                 except InsufficientBalanceError as error:
-                    node_exec_id = exec_data.node_exec_id
+                    node_exec_id = queued_node_exec.node_exec_id
                     cls.db_client.upsert_execution_output(
                         node_exec_id=node_exec_id,
                         output_name="error",
@@ -820,10 +824,23 @@ class Executor:
                     )
                     raise
 
-                running_executions[exec_data.node_id] = cls.executor.apply_async(
+                # Add credentials input overrides
+                node_id = queued_node_exec.node_id
+                if (node_creds_map := graph_exec.node_credentials_map) and (
+                    node_field_creds_map := node_creds_map.get(node_id)
+                ):
+                    queued_node_exec.data.update(
+                        {
+                            field_name: creds_meta.model_dump()
+                            for field_name, creds_meta in node_field_creds_map.items()
+                        }
+                    )
+
+                # Initiate node execution
+                running_executions[queued_node_exec.node_id] = cls.executor.apply_async(
                     cls.on_node_execution,
-                    (queue, exec_data),
-                    callback=make_exec_callback(exec_data),
+                    (queue, queued_node_exec),
+                    callback=make_exec_callback(queued_node_exec),
                 )
 
                 # Avoid terminating graph execution when some nodes are still running.
@@ -988,7 +1005,11 @@ class ExecutionManager(AppService):
         data: BlockInput,
         user_id: str,
         graph_version: Optional[int] = None,
-        preset_id: str | None = None,
+        preset_id: Optional[str] = None,
+        node_credentials_map: Optional[
+            # node ID -> field name -> CredentialsMetaInput
+            dict[str, dict[str, CredentialsMetaInput]]
+        ] = None,
     ) -> GraphExecutionEntry:
         graph: GraphModel | None = self.db_client.get_graph(
             graph_id=graph_id, user_id=user_id, version=graph_version
@@ -997,7 +1018,9 @@ class ExecutionManager(AppService):
             raise ValueError(f"Graph #{graph_id} not found.")
 
         graph.validate_graph(for_run=True)
-        self._validate_node_input_credentials(graph, user_id)
+        self._validate_node_input_credentials(
+            graph, user_id, node_credentials_map or {}
+        )
 
         nodes_input = []
         for node in graph.starting_nodes:
@@ -1063,6 +1086,7 @@ class ExecutionManager(AppService):
                 )
                 for node_exec in graph_exec.node_executions
             ],
+            node_credentials_map=node_credentials_map,
         )
         self.queue.add(graph_exec_entry)
 
@@ -1109,7 +1133,12 @@ class ExecutionManager(AppService):
             node_exec.status = ExecutionStatus.TERMINATED
             self.db_client.send_execution_update(node_exec)
 
-    def _validate_node_input_credentials(self, graph: GraphModel, user_id: str):
+    def _validate_node_input_credentials(
+        self,
+        graph: GraphModel,
+        user_id: str,
+        node_credentials_map: dict[str, dict[str, CredentialsMetaInput]],
+    ):
         """Checks all credentials for all nodes of the graph"""
 
         for node in graph.nodes:
@@ -1123,9 +1152,20 @@ class ExecutionManager(AppService):
                 continue
 
             for field_name, credentials_meta_type in credentials_fields.items():
-                credentials_meta = credentials_meta_type.model_validate(
-                    node.input_default[field_name]
-                )
+                if (
+                    node_field_creds_map := node_credentials_map.get(node.id)
+                ) and field_name in node_field_creds_map:
+                    credentials_meta = node_credentials_map[node.id][field_name]
+                elif field_name in node.input_default:
+                    credentials_meta = credentials_meta_type.model_validate(
+                        node.input_default[field_name]
+                    )
+                else:
+                    raise ValueError(
+                        f"Credentials absent for {block.name} node #{node.id} "
+                        f"input '{field_name}'"
+                    )
+
                 # Fetch the corresponding Credentials and perform sanity checks
                 credentials = self.credentials_store.get_creds_by_id(
                     user_id, credentials_meta.id
