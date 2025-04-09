@@ -842,12 +842,12 @@ async def fix_llm_provider_credentials():
             SELECT    graph."userId"       user_id,
                   node.id              node_id,
                   node."constantInput" node_preset_input
-        FROM      platform."AgentNode"  node
-        LEFT JOIN platform."AgentGraph" graph
-        ON        node."agentGraphId" = graph.id
-        WHERE     node."constantInput"::jsonb->'credentials'->>'provider' = 'llm'
-        ORDER BY  graph."userId";
-        """
+            FROM      platform."AgentNode"  node
+            LEFT JOIN platform."AgentGraph" graph
+            ON        node."agentGraphId" = graph.id
+            WHERE     node."constantInput"::jsonb->'credentials'->>'provider' = 'llm'
+            ORDER BY  graph."userId";
+            """
         )
         logger.info(f"Fixing LLM credential inputs on {len(broken_nodes)} nodes")
     except Exception as e:
