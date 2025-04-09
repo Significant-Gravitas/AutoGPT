@@ -932,8 +932,6 @@ class Executor:
 class ExecutionManager(AppService):
     def __init__(self):
         super().__init__()
-        self.use_redis = True
-        self.use_supabase = True
         self.pool_size = settings.config.num_graph_workers
         self.queue = ExecutionQueue[GraphExecutionEntry]()
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
@@ -946,14 +944,17 @@ class ExecutionManager(AppService):
         from backend.integrations.credentials_store import IntegrationCredentialsStore
 
         self.credentials_store = IntegrationCredentialsStore()
+
+        logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
             initializer=Executor.on_graph_executor_start,
         )
+
+        logger.info(f"[{self.service_name}] ⏳ Connecting to Redis...")
+        redis.connect()
+
         sync_manager = multiprocessing.Manager()
-        logger.info(
-            f"[{self.service_name}] Started with max-{self.pool_size} graph workers"
-        )
         while True:
             graph_exec_data = self.queue.get()
             graph_exec_id = graph_exec_data.graph_exec_id
@@ -970,10 +971,13 @@ class ExecutionManager(AppService):
             )
 
     def cleanup(self):
-        logger.info(f"[{__class__.__name__}] ⏳ Shutting down graph executor pool...")
+        super().cleanup()
+
+        logger.info(f"[{self.service_name}] ⏳ Shutting down graph executor pool...")
         self.executor.shutdown(cancel_futures=True)
 
-        super().cleanup()
+        logger.info(f"[{self.service_name}] ⏳ Disconnecting Redis...")
+        redis.disconnect()
 
     @property
     def db_client(self) -> "DatabaseManager":
