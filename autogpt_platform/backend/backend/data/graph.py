@@ -1,7 +1,7 @@
 import logging
 import uuid
 from collections import defaultdict
-from typing import Any, Literal, Optional, Type
+from typing import Any, Literal, Optional, Type, cast
 
 import prisma
 from prisma import Json
@@ -386,8 +386,15 @@ class GraphModel(Graph):
             for field_name, field_info in input_fields.items():
                 # Apply input dependency validation only on run & field with depends_on
                 json_schema_extra = field_info.json_schema_extra or {}
-                dependencies = json_schema_extra.get("depends_on", [])
-                if not for_run or not dependencies:
+                if not (
+                    for_run
+                    and isinstance(json_schema_extra, dict)
+                    and (
+                        dependencies := cast(
+                            list[str], json_schema_extra.get("depends_on", [])
+                        )
+                    )
+                ):
                     continue
 
                 # Check if dependent field has value in input_default
