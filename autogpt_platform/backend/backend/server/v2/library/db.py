@@ -502,7 +502,7 @@ async def list_presets(
 
     Args:
         user_id: The user ID whose presets are being retrieved.
-        page: The current page index (0-based or 1-based, clarify in your domain).
+        page: The current page index (1-based).
         page_size: Number of items to retrieve per page.
         graph_id: Agent Graph ID to filter by.
 
@@ -516,7 +516,7 @@ async def list_presets(
         f"Fetching presets for user #{user_id}, page={page}, page_size={page_size}"
     )
 
-    if page < 0 or page_size < 1:
+    if page < 1 or page_size < 1:
         logger.warning(
             "Invalid pagination input: page=%d, page_size=%d", page, page_size
         )
@@ -529,7 +529,7 @@ async def list_presets(
     try:
         presets_records = await prisma.models.AgentPreset.prisma().find_many(
             where=query_filter,
-            skip=page * page_size,
+            skip=(page - 1) * page_size,
             take=page_size,
         )
         total_items = await prisma.models.AgentPreset.prisma().count(where=query_filter)
