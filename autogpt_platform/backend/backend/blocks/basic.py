@@ -239,7 +239,7 @@ class AddToListBlock(Block):
             default=None,
         )
         entries: List[Any] = SchemaField(
-            default_factory=List,
+            default_factory=lambda: list(),
             description="The entries to add to the list. This is the batch version of the `entry` field.",
             advanced=True,
         )
