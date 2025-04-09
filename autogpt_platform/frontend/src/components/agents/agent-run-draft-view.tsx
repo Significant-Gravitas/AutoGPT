@@ -1,8 +1,12 @@
 "use client";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { GraphExecutionID, GraphMeta } from "@/lib/autogpt-server-api";
+import {
+  GraphExecutionID,
+  GraphMeta,
+  LibraryAgentPreset,
+} from "@/lib/autogpt-server-api";
 
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,14 +15,19 @@ import { useToastOnFail } from "@/components/ui/use-toast";
 import ActionButtonGroup from "@/components/agptui/action-button-group";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { IconPlay } from "@/components/ui/icons";
+import { deepEquals } from "@/lib/utils";
 
 export default function AgentRunDraftView({
   graph,
+  preset,
   onRun,
+  onSavePreset,
   agentActions,
 }: {
   graph: GraphMeta;
+  preset?: LibraryAgentPreset;
   onRun: (runID: GraphExecutionID) => void;
+  onSavePreset: (preset: LibraryAgentPreset) => void;
   agentActions: ButtonAction[];
 }): React.ReactNode {
   const api = useBackendAPI();
@@ -27,6 +36,17 @@ export default function AgentRunDraftView({
   const agentInputs = graph.input_schema.properties;
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
 
+  useEffect(() => {
+    if (preset == undefined) {
+      setInputValues({});
+      return;
+    }
+    if (deepEquals(preset.inputs, inputValues)) return;
+    setInputValues(preset.inputs);
+    // Sets `inputValues` once if `preset` is changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preset]);
+
   const doRun = useCallback(
     () =>
       api
@@ -34,6 +54,35 @@ export default function AgentRunDraftView({
         .then((newRun) => onRun(newRun.graph_exec_id))
         .catch(toastOnFail("execute agent")),
     [api, graph, inputValues, onRun, toastOnFail],
+  );
+
+  const savePreset = useCallback(
+    () =>
+      (preset
+        ? // Update existing preset
+          api.updateLibraryAgentPreset(preset.id, {
+            ...preset, // TODO: update specific attributes
+            inputs: inputValues,
+          })
+        : // Save run draft as new preset
+          api.createLibraryAgentPreset({
+            graph_id: graph.id,
+            graph_version: graph.version,
+            name: graph.name,
+            description: "", // TODO: add dialog for name + description
+            inputs: inputValues,
+            is_active: true,
+          })
+      ).then(onSavePreset),
+    [
+      preset,
+      api,
+      inputValues,
+      graph.id,
+      graph.version,
+      graph.name,
+      onSavePreset,
+    ],
   );
 
   const runActions: ButtonAction[] = useMemo(
@@ -48,8 +97,12 @@ export default function AgentRunDraftView({
         variant: "accent",
         callback: doRun,
       },
+      {
+        label: preset ? "Save preset" : "Save as a preset",
+        callback: savePreset,
+      },
     ],
-    [doRun],
+    [doRun, preset, savePreset],
   );
 
   return (

@@ -346,6 +346,25 @@ export default function AgentRunsPage(): React.ReactElement {
           <AgentRunDraftView
             graph={graph}
             onRun={(runID) => selectRun(runID)}
+            onSavePreset={(preset) => {
+              setAgentPresets((prev) => [...prev, preset]);
+              selectPreset(preset.id);
+            }}
+            agentActions={agentActions}
+          />
+        ) : selectedView.type == "preset" ? (
+          <AgentRunDraftView
+            graph={graph}
+            preset={agentPresets.find((ap) => ap.id == selectedView.id)!}
+            onRun={(runID) => selectRun(runID)}
+            onSavePreset={(preset) =>
+              setAgentPresets((prev) =>
+                prev.with(
+                  agentPresets.findIndex((ap) => ap.id == preset.id),
+                  preset,
+                ),
+              )
+            }
             agentActions={agentActions}
           />
         ) : selectedView.type == "schedule" ? (
