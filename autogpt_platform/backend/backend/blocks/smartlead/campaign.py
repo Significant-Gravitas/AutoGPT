@@ -112,7 +112,7 @@ class AddLeadToCampaignBlock(Block):
         lead_list: list[LeadInput] = SchemaField(
             description="An array of JSON objects, each representing a lead's details. Can hold max 100 leads.",
             max_length=100,
-            default=[],
+            default_factory=list,
             advanced=False,
         )
         settings: LeadUploadSettings = SchemaField(
@@ -248,7 +248,7 @@ class SaveCampaignSequencesBlock(Block):
         )
         sequences: list[Sequence] = SchemaField(
             description="The sequences to save",
-            default=[],
+            default_factory=list,
             advanced=False,
         )
         credentials: SmartLeadCredentialsInput = SchemaField(
