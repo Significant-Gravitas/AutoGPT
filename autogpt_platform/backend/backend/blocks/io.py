@@ -1,3 +1,4 @@
+import copy
 from datetime import date, time
 from typing import Any, Optional
 
@@ -54,7 +55,7 @@ class AgentInputBlock(Block):
         )
 
         def generate_schema(self):
-            schema = self.get_field_schema("value")
+            schema = copy.deepcopy(self.get_field_schema("value"))
             if possible_values := self.placeholder_values:
                 schema["enum"] = possible_values
             return schema
