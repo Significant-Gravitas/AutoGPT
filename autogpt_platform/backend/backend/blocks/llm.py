@@ -555,7 +555,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             description="The system prompt to provide additional context to the model.",
         )
         conversation_history: list[dict] = SchemaField(
-            default=[],
+            default_factory=list,
             description="The conversation history to provide context for the prompt.",
         )
         retry: int = SchemaField(
@@ -565,7 +565,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         )
         prompt_values: dict[str, str] = SchemaField(
             advanced=False,
-            default={},
+            default_factory=dict,
             description="Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}.",
         )
         max_tokens: int | None = SchemaField(
@@ -794,7 +794,7 @@ class AITextGeneratorBlock(AIBlockBase):
         )
         prompt_values: dict[str, str] = SchemaField(
             advanced=False,
-            default={},
+            default_factory=dict,
             description="Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}.",
         )
         ollama_host: str = SchemaField(

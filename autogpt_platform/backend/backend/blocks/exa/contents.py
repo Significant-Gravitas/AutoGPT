@@ -49,7 +49,7 @@ class ExaContentsBlock(Block):
     class Output(BlockSchema):
         results: list = SchemaField(
             description="List of document contents",
-            default=[],
+            default_factory=list,
         )
         error: str = SchemaField(description="Error message if the request failed")
 

@@ -39,7 +39,7 @@ class LeadCustomFields(BaseModel):
     fields: dict[str, str] = SchemaField(
         description="Custom fields for a lead (max 20 fields)",
         max_length=20,
-        default={},
+        default_factory=dict,
     )
 
 
@@ -85,7 +85,7 @@ class AddLeadsRequest(BaseModel):
     lead_list: list[LeadInput] = SchemaField(
         description="List of leads to add to the campaign",
         max_length=100,
-        default=[],
+        default_factory=list,
     )
     settings: LeadUploadSettings
     campaign_id: int

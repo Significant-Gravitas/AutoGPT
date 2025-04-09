@@ -26,14 +26,14 @@ class SearchPeopleBlock(Block):
 
         Use this parameter in combination with the person_seniorities[] parameter to find people based on specific job functions and seniority levels.
         """,
-            default=[],
+            default_factory=list,
             advanced=False,
         )
         person_locations: list[str] = SchemaField(
             description="""The location where people live. You can search across cities, US states, and countries.
 
         To find people based on the headquarters locations of their current employer, use the organization_locations parameter.""",
-            default=[],
+            default_factory=list,
             advanced=False,
         )
         person_seniorities: list[SenorityLevels] = SchemaField(
@@ -44,7 +44,7 @@ class SearchPeopleBlock(Block):
         Searches only return results based on their current job title, so searching for Director-level employees only returns people that currently hold a Director-level title. If someone was previously a Director, but is currently a VP, they would not be included in your search results.
 
         Use this parameter in combination with the person_titles[] parameter to find people based on specific job functions and seniority levels.""",
-            default=[],
+            default_factory=list,
             advanced=False,
         )
         organization_locations: list[str] = SchemaField(
@@ -53,7 +53,7 @@ class SearchPeopleBlock(Block):
         If a company has several office locations, results are still based on the headquarters location. For example, if you search chicago but a company's HQ location is in boston, people that work for the Boston-based company will not appear in your results, even if they match other parameters.
 
         To find people based on their personal location, use the person_locations parameter.""",
-            default=[],
+            default_factory=list,
             advanced=False,
         )
         q_organization_domains: list[str] = SchemaField(
@@ -62,26 +62,26 @@ class SearchPeopleBlock(Block):
         You can add multiple domains to search across companies.
 
           Examples: apollo.io and microsoft.com""",
-            default=[],
+            default_factory=list,
             advanced=False,
         )
         contact_email_statuses: list[ContactEmailStatuses] = SchemaField(
             description="""The email statuses for the people you want to find. You can add multiple statuses to expand your search.""",
-            default=[],
+            default_factory=list,
             advanced=False,
         )
         organization_ids: list[str] = SchemaField(
             description="""The Apollo IDs for the companies (employers) you want to include in your search results. Each company in the Apollo database is assigned a unique ID.
 
         To find IDs, call the Organization Search endpoint and identify the values for organization_id.""",
-            default=[],
+            default_factory=list,
             advanced=False,
         )
         organization_num_empoloyees_range: list[int] = SchemaField(
             description="""The number range of employees working for the company. This enables you to find companies based on headcount. You can add multiple ranges to expand your search results.
 
         Each range you add needs to be a string, with the upper and lower numbers of the range separated only by a comma.""",
-            default=[],
+            default_factory=list,
             advanced=False,
         )
         q_keywords: str = SchemaField(
@@ -104,7 +104,7 @@ class SearchPeopleBlock(Block):
     class Output(BlockSchema):
         people: list[Contact] = SchemaField(
             description="List of people found",
-            default=[],
+            default_factory=list,
         )
         person: Contact = SchemaField(
             description="Each found person, one at a time",
