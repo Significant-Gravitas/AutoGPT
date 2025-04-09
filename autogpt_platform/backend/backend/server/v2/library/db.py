@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, cast
 
 import fastapi
 import prisma.errors
@@ -531,6 +531,7 @@ async def list_presets(
             where=query_filter,
             skip=(page - 1) * page_size,
             take=page_size,
+            include={"InputPresets": True},
         )
         total_items = await prisma.models.AgentPreset.prisma().count(where=query_filter)
         total_pages = (total_items + page_size - 1) // page_size
@@ -585,69 +586,106 @@ async def get_preset(
         raise store_exceptions.DatabaseError("Failed to fetch preset") from e
 
 
-async def upsert_preset(
+async def create_preset(
     user_id: str,
-    preset: library_model.CreateLibraryAgentPresetRequest,
-    preset_id: Optional[str] = None,
+    preset: library_model.LibraryAgentPresetCreatable,
 ) -> library_model.LibraryAgentPreset:
     """
-    Creates or updates an AgentPreset for a user.
+    Creates a new AgentPreset for a user.
 
     Args:
-        user_id: The ID of the user creating/updating the preset.
-        preset: The preset data used for creation or update.
-        preset_id: An optional preset ID to update; if None, a new preset is created.
+        user_id: The ID of the user creating the preset.
+        preset: The preset data used for creation.
 
     Returns:
-        The newly created or updated LibraryAgentPreset.
+        The newly created LibraryAgentPreset.
 
     Raises:
-        DatabaseError: If there's a database error in creating or updating the preset.
+        DatabaseError: If there's a database error in creating the preset.
+    """
+    logger.debug(
+        f"Creating preset ({repr(preset.name)}) for user #{user_id}",
+    )
+    try:
+        new_preset = await prisma.models.AgentPreset.prisma().create(
+            data=prisma.types.AgentPresetCreateInput(
+                userId=user_id,
+                name=preset.name,
+                description=preset.description,
+                agentGraphId=preset.graph_id,
+                agentGraphVersion=preset.graph_version,
+                isActive=preset.is_active,
+                InputPresets={
+                    "create": [
+                        cast(
+                            prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput,
+                            {"name": name, "data": prisma.fields.Json(data)},
+                        )
+                        for name, data in preset.inputs.items()
+                    ]
+                },
+            ),
+            include={"InputPresets": True},
+        )
+        return library_model.LibraryAgentPreset.from_db(new_preset)
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error creating preset: {e}")
+        raise store_exceptions.DatabaseError("Failed to create preset") from e
+
+
+async def update_preset(
+    user_id: str,
+    preset_id: str,
+    preset: library_model.LibraryAgentPresetUpdatable,
+) -> library_model.LibraryAgentPreset:
+    """
+    Updates an existing AgentPreset for a user.
+
+    Args:
+        user_id: The ID of the user updating the preset.
+        preset_id: The ID of the preset to update.
+        preset: The preset data used for the update.
+
+    Returns:
+        The updated LibraryAgentPreset.
+
+    Raises:
+        DatabaseError: If there's a database error in updating the preset.
         ValueError: If attempting to update a non-existent preset.
     """
     logger.debug(
-        f"Upserting preset #{preset_id} ({repr(preset.name)}) for user #{user_id}",
+        f"Updating preset #{preset_id} ({repr(preset.name)}) for user #{user_id}",
     )
     try:
-        inputs: list[
-            prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput
-        ] = [
-            {"name": name, "data": prisma.fields.Json(data)}  # type: ignore
-            for name, data in preset.inputs.items()
-        ]
-        if preset_id:
-            # Update existing preset
-            updated = await prisma.models.AgentPreset.prisma().update(
-                where={"id": preset_id},
-                data={
-                    "name": preset.name,
-                    "description": preset.description,
-                    "isActive": preset.is_active,
-                    "InputPresets": {"create": inputs},
-                },
-                include={"InputPresets": True},
-            )
-            if not updated:
-                raise ValueError(f"AgentPreset #{preset_id} not found")
-            return library_model.LibraryAgentPreset.from_db(updated)
-        else:
-            # Create new preset
-            new_preset = await prisma.models.AgentPreset.prisma().create(
-                data=prisma.types.AgentPresetCreateInput(
-                    userId=user_id,
-                    name=preset.name,
-                    description=preset.description,
-                    agentGraphId=preset.graph_id,
-                    agentGraphVersion=preset.graph_version,
-                    isActive=preset.is_active,
-                    InputPresets={"create": inputs},
-                ),
-                include={"InputPresets": True},
-            )
-        return library_model.LibraryAgentPreset.from_db(new_preset)
+        update_data: prisma.types.AgentPresetUpdateInput = {}
+        if preset.name:
+            update_data["name"] = preset.name
+        if preset.description:
+            update_data["description"] = preset.description
+        if preset.inputs:
+            update_data["InputPresets"] = {
+                "create": [
+                    cast(
+                        prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput,
+                        {"name": name, "data": prisma.fields.Json(data)},
+                    )
+                    for name, data in preset.inputs.items()
+                ]
+            }
+        if preset.is_active:
+            update_data["isActive"] = preset.is_active
+
+        updated = await prisma.models.AgentPreset.prisma().update(
+            where={"id": preset_id},
+            data=update_data,
+            include={"InputPresets": True},
+        )
+        if not updated:
+            raise ValueError(f"AgentPreset #{preset_id} not found")
+        return library_model.LibraryAgentPreset.from_db(updated)
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error upserting preset: {e}")
-        raise store_exceptions.DatabaseError("Failed to create preset") from e
+        logger.error(f"Database error updating preset: {e}")
+        raise store_exceptions.DatabaseError("Failed to update preset") from e
 
 
 async def delete_preset(user_id: str, preset_id: str) -> None:

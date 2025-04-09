@@ -105,14 +105,14 @@ async def get_preset(
     description="Create a new preset for the current user.",
 )
 async def create_preset(
-    preset: models.CreateLibraryAgentPresetRequest,
+    preset: models.LibraryAgentPresetCreatable,
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
 ) -> models.LibraryAgentPreset:
     """
     Create a new library agent preset. Automatically corrects node_input format if needed.
 
     Args:
-        preset (models.CreateLibraryAgentPresetRequest): The preset data to create.
+        preset (models.LibraryAgentPresetCreatable): The preset data to create.
         user_id (str): ID of the authenticated user.
 
     Returns:
@@ -122,7 +122,7 @@ async def create_preset(
         HTTPException: If an error occurs while creating the preset.
     """
     try:
-        return await db.upsert_preset(user_id, preset)
+        return await db.create_preset(user_id, preset)
     except Exception as e:
         logger.exception(f"Exception occurred while creating preset: {e}")
         raise HTTPException(
@@ -131,22 +131,22 @@ async def create_preset(
         )
 
 
-@router.put(
+@router.patch(
     "/presets/{preset_id}",
     summary="Update an existing preset",
     description="Update an existing preset by its ID.",
 )
 async def update_preset(
     preset_id: str,
-    preset: models.CreateLibraryAgentPresetRequest,
+    preset: models.LibraryAgentPresetUpdatable,
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
 ) -> models.LibraryAgentPreset:
     """
-    Update an existing library agent preset. If the preset doesn't exist, it may be created.
+    Update an existing library agent preset.
 
     Args:
         preset_id (str): ID of the preset to update.
-        preset (models.CreateLibraryAgentPresetRequest): The preset data to update.
+        preset (models.LibraryAgentPresetUpdatable): The preset data to update.
         user_id (str): ID of the authenticated user.
 
     Returns:
@@ -156,7 +156,9 @@ async def update_preset(
         HTTPException: If an error occurs while updating the preset.
     """
     try:
-        return await db.upsert_preset(user_id, preset, preset_id)
+        return await db.update_preset(
+            user_id=user_id, preset_id=preset_id, preset=preset
+        )
     except Exception as e:
         logger.exception(f"Exception occurred whilst updating preset: {e}")
         raise HTTPException(
