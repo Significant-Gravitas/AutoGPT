@@ -141,7 +141,7 @@ model AgentPreset {
 
   agentGraphId      String
   agentGraphVersion Int
-  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Restrict)
 
   InputPresets AgentNodeExecutionInputOutput[] @relation("AgentPresetsInputData")
   Executions   AgentGraphExecution[]
@@ -206,7 +206,7 @@ model LibraryAgent {
 
   agentGraphId      String
   agentGraphVersion Int
-  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Restrict)
 
   creatorId String?
   Creator   Profile? @relation(fields: [creatorId], references: [id])
