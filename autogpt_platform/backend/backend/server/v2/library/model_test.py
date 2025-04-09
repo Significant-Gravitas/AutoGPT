@@ -5,7 +5,6 @@ import prisma.models
 import pytest
 
 import backend.server.v2.library.model as library_model
-from backend.util import json
 
 
 @pytest.mark.asyncio
@@ -27,7 +26,7 @@ async def test_agent_preset_from_db():
                 id="input-123",
                 time=datetime.datetime.now(),
                 name="input1",
-                data=json.dumps({"type": "string", "value": "test value"}),  # type: ignore
+                data=prisma.Json({"type": "string", "value": "test value"}),
             )
         ],
     )

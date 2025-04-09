@@ -1,7 +1,10 @@
+from typing import cast
+
 import prisma.enums
 import prisma.types
 
 from backend.blocks.io import IO_BLOCK_IDs
+from backend.util.type import typed_cast
 
 AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
     "Input": True,
@@ -11,7 +14,13 @@ AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
 }
 
 AGENT_GRAPH_INCLUDE: prisma.types.AgentGraphInclude = {
-    "Nodes": {"include": AGENT_NODE_INCLUDE}  # type: ignore
+    "Nodes": {
+        "include": typed_cast(
+            prisma.types.AgentNodeIncludeFromAgentNodeRecursive1,
+            prisma.types.AgentNodeIncludeFromAgentNode,
+            AGENT_NODE_INCLUDE,
+        )
+    }
 }
 
 EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
@@ -42,21 +51,32 @@ GRAPH_EXECUTION_INCLUDE_WITH_NODES: prisma.types.AgentGraphExecutionInclude = {
 
 GRAPH_EXECUTION_INCLUDE: prisma.types.AgentGraphExecutionInclude = {
     "NodeExecutions": {
-        **GRAPH_EXECUTION_INCLUDE_WITH_NODES["NodeExecutions"],  # type: ignore
+        **cast(
+            prisma.types.FindManyAgentNodeExecutionArgsFromAgentGraphExecution,
+            GRAPH_EXECUTION_INCLUDE_WITH_NODES["NodeExecutions"],
+        ),
         "where": {
-            "Node": {
-                "AgentBlock": {"id": {"in": IO_BLOCK_IDs}},  # type: ignore
-            },
-            "NOT": {
-                "executionStatus": prisma.enums.AgentExecutionStatus.INCOMPLETE,
-            },
+            "Node": typed_cast(
+                prisma.types.AgentNodeRelationFilter,
+                prisma.types.AgentNodeWhereInput,
+                {
+                    "AgentBlock": {"id": {"in": IO_BLOCK_IDs}},
+                },
+            ),
+            "NOT": [{"executionStatus": prisma.enums.AgentExecutionStatus.INCOMPLETE}],
         },
     }
 }
 
 
 INTEGRATION_WEBHOOK_INCLUDE: prisma.types.IntegrationWebhookInclude = {
-    "AgentNodes": {"include": AGENT_NODE_INCLUDE}  # type: ignore
+    "AgentNodes": {
+        "include": typed_cast(
+            prisma.types.AgentNodeIncludeFromAgentNodeRecursive1,
+            prisma.types.AgentNodeInclude,
+            AGENT_NODE_INCLUDE,
+        )
+    }
 }
 
 

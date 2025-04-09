@@ -12,6 +12,7 @@ import backend.server.v2.store.exceptions
 import backend.server.v2.store.model
 from backend.data.graph import GraphModel, get_sub_graphs
 from backend.data.includes import AGENT_GRAPH_INCLUDE
+from backend.util.type import typed_cast
 
 logger = logging.getLogger(__name__)
 
@@ -1087,7 +1088,13 @@ async def review_store_submission(
                 where={"id": store_listing_version_id},
                 include={
                     "StoreListing": True,
-                    "AgentGraph": {"include": AGENT_GRAPH_INCLUDE},  # type: ignore
+                    "AgentGraph": {
+                        "include": typed_cast(
+                            prisma.types.AgentGraphIncludeFromAgentGraphRecursive1,
+                            prisma.types.AgentGraphInclude,
+                            AGENT_GRAPH_INCLUDE,
+                        )
+                    },
                 },
             )
         )

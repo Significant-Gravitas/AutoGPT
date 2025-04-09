@@ -601,10 +601,10 @@ async def upsert_preset(
         f"Upserting preset #{preset_id} ({repr(preset.name)}) for user #{user_id}",
     )
     try:
-        inputs: list[
-            prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput
-        ] = [
-            {"name": name, "data": prisma.fields.Json(data)}  # type: ignore
+        inputs = [
+            prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(
+                name=name, data=prisma.fields.Json(data)
+            )
             for name, data in preset.inputs.items()
         ]
         if preset_id:

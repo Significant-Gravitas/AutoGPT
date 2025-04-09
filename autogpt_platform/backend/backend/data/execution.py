@@ -23,6 +23,7 @@ from prisma.models import (
     AgentNodeExecutionInputOutput,
 )
 from prisma.types import (
+    AgentGraphExecutionCreateInput,
     AgentGraphExecutionWhereInput,
     AgentNodeExecutionCreateInput,
     AgentNodeExecutionInputOutputCreateInput,
@@ -351,29 +352,29 @@ async def create_graph_execution(
         The id of the AgentGraphExecution and the list of ExecutionResult for each node.
     """
     result = await AgentGraphExecution.prisma().create(
-        data={
-            "agentGraphId": graph_id,
-            "agentGraphVersion": graph_version,
-            "executionStatus": ExecutionStatus.QUEUED,
-            "NodeExecutions": {
-                "create": [  # type: ignore
-                    {
-                        "agentNodeId": node_id,
-                        "executionStatus": ExecutionStatus.QUEUED,
-                        "queuedTime": datetime.now(tz=timezone.utc),
-                        "Input": {
+        data=AgentGraphExecutionCreateInput(
+            agentGraphId=graph_id,
+            agentGraphVersion=graph_version,
+            executionStatus=ExecutionStatus.QUEUED,
+            NodeExecutions={
+                "create": [
+                    AgentNodeExecutionCreateInput(
+                        agentNodeId=node_id,
+                        executionStatus=ExecutionStatus.QUEUED,
+                        queuedTime=datetime.now(tz=timezone.utc),
+                        Input={
                             "create": [
                                 {"name": name, "data": Json(data)}
                                 for name, data in node_input.items()
                             ]
                         },
-                    }
+                    )
                     for node_id, node_input in nodes_input
                 ]
             },
-            "userId": user_id,
-            "agentPresetId": preset_id,
-        },
+            userId=user_id,
+            agentPresetId=preset_id,
+        ),
         include=GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     )
 

@@ -1,7 +1,7 @@
 import logging
 import uuid
 from collections import defaultdict
-from typing import Any, Literal, Optional, Type
+from typing import Any, Literal, Optional, Type, cast
 
 import prisma
 from prisma import Json
@@ -10,7 +10,9 @@ from prisma.models import AgentGraph, AgentNode, AgentNodeLink, StoreListingVers
 from prisma.types import (
     AgentGraphCreateInput,
     AgentGraphWhereInput,
+    AgentGraphWhereInputRecursive1,
     AgentNodeCreateInput,
+    AgentNodeIncludeFromAgentNodeRecursive1,
     AgentNodeLinkCreateInput,
 )
 from pydantic.fields import computed_field
@@ -639,8 +641,12 @@ async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
             if (
                 node.AgentBlock
                 and node.AgentBlock.id == agent_block_id
-                and (graph_id := dict(node.constantInput).get("graph_id"))
-                and (graph_version := dict(node.constantInput).get("graph_version"))
+                and (graph_id := cast(str, dict(node.constantInput).get("graph_id")))
+                and (
+                    graph_version := cast(
+                        int, dict(node.constantInput).get("graph_version")
+                    )
+                )
             )
         ]
         if not sub_graph_ids:
@@ -649,13 +655,16 @@ async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
         graphs = await AgentGraph.prisma().find_many(
             where={
                 "OR": [
-                    {
-                        "id": graph_id,
-                        "version": graph_version,
-                        "userId": graph.userId,  # Ensure the sub-graph is owned by the same user
-                    }
+                    type_utils.typed(
+                        AgentGraphWhereInputRecursive1,
+                        {
+                            "id": graph_id,
+                            "version": graph_version,
+                            "userId": graph.userId,  # Ensure the sub-graph is owned by the same user
+                        },
+                    )
                     for graph_id, graph_version in sub_graph_ids
-                ]  # type: ignore
+                ]
             },
             include=AGENT_GRAPH_INCLUDE,
         )
@@ -669,7 +678,13 @@ async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
 async def get_connected_output_nodes(node_id: str) -> list[tuple[Link, Node]]:
     links = await AgentNodeLink.prisma().find_many(
         where={"agentNodeSourceId": node_id},
-        include={"AgentNodeSink": {"include": AGENT_NODE_INCLUDE}},  # type: ignore
+        include={
+            "AgentNodeSink": {
+                "include": cast(
+                    AgentNodeIncludeFromAgentNodeRecursive1, AGENT_NODE_INCLUDE
+                )
+            }
+        },
     )
     return [
         (Link.from_db(link), NodeModel.from_db(link.AgentNodeSink))
