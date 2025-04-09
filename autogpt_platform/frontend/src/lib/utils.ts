@@ -255,6 +255,8 @@ export function getAppEnv(): AppEnv {
   const env = process.env.NEXT_PUBLIC_APP_ENV;
   if (env === "dev") return AppEnv.DEV;
   if (env === "prod") return AppEnv.PROD;
+  // Some places use prod and others production
+  if (env === "production") return AppEnv.PROD;
   return AppEnv.LOCAL;
 }
 
