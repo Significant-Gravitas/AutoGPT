@@ -7,7 +7,6 @@ import {
   APIKeyPermission,
   Block,
   CreateAPIKeyResponse,
-  CreateLibraryAgentPresetRequest,
   CreatorDetails,
   CreatorsResponse,
   Credentials,
@@ -25,15 +24,21 @@ import {
   LibraryAgent,
   LibraryAgentID,
   LibraryAgentPreset,
+  LibraryAgentPresetCreatable,
+  LibraryAgentPresetID,
   LibraryAgentPresetResponse,
+  LibraryAgentPresetUpdatable,
   LibraryAgentResponse,
   LibraryAgentSortEnum,
   MyAgentsResponse,
   NodeExecutionResult,
   NotificationPreference,
   NotificationPreferenceDTO,
+  OttoQuery,
+  OttoResponse,
   ProfileDetails,
   RefundRequest,
+  ReviewSubmissionRequest,
   Schedule,
   ScheduleCreatable,
   ScheduleID,
@@ -45,14 +50,11 @@ import {
   StoreSubmission,
   StoreSubmissionRequest,
   StoreSubmissionsResponse,
+  SubmissionStatus,
   TransactionHistory,
   User,
-  UserPasswordCredentials,
-  OttoQuery,
-  OttoResponse,
   UserOnboarding,
-  ReviewSubmissionRequest,
-  SubmissionStatus,
+  UserPasswordCredentials,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -593,43 +595,61 @@ export default class BackendAPI {
     await this._request("PUT", `/library/agents/${libraryAgentId}`, params);
   }
 
-  listLibraryAgentPresets(params?: {
+  async listLibraryAgentPresets(params?: {
     graph_id?: GraphID;
     page?: number;
     page_size?: number;
   }): Promise<LibraryAgentPresetResponse> {
-    return this._get("/library/presets", params);
+    const response: LibraryAgentPresetResponse = await this._get(
+      "/library/presets",
+      params,
+    );
+    return {
+      ...response,
+      presets: response.presets.map(parseLibraryAgentPresetTimestamp),
+    };
   }
 
-  getLibraryAgentPreset(presetId: string): Promise<LibraryAgentPreset> {
-    return this._get(`/library/presets/${presetId}`);
-  }
-
-  createLibraryAgentPreset(
-    preset: CreateLibraryAgentPresetRequest,
+  async getLibraryAgentPreset(
+    presetID: LibraryAgentPresetID,
   ): Promise<LibraryAgentPreset> {
-    return this._request("POST", "/library/presets", preset);
+    const preset = await this._get(`/library/presets/${presetID}`);
+    return parseLibraryAgentPresetTimestamp(preset);
   }
 
-  updateLibraryAgentPreset(
-    presetId: string,
-    preset: CreateLibraryAgentPresetRequest,
+  async createLibraryAgentPreset(
+    preset: LibraryAgentPresetCreatable,
   ): Promise<LibraryAgentPreset> {
-    return this._request("PUT", `/library/presets/${presetId}`, preset);
+    const new_preset = await this._request("POST", "/library/presets", preset);
+    return parseLibraryAgentPresetTimestamp(new_preset);
   }
 
-  async deleteLibraryAgentPreset(presetId: string): Promise<void> {
-    await this._request("DELETE", `/library/presets/${presetId}`);
+  async updateLibraryAgentPreset(
+    presetID: LibraryAgentPresetID,
+    partial_preset: LibraryAgentPresetUpdatable,
+  ): Promise<LibraryAgentPreset> {
+    const updated_preset = await this._request(
+      "PATCH",
+      `/library/presets/${presetID}`,
+      partial_preset,
+    );
+    return parseLibraryAgentPresetTimestamp(updated_preset);
+  }
+
+  async deleteLibraryAgentPreset(
+    presetID: LibraryAgentPresetID,
+  ): Promise<void> {
+    await this._request("DELETE", `/library/presets/${presetID}`);
   }
 
   executeLibraryAgentPreset(
-    presetId: string,
-    graphId: GraphID,
+    presetID: LibraryAgentPresetID,
+    graphID: GraphID,
     graphVersion: number,
     nodeInput: { [key: string]: any },
-  ): Promise<{ id: string }> {
-    return this._request("POST", `/library/presets/${presetId}/execute`, {
-      graph_id: graphId,
+  ): Promise<{ id: GraphExecutionID }> {
+    return this._request("POST", `/library/presets/${presetID}/execute`, {
+      graph_id: graphID,
       graph_version: graphVersion,
       node_input: nodeInput,
     });
@@ -1025,6 +1045,10 @@ function parseNodeExecutionResultTimestamps(result: any): NodeExecutionResult {
 
 function parseScheduleTimestamp(result: any): Schedule {
   return _parseObjectTimestamps<Schedule>(result, ["next_run_time"]);
+}
+
+function parseLibraryAgentPresetTimestamp(result: any): LibraryAgentPreset {
+  return _parseObjectTimestamps<LibraryAgentPreset>(result, ["updated_at"]);
 }
 
 function _parseObjectTimestamps<T>(obj: any, keys: (keyof T)[]): T {

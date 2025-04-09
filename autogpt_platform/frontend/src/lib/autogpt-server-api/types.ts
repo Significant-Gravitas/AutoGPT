@@ -395,10 +395,10 @@ export type LibraryAgentPreset = {
   updated_at: Date;
   graph_id: GraphID;
   graph_version: number;
+  inputs: { [key: string]: any };
   name: string;
   description: string;
   is_active: boolean;
-  inputs: { [key: string]: any };
 };
 
 export type LibraryAgentPresetID = Brand<string, "LibraryAgentPresetID">;
@@ -412,14 +412,14 @@ export type LibraryAgentPresetResponse = {
   };
 };
 
-export type CreateLibraryAgentPresetRequest = {
-  name: string;
-  description: string;
-  inputs: { [key: string]: any };
-  graph_id: GraphID;
-  graph_version: number;
-  is_active: boolean;
-};
+export type LibraryAgentPresetCreatable = Omit<
+  LibraryAgentPreset,
+  "id" | "updated_at"
+>;
+
+export type LibraryAgentPresetUpdatable = Partial<
+  Omit<LibraryAgentPresetCreatable, "graph_id" | "graph_version">
+>;
 
 export enum LibraryAgentSortEnum {
   CREATED_AT = "createdAt",
