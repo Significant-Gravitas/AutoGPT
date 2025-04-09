@@ -32,18 +32,18 @@ If a company has several office locations, results are still based on the headqu
 
 To exclude companies based on location, use the organization_not_locations parameter.
 """,
-            default=[],
+            default_factory=list,
         )
         organizations_not_locations: list[str] = SchemaField(
             description="""Exclude companies from search results based on the location of the company headquarters. You can use cities, US states, and countries as locations to exclude.
 
 This parameter is useful for ensuring you do not prospect in an undesirable territory. For example, if you use ireland as a value, no Ireland-based companies will appear in your search results.
 """,
-            default=[],
+            default_factory=list,
         )
         q_organization_keyword_tags: list[str] = SchemaField(
             description="""Filter search results based on keywords associated with companies. For example, you can enter mining as a value to return only companies that have an association with the mining industry.""",
-            default=[],
+            default_factory=list,
         )
         q_organization_name: str = SchemaField(
             description="""Filter search results to include a specific company name.
@@ -56,7 +56,7 @@ If the value you enter for this parameter does not match with a company's name, 
             description="""The Apollo IDs for the companies you want to include in your search results. Each company in the Apollo database is assigned a unique ID.
 
 To find IDs, identify the values for organization_id when you call this endpoint.""",
-            default=[],
+            default_factory=list,
         )
         max_results: int = SchemaField(
             description="""The maximum number of results to return. If you don't specify this parameter, the default is 100.""",
@@ -72,7 +72,7 @@ To find IDs, identify the values for organization_id when you call this endpoint
     class Output(BlockSchema):
         organizations: list[Organization] = SchemaField(
             description="List of organizations found",
-            default=[],
+            default_factory=list,
         )
         organization: Organization = SchemaField(
             description="Each found organization, one at a time",

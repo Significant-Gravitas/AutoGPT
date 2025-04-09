@@ -38,7 +38,7 @@ class AgentInputBlock(Block):
         )
         placeholder_values: list = SchemaField(
             description="The placeholder values to be passed as input.",
-            default=[],
+            default_factory=list,
             advanced=True,
             hidden=True,
         )
@@ -467,7 +467,7 @@ class AgentDropdownInputBlock(AgentInputBlock):
         )
         placeholder_values: list = SchemaField(
             description="Possible values for the dropdown.",
-            default=[],
+            default_factory=list,
             advanced=False,
             title="Dropdown Options",
         )

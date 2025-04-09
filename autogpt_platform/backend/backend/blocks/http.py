@@ -34,7 +34,7 @@ class SendWebRequestBlock(Block):
         )
         headers: dict[str, str] = SchemaField(
             description="The headers to include in the request",
-            default={},
+            default_factory=dict,
         )
         json_format: bool = SchemaField(
             title="JSON format",
