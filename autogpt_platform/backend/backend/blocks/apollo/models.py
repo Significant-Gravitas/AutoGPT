@@ -373,14 +373,14 @@ If a company has several office locations, results are still based on the headqu
 
 To exclude companies based on location, use the organization_not_locations parameter.
 """,
-        default=[],
+        default_factory=list,
     )
     organizations_not_locations: list[str] = SchemaField(
         description="""Exclude companies from search results based on the location of the company headquarters. You can use cities, US states, and countries as locations to exclude.
 
 This parameter is useful for ensuring you do not prospect in an undesirable territory. For example, if you use ireland as a value, no Ireland-based companies will appear in your search results.
 """,
-        default=[],
+        default_factory=list,
     )
     q_organization_keyword_tags: list[str] = SchemaField(
         description="""Filter search results based on keywords associated with companies. For example, you can enter mining as a value to return only companies that have an association with the mining industry."""
@@ -394,7 +394,7 @@ If the value you enter for this parameter does not match with a company's name, 
         description="""The Apollo IDs for the companies you want to include in your search results. Each company in the Apollo database is assigned a unique ID.
 
 To find IDs, identify the values for organization_id when you call this endpoint.""",
-        default=[],
+        default_factory=list,
     )
     max_results: int = SchemaField(
         description="""The maximum number of results to return. If you don't specify this parameter, the default is 100.""",
@@ -447,14 +447,14 @@ Results also include job titles with the same terms, even if they are not exact 
 
 Use this parameter in combination with the person_seniorities[] parameter to find people based on specific job functions and seniority levels.
 """,
-        default=[],
+        default_factory=list,
         placeholder="marketing manager",
     )
     person_locations: list[str] = SchemaField(
         description="""The location where people live. You can search across cities, US states, and countries.
 
 To find people based on the headquarters locations of their current employer, use the organization_locations parameter.""",
-        default=[],
+        default_factory=list,
     )
     person_seniorities: list[SenorityLevels] = SchemaField(
         description="""The job seniority that people hold within their current employer. This enables you to find people that currently hold positions at certain reporting levels, such as Director level or senior IC level.
@@ -464,7 +464,7 @@ For a person to be included in search results, they only need to match 1 of the 
 Searches only return results based on their current job title, so searching for Director-level employees only returns people that currently hold a Director-level title. If someone was previously a Director, but is currently a VP, they would not be included in your search results.
 
 Use this parameter in combination with the person_titles[] parameter to find people based on specific job functions and seniority levels.""",
-        default=[],
+        default_factory=list,
     )
     organization_locations: list[str] = SchemaField(
         description="""The location of the company headquarters for a person's current employer. You can search across cities, US states, and countries.
@@ -472,7 +472,7 @@ Use this parameter in combination with the person_titles[] parameter to find peo
 If a company has several office locations, results are still based on the headquarters location. For example, if you search chicago but a company's HQ location is in boston, people that work for the Boston-based company will not appear in your results, even if they match other parameters.
 
 To find people based on their personal location, use the person_locations parameter.""",
-        default=[],
+        default_factory=list,
     )
     q_organization_domains: list[str] = SchemaField(
         description="""The domain name for the person's employer. This can be the current employer or a previous employer. Do not include www., the @ symbol, or similar.
@@ -480,23 +480,23 @@ To find people based on their personal location, use the person_locations parame
 You can add multiple domains to search across companies.
 
   Examples: apollo.io and microsoft.com""",
-        default=[],
+        default_factory=list,
     )
     contact_email_statuses: list[ContactEmailStatuses] = SchemaField(
         description="""The email statuses for the people you want to find. You can add multiple statuses to expand your search.""",
-        default=[],
+        default_factory=list,
     )
     organization_ids: list[str] = SchemaField(
         description="""The Apollo IDs for the companies (employers) you want to include in your search results. Each company in the Apollo database is assigned a unique ID.
 
 To find IDs, call the Organization Search endpoint and identify the values for organization_id.""",
-        default=[],
+        default_factory=list,
     )
     organization_num_empoloyees_range: list[int] = SchemaField(
         description="""The number range of employees working for the company. This enables you to find companies based on headcount. You can add multiple ranges to expand your search results.
 
 Each range you add needs to be a string, with the upper and lower numbers of the range separated only by a comma.""",
-        default=[],
+        default_factory=list,
     )
     q_keywords: str = SchemaField(
         description="""A string of words over which we want to filter the results""",
