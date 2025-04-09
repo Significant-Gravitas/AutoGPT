@@ -30,4 +30,9 @@ Sentry.init({
     // NodeProfilingIntegration,
     // Sentry.fsIntegration(),
   ],
+
+  _experiments: {
+    // Enable logs to be sent to Sentry.
+    enableLogs: true,
+  },
 });

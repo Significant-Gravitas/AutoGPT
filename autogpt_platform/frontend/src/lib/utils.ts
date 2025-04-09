@@ -246,12 +246,16 @@ export function getBehaveAs(): BehaveAs {
 }
 
 export enum AppEnv {
+  LOCAL = "local",
   DEV = "dev",
   PROD = "prod",
 }
 
 export function getAppEnv(): AppEnv {
-  return process.env.NEXT_PUBLIC_APP_ENV === "prod" ? AppEnv.PROD : AppEnv.DEV;
+  const env = process.env.NEXT_PUBLIC_APP_ENV;
+  if (env === "dev") return AppEnv.DEV;
+  if (env === "prod") return AppEnv.PROD;
+  return AppEnv.LOCAL;
 }
 
 export function getEnvironmentStr(): string {

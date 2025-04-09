@@ -52,4 +52,8 @@ Sentry.init({
   // For example, a tracesSampleRate of 0.5 and profilesSampleRate of 0.5 would
   // result in 25% of transactions being profiled (0.5*0.5=0.25)
   profilesSampleRate: 1.0,
+  _experiments: {
+    // Enable logs to be sent to Sentry.
+    enableLogs: true,
+  },
 });
