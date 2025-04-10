@@ -926,7 +926,7 @@ async def migrate_llm_models(migrate_to: LlmModel):
             WHERE "agentBlockId" = $3
             AND "constantInput" ? $4
             AND "constantInput"->>$4 NOT IN {escaped_enum_values}
-            """  # type: ignore
+            """
 
         await db.execute_raw(
             query,  # type: ignore - is supposed to be LiteralString
