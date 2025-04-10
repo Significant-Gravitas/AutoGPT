@@ -32,7 +32,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
 
   return (
     <div
-      className="flex h-[433px] w-full max-w-[434px] cursor-pointer flex-col items-start rounded-[26px] bg-white transition-all duration-300 hover:shadow-lg dark:bg-transparent dark:hover:shadow-gray-700"
+      className="flex h-[27rem] w-full max-w-md cursor-pointer flex-col items-start rounded-3xl bg-white transition-all duration-300 hover:shadow-lg dark:bg-transparent dark:hover:shadow-gray-700"
       onClick={handleClick}
       data-testid="store-card"
       role="button"
@@ -45,7 +45,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
       }}
     >
       {/* First Section: Image with Avatar */}
-      <div className="relative aspect-[2/1.2] w-full overflow-hidden rounded-[20px] md:aspect-[2.17/1]">
+      <div className="relative aspect-[2/1.2] w-full overflow-hidden rounded-3xl md:aspect-[2.17/1]">
         {agentImage && (
           <Image
             src={agentImage}
