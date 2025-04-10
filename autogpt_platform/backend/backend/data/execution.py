@@ -648,7 +648,7 @@ async def get_latest_node_execution(
         where={
             "agentNodeId": node_id,
             "agentGraphExecutionId": graph_eid,
-            "executionStatus": {"not": ExecutionStatus.INCOMPLETE},  # type: ignore
+            "NOT": [{"executionStatus": ExecutionStatus.INCOMPLETE}],
         },
         order=[
             {"queuedTime": "desc"},
