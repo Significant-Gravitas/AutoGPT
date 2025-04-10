@@ -198,18 +198,6 @@ def convert(value: Any, target_type: Type[T]) -> T:
         raise ConversionError(f"Failed to convert {value} to {target_type}") from e
 
 
-def typed(type: type[T], value: T) -> T:
-    """
-    Add an explicit type to a value. Useful in nested statements, e.g. dict literals.
-    """
-    return value
-
-
-def typed_cast(to_type: type[TT], from_type: type[T], value: T) -> TT:
-    """Strict cast to preserve type checking abilities."""
-    return cast(TT, value)
-
-
 class FormattedStringType(str):
     string_format: str
 
