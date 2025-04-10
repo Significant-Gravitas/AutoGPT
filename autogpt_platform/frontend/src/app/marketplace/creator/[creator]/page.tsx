@@ -8,6 +8,7 @@ import { BreadCrumbs } from "@/components/agptui/BreadCrumbs";
 import { Metadata } from "next";
 import { CreatorInfoCard } from "@/components/agptui/CreatorInfoCard";
 import { CreatorLinks } from "@/components/agptui/CreatorLinks";
+import { Separator } from "@/components/ui/separator";
 
 export async function generateMetadata({
   params,
@@ -78,7 +79,7 @@ export default async function Page({
             </div>
           </div>
           <div className="mt-8 sm:mt-12 md:mt-16 lg:pb-[58px]">
-            <hr className="w-full bg-neutral-700" />
+            <Separator className="mb-6 bg-gray-200" />
             <AgentsSection
               agents={creatorAgents.agents}
               hideAvatars={true}
