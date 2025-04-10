@@ -3,6 +3,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timezone
+from typing import cast
 
 import stripe
 from autogpt_libs.utils.cache import thread_cached
@@ -18,6 +19,7 @@ from prisma.types import (
     CreditRefundRequestCreateInput,
     CreditTransactionCreateInput,
     CreditTransactionWhereInput,
+    IntFilter,
 )
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -213,7 +215,7 @@ class UserCreditBase(ABC):
                 "userId": user_id,
                 "createdAt": {"lte": top_time},
                 "isActive": True,
-                "runningBalance": {"not": None},  # type: ignore
+                "runningBalance": cast(IntFilter, {"not": None}),
             },
             order={"createdAt": "desc"},
         )

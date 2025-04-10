@@ -34,7 +34,7 @@ class ReadCsvBlock(Block):
         )
         skip_columns: list[str] = SchemaField(
             description="The columns to skip from the start of the row",
-            default=[],
+            default_factory=list,
         )
 
     class Output(BlockSchema):
