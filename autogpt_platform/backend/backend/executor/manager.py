@@ -575,6 +575,12 @@ class Executor:
         exec_meta = cls.db_client.update_graph_execution_start_time(
             graph_exec.graph_exec_id
         )
+        if exec_meta is None:
+            logger.warning(
+                f"Skipped graph execution {graph_exec.graph_exec_id}, the graph execution is not found or not currently in the QUEUED state."
+            )
+            return
+
         send_execution_update(exec_meta)
         timing_info, (exec_stats, status, error) = cls._on_graph_execution(
             graph_exec, cancel, log_metadata

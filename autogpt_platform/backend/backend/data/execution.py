@@ -487,19 +487,22 @@ async def upsert_execution_output(
     )
 
 
-async def update_graph_execution_start_time(graph_exec_id: str) -> GraphExecution:
+async def update_graph_execution_start_time(
+    graph_exec_id: str,
+) -> GraphExecution | None:
     res = await AgentGraphExecution.prisma().update(
-        where={"id": graph_exec_id},
+        where={
+            "id": graph_exec_id,
+            "executionStatus": ExecutionStatus.QUEUED,
+        },
         data={
             "executionStatus": ExecutionStatus.RUNNING,
             "startedAt": datetime.now(tz=timezone.utc),
         },
         include=GRAPH_EXECUTION_INCLUDE,
     )
-    if not res:
-        raise ValueError(f"Graph execution #{graph_exec_id} not found")
 
-    return GraphExecution.from_db(res)
+    return GraphExecution.from_db(res) if res else None
 
 
 async def update_graph_execution_stats(
