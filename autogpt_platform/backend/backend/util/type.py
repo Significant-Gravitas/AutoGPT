@@ -182,6 +182,7 @@ def _try_convert(value: Any, target_type: Type, raise_on_mismatch: bool) -> Any:
 
 
 T = TypeVar("T")
+TT = TypeVar("TT")
 
 
 def type_match(value: Any, target_type: Type[T]) -> T:
@@ -195,6 +196,18 @@ def convert(value: Any, target_type: Type[T]) -> T:
         return cast(T, _try_convert(value, target_type, raise_on_mismatch=False))
     except Exception as e:
         raise ConversionError(f"Failed to convert {value} to {target_type}") from e
+
+
+def typed(type: type[T], value: T) -> T:
+    """
+    Add an explicit type to a value. Useful in nested statements, e.g. dict literals.
+    """
+    return value
+
+
+def typed_cast(to_type: type[TT], from_type: type[T], value: T) -> TT:
+    """Strict cast to preserve type checking abilities."""
+    return cast(TT, value)
 
 
 class FormattedStringType(str):
