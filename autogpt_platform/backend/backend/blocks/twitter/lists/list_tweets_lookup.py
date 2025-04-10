@@ -42,7 +42,6 @@ class TwitterGetListTweetsBlock(Block):
         list_id: str = SchemaField(
             description="The ID of the List whose Tweets you would like to retrieve",
             placeholder="Enter list ID",
-            required=True,
         )
 
         max_results: int | None = SchemaField(

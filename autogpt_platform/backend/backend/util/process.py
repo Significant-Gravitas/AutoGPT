@@ -28,6 +28,7 @@ class AppProcess(ABC):
     """
 
     process: Optional[Process] = None
+    cleaned_up = False
 
     set_start_method("spawn", force=True)
     configure_logging()
@@ -47,6 +48,7 @@ class AppProcess(ABC):
     def service_name(cls) -> str:
         return cls.__name__
 
+    @abstractmethod
     def cleanup(self):
         """
         Implement this method on a subclass to do post-execution cleanup,
@@ -62,6 +64,7 @@ class AppProcess(ABC):
 
     def execute_run_command(self, silent):
         signal.signal(signal.SIGTERM, self._self_terminate)
+        signal.signal(signal.SIGINT, self._self_terminate)
 
         try:
             if silent:
@@ -73,9 +76,16 @@ class AppProcess(ABC):
             self.run()
         except (KeyboardInterrupt, SystemExit) as e:
             logger.warning(f"[{self.service_name}] Terminated: {e}; quitting...")
+        finally:
+            if not self.cleaned_up:
+                self.cleanup()
+                self.cleaned_up = True
+            logger.info(f"[{self.service_name}] Terminated.")
 
     def _self_terminate(self, signum: int, frame):
-        self.cleanup()
+        if not self.cleaned_up:
+            self.cleanup()
+            self.cleaned_up = True
         sys.exit(0)
 
     # Methods that are executed OUTSIDE the process #

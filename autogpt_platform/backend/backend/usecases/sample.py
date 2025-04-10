@@ -94,7 +94,7 @@ async def sample_agent():
             user_id=test_user.id,
             node_input=input_data,
         )
-        await wait_execution(test_user.id, test_graph.id, response.graph_exec_id, 10)
+        await wait_execution(test_user.id, response.graph_exec_id, 10)
 
 
 if __name__ == "__main__":

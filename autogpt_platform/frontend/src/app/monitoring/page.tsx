@@ -100,13 +100,13 @@ const Monitor = () => {
           ...(selectedFlow
             ? executions.filter((v) => v.graph_id == selectedFlow.agent_id)
             : executions),
-        ].sort((a, b) => Number(b.started_at) - Number(a.started_at))}
+        ].sort((a, b) => b.started_at.getTime() - a.started_at.getTime())}
         selectedRun={selectedRun}
         onSelectRun={(r) => setSelectedRun(r.id == selectedRun?.id ? null : r)}
       />
       {(selectedRun && (
         <FlowRunInfo
-          flow={
+          agent={
             selectedFlow ||
             flows.find((f) => f.agent_id == selectedRun.graph_id)!
           }

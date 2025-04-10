@@ -1,9 +1,13 @@
+import logging
+
+from backend.data import db, redis
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
-    GraphExecutionMeta,
+    GraphExecution,
     NodeExecutionResult,
     RedisExecutionEventBus,
     create_graph_execution,
+    get_graph_execution,
     get_incomplete_node_executions,
     get_latest_node_execution,
     get_node_execution_results,
@@ -43,6 +47,7 @@ from backend.util.settings import Config
 
 config = Config()
 _user_credit_model = get_user_credit_model()
+logger = logging.getLogger(__name__)
 
 
 async def _spend_credits(
@@ -54,9 +59,21 @@ async def _spend_credits(
 class DatabaseManager(AppService):
     def __init__(self):
         super().__init__()
-        self.use_db = True
-        self.use_redis = True
         self.execution_event_bus = RedisExecutionEventBus()
+
+    def run_service(self) -> None:
+        logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
+        self.run_and_wait(db.connect())
+        logger.info(f"[{self.service_name}] ⏳ Connecting to Redis...")
+        redis.connect()
+        super().run_service()
+
+    def cleanup(self):
+        super().cleanup()
+        logger.info(f"[{self.service_name}] ⏳ Disconnecting Redis...")
+        redis.disconnect()
+        logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
+        self.run_and_wait(db.disconnect())
 
     @classmethod
     def get_port(cls) -> int:
@@ -64,11 +81,12 @@ class DatabaseManager(AppService):
 
     @expose
     def send_execution_update(
-        self, execution_result: GraphExecutionMeta | NodeExecutionResult
+        self, execution_result: GraphExecution | NodeExecutionResult
     ):
         self.execution_event_bus.publish(execution_result)
 
     # Executions
+    get_graph_execution = exposed_run_and_wait(get_graph_execution)
     create_graph_execution = exposed_run_and_wait(create_graph_execution)
     get_node_execution_results = exposed_run_and_wait(get_node_execution_results)
     get_incomplete_node_executions = exposed_run_and_wait(

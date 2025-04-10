@@ -11,19 +11,20 @@ from autogpt_libs.feature_flag.client import (
     initialize_launchdarkly,
     shutdown_launchdarkly,
 )
+from autogpt_libs.logging.utils import generate_uvicorn_config
 
 import backend.data.block
 import backend.data.db
 import backend.data.graph
 import backend.data.user
 import backend.server.integrations.router
+import backend.server.routers.postmark.postmark
 import backend.server.routers.v1
 import backend.server.v2.admin.store_admin_routes
 import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
 import backend.server.v2.otto.routes
-import backend.server.v2.postmark.postmark
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
 import backend.util.service
@@ -115,8 +116,8 @@ app.include_router(
 )
 
 app.include_router(
-    backend.server.v2.postmark.postmark.router,
-    tags=["v2", "email"],
+    backend.server.routers.postmark.postmark.router,
+    tags=["v1", "email"],
     prefix="/api/email",
 )
 
@@ -141,7 +142,12 @@ class AgentServer(backend.util.service.AppProcess):
             server_app,
             host=backend.util.settings.Config().agent_api_host,
             port=backend.util.settings.Config().agent_api_port,
+            log_config=generate_uvicorn_config(),
         )
+
+    def cleanup(self):
+        super().cleanup()
+        logger.info(f"[{self.service_name}] ⏳ Shutting down Agent Server...")
 
     @staticmethod
     async def test_execute_graph(
@@ -185,14 +191,6 @@ class AgentServer(backend.util.service.AppProcess):
         if not execution:
             raise ValueError(f"Execution {graph_exec_id} not found")
         return execution.status
-
-    @staticmethod
-    async def test_get_graph_run_results(
-        graph_id: str, graph_exec_id: str, user_id: str
-    ):
-        return await backend.server.routers.v1.get_graph_execution(
-            graph_id, graph_exec_id, user_id
-        )
 
     @staticmethod
     async def test_delete_graph(graph_id: str, user_id: str):
