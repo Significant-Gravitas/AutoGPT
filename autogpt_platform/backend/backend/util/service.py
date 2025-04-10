@@ -25,6 +25,7 @@ from pydantic import BaseModel, TypeAdapter, create_model
 
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import to_dict
+from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess, get_service_name
 from backend.util.retry import conn_retry
 from backend.util.settings import Config
@@ -196,6 +197,7 @@ class AppService(BaseAppService, ABC):
         self.shared_event_loop.run_until_complete(server.serve())
 
     def run(self):
+        sentry_init()
         super().run()
         self.fastapi_app = FastAPI()
 
