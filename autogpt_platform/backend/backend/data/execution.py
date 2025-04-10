@@ -39,7 +39,7 @@ from backend.util import type as type_utils
 from backend.util.settings import Config
 
 from .block import BlockData, BlockInput, BlockType, CompletedBlockOutput, get_block
-from .db import BaseDbModel, locked_transaction
+from .db import BaseDbModel
 from .includes import (
     EXECUTION_RESULT_INCLUDE,
     GRAPH_EXECUTION_INCLUDE,
@@ -493,26 +493,27 @@ async def update_graph_execution_stats(
     if isinstance(data.get("error"), Exception):
         data["error"] = str(data["error"])
 
-    async with locked_transaction(f"graph_exec#{graph_exec_id}") as tx:
-        current = await AgentGraphExecution.prisma(tx).find_unique(
-            where={"id": graph_exec_id},
-        )
-        if not current or current.executionStatus not in (
-            ExecutionStatus.RUNNING,
-            ExecutionStatus.QUEUED,
-        ):
-            return None
+    updated_count = await AgentGraphExecution.prisma().update_many(
+        where={
+            "id": graph_exec_id,
+            "OR": [
+                {"executionStatus": ExecutionStatus.RUNNING},
+                {"executionStatus": ExecutionStatus.QUEUED},
+            ],
+        },
+        data={
+            "executionStatus": status,
+            "stats": Json(data),
+        },
+    )
+    if updated_count == 0:
+        return None
 
-        res = await AgentGraphExecution.prisma(tx).update(
-            where={"id": graph_exec_id},
-            data={
-                "executionStatus": status,
-                "stats": Json(data),
-            },
-            include=GRAPH_EXECUTION_INCLUDE,
-        )
-
-    return GraphExecution.from_db(res) if res else None
+    graph_exec = await AgentGraphExecution.prisma().find_unique_or_raise(
+        where={"id": graph_exec_id},
+        include=GRAPH_EXECUTION_INCLUDE,
+    )
+    return GraphExecution.from_db(graph_exec)
 
 
 async def update_node_execution_stats(node_exec_id: str, stats: NodeExecutionStats):
