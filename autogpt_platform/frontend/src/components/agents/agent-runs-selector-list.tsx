@@ -84,7 +84,7 @@ export default function AgentRunsSelectorList({
         >
           <span>Scheduled</span>
           <span className="text-neutral-600">
-            {schedules.filter((s) => s.graph_id === agent.agent_id).length}
+            {schedules.filter((s) => s.graph_id === agent.graph_id).length}
           </span>
         </Badge>
       </div>
@@ -127,7 +127,7 @@ export default function AgentRunsSelectorList({
                   />
                 ))
             : schedules
-                .filter((schedule) => schedule.graph_id === agent.agent_id)
+                .filter((schedule) => schedule.graph_id === agent.graph_id)
                 .map((schedule) => (
                   <AgentRunSummaryCard
                     className="h-28 w-72 lg:h-32 xl:w-80"

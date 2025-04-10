@@ -1,7 +1,7 @@
 import logging
 import uuid
 from collections import defaultdict
-from typing import Any, Literal, Optional, Type
+from typing import Any, Literal, Optional, Type, cast
 
 import prisma
 from prisma import Json
@@ -10,7 +10,9 @@ from prisma.models import AgentGraph, AgentNode, AgentNodeLink, StoreListingVers
 from prisma.types import (
     AgentGraphCreateInput,
     AgentGraphWhereInput,
+    AgentGraphWhereInputRecursive1,
     AgentNodeCreateInput,
+    AgentNodeIncludeFromAgentNodeRecursive1,
     AgentNodeLinkCreateInput,
 )
 from pydantic.fields import computed_field
@@ -465,13 +467,11 @@ class GraphModel(Graph):
             is_active=graph.isActive,
             name=graph.name or "",
             description=graph.description or "",
-            nodes=[
-                NodeModel.from_db(node, for_export) for node in graph.AgentNodes or []
-            ],
+            nodes=[NodeModel.from_db(node, for_export) for node in graph.Nodes or []],
             links=list(
                 {
                     Link.from_db(link)
-                    for node in graph.AgentNodes or []
+                    for node in graph.Nodes or []
                     for link in (node.Input or []) + (node.Output or [])
                 }
             ),
@@ -602,8 +602,8 @@ async def get_graph(
         and not (
             await StoreListingVersion.prisma().find_first(
                 where={
-                    "agentId": graph_id,
-                    "agentVersion": version or graph.version,
+                    "agentGraphId": graph_id,
+                    "agentGraphVersion": version or graph.version,
                     "isDeleted": False,
                     "submissionStatus": SubmissionStatus.APPROVED,
                 }
@@ -637,12 +637,16 @@ async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
         sub_graph_ids = [
             (graph_id, graph_version)
             for graph in search_graphs
-            for node in graph.AgentNodes or []
+            for node in graph.Nodes or []
             if (
                 node.AgentBlock
                 and node.AgentBlock.id == agent_block_id
-                and (graph_id := dict(node.constantInput).get("graph_id"))
-                and (graph_version := dict(node.constantInput).get("graph_version"))
+                and (graph_id := cast(str, dict(node.constantInput).get("graph_id")))
+                and (
+                    graph_version := cast(
+                        int, dict(node.constantInput).get("graph_version")
+                    )
+                )
             )
         ]
         if not sub_graph_ids:
@@ -651,13 +655,16 @@ async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
         graphs = await AgentGraph.prisma().find_many(
             where={
                 "OR": [
-                    {
-                        "id": graph_id,
-                        "version": graph_version,
-                        "userId": graph.userId,  # Ensure the sub-graph is owned by the same user
-                    }
+                    type_utils.typed(
+                        AgentGraphWhereInputRecursive1,
+                        {
+                            "id": graph_id,
+                            "version": graph_version,
+                            "userId": graph.userId,  # Ensure the sub-graph is owned by the same user
+                        },
+                    )
                     for graph_id, graph_version in sub_graph_ids
-                ]  # type: ignore
+                ]
             },
             include=AGENT_GRAPH_INCLUDE,
         )
@@ -671,7 +678,13 @@ async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
 async def get_connected_output_nodes(node_id: str) -> list[tuple[Link, Node]]:
     links = await AgentNodeLink.prisma().find_many(
         where={"agentNodeSourceId": node_id},
-        include={"AgentNodeSink": {"include": AGENT_NODE_INCLUDE}},  # type: ignore
+        include={
+            "AgentNodeSink": {
+                "include": cast(
+                    AgentNodeIncludeFromAgentNodeRecursive1, AGENT_NODE_INCLUDE
+                )
+            }
+        },
     )
     return [
         (Link.from_db(link), NodeModel.from_db(link.AgentNodeSink))
@@ -829,12 +842,12 @@ async def fix_llm_provider_credentials():
             SELECT    graph."userId"       user_id,
                   node.id              node_id,
                   node."constantInput" node_preset_input
-        FROM      platform."AgentNode"  node
-        LEFT JOIN platform."AgentGraph" graph
-        ON        node."agentGraphId" = graph.id
-        WHERE     node."constantInput"::jsonb->'credentials'->>'provider' = 'llm'
-        ORDER BY  graph."userId";
-        """
+            FROM      platform."AgentNode"  node
+            LEFT JOIN platform."AgentGraph" graph
+            ON        node."agentGraphId" = graph.id
+            WHERE     node."constantInput"::jsonb->'credentials'->>'provider' = 'llm'
+            ORDER BY  graph."userId";
+            """
         )
         logger.info(f"Fixing LLM credential inputs on {len(broken_nodes)} nodes")
     except Exception as e:

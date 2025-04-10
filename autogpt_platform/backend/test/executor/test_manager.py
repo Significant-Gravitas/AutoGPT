@@ -360,8 +360,8 @@ async def test_execute_preset(server: SpinTestServer):
     preset = backend.server.v2.library.model.CreateLibraryAgentPresetRequest(
         name="Test Preset With Clash",
         description="Test preset with clashing input values",
-        agent_id=test_graph.id,
-        agent_version=test_graph.version,
+        graph_id=test_graph.id,
+        graph_version=test_graph.version,
         inputs={
             "dictionary": {"key1": "Hello", "key2": "World"},
             "selected_value": "key2",
@@ -449,8 +449,8 @@ async def test_execute_preset_with_clash(server: SpinTestServer):
     preset = backend.server.v2.library.model.CreateLibraryAgentPresetRequest(
         name="Test Preset With Clash",
         description="Test preset with clashing input values",
-        agent_id=test_graph.id,
-        agent_version=test_graph.version,
+        graph_id=test_graph.id,
+        graph_version=test_graph.version,
         inputs={
             "dictionary": {"key1": "Hello", "key2": "World"},
             "selected_value": "key2",

@@ -153,16 +153,17 @@ export default async function Page({}: {}) {
       <main className="px-4">
         <HeroSection />
         <FeaturedSection featuredAgents={featuredAgents.agents} />
-        <Separator />
+        {/* 100px margin because our featured sections button are placed 40px below the container */}
+        <Separator className="mb-[25px] mt-[100px]" />
         <AgentsSection
           sectionTitle="Top Agents"
           agents={topAgents.agents as Agent[]}
         />
-        <Separator />
+        <Separator className="mb-[25px] mt-[60px]" />
         <FeaturedCreators
           featuredCreators={featuredCreators.creators as FeaturedCreator[]}
         />
-        <Separator />
+        <Separator className="mb-[25px] mt-[60px]" />
         <BecomeACreator
           title="Become a Creator"
           description="Join our ever-growing community of hackers and tinkerers"
