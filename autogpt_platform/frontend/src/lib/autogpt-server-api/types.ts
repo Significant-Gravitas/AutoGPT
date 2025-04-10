@@ -380,6 +380,7 @@ export enum AgentStatus {
   ERROR = "ERROR",
 }
 
+/* Mirror of backend/server/v2/library/model.py:LibraryAgentResponse */
 export type LibraryAgentResponse = {
   agents: LibraryAgent[];
   pagination: {
@@ -390,6 +391,7 @@ export type LibraryAgentResponse = {
   };
 };
 
+/* Mirror of backend/server/v2/library/model.py:LibraryAgentPreset */
 export type LibraryAgentPreset = {
   id: LibraryAgentPresetID;
   updated_at: Date;
@@ -403,6 +405,7 @@ export type LibraryAgentPreset = {
 
 export type LibraryAgentPresetID = Brand<string, "LibraryAgentPresetID">;
 
+/* Mirror of backend/server/v2/library/model.py:LibraryAgentPresetResponse */
 export type LibraryAgentPresetResponse = {
   presets: LibraryAgentPreset[];
   pagination: {
@@ -412,6 +415,7 @@ export type LibraryAgentPresetResponse = {
   };
 };
 
+/* Mirror of backend/server/v2/library/model.py:LibraryAgentPresetCreatable */
 export type LibraryAgentPresetCreatable = Omit<
   LibraryAgentPreset,
   "id" | "updated_at" | "is_active"
@@ -419,6 +423,7 @@ export type LibraryAgentPresetCreatable = Omit<
   is_active?: boolean;
 };
 
+/* Mirror of backend/server/v2/library/model.py:LibraryAgentPresetCreatableFromGraphExecution */
 export type LibraryAgentPresetCreatableFromGraphExecution = Omit<
   LibraryAgentPresetCreatable,
   "graph_id" | "graph_version" | "inputs"
@@ -426,10 +431,12 @@ export type LibraryAgentPresetCreatableFromGraphExecution = Omit<
   graph_execution_id: GraphExecutionID;
 };
 
+/* Mirror of backend/server/v2/library/model.py:LibraryAgentPresetUpdatable */
 export type LibraryAgentPresetUpdatable = Partial<
   Omit<LibraryAgentPresetCreatable, "graph_id" | "graph_version">
 >;
 
+/* Mirror of backend/server/v2/library/model.py:LibraryAgentSort */
 export enum LibraryAgentSortEnum {
   CREATED_AT = "createdAt",
   UPDATED_AT = "updatedAt",
