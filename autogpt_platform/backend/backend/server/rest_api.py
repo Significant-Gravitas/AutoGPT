@@ -17,7 +17,6 @@ import backend.data.block
 import backend.data.db
 import backend.data.graph
 import backend.data.user
-import backend.server.integrations.router
 import backend.server.routers.postmark.postmark
 import backend.server.routers.v1
 import backend.server.v2.admin.store_admin_routes
@@ -156,7 +155,7 @@ class AgentServer(backend.util.service.AppProcess):
         graph_version: Optional[int] = None,
         node_input: Optional[dict[str, Any]] = None,
     ):
-        return backend.server.routers.v1.execute_graph(
+        return await backend.server.routers.v1.execute_graph(
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph_version,
@@ -275,7 +274,9 @@ class AgentServer(backend.util.service.AppProcess):
         provider: ProviderName,
         credentials: Credentials,
     ) -> Credentials:
-        return backend.server.integrations.router.create_credentials(
+        from backend.server.integrations.router import create_credentials
+
+        return create_credentials(
             user_id=user_id, provider=provider, credentials=credentials
         )
 

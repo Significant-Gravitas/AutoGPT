@@ -33,11 +33,10 @@ from pydantic import BaseModel
 from pydantic.fields import Field
 
 from backend.server.v2.store.exceptions import DatabaseError
-from backend.util import mock
 from backend.util import type as type_utils
 from backend.util.settings import Config
 
-from .block import BlockData, BlockInput, BlockType, CompletedBlockOutput, get_block
+from .block import BlockInput, BlockType, CompletedBlockOutput, get_block
 from .db import BaseDbModel
 from .includes import (
     EXECUTION_RESULT_INCLUDE,
@@ -200,6 +199,26 @@ class GraphExecutionWithNodes(GraphExecution):
                 for field_name in GraphExecution.model_fields
             },
             node_executions=node_executions,
+        )
+
+    def to_graph_execution_entry(self):
+        return GraphExecutionEntry(
+            user_id=self.user_id,
+            graph_id=self.graph_id,
+            graph_version=self.graph_version or 0,
+            graph_exec_id=self.id,
+            start_node_execs=[
+                NodeExecutionEntry(
+                    user_id=self.user_id,
+                    graph_exec_id=node_exec.graph_exec_id,
+                    graph_id=node_exec.graph_id,
+                    node_exec_id=node_exec.node_exec_id,
+                    node_id=node_exec.node_id,
+                    block_id=node_exec.block_id,
+                    data=node_exec.input_data,
+                )
+                for node_exec in self.node_executions
+            ],
         )
 
 
@@ -708,144 +727,6 @@ class ExecutionQueue(Generic[T]):
 
     def empty(self) -> bool:
         return self.queue.empty()
-
-
-# ------------------- Execution Utilities -------------------- #
-
-
-LIST_SPLIT = "_$_"
-DICT_SPLIT = "_#_"
-OBJC_SPLIT = "_@_"
-
-
-def parse_execution_output(output: BlockData, name: str) -> Any | None:
-    """
-    Extracts partial output data by name from a given BlockData.
-
-    The function supports extracting data from lists, dictionaries, and objects
-    using specific naming conventions:
-    - For lists: <output_name>_$_<index>
-    - For dictionaries: <output_name>_#_<key>
-    - For objects: <output_name>_@_<attribute>
-
-    Args:
-        output (BlockData): A tuple containing the output name and data.
-        name (str): The name used to extract specific data from the output.
-
-    Returns:
-        Any | None: The extracted data if found, otherwise None.
-
-    Examples:
-        >>> output = ("result", [10, 20, 30])
-        >>> parse_execution_output(output, "result_$_1")
-        20
-
-        >>> output = ("config", {"key1": "value1", "key2": "value2"})
-        >>> parse_execution_output(output, "config_#_key1")
-        'value1'
-
-        >>> class Sample:
-        ...     attr1 = "value1"
-        ...     attr2 = "value2"
-        >>> output = ("object", Sample())
-        >>> parse_execution_output(output, "object_@_attr1")
-        'value1'
-    """
-    output_name, output_data = output
-
-    if name == output_name:
-        return output_data
-
-    if name.startswith(f"{output_name}{LIST_SPLIT}"):
-        index = int(name.split(LIST_SPLIT)[1])
-        if not isinstance(output_data, list) or len(output_data) <= index:
-            return None
-        return output_data[int(name.split(LIST_SPLIT)[1])]
-
-    if name.startswith(f"{output_name}{DICT_SPLIT}"):
-        index = name.split(DICT_SPLIT)[1]
-        if not isinstance(output_data, dict) or index not in output_data:
-            return None
-        return output_data[index]
-
-    if name.startswith(f"{output_name}{OBJC_SPLIT}"):
-        index = name.split(OBJC_SPLIT)[1]
-        if isinstance(output_data, object) and hasattr(output_data, index):
-            return getattr(output_data, index)
-        return None
-
-    return None
-
-
-def merge_execution_input(data: BlockInput) -> BlockInput:
-    """
-    Merges dynamic input pins into a single list, dictionary, or object based on naming patterns.
-
-    This function processes input keys that follow specific patterns to merge them into a unified structure:
-    - `<input_name>_$_<index>` for list inputs.
-    - `<input_name>_#_<index>` for dictionary inputs.
-    - `<input_name>_@_<index>` for object inputs.
-
-    Args:
-        data (BlockInput): A dictionary containing input keys and their corresponding values.
-
-    Returns:
-        BlockInput: A dictionary with merged inputs.
-
-    Raises:
-        ValueError: If a list index is not an integer.
-
-    Examples:
-        >>> data = {
-        ...     "list_$_0": "a",
-        ...     "list_$_1": "b",
-        ...     "dict_#_key1": "value1",
-        ...     "dict_#_key2": "value2",
-        ...     "object_@_attr1": "value1",
-        ...     "object_@_attr2": "value2"
-        ... }
-        >>> merge_execution_input(data)
-        {
-            "list": ["a", "b"],
-            "dict": {"key1": "value1", "key2": "value2"},
-            "object": <MockObject attr1="value1" attr2="value2">
-        }
-    """
-
-    # Merge all input with <input_name>_$_<index> into a single list.
-    items = list(data.items())
-
-    for key, value in items:
-        if LIST_SPLIT not in key:
-            continue
-        name, index = key.split(LIST_SPLIT)
-        if not index.isdigit():
-            raise ValueError(f"Invalid key: {key}, #{index} index must be an integer.")
-
-        data[name] = data.get(name, [])
-        if int(index) >= len(data[name]):
-            # Pad list with empty string on missing indices.
-            data[name].extend([""] * (int(index) - len(data[name]) + 1))
-        data[name][int(index)] = value
-
-    # Merge all input with <input_name>_#_<index> into a single dict.
-    for key, value in items:
-        if DICT_SPLIT not in key:
-            continue
-        name, index = key.split(DICT_SPLIT)
-        data[name] = data.get(name, {})
-        data[name][index] = value
-
-    # Merge all input with <input_name>_@_<index> into a single object.
-    for key, value in items:
-        if OBJC_SPLIT not in key:
-            continue
-        name, index = key.split(OBJC_SPLIT)
-        if name not in data or not isinstance(data[name], object):
-            data[name] = mock.MockObject()
-        setattr(data[name], index, value)
-
-    return data
 
 
 # --------------------- Event Bus --------------------- #
