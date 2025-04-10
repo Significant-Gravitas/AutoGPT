@@ -140,7 +140,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
     Get a specific agent from the user's library.
 
     Args:
-        library_agent_id: ID of the library agent to retrieve.
+        id: ID of the library agent to retrieve.
         user_id: ID of the authenticated user.
 
     Returns:
@@ -412,8 +412,8 @@ async def add_store_agent_to_library(
             if existing_library_agent:
                 if existing_library_agent.isDeleted:
                     # Even if agent exists it needs to be marked as not deleted
-                    await set_is_deleted_for_library_agent(
-                        user_id, graph.id, graph.version, False
+                    await update_library_agent(
+                        existing_library_agent.id, user_id, is_deleted=False
                     )
                 else:
                     logger.debug(
@@ -448,45 +448,6 @@ async def add_store_agent_to_library(
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error adding agent to library: {e}")
         raise store_exceptions.DatabaseError("Failed to add agent to library") from e
-
-
-async def set_is_deleted_for_library_agent(
-    user_id: str, agent_id: str, agent_version: int, is_deleted: bool
-) -> None:
-    """
-    Changes the isDeleted flag for a library agent.
-
-    Args:
-        user_id: The user's library from which the agent is being removed.
-        agent_id: The ID of the agent to remove.
-        agent_version: The version of the agent to remove.
-        is_deleted: Whether the agent is being marked as deleted.
-
-    Raises:
-        DatabaseError: If there's an issue updating the Library
-    """
-    logger.debug(
-        f"Setting isDeleted={is_deleted} for agent {agent_id} v{agent_version} "
-        f"in library for user {user_id}"
-    )
-    try:
-        logger.warning(
-            f"Setting isDeleted={is_deleted} for agent {agent_id} v{agent_version} in library for user {user_id}"
-        )
-        count = await prisma.models.LibraryAgent.prisma().update_many(
-            where={
-                "userId": user_id,
-                "agentGraphId": agent_id,
-                "agentGraphVersion": agent_version,
-            },
-            data={"isDeleted": is_deleted},
-        )
-        logger.warning(f"Updated {count} isDeleted library agents")
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error setting agent isDeleted: {e}")
-        raise store_exceptions.DatabaseError(
-            "Failed to set agent isDeleted in library"
-        ) from e
 
 
 ##############################################
