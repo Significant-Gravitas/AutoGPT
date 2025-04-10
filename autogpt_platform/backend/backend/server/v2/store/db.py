@@ -12,6 +12,7 @@ import backend.server.v2.store.exceptions
 import backend.server.v2.store.model
 from backend.data.graph import GraphModel, get_sub_graphs
 from backend.data.includes import AGENT_GRAPH_INCLUDE
+from backend.util.type import typed_cast
 
 logger = logging.getLogger(__name__)
 
@@ -200,17 +201,17 @@ async def get_available_graph(
                     "isAvailable": True,
                     "isDeleted": False,
                 },
-                include={"Agent": {"include": {"AgentNodes": True}}},
+                include={"AgentGraph": {"include": {"Nodes": True}}},
             )
         )
 
-        if not store_listing_version or not store_listing_version.Agent:
+        if not store_listing_version or not store_listing_version.AgentGraph:
             raise fastapi.HTTPException(
                 status_code=404,
                 detail=f"Store listing version {store_listing_version_id} not found",
             )
 
-        graph = GraphModel.from_db(store_listing_version.Agent)
+        graph = GraphModel.from_db(store_listing_version.AgentGraph)
         # We return graph meta, without nodes, they cannot be just removed
         # because then input_schema would be empty
         return {
@@ -516,7 +517,7 @@ async def delete_store_submission(
     try:
         # Verify the submission belongs to this user
         submission = await prisma.models.StoreListing.prisma().find_first(
-            where={"agentId": submission_id, "owningUserId": user_id}
+            where={"agentGraphId": submission_id, "owningUserId": user_id}
         )
 
         if not submission:
@@ -598,7 +599,7 @@ async def create_store_submission(
         # Check if listing already exists for this agent
         existing_listing = await prisma.models.StoreListing.prisma().find_first(
             where=prisma.types.StoreListingWhereInput(
-                agentId=agent_id, owningUserId=user_id
+                agentGraphId=agent_id, owningUserId=user_id
             )
         )
 
@@ -625,15 +626,15 @@ async def create_store_submission(
         # If no existing listing, create a new one
         data = prisma.types.StoreListingCreateInput(
             slug=slug,
-            agentId=agent_id,
-            agentVersion=agent_version,
+            agentGraphId=agent_id,
+            agentGraphVersion=agent_version,
             owningUserId=user_id,
             createdAt=datetime.now(tz=timezone.utc),
             Versions={
                 "create": [
                     prisma.types.StoreListingVersionCreateInput(
-                        agentId=agent_id,
-                        agentVersion=agent_version,
+                        agentGraphId=agent_id,
+                        agentGraphVersion=agent_version,
                         name=name,
                         videoUrl=video_url,
                         imageUrls=image_urls,
@@ -758,8 +759,8 @@ async def create_store_version(
         new_version = await prisma.models.StoreListingVersion.prisma().create(
             data=prisma.types.StoreListingVersionCreateInput(
                 version=next_version,
-                agentId=agent_id,
-                agentVersion=agent_version,
+                agentGraphId=agent_id,
+                agentGraphVersion=agent_version,
                 name=name,
                 videoUrl=video_url,
                 imageUrls=image_urls,
@@ -959,17 +960,17 @@ async def get_my_agents(
     try:
         search_filter: prisma.types.LibraryAgentWhereInput = {
             "userId": user_id,
-            "Agent": {"is": {"StoreListing": {"none": {"isDeleted": False}}}},
+            "AgentGraph": {"is": {"StoreListing": {"none": {"isDeleted": False}}}},
             "isArchived": False,
             "isDeleted": False,
         }
 
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=search_filter,
-            order=[{"agentVersion": "desc"}],
+            order=[{"agentGraphVersion": "desc"}],
             skip=(page - 1) * page_size,
             take=page_size,
-            include={"Agent": True},
+            include={"AgentGraph": True},
         )
 
         total = await prisma.models.LibraryAgent.prisma().count(where=search_filter)
@@ -985,7 +986,7 @@ async def get_my_agents(
                 agent_image=library_agent.imageUrl,
             )
             for library_agent in library_agents
-            if (graph := library_agent.Agent)
+            if (graph := library_agent.AgentGraph)
         ]
 
         return backend.server.v2.store.model.MyAgentsResponse(
@@ -1020,13 +1021,13 @@ async def get_agent(
 
     graph = await backend.data.graph.get_graph(
         user_id=user_id,
-        graph_id=store_listing_version.agentId,
-        version=store_listing_version.agentVersion,
+        graph_id=store_listing_version.agentGraphId,
+        version=store_listing_version.agentGraphVersion,
         for_export=True,
     )
     if not graph:
         raise ValueError(
-            f"Agent {store_listing_version.agentId} v{store_listing_version.agentVersion} not found"
+            f"Agent {store_listing_version.agentGraphId} v{store_listing_version.agentGraphVersion} not found"
         )
 
     return graph
@@ -1050,11 +1051,14 @@ async def _get_missing_sub_store_listing(
 
     # Fetch all the sub-graphs that are listed, and return the ones missing.
     store_listed_sub_graphs = {
-        (listing.agentId, listing.agentVersion)
+        (listing.agentGraphId, listing.agentGraphVersion)
         for listing in await prisma.models.StoreListingVersion.prisma().find_many(
             where={
                 "OR": [
-                    {"agentId": sub_graph.id, "agentVersion": sub_graph.version}
+                    {
+                        "agentGraphId": sub_graph.id,
+                        "agentGraphVersion": sub_graph.version,
+                    }
                     for sub_graph in sub_graphs
                 ],
                 "submissionStatus": prisma.enums.SubmissionStatus.APPROVED,
@@ -1084,7 +1088,13 @@ async def review_store_submission(
                 where={"id": store_listing_version_id},
                 include={
                     "StoreListing": True,
-                    "Agent": {"include": AGENT_GRAPH_INCLUDE},  # type: ignore
+                    "AgentGraph": {
+                        "include": typed_cast(
+                            prisma.types.AgentGraphIncludeFromAgentGraphRecursive1,
+                            prisma.types.AgentGraphInclude,
+                            AGENT_GRAPH_INCLUDE,
+                        )
+                    },
                 },
             )
         )
@@ -1096,23 +1106,23 @@ async def review_store_submission(
             )
 
         # If approving, update the listing to indicate it has an approved version
-        if is_approved and store_listing_version.Agent:
-            heading = f"Sub-graph of {store_listing_version.name}v{store_listing_version.agentVersion}"
+        if is_approved and store_listing_version.AgentGraph:
+            heading = f"Sub-graph of {store_listing_version.name}v{store_listing_version.agentGraphVersion}"
 
             sub_store_listing_versions = [
                 prisma.types.StoreListingVersionCreateWithoutRelationsInput(
-                    agentId=sub_graph.id,
-                    agentVersion=sub_graph.version,
+                    agentGraphId=sub_graph.id,
+                    agentGraphVersion=sub_graph.version,
                     name=sub_graph.name or heading,
                     submissionStatus=prisma.enums.SubmissionStatus.APPROVED,
                     subHeading=heading,
                     description=f"{heading}: {sub_graph.description}",
-                    changesSummary=f"This listing is added as a {heading} / #{store_listing_version.agentId}.",
+                    changesSummary=f"This listing is added as a {heading} / #{store_listing_version.agentGraphId}.",
                     isAvailable=False,  # Hide sub-graphs from the store by default.
                     submittedAt=datetime.now(tz=timezone.utc),
                 )
                 for sub_graph in await _get_missing_sub_store_listing(
-                    store_listing_version.Agent
+                    store_listing_version.AgentGraph
                 )
             ]
 
@@ -1155,8 +1165,8 @@ async def review_store_submission(
 
         # Convert to Pydantic model for consistency
         return backend.server.v2.store.model.StoreSubmission(
-            agent_id=submission.agentId,
-            agent_version=submission.agentVersion,
+            agent_id=submission.agentGraphId,
+            agent_version=submission.agentGraphVersion,
             name=submission.name,
             sub_heading=submission.subHeading,
             slug=(
@@ -1294,8 +1304,8 @@ async def get_admin_listings_with_versions(
             # If we have versions, turn them into StoreSubmission models
             for version in listing.Versions or []:
                 version_model = backend.server.v2.store.model.StoreSubmission(
-                    agent_id=version.agentId,
-                    agent_version=version.agentVersion,
+                    agent_id=version.agentGraphId,
+                    agent_version=version.agentGraphVersion,
                     name=version.name,
                     sub_heading=version.subHeading,
                     slug=listing.slug,
@@ -1324,8 +1334,8 @@ async def get_admin_listings_with_versions(
                 backend.server.v2.store.model.StoreListingWithVersions(
                     listing_id=listing.id,
                     slug=listing.slug,
-                    agent_id=listing.agentId,
-                    agent_version=listing.agentVersion,
+                    agent_id=listing.agentGraphId,
+                    agent_version=listing.agentGraphVersion,
                     active_version_id=listing.activeVersionId,
                     has_approved_version=listing.hasApprovedVersion,
                     creator_email=creator_email,
