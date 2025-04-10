@@ -1,7 +1,7 @@
 /*
   Warnings:
   - The relation LibraryAgent:AgentPreset was REMOVED
-  - A unique constraint covering the columns `[userId,agentGraphId]` on the table `LibraryAgent` will be added. If there are existing duplicate values, this will fail.
+  - A unique constraint covering the columns `[userId,agentGraphId,agentGraphVersion]` on the table `LibraryAgent` will be added. If there are existing duplicate values, this will fail.
   - The foreign key constraints on AgentPreset and LibraryAgent are being changed from CASCADE to RESTRICT for AgentGraph deletion, which means you cannot delete AgentGraphs that have associated LibraryAgents or AgentPresets.
 
   Use the following query to check whether these conditions are satisfied:

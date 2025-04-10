@@ -90,8 +90,8 @@ async def test_add_agent_to_library(mocker):
         version=1,
         createdAt=datetime.now(),
         updatedAt=datetime.now(),
-        agentId="agent1",
-        agentVersion=1,
+        agentGraphId="agent1",
+        agentGraphVersion=1,
         name="Test Agent",
         subHeading="Test Agent Subheading",
         imageUrls=["https://example.com/image.jpg"],
@@ -102,7 +102,7 @@ async def test_add_agent_to_library(mocker):
         isAvailable=True,
         storeListingId="listing123",
         submissionStatus=prisma.enums.SubmissionStatus.APPROVED,
-        Agent=prisma.models.AgentGraph(
+        AgentGraph=prisma.models.AgentGraph(
             id="agent1",
             version=1,
             name="Test Agent",
@@ -116,7 +116,7 @@ async def test_add_agent_to_library(mocker):
     mock_library_agent_data = prisma.models.LibraryAgent(
         id="ua1",
         userId="test-user",
-        agentGraphId=mock_store_listing_data.agentId,
+        agentGraphId=mock_store_listing_data.agentGraphId,
         agentGraphVersion=1,
         isCreatedByUser=False,
         isDeleted=False,
@@ -125,7 +125,7 @@ async def test_add_agent_to_library(mocker):
         updatedAt=datetime.now(),
         isFavorite=False,
         useGraphIsActiveVersion=True,
-        AgentGraph=mock_store_listing_data.Agent,
+        AgentGraph=mock_store_listing_data.AgentGraph,
     )
 
     # Mock prisma calls
@@ -147,7 +147,7 @@ async def test_add_agent_to_library(mocker):
 
     # Verify mocks called correctly
     mock_store_listing_version.return_value.find_unique.assert_called_once_with(
-        where={"id": "version123"}, include={"Agent": True}
+        where={"id": "version123"}, include={"AgentGraph": True}
     )
     mock_library_agent.return_value.find_first.assert_called_once_with(
         where={
@@ -158,12 +158,12 @@ async def test_add_agent_to_library(mocker):
         include=library_agent_include("test-user"),
     )
     mock_library_agent.return_value.create.assert_called_once_with(
-        data={
-            "userId": "test-user",
-            "agentGraphId": "agent1",
-            "agentGraphVersion": 1,
-            "isCreatedByUser": False,
-        },
+        data=prisma.types.LibraryAgentCreateInput(
+            userId="test-user",
+            agentGraphId="agent1",
+            agentGraphVersion=1,
+            isCreatedByUser=False,
+        ),
         include=library_agent_include("test-user"),
     )
 
@@ -185,5 +185,5 @@ async def test_add_agent_to_library_not_found(mocker):
 
     # Verify mock called correctly
     mock_store_listing_version.return_value.find_unique.assert_called_once_with(
-        where={"id": "version123"}, include={"Agent": True}
+        where={"id": "version123"}, include={"AgentGraph": True}
     )

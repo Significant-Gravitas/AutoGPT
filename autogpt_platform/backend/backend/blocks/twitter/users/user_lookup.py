@@ -200,7 +200,7 @@ class UserIdList(BaseModel):
     user_ids: list[str] = SchemaField(
         description="List of user IDs to lookup (max 100)",
         placeholder="Enter user IDs",
-        default=[],
+        default_factory=list,
         advanced=False,
     )
 
@@ -210,7 +210,7 @@ class UsernameList(BaseModel):
     usernames: list[str] = SchemaField(
         description="List of Twitter usernames/handles to lookup (max 100)",
         placeholder="Enter usernames",
-        default=[],
+        default_factory=list,
         advanced=False,
     )
 

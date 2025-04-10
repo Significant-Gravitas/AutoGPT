@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, cast
+from typing import Optional
 
 import fastapi
 import prisma.errors
@@ -378,10 +378,10 @@ async def add_store_agent_to_library(
         async with locked_transaction(f"add_agent_trx_{user_id}"):
             store_listing_version = (
                 await prisma.models.StoreListingVersion.prisma().find_unique(
-                    where={"id": store_listing_version_id}, include={"Agent": True}
+                    where={"id": store_listing_version_id}, include={"AgentGraph": True}
                 )
             )
-            if not store_listing_version or not store_listing_version.Agent:
+            if not store_listing_version or not store_listing_version.AgentGraph:
                 logger.warning(
                     f"Store listing version not found: {store_listing_version_id}"
                 )
@@ -389,7 +389,7 @@ async def add_store_agent_to_library(
                     f"Store listing version {store_listing_version_id} not found or invalid"
                 )
 
-            graph = store_listing_version.Agent
+            graph = store_listing_version.AgentGraph
             if graph.userId == user_id:
                 logger.warning(
                     f"User #{user_id} attempted to add their own agent to their library"
@@ -436,7 +436,7 @@ async def add_store_agent_to_library(
                 include=library_agent_include(user_id),
             )
             logger.debug(
-                f"Added graph  #{graph.id} v{graph.version}"
+                f"Added graph #{graph.id} v{graph.version}"
                 f"for store listing version #{store_listing_version.id} "
                 f"to library for user #{user_id}"
             )
@@ -617,9 +617,8 @@ async def create_preset(
                 isActive=preset.is_active,
                 InputPresets={
                     "create": [
-                        cast(
-                            prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput,
-                            {"name": name, "data": prisma.fields.Json(data)},
+                        prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
+                            name=name, data=prisma.fields.Json(data)
                         )
                         for name, data in preset.inputs.items()
                     ]
@@ -665,9 +664,8 @@ async def update_preset(
         if preset.inputs:
             update_data["InputPresets"] = {
                 "create": [
-                    cast(
-                        prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput,
-                        {"name": name, "data": prisma.fields.Json(data)},
+                    prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
+                        name=name, data=prisma.fields.Json(data)
                     )
                     for name, data in preset.inputs.items()
                 ]
