@@ -4,7 +4,6 @@ import prisma.enums
 import prisma.types
 
 from backend.blocks.io import IO_BLOCK_IDs
-from backend.util.type import typed_cast
 
 AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
     "Input": True,
@@ -14,13 +13,7 @@ AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
 }
 
 AGENT_GRAPH_INCLUDE: prisma.types.AgentGraphInclude = {
-    "Nodes": {
-        "include": typed_cast(
-            prisma.types.AgentNodeIncludeFromAgentNodeRecursive1,
-            prisma.types.AgentNodeIncludeFromAgentNode,
-            AGENT_NODE_INCLUDE,
-        )
-    }
+    "Nodes": {"include": AGENT_NODE_INCLUDE}
 }
 
 EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
@@ -56,13 +49,7 @@ GRAPH_EXECUTION_INCLUDE: prisma.types.AgentGraphExecutionInclude = {
             GRAPH_EXECUTION_INCLUDE_WITH_NODES["NodeExecutions"],
         ),
         "where": {
-            "Node": typed_cast(
-                prisma.types.AgentNodeRelationFilter,
-                prisma.types.AgentNodeWhereInput,
-                {
-                    "AgentBlock": {"id": {"in": IO_BLOCK_IDs}},
-                },
-            ),
+            "Node": {"is": {"AgentBlock": {"is": {"id": {"in": IO_BLOCK_IDs}}}}},
             "NOT": [{"executionStatus": prisma.enums.AgentExecutionStatus.INCOMPLETE}],
         },
     }
@@ -70,13 +57,7 @@ GRAPH_EXECUTION_INCLUDE: prisma.types.AgentGraphExecutionInclude = {
 
 
 INTEGRATION_WEBHOOK_INCLUDE: prisma.types.IntegrationWebhookInclude = {
-    "AgentNodes": {
-        "include": typed_cast(
-            prisma.types.AgentNodeIncludeFromAgentNodeRecursive1,
-            prisma.types.AgentNodeInclude,
-            AGENT_NODE_INCLUDE,
-        )
-    }
+    "AgentNodes": {"include": AGENT_NODE_INCLUDE}
 }
 
 
