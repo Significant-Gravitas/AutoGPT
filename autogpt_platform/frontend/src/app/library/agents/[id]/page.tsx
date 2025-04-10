@@ -257,16 +257,11 @@ export default function AgentRunsPage(): React.ReactElement {
 
   const createPresetFromRun = useCallback(
     async (run: GraphExecutionMeta) => {
-      // TODO: make a dedicated endpoint for this
-      const execution = await api.getGraphExecutionInfo(run.graph_id, run.id);
       const createdPreset = await api.createLibraryAgentPreset({
         /* FIXME: add dialog to enter name and description */
         name: agent!.name,
         description: agent!.description,
-        graph_id: execution.graph_id,
-        graph_version: execution.graph_version,
-        inputs: execution.inputs,
-        is_active: true,
+        graph_execution_id: run.id,
       });
       setAgentPresets((prev) => [...prev, createdPreset]);
     },

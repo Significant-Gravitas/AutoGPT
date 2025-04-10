@@ -414,8 +414,17 @@ export type LibraryAgentPresetResponse = {
 
 export type LibraryAgentPresetCreatable = Omit<
   LibraryAgentPreset,
-  "id" | "updated_at"
->;
+  "id" | "updated_at" | "is_active"
+> & {
+  is_active?: boolean;
+};
+
+export type LibraryAgentPresetCreatableFromGraphExecution = Omit<
+  LibraryAgentPresetCreatable,
+  "graph_id" | "graph_version" | "inputs"
+> & {
+  graph_execution_id: GraphExecutionID;
+};
 
 export type LibraryAgentPresetUpdatable = Partial<
   Omit<LibraryAgentPresetCreatable, "graph_id" | "graph_version">

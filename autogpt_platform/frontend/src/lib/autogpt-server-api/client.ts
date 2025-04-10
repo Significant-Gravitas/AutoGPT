@@ -25,6 +25,7 @@ import {
   LibraryAgentID,
   LibraryAgentPreset,
   LibraryAgentPresetCreatable,
+  LibraryAgentPresetCreatableFromGraphExecution,
   LibraryAgentPresetID,
   LibraryAgentPresetResponse,
   LibraryAgentPresetUpdatable,
@@ -618,9 +619,11 @@ export default class BackendAPI {
   }
 
   async createLibraryAgentPreset(
-    preset: LibraryAgentPresetCreatable,
+    params:
+      | LibraryAgentPresetCreatable
+      | LibraryAgentPresetCreatableFromGraphExecution,
   ): Promise<LibraryAgentPreset> {
-    const new_preset = await this._request("POST", "/library/presets", preset);
+    const new_preset = await this._request("POST", "/library/presets", params);
     return parseLibraryAgentPresetTimestamp(new_preset);
   }
 

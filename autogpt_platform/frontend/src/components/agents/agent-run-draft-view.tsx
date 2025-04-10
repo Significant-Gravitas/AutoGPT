@@ -71,7 +71,6 @@ export default function AgentRunDraftView({
             name: graph.name,
             description: "", // TODO: add dialog for name + description
             inputs: inputValues,
-            is_active: true,
           })
       ).then(onSavePreset),
     [
