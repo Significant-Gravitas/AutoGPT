@@ -14,7 +14,9 @@ import backend.server.v2.store.exceptions as store_exceptions
 import backend.server.v2.store.image_gen as store_image_gen
 import backend.server.v2.store.media as store_media
 from backend.data.db import locked_transaction
+from backend.data.execution import get_graph_execution
 from backend.data.includes import library_agent_include
+from backend.util.exceptions import NotFoundError
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -591,6 +593,44 @@ async def create_preset(
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error creating preset: {e}")
         raise store_exceptions.DatabaseError("Failed to create preset") from e
+
+
+async def create_preset_from_graph_execution(
+    user_id: str,
+    create_request: library_model.LibraryAgentPresetCreatableFromGraphExecution,
+) -> library_model.LibraryAgentPreset:
+    """
+    Creates a new AgentPreset from an AgentGraphExecution.
+
+    Params:
+        user_id: The ID of the user creating the preset.
+        create_request: The data used for creation.
+
+    Returns:
+        The newly created LibraryAgentPreset.
+
+    Raises:
+        DatabaseError: If there's a database error in creating the preset.
+    """
+    graph_exec_id = create_request.graph_execution_id
+    graph_execution = await get_graph_execution(user_id, graph_exec_id)
+    if not graph_execution:
+        raise NotFoundError(f"Graph execution #{graph_exec_id} not found")
+
+    logger.debug(
+        f"Creating preset for user #{user_id} from graph execution #{graph_exec_id}",
+    )
+    return await create_preset(
+        user_id=user_id,
+        preset=library_model.LibraryAgentPresetCreatable(
+            inputs=graph_execution.inputs,
+            graph_id=graph_execution.graph_id,
+            graph_version=graph_execution.graph_version,
+            name=create_request.name,
+            description=create_request.description,
+            is_active=create_request.is_active,
+        ),
+    )
 
 
 async def update_preset(

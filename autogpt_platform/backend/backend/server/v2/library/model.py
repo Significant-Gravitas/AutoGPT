@@ -181,7 +181,20 @@ class LibraryAgentPresetCreatable(pydantic.BaseModel):
     name: str
     description: str
 
-    is_active: bool
+    is_active: bool = True
+
+
+class LibraryAgentPresetCreatableFromGraphExecution(pydantic.BaseModel):
+    """
+    Request model used when creating a new preset for a library agent.
+    """
+
+    graph_execution_id: str
+
+    name: str
+    description: str
+
+    is_active: bool = True
 
 
 class LibraryAgentPresetUpdatable(pydantic.BaseModel):

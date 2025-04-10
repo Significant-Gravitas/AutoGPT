@@ -9,6 +9,7 @@ import backend.executor
 import backend.server.v2.library.db as db
 import backend.server.v2.library.model as models
 import backend.util.service
+from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +106,10 @@ async def get_preset(
     description="Create a new preset for the current user.",
 )
 async def create_preset(
-    preset: models.LibraryAgentPresetCreatable,
+    preset: (
+        models.LibraryAgentPresetCreatable
+        | models.LibraryAgentPresetCreatableFromGraphExecution
+    ),
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
 ) -> models.LibraryAgentPreset:
     """
@@ -122,7 +126,12 @@ async def create_preset(
         HTTPException: If an error occurs while creating the preset.
     """
     try:
-        return await db.create_preset(user_id, preset)
+        if isinstance(preset, models.LibraryAgentPresetCreatable):
+            return await db.create_preset(user_id, preset)
+        else:
+            return await db.create_preset_from_graph_execution(user_id, preset)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
         logger.exception(f"Exception occurred while creating preset: {e}")
         raise HTTPException(
