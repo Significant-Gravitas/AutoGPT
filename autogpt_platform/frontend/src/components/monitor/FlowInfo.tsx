@@ -49,7 +49,7 @@ export const FlowInfo: React.FC<
   }
 > = ({ flow, executions, flowVersion, refresh, ...props }) => {
   const { requestSaveAndRun, requestStopRun, isRunning, nodes, setNodes } =
-    useAgentGraph(flow.agent_id, flow.agent_version, undefined, false);
+    useAgentGraph(flow.graph_id, flow.graph_version, undefined, false);
 
   const api = useBackendAPI();
   const { toast } = useToast();
@@ -61,7 +61,7 @@ export const FlowInfo: React.FC<
   const selectedFlowVersion: Graph | undefined = flowVersions?.find(
     (v) =>
       v.version ==
-      (selectedVersion == "all" ? flow.agent_version : selectedVersion),
+      (selectedVersion == "all" ? flow.graph_version : selectedVersion),
   );
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -110,9 +110,9 @@ export const FlowInfo: React.FC<
 
   useEffect(() => {
     api
-      .getGraphAllVersions(flow.agent_id)
+      .getGraphAllVersions(flow.graph_id)
       .then((result) => setFlowVersions(result));
-  }, [flow.agent_id, api]);
+  }, [flow.graph_id, api]);
 
   const openRunnerInput = () => setIsRunnerInputOpen(true);
 
@@ -152,7 +152,7 @@ export const FlowInfo: React.FC<
     <Card {...props}>
       <CardHeader className="">
         <CardTitle>
-          {flow.name} <span className="font-light">v{flow.agent_version}</span>
+          {flow.name} <span className="font-light">v{flow.graph_version}</span>
         </CardTitle>
         <div className="flex flex-col space-y-2 py-6">
           {(flowVersions?.length ?? 0) > 1 && (
@@ -195,7 +195,7 @@ export const FlowInfo: React.FC<
           {flow.can_access_graph && (
             <Link
               className={buttonVariants({ variant: "default" })}
-              href={`/build?flowID=${flow.agent_id}&flowVersion=${flow.agent_version}`}
+              href={`/build?flowID=${flow.graph_id}&flowVersion=${flow.graph_version}`}
             >
               <Pencil2Icon className="mr-2" />
               Open in Builder
@@ -209,7 +209,7 @@ export const FlowInfo: React.FC<
               data-testid="export-button"
               onClick={() =>
                 api
-                  .getGraph(flow.agent_id, selectedFlowVersion!.version, true)
+                  .getGraph(flow.graph_id, selectedFlowVersion!.version, true)
                   .then((graph) =>
                     exportAsJSONFile(
                       graph,
@@ -248,7 +248,7 @@ export const FlowInfo: React.FC<
           flows={[flow]}
           executions={executions.filter(
             (execution) =>
-              execution.graph_id == flow.agent_id &&
+              execution.graph_id == flow.graph_id &&
               (selectedVersion == "all" ||
                 execution.graph_version == selectedVersion),
           )}

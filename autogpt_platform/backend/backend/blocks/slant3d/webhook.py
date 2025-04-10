@@ -26,7 +26,7 @@ class Slant3DTriggerBase:
     class Input(BlockSchema):
         credentials: Slant3DCredentialsInput = Slant3DCredentialsField()
         # Webhook URL is handled by the webhook system
-        payload: dict = SchemaField(hidden=True, default={})
+        payload: dict = SchemaField(hidden=True, default_factory=dict)
 
     class Output(BlockSchema):
         payload: dict = SchemaField(

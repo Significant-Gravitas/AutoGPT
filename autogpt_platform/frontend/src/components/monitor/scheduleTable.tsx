@@ -90,8 +90,8 @@ export const SchedulesTable = ({
   const handleAgentSelect = (agentId: string) => {
     setSelectedAgent(agentId);
     const agent = agents.find((a) => a.id === agentId);
-    setMaxVersion(agent!.agent_version);
-    setSelectedVersion(agent!.agent_version);
+    setMaxVersion(agent!.graph_version);
+    setSelectedVersion(agent!.graph_version);
   };
 
   const handleVersionSelect = (version: string) => {
@@ -120,7 +120,7 @@ export const SchedulesTable = ({
     try {
       await new Promise((resolve) => setTimeout(resolve, 100));
       router.push(
-        `/build?flowID=${agent.agent_id}&flowVersion=${agent.agent_version}&open_scheduling=true`,
+        `/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}&open_scheduling=true`,
       );
     } catch (error) {
       console.error("Navigation error:", error);
@@ -184,7 +184,7 @@ export const SchedulesTable = ({
             </SelectTrigger>
             <SelectContent className="text-xs">
               {agents.map((agent) => (
-                <SelectItem key={agent.id} value={agent.agent_id}>
+                <SelectItem key={agent.id} value={agent.graph_id}>
                   {agent.name}
                 </SelectItem>
               ))}
@@ -237,7 +237,7 @@ export const SchedulesTable = ({
               filteredAndSortedSchedules.map((schedule) => (
                 <TableRow key={schedule.id}>
                   <TableCell className="font-medium">
-                    {agents.find((a) => a.agent_id === schedule.graph_id)
+                    {agents.find((a) => a.graph_id === schedule.graph_id)
                       ?.name || schedule.graph_id}
                   </TableCell>
                   <TableCell>{schedule.graph_version}</TableCell>
