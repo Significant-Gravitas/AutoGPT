@@ -86,7 +86,7 @@ services:
       - REDIS_PASSWORD=password
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
-      - EXECUTIONSCHEDULER_HOST=rest_server
+      - EXECUTIONSCHEDULER_HOST=websocket_server
       - EXECUTIONMANAGER_HOST=executor
       - NOTIFICATIONMANAGER_HOST=rest_server
       - FRONTEND_BASE_URL=http://localhost:3000
