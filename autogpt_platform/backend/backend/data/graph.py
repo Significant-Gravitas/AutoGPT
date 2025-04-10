@@ -1,7 +1,7 @@
 import logging
 import uuid
 from collections import defaultdict
-from typing import Any, Literal, Optional, Type, cast
+from typing import Any, Literal, Optional, cast
 
 import prisma
 from prisma import Json
@@ -194,12 +194,12 @@ class BaseGraph(BaseDbModel):
 
     @staticmethod
     def _generate_schema(
-        *props: tuple[Type[AgentInputBlock.Input] | Type[AgentOutputBlock.Input], dict],
+        *props: tuple[type[AgentInputBlock.Input] | type[AgentOutputBlock.Input], dict],
     ) -> dict[str, Any]:
-        schema = []
+        schema_fields: list[AgentInputBlock.Input | AgentOutputBlock.Input] = []
         for type_class, input_default in props:
             try:
-                schema.append(type_class(**input_default))
+                schema_fields.append(type_class(**input_default))
             except Exception as e:
                 logger.warning(f"Invalid {type_class}: {input_default}, {e}")
 
@@ -219,9 +219,9 @@ class BaseGraph(BaseDbModel):
                     **({"description": p.description} if p.description else {}),
                     **({"default": p.value} if p.value is not None else {}),
                 }
-                for p in schema
+                for p in schema_fields
             },
-            "required": [p.name for p in schema if p.value is None],
+            "required": [p.name for p in schema_fields if p.value is None],
         }
 
 
