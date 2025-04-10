@@ -62,7 +62,7 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
         data={
-            "create": {"userId": user_id, **update},  # type: ignore
+            "create": {"userId": user_id, **update},
             "update": update,
         },
     )
