@@ -96,7 +96,6 @@ services:
     ports:
       - "8006:8006"
       - "8007:8007"
-      - "8003:8003" # execution scheduler
     networks:
       - app-network
 
@@ -180,6 +179,7 @@ services:
 
     ports:
       - "8001:8001"
+      - "8003:8003" # execution scheduler
     networks:
       - app-network
 
