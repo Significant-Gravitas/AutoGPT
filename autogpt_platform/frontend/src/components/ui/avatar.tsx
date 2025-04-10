@@ -58,8 +58,10 @@ const getAvatarSize = (className: string | undefined): number => {
 
 const AvatarFallback = React.forwardRef<
   React.ElementRef<typeof AvatarPrimitive.Fallback>,
-  React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Fallback>
->(({ className, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Fallback> & {
+    size?: number;
+  }
+>(({ className, size, ...props }, ref) => (
   <AvatarPrimitive.Fallback
     ref={ref}
     className={cn(
@@ -69,7 +71,7 @@ const AvatarFallback = React.forwardRef<
     {...props}
   >
     <BoringAvatar
-      size={getAvatarSize(className)}
+      size={size || getAvatarSize(className)}
       name={props.children?.toString() || "User"}
       variant="marble"
       colors={["#92A1C6", "#146A7C", "#F0AB3D", "#C271B4", "#C20D90"]}

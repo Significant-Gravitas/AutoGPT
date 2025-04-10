@@ -31,9 +31,9 @@ export const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({
   const displayedCreators = featuredCreators.slice(0, 4);
 
   return (
-    <div className="flex w-full flex-col items-center justify-center py-16">
+    <div className="flex w-full flex-col items-center justify-center">
       <div className="w-full max-w-[1360px]">
-        <h2 className="mb-8 text-left font-poppins text-[18px] font-[600] leading-9 text-neutral-800 dark:text-neutral-200">
+        <h2 className="mb-[37px] font-poppins text-2xl font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
           {title}
         </h2>
 
