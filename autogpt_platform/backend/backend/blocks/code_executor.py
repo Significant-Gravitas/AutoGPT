@@ -55,7 +55,7 @@ class CodeExecutionBlock(Block):
                 "These commands are executed with `sh`, in the foreground."
             ),
             placeholder="pip install cowsay",
-            default=[],
+            default_factory=list,
             advanced=False,
         )
 
@@ -207,7 +207,7 @@ class InstantiationBlock(Block):
                 "These commands are executed with `sh`, in the foreground."
             ),
             placeholder="pip install cowsay",
-            default=[],
+            default_factory=list,
             advanced=False,
         )
 
