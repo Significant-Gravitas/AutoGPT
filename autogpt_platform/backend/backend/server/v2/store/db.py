@@ -12,7 +12,6 @@ import backend.server.v2.store.exceptions
 import backend.server.v2.store.model
 from backend.data.graph import GraphModel, get_sub_graphs
 from backend.data.includes import AGENT_GRAPH_INCLUDE
-from backend.util.type import typed_cast
 
 logger = logging.getLogger(__name__)
 
@@ -960,7 +959,7 @@ async def get_my_agents(
     try:
         search_filter: prisma.types.LibraryAgentWhereInput = {
             "userId": user_id,
-            "AgentGraph": {"is": {"StoreListing": {"none": {"isDeleted": False}}}},
+            "AgentGraph": {"is": {"StoreListings": {"none": {"isDeleted": False}}}},
             "isArchived": False,
             "isDeleted": False,
         }
@@ -1088,13 +1087,7 @@ async def review_store_submission(
                 where={"id": store_listing_version_id},
                 include={
                     "StoreListing": True,
-                    "AgentGraph": {
-                        "include": typed_cast(
-                            prisma.types.AgentGraphIncludeFromAgentGraphRecursive1,
-                            prisma.types.AgentGraphInclude,
-                            AGENT_GRAPH_INCLUDE,
-                        )
-                    },
+                    "AgentGraph": {"include": AGENT_GRAPH_INCLUDE},
                 },
             )
         )
