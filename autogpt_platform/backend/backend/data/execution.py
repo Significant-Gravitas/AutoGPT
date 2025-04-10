@@ -492,7 +492,8 @@ async def update_graph_execution_stats(
     data = stats.model_dump() if stats else {}
     if isinstance(data.get("error"), Exception):
         data["error"] = str(data["error"])
-    res = await AgentGraphExecution.prisma().update(
+
+    updated_count = await AgentGraphExecution.prisma().update_many(
         where={
             "id": graph_exec_id,
             "OR": [
@@ -504,10 +505,15 @@ async def update_graph_execution_stats(
             "executionStatus": status,
             "stats": Json(data),
         },
+    )
+    if updated_count == 0:
+        return None
+
+    graph_exec = await AgentGraphExecution.prisma().find_unique_or_raise(
+        where={"id": graph_exec_id},
         include=GRAPH_EXECUTION_INCLUDE,
     )
-
-    return GraphExecution.from_db(res) if res else None
+    return GraphExecution.from_db(graph_exec)
 
 
 async def update_node_execution_stats(node_exec_id: str, stats: NodeExecutionStats):
@@ -643,7 +649,7 @@ async def get_latest_node_execution(
         where={
             "agentNodeId": node_id,
             "agentGraphExecutionId": graph_eid,
-            "executionStatus": {"not": ExecutionStatus.INCOMPLETE},  # type: ignore
+            "NOT": [{"executionStatus": ExecutionStatus.INCOMPLETE}],
         },
         order=[
             {"queuedTime": "desc"},
