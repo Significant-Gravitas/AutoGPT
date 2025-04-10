@@ -10,9 +10,7 @@ from prisma.models import AgentGraph, AgentNode, AgentNodeLink, StoreListingVers
 from prisma.types import (
     AgentGraphCreateInput,
     AgentGraphWhereInput,
-    AgentGraphWhereInputRecursive1,
     AgentNodeCreateInput,
-    AgentNodeIncludeFromAgentNodeRecursive1,
     AgentNodeLinkCreateInput,
 )
 from pydantic.fields import computed_field
@@ -655,14 +653,11 @@ async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
         graphs = await AgentGraph.prisma().find_many(
             where={
                 "OR": [
-                    type_utils.typed(
-                        AgentGraphWhereInputRecursive1,
-                        {
-                            "id": graph_id,
-                            "version": graph_version,
-                            "userId": graph.userId,  # Ensure the sub-graph is owned by the same user
-                        },
-                    )
+                    {
+                        "id": graph_id,
+                        "version": graph_version,
+                        "userId": graph.userId,  # Ensure the sub-graph is owned by the same user
+                    }
                     for graph_id, graph_version in sub_graph_ids
                 ]
             },
@@ -678,13 +673,7 @@ async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
 async def get_connected_output_nodes(node_id: str) -> list[tuple[Link, Node]]:
     links = await AgentNodeLink.prisma().find_many(
         where={"agentNodeSourceId": node_id},
-        include={
-            "AgentNodeSink": {
-                "include": cast(
-                    AgentNodeIncludeFromAgentNodeRecursive1, AGENT_NODE_INCLUDE
-                )
-            }
-        },
+        include={"AgentNodeSink": {"include": AGENT_NODE_INCLUDE}},
     )
     return [
         (Link.from_db(link), NodeModel.from_db(link.AgentNodeSink))
@@ -930,12 +919,19 @@ async def migrate_llm_models(migrate_to: LlmModel):
         # Convert enum values to a list of strings for the SQL query
         enum_values = [v.value for v in LlmModel.__members__.values()]
 
+        escaped_enum_values = repr(tuple(enum_values))  # hack but works
         query = f"""
             UPDATE "AgentNode"
-            SET "constantInput" = jsonb_set("constantInput", '{{{path}}}', '"{migrate_to.value}"', true)
-            WHERE "agentBlockId" = '{id}'
-            AND "constantInput" ? '{path}'
-            AND "constantInput"->>'{path}' NOT IN ({','.join(f"'{value}'" for value in enum_values)})
+            SET "constantInput" = jsonb_set("constantInput", $1, $2, true)
+            WHERE "agentBlockId" = $3
+            AND "constantInput" ? $4
+            AND "constantInput"->>$4 NOT IN {escaped_enum_values}
             """
 
-        await db.execute_raw(query)
+        await db.execute_raw(
+            query,  # type: ignore - is supposed to be LiteralString
+            "{" + path + "}",
+            f'"{migrate_to.value}"',
+            id,
+            path,
+        )
