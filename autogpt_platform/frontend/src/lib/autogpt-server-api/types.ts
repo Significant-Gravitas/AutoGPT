@@ -801,15 +801,26 @@ export type OnboardingStep =
   | "AGENT_CHOICE"
   | "AGENT_NEW_RUN"
   | "AGENT_INPUT"
-  | "CONGRATS";
+  | "CONGRATS"
+  | "GET_RESULTS"
+  | "MARKETPLACE_VISIT"
+  | "MARKETPLACE_ADD_AGENT"
+  | "MARKETPLACE_RUN_AGENT"
+  | "BUILDER_OPEN"
+  | "BUILDER_SAVE_AGENT"
+  | "BUILDER_RUN_AGENT";
 
 export interface UserOnboarding {
   completedSteps: OnboardingStep[];
+  notificationDot: boolean;
+  notified: OnboardingStep[];
+  rewardedFor: OnboardingStep[];
   usageReason: string | null;
   integrations: string[];
   otherIntegrations: string | null;
   selectedStoreListingVersionId: string | null;
-  agentInput: { [key: string]: string } | null;
+  agentInput: { [key: string]: string | number } | null;
+  onboardingAgentExecutionId: GraphExecutionID | null;
 }
 
 /* *** UTILITIES *** */

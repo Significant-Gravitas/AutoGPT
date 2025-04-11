@@ -4,9 +4,16 @@ import * as React from "react";
 import { SearchBar } from "@/components/agptui/SearchBar";
 import { FilterChips } from "@/components/agptui/FilterChips";
 import { useRouter } from "next/navigation";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 
 export const HeroSection: React.FC = () => {
   const router = useRouter();
+  const { completeStep } = useOnboarding();
+
+  // Mark marketplace visit task as completed
+  React.useEffect(() => {
+    completeStep("MARKETPLACE_VISIT");
+  }, [completeStep]);
 
   function onFilterChange(selectedFilters: string[]) {
     const encodedTerm = encodeURIComponent(selectedFilters.join(", "));

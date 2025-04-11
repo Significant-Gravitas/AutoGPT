@@ -83,8 +83,14 @@ export default function Page() {
     api.addMarketplaceAgentToLibrary(
       storeAgent?.store_listing_version_id || "",
     );
-    api.executeGraph(agent.id, agent.version, state?.agentInput || {});
-    router.push("/onboarding/6-congrats");
+    api
+      .executeGraph(agent.id, agent.version, state?.agentInput || {})
+      .then(({ graph_exec_id }) => {
+        updateState({
+          onboardingAgentExecutionId: graph_exec_id,
+        });
+        router.push("/onboarding/6-congrats");
+      });
   }, [api, agent, router, state?.agentInput]);
 
   const runYourAgent = (

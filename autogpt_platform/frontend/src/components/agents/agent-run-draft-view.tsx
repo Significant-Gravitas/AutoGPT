@@ -11,6 +11,7 @@ import { useToastOnFail } from "@/components/ui/use-toast";
 import ActionButtonGroup from "@/components/agptui/action-button-group";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { IconPlay } from "@/components/ui/icons";
+import { useOnboarding } from "../onboarding/onboarding-provider";
 
 export default function AgentRunDraftView({
   graph,
@@ -26,15 +27,18 @@ export default function AgentRunDraftView({
 
   const agentInputs = graph.input_schema.properties;
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
+  const { state, completeStep } = useOnboarding();
 
-  const doRun = useCallback(
-    () =>
-      api
-        .executeGraph(graph.id, graph.version, inputValues)
-        .then((newRun) => onRun(newRun.graph_exec_id))
-        .catch(toastOnFail("execute agent")),
-    [api, graph, inputValues, onRun, toastOnFail],
-  );
+  const doRun = useCallback(() => {
+    api
+      .executeGraph(graph.id, graph.version, inputValues)
+      .then((newRun) => onRun(newRun.graph_exec_id))
+      .catch(toastOnFail("execute agent"));
+    // Mark run agent onboarding step as completed
+    if (state?.completedSteps.includes("MARKETPLACE_ADD_AGENT")) {
+      completeStep("MARKETPLACE_RUN_AGENT");
+    }
+  }, [api, graph, inputValues, onRun, state]);
 
   const runActions: ButtonAction[] = useMemo(
     () => [
