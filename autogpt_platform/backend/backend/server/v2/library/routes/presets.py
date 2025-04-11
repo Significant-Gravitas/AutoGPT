@@ -1,14 +1,15 @@
 import logging
-from typing import Annotated, Any
+from typing import Annotated, Any, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
 import autogpt_libs.utils.cache
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 
 import backend.executor
 import backend.server.v2.library.db as db
 import backend.server.v2.library.model as models
 import backend.util.service
+from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +27,13 @@ def execution_manager_client() -> backend.executor.ExecutionManager:
     summary="List presets",
     description="Retrieve a paginated list of presets for the current user.",
 )
-async def get_presets(
+async def list_presets(
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
-    page: int = 1,
-    page_size: int = 10,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1),
+    graph_id: Optional[str] = Query(
+        description="Allows to filter presets by a specific agent graph"
+    ),
 ) -> models.LibraryAgentPresetResponse:
     """
     Retrieve a paginated list of presets for the current user.
@@ -38,12 +42,18 @@ async def get_presets(
         user_id (str): ID of the authenticated user.
         page (int): Page number for pagination.
         page_size (int): Number of items per page.
+        graph_id: Allows to filter presets by a specific agent graph.
 
     Returns:
         models.LibraryAgentPresetResponse: A response containing the list of presets.
     """
     try:
-        return await db.get_presets(user_id, page, page_size)
+        return await db.list_presets(
+            user_id=user_id,
+            graph_id=graph_id,
+            page=page,
+            page_size=page_size,
+        )
     except Exception as e:
         logger.exception(f"Exception occurred while getting presets: {e}")
         raise HTTPException(
@@ -96,14 +106,17 @@ async def get_preset(
     description="Create a new preset for the current user.",
 )
 async def create_preset(
-    preset: models.CreateLibraryAgentPresetRequest,
+    preset: (
+        models.LibraryAgentPresetCreatable
+        | models.LibraryAgentPresetCreatableFromGraphExecution
+    ),
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
 ) -> models.LibraryAgentPreset:
     """
     Create a new library agent preset. Automatically corrects node_input format if needed.
 
     Args:
-        preset (models.CreateLibraryAgentPresetRequest): The preset data to create.
+        preset (models.LibraryAgentPresetCreatable): The preset data to create.
         user_id (str): ID of the authenticated user.
 
     Returns:
@@ -113,7 +126,12 @@ async def create_preset(
         HTTPException: If an error occurs while creating the preset.
     """
     try:
-        return await db.upsert_preset(user_id, preset)
+        if isinstance(preset, models.LibraryAgentPresetCreatable):
+            return await db.create_preset(user_id, preset)
+        else:
+            return await db.create_preset_from_graph_execution(user_id, preset)
+    except NotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
         logger.exception(f"Exception occurred while creating preset: {e}")
         raise HTTPException(
@@ -122,22 +140,22 @@ async def create_preset(
         )
 
 
-@router.put(
+@router.patch(
     "/presets/{preset_id}",
     summary="Update an existing preset",
     description="Update an existing preset by its ID.",
 )
 async def update_preset(
     preset_id: str,
-    preset: models.CreateLibraryAgentPresetRequest,
+    preset: models.LibraryAgentPresetUpdatable,
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
 ) -> models.LibraryAgentPreset:
     """
-    Update an existing library agent preset. If the preset doesn't exist, it may be created.
+    Update an existing library agent preset.
 
     Args:
         preset_id (str): ID of the preset to update.
-        preset (models.CreateLibraryAgentPresetRequest): The preset data to update.
+        preset (models.LibraryAgentPresetUpdatable): The preset data to update.
         user_id (str): ID of the authenticated user.
 
     Returns:
@@ -147,7 +165,9 @@ async def update_preset(
         HTTPException: If an error occurs while updating the preset.
     """
     try:
-        return await db.upsert_preset(user_id, preset, preset_id)
+        return await db.update_preset(
+            user_id=user_id, preset_id=preset_id, preset=preset
+        )
     except Exception as e:
         logger.exception(f"Exception occurred whilst updating preset: {e}")
         raise HTTPException(
