@@ -74,6 +74,7 @@ COPY autogpt_platform/backend /app/autogpt_platform/backend
 RUN poetry install --no-ansi --only-root
 
 ENV DATABASE_URL=""
+ENV DIRECT_URL=""
 ENV PORT=8000
 
 CMD ["poetry", "run", "rest"]
