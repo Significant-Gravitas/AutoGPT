@@ -887,8 +887,6 @@ class ExecutionManager(AppProcess):
         return settings.config.execution_manager_port
 
     def run(self):
-        channel = get_execution_queue().get_channel()
-
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
@@ -900,6 +898,8 @@ class ExecutionManager(AppProcess):
 
         logger.info(f"[{self.service_name}] Ready to consume messages...")
         while True:
+            channel = get_execution_queue().get_channel()
+
             # cancel graph execution requests
             method_frame, _, body = channel.basic_get(
                 queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
@@ -916,7 +916,7 @@ class ExecutionManager(AppProcess):
             if method_frame:
                 self._handle_run_message(channel, method_frame, body)
             else:
-                time.sleep(0.1)
+                time.sleep(0.2)
 
     def _handle_cancel_message(self, body: bytes):
         try:
