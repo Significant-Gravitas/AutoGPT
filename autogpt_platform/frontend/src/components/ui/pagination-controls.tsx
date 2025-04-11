@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 export function PaginationControls({
   currentPage,
   totalPages,
+  pathParam = "page",
 }: {
   currentPage: number;
   totalPages: number;
+  pathParam?: string;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -16,7 +18,7 @@ export function PaginationControls({
 
   const createPageUrl = (page: number) => {
     const params = new URLSearchParams(searchParams);
-    params.set("page", page.toString());
+    params.set(pathParam, page.toString());
     return `${pathname}?${params.toString()}`;
   };
 
