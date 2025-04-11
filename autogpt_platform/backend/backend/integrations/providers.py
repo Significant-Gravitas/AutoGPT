@@ -30,6 +30,7 @@ class ProviderName(str, Enum):
     OPEN_ROUTER = "open_router"
     PINECONE = "pinecone"
     REDDIT = "reddit"
+    REDIS = "redis"
     REPLICATE = "replicate"
     REVID = "revid"
     SCREENSHOTONE = "screenshotone"

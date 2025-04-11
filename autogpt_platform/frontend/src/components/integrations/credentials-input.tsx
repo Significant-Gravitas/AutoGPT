@@ -83,6 +83,7 @@ export const providerIcons: Record<
   reddit: fallbackIcon,
   fal: fallbackIcon,
   revid: fallbackIcon,
+  redis: fallbackIcon,
   twitter: FaTwitter,
   unreal_speech: fallbackIcon,
   exa: fallbackIcon,

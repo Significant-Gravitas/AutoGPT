@@ -48,6 +48,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   reddit: "Reddit",
   replicate: "Replicate",
   revid: "Rev.ID",
+  redis: "Redis",
   twitter: "Twitter",
   todoist: "Todoist",
   unreal_speech: "Unreal Speech",
