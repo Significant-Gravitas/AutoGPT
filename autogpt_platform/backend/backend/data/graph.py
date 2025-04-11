@@ -1,7 +1,7 @@
 import logging
 import uuid
 from collections import defaultdict
-from typing import Any, Literal, Optional, Type, cast
+from typing import Any, Literal, Optional, cast
 
 import prisma
 from prisma import Json
@@ -192,12 +192,12 @@ class BaseGraph(BaseDbModel):
 
     @staticmethod
     def _generate_schema(
-        *props: tuple[Type[AgentInputBlock.Input] | Type[AgentOutputBlock.Input], dict],
+        *props: tuple[type[AgentInputBlock.Input] | type[AgentOutputBlock.Input], dict],
     ) -> dict[str, Any]:
-        schema = []
+        schema_fields: list[AgentInputBlock.Input | AgentOutputBlock.Input] = []
         for type_class, input_default in props:
             try:
-                schema.append(type_class(**input_default))
+                schema_fields.append(type_class(**input_default))
             except Exception as e:
                 logger.warning(f"Invalid {type_class}: {input_default}, {e}")
 
@@ -217,9 +217,9 @@ class BaseGraph(BaseDbModel):
                     **({"description": p.description} if p.description else {}),
                     **({"default": p.value} if p.value is not None else {}),
                 }
-                for p in schema
+                for p in schema_fields
             },
-            "required": [p.name for p in schema if p.value is None],
+            "required": [p.name for p in schema_fields if p.value is None],
         }
 
 
@@ -320,8 +320,6 @@ class GraphModel(Graph):
             return sanitized_name
 
         # Validate smart decision maker nodes
-        smart_decision_maker_nodes = set()
-        agent_nodes = set()
         nodes_block = {
             node.id: block
             for node in graph.nodes
@@ -331,13 +329,6 @@ class GraphModel(Graph):
         for node in graph.nodes:
             if (block := nodes_block.get(node.id)) is None:
                 raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
-
-            # Smart decision maker nodes
-            if block.block_type == BlockType.AI:
-                smart_decision_maker_nodes.add(node.id)
-            # Agent nodes
-            elif block.block_type == BlockType.AGENT:
-                agent_nodes.add(node.id)
 
         input_links = defaultdict(list)
 
@@ -353,16 +344,21 @@ class GraphModel(Graph):
                 [sanitize(name) for name in node.input_default]
                 + [sanitize(link.sink_name) for link in input_links.get(node.id, [])]
             )
-            for name in block.input_schema.get_required_fields():
+            input_schema = block.input_schema
+            for name in (required_fields := input_schema.get_required_fields()):
                 if (
                     name not in provided_inputs
+                    # Webhook payload is passed in by ExecutionManager
                     and not (
                         name == "payload"
                         and block.block_type
                         in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
                     )
+                    # Checking availability of credentials is done by ExecutionManager
+                    and name not in input_schema.get_credentials_fields()
+                    # Validate only I/O nodes, or validate everything when executing
                     and (
-                        for_run  # Skip input completion validation, unless when executing.
+                        for_run
                         or block.block_type
                         in [
                             BlockType.INPUT,
@@ -376,8 +372,7 @@ class GraphModel(Graph):
                     )
 
             # Get input schema properties and check dependencies
-            input_schema = block.input_schema.model_fields
-            required_fields = block.input_schema.get_required_fields()
+            input_fields = input_schema.model_fields
 
             def has_value(name):
                 return (
@@ -385,14 +380,21 @@ class GraphModel(Graph):
                     and name in node.input_default
                     and node.input_default[name] is not None
                     and str(node.input_default[name]).strip() != ""
-                ) or (name in input_schema and input_schema[name].default is not None)
+                ) or (name in input_fields and input_fields[name].default is not None)
 
             # Validate dependencies between fields
-            for field_name, field_info in input_schema.items():
+            for field_name, field_info in input_fields.items():
                 # Apply input dependency validation only on run & field with depends_on
                 json_schema_extra = field_info.json_schema_extra or {}
-                dependencies = json_schema_extra.get("depends_on", [])
-                if not for_run or not dependencies:
+                if not (
+                    for_run
+                    and isinstance(json_schema_extra, dict)
+                    and (
+                        dependencies := cast(
+                            list[str], json_schema_extra.get("depends_on", [])
+                        )
+                    )
+                ):
                     continue
 
                 # Check if dependent field has value in input_default

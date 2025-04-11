@@ -509,6 +509,7 @@ async def initialize_blocks() -> None:
             )
 
 
-def get_block(block_id: str) -> Block | None:
+# Note on the return type annotation: https://github.com/microsoft/pyright/issues/10281
+def get_block(block_id: str) -> Block[BlockSchema, BlockSchema] | None:
     cls = get_blocks().get(block_id)
     return cls() if cls else None
