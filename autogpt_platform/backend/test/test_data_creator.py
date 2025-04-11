@@ -10,16 +10,12 @@ from prisma.types import (
     AgentGraphCreateInput,
     AgentNodeCreateInput,
     AgentNodeLinkCreateInput,
-    AgentPresetCreateInput,
     AnalyticsDetailsCreateInput,
     AnalyticsMetricsCreateInput,
     APIKeyCreateInput,
     CreditTransactionCreateInput,
-    LibraryAgentCreateInput,
     ProfileCreateInput,
-    StoreListingCreateInput,
     StoreListingReviewCreateInput,
-    StoreListingVersionCreateInput,
     UserCreateInput,
 )
 
@@ -140,14 +136,14 @@ async def main():
         for _ in range(num_presets):  # Create 1 AgentPreset per user
             graph = random.choice(agent_graphs)
             preset = await db.agentpreset.create(
-                data=AgentPresetCreateInput(
-                    name=faker.sentence(nb_words=3),
-                    description=faker.text(max_nb_chars=200),
-                    userId=user.id,
-                    agentId=graph.id,
-                    agentVersion=graph.version,
-                    isActive=True,
-                )
+                data={
+                    "name": faker.sentence(nb_words=3),
+                    "description": faker.text(max_nb_chars=200),
+                    "userId": user.id,
+                    "agentGraphId": graph.id,
+                    "agentGraphVersion": graph.version,
+                    "isActive": True,
+                }
             )
             agent_presets.append(preset)
 
@@ -160,16 +156,15 @@ async def main():
             graph = random.choice(agent_graphs)
             preset = random.choice(agent_presets)
             user_agent = await db.libraryagent.create(
-                data=LibraryAgentCreateInput(
-                    userId=user.id,
-                    agentId=graph.id,
-                    agentVersion=graph.version,
-                    agentPresetId=preset.id,
-                    isFavorite=random.choice([True, False]),
-                    isCreatedByUser=random.choice([True, False]),
-                    isArchived=random.choice([True, False]),
-                    isDeleted=random.choice([True, False]),
-                )
+                data={
+                    "userId": user.id,
+                    "agentGraphId": graph.id,
+                    "agentGraphVersion": graph.version,
+                    "isFavorite": random.choice([True, False]),
+                    "isCreatedByUser": random.choice([True, False]),
+                    "isArchived": random.choice([True, False]),
+                    "isDeleted": random.choice([True, False]),
+                }
             )
             user_agents.append(user_agent)
 
@@ -346,13 +341,13 @@ async def main():
         user = random.choice(users)
         slug = faker.slug()
         listing = await db.storelisting.create(
-            data=StoreListingCreateInput(
-                agentId=graph.id,
-                agentVersion=graph.version,
-                owningUserId=user.id,
-                hasApprovedVersion=random.choice([True, False]),
-                slug=slug,
-            )
+            data={
+                "agentGraphId": graph.id,
+                "agentGraphVersion": graph.version,
+                "owningUserId": user.id,
+                "hasApprovedVersion": random.choice([True, False]),
+                "slug": slug,
+            }
         )
         store_listings.append(listing)
 
@@ -362,26 +357,26 @@ async def main():
     for listing in store_listings:
         graph = [g for g in agent_graphs if g.id == listing.agentId][0]
         version = await db.storelistingversion.create(
-            data=StoreListingVersionCreateInput(
-                agentId=graph.id,
-                agentVersion=graph.version,
-                name=graph.name or faker.sentence(nb_words=3),
-                subHeading=faker.sentence(),
-                videoUrl=faker.url(),
-                imageUrls=[get_image() for _ in range(3)],
-                description=faker.text(),
-                categories=[faker.word() for _ in range(3)],
-                isFeatured=random.choice([True, False]),
-                isAvailable=True,
-                storeListingId=listing.id,
-                submissionStatus=random.choice(
+            data={
+                "agentGraphId": graph.id,
+                "agentGraphVersion": graph.version,
+                "name": graph.name or faker.sentence(nb_words=3),
+                "subHeading": faker.sentence(),
+                "videoUrl": faker.url(),
+                "imageUrls": [get_image() for _ in range(3)],
+                "description": faker.text(),
+                "categories": [faker.word() for _ in range(3)],
+                "isFeatured": random.choice([True, False]),
+                "isAvailable": True,
+                "storeListingId": listing.id,
+                "submissionStatus": random.choice(
                     [
                         prisma.enums.SubmissionStatus.PENDING,
                         prisma.enums.SubmissionStatus.APPROVED,
                         prisma.enums.SubmissionStatus.REJECTED,
                     ]
                 ),
-            )
+            }
         )
         store_listing_versions.append(version)
 
@@ -422,23 +417,12 @@ async def main():
         )
         await db.storelistingversion.update(
             where={"id": version.id},
-            data=StoreListingVersionCreateInput(
-                submissionStatus=status,
-                Reviewer={"connect": {"id": reviewer.id}},
-                reviewComments=faker.text(),
-                reviewedAt=datetime.now(),
-                agentId=version.agentId,  # preserving existing fields
-                agentVersion=version.agentVersion,
-                name=version.name,
-                subHeading=version.subHeading,
-                videoUrl=version.videoUrl,
-                imageUrls=version.imageUrls,
-                description=version.description,
-                categories=version.categories,
-                isFeatured=version.isFeatured,
-                isAvailable=version.isAvailable,
-                storeListingId=version.storeListingId,
-            ),
+            data={
+                "submissionStatus": status,
+                "Reviewer": {"connect": {"id": reviewer.id}},
+                "reviewComments": faker.text(),
+                "reviewedAt": datetime.now(),
+            },
         )
 
     # Insert APIKeys

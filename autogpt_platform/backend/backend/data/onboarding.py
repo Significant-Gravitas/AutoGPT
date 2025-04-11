@@ -6,7 +6,7 @@ import pydantic
 from prisma import Json
 from prisma.enums import OnboardingStep
 from prisma.models import UserOnboarding
-from prisma.types import UserOnboardingUpdateInput
+from prisma.types import UserOnboardingCreateInput, UserOnboardingUpdateInput
 
 from backend.data.block import get_blocks
 from backend.data.graph import GraphModel
@@ -38,7 +38,7 @@ async def get_user_onboarding(user_id: str):
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
         data={
-            "create": {"userId": user_id},  # type: ignore
+            "create": UserOnboardingCreateInput(userId=user_id),
             "update": {},
         },
     )
@@ -62,7 +62,7 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
         data={
-            "create": {"userId": user_id, **update},  # type: ignore
+            "create": {"userId": user_id, **update},
             "update": update,
         },
     )
@@ -186,11 +186,11 @@ async def get_recommended_agents(user_id: str) -> list[StoreAgentDetails]:
         where={
             "id": {"in": [agent.storeListingVersionId for agent in storeAgents]},
         },
-        include={"Agent": True},
+        include={"AgentGraph": True},
     )
 
     for listing in agentListings:
-        agent = listing.Agent
+        agent = listing.AgentGraph
         if agent is None:
             continue
         graph = GraphModel.from_db(agent)

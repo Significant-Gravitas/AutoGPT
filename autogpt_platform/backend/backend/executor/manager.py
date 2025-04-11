@@ -889,6 +889,10 @@ class ExecutionManager(AppProcess):
     def run(self):
         channel = get_execution_queue().get_channel()
 
+        logger.info(f"[{self.service_name}] ⏳ Connecting to RabbitMQ...")
+        self.rabbitmq_service.connect()
+        channel = self.rabbitmq_service.get_channel()
+
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,

@@ -25,8 +25,8 @@ class LibraryAgent(pydantic.BaseModel):
     """
 
     id: str
-    agent_id: str
-    agent_version: int
+    graph_id: str
+    graph_version: int
 
     image_url: str | None
 
@@ -58,12 +58,12 @@ class LibraryAgent(pydantic.BaseModel):
         Factory method that constructs a LibraryAgent from a Prisma LibraryAgent
         model instance.
         """
-        if not agent.Agent:
+        if not agent.AgentGraph:
             raise ValueError("Associated Agent record is required.")
 
-        graph = graph_model.GraphModel.from_db(agent.Agent)
+        graph = graph_model.GraphModel.from_db(agent.AgentGraph)
 
-        agent_updated_at = agent.Agent.updatedAt
+        agent_updated_at = agent.AgentGraph.updatedAt
         lib_agent_updated_at = agent.updatedAt
 
         # Compute updated_at as the latest between library agent and graph
@@ -83,21 +83,21 @@ class LibraryAgent(pydantic.BaseModel):
         week_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
             days=7
         )
-        executions = agent.Agent.AgentGraphExecution or []
+        executions = agent.AgentGraph.Executions or []
         status_result = _calculate_agent_status(executions, week_ago)
         status = status_result.status
         new_output = status_result.new_output
 
         # Check if user can access the graph
-        can_access_graph = agent.Agent.userId == agent.userId
+        can_access_graph = agent.AgentGraph.userId == agent.userId
 
         # Hard-coded to True until a method to check is implemented
         is_latest_version = True
 
         return LibraryAgent(
             id=agent.id,
-            agent_id=agent.agentId,
-            agent_version=agent.agentVersion,
+            graph_id=agent.agentGraphId,
+            graph_version=agent.agentGraphVersion,
             image_url=agent.imageUrl,
             creator_name=creator_name,
             creator_image_url=creator_image_url,
@@ -174,8 +174,8 @@ class LibraryAgentPreset(pydantic.BaseModel):
     id: str
     updated_at: datetime.datetime
 
-    agent_id: str
-    agent_version: int
+    graph_id: str
+    graph_version: int
 
     name: str
     description: str
@@ -194,8 +194,8 @@ class LibraryAgentPreset(pydantic.BaseModel):
         return cls(
             id=preset.id,
             updated_at=preset.updatedAt,
-            agent_id=preset.agentId,
-            agent_version=preset.agentVersion,
+            graph_id=preset.agentGraphId,
+            graph_version=preset.agentGraphVersion,
             name=preset.name,
             description=preset.description,
             is_active=preset.isActive,
@@ -218,8 +218,8 @@ class CreateLibraryAgentPresetRequest(pydantic.BaseModel):
     name: str
     description: str
     inputs: block_model.BlockInput
-    agent_id: str
-    agent_version: int
+    graph_id: str
+    graph_version: int
     is_active: bool
 
 

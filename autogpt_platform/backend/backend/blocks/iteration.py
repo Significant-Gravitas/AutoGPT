@@ -11,13 +11,13 @@ class StepThroughItemsBlock(Block):
             advanced=False,
             description="The list or dictionary of items to iterate over",
             placeholder="[1, 2, 3, 4, 5] or {'key1': 'value1', 'key2': 'value2'}",
-            default=[],
+            default_factory=list,
         )
         items_object: dict = SchemaField(
             advanced=False,
             description="The list or dictionary of items to iterate over",
             placeholder="[1, 2, 3, 4, 5] or {'key1': 'value1', 'key2': 'value2'}",
-            default={},
+            default_factory=dict,
         )
         items_str: str = SchemaField(
             advanced=False,

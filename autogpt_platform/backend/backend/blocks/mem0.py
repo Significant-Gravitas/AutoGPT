@@ -65,7 +65,7 @@ class AddMemoryBlock(Block, Mem0Base):
             default=Content(discriminator="content", content="I'm a vegetarian"),
         )
         metadata: dict[str, Any] = SchemaField(
-            description="Optional metadata for the memory", default={}
+            description="Optional metadata for the memory", default_factory=dict
         )
 
         limit_memory_to_run: bool = SchemaField(
@@ -173,7 +173,7 @@ class SearchMemoryBlock(Block, Mem0Base):
         )
         categories_filter: list[str] = SchemaField(
             description="Categories to filter by",
-            default=[],
+            default_factory=list,
             advanced=True,
         )
         limit_memory_to_run: bool = SchemaField(

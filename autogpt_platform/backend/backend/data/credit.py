@@ -213,7 +213,7 @@ class UserCreditBase(ABC):
                 "userId": user_id,
                 "createdAt": {"lte": top_time},
                 "isActive": True,
-                "runningBalance": {"not": None},  # type: ignore
+                "NOT": [{"runningBalance": None}],
             },
             order={"createdAt": "desc"},
         )
