@@ -14,9 +14,7 @@ def sentry_init():
         traces_sample_rate=1.0,
         profiles_sample_rate=1.0,
         environment=f"app:{Settings().config.app_env.value}-behave:{Settings().config.behave_as.value}",
-        _experiments={
-            "enable_logs": True,
-        },
+        _experiments={"enable_logs": True},
         integrations=[
             LoggingIntegration(sentry_logs_level=logging.INFO),
             AnthropicIntegration(
