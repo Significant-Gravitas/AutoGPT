@@ -154,7 +154,7 @@ export default async function Page({}: {}) {
         <HeroSection />
         <FeaturedSection featuredAgents={featuredAgents.agents} />
         {/* 100px margin because our featured sections button are placed 40px below the container */}
-        <Separator className="mb-[25px] mt-[100px]" />
+        <Separator className="mb-6 mt-24" />
         <AgentsSection
           sectionTitle="Top Agents"
           agents={topAgents.agents as Agent[]}
