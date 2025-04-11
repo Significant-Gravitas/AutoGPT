@@ -145,6 +145,10 @@ class AgentServer(backend.util.service.AppProcess):
             log_config=generate_uvicorn_config(),
         )
 
+    def cleanup(self):
+        super().cleanup()
+        logger.info(f"[{self.service_name}] ⏳ Shutting down Agent Server...")
+
     @staticmethod
     async def test_execute_graph(
         graph_id: str,

@@ -1,3 +1,4 @@
+import copy
 from datetime import date, time
 from typing import Any, Optional
 
@@ -38,7 +39,7 @@ class AgentInputBlock(Block):
         )
         placeholder_values: list = SchemaField(
             description="The placeholder values to be passed as input.",
-            default=[],
+            default_factory=list,
             advanced=True,
             hidden=True,
         )
@@ -54,7 +55,7 @@ class AgentInputBlock(Block):
         )
 
         def generate_schema(self):
-            schema = self.get_field_schema("value")
+            schema = copy.deepcopy(self.get_field_schema("value"))
             if possible_values := self.placeholder_values:
                 schema["enum"] = possible_values
             return schema
@@ -467,7 +468,7 @@ class AgentDropdownInputBlock(AgentInputBlock):
         )
         placeholder_values: list = SchemaField(
             description="Possible values for the dropdown.",
-            default=[],
+            default_factory=list,
             advanced=False,
             title="Dropdown Options",
         )

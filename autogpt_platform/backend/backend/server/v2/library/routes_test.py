@@ -35,8 +35,8 @@ async def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
         agents=[
             library_model.LibraryAgent(
                 id="test-agent-1",
-                agent_id="test-agent-1",
-                agent_version=1,
+                graph_id="test-agent-1",
+                graph_version=1,
                 name="Test Agent 1",
                 description="Test Description 1",
                 image_url=None,
@@ -51,8 +51,8 @@ async def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
             ),
             library_model.LibraryAgent(
                 id="test-agent-2",
-                agent_id="test-agent-2",
-                agent_version=1,
+                graph_id="test-agent-2",
+                graph_version=1,
                 name="Test Agent 2",
                 description="Test Description 2",
                 image_url=None,
@@ -78,9 +78,9 @@ async def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
 
     data = library_model.LibraryAgentResponse.model_validate(response.json())
     assert len(data.agents) == 2
-    assert data.agents[0].agent_id == "test-agent-1"
+    assert data.agents[0].graph_id == "test-agent-1"
     assert data.agents[0].can_access_graph is True
-    assert data.agents[1].agent_id == "test-agent-2"
+    assert data.agents[1].graph_id == "test-agent-2"
     assert data.agents[1].can_access_graph is False
     mock_db_call.assert_called_once_with(
         user_id="test-user-id",

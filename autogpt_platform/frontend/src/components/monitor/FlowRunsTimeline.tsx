@@ -64,7 +64,7 @@ export const FlowRunsTimeline = ({
               time: number;
               _duration: number;
             } = payload[0].payload;
-            const flow = flows.find((f) => f.agent_id === data.graph_id);
+            const flow = flows.find((f) => f.graph_id === data.graph_id);
             return (
               <Card className="p-2 text-xs leading-normal">
                 <p>
@@ -98,7 +98,7 @@ export const FlowRunsTimeline = ({
         <Scatter
           key={flow.id}
           data={executions
-            .filter((e) => e.graph_id == flow.agent_id)
+            .filter((e) => e.graph_id == flow.graph_id)
             .map((e) => ({
               ...e,
               time:

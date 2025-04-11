@@ -15,7 +15,8 @@ class HubSpotContactBlock(Block):
             description="Operation to perform (create, update, get)", default="get"
         )
         contact_data: dict = SchemaField(
-            description="Contact data for create/update operations", default={}
+            description="Contact data for create/update operations",
+            default_factory=dict,
         )
         email: str = SchemaField(
             description="Email address for get/update operations", default=""

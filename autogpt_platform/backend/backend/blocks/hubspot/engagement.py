@@ -19,7 +19,7 @@ class HubSpotEngagementBlock(Block):
         )
         email_data: dict = SchemaField(
             description="Email data including recipient, subject, content",
-            default={},
+            default_factory=dict,
         )
         contact_id: str = SchemaField(
             description="Contact ID for engagement tracking", default=""

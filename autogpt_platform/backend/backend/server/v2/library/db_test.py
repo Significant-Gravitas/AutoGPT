@@ -30,8 +30,8 @@ async def test_get_library_agents(mocker):
         prisma.models.LibraryAgent(
             id="ua1",
             userId="test-user",
-            agentId="agent2",
-            agentVersion=1,
+            agentGraphId="agent2",
+            agentGraphVersion=1,
             isCreatedByUser=False,
             isDeleted=False,
             isArchived=False,
@@ -39,7 +39,7 @@ async def test_get_library_agents(mocker):
             updatedAt=datetime.now(),
             isFavorite=False,
             useGraphIsActiveVersion=True,
-            Agent=prisma.models.AgentGraph(
+            AgentGraph=prisma.models.AgentGraph(
                 id="agent2",
                 version=1,
                 name="Test Agent 2",
@@ -71,8 +71,8 @@ async def test_get_library_agents(mocker):
     assert result.agents[0].id == "ua1"
     assert result.agents[0].name == "Test Agent 2"
     assert result.agents[0].description == "Test Description 2"
-    assert result.agents[0].agent_id == "agent2"
-    assert result.agents[0].agent_version == 1
+    assert result.agents[0].graph_id == "agent2"
+    assert result.agents[0].graph_version == 1
     assert result.agents[0].can_access_graph is False
     assert result.agents[0].is_latest_version is True
     assert result.pagination.total_items == 1
@@ -90,8 +90,8 @@ async def test_add_agent_to_library(mocker):
         version=1,
         createdAt=datetime.now(),
         updatedAt=datetime.now(),
-        agentId="agent1",
-        agentVersion=1,
+        agentGraphId="agent1",
+        agentGraphVersion=1,
         name="Test Agent",
         subHeading="Test Agent Subheading",
         imageUrls=["https://example.com/image.jpg"],
@@ -102,7 +102,7 @@ async def test_add_agent_to_library(mocker):
         isAvailable=True,
         storeListingId="listing123",
         submissionStatus=prisma.enums.SubmissionStatus.APPROVED,
-        Agent=prisma.models.AgentGraph(
+        AgentGraph=prisma.models.AgentGraph(
             id="agent1",
             version=1,
             name="Test Agent",
@@ -116,8 +116,8 @@ async def test_add_agent_to_library(mocker):
     mock_library_agent_data = prisma.models.LibraryAgent(
         id="ua1",
         userId="test-user",
-        agentId=mock_store_listing_data.agentId,
-        agentVersion=1,
+        agentGraphId=mock_store_listing_data.agentGraphId,
+        agentGraphVersion=1,
         isCreatedByUser=False,
         isDeleted=False,
         isArchived=False,
@@ -125,7 +125,7 @@ async def test_add_agent_to_library(mocker):
         updatedAt=datetime.now(),
         isFavorite=False,
         useGraphIsActiveVersion=True,
-        Agent=mock_store_listing_data.Agent,
+        AgentGraph=mock_store_listing_data.AgentGraph,
     )
 
     # Mock prisma calls
@@ -147,19 +147,22 @@ async def test_add_agent_to_library(mocker):
 
     # Verify mocks called correctly
     mock_store_listing_version.return_value.find_unique.assert_called_once_with(
-        where={"id": "version123"}, include={"Agent": True}
+        where={"id": "version123"}, include={"AgentGraph": True}
     )
     mock_library_agent.return_value.find_first.assert_called_once_with(
         where={
             "userId": "test-user",
-            "agentId": "agent1",
-            "agentVersion": 1,
+            "agentGraphId": "agent1",
+            "agentGraphVersion": 1,
         },
         include=library_agent_include("test-user"),
     )
     mock_library_agent.return_value.create.assert_called_once_with(
         data=prisma.types.LibraryAgentCreateInput(
-            userId="test-user", agentId="agent1", agentVersion=1, isCreatedByUser=False
+            userId="test-user",
+            agentGraphId="agent1",
+            agentGraphVersion=1,
+            isCreatedByUser=False,
         ),
         include=library_agent_include("test-user"),
     )
@@ -182,5 +185,5 @@ async def test_add_agent_to_library_not_found(mocker):
 
     # Verify mock called correctly
     mock_store_listing_version.return_value.find_unique.assert_called_once_with(
-        where={"id": "version123"}, include={"Agent": True}
+        where={"id": "version123"}, include={"AgentGraph": True}
     )
