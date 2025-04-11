@@ -20,6 +20,7 @@ from backend.data.notifications import (
     NotificationEventDTO,
     NotificationType,
 )
+from backend.server.v2.iffy.graph_moderation import moderate_graph_content
 from backend.util.exceptions import InsufficientBalanceError
 
 if TYPE_CHECKING:
@@ -1064,6 +1065,16 @@ class ExecutionManager(AppService):
                 for node_exec in graph_exec.node_executions
             ],
         )
+
+        # Right after creating the graph execution, we need to check if the content is safe
+        moderate_graph_content(
+            graph=graph,
+            graph_id=graph.id,
+            graph_exec_id=graph_exec.id,
+            nodes_input=nodes_input,
+            user_id=user_id,
+        )
+
         self.queue.add(graph_exec_entry)
 
         return graph_exec_entry
