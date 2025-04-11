@@ -176,7 +176,7 @@ class Scheduler(AppService):
 
     def run_service(self):
         load_dotenv()
-        db_schema, db_url = _extract_schema_from_url(os.getenv("DATABASE_URL"))
+        db_schema, db_url = _extract_schema_from_url(os.getenv("DIRECT_URL"))
         self.scheduler = BlockingScheduler(
             jobstores={
                 Jobstores.EXECUTION.value: SQLAlchemyJobStore(
