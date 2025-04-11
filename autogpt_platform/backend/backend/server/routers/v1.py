@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated, Any, Sequence
+from typing import TYPE_CHECKING, Annotated, Any, Coroutine, Sequence
 
 import pydantic
 import stripe
@@ -13,7 +13,6 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
-import backend.data.block
 import backend.server.integrations.router
 import backend.server.routers.analytics
 import backend.server.v2.library.db as library_db
@@ -31,7 +30,7 @@ from backend.data.api_key import (
     suspend_api_key,
     update_api_key_permissions,
 )
-from backend.data.block import BlockInput, CompletedBlockOutput
+from backend.data.block import BlockInput, CompletedBlockOutput, get_block, get_blocks
 from backend.data.credit import (
     AutoTopUpConfig,
     RefundRequest,
@@ -41,6 +40,7 @@ from backend.data.credit import (
     get_user_credit_model,
     set_auto_top_up,
 )
+from backend.data.execution import AsyncRedisExecutionEventBus
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
     UserOnboardingUpdate,
@@ -49,13 +49,16 @@ from backend.data.onboarding import (
     onboarding_enabled,
     update_user_onboarding,
 )
+from backend.data.rabbitmq import AsyncRabbitMQ
 from backend.data.user import (
     get_or_create_user,
     get_user_notification_preference,
     update_user_email,
     update_user_notification_preference,
 )
-from backend.executor import ExecutionManager, Scheduler, scheduler
+from backend.executor import Scheduler, scheduler
+from backend.executor import utils as execution_utils
+from backend.executor.utils import create_execution_queue_config
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_activate,
@@ -79,13 +82,23 @@ if TYPE_CHECKING:
 
 
 @thread_cached
-def execution_manager_client() -> ExecutionManager:
-    return get_service_client(ExecutionManager)
+def execution_scheduler_client() -> Scheduler:
+    return get_service_client(Scheduler)
 
 
 @thread_cached
-def execution_scheduler_client() -> Scheduler:
-    return get_service_client(Scheduler)
+def execution_queue_client() -> Coroutine[None, None, AsyncRabbitMQ]:
+    async def f() -> AsyncRabbitMQ:
+        client = AsyncRabbitMQ(create_execution_queue_config())
+        await client.connect()
+        return client
+
+    return f()
+
+
+@thread_cached
+def execution_event_bus() -> AsyncRedisExecutionEventBus:
+    return AsyncRedisExecutionEventBus()
 
 
 settings = Settings()
@@ -206,7 +219,7 @@ async def is_onboarding_enabled():
 
 @v1_router.get(path="/blocks", tags=["blocks"], dependencies=[Depends(auth_middleware)])
 def get_graph_blocks() -> Sequence[dict[Any, Any]]:
-    blocks = [block() for block in backend.data.block.get_blocks().values()]
+    blocks = [block() for block in get_blocks().values()]
     costs = get_block_costs()
     return [
         {**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks if not b.disabled
@@ -219,7 +232,7 @@ def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     dependencies=[Depends(auth_middleware)],
 )
 def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput:
-    obj = backend.data.block.get_block(block_id)
+    obj = get_block(block_id)
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
 
@@ -308,7 +321,7 @@ async def configure_user_auto_top_up(
     dependencies=[Depends(auth_middleware)],
 )
 async def get_user_auto_top_up(
-    user_id: Annotated[str, Depends(get_user_id)]
+    user_id: Annotated[str, Depends(get_user_id)],
 ) -> AutoTopUpConfig:
     return await get_auto_top_up(user_id)
 
@@ -375,7 +388,7 @@ async def get_credit_history(
 
 @v1_router.get(path="/credits/refunds", dependencies=[Depends(auth_middleware)])
 async def get_refund_requests(
-    user_id: Annotated[str, Depends(get_user_id)]
+    user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[RefundRequest]:
     return await _user_credit_model.get_refund_requests(user_id)
 
@@ -391,7 +404,7 @@ class DeleteGraphResponse(TypedDict):
 
 @v1_router.get(path="/graphs", tags=["graphs"], dependencies=[Depends(auth_middleware)])
 async def get_graphs(
-    user_id: Annotated[str, Depends(get_user_id)]
+    user_id: Annotated[str, Depends(get_user_id)],
 ) -> Sequence[graph_db.GraphModel]:
     return await graph_db.get_graphs(filter_by="active", user_id=user_id)
 
@@ -580,16 +593,35 @@ async def set_graph_active_version(
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
-def execute_graph(
+async def execute_graph(
     graph_id: str,
     node_input: Annotated[dict[str, Any], Body(..., default_factory=dict)],
     user_id: Annotated[str, Depends(get_user_id)],
     graph_version: Optional[int] = None,
+    preset_id: Optional[str] = None,
 ) -> ExecuteGraphResponse:
-    graph_exec = execution_manager_client().add_execution(
-        graph_id, node_input, user_id=user_id, graph_version=graph_version
+    graph: graph_db.GraphModel | None = await graph_db.get_graph(
+        graph_id=graph_id, user_id=user_id, version=graph_version
     )
-    return ExecuteGraphResponse(graph_exec_id=graph_exec.graph_exec_id)
+    if not graph:
+        raise ValueError(f"Graph #{graph_id} not found.")
+
+    graph_exec = await execution_db.create_graph_execution(
+        graph_id=graph_id,
+        graph_version=graph.version,
+        nodes_input=execution_utils.construct_node_execution_input(
+            graph, user_id, node_input
+        ),
+        user_id=user_id,
+        preset_id=preset_id,
+    )
+    execution_utils.get_execution_event_bus().publish(graph_exec)
+    execution_utils.get_execution_queue().publish_message(
+        routing_key=execution_utils.GRAPH_EXECUTION_ROUTING_KEY,
+        message=graph_exec.to_graph_execution_entry().model_dump_json(),
+        exchange=execution_utils.GRAPH_EXECUTION_EXCHANGE,
+    )
+    return ExecuteGraphResponse(graph_exec_id=graph_exec.id)
 
 
 @v1_router.post(
@@ -605,9 +637,7 @@ async def stop_graph_run(
     ):
         raise HTTPException(404, detail=f"Agent execution #{graph_exec_id} not found")
 
-    await asyncio.to_thread(
-        lambda: execution_manager_client().cancel_execution(graph_exec_id)
-    )
+    await _cancel_execution(graph_exec_id)
 
     # Retrieve & return canceled graph execution in its final state
     result = await execution_db.get_graph_execution(
@@ -619,6 +649,49 @@ async def stop_graph_run(
             detail=f"Could not fetch graph execution #{graph_exec_id} after stopping",
         )
     return result
+
+
+async def _cancel_execution(graph_exec_id: str):
+    """
+    Mechanism:
+    1. Set the cancel event
+    2. Graph executor's cancel handler thread detects the event, terminates workers,
+       reinitializes worker pool, and returns.
+    3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
+    """
+    queue_client = await execution_queue_client()
+    await queue_client.publish_message(
+        routing_key="",
+        message=execution_utils.CancelExecutionEvent(
+            graph_exec_id=graph_exec_id
+        ).model_dump_json(),
+        exchange=execution_utils.GRAPH_EXECUTION_CANCEL_EXCHANGE,
+    )
+
+    # Update the status of the graph & node executions
+    await execution_db.update_graph_execution_stats(
+        graph_exec_id,
+        execution_db.ExecutionStatus.TERMINATED,
+    )
+    node_execs = [
+        node_exec.model_copy(update={"status": execution_db.ExecutionStatus.TERMINATED})
+        for node_exec in await execution_db.get_node_execution_results(
+            graph_exec_id=graph_exec_id,
+            statuses=[
+                execution_db.ExecutionStatus.QUEUED,
+                execution_db.ExecutionStatus.RUNNING,
+                execution_db.ExecutionStatus.INCOMPLETE,
+            ],
+        )
+    ]
+
+    await execution_db.update_node_execution_status_batch(
+        [node_exec.node_exec_id for node_exec in node_execs],
+        execution_db.ExecutionStatus.TERMINATED,
+    )
+    await asyncio.gather(
+        *[execution_event_bus().publish(node_exec) for node_exec in node_execs]
+    )
 
 
 @v1_router.get(
@@ -792,7 +865,7 @@ async def create_api_key(
     dependencies=[Depends(auth_middleware)],
 )
 async def get_api_keys(
-    user_id: Annotated[str, Depends(get_user_id)]
+    user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[APIKeyWithoutHash]:
     """List all API keys for the user"""
     try:
