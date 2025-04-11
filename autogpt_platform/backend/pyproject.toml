@@ -61,7 +61,7 @@ todoist-api-python = "^2.1.7"
 tweepy = "^4.14.0"
 uvicorn = { extras = ["standard"], version = "^0.34.0" }
 websockets = "^14.2"
-youtube-transcript-api = "^0.6.2"
+youtube-transcript-api = "^1.0.3"
 zerobouncesdk = "^1.1.1"
 # NOTE: please insert new dependencies in their alphabetical location
 
