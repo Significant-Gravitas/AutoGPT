@@ -53,7 +53,7 @@ def launch_darkly_context():
 
 @contextlib.asynccontextmanager
 async def lifespan_context(app: fastapi.FastAPI):
-    # await backend.data.db.connect()
+    await backend.data.db.connect()
     await backend.data.block.initialize_blocks()
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
@@ -61,7 +61,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     # await backend.data.graph.migrate_llm_models(LlmModel.GPT4O)
     with launch_darkly_context():
         yield
-    # await backend.data.db.disconnect()
+    await backend.data.db.disconnect()
 
 
 docs_url = (
