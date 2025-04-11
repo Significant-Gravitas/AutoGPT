@@ -170,10 +170,10 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
 
       {/* Description Section */}
       <div className="mb-4 w-full lg:mb-[36px]">
-        <div className="font-geist decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
+        <div className="mb-1.5 font-sans text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
           Description
         </div>
-        <div className="font-geist decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
+        <div className="whitespace-pre-line font-sans text-base font-normal leading-6 text-neutral-600 dark:text-neutral-400">
           {longDescription}
         </div>
       </div>
