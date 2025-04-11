@@ -880,7 +880,7 @@ class ExecutionManager(AppProcess):
         super().__init__()
         self.pool_size = settings.config.num_graph_workers
         self.running = True
-        self.active_graph_runs: dict[str, tuple[Future, threading.Event, int]] = {}
+        self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
 
     @classmethod
     def get_port(cls) -> int:
@@ -888,10 +888,6 @@ class ExecutionManager(AppProcess):
 
     def run(self):
         channel = get_execution_queue().get_channel()
-
-        logger.info(f"[{self.service_name}] ⏳ Connecting to RabbitMQ...")
-        self.rabbitmq_service.connect()
-        channel = self.rabbitmq_service.get_channel()
 
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
         self.executor = ProcessPoolExecutor(
@@ -937,7 +933,7 @@ class ExecutionManager(AppProcess):
                 )
                 return
 
-            _, cancel_event, _ = self.active_graph_runs[graph_exec_id]
+            _, cancel_event = self.active_graph_runs[graph_exec_id]
             logger.info(f"[{self.service_name}] Received cancel for {graph_exec_id}")
             if not cancel_event.is_set():
                 cancel_event.set()
@@ -975,21 +971,19 @@ class ExecutionManager(AppProcess):
         future = self.executor.submit(
             Executor.on_graph_execution, graph_exec_entry, cancel_event
         )
-        self.active_graph_runs[graph_exec_id] = (future, cancel_event, delivery_tag)
+        self.active_graph_runs[graph_exec_id] = (future, cancel_event)
 
         def _on_run_done(f: Future):
             logger.info(f"[{self.service_name}] Run completed for {graph_exec_id}")
-            info = self.active_graph_runs.pop(graph_exec_id, None)
-            if not info:
-                return
-            _, _, delivery_tag = info
-            if future.exception():
-                logger.error(
-                    f"[{self.service_name}] Execution for {graph_exec_id} failed: {future.exception()}"
-                )
-                channel.basic_nack(delivery_tag, requeue=False)
-            else:
+            try:
                 channel.basic_ack(delivery_tag)
+                self.active_graph_runs.pop(graph_exec_id, None)
+                if f.exception():
+                    logger.error(
+                        f"[{self.service_name}] Execution for {graph_exec_id} failed: {f.exception()}"
+                    )
+            except Exception as e:
+                logger.error(f"[{self.service_name}] Error acknowledging message: {e}")
 
         future.add_done_callback(_on_run_done)
 
@@ -998,12 +992,6 @@ class ExecutionManager(AppProcess):
 
         logger.info(f"[{self.service_name}] ⏳ Shutting down service loop...")
         self.running = False
-
-        logger.info(f"[{self.service_name}] ⏳ Shutting down graph executor pool...")
-        self.executor.shutdown(cancel_futures=True)
-
-        logger.info(f"[{self.service_name}] ⏳ Disconnecting Redis...")
-        redis.disconnect()
 
         logger.info(f"[{self.service_name}] ⏳ Shutting down graph executor pool...")
         self.executor.shutdown(cancel_futures=True)
