@@ -22,7 +22,7 @@ export const BreadCrumbs: React.FC<BreadCrumbsProps> = ({ items }) => {
       <button className="flex h-12 w-12 items-center justify-center rounded-full border border-neutral-200 transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
         <IconRightArrow className="h-5 w-5 text-neutral-900 dark:text-neutral-100" />
       </button> */}
-      <div className="flex h-auto flex-wrap items-center justify-start gap-4 rounded-[5rem] bg-white dark:bg-transparent">
+      <div className="flex h-auto flex-wrap items-center justify-start gap-4 rounded-[5rem] dark:bg-transparent">
         {items.map((item, index) => (
           <React.Fragment key={index}>
             <Link href={item.link}>

@@ -49,7 +49,7 @@ export default function LibrarySearchBar(): React.ReactNode {
         onFocus={() => setIsFocused(true)}
         onBlur={() => !inputRef.current?.value && setIsFocused(false)}
         onChange={handleSearchInput}
-        className="flex-1 border-none font-sans text-[16px] font-normal leading-7 shadow-none focus:shadow-none"
+        className="flex-1 border-none font-sans text-[16px] font-normal leading-7 shadow-none focus:shadow-none focus:ring-0"
         type="text"
         placeholder="Search agents"
       />
