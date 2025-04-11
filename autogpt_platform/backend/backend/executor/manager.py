@@ -9,11 +9,10 @@ import time
 from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import contextmanager
 from multiprocessing.pool import AsyncResult, Pool
-from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generator, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic
-from pydantic import BaseModel
 from redis.lock import Lock as RedisLock
 
 from backend.blocks.io import AgentOutputBlock
@@ -23,13 +22,6 @@ from backend.data.notifications import (
     LowBalanceData,
     NotificationEventDTO,
     NotificationType,
-)
-from backend.data.rabbitmq import (
-    Exchange,
-    ExchangeType,
-    Queue,
-    RabbitMQConfig,
-    SyncRabbitMQ,
 )
 from backend.util.exceptions import InsufficientBalanceError
 
@@ -41,43 +33,36 @@ from autogpt_libs.utils.cache import thread_cached
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data import redis
-from backend.data.block import (
-    Block,
-    BlockData,
-    BlockInput,
-    BlockSchema,
-    BlockType,
-    get_block,
-)
+from backend.data.block import BlockData, BlockInput, BlockSchema, get_block
 from backend.data.execution import (
     ExecutionQueue,
     ExecutionStatus,
+    GraphExecution,
     GraphExecutionEntry,
     NodeExecutionEntry,
     NodeExecutionResult,
-    merge_execution_input,
-    parse_execution_output,
 )
-from backend.data.graph import GraphModel, Link, Node
+from backend.data.graph import Link, Node
 from backend.executor.utils import (
+    GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+    GRAPH_EXECUTION_QUEUE_NAME,
+    CancelExecutionEvent,
     UsageTransactionMetadata,
     block_usage_cost,
     execution_usage_cost,
+    get_execution_event_bus,
+    get_execution_queue,
+    parse_execution_output,
+    validate_exec,
 )
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
 from backend.util.decorator import error_logged, time_measured
 from backend.util.file import clean_exec_files
 from backend.util.logging import configure_logging
-from backend.util.process import set_service_name
-from backend.util.service import (
-    AppService,
-    close_service_client,
-    expose,
-    get_service_client,
-)
+from backend.util.process import AppProcess, set_service_name
+from backend.util.service import close_service_client, get_service_client
 from backend.util.settings import Settings
-from backend.util.type import convert
 
 logger = logging.getLogger(__name__)
 settings = Settings()
@@ -163,7 +148,7 @@ def execute_node(
     def update_execution_status(status: ExecutionStatus) -> NodeExecutionResult:
         """Sets status and fetches+broadcasts the latest state of the node execution"""
         exec_update = db_client.update_node_execution_status(node_exec_id, status)
-        db_client.send_execution_update(exec_update)
+        send_execution_update(exec_update)
         return exec_update
 
     node = db_client.get_node(node_id)
@@ -299,7 +284,7 @@ def _enqueue_next_nodes(
         exec_update = db_client.update_node_execution_status(
             node_exec_id, ExecutionStatus.QUEUED, data
         )
-        db_client.send_execution_update(exec_update)
+        send_execution_update(exec_update)
         return NodeExecutionEntry(
             user_id=user_id,
             graph_exec_id=graph_exec_id,
@@ -409,105 +394,6 @@ def _enqueue_next_nodes(
         for link in node.output_links
         for execution in register_next_executions(link)
     ]
-
-
-def validate_exec(
-    node: Node,
-    data: BlockInput,
-    resolve_input: bool = True,
-) -> tuple[BlockInput | None, str]:
-    """
-    Validate the input data for a node execution.
-
-    Args:
-        node: The node to execute.
-        data: The input data for the node execution.
-        resolve_input: Whether to resolve dynamic pins into dict/list/object.
-
-    Returns:
-        A tuple of the validated data and the block name.
-        If the data is invalid, the first element will be None, and the second element
-        will be an error message.
-        If the data is valid, the first element will be the resolved input data, and
-        the second element will be the block name.
-    """
-    node_block: Block | None = get_block(node.block_id)
-    if not node_block:
-        return None, f"Block for {node.block_id} not found."
-    schema = node_block.input_schema
-
-    # Convert non-matching data types to the expected input schema.
-    for name, data_type in schema.__annotations__.items():
-        if (value := data.get(name)) and (type(value) is not data_type):
-            data[name] = convert(value, data_type)
-
-    # Input data (without default values) should contain all required fields.
-    error_prefix = f"Input data missing or mismatch for `{node_block.name}`:"
-    if missing_links := schema.get_missing_links(data, node.input_links):
-        return None, f"{error_prefix} unpopulated links {missing_links}"
-
-    # Merge input data with default values and resolve dynamic dict/list/object pins.
-    input_default = schema.get_input_defaults(node.input_default)
-    data = {**input_default, **data}
-    if resolve_input:
-        data = merge_execution_input(data)
-
-    # Input data post-merge should contain all required fields from the schema.
-    if missing_input := schema.get_missing_input(data):
-        return None, f"{error_prefix} missing input {missing_input}"
-
-    # Last validation: Validate the input values against the schema.
-    if error := schema.get_mismatch_error(data):
-        error_message = f"{error_prefix} {error}"
-        logger.error(error_message)
-        return None, error_message
-
-    return data, node_block.name
-
-
-GRAPH_EXECUTION_EXCHANGE = Exchange(
-    name="graph_execution",
-    type=ExchangeType.DIRECT,
-    durable=True,
-    auto_delete=False,
-)
-GRAPH_EXECUTION_QUEUE_NAME = "graph_execution_queue"
-GRAPH_EXECUTION_ROUTING_KEY = "graph_execution.run"
-
-GRAPH_EXECUTION_CANCEL_EXCHANGE = Exchange(
-    name="graph_execution_cancel",
-    type=ExchangeType.FANOUT,
-    durable=True,
-    auto_delete=True,
-)
-GRAPH_EXECUTION_CANCEL_QUEUE_NAME = "graph_execution_cancel_queue"
-
-
-def create_execution_config() -> RabbitMQConfig:
-    """
-    Define two exchanges and queues:
-    - 'graph_execution' (DIRECT) for run tasks.
-    - 'graph_execution_cancel' (FANOUT) for cancel requests.
-    """
-    run_queue = Queue(
-        name=GRAPH_EXECUTION_QUEUE_NAME,
-        exchange=GRAPH_EXECUTION_EXCHANGE,
-        routing_key=GRAPH_EXECUTION_ROUTING_KEY,
-        durable=True,
-        auto_delete=False,
-    )
-    cancel_queue = Queue(
-        name=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
-        exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
-        routing_key="",  # not used for FANOUT
-        durable=True,
-        auto_delete=False,
-    )
-    return RabbitMQConfig(
-        vhost="/",
-        exchanges=[GRAPH_EXECUTION_EXCHANGE, GRAPH_EXECUTION_CANCEL_EXCHANGE],
-        queues=[run_queue, cancel_queue],
-    )
 
 
 class Executor:
@@ -689,7 +575,13 @@ class Executor:
         exec_meta = cls.db_client.update_graph_execution_start_time(
             graph_exec.graph_exec_id
         )
-        cls.db_client.send_execution_update(exec_meta)
+        if exec_meta is None:
+            logger.warning(
+                f"Skipped graph execution {graph_exec.graph_exec_id}, the graph execution is not found or not currently in the QUEUED state."
+            )
+            return
+
+        send_execution_update(exec_meta)
         timing_info, (exec_stats, status, error) = cls._on_graph_execution(
             graph_exec, cancel, log_metadata
         )
@@ -702,7 +594,7 @@ class Executor:
             status=status,
             stats=exec_stats,
         ):
-            cls.db_client.send_execution_update(graph_exec_result)
+            send_execution_update(graph_exec_result)
 
         cls._handle_agent_run_notif(graph_exec, exec_stats)
 
@@ -815,7 +707,7 @@ class Executor:
                         status=execution_status,
                         stats=execution_stats,
                     ):
-                        cls.db_client.send_execution_update(_graph_exec)
+                        send_execution_update(_graph_exec)
                     else:
                         logger.error(
                             "Callback for "
@@ -866,7 +758,7 @@ class Executor:
                     exec_update = cls.db_client.update_node_execution_status(
                         node_exec_id, execution_status
                     )
-                    cls.db_client.send_execution_update(exec_update)
+                    send_execution_update(exec_update)
 
                     cls._handle_low_balance_notif(
                         graph_exec.user_id,
@@ -983,32 +875,25 @@ class Executor:
         )
 
 
-class CancelExecutionEvent(BaseModel):
-    graph_exec_id: str
-
-
-class ExecutionManager(AppService):
+class ExecutionManager(AppProcess):
     def __init__(self):
         super().__init__()
         self.pool_size = settings.config.num_graph_workers
-        self.rabbit_config = create_execution_config()
-        self.rabbitmq_service = SyncRabbitMQ(self.rabbit_config)
         self.running = True
-        self.active_graph_runs: dict[str, tuple[Future, threading.Event, int]] = {}
+        self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
 
     @classmethod
     def get_port(cls) -> int:
         return settings.config.execution_manager_port
 
-    def run_service(self):
-        from backend.integrations.credentials_store import IntegrationCredentialsStore
+    def run(self):
+        while True:
+            try:
+                self._run()
+            except Exception:
+                logger.exception(f"[{self.service_name}] error in graph executor loop")
 
-        self.credentials_store = IntegrationCredentialsStore()
-
-        logger.info(f"[{self.service_name}] ⏳ Connecting to RabbitMQ...")
-        self.rabbitmq_service.connect()
-        channel = self.rabbitmq_service.get_channel()
-
+    def _run(self):
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,
@@ -1020,6 +905,8 @@ class ExecutionManager(AppService):
 
         logger.info(f"[{self.service_name}] Ready to consume messages...")
         while True:
+            channel = get_execution_queue().get_channel()
+
             # cancel graph execution requests
             method_frame, _, body = channel.basic_get(
                 queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
@@ -1036,7 +923,7 @@ class ExecutionManager(AppService):
             if method_frame:
                 self._handle_run_message(channel, method_frame, body)
             else:
-                time.sleep(0.1)
+                time.sleep(0.2)
 
     def _handle_cancel_message(self, body: bytes):
         try:
@@ -1053,7 +940,7 @@ class ExecutionManager(AppService):
                 )
                 return
 
-            _, cancel_event, _ = self.active_graph_runs[graph_exec_id]
+            _, cancel_event = self.active_graph_runs[graph_exec_id]
             logger.info(f"[{self.service_name}] Received cancel for {graph_exec_id}")
             if not cancel_event.is_set():
                 cancel_event.set()
@@ -1091,21 +978,19 @@ class ExecutionManager(AppService):
         future = self.executor.submit(
             Executor.on_graph_execution, graph_exec_entry, cancel_event
         )
-        self.active_graph_runs[graph_exec_id] = (future, cancel_event, delivery_tag)
+        self.active_graph_runs[graph_exec_id] = (future, cancel_event)
 
         def _on_run_done(f: Future):
             logger.info(f"[{self.service_name}] Run completed for {graph_exec_id}")
-            info = self.active_graph_runs.pop(graph_exec_id, None)
-            if not info:
-                return
-            _, _, delivery_tag = info
-            if future.exception():
-                logger.error(
-                    f"[{self.service_name}] Execution for {graph_exec_id} failed: {future.exception()}"
-                )
-                channel.basic_nack(delivery_tag, requeue=False)
-            else:
+            try:
                 channel.basic_ack(delivery_tag)
+                self.active_graph_runs.pop(graph_exec_id, None)
+                if f.exception():
+                    logger.error(
+                        f"[{self.service_name}] Execution for {graph_exec_id} failed: {f.exception()}"
+                    )
+            except Exception as e:
+                logger.error(f"[{self.service_name}] Error acknowledging message: {e}")
 
         future.add_done_callback(_on_run_done)
 
@@ -1121,185 +1006,9 @@ class ExecutionManager(AppService):
         logger.info(f"[{self.service_name}] ⏳ Disconnecting Redis...")
         redis.disconnect()
 
-        logger.info(f"[{self.service_name}] ⏳ Disconnecting RabbitMQ...")
-        self.rabbitmq_service.disconnect()
-
-        logger.info(f"[{self.service_name}] ⏳ Shutting down graph executor pool...")
-        self.executor.shutdown(cancel_futures=True)
-
-        logger.info(f"[{self.service_name}] ⏳ Disconnecting Redis...")
-        redis.disconnect()
-
     @property
     def db_client(self) -> "DatabaseManager":
         return get_db_client()
-
-    @expose
-    def add_execution(
-        self,
-        graph_id: str,
-        data: BlockInput,
-        user_id: str,
-        graph_version: Optional[int] = None,
-        preset_id: str | None = None,
-    ) -> GraphExecutionEntry:
-        graph: GraphModel | None = self.db_client.get_graph(
-            graph_id=graph_id, user_id=user_id, version=graph_version
-        )
-        if not graph:
-            raise ValueError(f"Graph #{graph_id} not found.")
-
-        graph.validate_graph(for_run=True)
-        self._validate_node_input_credentials(graph, user_id)
-
-        nodes_input = []
-        for node in graph.starting_nodes:
-            input_data = {}
-            block = node.block
-
-            # Note block should never be executed.
-            if block.block_type == BlockType.NOTE:
-                continue
-
-            # Extract request input data, and assign it to the input pin.
-            if block.block_type == BlockType.INPUT:
-                input_name = node.input_default.get("name")
-                if input_name and input_name in data:
-                    input_data = {"value": data[input_name]}
-
-            # Extract webhook payload, and assign it to the input pin
-            webhook_payload_key = f"webhook_{node.webhook_id}_payload"
-            if (
-                block.block_type in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
-                and node.webhook_id
-            ):
-                if webhook_payload_key not in data:
-                    raise ValueError(
-                        f"Node {block.name} #{node.id} webhook payload is missing"
-                    )
-                input_data = {"payload": data[webhook_payload_key]}
-
-            input_data, error = validate_exec(node, input_data)
-            if input_data is None:
-                raise ValueError(error)
-            else:
-                nodes_input.append((node.id, input_data))
-
-        if not nodes_input:
-            raise ValueError(
-                "No starting nodes found for the graph, make sure an AgentInput or blocks with no inbound links are present as starting nodes."
-            )
-
-        graph_exec = self.db_client.create_graph_execution(
-            graph_id=graph_id,
-            graph_version=graph.version,
-            nodes_input=nodes_input,
-            user_id=user_id,
-            preset_id=preset_id,
-        )
-        self.db_client.send_execution_update(graph_exec)
-
-        graph_exec_entry = GraphExecutionEntry(
-            user_id=user_id,
-            graph_id=graph_id,
-            graph_version=graph_version or 0,
-            graph_exec_id=graph_exec.id,
-            start_node_execs=[
-                NodeExecutionEntry(
-                    user_id=user_id,
-                    graph_exec_id=node_exec.graph_exec_id,
-                    graph_id=node_exec.graph_id,
-                    node_exec_id=node_exec.node_exec_id,
-                    node_id=node_exec.node_id,
-                    block_id=node_exec.block_id,
-                    data=node_exec.input_data,
-                )
-                for node_exec in graph_exec.node_executions
-            ],
-        )
-        self.rabbitmq_service.publish_message(
-            routing_key=GRAPH_EXECUTION_ROUTING_KEY,
-            message=graph_exec_entry.model_dump_json(),
-            exchange=GRAPH_EXECUTION_EXCHANGE,
-        )
-        return graph_exec_entry
-
-    @expose
-    def cancel_execution(self, graph_exec_id: str) -> None:
-        """
-        Mechanism:
-        1. Set the cancel event
-        2. Graph executor's cancel handler thread detects the event, terminates workers,
-           reinitializes worker pool, and returns.
-        3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
-        """
-        self.rabbitmq_service.publish_message(
-            routing_key="",
-            message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
-            exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
-        )
-
-        # Update the status of the graph & node executions
-        self.db_client.update_graph_execution_stats(
-            graph_exec_id,
-            ExecutionStatus.TERMINATED,
-        )
-        node_execs = self.db_client.get_node_execution_results(
-            graph_exec_id=graph_exec_id,
-            statuses=[
-                ExecutionStatus.QUEUED,
-                ExecutionStatus.RUNNING,
-                ExecutionStatus.INCOMPLETE,
-            ],
-        )
-        self.db_client.update_node_execution_status_batch(
-            [node_exec.node_exec_id for node_exec in node_execs],
-            ExecutionStatus.TERMINATED,
-        )
-        for node_exec in node_execs:
-            node_exec.status = ExecutionStatus.TERMINATED
-            self.db_client.send_execution_update(node_exec)
-
-    def _validate_node_input_credentials(self, graph: GraphModel, user_id: str):
-        """Checks all credentials for all nodes of the graph"""
-
-        for node in graph.nodes:
-            block = node.block
-
-            # Find any fields of type CredentialsMetaInput
-            credentials_fields = cast(
-                type[BlockSchema], block.input_schema
-            ).get_credentials_fields()
-            if not credentials_fields:
-                continue
-
-            for field_name, credentials_meta_type in credentials_fields.items():
-                credentials_meta = credentials_meta_type.model_validate(
-                    node.input_default[field_name]
-                )
-                # Fetch the corresponding Credentials and perform sanity checks
-                credentials = self.credentials_store.get_creds_by_id(
-                    user_id, credentials_meta.id
-                )
-                if not credentials:
-                    raise ValueError(
-                        f"Unknown credentials #{credentials_meta.id} "
-                        f"for node #{node.id} input '{field_name}'"
-                    )
-                if (
-                    credentials.provider != credentials_meta.provider
-                    or credentials.type != credentials_meta.type
-                ):
-                    logger.warning(
-                        f"Invalid credentials #{credentials.id} for node #{node.id}: "
-                        "type/provider mismatch: "
-                        f"{credentials_meta.type}<>{credentials.type};"
-                        f"{credentials_meta.provider}<>{credentials.provider}"
-                    )
-                    raise ValueError(
-                        f"Invalid credentials #{credentials.id} for node #{node.id}: "
-                        "type/provider mismatch"
-                    )
 
 
 # ------- UTILITIES ------- #
@@ -1317,6 +1026,10 @@ def get_notification_service() -> "NotificationManager":
     from backend.notifications import NotificationManager
 
     return get_service_client(NotificationManager)
+
+
+def send_execution_update(entry: GraphExecution | NodeExecutionResult):
+    return get_execution_event_bus().publish(entry)
 
 
 @contextmanager

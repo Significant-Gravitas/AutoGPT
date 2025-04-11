@@ -2,7 +2,6 @@ import logging
 from collections import defaultdict
 from typing import Annotated, Any, Dict, List, Optional, Sequence
 
-from autogpt_libs.utils.cache import thread_cached
 from fastapi import APIRouter, Body, Depends, HTTPException
 from prisma.enums import AgentExecutionStatus, APIKeyPermission
 from typing_extensions import TypedDict
@@ -13,16 +12,9 @@ from backend.data import graph as graph_db
 from backend.data.api_key import APIKey
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.execution import NodeExecutionResult
-from backend.executor import ExecutionManager
 from backend.server.external.middleware import require_permission
-from backend.util.service import get_service_client
+from backend.server.routers import v1 as internal_api_routes
 from backend.util.settings import Settings
-
-
-@thread_cached
-def execution_manager_client() -> ExecutionManager:
-    return get_service_client(ExecutionManager)
-
 
 settings = Settings()
 logger = logging.getLogger(__name__)
@@ -98,18 +90,18 @@ def execute_graph_block(
     path="/graphs/{graph_id}/execute/{graph_version}",
     tags=["graphs"],
 )
-def execute_graph(
+async def execute_graph(
     graph_id: str,
     graph_version: int,
     node_input: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
     api_key: APIKey = Depends(require_permission(APIKeyPermission.EXECUTE_GRAPH)),
 ) -> dict[str, Any]:
     try:
-        graph_exec = execution_manager_client().add_execution(
-            graph_id,
-            graph_version=graph_version,
-            data=node_input,
+        graph_exec = await internal_api_routes.execute_graph(
+            graph_id=graph_id,
+            node_input=node_input,
             user_id=api_key.user_id,
+            graph_version=graph_version,
         )
         return {"id": graph_exec.graph_exec_id}
     except Exception as e:
