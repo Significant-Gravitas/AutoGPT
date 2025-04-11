@@ -887,6 +887,13 @@ class ExecutionManager(AppProcess):
         return settings.config.execution_manager_port
 
     def run(self):
+        while True:
+            try:
+                self._run()
+            except Exception:
+                logger.exception(f"[{self.service_name}] error in graph executor loop")
+
+    def _run(self):
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
         self.executor = ProcessPoolExecutor(
             max_workers=self.pool_size,

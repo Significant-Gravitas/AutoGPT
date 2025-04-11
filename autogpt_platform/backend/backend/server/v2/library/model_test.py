@@ -5,7 +5,6 @@ import prisma.models
 import pytest
 
 import backend.server.v2.library.model as library_model
-import backend.util.json as json
 
 
 @pytest.mark.asyncio
