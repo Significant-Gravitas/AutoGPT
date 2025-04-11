@@ -1,4 +1,4 @@
-from backend.data.execution import merge_execution_input, parse_execution_output
+from backend.executor.utils import merge_execution_input, parse_execution_output
 
 
 def test_parse_execution_output():
