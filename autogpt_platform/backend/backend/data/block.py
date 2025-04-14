@@ -28,6 +28,7 @@ from backend.util.settings import Config
 from .model import (
     ContributorDetails,
     Credentials,
+    CredentialsFieldInfo,
     CredentialsMetaInput,
     is_credentials_field_name,
 )
@@ -201,6 +202,16 @@ class BlockSchema(BaseModel):
                     CredentialsMetaInput,
                 )
             )
+        }
+
+    @classmethod
+    def get_credentials_fields_info(cls) -> dict[str, CredentialsFieldInfo]:
+        return {
+            field_name: CredentialsFieldInfo.model_validate(
+                cls.jsonschema()["properties"][field_name],
+                by_alias=True,
+            )
+            for field_name in cls.get_credentials_fields().keys()
         }
 
     @classmethod

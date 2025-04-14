@@ -15,12 +15,18 @@ from prisma.types import (
     AgentNodeIncludeFromAgentNodeRecursive1,
     AgentNodeLinkCreateInput,
 )
+from pydantic import BaseModel, create_model
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
 from backend.data.db import prisma as db
+from backend.data.model import (
+    CredentialsField,
+    CredentialsFieldInfo,
+    CredentialsMetaInput,
+)
 from backend.util import type as type_utils
 
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
@@ -260,6 +266,63 @@ class GraphModel(Graph):
                 in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
             ),
             None,
+        )
+
+    @computed_field
+    @property
+    def credentials_input_json_schema(self) -> dict[str, Any]:
+        return self.credentials_input_schema.model_json_schema()
+
+    @property
+    def credentials_input_schema(self) -> type[BaseModel]:
+        credentials_inputs = CredentialsFieldInfo.combine(
+            *(
+                (field_info, (node.id, field_name))
+                for node in self.nodes
+                for field_name, field_info in node.block.input_schema.get_credentials_fields_info().items()
+            )
+        )
+        logger.debug(
+            f"Combined credentials input fields for graph #{self.id} ({self.name}): "
+            f"{credentials_inputs}"
+        )
+
+        for i, (field, keys) in enumerate(credentials_inputs):
+            for other_field, other_keys in credentials_inputs[i + 1 :]:
+                if field.provider != other_field.provider:
+                    continue
+
+                # If this happens, that means a block implementation probably needs
+                # to be updated.
+                logger.warning(
+                    "Multiple combined credentials fields "
+                    f"for provider {field.provider} "
+                    f"on graph #{self.id} ({self.name}); "
+                    f"fields: {field} <> {other_field};"
+                    f"keys: {keys} <> {other_keys}."
+                )
+
+        fields: dict[str, tuple[type[CredentialsMetaInput], CredentialsMetaInput]] = {
+            "_".join(field_info.provider)
+            + "_"
+            + "_".join(field_info.supported_types)
+            + "_credentials": (
+                CredentialsMetaInput[
+                    Literal[tuple(field_info.provider)],  # type: ignore
+                    Literal[tuple(field_info.supported_types)],  # type: ignore
+                ],
+                CredentialsField(
+                    required_scopes=set(field_info.required_scopes or []),
+                    discriminator=field_info.discriminator,
+                    discriminator_mapping=field_info.discriminator_mapping,
+                ),
+            )
+            for field_info, keys in credentials_inputs
+        }
+
+        return create_model(
+            model_name=self.name.replace(" ", "") + "CredentialsInputSchema",
+            **fields,  # type: ignore
         )
 
     def reassign_ids(self, user_id: str, reassign_graph_id: bool = False):
