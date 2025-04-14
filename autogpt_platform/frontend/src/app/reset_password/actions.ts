@@ -25,7 +25,7 @@ export async function sendResetEmail(email: string) {
       });
 
       if (error) {
-        console.error("Error sending reset email", error);
+        console.error("Error sending reset email, please try again.", error);
         return error.message;
       }
 
@@ -48,7 +48,7 @@ export async function changePassword(password: string) {
       const { error } = await supabase.auth.updateUser({ password });
 
       if (error) {
-        console.error("Error changing password", error);
+        console.error("Error changing password, please try again.", error);
         return error.message;
       }
 
