@@ -10,7 +10,7 @@ packages = [{ include = "autogpt_libs" }]
 colorama = "^0.4.6"
 expiringdict = "^1.2.2"
 google-cloud-logging = "^3.11.4"
-pydantic = "^2.11.1"
+pydantic = "^2.11.3"
 pydantic-settings = "^2.8.1"
 pyjwt = "^2.10.1"
 pytest-asyncio = "^0.26.0"
