@@ -3,7 +3,6 @@ import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import cast
 
 import stripe
 from autogpt_libs.utils.cache import thread_cached
@@ -12,6 +11,7 @@ from prisma.enums import (
     CreditRefundRequestStatus,
     CreditTransactionType,
     NotificationType,
+    OnboardingStep,
 )
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditRefundRequest, CreditTransaction, User
@@ -19,7 +19,6 @@ from prisma.types import (
     CreditRefundRequestCreateInput,
     CreditTransactionCreateInput,
     CreditTransactionWhereInput,
-    IntFilter,
 )
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -124,6 +123,18 @@ class UserCreditBase(ABC):
         pass
 
     @abstractmethod
+    async def onboarding_reward(self, user_id: str, credits: int, step: OnboardingStep):
+        """
+        Reward the user with credits for completing an onboarding step.
+        Won't reward if the user has already received credits for the step.
+
+        Args:
+            user_id (str): The user ID.
+            step (OnboardingStep): The onboarding step.
+        """
+        pass
+
+    @abstractmethod
     async def top_up_intent(self, user_id: str, amount: int) -> str:
         """
         Create a payment intent to top up the credits for the user.
@@ -215,7 +226,7 @@ class UserCreditBase(ABC):
                 "userId": user_id,
                 "createdAt": {"lte": top_time},
                 "isActive": True,
-                "runningBalance": cast(IntFilter, {"not": None}),
+                "NOT": [{"runningBalance": None}],
             },
             order={"createdAt": "desc"},
         )
@@ -409,6 +420,24 @@ class UserCredit(UserCreditBase):
 
     async def top_up_credits(self, user_id: str, amount: int):
         await self._top_up_credits(user_id, amount)
+
+    async def onboarding_reward(self, user_id: str, credits: int, step: OnboardingStep):
+        key = f"REWARD-{user_id}-{step.value}"
+        if not await CreditTransaction.prisma().find_first(
+            where={
+                "userId": user_id,
+                "transactionKey": key,
+            }
+        ):
+            await self._add_transaction(
+                user_id=user_id,
+                amount=credits,
+                transaction_type=CreditTransactionType.GRANT,
+                transaction_key=key,
+                metadata=Json(
+                    {"reason": f"Reward for completing {step.value} onboarding step."}
+                ),
+            )
 
     async def top_up_refund(
         self, user_id: str, transaction_key: str, metadata: dict[str, str]
@@ -895,6 +924,9 @@ class DisabledUserCredit(UserCreditBase):
         return 0
 
     async def top_up_credits(self, *args, **kwargs):
+        pass
+
+    async def onboarding_reward(self, *args, **kwargs):
         pass
 
     async def top_up_intent(self, *args, **kwargs) -> str:
