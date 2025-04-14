@@ -59,6 +59,7 @@ model User {
 }
 
 enum OnboardingStep {
+  // Introductory onboarding (Library)
   WELCOME
   USAGE_REASON
   INTEGRATIONS
@@ -66,18 +67,32 @@ enum OnboardingStep {
   AGENT_NEW_RUN
   AGENT_INPUT
   CONGRATS
+  GET_RESULTS
+  // Marketplace
+  MARKETPLACE_VISIT
+  MARKETPLACE_ADD_AGENT
+  MARKETPLACE_RUN_AGENT
+  // Builder
+  BUILDER_OPEN
+  BUILDER_SAVE_AGENT
+  BUILDER_RUN_AGENT
 }
 
 model UserOnboarding {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
+  updatedAt DateTime? @updatedAt
 
   completedSteps                OnboardingStep[] @default([])
+  notificationDot               Boolean          @default(true)
+  notified                      OnboardingStep[] @default([])
+  rewardedFor                   OnboardingStep[] @default([])
   usageReason                   String?
   integrations                  String[]         @default([])
   otherIntegrations             String?
   selectedStoreListingVersionId String?
   agentInput                    Json?
+  onboardingAgentExecutionId    String?
 
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
