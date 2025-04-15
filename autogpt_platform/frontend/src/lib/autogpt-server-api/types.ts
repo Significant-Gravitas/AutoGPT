@@ -811,12 +811,12 @@ export type OnboardingStep =
   | "BUILDER_RUN_AGENT";
 
 export interface UserOnboarding {
-  completedSteps: OnboardingStep[];
-  notificationDot: boolean;
-  notified: OnboardingStep[];
-  rewardedFor: OnboardingStep[];
+  completedSteps: OnboardingStep[] | null;
+  notificationDot: boolean | null;
+  notified: OnboardingStep[] | null;
+  rewardedFor: OnboardingStep[] | null;
   usageReason: string | null;
-  integrations: string[];
+  integrations: string[] | null;
   otherIntegrations: string | null;
   selectedStoreListingVersionId: string | null;
   agentInput: { [key: string]: string | number } | null;
