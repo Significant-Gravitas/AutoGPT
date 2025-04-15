@@ -578,7 +578,7 @@ export default function useAgentGraph(
             path.set("flowVersion", savedAgent.version.toString());
             path.set("flowExecutionID", graphExecution.graph_exec_id);
             router.push(`${pathname}?${path.toString()}`);
-            if (state?.completedSteps?.includes("BUILDER_SAVE_AGENT")) {
+            if (state?.completedSteps.includes("BUILDER_SAVE_AGENT")) {
               completeStep("BUILDER_RUN_AGENT");
             }
           })
