@@ -258,7 +258,11 @@ export default function AgentRunDetailsView({
               Object.entries(agentRunInputs).map(([key, { title, value }]) => (
                 <div key={key} className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium">{title || key}</label>
-                  <Input value={value} className="rounded-full" disabled />
+                  <Input
+                    defaultValue={value}
+                    className="rounded-full"
+                    disabled
+                  />
                 </div>
               ))
             ) : (

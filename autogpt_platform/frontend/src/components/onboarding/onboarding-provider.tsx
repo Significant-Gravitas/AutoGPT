@@ -33,12 +33,12 @@ export function useOnboarding(step?: number, completeStep?: OnboardingStep) {
     if (
       !completeStep ||
       !context.state ||
-      context.state.completedSteps?.includes(completeStep)
+      context.state.completedSteps.includes(completeStep)
     )
       return;
 
     context.updateState({
-      completedSteps: [...(context.state.completedSteps || []), completeStep],
+      completedSteps: [...context.state.completedSteps, completeStep],
     });
   }, [completeStep, context.state, context.updateState]);
 
@@ -76,7 +76,7 @@ export default function OnboardingProvider({
       // Redirect outside onboarding if completed
       // If user did CONGRATS step, that means they completed introductory onboarding
       if (
-        onboarding.completedSteps?.includes("CONGRATS") &&
+        onboarding.completedSteps.includes("CONGRATS") &&
         pathname.startsWith("/onboarding") &&
         !pathname.startsWith("/onboarding/reset")
       ) {
@@ -115,10 +115,10 @@ export default function OnboardingProvider({
 
   const completeStep = useCallback(
     (step: OnboardingStep) => {
-      if (!state || state.completedSteps?.includes(step)) return;
+      if (!state || state.completedSteps.includes(step)) return;
 
       updateState({
-        completedSteps: [...(state.completedSteps || []), step],
+        completedSteps: [...state.completedSteps, step],
       });
     },
     [api, state],
