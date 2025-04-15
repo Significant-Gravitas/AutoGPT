@@ -39,8 +39,8 @@ export default function Wallet() {
   useEffect(() => {
     // Check if there are any completed tasks (state?.completedTasks) that
     // are not in the state?.notified array and play confetti if so
-    const pending = (state?.completedSteps || [])
-      .filter((step) => !state?.notified?.includes(step))
+    const pending = state?.completedSteps
+      .filter((step) => !state?.notified.includes(step))
       // Ignore steps that are not relevant for notifications
       .filter(
         (step) =>

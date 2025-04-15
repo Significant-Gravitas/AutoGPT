@@ -35,7 +35,7 @@ async function shouldShowOnboarding() {
   const api = new BackendAPI();
   return (
     !(await api.isOnboardingEnabled()) ||
-    (await api.getUserOnboarding()).completedSteps?.includes("CONGRATS")
+    (await api.getUserOnboarding()).completedSteps.includes("CONGRATS")
   );
 }
 

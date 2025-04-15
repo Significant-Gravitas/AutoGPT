@@ -119,9 +119,9 @@ export default function Page() {
         return;
       }
 
-      const integrations = state.integrations?.includes(name)
-        ? state.integrations?.filter((i) => i !== name)
-        : [...(state.integrations || []), name];
+      const integrations = state.integrations.includes(name)
+        ? state.integrations.filter((i) => i !== name)
+        : [...state.integrations, name];
 
       updateState({ integrations });
     },
@@ -145,7 +145,7 @@ export default function Page() {
         </OnboardingText>
         <OnboardingGrid
           elements={services}
-          selected={state?.integrations || []}
+          selected={state?.integrations}
           onSelect={switchIntegration}
         />
         <OnboardingText className="mt-12" variant="subheader">
@@ -167,7 +167,7 @@ export default function Page() {
           className="mb-2"
           href="/onboarding/4-agent"
           disabled={
-            state?.integrations?.length === 0 &&
+            state?.integrations.length === 0 &&
             isEmptyOrWhitespace(state.otherIntegrations)
           }
         >

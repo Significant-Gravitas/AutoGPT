@@ -82,12 +82,12 @@ export default function AgentRunsPage(): React.ReactElement {
 
   // Reward user for viewing results of their onboarding agent
   useEffect(() => {
-    if (!state || !selectedRun || state.completedSteps?.includes("GET_RESULTS"))
+    if (!state || !selectedRun || state.completedSteps.includes("GET_RESULTS"))
       return;
 
     if (selectedRun.id === state.onboardingAgentExecutionId) {
       updateState({
-        completedSteps: [...(state.completedSteps || []), "GET_RESULTS"],
+        completedSteps: [...state.completedSteps, "GET_RESULTS"],
       });
     }
   }, [selectedRun, state]);
