@@ -35,7 +35,7 @@ export default function AgentRunDraftView({
       .then((newRun) => onRun(newRun.graph_exec_id))
       .catch(toastOnFail("execute agent"));
     // Mark run agent onboarding step as completed
-    if (state?.completedSteps.includes("MARKETPLACE_ADD_AGENT")) {
+    if (state?.completedSteps?.includes("MARKETPLACE_ADD_AGENT")) {
       completeStep("MARKETPLACE_RUN_AGENT");
     }
   }, [api, graph, inputValues, onRun, state]);
