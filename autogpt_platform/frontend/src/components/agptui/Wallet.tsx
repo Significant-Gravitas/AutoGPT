@@ -39,18 +39,20 @@ export default function Wallet() {
   useEffect(() => {
     // Check if there are any completed tasks (state?.completedTasks) that
     // are not in the state?.notified array and play confetti if so
-    const pending = state?.completedSteps
-      .filter((step) => !state?.notified.includes(step))
-      // Ignore steps that are not relevant for notifications
-      .filter(
-        (step) =>
-          step !== "WELCOME" &&
-          step !== "USAGE_REASON" &&
-          step !== "INTEGRATIONS" &&
-          step !== "AGENT_CHOICE" &&
-          step !== "AGENT_NEW_RUN" &&
-          step !== "AGENT_INPUT",
-      );
+    const pending =
+      state?.completedSteps ||
+      []
+        .filter((step) => !state?.notified?.includes(step))
+        // Ignore steps that are not relevant for notifications
+        .filter(
+          (step) =>
+            step !== "WELCOME" &&
+            step !== "USAGE_REASON" &&
+            step !== "INTEGRATIONS" &&
+            step !== "AGENT_CHOICE" &&
+            step !== "AGENT_NEW_RUN" &&
+            step !== "AGENT_INPUT",
+        );
     if ((pending?.length || 0) > 0 && walletRef.current) {
       party.confetti(walletRef.current, {
         count: 30,

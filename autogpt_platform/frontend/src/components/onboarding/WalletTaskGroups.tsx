@@ -141,7 +141,7 @@ export function TaskGroups() {
     groups.forEach((group) => {
       const groupCompleted = isGroupCompleted(group);
       // Check if the last task in the group is completed
-      const alreadyCelebrated = state?.notified.includes(
+      const alreadyCelebrated = state?.notified?.includes(
         group.tasks[group.tasks.length - 1].id,
       );
 
@@ -167,7 +167,11 @@ export function TaskGroups() {
 
       group.tasks.forEach((task) => {
         const el = refs.current[task.id];
-        if (el && isTaskCompleted(task) && !state?.notified.includes(task.id)) {
+        if (
+          el &&
+          isTaskCompleted(task) &&
+          !state?.notified?.includes(task.id)
+        ) {
           party.confetti(el, {
             count: 40,
             spread: 120,
