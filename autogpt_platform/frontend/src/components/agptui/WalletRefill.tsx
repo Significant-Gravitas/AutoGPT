@@ -13,6 +13,9 @@ import {
 } from "@/components/ui/form";
 import { Input } from "../ui/input";
 import Link from "next/link";
+import { useToast, useToastOnFail } from "../ui/use-toast";
+import useCredits from "@/hooks/useCredits";
+import { useCallback, useEffect, useState } from "react";
 
 const topUpSchema = z.object({
   amount: z
@@ -22,7 +25,7 @@ const topUpSchema = z.object({
 
 const autoRefillSchema = z
   .object({
-    minBalance: z
+    threshold: z
       .number({ coerce: true, invalid_type_error: "Enter min. balance" })
       .min(
         5,
@@ -32,19 +35,67 @@ const autoRefillSchema = z
       .number({ coerce: true, invalid_type_error: "Enter top-up amount" })
       .min(5, "Top-ups start at $5. Please enter a higher amount."),
   })
-  .refine((data) => data.minBalance < data.refillAmount, {
+  .refine((data) => data.refillAmount >= data.threshold, {
     message:
       "Your refill amount must be equal to or greater than the balance you entered above.",
     path: ["refillAmount"],
   });
 
 export default function WalletRefill() {
+  const { toast } = useToast();
+  const toastOnFail = useToastOnFail();
+  const { requestTopUp, autoTopUpConfig, updateAutoTopUpConfig } = useCredits({
+    fetchInitialAutoTopUpConfig: true,
+  });
+  const [isLoading, setIsLoading] = useState(false);
+
   const topUpForm = useForm<z.infer<typeof topUpSchema>>({
     resolver: zodResolver(topUpSchema),
   });
   const autoRefillForm = useForm<z.infer<typeof autoRefillSchema>>({
     resolver: zodResolver(autoRefillSchema),
   });
+
+  console.log("autoRefillForm");
+
+  // Pre-fill the auto-refill form with existing values
+  useEffect(() => {
+    const values = autoRefillForm.getValues();
+    if (
+      autoTopUpConfig &&
+      autoTopUpConfig.amount > 0 &&
+      autoTopUpConfig.threshold > 0 &&
+      !autoRefillForm.getFieldState("threshold").isTouched &&
+      !autoRefillForm.getFieldState("refillAmount").isTouched
+    ) {
+      autoRefillForm.setValue("threshold", autoTopUpConfig.threshold / 100);
+      autoRefillForm.setValue("refillAmount", autoTopUpConfig.amount / 100);
+    }
+  }, [autoTopUpConfig, autoRefillForm]);
+
+  const submitTopUp = useCallback(
+    async (data: z.infer<typeof topUpSchema>) => {
+      setIsLoading(true);
+      await requestTopUp(data.amount * 100).catch(
+        toastOnFail("request top-up"),
+      );
+      setIsLoading(false);
+    },
+    [requestTopUp, toastOnFail],
+  );
+
+  const submitAutoTopUpConfig = useCallback(
+    async (data: z.infer<typeof autoRefillSchema>) => {
+      setIsLoading(true);
+      await updateAutoTopUpConfig(data.refillAmount * 100, data.threshold * 100)
+        .then(() => {
+          toast({ title: "Auto top-up config updated! 🎉" });
+        })
+        .catch(toastOnFail("update auto top-up config"));
+      setIsLoading(false);
+    },
+    [updateAutoTopUpConfig, toast, toastOnFail],
+  );
 
   return (
     <div className="mx-1 border-b border-zinc-300">
@@ -71,7 +122,7 @@ export default function WalletRefill() {
               Enter an amount (min. $5) and add credits instantly.
             </div>
             <Form {...topUpForm}>
-              <form onSubmit={topUpForm.handleSubmit(() => {})}>
+              <form onSubmit={topUpForm.handleSubmit(submitTopUp)}>
                 <FormField
                   control={topUpForm.control}
                   name="amount"
@@ -104,9 +155,10 @@ export default function WalletRefill() {
                   className={cn(
                     "mb-2 inline-flex h-10 w-24 items-center justify-center rounded-3xl bg-zinc-800 px-4 py-2",
                     "font-sans text-sm font-medium leading-snug text-white",
-                    "transition-colors duration-200 hover:bg-zinc-700",
+                    "transition-colors duration-200 hover:bg-zinc-700 disabled:bg-zinc-500",
                   )}
                   type="submit"
+                  disabled={isLoading}
                 >
                   Top up
                 </button>
@@ -122,10 +174,12 @@ export default function WalletRefill() {
             </div>
 
             <Form {...autoRefillForm}>
-              <form onSubmit={autoRefillForm.handleSubmit(() => {})}>
+              <form
+                onSubmit={autoRefillForm.handleSubmit(submitAutoTopUpConfig)}
+              >
                 <FormField
                   control={autoRefillForm.control}
-                  name="minBalance"
+                  name="threshold"
                   render={({ field }) => (
                     <FormItem className="mb-6 mt-4">
                       <FormLabel className="font-sans text-sm font-medium leading-snug text-zinc-800">
@@ -183,9 +237,10 @@ export default function WalletRefill() {
                   className={cn(
                     "mb-4 inline-flex h-10 w-40 items-center justify-center rounded-3xl bg-zinc-800 px-4 py-2",
                     "font-sans text-sm font-medium leading-snug text-white",
-                    "transition-colors duration-200 hover:bg-zinc-700",
+                    "transition-colors duration-200 hover:bg-zinc-700 disabled:bg-zinc-500",
                   )}
                   type="submit"
+                  disabled={isLoading}
                 >
                   Enable Auto-refill
                 </button>
