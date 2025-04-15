@@ -57,14 +57,14 @@ export const StoreCard: React.FC<StoreCardProps> = ({
         )}
         {!hideAvatar && (
           <div className="absolute bottom-4 left-4">
-            <Avatar className="h-16 w-16 border-2 border-white dark:border-gray-800">
+            <Avatar className="h-20 w-20">
               {avatarSrc && (
                 <AvatarImage
                   src={avatarSrc}
                   alt={`${creatorName || agentName} creator avatar`}
                 />
               )}
-              <AvatarFallback>
+              <AvatarFallback size={80}>
                 {(creatorName || agentName).charAt(0)}
               </AvatarFallback>
             </Avatar>
