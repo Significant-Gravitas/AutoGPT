@@ -281,10 +281,9 @@ class GraphModel(Graph):
         )
 
         # Warn if same-provider credentials inputs can't be combined (= bad UX)
-        for i, (field, keys) in enumerate(graph_credentials_inputs.values()):
-            for other_field, other_keys in list(graph_credentials_inputs.values())[
-                i + 1 :
-            ]:
+        graph_cred_fields = list(graph_credentials_inputs.values())
+        for i, (field, keys) in enumerate(graph_cred_fields):
+            for other_field, other_keys in list(graph_cred_fields)[i + 1 :]:
                 if field.provider != other_field.provider:
                     continue
 
