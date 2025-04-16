@@ -176,3 +176,4 @@ autogpt_platform/backend/settings.py
 
 *.ign.*
 .test-contents
+.qodo
