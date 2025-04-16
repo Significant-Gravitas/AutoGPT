@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated, Any, Coroutine, Sequence
+from typing import TYPE_CHECKING, Annotated, Any, Sequence
 
 import pydantic
 import stripe
@@ -87,13 +87,10 @@ def execution_scheduler_client() -> Scheduler:
 
 
 @thread_cached
-def execution_queue_client() -> Coroutine[None, None, AsyncRabbitMQ]:
-    async def f() -> AsyncRabbitMQ:
-        client = AsyncRabbitMQ(create_execution_queue_config())
-        await client.connect()
-        return client
-
-    return f()
+async def execution_queue_client() -> AsyncRabbitMQ:
+    client = AsyncRabbitMQ(create_execution_queue_config())
+    await client.connect()
+    return client
 
 
 @thread_cached
