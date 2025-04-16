@@ -774,12 +774,22 @@ const NodeKeyValueInput: FC<{
 
   function convertValueType(value: string): string | number | null {
     if (
+      schema.additionalProperties &&
+      ["number", "integer"].includes(schema.additionalProperties.type)
+    ) {
+      const numValue = Number(value);
+      return !isNaN(numValue) ? numValue : value;
+    }
+
+    if (
+      !!value ||
       !schema.additionalProperties ||
       schema.additionalProperties.type == "string"
-    )
+    ) {
       return value;
-    if (!value) return null;
-    return Number(value);
+    }
+
+    return null;
   }
 
   function getEntryKey(key: string): string {
