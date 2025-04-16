@@ -53,6 +53,7 @@ import {
   UserOnboarding,
   ReviewSubmissionRequest,
   SubmissionStatus,
+  CredentialsMetaInput,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
 import getServerSupabase from "../supabase/getServerSupabase";
@@ -251,9 +252,13 @@ export default class BackendAPI {
   executeGraph(
     id: GraphID,
     version: number,
-    inputData: { [key: string]: any } = {},
+    inputs: { [key: string]: any } = {},
+    credentials_inputs: { [key: string]: CredentialsMetaInput } = {},
   ): Promise<{ graph_exec_id: GraphExecutionID }> {
-    return this._request("POST", `/graphs/${id}/execute/${version}`, inputData);
+    return this._request("POST", `/graphs/${id}/execute/${version}`, {
+      inputs,
+      credentials_inputs,
+    });
   }
 
   getExecutions(): Promise<GraphExecutionMeta[]> {

@@ -15,11 +15,11 @@ from backend.data.integrations import (
     wait_for_webhook_event,
 )
 from backend.data.model import Credentials, CredentialsType, OAuth2Credentials
+from backend.executor.utils import add_graph_execution
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
-from backend.server.routers import v1 as internal_api_routes
 from backend.util.exceptions import NeedConfirmation, NotFoundError
 from backend.util.settings import Settings
 
@@ -317,11 +317,11 @@ async def webhook_ingress_generic(
             continue
         logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
         executions.append(
-            internal_api_routes.execute_graph(
+            add_graph_execution(
+                user_id=webhook.user_id,
                 graph_id=node.graph_id,
                 graph_version=node.graph_version,
-                node_input={f"webhook_{webhook_id}_payload": payload},
-                user_id=webhook.user_id,
+                inputs={f"webhook_{webhook_id}_payload": payload},
             )
         )
     asyncio.gather(*executions)

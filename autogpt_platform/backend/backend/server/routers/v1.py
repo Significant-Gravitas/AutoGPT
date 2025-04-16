@@ -41,6 +41,7 @@ from backend.data.credit import (
     set_auto_top_up,
 )
 from backend.data.execution import AsyncRedisExecutionEventBus
+from backend.data.model import CredentialsMetaInput
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
     UserOnboardingUpdate,
@@ -592,17 +593,21 @@ async def set_graph_active_version(
 )
 async def execute_graph(
     graph_id: str,
-    node_input: Annotated[dict[str, Any], Body(..., default_factory=dict)],
     user_id: Annotated[str, Depends(get_user_id)],
+    inputs: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
+    credentials_inputs: Annotated[
+        dict[str, CredentialsMetaInput], Body(..., embed=True, default_factory=dict)
+    ],
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
 ) -> ExecuteGraphResponse:
     graph_exec = execution_utils.add_graph_execution(
         graph_id=graph_id,
         user_id=user_id,
-        inputs=node_input,
+        inputs=inputs,
         preset_id=preset_id,
         graph_version=graph_version,
+        graph_credentials_inputs=credentials_inputs,
     )
     return ExecuteGraphResponse(graph_exec_id=graph_exec.id)
 
