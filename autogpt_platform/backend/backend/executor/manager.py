@@ -188,7 +188,7 @@ def execute_node(
     # Execute the node
     input_data_str = json.dumps(input_data)
     input_size = len(input_data_str)
-    log_metadata.info("Executed node with input", input=input_data_str)
+    log_metadata.debug("Executed node with input", input=input_data_str)
     update_execution_status(ExecutionStatus.RUNNING)
 
     # Inject extra execution arguments for the blocks via kwargs
@@ -219,7 +219,7 @@ def execute_node(
         ):
             output_data = json.convert_pydantic_to_json(output_data)
             output_size += len(json.dumps(output_data))
-            log_metadata.info("Node produced output", **{output_name: output_data})
+            log_metadata.debug("Node produced output", **{output_name: output_data})
             push_output(output_name, output_data)
             outputs[output_name] = output_data
             for execution in _enqueue_next_nodes(
