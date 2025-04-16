@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy import MetaData, create_engine
 
 from backend.data.block import BlockInput
-from backend.executor.manager import ExecutionManager
+from backend.executor import utils as execution_utils
 from backend.notifications.notifications import NotificationManager
 from backend.util.service import AppService, expose, get_service_client
 from backend.util.settings import Config
@@ -58,11 +58,6 @@ def job_listener(event):
 
 
 @thread_cached
-def get_execution_client() -> ExecutionManager:
-    return get_service_client(ExecutionManager)
-
-
-@thread_cached
 def get_notification_client():
     from backend.notifications import NotificationManager
 
@@ -73,7 +68,7 @@ def execute_graph(**kwargs):
     args = ExecutionJobArgs(**kwargs)
     try:
         log(f"Executing recurring job for graph #{args.graph_id}")
-        get_execution_client().add_execution(
+        execution_utils.add_graph_execution(
             graph_id=args.graph_id,
             data=args.input_data,
             user_id=args.user_id,
@@ -166,17 +161,12 @@ class Scheduler(AppService):
 
     @property
     @thread_cached
-    def execution_client(self) -> ExecutionManager:
-        return get_service_client(ExecutionManager)
-
-    @property
-    @thread_cached
     def notification_client(self) -> NotificationManager:
         return get_service_client(NotificationManager)
 
     def run_service(self):
         load_dotenv()
-        db_schema, db_url = _extract_schema_from_url(os.getenv("DATABASE_URL"))
+        db_schema, db_url = _extract_schema_from_url(os.getenv("DIRECT_URL"))
         self.scheduler = BlockingScheduler(
             jobstores={
                 Jobstores.EXECUTION.value: SQLAlchemyJobStore(

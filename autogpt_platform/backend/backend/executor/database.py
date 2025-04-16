@@ -1,11 +1,8 @@
 import logging
 
-from backend.data import db, redis
+from backend.data import db
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
-    GraphExecution,
-    NodeExecutionResult,
-    RedisExecutionEventBus,
     create_graph_execution,
     get_graph_execution,
     get_incomplete_node_executions,
@@ -42,7 +39,7 @@ from backend.data.user import (
     update_user_integrations,
     update_user_metadata,
 )
-from backend.util.service import AppService, expose, exposed_run_and_wait
+from backend.util.service import AppService, exposed_run_and_wait
 from backend.util.settings import Config
 
 config = Config()
@@ -57,33 +54,20 @@ async def _spend_credits(
 
 
 class DatabaseManager(AppService):
-    def __init__(self):
-        super().__init__()
-        self.execution_event_bus = RedisExecutionEventBus()
 
     def run_service(self) -> None:
         logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
         self.run_and_wait(db.connect())
-        logger.info(f"[{self.service_name}] ⏳ Connecting to Redis...")
-        redis.connect()
         super().run_service()
 
     def cleanup(self):
         super().cleanup()
-        logger.info(f"[{self.service_name}] ⏳ Disconnecting Redis...")
-        redis.disconnect()
         logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
         self.run_and_wait(db.disconnect())
 
     @classmethod
     def get_port(cls) -> int:
         return config.database_api_port
-
-    @expose
-    def send_execution_update(
-        self, execution_result: GraphExecution | NodeExecutionResult
-    ):
-        self.execution_event_bus.publish(execution_result)
 
     # Executions
     get_graph_execution = exposed_run_and_wait(get_graph_execution)

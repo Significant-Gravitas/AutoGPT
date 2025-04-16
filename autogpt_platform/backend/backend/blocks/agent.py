@@ -1,8 +1,6 @@
 import logging
 from typing import Any
 
-from autogpt_libs.utils.cache import thread_cached
-
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -17,21 +15,6 @@ from backend.data.model import SchemaField
 from backend.util import json
 
 logger = logging.getLogger(__name__)
-
-
-@thread_cached
-def get_executor_manager_client():
-    from backend.executor import ExecutionManager
-    from backend.util.service import get_service_client
-
-    return get_service_client(ExecutionManager)
-
-
-@thread_cached
-def get_event_bus():
-    from backend.data.execution import RedisExecutionEventBus
-
-    return RedisExecutionEventBus()
 
 
 class AgentExecutorBlock(Block):
@@ -76,11 +59,11 @@ class AgentExecutorBlock(Block):
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         from backend.data.execution import ExecutionEventType
+        from backend.executor import utils as execution_utils
 
-        executor_manager = get_executor_manager_client()
-        event_bus = get_event_bus()
+        event_bus = execution_utils.get_execution_event_bus()
 
-        graph_exec = executor_manager.add_execution(
+        graph_exec = execution_utils.add_graph_execution(
             graph_id=input_data.graph_id,
             graph_version=input_data.graph_version,
             user_id=input_data.user_id,
