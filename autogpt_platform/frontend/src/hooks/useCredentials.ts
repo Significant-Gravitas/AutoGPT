@@ -35,14 +35,10 @@ export default function useCredentials(
 ): CredentialsData | null {
   const allProviders = useContext(CredentialsProvidersContext);
 
-  const nodeData = useNodesData<Node<CustomNodeData>>(useNodeId() ?? "")?.data;
   const discriminatorValue: CredentialsProviderName | null =
     (credsInputSchema.discriminator &&
       credsInputSchema.discriminator_mapping![
-        getValue(
-          credsInputSchema.discriminator,
-          nodeInputValues ?? nodeData?.hardcodedValues,
-        )
+        getValue(credsInputSchema.discriminator, nodeInputValues)
       ]) ||
     null;
 

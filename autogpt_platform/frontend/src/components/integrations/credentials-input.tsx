@@ -111,7 +111,14 @@ export const CredentialsInput: FC<{
   className?: string;
   selectedCredentials?: CredentialsMetaInput;
   onSelectCredentials: (newValue?: CredentialsMetaInput) => void;
-}> = ({ schema, className, selectedCredentials, onSelectCredentials }) => {
+  siblingInputs?: Record<string, any>;
+}> = ({
+  schema,
+  className,
+  selectedCredentials,
+  onSelectCredentials,
+  siblingInputs,
+}) => {
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);
   const [
@@ -124,7 +131,7 @@ export const CredentialsInput: FC<{
   const [oAuthError, setOAuthError] = useState<string | null>(null);
 
   const api = useBackendAPI();
-  const credentials = useCredentials(schema);
+  const credentials = useCredentials(schema, siblingInputs);
   if (!credentials || credentials.isLoading) {
     return null;
   }
