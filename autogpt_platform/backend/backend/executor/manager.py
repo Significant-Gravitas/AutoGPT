@@ -1044,9 +1044,13 @@ class ExecutionManager(AppProcess):
                     logger.error(
                         f"[{self.service_name}] Execution for {graph_exec_id} failed: {f.exception()}"
                     )
-                    channel.basic_nack(delivery_tag, requeue=False)
+                    channel.connection.add_callback_threadsafe(
+                        lambda: channel.basic_nack(delivery_tag, requeue=False)
+                    )
                 else:
-                    channel.basic_ack(delivery_tag)
+                    channel.connection.add_callback_threadsafe(
+                        lambda: channel.basic_ack(delivery_tag)
+                    )
             except Exception as e:
                 logger.error(f"[{self.service_name}] Error acknowledging message: {e}")
 
