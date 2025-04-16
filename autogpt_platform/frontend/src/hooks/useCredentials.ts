@@ -1,8 +1,6 @@
 import { useContext } from "react";
 import { getValue } from "@/lib/utils";
 
-import { Node, useNodeId, useNodesData } from "@xyflow/react";
-import { CustomNodeData } from "@/components/CustomNode";
 import {
   CredentialsProviderData,
   CredentialsProvidersContext,
@@ -50,6 +48,10 @@ export default function useCredentials(
       );
     }
     if (!discriminatorValue) {
+      console.log(
+        `Missing discriminator value from '${credsInputSchema.discriminator}': ` +
+          "hiding credentials input until it is set.",
+      );
       return null;
     }
     providerName = discriminatorValue;
