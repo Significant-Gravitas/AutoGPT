@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Annotated, Literal
 
@@ -14,13 +15,12 @@ from backend.data.integrations import (
     wait_for_webhook_event,
 )
 from backend.data.model import Credentials, CredentialsType, OAuth2Credentials
-from backend.executor.manager import ExecutionManager
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
+from backend.server.routers import v1 as internal_api_routes
 from backend.util.exceptions import NeedConfirmation, NotFoundError
-from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
@@ -309,19 +309,22 @@ async def webhook_ingress_generic(
     if not webhook.attached_nodes:
         return
 
-    executor = get_service_client(ExecutionManager)
+    executions = []
     for node in webhook.attached_nodes:
         logger.debug(f"Webhook-attached node: {node}")
         if not node.is_triggered_by_event_type(event_type):
             logger.debug(f"Node #{node.id} doesn't trigger on event {event_type}")
             continue
         logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
-        executor.add_execution(
-            graph_id=node.graph_id,
-            graph_version=node.graph_version,
-            data={f"webhook_{webhook_id}_payload": payload},
-            user_id=webhook.user_id,
+        executions.append(
+            internal_api_routes.execute_graph(
+                graph_id=node.graph_id,
+                graph_version=node.graph_version,
+                node_input={f"webhook_{webhook_id}_payload": payload},
+                user_id=webhook.user_id,
+            )
         )
+    asyncio.gather(*executions)
 
 
 @router.post("/webhooks/{webhook_id}/ping")

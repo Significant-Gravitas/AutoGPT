@@ -24,6 +24,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { InputItem } from "@/components/RunnerUIWrapper";
 import { GraphMeta } from "@/lib/autogpt-server-api";
 import { default as NextLink } from "next/link";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -77,6 +78,7 @@ export default function useAgentGraph(
     useState(false);
   const [nodes, setNodes] = useState<CustomNode[]>([]);
   const [edges, setEdges] = useState<CustomEdge[]>([]);
+  const { state, completeStep } = useOnboarding();
 
   const api = useMemo(
     () => new BackendAPI(process.env.NEXT_PUBLIC_AGPT_SERVER_URL!),
@@ -576,6 +578,9 @@ export default function useAgentGraph(
             path.set("flowVersion", savedAgent.version.toString());
             path.set("flowExecutionID", graphExecution.graph_exec_id);
             router.push(`${pathname}?${path.toString()}`);
+            if (state?.completedSteps.includes("BUILDER_SAVE_AGENT")) {
+              completeStep("BUILDER_RUN_AGENT");
+            }
           })
           .catch((error) => {
             const errorMessage =
@@ -966,6 +971,7 @@ export default function useAgentGraph(
   const saveAgent = useCallback(async () => {
     try {
       await _saveAgent();
+      completeStep("BUILDER_SAVE_AGENT");
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);

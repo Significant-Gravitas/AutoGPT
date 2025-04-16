@@ -149,7 +149,7 @@ async def migrate_and_encrypt_user_integrations():
     logger.info(f"Migrating integration credentials for {len(users)} users")
 
     for user in users:
-        raw_metadata = cast(UserMetadataRaw, user.metadata)
+        raw_metadata = cast(dict, user.metadata)
         metadata = UserMetadata.model_validate(raw_metadata)
 
         # Get existing integrations data
@@ -165,7 +165,6 @@ async def migrate_and_encrypt_user_integrations():
         await update_user_integrations(user_id=user.id, data=integrations)
 
         # Remove from metadata
-        raw_metadata = dict(raw_metadata)
         raw_metadata.pop("integration_credentials", None)
         raw_metadata.pop("integration_oauth_states", None)
 

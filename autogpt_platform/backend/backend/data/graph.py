@@ -10,9 +10,7 @@ from prisma.models import AgentGraph, AgentNode, AgentNodeLink, StoreListingVers
 from prisma.types import (
     AgentGraphCreateInput,
     AgentGraphWhereInput,
-    AgentGraphWhereInputRecursive1,
     AgentNodeCreateInput,
-    AgentNodeIncludeFromAgentNodeRecursive1,
     AgentNodeLinkCreateInput,
 )
 from pydantic import BaseModel, create_model
@@ -26,6 +24,7 @@ from backend.data.model import (
     CredentialsField,
     CredentialsFieldInfo,
     CredentialsMetaInput,
+    is_credentials_field_name,
 )
 from backend.util import type as type_utils
 
@@ -275,20 +274,17 @@ class GraphModel(Graph):
 
     @property
     def credentials_input_schema(self) -> type[BaseModel]:
-        credentials_inputs = CredentialsFieldInfo.combine(
-            *(
-                (field_info, (node.id, field_name))
-                for node in self.nodes
-                for field_name, field_info in node.block.input_schema.get_credentials_fields_info().items()
-            )
-        )
+        graph_credentials_inputs = self.aggregate_credentials_inputs()
         logger.debug(
             f"Combined credentials input fields for graph #{self.id} ({self.name}): "
-            f"{credentials_inputs}"
+            f"{graph_credentials_inputs}"
         )
 
-        for i, (field, keys) in enumerate(credentials_inputs):
-            for other_field, other_keys in credentials_inputs[i + 1 :]:
+        # Warn if same-provider credentials inputs can't be combined (= bad UX)
+        for i, (field, keys) in enumerate(graph_credentials_inputs.values()):
+            for other_field, other_keys in list(graph_credentials_inputs.values())[
+                i + 1 :
+            ]:
                 if field.provider != other_field.provider:
                     continue
 
@@ -303,10 +299,7 @@ class GraphModel(Graph):
                 )
 
         fields: dict[str, tuple[type[CredentialsMetaInput], CredentialsMetaInput]] = {
-            "_".join(field_info.provider)
-            + "_"
-            + "_".join(field_info.supported_types)
-            + "_credentials": (
+            agg_field_key: (
                 CredentialsMetaInput[
                     Literal[tuple(field_info.provider)],  # type: ignore
                     Literal[tuple(field_info.supported_types)],  # type: ignore
@@ -317,13 +310,38 @@ class GraphModel(Graph):
                     discriminator_mapping=field_info.discriminator_mapping,
                 ),
             )
-            for field_info, keys in credentials_inputs
+            for agg_field_key, (field_info, _) in graph_credentials_inputs.items()
         }
 
         return create_model(
             model_name=self.name.replace(" ", "") + "CredentialsInputSchema",
             **fields,  # type: ignore
         )
+
+    def aggregate_credentials_inputs(
+        self,
+    ) -> dict[str, tuple[CredentialsFieldInfo, set[tuple[str, str]]]]:
+        """
+        Returns:
+            dict[aggregated_field_key, tuple(
+                CredentialsFieldInfo: A spec for one aggregated credentials field
+                set[(node_id, field_name)]: Node credentials fields that are
+                    compatible with this aggregated field spec
+            )]
+        """
+        return {
+            "_".join(sorted(agg_field_info.provider))
+            + "_"
+            + "_".join(sorted(agg_field_info.supported_types))
+            + "_credentials": (agg_field_info, node_fields)
+            for agg_field_info, node_fields in CredentialsFieldInfo.combine(
+                *(
+                    (field_info, (node.id, field_name))
+                    for node in self.nodes
+                    for field_name, field_info in node.block.input_schema.get_credentials_fields_info().items()
+                )
+            )
+        }
 
     def reassign_ids(self, user_id: str, reassign_graph_id: bool = False):
         """
@@ -434,6 +452,16 @@ class GraphModel(Graph):
                 ):
                     raise ValueError(
                         f"Node {block.name} #{node.id} required input missing: `{name}`"
+                    )
+
+                if (
+                    block.block_type == BlockType.INPUT
+                    and (input_key := node.input_default.get("name"))
+                    and is_credentials_field_name(input_key)
+                ):
+                    raise ValueError(
+                        f"Agent input node uses reserved name '{input_key}'; "
+                        "'credentials' and `*_credentials` are reserved input names"
                     )
 
             # Get input schema properties and check dependencies
@@ -720,14 +748,11 @@ async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
         graphs = await AgentGraph.prisma().find_many(
             where={
                 "OR": [
-                    type_utils.typed(
-                        AgentGraphWhereInputRecursive1,
-                        {
-                            "id": graph_id,
-                            "version": graph_version,
-                            "userId": graph.userId,  # Ensure the sub-graph is owned by the same user
-                        },
-                    )
+                    {
+                        "id": graph_id,
+                        "version": graph_version,
+                        "userId": graph.userId,  # Ensure the sub-graph is owned by the same user
+                    }
                     for graph_id, graph_version in sub_graph_ids
                 ]
             },
@@ -743,13 +768,7 @@ async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
 async def get_connected_output_nodes(node_id: str) -> list[tuple[Link, Node]]:
     links = await AgentNodeLink.prisma().find_many(
         where={"agentNodeSourceId": node_id},
-        include={
-            "AgentNodeSink": {
-                "include": cast(
-                    AgentNodeIncludeFromAgentNodeRecursive1, AGENT_NODE_INCLUDE
-                )
-            }
-        },
+        include={"AgentNodeSink": {"include": AGENT_NODE_INCLUDE}},
     )
     return [
         (Link.from_db(link), NodeModel.from_db(link.AgentNodeSink))
@@ -995,12 +1014,19 @@ async def migrate_llm_models(migrate_to: LlmModel):
         # Convert enum values to a list of strings for the SQL query
         enum_values = [v.value for v in LlmModel.__members__.values()]
 
+        escaped_enum_values = repr(tuple(enum_values))  # hack but works
         query = f"""
             UPDATE "AgentNode"
-            SET "constantInput" = jsonb_set("constantInput", '{{{path}}}', '"{migrate_to.value}"', true)
-            WHERE "agentBlockId" = '{id}'
-            AND "constantInput" ? '{path}'
-            AND "constantInput"->>'{path}' NOT IN ({','.join(f"'{value}'" for value in enum_values)})
+            SET "constantInput" = jsonb_set("constantInput", $1, $2, true)
+            WHERE "agentBlockId" = $3
+            AND "constantInput" ? $4
+            AND "constantInput"->>$4 NOT IN {escaped_enum_values}
             """
 
-        await db.execute_raw(query)
+        await db.execute_raw(
+            query,  # type: ignore - is supposed to be LiteralString
+            "{" + path + "}",
+            f'"{migrate_to.value}"',
+            id,
+            path,
+        )

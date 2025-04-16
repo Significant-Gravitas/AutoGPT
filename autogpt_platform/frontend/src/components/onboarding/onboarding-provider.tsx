@@ -14,9 +14,12 @@ import {
 const OnboardingContext = createContext<
   | {
       state: UserOnboarding | null;
-      updateState: (state: Partial<UserOnboarding>) => void;
+      updateState: (
+        state: Omit<Partial<UserOnboarding>, "rewardedFor">,
+      ) => void;
       step: number;
       setStep: (step: number) => void;
+      completeStep: (step: OnboardingStep) => void;
     }
   | undefined
 >(undefined);
@@ -84,19 +87,23 @@ export default function OnboardingProvider({
   }, [api, pathname, router]);
 
   const updateState = useCallback(
-    (newState: Partial<UserOnboarding>) => {
+    (newState: Omit<Partial<UserOnboarding>, "rewardedFor">) => {
       setState((prev) => {
-        api.updateUserOnboarding({ ...prev, ...newState });
+        api.updateUserOnboarding(newState);
 
         if (!prev) {
           // Handle initial state
           return {
             completedSteps: [],
+            notificationDot: false,
+            notified: [],
+            rewardedFor: [],
             usageReason: null,
             integrations: [],
             otherIntegrations: null,
             selectedStoreListingVersionId: null,
             agentInput: null,
+            onboardingAgentExecutionId: null,
             ...newState,
           };
         }
@@ -106,8 +113,21 @@ export default function OnboardingProvider({
     [api, setState],
   );
 
+  const completeStep = useCallback(
+    (step: OnboardingStep) => {
+      if (!state || state.completedSteps.includes(step)) return;
+
+      updateState({
+        completedSteps: [...state.completedSteps, step],
+      });
+    },
+    [api, state],
+  );
+
   return (
-    <OnboardingContext.Provider value={{ state, updateState, step, setStep }}>
+    <OnboardingContext.Provider
+      value={{ state, updateState, step, setStep, completeStep }}
+    >
       {children}
     </OnboardingContext.Provider>
   );
