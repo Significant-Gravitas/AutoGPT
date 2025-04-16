@@ -25,7 +25,7 @@ def thread_cached(
             cache = getattr(thread_local, "cache", None)
             if cache is None:
                 cache = thread_local.cache = {}
-            key = (args, tuple(sorted(kwargs.items())))
+            key = (func, args, tuple(sorted(kwargs.items())))
             if key not in cache:
                 cache[key] = await cast(Callable[P, Awaitable[R]], func)(
                     *args, **kwargs
@@ -39,7 +39,8 @@ def thread_cached(
             cache = getattr(thread_local, "cache", None)
             if cache is None:
                 cache = thread_local.cache = {}
-            key = (args, tuple(sorted(kwargs.items())))
+            # Include function in the key to prevent collisions between different functions
+            key = (func, args, tuple(sorted(kwargs.items())))
             if key not in cache:
                 cache[key] = func(*args, **kwargs)
             return cache[key]
@@ -54,5 +55,5 @@ def clear_thread_cache(func: Callable[..., Any]) -> None:
     if cache is not None:
         # Clear all entries that match the function
         for key in list(cache.keys()):
-            if key and len(key) > 0 and key[0] and key[0][0] == func:
+            if key and len(key) > 0 and key[0] == func:
                 del cache[key]
