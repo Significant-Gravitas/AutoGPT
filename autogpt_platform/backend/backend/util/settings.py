@@ -137,6 +137,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=8002,
         description="The port for execution manager daemon to run on",
     )
+    execution_manager_loop_max_retry: int = Field(
+        default=5,
+        description="The maximum number of retries for the execution manager loop",
+    )
 
     execution_scheduler_port: int = Field(
         default=8003,
