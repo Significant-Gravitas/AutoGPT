@@ -25,7 +25,7 @@ def thread_cached(
             cache = getattr(thread_local, "cache", None)
             if cache is None:
                 cache = thread_local.cache = {}
-            key = (func, args, tuple(sorted(kwargs.items())))
+            key = (args, tuple(sorted(kwargs.items())))
             if key not in cache:
                 cache[key] = await cast(Callable[P, Awaitable[R]], func)(
                     *args, **kwargs
@@ -40,7 +40,7 @@ def thread_cached(
             if cache is None:
                 cache = thread_local.cache = {}
             # Include function in the key to prevent collisions between different functions
-            key = (func, args, tuple(sorted(kwargs.items())))
+            key = (args, tuple(sorted(kwargs.items())))
             if key not in cache:
                 cache[key] = func(*args, **kwargs)
             return cache[key]
