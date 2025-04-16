@@ -330,11 +330,9 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
 
 class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
     # TODO: move discrimination mechanism out of CredentialsField (frontend + backend)
-    provider: frozenset[CP] = Field(..., validation_alias="credentials_provider")
-    supported_types: frozenset[CT] = Field(..., validation_alias="credentials_types")
-    required_scopes: Optional[frozenset[str]] = Field(
-        None, validation_alias="credentials_scopes"
-    )
+    provider: frozenset[CP] = Field(..., alias="credentials_provider")
+    supported_types: frozenset[CT] = Field(..., alias="credentials_types")
+    required_scopes: Optional[frozenset[str]] = Field(None, alias="credentials_scopes")
     discriminator: Optional[str] = None
     discriminator_mapping: Optional[dict[str, CP]] = None
 
@@ -391,9 +389,9 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
             result.append(
                 (
                     CredentialsFieldInfo[CP, CT](
-                        provider=combined.provider,
-                        supported_types=combined.supported_types,
-                        required_scopes=frozenset(all_scopes) or None,
+                        credentials_provider=combined.provider,
+                        credentials_types=combined.supported_types,
+                        credentials_scopes=frozenset(all_scopes) or None,
                         discriminator=combined.discriminator,
                         discriminator_mapping=combined.discriminator_mapping,
                     ),

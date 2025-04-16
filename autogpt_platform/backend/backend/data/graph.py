@@ -13,7 +13,7 @@ from prisma.types import (
     AgentNodeCreateInput,
     AgentNodeLinkCreateInput,
 )
-from pydantic import BaseModel, create_model
+from pydantic import create_model
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -197,6 +197,11 @@ class BaseGraph(BaseDbModel):
             )
         )
 
+    @computed_field
+    @property
+    def credentials_input_schema(self) -> dict[str, Any]:
+        return self._credentials_input_schema.jsonschema()
+
     @staticmethod
     def _generate_schema(
         *props: tuple[type[AgentInputBlock.Input] | type[AgentOutputBlock.Input], dict],
@@ -229,51 +234,8 @@ class BaseGraph(BaseDbModel):
             "required": [p.name for p in schema_fields if p.value is None],
         }
 
-
-class Graph(BaseGraph):
-    sub_graphs: list[BaseGraph] = []  # Flattened sub-graphs, only used in export
-
-
-class GraphModel(Graph):
-    user_id: str
-    nodes: list[NodeModel] = []  # type: ignore
-
-    @computed_field
     @property
-    def has_webhook_trigger(self) -> bool:
-        return self.webhook_input_node is not None
-
-    @property
-    def starting_nodes(self) -> list[NodeModel]:
-        outbound_nodes = {link.sink_id for link in self.links}
-        input_nodes = {
-            node.id for node in self.nodes if node.block.block_type == BlockType.INPUT
-        }
-        return [
-            node
-            for node in self.nodes
-            if node.id not in outbound_nodes or node.id in input_nodes
-        ]
-
-    @property
-    def webhook_input_node(self) -> NodeModel | None:
-        return next(
-            (
-                node
-                for node in self.nodes
-                if node.block.block_type
-                in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
-            ),
-            None,
-        )
-
-    @computed_field
-    @property
-    def credentials_input_json_schema(self) -> dict[str, Any]:
-        return self.credentials_input_schema.model_json_schema()
-
-    @property
-    def credentials_input_schema(self) -> type[BaseModel]:
+    def _credentials_input_schema(self) -> type[BlockSchema]:
         graph_credentials_inputs = self.aggregate_credentials_inputs()
         logger.debug(
             f"Combined credentials input fields for graph #{self.id} ({self.name}): "
@@ -313,7 +275,8 @@ class GraphModel(Graph):
         }
 
         return create_model(
-            model_name=self.name.replace(" ", "") + "CredentialsInputSchema",
+            self.name.replace(" ", "") + "CredentialsInputSchema",
+            __base__=BlockSchema,
             **fields,  # type: ignore
         )
 
@@ -341,6 +304,44 @@ class GraphModel(Graph):
                 )
             )
         }
+
+
+class Graph(BaseGraph):
+    sub_graphs: list[BaseGraph] = []  # Flattened sub-graphs, only used in export
+
+
+class GraphModel(Graph):
+    user_id: str
+    nodes: list[NodeModel] = []  # type: ignore
+
+    @computed_field
+    @property
+    def has_webhook_trigger(self) -> bool:
+        return self.webhook_input_node is not None
+
+    @property
+    def starting_nodes(self) -> list[NodeModel]:
+        outbound_nodes = {link.sink_id for link in self.links}
+        input_nodes = {
+            node.id for node in self.nodes if node.block.block_type == BlockType.INPUT
+        }
+        return [
+            node
+            for node in self.nodes
+            if node.id not in outbound_nodes or node.id in input_nodes
+        ]
+
+    @property
+    def webhook_input_node(self) -> NodeModel | None:
+        return next(
+            (
+                node
+                for node in self.nodes
+                if node.block.block_type
+                in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
+            ),
+            None,
+        )
 
     def reassign_ids(self, user_id: str, reassign_graph_id: bool = False):
         """
