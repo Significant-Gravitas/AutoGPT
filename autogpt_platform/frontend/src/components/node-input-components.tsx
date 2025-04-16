@@ -772,24 +772,16 @@ const NodeKeyValueInput: FC<{
     );
   }
 
+  const isNumberType =
+    schema.additionalProperties &&
+    ["number", "integer"].includes(schema.additionalProperties.type);
+
   function convertValueType(value: string): string | number | null {
-    if (
-      schema.additionalProperties &&
-      ["number", "integer"].includes(schema.additionalProperties.type)
-    ) {
+    if (isNumberType) {
       const numValue = Number(value);
-      return !isNaN(numValue) ? numValue : value;
+      return !isNaN(numValue) ? numValue : null;
     }
-
-    if (
-      !!value ||
-      !schema.additionalProperties ||
-      schema.additionalProperties.type == "string"
-    ) {
-      return value;
-    }
-
-    return null;
+    return value;
   }
 
   function getEntryKey(key: string): string {
@@ -835,7 +827,7 @@ const NodeKeyValueInput: FC<{
                   }
                 />
                 <LocalValuedInput
-                  type="text"
+                  type={isNumberType ? "number" : "text"}
                   placeholder="Value"
                   value={value ?? ""}
                   onChange={(e) =>
