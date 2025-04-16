@@ -1,15 +1,16 @@
 import { useContext } from "react";
-import { CustomNodeData } from "@/components/CustomNode";
-import {
-  BlockIOCredentialsSubSchema,
-  CredentialsProviderName,
-} from "@/lib/autogpt-server-api";
+import { getValue } from "@/lib/utils";
+
 import { Node, useNodeId, useNodesData } from "@xyflow/react";
+import { CustomNodeData } from "@/components/CustomNode";
 import {
   CredentialsProviderData,
   CredentialsProvidersContext,
 } from "@/components/integrations/credentials-provider";
-import { getValue } from "@/lib/utils";
+import {
+  BlockIOCredentialsSubSchema,
+  CredentialsProviderName,
+} from "@/lib/autogpt-server-api";
 
 export type CredentialsData =
   | {
@@ -29,30 +30,25 @@ export type CredentialsData =
     });
 
 export default function useCredentials(
-  inputFieldName: string,
+  credsInputSchema: BlockIOCredentialsSubSchema,
+  nodeInputValues?: Record<string, any>,
 ): CredentialsData | null {
-  const nodeId = useNodeId();
   const allProviders = useContext(CredentialsProvidersContext);
 
-  if (!nodeId) {
-    throw new Error("useCredentials must be within a CustomNode");
-  }
-
-  const data = useNodesData<Node<CustomNodeData>>(nodeId)!.data;
-  const credentialsSchema = data.inputSchema.properties[
-    inputFieldName
-  ] as BlockIOCredentialsSubSchema;
-
+  const nodeData = useNodesData<Node<CustomNodeData>>(useNodeId() ?? "")?.data;
   const discriminatorValue: CredentialsProviderName | null =
-    (credentialsSchema.discriminator &&
-      credentialsSchema.discriminator_mapping![
-        getValue(credentialsSchema.discriminator, data.hardcodedValues)
+    (credsInputSchema.discriminator &&
+      credsInputSchema.discriminator_mapping![
+        getValue(
+          credsInputSchema.discriminator,
+          nodeInputValues ?? nodeData?.hardcodedValues,
+        )
       ]) ||
     null;
 
   let providerName: CredentialsProviderName;
-  if (credentialsSchema.credentials_provider.length > 1) {
-    if (!credentialsSchema.discriminator) {
+  if (credsInputSchema.credentials_provider.length > 1) {
+    if (!credsInputSchema.discriminator) {
       throw new Error(
         "Multi-provider credential input requires discriminator!",
       );
@@ -62,26 +58,25 @@ export default function useCredentials(
     }
     providerName = discriminatorValue;
   } else {
-    providerName = credentialsSchema.credentials_provider[0];
+    providerName = credsInputSchema.credentials_provider[0];
   }
   const provider = allProviders ? allProviders[providerName] : null;
 
   // If block input schema doesn't have credentials, return null
-  if (!credentialsSchema) {
+  if (!credsInputSchema) {
     return null;
   }
 
-  const supportsApiKey =
-    credentialsSchema.credentials_types.includes("api_key");
-  const supportsOAuth2 = credentialsSchema.credentials_types.includes("oauth2");
+  const supportsApiKey = credsInputSchema.credentials_types.includes("api_key");
+  const supportsOAuth2 = credsInputSchema.credentials_types.includes("oauth2");
   const supportsUserPassword =
-    credentialsSchema.credentials_types.includes("user_password");
+    credsInputSchema.credentials_types.includes("user_password");
 
   // No provider means maybe it's still loading
   if (!provider) {
     // return {
-    //   provider: credentialsSchema.credentials_provider,
-    //   schema: credentialsSchema,
+    //   provider: credsInputSchema.credentials_provider,
+    //   schema: credsInputSchema,
     //   supportsApiKey,
     //   supportsOAuth2,
     //   isLoading: true,
@@ -90,7 +85,7 @@ export default function useCredentials(
   }
 
   // Filter by OAuth credentials that have sufficient scopes for this block
-  const requiredScopes = credentialsSchema.credentials_scopes;
+  const requiredScopes = credsInputSchema.credentials_scopes;
   const savedOAuthCredentials = requiredScopes
     ? provider.savedOAuthCredentials.filter((c) =>
         new Set(c.scopes).isSupersetOf(new Set(requiredScopes)),
@@ -102,7 +97,7 @@ export default function useCredentials(
   return {
     ...provider,
     provider: providerName,
-    schema: credentialsSchema,
+    schema: credsInputSchema,
     supportsApiKey,
     supportsOAuth2,
     supportsUserPassword,

@@ -1,5 +1,6 @@
+import { FC, useState } from "react";
 import { z } from "zod";
-import { beautifyString, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -16,8 +17,8 @@ import {
   FaKey,
   FaHubspot,
 } from "react-icons/fa";
-import { FC, useMemo, useState } from "react";
 import {
+  BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
   CredentialsProviderName,
 } from "@/lib/autogpt-server-api/types";
@@ -106,13 +107,11 @@ export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
 );
 
 export const CredentialsInput: FC<{
-  selfKey: string;
+  schema: BlockIOCredentialsSubSchema;
   className?: string;
   selectedCredentials?: CredentialsMetaInput;
   onSelectCredentials: (newValue?: CredentialsMetaInput) => void;
-}> = ({ selfKey, className, selectedCredentials, onSelectCredentials }) => {
-  const api = useBackendAPI();
-  const credentials = useCredentials(selfKey);
+}> = ({ schema, className, selectedCredentials, onSelectCredentials }) => {
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);
   const [
@@ -124,12 +123,13 @@ export const CredentialsInput: FC<{
     useState<AbortController | null>(null);
   const [oAuthError, setOAuthError] = useState<string | null>(null);
 
+  const api = useBackendAPI();
+  const credentials = useCredentials(schema);
   if (!credentials || credentials.isLoading) {
     return null;
   }
 
   const {
-    schema,
     provider,
     providerName,
     supportsApiKey,
@@ -235,7 +235,7 @@ export const CredentialsInput: FC<{
     <>
       {supportsApiKey && (
         <APIKeyCredentialsModal
-          credentialsFieldName={selfKey}
+          schema={schema}
           open={isAPICredentialsModalOpen}
           onClose={() => setAPICredentialsModalOpen(false)}
           onCredentialsCreate={(credsMeta) => {
@@ -253,7 +253,7 @@ export const CredentialsInput: FC<{
       )}
       {supportsUserPassword && (
         <UserPasswordCredentialsModal
-          credentialsFieldName={selfKey}
+          schema={schema}
           open={isUserPasswordCredentialsModalOpen}
           onClose={() => setUserPasswordCredentialsModalOpen(false)}
           onCredentialsCreate={(creds) => {
@@ -440,12 +440,12 @@ export const CredentialsInput: FC<{
 };
 
 export const APIKeyCredentialsModal: FC<{
-  credentialsFieldName: string;
+  schema: BlockIOCredentialsSubSchema;
   open: boolean;
   onClose: () => void;
   onCredentialsCreate: (creds: CredentialsMetaInput) => void;
-}> = ({ credentialsFieldName, open, onClose, onCredentialsCreate }) => {
-  const credentials = useCredentials(credentialsFieldName);
+}> = ({ schema, open, onClose, onCredentialsCreate }) => {
+  const credentials = useCredentials(schema);
 
   const formSchema = z.object({
     apiKey: z.string().min(1, "API Key is required"),
@@ -466,8 +466,7 @@ export const APIKeyCredentialsModal: FC<{
     return null;
   }
 
-  const { schema, provider, providerName, createAPIKeyCredentials } =
-    credentials;
+  const { provider, providerName, createAPIKeyCredentials } = credentials;
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     const expiresAt = values.expiresAt
@@ -576,12 +575,12 @@ export const APIKeyCredentialsModal: FC<{
 };
 
 export const UserPasswordCredentialsModal: FC<{
-  credentialsFieldName: string;
+  schema: BlockIOCredentialsSubSchema;
   open: boolean;
   onClose: () => void;
   onCredentialsCreate: (creds: CredentialsMetaInput) => void;
-}> = ({ credentialsFieldName, open, onClose, onCredentialsCreate }) => {
-  const credentials = useCredentials(credentialsFieldName);
+}> = ({ schema, open, onClose, onCredentialsCreate }) => {
+  const credentials = useCredentials(schema);
 
   const formSchema = z.object({
     username: z.string().min(1, "Username is required"),
@@ -606,8 +605,7 @@ export const UserPasswordCredentialsModal: FC<{
     return null;
   }
 
-  const { schema, provider, providerName, createUserPasswordCredentials } =
-    credentials;
+  const { provider, providerName, createUserPasswordCredentials } = credentials;
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     const newCredentials = await createUserPasswordCredentials({

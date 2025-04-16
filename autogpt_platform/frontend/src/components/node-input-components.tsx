@@ -9,15 +9,16 @@ import { CalendarIcon } from "lucide-react";
 import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
 import { beautifyString, cn } from "@/lib/utils";
 import {
-  BlockIORootSchema,
-  BlockIOSubSchema,
-  BlockIOObjectSubSchema,
-  BlockIOKVSubSchema,
   BlockIOArraySubSchema,
-  BlockIOStringSubSchema,
-  BlockIONumberSubSchema,
   BlockIOBooleanSubSchema,
+  BlockIOCredentialsSubSchema,
+  BlockIOKVSubSchema,
+  BlockIONumberSubSchema,
+  BlockIOObjectSubSchema,
+  BlockIORootSchema,
   BlockIOSimpleTypeSubSchema,
+  BlockIOStringSubSchema,
+  BlockIOSubSchema,
   DataType,
   determineDataType,
 } from "@/lib/autogpt-server-api/types";
@@ -357,6 +358,7 @@ export const NodeGenericInputField: FC<{
       return (
         <NodeCredentialsInput
           selfKey={propKey}
+          schema={propSchema as BlockIOCredentialsSubSchema}
           value={currentValue}
           errors={errors}
           className={className}
@@ -697,15 +699,16 @@ const NodeOneOfDiscriminatorField: FC<{
 
 const NodeCredentialsInput: FC<{
   selfKey: string;
+  schema: BlockIOCredentialsSubSchema;
   value: any;
   errors: { [key: string]: string | undefined };
   handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
   className?: string;
-}> = ({ selfKey, value, errors, handleInputChange, className }) => {
+}> = ({ selfKey, schema, value, errors, handleInputChange, className }) => {
   return (
     <div className={cn("flex flex-col", className)}>
       <CredentialsInput
-        selfKey={selfKey}
+        schema={schema}
         onSelectCredentials={(credsMeta) =>
           handleInputChange(selfKey, credsMeta)
         }
