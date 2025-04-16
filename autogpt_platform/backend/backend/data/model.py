@@ -401,6 +401,17 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
 
         return result
 
+    def discriminate(self, discriminator_value: Any) -> CredentialsFieldInfo:
+        if not (self.discriminator and self.discriminator_mapping):
+            return self
+
+        discriminator_value = self.discriminator_mapping[discriminator_value]
+        return CredentialsFieldInfo(
+            credentials_provider=frozenset([discriminator_value]),
+            credentials_types=self.supported_types,
+            credentials_scopes=self.required_scopes,
+        )
+
 
 def CredentialsField(
     required_scopes: set[str] = set(),

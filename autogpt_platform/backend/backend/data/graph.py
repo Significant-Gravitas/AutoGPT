@@ -298,7 +298,20 @@ class BaseGraph(BaseDbModel):
             + "_credentials": (agg_field_info, node_fields)
             for agg_field_info, node_fields in CredentialsFieldInfo.combine(
                 *(
-                    (field_info, (node.id, field_name))
+                    (
+                        # Apply discrimination before aggregating credentials inputs
+                        (
+                            field_info.discriminate(
+                                node.input_default[field_info.discriminator]
+                            )
+                            if (
+                                field_info.discriminator
+                                and node.input_default.get(field_info.discriminator)
+                            )
+                            else field_info
+                        ),
+                        (node.id, field_name),
+                    )
                     for node in self.nodes
                     for field_name, field_info in node.block.input_schema.get_credentials_fields_info().items()
                 )
