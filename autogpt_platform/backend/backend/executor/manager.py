@@ -1033,6 +1033,9 @@ class ExecutionManager(AppProcess):
         logger.info(f"[{self.service_name}] ⏳ Shutting down service loop...")
         self.running = False
 
+        logger.info(f"[{self.service_name}] ⏳ Shutting down RabbitMQ channel...")
+        get_execution_queue().get_channel().stop_consuming()
+
         logger.info(f"[{self.service_name}] ⏳ Shutting down graph executor pool...")
         self.executor.shutdown(cancel_futures=True)
 
