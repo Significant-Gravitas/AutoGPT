@@ -283,6 +283,15 @@ export const CredentialsInput: FC<{
     onSelectCredentials(undefined);
   }
 
+  const fieldHeader = (
+    <div className="mb-2 flex gap-1">
+      <span className="text-m green text-gray-900">
+        {providerName} Credentials
+      </span>
+      <SchemaTooltip description={schema.description} />
+    </div>
+  );
+
   // No saved credentials yet
   if (
     savedApiKeys.length === 0 &&
@@ -290,13 +299,9 @@ export const CredentialsInput: FC<{
     savedUserPasswordCredentials.length === 0
   ) {
     return (
-      <>
-        <div className="mb-2 flex gap-1">
-          <span className="text-m green text-gray-900">
-            {providerName} Credentials
-          </span>
-          <SchemaTooltip description={schema.description} />
-        </div>
+      <div>
+        {fieldHeader}
+
         <div className={cn("flex flex-row space-x-2", className)}>
           {supportsOAuth2 && (
             <Button onClick={handleOAuthLogin}>
@@ -321,7 +326,7 @@ export const CredentialsInput: FC<{
         {oAuthError && (
           <div className="mt-2 text-red-500">Error: {oAuthError}</div>
         )}
-      </>
+      </div>
     );
   }
 
@@ -385,13 +390,9 @@ export const CredentialsInput: FC<{
 
   // Saved credentials exist
   return (
-    <>
-      <div className="flex gap-1">
-        <span className="text-m green mb-0 text-gray-900">
-          {providerName} Credentials
-        </span>
-        <SchemaTooltip description={schema.description} />
-      </div>
+    <div>
+      {fieldHeader}
+
       <Select value={selectedCredentials?.id} onValueChange={handleValueChange}>
         <SelectTrigger>
           <SelectValue placeholder={schema.placeholder} />
@@ -442,7 +443,7 @@ export const CredentialsInput: FC<{
       {oAuthError && (
         <div className="mt-2 text-red-500">Error: {oAuthError}</div>
       )}
-    </>
+    </div>
   );
 };
 

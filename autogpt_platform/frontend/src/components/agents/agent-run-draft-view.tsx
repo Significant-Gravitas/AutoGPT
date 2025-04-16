@@ -81,25 +81,19 @@ export default function AgentRunDraftView({
             {/* Credentials inputs */}
             {Object.entries(agentCredentialsInputs).map(
               ([key, inputSubSchema]) => (
-                <div key={key} className="flex flex-col space-y-2">
-                  <label className="flex items-center gap-1 text-sm font-medium">
-                    {inputSubSchema.title || key}
-                    <SchemaTooltip description={inputSubSchema.description} />
-                  </label>
-
-                  <CredentialsInput
-                    schema={{ ...inputSubSchema, discriminator: undefined }}
-                    selectedCredentials={
-                      inputCredentials[key] ?? inputSubSchema.default
-                    }
-                    onSelectCredentials={(value) =>
-                      setInputCredentials((obj) => ({
-                        ...obj,
-                        [key]: value,
-                      }))
-                    }
-                  />
-                </div>
+                <CredentialsInput
+                  key={key}
+                  schema={{ ...inputSubSchema, discriminator: undefined }}
+                  selectedCredentials={
+                    inputCredentials[key] ?? inputSubSchema.default
+                  }
+                  onSelectCredentials={(value) =>
+                    setInputCredentials((obj) => ({
+                      ...obj,
+                      [key]: value,
+                    }))
+                  }
+                />
               ),
             )}
 
