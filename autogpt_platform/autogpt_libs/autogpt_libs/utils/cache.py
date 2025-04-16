@@ -1,6 +1,6 @@
 import inspect
 import threading
-from typing import Any, Awaitable, Callable, ParamSpec, TypeVar, Union, cast, overload
+from typing import Any, Awaitable, Callable, ParamSpec, TypeVar, cast, overload
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -15,8 +15,8 @@ def thread_cached(func: Callable[P, R]) -> Callable[P, R]: ...
 
 
 def thread_cached(
-    func: Union[Callable[P, R], Callable[P, Awaitable[R]]],
-) -> Union[Callable[P, R], Callable[P, Awaitable[R]]]:
+    func: Callable[P, R] | Callable[P, Awaitable[R]],
+) -> Callable[P, R] | Callable[P, Awaitable[R]]:
     thread_local = threading.local()
 
     if inspect.iscoroutinefunction(func):
