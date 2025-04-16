@@ -612,8 +612,12 @@ async def execute_graph(
         user_id=user_id,
         preset_id=preset_id,
     )
-    execution_utils.get_execution_event_bus().publish(graph_exec)
-    execution_utils.get_execution_queue().publish_message(
+
+    bus = execution_event_bus()
+    await bus.publish(graph_exec)
+
+    queue = await execution_queue_client()
+    await queue.publish_message(
         routing_key=execution_utils.GRAPH_EXECUTION_ROUTING_KEY,
         message=graph_exec.to_graph_execution_entry().model_dump_json(),
         exchange=execution_utils.GRAPH_EXECUTION_EXCHANGE,
