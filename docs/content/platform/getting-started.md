@@ -95,7 +95,7 @@ To run the backend services, follow these steps:
 
 To run the frontend application open a new terminal and follow these steps:
 
-*  Navigate to `frontend` folder within the `autogpt_platform` directory:
+* Navigate to `frontend` folder within the `autogpt_platform` directory:
   ```
    cd frontend
   ```
