@@ -1,4 +1,4 @@
-import { FC, useState } from "react";
+import { FC, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { cn } from "@/lib/utils";
 import { useForm } from "react-hook-form";
@@ -132,7 +132,51 @@ export const CredentialsInput: FC<{
 
   const api = useBackendAPI();
   const credentials = useCredentials(schema, siblingInputs);
-  if (!credentials || credentials.isLoading) {
+
+  // Deselect credentials if they do not exist (e.g. provider was changed)
+  useEffect(() => {
+    if (!credentials || !("savedApiKeys" in credentials)) return;
+    if (
+      selectedCredentials &&
+      !credentials.savedApiKeys
+        .concat(credentials.savedOAuthCredentials)
+        .concat(credentials.savedUserPasswordCredentials)
+        .some((c) => c.id === selectedCredentials.id)
+    ) {
+      onSelectCredentials(undefined);
+    }
+  }, [credentials, selectedCredentials, onSelectCredentials]);
+
+  const singleCredential = useMemo(() => {
+    if (!credentials || !("savedApiKeys" in credentials)) return null;
+
+    const counts = {
+      apiKeys: credentials.savedApiKeys.length,
+      oauth: credentials.savedOAuthCredentials.length,
+      userPass: credentials.savedUserPasswordCredentials.length,
+    };
+    const totalCredentials = Object.values(counts).reduce(
+      (sum, count) => sum + count,
+      0,
+    );
+
+    if (totalCredentials !== 1) return null;
+    if (counts.apiKeys === 1) return credentials.savedApiKeys[0];
+    if (counts.oauth === 1) return credentials.savedOAuthCredentials[0];
+    if (counts.userPass === 1)
+      return credentials.savedUserPasswordCredentials[0];
+
+    return null;
+  }, [credentials]);
+
+  // If only 1 credential is available, auto-select it and hide this input
+  useEffect(() => {
+    if (singleCredential && !selectedCredentials) {
+      onSelectCredentials(singleCredential);
+    }
+  }, [singleCredential, selectedCredentials, onSelectCredentials]);
+
+  if (!credentials || credentials.isLoading || singleCredential) {
     return null;
   }
 
@@ -272,17 +316,6 @@ export const CredentialsInput: FC<{
     </>
   );
 
-  // Deselect credentials if they do not exist (e.g. provider was changed)
-  if (
-    selectedCredentials &&
-    !savedApiKeys
-      .concat(savedOAuthCredentials)
-      .concat(savedUserPasswordCredentials)
-      .some((c) => c.id === selectedCredentials.id)
-  ) {
-    onSelectCredentials(undefined);
-  }
-
   const fieldHeader = (
     <div className="mb-2 flex gap-1">
       <span className="text-m green text-gray-900">
@@ -328,42 +361,6 @@ export const CredentialsInput: FC<{
         )}
       </div>
     );
-  }
-
-  const getCredentialCounts = () => ({
-    apiKeys: savedApiKeys.length,
-    oauth: savedOAuthCredentials.length,
-    userPass: savedUserPasswordCredentials.length,
-  });
-
-  const getSingleCredential = () => {
-    const counts = getCredentialCounts();
-    const totalCredentials = Object.values(counts).reduce(
-      (sum, count) => sum + count,
-      0,
-    );
-
-    if (totalCredentials !== 1) return null;
-
-    if (counts.apiKeys === 1) return savedApiKeys[0];
-    if (counts.oauth === 1) return savedOAuthCredentials[0];
-    if (counts.userPass === 1) return savedUserPasswordCredentials[0];
-
-    return null;
-  };
-
-  const singleCredential = getSingleCredential();
-
-  if (singleCredential) {
-    if (!selectedCredentials) {
-      onSelectCredentials({
-        id: singleCredential.id,
-        type: singleCredential.type,
-        provider,
-        title: singleCredential.title,
-      });
-    }
-    return null;
   }
 
   function handleValueChange(newValue: string) {
