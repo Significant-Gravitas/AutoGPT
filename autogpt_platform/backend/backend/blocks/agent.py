@@ -88,7 +88,7 @@ class AgentExecutorBlock(Block):
                 else:
                     continue
 
-            logger.info(
+            logger.debug(
                 f"Execution {log_id} produced input {event.input_data} output {event.output_data}"
             )
 
@@ -106,5 +106,7 @@ class AgentExecutorBlock(Block):
                 continue
 
             for output_data in event.output_data.get("output", []):
-                logger.info(f"Execution {log_id} produced {output_name}: {output_data}")
+                logger.debug(
+                    f"Execution {log_id} produced {output_name}: {output_data}"
+                )
                 yield output_name, output_data
