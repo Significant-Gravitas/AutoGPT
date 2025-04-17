@@ -287,6 +287,7 @@ def llm_call(
     max_tokens: int | None,
     tools: list[dict] | None = None,
     ollama_host: str = "localhost:11434",
+    parallel_tool_calls: bool = False,
 ) -> LLMResponse:
     """
     Make a call to a language model.
@@ -332,7 +333,7 @@ def llm_call(
             response_format=response_format,  # type: ignore
             max_completion_tokens=max_tokens,
             tools=tools_param,  # type: ignore
-            parallel_tool_calls=False,  # disable parallel tool calls
+            parallel_tool_calls=parallel_tool_calls,
         )
 
         if response.choices[0].message.tool_calls:
@@ -488,7 +489,7 @@ def llm_call(
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
-            parallel_tool_calls=False,  # disable parallel tool calls
+            parallel_tool_calls=parallel_tool_calls,
         )
 
         # If there's no response, raise an error
