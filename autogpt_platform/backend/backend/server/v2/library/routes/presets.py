@@ -218,7 +218,7 @@ async def execute_preset(
         # Merge input overrides with preset inputs
         merged_node_input = preset.inputs | node_input
 
-        execution = add_graph_execution(
+        execution = await add_graph_execution(
             graph_id=graph_id,
             user_id=user_id,
             inputs=merged_node_input,

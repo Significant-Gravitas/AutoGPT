@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Awaitable, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
@@ -309,7 +309,7 @@ async def webhook_ingress_generic(
     if not webhook.attached_nodes:
         return
 
-    executions = []
+    executions: list[Awaitable] = []
     for node in webhook.attached_nodes:
         logger.debug(f"Webhook-attached node: {node}")
         if not node.is_triggered_by_event_type(event_type):

@@ -97,7 +97,7 @@ async def execute_graph(
     api_key: APIKey = Depends(require_permission(APIKeyPermission.EXECUTE_GRAPH)),
 ) -> dict[str, Any]:
     try:
-        graph_exec = add_graph_execution(
+        graph_exec = await add_graph_execution(
             graph_id=graph_id,
             user_id=api_key.user_id,
             inputs=node_input,

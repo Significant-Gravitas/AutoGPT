@@ -68,7 +68,7 @@ def execute_graph(**kwargs):
     args = ExecutionJobArgs(**kwargs)
     try:
         log(f"Executing recurring job for graph #{args.graph_id}")
-        execution_utils.add_graph_execution(
+        execution_utils.add_graph_execution_sync(
             graph_id=args.graph_id,
             inputs=args.input_data,
             user_id=args.user_id,
