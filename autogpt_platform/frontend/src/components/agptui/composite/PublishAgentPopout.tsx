@@ -21,6 +21,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useToast } from "@/components/ui/use-toast";
+
 interface PublishAgentPopoutProps {
   trigger?: React.ReactNode;
   openPopout?: boolean;
@@ -43,58 +44,64 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     categories: [],
   },
 }) => {
-  const [step, setStep] = React.useState<"select" | "info" | "review">(
-    inputStep,
-  );
+  const [step, setStep] = React.useState<"select" | "info" | "review">(inputStep);
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const [totalPages, setTotalPages] = React.useState(1);
   const [myAgents, setMyAgents] = React.useState<MyAgentsResponse | null>(null);
+  const [loading, setLoading] = React.useState(false);
   const [selectedAgent, setSelectedAgent] = React.useState<string | null>(null);
-  const [initialData, setInitialData] =
-    React.useState<PublishAgentInfoInitialData>({
-      agent_id: "",
-      title: "",
-      subheader: "",
-      slug: "",
-      thumbnailSrc: "",
-      youtubeLink: "",
-      category: "",
-      description: "",
-    });
-  const [publishData, setPublishData] =
-    React.useState<StoreSubmissionRequest>(submissionData);
-  const [selectedAgentId, setSelectedAgentId] = React.useState<string | null>(
-    null,
-  );
-  const [selectedAgentVersion, setSelectedAgentVersion] = React.useState<
-    number | null
-  >(null);
+  const [initialData, setInitialData] = React.useState<PublishAgentInfoInitialData>({
+    agent_id: "",
+    title: "",
+    subheader: "",
+    slug: "",
+    thumbnailSrc: "",
+    youtubeLink: "",
+    category: "",
+    description: "",
+  });
+  const [publishData, setPublishData] = React.useState<StoreSubmissionRequest>(submissionData);
+  const [selectedAgentId, setSelectedAgentId] = React.useState<string | null>(null);
+  const [selectedAgentVersion, setSelectedAgentVersion] = React.useState<number | null>(null);
   const [open, setOpen] = React.useState(false);
 
   const popupId = React.useId();
   const router = useRouter();
   const api = useBackendAPI();
-
   const { toast } = useToast();
 
   React.useEffect(() => {
     setOpen(openPopout);
     setStep(inputStep);
     setPublishData(submissionData);
-  }, [openPopout]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [openPopout]);
+
+  // Reset page to 1 when popout opens
+  React.useEffect(() => {
+    if (open) {
+      setCurrentPage(1);
+    }
+  }, [open]);
+
+  const loadMyAgents = async (page = 1) => {
+    try {
+      setLoading(true);
+      const response = await api.getMyAgents({ page, page_size: 20 });
+      setMyAgents(response);
+      setCurrentPage(response.pagination.current_page);
+      setTotalPages(response.pagination.total_pages);
+    } catch (error) {
+      console.error("Failed to load my agents:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   React.useEffect(() => {
     if (open) {
-      const loadMyAgents = async () => {
-        try {
-          const response = await api.getMyAgents();
-          setMyAgents(response);
-        } catch (error) {
-          console.error("Failed to load my agents:", error);
-        }
-      };
-
-      loadMyAgents();
+      loadMyAgents(currentPage);
     }
-  }, [open, api]);
+  }, [open, currentPage]);
 
   const handleClose = () => {
     setStep("select");
@@ -178,22 +185,22 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
       categories,
     });
 
-    // Create store submission
     try {
-      const submission = await api.createStoreSubmission({
-        name: name,
+      await api.createStoreSubmission({
+        name,
         sub_heading: subHeading,
-        description: description,
+        description,
         image_urls: imageUrls,
         video_url: videoUrl,
         agent_id: selectedAgentId || "",
         agent_version: selectedAgentVersion || 0,
         slug: slug.replace(/\s+/g, "-"),
-        categories: categories,
+        categories,
       });
     } catch (error) {
       console.error("Error creating store submission:", error);
     }
+
     setStep("review");
   };
 
@@ -212,29 +219,58 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
           <div className="flex min-h-screen items-center justify-center">
             <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
               <div className="h-full overflow-y-auto">
-                <PublishAgentSelect
-                  agents={
-                    myAgents?.agents
-                      .map((agent) => ({
-                        name: agent.agent_name,
-                        id: agent.agent_id,
-                        version: agent.agent_version,
-                        lastEdited: agent.last_edited,
-                        imageSrc:
-                          agent.agent_image || "https://picsum.photos/300/200",
-                      }))
-                      .sort(
-                        (a, b) =>
-                          new Date(b.lastEdited).getTime() -
-                          new Date(a.lastEdited).getTime(),
-                      ) || []
-                  }
-                  onSelect={handleAgentSelect}
-                  onCancel={handleClose}
-                  onNext={handleNextFromSelect}
-                  onClose={handleClose}
-                  onOpenBuilder={() => router.push("/build")}
-                />
+                {loading ? (
+                  <div className="flex items-center justify-center p-8 text-gray-600">
+                    Loading agents...
+                  </div>
+                ) : (
+                  <>
+                    <PublishAgentSelect
+                      agents={
+                        myAgents?.agents
+                          .map((agent) => ({
+                            name: agent.agent_name,
+                            id: agent.agent_id,
+                            version: agent.agent_version,
+                            lastEdited: agent.last_edited,
+                            imageSrc:
+                              agent.agent_image || "https://picsum.photos/300/200",
+                          }))
+                          .sort(
+                            (a, b) =>
+                              new Date(b.lastEdited).getTime() -
+                              new Date(a.lastEdited).getTime(),
+                          ) || []
+                      }
+                      onSelect={handleAgentSelect}
+                      onCancel={handleClose}
+                      onNext={handleNextFromSelect}
+                      onClose={handleClose}
+                      onOpenBuilder={() => router.push("/build")}
+                    />
+                    <div className="flex justify-between items-center p-4">
+                      <button
+                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="text-sm font-medium text-blue-600 disabled:text-gray-400"
+                      >
+                        ← Previous
+                      </button>
+                      <span className="text-sm text-gray-700">
+                        Page {currentPage} of {totalPages}
+                      </span>
+                      <button
+                        onClick={() =>
+                          setCurrentPage((p) => Math.min(totalPages, p + 1))
+                        }
+                        disabled={currentPage === totalPages}
+                        className="text-sm font-medium text-blue-600 disabled:text-gray-400"
+                      >
+                        Next →
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
