@@ -208,8 +208,7 @@ class BlockSchema(BaseModel):
     def get_credentials_fields_info(cls) -> dict[str, CredentialsFieldInfo]:
         return {
             field_name: CredentialsFieldInfo.model_validate(
-                cls.jsonschema()["properties"][field_name],
-                by_alias=True,
+                cls.get_field_schema(field_name), by_alias=True
             )
             for field_name in cls.get_credentials_fields().keys()
         }
