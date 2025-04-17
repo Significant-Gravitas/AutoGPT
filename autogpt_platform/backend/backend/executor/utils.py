@@ -497,6 +497,12 @@ def construct_node_execution_input(
                 )
             input_data = {"payload": graph_inputs[webhook_payload_key]}
 
+        # Apply node credentials overrides
+        if node_credentials_input_map and (
+            node_credentials := node_credentials_input_map.get(node.id)
+        ):
+            input_data.update({k: v.model_dump() for k, v in node_credentials.items()})
+
         input_data, error = validate_exec(node, input_data)
         if input_data is None:
             raise ValueError(error)
