@@ -606,15 +606,15 @@ def add_graph_execution(
     )
 
     graph_exec = get_db_client().create_graph_execution(
+        user_id=user_id,
         graph_id=graph_id,
         graph_version=graph.version,
-        nodes_input=construct_node_execution_input(
+        starting_nodes_input=construct_node_execution_input(
             graph=graph,
             user_id=user_id,
             graph_inputs=inputs,
             node_credentials_input_map=node_credentials_input_map,
         ),
-        user_id=user_id,
         preset_id=preset_id,
     )
     get_execution_event_bus().publish(graph_exec)

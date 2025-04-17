@@ -362,7 +362,7 @@ async def get_graph_execution(
 async def create_graph_execution(
     graph_id: str,
     graph_version: int,
-    nodes_input: list[tuple[str, BlockInput]],
+    starting_nodes_input: list[tuple[str, BlockInput]],
     user_id: str,
     preset_id: str | None = None,
 ) -> GraphExecutionWithNodes:
@@ -389,7 +389,7 @@ async def create_graph_execution(
                             ]
                         },
                     )
-                    for node_id, node_input in nodes_input
+                    for node_id, node_input in starting_nodes_input
                 ]
             },
             userId=user_id,
