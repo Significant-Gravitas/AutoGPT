@@ -68,9 +68,7 @@ type UserPasswordCredentialsCreatable = Omit<
 export type CredentialsProviderData = {
   provider: CredentialsProviderName;
   providerName: string;
-  savedApiKeys: CredentialsMetaResponse[];
-  savedOAuthCredentials: CredentialsMetaResponse[];
-  savedUserPasswordCredentials: CredentialsMetaResponse[];
+  savedCredentials: CredentialsMetaResponse[];
   oAuthCallback: (
     code: string,
     state_token: string,
@@ -113,28 +111,12 @@ export default function CredentialsProvider({
       setProviders((prev) => {
         if (!prev || !prev[provider]) return prev;
 
-        const updatedProvider = { ...prev[provider] };
-
-        if (credentials.type === "api_key") {
-          updatedProvider.savedApiKeys = [
-            ...updatedProvider.savedApiKeys,
-            credentials,
-          ];
-        } else if (credentials.type === "oauth2") {
-          updatedProvider.savedOAuthCredentials = [
-            ...updatedProvider.savedOAuthCredentials,
-            credentials,
-          ];
-        } else if (credentials.type === "user_password") {
-          updatedProvider.savedUserPasswordCredentials = [
-            ...updatedProvider.savedUserPasswordCredentials,
-            credentials,
-          ];
-        }
-
         return {
           ...prev,
-          [provider]: updatedProvider,
+          [provider]: {
+            ...prev[provider],
+            savedCredentials: [...prev[provider].savedCredentials, credentials],
+          },
         };
       });
     },
@@ -203,21 +185,14 @@ export default function CredentialsProvider({
       setProviders((prev) => {
         if (!prev || !prev[provider]) return prev;
 
-        const updatedProvider = { ...prev[provider] };
-        updatedProvider.savedApiKeys = updatedProvider.savedApiKeys.filter(
-          (cred) => cred.id !== id,
-        );
-        updatedProvider.savedOAuthCredentials =
-          updatedProvider.savedOAuthCredentials.filter(
-            (cred) => cred.id !== id,
-          );
-        updatedProvider.savedUserPasswordCredentials =
-          updatedProvider.savedUserPasswordCredentials.filter(
-            (cred) => cred.id !== id,
-          );
         return {
           ...prev,
-          [provider]: updatedProvider,
+          [provider]: {
+            ...prev[provider],
+            savedCredentials: prev[provider].savedCredentials.filter(
+              (cred) => cred.id !== id,
+            ),
+          },
         };
       });
       return result;
@@ -233,29 +208,12 @@ export default function CredentialsProvider({
         const credentialsByProvider = response.reduce(
           (acc, cred) => {
             if (!acc[cred.provider]) {
-              acc[cred.provider] = {
-                oauthCreds: [],
-                apiKeys: [],
-                userPasswordCreds: [],
-              };
+              acc[cred.provider] = [];
             }
-            if (cred.type === "oauth2") {
-              acc[cred.provider].oauthCreds.push(cred);
-            } else if (cred.type === "api_key") {
-              acc[cred.provider].apiKeys.push(cred);
-            } else if (cred.type === "user_password") {
-              acc[cred.provider].userPasswordCreds.push(cred);
-            }
+            acc[cred.provider].push(cred);
             return acc;
           },
-          {} as Record<
-            CredentialsProviderName,
-            {
-              oauthCreds: CredentialsMetaResponse[];
-              apiKeys: CredentialsMetaResponse[];
-              userPasswordCreds: CredentialsMetaResponse[];
-            }
-          >,
+          {} as Record<CredentialsProviderName, CredentialsMetaResponse[]>,
         );
 
         setProviders((prev) => ({
@@ -267,11 +225,7 @@ export default function CredentialsProvider({
                 provider,
                 providerName:
                   providerDisplayNames[provider as CredentialsProviderName],
-                savedApiKeys: credentialsByProvider[provider]?.apiKeys ?? [],
-                savedOAuthCredentials:
-                  credentialsByProvider[provider]?.oauthCreds ?? [],
-                savedUserPasswordCredentials:
-                  credentialsByProvider[provider]?.userPasswordCreds ?? [],
+                savedCredentials: credentialsByProvider[provider] ?? [],
                 oAuthCallback: (code: string, state_token: string) =>
                   oAuthCallback(
                     provider as CredentialsProviderName,
@@ -298,7 +252,7 @@ export default function CredentialsProvider({
                     id,
                     force,
                   ),
-              },
+              } satisfies CredentialsProviderData,
             ]),
           ),
         }));

@@ -135,36 +135,20 @@ export const CredentialsInput: FC<{
 
   // Deselect credentials if they do not exist (e.g. provider was changed)
   useEffect(() => {
-    if (!credentials || !("savedApiKeys" in credentials)) return;
+    if (!credentials || !("savedCredentials" in credentials)) return;
     if (
       selectedCredentials &&
-      !credentials.savedApiKeys
-        .concat(credentials.savedOAuthCredentials)
-        .concat(credentials.savedUserPasswordCredentials)
-        .some((c) => c.id === selectedCredentials.id)
+      !credentials.savedCredentials.some((c) => c.id === selectedCredentials.id)
     ) {
       onSelectCredentials(undefined);
     }
   }, [credentials, selectedCredentials, onSelectCredentials]);
 
   const singleCredential = useMemo(() => {
-    if (!credentials || !("savedApiKeys" in credentials)) return null;
+    if (!credentials || !("savedCredentials" in credentials)) return null;
 
-    const counts = {
-      apiKeys: credentials.savedApiKeys.length,
-      oauth: credentials.savedOAuthCredentials.length,
-      userPass: credentials.savedUserPasswordCredentials.length,
-    };
-    const totalCredentials = Object.values(counts).reduce(
-      (sum, count) => sum + count,
-      0,
-    );
-
-    if (totalCredentials !== 1) return null;
-    if (counts.apiKeys === 1) return credentials.savedApiKeys[0];
-    if (counts.oauth === 1) return credentials.savedOAuthCredentials[0];
-    if (counts.userPass === 1)
-      return credentials.savedUserPasswordCredentials[0];
+    if (credentials.savedCredentials.length === 1)
+      return credentials.savedCredentials[0];
 
     return null;
   }, [credentials]);
@@ -186,9 +170,7 @@ export const CredentialsInput: FC<{
     supportsApiKey,
     supportsOAuth2,
     supportsUserPassword,
-    savedApiKeys,
-    savedOAuthCredentials,
-    savedUserPasswordCredentials,
+    savedCredentials,
     oAuthCallback,
   } = credentials;
 
@@ -328,11 +310,7 @@ export const CredentialsInput: FC<{
   );
 
   // No saved credentials yet
-  if (
-    savedApiKeys.length === 0 &&
-    savedOAuthCredentials.length === 0 &&
-    savedUserPasswordCredentials.length === 0
-  ) {
+  if (savedCredentials.length === 0) {
     return (
       <div>
         {fieldHeader}
@@ -373,10 +351,7 @@ export const CredentialsInput: FC<{
       // Open API key dialog
       setAPICredentialsModalOpen(true);
     } else {
-      const selectedCreds = savedApiKeys
-        .concat(savedOAuthCredentials)
-        .concat(savedUserPasswordCredentials)
-        .find((c) => c.id == newValue)!;
+      const selectedCreds = savedCredentials.find((c) => c.id == newValue)!;
 
       onSelectCredentials({
         id: selectedCreds.id,
@@ -397,26 +372,32 @@ export const CredentialsInput: FC<{
           <SelectValue placeholder={schema.placeholder} />
         </SelectTrigger>
         <SelectContent className="nodrag">
-          {savedOAuthCredentials.map((credentials, index) => (
-            <SelectItem key={index} value={credentials.id}>
-              <ProviderIcon className="mr-2 inline h-4 w-4" />
-              {credentials.username}
-            </SelectItem>
-          ))}
-          {savedApiKeys.map((credentials, index) => (
-            <SelectItem key={index} value={credentials.id}>
-              <ProviderIcon className="mr-2 inline h-4 w-4" />
-              <IconKey className="mr-1.5 inline" />
-              {credentials.title}
-            </SelectItem>
-          ))}
-          {savedUserPasswordCredentials.map((credentials, index) => (
-            <SelectItem key={index} value={credentials.id}>
-              <ProviderIcon className="mr-2 inline h-4 w-4" />
-              <IconUserPlus className="mr-1.5 inline" />
-              {credentials.title}
-            </SelectItem>
-          ))}
+          {savedCredentials
+            .filter((c) => c.type == "oauth2")
+            .map((credentials, index) => (
+              <SelectItem key={index} value={credentials.id}>
+                <ProviderIcon className="mr-2 inline h-4 w-4" />
+                {credentials.username}
+              </SelectItem>
+            ))}
+          {savedCredentials
+            .filter((c) => c.type == "api_key")
+            .map((credentials, index) => (
+              <SelectItem key={index} value={credentials.id}>
+                <ProviderIcon className="mr-2 inline h-4 w-4" />
+                <IconKey className="mr-1.5 inline" />
+                {credentials.title}
+              </SelectItem>
+            ))}
+          {savedCredentials
+            .filter((c) => c.type == "user_password")
+            .map((credentials, index) => (
+              <SelectItem key={index} value={credentials.id}>
+                <ProviderIcon className="mr-2 inline h-4 w-4" />
+                <IconUserPlus className="mr-1.5 inline" />
+                {credentials.title}
+              </SelectItem>
+            ))}
           <SelectSeparator />
           {supportsOAuth2 && (
             <SelectItem value="sign-in">
