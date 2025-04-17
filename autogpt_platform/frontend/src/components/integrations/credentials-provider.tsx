@@ -223,35 +223,18 @@ export default function CredentialsProvider({
               provider,
               {
                 provider,
-                providerName:
-                  providerDisplayNames[provider as CredentialsProviderName],
+                providerName: providerDisplayNames[provider],
                 savedCredentials: credentialsByProvider[provider] ?? [],
                 oAuthCallback: (code: string, state_token: string) =>
-                  oAuthCallback(
-                    provider as CredentialsProviderName,
-                    code,
-                    state_token,
-                  ),
+                  oAuthCallback(provider, code, state_token),
                 createAPIKeyCredentials: (
                   credentials: APIKeyCredentialsCreatable,
-                ) =>
-                  createAPIKeyCredentials(
-                    provider as CredentialsProviderName,
-                    credentials,
-                  ),
+                ) => createAPIKeyCredentials(provider, credentials),
                 createUserPasswordCredentials: (
                   credentials: UserPasswordCredentialsCreatable,
-                ) =>
-                  createUserPasswordCredentials(
-                    provider as CredentialsProviderName,
-                    credentials,
-                  ),
+                ) => createUserPasswordCredentials(provider, credentials),
                 deleteCredentials: (id: string, force: boolean = false) =>
-                  deleteCredentials(
-                    provider as CredentialsProviderName,
-                    id,
-                    force,
-                  ),
+                  deleteCredentials(provider, id, force),
               } satisfies CredentialsProviderData,
             ]),
           ),
