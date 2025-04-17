@@ -332,6 +332,7 @@ def llm_call(
             response_format=response_format,  # type: ignore
             max_completion_tokens=max_tokens,
             tools=tools_param,  # type: ignore
+            parallel_tool_calls=False,  # disable parallel tool calls
         )
 
         if response.choices[0].message.tool_calls:
@@ -487,6 +488,7 @@ def llm_call(
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
+            parallel_tool_calls=False,  # disable parallel tool calls
         )
 
         # If there's no response, raise an error
