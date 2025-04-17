@@ -293,6 +293,7 @@ export const CredentialsInput: FC<{
             onSelectCredentials(credsMeta);
             setAPICredentialsModalOpen(false);
           }}
+          siblingInputs={siblingInputs}
         />
       )}
       {supportsOAuth2 && (
@@ -311,6 +312,7 @@ export const CredentialsInput: FC<{
             onSelectCredentials(creds);
             setUserPasswordCredentialsModalOpen(false);
           }}
+          siblingInputs={siblingInputs}
         />
       )}
     </>
@@ -449,8 +451,9 @@ export const APIKeyCredentialsModal: FC<{
   open: boolean;
   onClose: () => void;
   onCredentialsCreate: (creds: CredentialsMetaInput) => void;
-}> = ({ schema, open, onClose, onCredentialsCreate }) => {
-  const credentials = useCredentials(schema);
+  siblingInputs?: Record<string, any>;
+}> = ({ schema, open, onClose, onCredentialsCreate, siblingInputs }) => {
+  const credentials = useCredentials(schema, siblingInputs);
 
   const formSchema = z.object({
     apiKey: z.string().min(1, "API Key is required"),
@@ -584,8 +587,9 @@ export const UserPasswordCredentialsModal: FC<{
   open: boolean;
   onClose: () => void;
   onCredentialsCreate: (creds: CredentialsMetaInput) => void;
-}> = ({ schema, open, onClose, onCredentialsCreate }) => {
-  const credentials = useCredentials(schema);
+  siblingInputs?: Record<string, any>;
+}> = ({ schema, open, onClose, onCredentialsCreate, siblingInputs }) => {
+  const credentials = useCredentials(schema, siblingInputs);
 
   const formSchema = z.object({
     username: z.string().min(1, "Username is required"),
