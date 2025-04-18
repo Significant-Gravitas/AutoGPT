@@ -145,6 +145,8 @@ export default function AgentRunsPage(): React.ReactElement {
     const detachExecUpdateHandler = api.onWebSocketMessage(
       "graph_execution_event",
       (data) => {
+        if (data.graph_id != agent?.graph_id) return;
+
         setAgentRuns((prev) => {
           const index = prev.findIndex((run) => run.id === data.id);
           if (index === -1) {
@@ -163,7 +165,7 @@ export default function AgentRunsPage(): React.ReactElement {
     return () => {
       detachExecUpdateHandler();
     };
-  }, [api, selectedView.id]);
+  }, [api, agent?.graph_id, selectedView.id]);
 
   // load selectedRun based on selectedView
   useEffect(() => {
