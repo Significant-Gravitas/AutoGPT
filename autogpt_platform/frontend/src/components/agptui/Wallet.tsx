@@ -14,6 +14,7 @@ import { useOnboarding } from "../onboarding/onboarding-provider";
 import { useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import * as party from "party-js";
+import WalletRefill from "./WalletRefill";
 
 export default function Wallet() {
   const { credits, formatCredits, fetchCredits } = useCredits({
@@ -86,26 +87,31 @@ export default function Wallet() {
           "rounded-xl border-zinc-200 bg-zinc-50 shadow-[0_3px_3px] shadow-zinc-300",
         )}
       >
-        <div>
-          <div className="mx-1 flex items-center justify-between border-b border-zinc-300 pb-2">
-            <span className="font-poppins font-medium text-zinc-900">
-              Your wallet
-            </span>
-            <div className="flex items-center font-inter text-sm font-semibold text-violet-700">
-              <div className="rounded-lg bg-violet-100 px-3 py-2">
-                Wallet{" "}
-                <span className="font-semibold">{formatCredits(credits)}</span>
-              </div>
-              <PopoverClose>
-                <X className="ml-[2.8rem] h-5 w-5 text-zinc-800 hover:text-foreground" />
-              </PopoverClose>
+        {/* Header */}
+        <div className="mx-1 flex items-center justify-between border-b border-zinc-300 pb-2">
+          <span className="font-poppins font-medium text-zinc-900">
+            Your wallet
+          </span>
+          <div className="flex items-center font-inter text-sm font-semibold text-violet-700">
+            <div className="rounded-lg bg-violet-100 px-3 py-2">
+              Wallet{" "}
+              <span className="font-semibold">{formatCredits(credits)}</span>
             </div>
+            <PopoverClose>
+              <X className="ml-[2.8rem] h-5 w-5 text-zinc-800 hover:text-foreground" />
+            </PopoverClose>
           </div>
-          <p className="mx-1 mt-3 font-inter text-xs text-muted-foreground text-zinc-400">
+        </div>
+        <ScrollArea className="max-h-[85vh] overflow-y-auto">
+          {/* Top ups */}
+          <WalletRefill />
+          {/* Tasks */}
+          <p className="mx-1 mt-4 font-sans text-xs font-medium text-violet-700">
+            Onboarding tasks
+          </p>
+          <p className="mx-1 my-1 font-sans text-xs font-normal text-zinc-500">
             Complete the following tasks to earn more credits!
           </p>
-        </div>
-        <ScrollArea className="max-h-[80vh] overflow-y-auto">
           <TaskGroups />
         </ScrollArea>
       </PopoverContent>
