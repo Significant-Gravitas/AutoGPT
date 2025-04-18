@@ -920,8 +920,6 @@ async def migrate_llm_models(migrate_to: LlmModel):
 
     # Update each block
     for id, path in llm_model_fields.items():
-        logger.warning(f"Updating block {id} field {path}")
-
         query = f"""
             UPDATE platform."AgentNode"
             SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
