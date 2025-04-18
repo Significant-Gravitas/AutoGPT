@@ -87,7 +87,7 @@ class LogMetadata:
             "node_id": node_id,
             "block_name": block_name,
         }
-        self.prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|nid:{node_eid}|{block_name}]"
+        self.prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"
 
     def info(self, msg: str, **extra):
         msg = self._wrap(msg, **extra)
