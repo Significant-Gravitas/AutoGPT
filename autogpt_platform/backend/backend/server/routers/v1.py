@@ -613,16 +613,31 @@ async def execute_graph(
         preset_id=preset_id,
     )
 
-    bus = execution_event_bus()
-    await bus.publish(graph_exec)
+    try:
+        queue = await execution_queue_client()
+        await queue.publish_message(
+            routing_key=execution_utils.GRAPH_EXECUTION_ROUTING_KEY,
+            message=graph_exec.to_graph_execution_entry().model_dump_json(),
+            exchange=execution_utils.GRAPH_EXECUTION_EXCHANGE,
+        )
 
-    queue = await execution_queue_client()
-    await queue.publish_message(
-        routing_key=execution_utils.GRAPH_EXECUTION_ROUTING_KEY,
-        message=graph_exec.to_graph_execution_entry().model_dump_json(),
-        exchange=execution_utils.GRAPH_EXECUTION_EXCHANGE,
-    )
-    return ExecuteGraphResponse(graph_exec_id=graph_exec.id)
+        bus = execution_event_bus()
+        await bus.publish(graph_exec)
+
+        return ExecuteGraphResponse(graph_exec_id=graph_exec.id)
+
+    except Exception as e:
+        logger.error(f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {e}")
+        await execution_db.update_node_execution_status_batch(
+            [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
+            execution_db.ExecutionStatus.FAILED,
+        )
+        await execution_db.update_graph_execution_stats(
+            graph_exec_id=graph_exec.id,
+            status=execution_db.ExecutionStatus.FAILED,
+            stats=execution_db.GraphExecutionStats(error=str(e)),
+        )
+        raise
 
 
 @v1_router.post(
