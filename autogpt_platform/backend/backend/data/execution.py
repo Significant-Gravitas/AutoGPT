@@ -44,7 +44,7 @@ from .includes import (
     GRAPH_EXECUTION_INCLUDE,
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
 )
-from .model import GraphExecutionStats, NodeExecutionStats
+from .model import CredentialsMetaInput, GraphExecutionStats, NodeExecutionStats
 from .queue import AsyncRedisEventBus, RedisEventBus
 
 T = TypeVar("T")
@@ -220,6 +220,7 @@ class GraphExecutionWithNodes(GraphExecution):
                 )
                 for node_exec in self.node_executions
             ],
+            node_credentials_input_map={},  # FIXME
         )
 
 
@@ -361,7 +362,7 @@ async def get_graph_execution(
 async def create_graph_execution(
     graph_id: str,
     graph_version: int,
-    nodes_input: list[tuple[str, BlockInput]],
+    starting_nodes_input: list[tuple[str, BlockInput]],
     user_id: str,
     preset_id: str | None = None,
 ) -> GraphExecutionWithNodes:
@@ -388,7 +389,7 @@ async def create_graph_execution(
                             ]
                         },
                     )
-                    for node_id, node_input in nodes_input
+                    for node_id, node_input in starting_nodes_input
                 ]
             },
             userId=user_id,
@@ -712,6 +713,7 @@ class GraphExecutionEntry(BaseModel):
     graph_id: str
     graph_version: int
     start_node_execs: list["NodeExecutionEntry"]
+    node_credentials_input_map: Optional[dict[str, dict[str, CredentialsMetaInput]]]
 
 
 class NodeExecutionEntry(BaseModel):

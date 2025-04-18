@@ -6,6 +6,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, status
 
 import backend.server.v2.library.db as db
 import backend.server.v2.library.model as models
+from backend.executor.utils import add_graph_execution_async
 
 logger = logging.getLogger(__name__)
 
@@ -207,8 +208,6 @@ async def execute_preset(
         HTTPException: If the preset is not found or an error occurs while executing the preset.
     """
     try:
-        from backend.server.routers import v1 as internal_api_routes
-
         preset = await db.get_preset(user_id, preset_id)
         if not preset:
             raise HTTPException(
@@ -219,17 +218,17 @@ async def execute_preset(
         # Merge input overrides with preset inputs
         merged_node_input = preset.inputs | node_input
 
-        execution = await internal_api_routes.execute_graph(
+        execution = await add_graph_execution_async(
             graph_id=graph_id,
-            node_input=merged_node_input,
-            graph_version=graph_version,
             user_id=user_id,
+            inputs=merged_node_input,
             preset_id=preset_id,
+            graph_version=graph_version,
         )
 
         logger.debug(f"Execution added: {execution} with input: {merged_node_input}")
 
-        return {"id": execution.graph_exec_id}
+        return {"id": execution.id}
     except HTTPException:
         raise
     except Exception as e:
