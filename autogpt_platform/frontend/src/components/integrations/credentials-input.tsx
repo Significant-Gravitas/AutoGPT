@@ -1,5 +1,6 @@
+import { FC, useEffect, useMemo, useState } from "react";
 import { z } from "zod";
-import { beautifyString, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { useForm } from "react-hook-form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -16,8 +17,8 @@ import {
   FaKey,
   FaHubspot,
 } from "react-icons/fa";
-import { FC, useMemo, useState } from "react";
 import {
+  BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
   CredentialsProviderName,
 } from "@/lib/autogpt-server-api/types";
@@ -106,13 +107,18 @@ export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
 );
 
 export const CredentialsInput: FC<{
-  selfKey: string;
+  schema: BlockIOCredentialsSubSchema;
   className?: string;
   selectedCredentials?: CredentialsMetaInput;
   onSelectCredentials: (newValue?: CredentialsMetaInput) => void;
-}> = ({ selfKey, className, selectedCredentials, onSelectCredentials }) => {
-  const api = useBackendAPI();
-  const credentials = useCredentials(selfKey);
+  siblingInputs?: Record<string, any>;
+}> = ({
+  schema,
+  className,
+  selectedCredentials,
+  onSelectCredentials,
+  siblingInputs,
+}) => {
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);
   const [
@@ -124,20 +130,47 @@ export const CredentialsInput: FC<{
     useState<AbortController | null>(null);
   const [oAuthError, setOAuthError] = useState<string | null>(null);
 
-  if (!credentials || credentials.isLoading) {
+  const api = useBackendAPI();
+  const credentials = useCredentials(schema, siblingInputs);
+
+  // Deselect credentials if they do not exist (e.g. provider was changed)
+  useEffect(() => {
+    if (!credentials || !("savedCredentials" in credentials)) return;
+    if (
+      selectedCredentials &&
+      !credentials.savedCredentials.some((c) => c.id === selectedCredentials.id)
+    ) {
+      onSelectCredentials(undefined);
+    }
+  }, [credentials, selectedCredentials, onSelectCredentials]);
+
+  const singleCredential = useMemo(() => {
+    if (!credentials || !("savedCredentials" in credentials)) return null;
+
+    if (credentials.savedCredentials.length === 1)
+      return credentials.savedCredentials[0];
+
+    return null;
+  }, [credentials]);
+
+  // If only 1 credential is available, auto-select it and hide this input
+  useEffect(() => {
+    if (singleCredential && !selectedCredentials) {
+      onSelectCredentials(singleCredential);
+    }
+  }, [singleCredential, selectedCredentials, onSelectCredentials]);
+
+  if (!credentials || credentials.isLoading || singleCredential) {
     return null;
   }
 
   const {
-    schema,
     provider,
     providerName,
     supportsApiKey,
     supportsOAuth2,
     supportsUserPassword,
-    savedApiKeys,
-    savedOAuthCredentials,
-    savedUserPasswordCredentials,
+    savedCredentials,
     oAuthCallback,
   } = credentials;
 
@@ -235,13 +268,14 @@ export const CredentialsInput: FC<{
     <>
       {supportsApiKey && (
         <APIKeyCredentialsModal
-          credentialsFieldName={selfKey}
+          schema={schema}
           open={isAPICredentialsModalOpen}
           onClose={() => setAPICredentialsModalOpen(false)}
           onCredentialsCreate={(credsMeta) => {
             onSelectCredentials(credsMeta);
             setAPICredentialsModalOpen(false);
           }}
+          siblingInputs={siblingInputs}
         />
       )}
       {supportsOAuth2 && (
@@ -253,43 +287,34 @@ export const CredentialsInput: FC<{
       )}
       {supportsUserPassword && (
         <UserPasswordCredentialsModal
-          credentialsFieldName={selfKey}
+          schema={schema}
           open={isUserPasswordCredentialsModalOpen}
           onClose={() => setUserPasswordCredentialsModalOpen(false)}
           onCredentialsCreate={(creds) => {
             onSelectCredentials(creds);
             setUserPasswordCredentialsModalOpen(false);
           }}
+          siblingInputs={siblingInputs}
         />
       )}
     </>
   );
 
-  // Deselect credentials if they do not exist (e.g. provider was changed)
-  if (
-    selectedCredentials &&
-    !savedApiKeys
-      .concat(savedOAuthCredentials)
-      .concat(savedUserPasswordCredentials)
-      .some((c) => c.id === selectedCredentials.id)
-  ) {
-    onSelectCredentials(undefined);
-  }
+  const fieldHeader = (
+    <div className="mb-2 flex gap-1">
+      <span className="text-m green text-gray-900">
+        {providerName} Credentials
+      </span>
+      <SchemaTooltip description={schema.description} />
+    </div>
+  );
 
   // No saved credentials yet
-  if (
-    savedApiKeys.length === 0 &&
-    savedOAuthCredentials.length === 0 &&
-    savedUserPasswordCredentials.length === 0
-  ) {
+  if (savedCredentials.length === 0) {
     return (
-      <>
-        <div className="mb-2 flex gap-1">
-          <span className="text-m green text-gray-900">
-            {providerName} Credentials
-          </span>
-          <SchemaTooltip description={schema.description} />
-        </div>
+      <div>
+        {fieldHeader}
+
         <div className={cn("flex flex-row space-x-2", className)}>
           {supportsOAuth2 && (
             <Button onClick={handleOAuthLogin}>
@@ -314,44 +339,8 @@ export const CredentialsInput: FC<{
         {oAuthError && (
           <div className="mt-2 text-red-500">Error: {oAuthError}</div>
         )}
-      </>
+      </div>
     );
-  }
-
-  const getCredentialCounts = () => ({
-    apiKeys: savedApiKeys.length,
-    oauth: savedOAuthCredentials.length,
-    userPass: savedUserPasswordCredentials.length,
-  });
-
-  const getSingleCredential = () => {
-    const counts = getCredentialCounts();
-    const totalCredentials = Object.values(counts).reduce(
-      (sum, count) => sum + count,
-      0,
-    );
-
-    if (totalCredentials !== 1) return null;
-
-    if (counts.apiKeys === 1) return savedApiKeys[0];
-    if (counts.oauth === 1) return savedOAuthCredentials[0];
-    if (counts.userPass === 1) return savedUserPasswordCredentials[0];
-
-    return null;
-  };
-
-  const singleCredential = getSingleCredential();
-
-  if (singleCredential) {
-    if (!selectedCredentials) {
-      onSelectCredentials({
-        id: singleCredential.id,
-        type: singleCredential.type,
-        provider,
-        title: singleCredential.title,
-      });
-    }
-    return null;
   }
 
   function handleValueChange(newValue: string) {
@@ -362,10 +351,7 @@ export const CredentialsInput: FC<{
       // Open API key dialog
       setAPICredentialsModalOpen(true);
     } else {
-      const selectedCreds = savedApiKeys
-        .concat(savedOAuthCredentials)
-        .concat(savedUserPasswordCredentials)
-        .find((c) => c.id == newValue)!;
+      const selectedCreds = savedCredentials.find((c) => c.id == newValue)!;
 
       onSelectCredentials({
         id: selectedCreds.id,
@@ -378,38 +364,40 @@ export const CredentialsInput: FC<{
 
   // Saved credentials exist
   return (
-    <>
-      <div className="flex gap-1">
-        <span className="text-m green mb-0 text-gray-900">
-          {providerName} Credentials
-        </span>
-        <SchemaTooltip description={schema.description} />
-      </div>
+    <div>
+      {fieldHeader}
+
       <Select value={selectedCredentials?.id} onValueChange={handleValueChange}>
         <SelectTrigger>
           <SelectValue placeholder={schema.placeholder} />
         </SelectTrigger>
         <SelectContent className="nodrag">
-          {savedOAuthCredentials.map((credentials, index) => (
-            <SelectItem key={index} value={credentials.id}>
-              <ProviderIcon className="mr-2 inline h-4 w-4" />
-              {credentials.username}
-            </SelectItem>
-          ))}
-          {savedApiKeys.map((credentials, index) => (
-            <SelectItem key={index} value={credentials.id}>
-              <ProviderIcon className="mr-2 inline h-4 w-4" />
-              <IconKey className="mr-1.5 inline" />
-              {credentials.title}
-            </SelectItem>
-          ))}
-          {savedUserPasswordCredentials.map((credentials, index) => (
-            <SelectItem key={index} value={credentials.id}>
-              <ProviderIcon className="mr-2 inline h-4 w-4" />
-              <IconUserPlus className="mr-1.5 inline" />
-              {credentials.title}
-            </SelectItem>
-          ))}
+          {savedCredentials
+            .filter((c) => c.type == "oauth2")
+            .map((credentials, index) => (
+              <SelectItem key={index} value={credentials.id}>
+                <ProviderIcon className="mr-2 inline h-4 w-4" />
+                {credentials.username}
+              </SelectItem>
+            ))}
+          {savedCredentials
+            .filter((c) => c.type == "api_key")
+            .map((credentials, index) => (
+              <SelectItem key={index} value={credentials.id}>
+                <ProviderIcon className="mr-2 inline h-4 w-4" />
+                <IconKey className="mr-1.5 inline" />
+                {credentials.title}
+              </SelectItem>
+            ))}
+          {savedCredentials
+            .filter((c) => c.type == "user_password")
+            .map((credentials, index) => (
+              <SelectItem key={index} value={credentials.id}>
+                <ProviderIcon className="mr-2 inline h-4 w-4" />
+                <IconUserPlus className="mr-1.5 inline" />
+                {credentials.title}
+              </SelectItem>
+            ))}
           <SelectSeparator />
           {supportsOAuth2 && (
             <SelectItem value="sign-in">
@@ -435,17 +423,18 @@ export const CredentialsInput: FC<{
       {oAuthError && (
         <div className="mt-2 text-red-500">Error: {oAuthError}</div>
       )}
-    </>
+    </div>
   );
 };
 
 export const APIKeyCredentialsModal: FC<{
-  credentialsFieldName: string;
+  schema: BlockIOCredentialsSubSchema;
   open: boolean;
   onClose: () => void;
   onCredentialsCreate: (creds: CredentialsMetaInput) => void;
-}> = ({ credentialsFieldName, open, onClose, onCredentialsCreate }) => {
-  const credentials = useCredentials(credentialsFieldName);
+  siblingInputs?: Record<string, any>;
+}> = ({ schema, open, onClose, onCredentialsCreate, siblingInputs }) => {
+  const credentials = useCredentials(schema, siblingInputs);
 
   const formSchema = z.object({
     apiKey: z.string().min(1, "API Key is required"),
@@ -466,8 +455,7 @@ export const APIKeyCredentialsModal: FC<{
     return null;
   }
 
-  const { schema, provider, providerName, createAPIKeyCredentials } =
-    credentials;
+  const { provider, providerName, createAPIKeyCredentials } = credentials;
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     const expiresAt = values.expiresAt
@@ -576,12 +564,13 @@ export const APIKeyCredentialsModal: FC<{
 };
 
 export const UserPasswordCredentialsModal: FC<{
-  credentialsFieldName: string;
+  schema: BlockIOCredentialsSubSchema;
   open: boolean;
   onClose: () => void;
   onCredentialsCreate: (creds: CredentialsMetaInput) => void;
-}> = ({ credentialsFieldName, open, onClose, onCredentialsCreate }) => {
-  const credentials = useCredentials(credentialsFieldName);
+  siblingInputs?: Record<string, any>;
+}> = ({ schema, open, onClose, onCredentialsCreate, siblingInputs }) => {
+  const credentials = useCredentials(schema, siblingInputs);
 
   const formSchema = z.object({
     username: z.string().min(1, "Username is required"),
@@ -606,8 +595,7 @@ export const UserPasswordCredentialsModal: FC<{
     return null;
   }
 
-  const { schema, provider, providerName, createUserPasswordCredentials } =
-    credentials;
+  const { provider, providerName, createUserPasswordCredentials } = credentials;
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     const newCredentials = await createUserPasswordCredentials({
