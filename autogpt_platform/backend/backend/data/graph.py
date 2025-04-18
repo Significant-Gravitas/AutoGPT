@@ -1,7 +1,7 @@
 import logging
 import uuid
 from collections import defaultdict
-from typing import Any, Literal, Optional, Type, cast
+from typing import Any, Literal, Optional, cast
 
 import prisma
 from prisma import Json
@@ -13,12 +13,19 @@ from prisma.types import (
     AgentNodeCreateInput,
     AgentNodeLinkCreateInput,
 )
+from pydantic import create_model
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.llm import LlmModel
 from backend.data.db import prisma as db
+from backend.data.model import (
+    CredentialsField,
+    CredentialsFieldInfo,
+    CredentialsMetaInput,
+    is_credentials_field_name,
+)
 from backend.util import type as type_utils
 
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
@@ -190,14 +197,19 @@ class BaseGraph(BaseDbModel):
             )
         )
 
+    @computed_field
+    @property
+    def credentials_input_schema(self) -> dict[str, Any]:
+        return self._credentials_input_schema.jsonschema()
+
     @staticmethod
     def _generate_schema(
-        *props: tuple[Type[AgentInputBlock.Input] | Type[AgentOutputBlock.Input], dict],
+        *props: tuple[type[AgentInputBlock.Input] | type[AgentOutputBlock.Input], dict],
     ) -> dict[str, Any]:
-        schema = []
+        schema_fields: list[AgentInputBlock.Input | AgentOutputBlock.Input] = []
         for type_class, input_default in props:
             try:
-                schema.append(type_class(**input_default))
+                schema_fields.append(type_class(**input_default))
             except Exception as e:
                 logger.warning(f"Invalid {type_class}: {input_default}, {e}")
 
@@ -217,9 +229,93 @@ class BaseGraph(BaseDbModel):
                     **({"description": p.description} if p.description else {}),
                     **({"default": p.value} if p.value is not None else {}),
                 }
-                for p in schema
+                for p in schema_fields
             },
-            "required": [p.name for p in schema if p.value is None],
+            "required": [p.name for p in schema_fields if p.value is None],
+        }
+
+    @property
+    def _credentials_input_schema(self) -> type[BlockSchema]:
+        graph_credentials_inputs = self.aggregate_credentials_inputs()
+        logger.debug(
+            f"Combined credentials input fields for graph #{self.id} ({self.name}): "
+            f"{graph_credentials_inputs}"
+        )
+
+        # Warn if same-provider credentials inputs can't be combined (= bad UX)
+        graph_cred_fields = list(graph_credentials_inputs.values())
+        for i, (field, keys) in enumerate(graph_cred_fields):
+            for other_field, other_keys in list(graph_cred_fields)[i + 1 :]:
+                if field.provider != other_field.provider:
+                    continue
+
+                # If this happens, that means a block implementation probably needs
+                # to be updated.
+                logger.warning(
+                    "Multiple combined credentials fields "
+                    f"for provider {field.provider} "
+                    f"on graph #{self.id} ({self.name}); "
+                    f"fields: {field} <> {other_field};"
+                    f"keys: {keys} <> {other_keys}."
+                )
+
+        fields: dict[str, tuple[type[CredentialsMetaInput], CredentialsMetaInput]] = {
+            agg_field_key: (
+                CredentialsMetaInput[
+                    Literal[tuple(field_info.provider)],  # type: ignore
+                    Literal[tuple(field_info.supported_types)],  # type: ignore
+                ],
+                CredentialsField(
+                    required_scopes=set(field_info.required_scopes or []),
+                    discriminator=field_info.discriminator,
+                    discriminator_mapping=field_info.discriminator_mapping,
+                ),
+            )
+            for agg_field_key, (field_info, _) in graph_credentials_inputs.items()
+        }
+
+        return create_model(
+            self.name.replace(" ", "") + "CredentialsInputSchema",
+            __base__=BlockSchema,
+            **fields,  # type: ignore
+        )
+
+    def aggregate_credentials_inputs(
+        self,
+    ) -> dict[str, tuple[CredentialsFieldInfo, set[tuple[str, str]]]]:
+        """
+        Returns:
+            dict[aggregated_field_key, tuple(
+                CredentialsFieldInfo: A spec for one aggregated credentials field
+                set[(node_id, field_name)]: Node credentials fields that are
+                    compatible with this aggregated field spec
+            )]
+        """
+        return {
+            "_".join(sorted(agg_field_info.provider))
+            + "_"
+            + "_".join(sorted(agg_field_info.supported_types))
+            + "_credentials": (agg_field_info, node_fields)
+            for agg_field_info, node_fields in CredentialsFieldInfo.combine(
+                *(
+                    (
+                        # Apply discrimination before aggregating credentials inputs
+                        (
+                            field_info.discriminate(
+                                node.input_default[field_info.discriminator]
+                            )
+                            if (
+                                field_info.discriminator
+                                and node.input_default.get(field_info.discriminator)
+                            )
+                            else field_info
+                        ),
+                        (node.id, field_name),
+                    )
+                    for node in self.nodes
+                    for field_name, field_info in node.block.input_schema.get_credentials_fields_info().items()
+                )
+            )
         }
 
 
@@ -320,8 +416,6 @@ class GraphModel(Graph):
             return sanitized_name
 
         # Validate smart decision maker nodes
-        smart_decision_maker_nodes = set()
-        agent_nodes = set()
         nodes_block = {
             node.id: block
             for node in graph.nodes
@@ -331,13 +425,6 @@ class GraphModel(Graph):
         for node in graph.nodes:
             if (block := nodes_block.get(node.id)) is None:
                 raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
-
-            # Smart decision maker nodes
-            if block.block_type == BlockType.AI:
-                smart_decision_maker_nodes.add(node.id)
-            # Agent nodes
-            elif block.block_type == BlockType.AGENT:
-                agent_nodes.add(node.id)
 
         input_links = defaultdict(list)
 
@@ -353,16 +440,21 @@ class GraphModel(Graph):
                 [sanitize(name) for name in node.input_default]
                 + [sanitize(link.sink_name) for link in input_links.get(node.id, [])]
             )
-            for name in block.input_schema.get_required_fields():
+            input_schema = block.input_schema
+            for name in (required_fields := input_schema.get_required_fields()):
                 if (
                     name not in provided_inputs
+                    # Webhook payload is passed in by ExecutionManager
                     and not (
                         name == "payload"
                         and block.block_type
                         in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
                     )
+                    # Checking availability of credentials is done by ExecutionManager
+                    and name not in input_schema.get_credentials_fields()
+                    # Validate only I/O nodes, or validate everything when executing
                     and (
-                        for_run  # Skip input completion validation, unless when executing.
+                        for_run
                         or block.block_type
                         in [
                             BlockType.INPUT,
@@ -375,9 +467,18 @@ class GraphModel(Graph):
                         f"Node {block.name} #{node.id} required input missing: `{name}`"
                     )
 
+                if (
+                    block.block_type == BlockType.INPUT
+                    and (input_key := node.input_default.get("name"))
+                    and is_credentials_field_name(input_key)
+                ):
+                    raise ValueError(
+                        f"Agent input node uses reserved name '{input_key}'; "
+                        "'credentials' and `*_credentials` are reserved input names"
+                    )
+
             # Get input schema properties and check dependencies
-            input_schema = block.input_schema.model_fields
-            required_fields = block.input_schema.get_required_fields()
+            input_fields = input_schema.model_fields
 
             def has_value(name):
                 return (
@@ -385,14 +486,21 @@ class GraphModel(Graph):
                     and name in node.input_default
                     and node.input_default[name] is not None
                     and str(node.input_default[name]).strip() != ""
-                ) or (name in input_schema and input_schema[name].default is not None)
+                ) or (name in input_fields and input_fields[name].default is not None)
 
             # Validate dependencies between fields
-            for field_name, field_info in input_schema.items():
+            for field_name, field_info in input_fields.items():
                 # Apply input dependency validation only on run & field with depends_on
                 json_schema_extra = field_info.json_schema_extra or {}
-                dependencies = json_schema_extra.get("depends_on", [])
-                if not for_run or not dependencies:
+                if not (
+                    for_run
+                    and isinstance(json_schema_extra, dict)
+                    and (
+                        dependencies := cast(
+                            list[str], json_schema_extra.get("depends_on", [])
+                        )
+                    )
+                ):
                     continue
 
                 # Check if dependent field has value in input_default

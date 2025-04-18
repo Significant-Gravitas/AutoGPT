@@ -724,10 +724,10 @@ class Executor:
                     execution_status = ExecutionStatus.TERMINATED
                     return execution_stats, execution_status, error
 
-                exec_data = queue.get()
+                queued_node_exec = queue.get()
 
                 # Avoid parallel execution of the same node.
-                execution = running_executions.get(exec_data.node_id)
+                execution = running_executions.get(queued_node_exec.node_id)
                 if execution and not execution.ready():
                     # TODO (performance improvement):
                     #   Wait for the completion of the same node execution is blocking.
@@ -736,18 +736,18 @@ class Executor:
                     execution.wait()
 
                 log_metadata.debug(
-                    f"Dispatching node execution {exec_data.node_exec_id} "
-                    f"for node {exec_data.node_id}",
+                    f"Dispatching node execution {queued_node_exec.node_exec_id} "
+                    f"for node {queued_node_exec.node_id}",
                 )
 
                 try:
                     exec_cost_counter = cls._charge_usage(
-                        node_exec=exec_data,
+                        node_exec=queued_node_exec,
                         execution_count=exec_cost_counter + 1,
                         execution_stats=execution_stats,
                     )
                 except InsufficientBalanceError as error:
-                    node_exec_id = exec_data.node_exec_id
+                    node_exec_id = queued_node_exec.node_exec_id
                     cls.db_client.upsert_execution_output(
                         node_exec_id=node_exec_id,
                         output_name="error",
@@ -768,10 +768,23 @@ class Executor:
                     )
                     raise
 
-                running_executions[exec_data.node_id] = cls.executor.apply_async(
+                # Add credentials input overrides
+                node_id = queued_node_exec.node_id
+                if (node_creds_map := graph_exec.node_credentials_input_map) and (
+                    node_field_creds_map := node_creds_map.get(node_id)
+                ):
+                    queued_node_exec.data.update(
+                        {
+                            field_name: creds_meta.model_dump()
+                            for field_name, creds_meta in node_field_creds_map.items()
+                        }
+                    )
+
+                # Initiate node execution
+                running_executions[queued_node_exec.node_id] = cls.executor.apply_async(
                     cls.on_node_execution,
-                    (queue, exec_data),
-                    callback=make_exec_callback(exec_data),
+                    (queue, queued_node_exec),
+                    callback=make_exec_callback(queued_node_exec),
                 )
 
                 # Avoid terminating graph execution when some nodes are still running.
