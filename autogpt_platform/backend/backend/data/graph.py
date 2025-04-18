@@ -914,8 +914,6 @@ async def migrate_llm_models(migrate_to: LlmModel):
             if field.annotation == LlmModel:
                 llm_model_fields[block.id] = field_name
 
-        values = LlmModel
-
     # Update each block
     for id, path in llm_model_fields.items():
         # Convert enum values to a list of strings for the SQL query
