@@ -1,11 +1,12 @@
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 generator client {
   provider             = "prisma-client-py"
-  recursive_type_depth = 5
+  recursive_type_depth = -1
   interface            = "asyncio"
   previewFeatures      = ["views"]
 }
@@ -39,25 +40,26 @@ model User {
   AgentGraphExecutions AgentGraphExecution[]
   AnalyticsDetails     AnalyticsDetails[]
   AnalyticsMetrics     AnalyticsMetrics[]
-  CreditTransaction    CreditTransaction[]
+  CreditTransactions   CreditTransaction[]
 
-  AgentPreset  AgentPreset[]
-  LibraryAgent LibraryAgent[]
+  AgentPresets  AgentPreset[]
+  LibraryAgents LibraryAgent[]
 
   Profile               Profile[]
   UserOnboarding        UserOnboarding?
-  StoreListing          StoreListing[]
-  StoreListingReview    StoreListingReview[]
+  StoreListings         StoreListing[]
+  StoreListingReviews   StoreListingReview[]
   StoreVersionsReviewed StoreListingVersion[]
   APIKeys               APIKey[]
   IntegrationWebhooks   IntegrationWebhook[]
-  UserNotificationBatch UserNotificationBatch[]
+  NotificationBatches   UserNotificationBatch[]
 
   @@index([id])
   @@index([email])
 }
 
 enum OnboardingStep {
+  // Introductory onboarding (Library)
   WELCOME
   USAGE_REASON
   INTEGRATIONS
@@ -65,18 +67,32 @@ enum OnboardingStep {
   AGENT_NEW_RUN
   AGENT_INPUT
   CONGRATS
+  GET_RESULTS
+  // Marketplace
+  MARKETPLACE_VISIT
+  MARKETPLACE_ADD_AGENT
+  MARKETPLACE_RUN_AGENT
+  // Builder
+  BUILDER_OPEN
+  BUILDER_SAVE_AGENT
+  BUILDER_RUN_AGENT
 }
 
 model UserOnboarding {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
+  updatedAt DateTime? @updatedAt
 
   completedSteps                OnboardingStep[] @default([])
+  notificationDot               Boolean          @default(true)
+  notified                      OnboardingStep[] @default([])
+  rewardedFor                   OnboardingStep[] @default([])
   usageReason                   String?
   integrations                  String[]         @default([])
   otherIntegrations             String?
   selectedStoreListingVersionId String?
   agentInput                    Json?
+  onboardingAgentExecutionId    String?
 
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -102,13 +118,13 @@ model AgentGraph {
   // This allows us to delete user data with deleting the agent which maybe in use by other users
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  AgentNodes          AgentNode[]
-  AgentGraphExecution AgentGraphExecution[]
+  Nodes      AgentNode[]
+  Executions AgentGraphExecution[]
 
-  AgentPreset         AgentPreset[]
-  LibraryAgent        LibraryAgent[]
-  StoreListing        StoreListing[]
-  StoreListingVersion StoreListingVersion[]
+  Presets              AgentPreset[]
+  LibraryAgents        LibraryAgent[]
+  StoreListings        StoreListing[]
+  StoreListingVersions StoreListingVersion[]
 
   @@id(name: "graphVersionId", [id, version])
   @@index([userId, isActive])
@@ -139,13 +155,12 @@ model AgentPreset {
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  agentId      String
-  agentVersion Int
-  Agent        AgentGraph @relation(fields: [agentId, agentVersion], references: [id, version], onDelete: Cascade)
+  agentGraphId      String
+  agentGraphVersion Int
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Restrict)
 
-  InputPresets   AgentNodeExecutionInputOutput[] @relation("AgentPresetsInputData")
-  LibraryAgents  LibraryAgent[]
-  AgentExecution AgentGraphExecution[]
+  InputPresets AgentNodeExecutionInputOutput[] @relation("AgentPresetsInputData")
+  Executions   AgentGraphExecution[]
 
   isDeleted Boolean @default(false)
 
@@ -194,7 +209,7 @@ model UserNotificationBatch {
 }
 
 // For the library page
-// It is a user controlled list of agents, that they will see in there library
+// It is a user controlled list of agents, that they will see in their library
 model LibraryAgent {
   id        String   @id @default(uuid())
   createdAt DateTime @default(now())
@@ -205,12 +220,9 @@ model LibraryAgent {
 
   imageUrl String?
 
-  agentId      String
-  agentVersion Int
-  Agent        AgentGraph @relation(fields: [agentId, agentVersion], references: [id, version])
-
-  agentPresetId String?
-  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
+  agentGraphId      String
+  agentGraphVersion Int
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Restrict)
 
   creatorId String?
   Creator   Profile? @relation(fields: [creatorId], references: [id])
@@ -222,7 +234,7 @@ model LibraryAgent {
   isArchived      Boolean @default(false)
   isDeleted       Boolean @default(false)
 
-  @@index([userId])
+  @@unique([userId, agentGraphId, agentGraphVersion])
 }
 
 ////////////////////////////////////////////////////////////
@@ -256,7 +268,7 @@ model AgentNode {
 
   metadata Json @default("{}")
 
-  ExecutionHistory AgentNodeExecution[]
+  Executions AgentNodeExecution[]
 
   @@index([agentGraphId, agentGraphVersion])
   @@index([agentBlockId])
@@ -323,15 +335,15 @@ model AgentGraphExecution {
   agentGraphVersion Int        @default(1)
   AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
 
-  AgentNodeExecutions AgentNodeExecution[]
+  NodeExecutions AgentNodeExecution[]
 
   // Link to User model -- Executed by this user
   userId String
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   stats         Json?
-  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
   agentPresetId String?
+  AgentPreset   AgentPreset? @relation(fields: [agentPresetId], references: [id])
 
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId])
@@ -342,10 +354,10 @@ model AgentNodeExecution {
   id String @id @default(uuid())
 
   agentGraphExecutionId String
-  AgentGraphExecution   AgentGraphExecution @relation(fields: [agentGraphExecutionId], references: [id], onDelete: Cascade)
+  GraphExecution        AgentGraphExecution @relation(fields: [agentGraphExecutionId], references: [id], onDelete: Cascade)
 
   agentNodeId String
-  AgentNode   AgentNode @relation(fields: [agentNodeId], references: [id], onDelete: Cascade)
+  Node        AgentNode @relation(fields: [agentNodeId], references: [id], onDelete: Cascade)
 
   Input  AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionInput")
   Output AgentNodeExecutionInputOutput[] @relation("AgentNodeExecutionOutput")
@@ -627,9 +639,9 @@ model StoreListing {
   ActiveVersion   StoreListingVersion? @relation("ActiveVersion", fields: [activeVersionId], references: [id])
 
   // The agent link here is only so we can do lookup on agentId
-  agentId      String
-  agentVersion Int
-  Agent        AgentGraph @relation(fields: [agentId, agentVersion], references: [id, version], onDelete: Cascade)
+  agentGraphId      String
+  agentGraphVersion Int
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version], onDelete: Cascade)
 
   owningUserId String
   OwningUser   User   @relation(fields: [owningUserId], references: [id])
@@ -638,7 +650,7 @@ model StoreListing {
   Versions StoreListingVersion[] @relation("ListingVersions")
 
   // Unique index on agentId to ensure only one listing per agent, regardless of number of versions the agent has.
-  @@unique([agentId])
+  @@unique([agentGraphId])
   @@unique([owningUserId, slug])
   // Used in the view query
   @@index([isDeleted, hasApprovedVersion])
@@ -651,9 +663,9 @@ model StoreListingVersion {
   updatedAt DateTime @default(now()) @updatedAt
 
   // The agent and version to be listed on the store
-  agentId      String
-  agentVersion Int
-  Agent        AgentGraph @relation(fields: [agentId, agentVersion], references: [id, version])
+  agentGraphId      String
+  agentGraphVersion Int
+  AgentGraph        AgentGraph @relation(fields: [agentGraphId, agentGraphVersion], references: [id, version])
 
   // Content fields
   name        String
@@ -697,7 +709,7 @@ model StoreListingVersion {
   @@index([storeListingId, submissionStatus, isAvailable])
   @@index([submissionStatus])
   @@index([reviewerId])
-  @@index([agentId, agentVersion]) // Non-unique index for efficient lookups
+  @@index([agentGraphId, agentGraphVersion]) // Non-unique index for efficient lookups
 }
 
 model StoreListingReview {

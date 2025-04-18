@@ -156,7 +156,7 @@
 #         participant_ids: list[str] = SchemaField(
 #             description="Array of User IDs to create conversation with (max 50)",
 #             placeholder="Enter participant user IDs",
-#             default=[],
+#             default_factory=list,
 #             advanced=False
 #         )
 

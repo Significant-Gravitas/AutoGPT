@@ -62,10 +62,10 @@ async def connect():
 
     # Connection acquired from a pool like Supabase somehow still possibly allows
     # the db client obtains a connection but still reject query connection afterward.
-    try:
-        await prisma.execute_raw("SELECT 1")
-    except Exception as e:
-        raise ConnectionError("Failed to connect to Prisma.") from e
+    # try:
+    #     await prisma.execute_raw("SELECT 1")
+    # except Exception as e:
+    #     raise ConnectionError("Failed to connect to Prisma.") from e
 
 
 @conn_retry("Prisma", "Releasing connection")
@@ -89,7 +89,7 @@ async def transaction():
 async def locked_transaction(key: str):
     lock_key = zlib.crc32(key.encode("utf-8"))
     async with transaction() as tx:
-        await tx.execute_raw(f"SELECT pg_advisory_xact_lock({lock_key})")
+        await tx.execute_raw("SELECT pg_advisory_xact_lock($1)", lock_key)
         yield tx
 
 

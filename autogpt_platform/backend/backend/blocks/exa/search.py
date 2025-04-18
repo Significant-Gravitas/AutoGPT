@@ -38,11 +38,11 @@ class ExaSearchBlock(Block):
         )
         include_domains: List[str] = SchemaField(
             description="Domains to include in search",
-            default=[],
+            default_factory=list,
         )
         exclude_domains: List[str] = SchemaField(
             description="Domains to exclude from search",
-            default=[],
+            default_factory=list,
             advanced=True,
         )
         start_crawl_date: datetime = SchemaField(
@@ -59,12 +59,12 @@ class ExaSearchBlock(Block):
         )
         include_text: List[str] = SchemaField(
             description="Text patterns to include",
-            default=[],
+            default_factory=list,
             advanced=True,
         )
         exclude_text: List[str] = SchemaField(
             description="Text patterns to exclude",
-            default=[],
+            default_factory=list,
             advanced=True,
         )
         contents: ContentSettings = SchemaField(
@@ -76,7 +76,7 @@ class ExaSearchBlock(Block):
     class Output(BlockSchema):
         results: list = SchemaField(
             description="List of search results",
-            default=[],
+            default_factory=list,
         )
 
     def __init__(self):

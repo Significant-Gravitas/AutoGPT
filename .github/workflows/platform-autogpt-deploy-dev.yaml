@@ -36,6 +36,7 @@ jobs:
           python -m prisma migrate deploy
         env:
           DATABASE_URL: ${{ secrets.BACKEND_DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.BACKEND_DATABASE_URL }}
 
   trigger:
     needs: migrate

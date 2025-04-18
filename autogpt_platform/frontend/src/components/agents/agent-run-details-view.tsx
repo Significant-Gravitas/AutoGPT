@@ -1,5 +1,6 @@
 "use client";
 import React, { useCallback, useMemo } from "react";
+import { isEmpty } from "lodash";
 import moment from "moment";
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
@@ -164,7 +165,8 @@ export default function AgentRunDetailsView({
           ] satisfies ButtonAction[])
         : []),
       ...(["success", "failed", "stopped"].includes(runStatus) &&
-      !graph.has_webhook_trigger
+      !graph.has_webhook_trigger &&
+      isEmpty(graph.credentials_input_schema.required) // TODO: enable re-run with credentials - https://linear.app/autogpt/issue/SECRT-1243
         ? [
             {
               label: (
@@ -193,6 +195,7 @@ export default function AgentRunDetailsView({
       stopRun,
       deleteRun,
       graph.has_webhook_trigger,
+      graph.credentials_input_schema.properties,
       agent.can_access_graph,
       run.graph_id,
       run.graph_version,
@@ -258,11 +261,7 @@ export default function AgentRunDetailsView({
               Object.entries(agentRunInputs).map(([key, { title, value }]) => (
                 <div key={key} className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium">{title || key}</label>
-                  <Input
-                    defaultValue={value}
-                    className="rounded-full"
-                    disabled
-                  />
+                  <Input value={value} className="rounded-full" disabled />
                 </div>
               ))
             ) : (
