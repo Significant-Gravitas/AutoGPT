@@ -390,11 +390,6 @@ async def add_store_agent_to_library(
                 )
 
             graph = store_listing_version.AgentGraph
-            if graph.userId == user_id:
-                logger.warning(
-                    f"User #{user_id} attempted to add their own agent to their library"
-                )
-                raise store_exceptions.DatabaseError("Cannot add own agent to library")
 
             # Check if user already has this agent
             existing_library_agent = (
