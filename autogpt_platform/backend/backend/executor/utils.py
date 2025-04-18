@@ -14,7 +14,12 @@ from backend.data.block import (
 )
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCostType
-from backend.data.execution import GraphExecutionEntry, RedisExecutionEventBus
+from backend.data.execution import (
+    ExecutionStatus,
+    GraphExecutionEntry,
+    GraphExecutionStats,
+    RedisExecutionEventBus,
+)
 from backend.data.graph import GraphModel, Node
 from backend.data.rabbitmq import (
     Exchange,
@@ -526,26 +531,41 @@ def add_graph_execution(
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
     """
-    graph: GraphModel | None = get_db_client().get_graph(
+    db = get_db_client()
+    graph: GraphModel | None = db.get_graph(
         graph_id=graph_id, user_id=user_id, version=graph_version
     )
     if not graph:
         raise ValueError(f"Graph #{graph_id} not found.")
 
-    graph_exec = get_db_client().create_graph_execution(
+    graph_exec = db.create_graph_execution(
         graph_id=graph_id,
         graph_version=graph.version,
         nodes_input=construct_node_execution_input(graph, user_id, data),
         user_id=user_id,
         preset_id=preset_id,
     )
-    get_execution_event_bus().publish(graph_exec)
+    try:
+        get_execution_event_bus().publish(graph_exec)
 
-    graph_exec_entry = graph_exec.to_graph_execution_entry()
-    get_execution_queue().publish_message(
-        routing_key=GRAPH_EXECUTION_ROUTING_KEY,
-        message=graph_exec_entry.model_dump_json(),
-        exchange=GRAPH_EXECUTION_EXCHANGE,
-    )
+        graph_exec_entry = graph_exec.to_graph_execution_entry()
+        get_execution_queue().publish_message(
+            routing_key=GRAPH_EXECUTION_ROUTING_KEY,
+            message=graph_exec_entry.model_dump_json(),
+            exchange=GRAPH_EXECUTION_EXCHANGE,
+        )
+    except Exception as e:
+        logger.error(f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {e}")
+
+        db.update_node_execution_status_batch(
+            [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
+            ExecutionStatus.FAILED,
+        )
+        db.update_graph_execution_stats(
+            graph_exec_id=graph_exec.id,
+            status=ExecutionStatus.FAILED,
+            stats=GraphExecutionStats(error=str(e)),
+        )
+        raise
 
     return graph_exec_entry
