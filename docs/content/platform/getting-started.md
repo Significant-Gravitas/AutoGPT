@@ -67,18 +67,16 @@ git clone https://github.com/Significant-Gravitas/AutoGPT.git
 ```
 If you get stuck, follow [this guide](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository).
 
-Once that's complete you can close this terminal window.
+Once that's complete you can continue the setup process.
 
 ### Running the backend services
 
 To run the backend services, follow these steps:
 
-* Within the repository, clone the submodules and navigate to the `autogpt_platform` directory:
+* Navigate to the `autogpt_platform` directory inside the AutoGPT folder:
   ```bash
-   git submodule update --init --recursive --progress
-   cd autogpt_platform
+   cd AutoGPT/autogpt_platform
   ```
-  This command will initialize and update the submodules in the repository. The `supabase` folder will be cloned to the root directory.
 
 * Copy the `.env.example` file to `.env` in `autogpt_platform`:
   ```
@@ -95,7 +93,7 @@ To run the backend services, follow these steps:
 
 ### Running the frontend application
 
-To run the frontend application, follow these steps:
+To run the frontend application open a new terminal and follow these steps:
 
 * Navigate to `frontend` folder within the `autogpt_platform` directory:
   ```
