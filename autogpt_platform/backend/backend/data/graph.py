@@ -915,7 +915,7 @@ async def migrate_llm_models(migrate_to: LlmModel):
                 llm_model_fields[block.id] = field_name
 
     # Convert enum values to a list of strings for the SQL query
-    enum_values = [v.value for v in LlmModel.__members__.values()]
+    enum_values = [v.value for v in LlmModel]
     escaped_enum_values = repr(tuple(enum_values))  # hack but works
 
     # Update each block
