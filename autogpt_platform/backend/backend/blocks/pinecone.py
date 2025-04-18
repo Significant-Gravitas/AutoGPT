@@ -177,7 +177,8 @@ class PineconeInsertBlock(Block):
             description="Namespace to use in Pinecone", default=""
         )
         metadata: dict = SchemaField(
-            description="Additional metadata to store with each vector", default={}
+            description="Additional metadata to store with each vector",
+            default_factory=dict,
         )
 
     class Output(BlockSchema):

@@ -9,6 +9,9 @@ class ServiceTest(AppService):
     def __init__(self):
         super().__init__()
 
+    def cleanup(self):
+        pass
+
     @classmethod
     def get_port(cls) -> int:
         return TEST_SERVICE_PORT
@@ -29,7 +32,7 @@ class ServiceTest(AppService):
         return self.run_and_wait(add_async(a, b))
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_service_creation(server):
     with ServiceTest():
         client = get_service_client(ServiceTest)

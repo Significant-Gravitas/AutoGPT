@@ -14,7 +14,6 @@ from backend.data.block import (
     BlockOutput,
     BlockSchema,
     BlockType,
-    get_block,
 )
 from backend.data.model import SchemaField
 from backend.util import json
@@ -33,6 +32,81 @@ def get_database_manager_client():
     return get_service_client(DatabaseManager)
 
 
+def _get_tool_requests(entry: dict[str, Any]) -> list[str]:
+    """
+    Return a list of tool_call_ids if the entry is a tool request.
+    Supports both OpenAI and Anthropics formats.
+    """
+    tool_call_ids = []
+    if entry.get("role") != "assistant":
+        return tool_call_ids
+
+    # OpenAI: check for tool_calls in the entry.
+    calls = entry.get("tool_calls")
+    if isinstance(calls, list):
+        for call in calls:
+            if tool_id := call.get("id"):
+                tool_call_ids.append(tool_id)
+
+    # Anthropics: check content items for tool_use type.
+    content = entry.get("content")
+    if isinstance(content, list):
+        for item in content:
+            if item.get("type") != "tool_use":
+                continue
+            if tool_id := item.get("id"):
+                tool_call_ids.append(tool_id)
+
+    return tool_call_ids
+
+
+def _get_tool_responses(entry: dict[str, Any]) -> list[str]:
+    """
+    Return a list of tool_call_ids if the entry is a tool response.
+    Supports both OpenAI and Anthropics formats.
+    """
+    tool_call_ids: list[str] = []
+
+    # OpenAI: a tool response message with role "tool" and key "tool_call_id".
+    if entry.get("role") == "tool":
+        if tool_call_id := entry.get("tool_call_id"):
+            tool_call_ids.append(str(tool_call_id))
+
+    # Anthropics: check content items for tool_result type.
+    if entry.get("role") == "user":
+        content = entry.get("content")
+        if isinstance(content, list):
+            for item in content:
+                if item.get("type") != "tool_result":
+                    continue
+                if tool_call_id := item.get("tool_use_id"):
+                    tool_call_ids.append(tool_call_id)
+
+    return tool_call_ids
+
+
+def _create_tool_response(call_id: str, output: dict[str, Any]) -> dict[str, Any]:
+    """
+    Create a tool response message for either OpenAI or Anthropics,
+    based on the tool_id format.
+    """
+    content = output if isinstance(output, str) else json.dumps(output)
+
+    # Anthropics format: tool IDs typically start with "toolu_"
+    if call_id.startswith("toolu_"):
+        return {
+            "role": "user",
+            "type": "message",
+            "content": [
+                {"tool_use_id": call_id, "type": "tool_result", "content": content}
+            ],
+        }
+
+    # OpenAI format: tool IDs typically start with "call_".
+    # Or default fallback (if the tool_id doesn't match any known prefix)
+    return {"role": "tool", "tool_call_id": call_id, "content": content}
+
+
 def get_pending_tool_calls(conversation_history: list[Any]) -> dict[str, int]:
     """
     All the tool calls entry in the conversation history requires a response.
@@ -42,10 +116,10 @@ def get_pending_tool_calls(conversation_history: list[Any]) -> dict[str, int]:
     """
     pending_calls = Counter()
     for history in conversation_history:
-        for call in history.get("tool_calls") or []:
-            pending_calls[call.get("id")] += 1
+        for call_id in _get_tool_requests(history):
+            pending_calls[call_id] += 1
 
-        if call_id := history.get("tool_call_id"):
+        for call_id in _get_tool_responses(history):
             pending_calls[call_id] -= 1
 
     return {call_id: count for call_id, count in pending_calls.items() if count > 0}
@@ -70,11 +144,17 @@ class SmartDecisionMakerBlock(Block):
         credentials: llm.AICredentials = llm.AICredentialsField()
         sys_prompt: str = SchemaField(
             title="System Prompt",
-            default="Thinking carefully step by step decide which function to call. Always choose a function call from the list of function signatures.",
+            default="Thinking carefully step by step decide which function to call. "
+            "Always choose a function call from the list of function signatures, "
+            "and always provide the complete argument provided with the type "
+            "matching the required jsonschema signature, no missing argument is allowed. "
+            "If you have already completed the task objective, you can end the task "
+            "by providing the end result of your work as a finish message. "
+            "Only provide EXACTLY one function call, multiple tool calls is strictly prohibited.",
             description="The system prompt to provide additional context to the model.",
         )
         conversation_history: list[dict] = SchemaField(
-            default=[],
+            default_factory=list,
             description="The conversation history to provide context for the prompt.",
         )
         last_tool_output: Any = SchemaField(
@@ -88,7 +168,7 @@ class SmartDecisionMakerBlock(Block):
         )
         prompt_values: dict[str, str] = SchemaField(
             advanced=False,
-            default={},
+            default_factory=dict,
             description="Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}.",
         )
         max_tokens: int | None = SchemaField(
@@ -105,7 +185,7 @@ class SmartDecisionMakerBlock(Block):
         @classmethod
         def get_missing_links(cls, data: BlockInput, links: list["Link"]) -> set[str]:
             # conversation_history & last_tool_output validation is handled differently
-            return super().get_missing_links(
+            missing_links = super().get_missing_links(
                 data,
                 [
                     link
@@ -115,6 +195,19 @@ class SmartDecisionMakerBlock(Block):
                 ],
             )
 
+            # Avoid executing the block if the last_tool_output is connected to a static
+            # link, like StoreValueBlock or AgentInputBlock.
+            if any(link.sink_name == "conversation_history" for link in links) and any(
+                link.sink_name == "last_tool_output" and link.is_static
+                for link in links
+            ):
+                raise ValueError(
+                    "Last Tool Output can't be connected to a static (dashed line) "
+                    "link like the output of `StoreValue` or `AgentInput` block"
+                )
+
+            return missing_links
+
         @classmethod
         def get_missing_input(cls, data: BlockInput) -> set[str]:
             if missing_input := super().get_missing_input(data):
@@ -122,7 +215,6 @@ class SmartDecisionMakerBlock(Block):
 
             conversation_history = data.get("conversation_history", [])
             pending_tool_calls = get_pending_tool_calls(conversation_history)
-
             last_tool_output = data.get("last_tool_output")
             if not last_tool_output and pending_tool_calls:
                 return {"last_tool_output"}
@@ -171,9 +263,7 @@ class SmartDecisionMakerBlock(Block):
         Raises:
             ValueError: If the block specified by sink_node.block_id is not found.
         """
-        block = get_block(sink_node.block_id)
-        if not block:
-            raise ValueError(f"Block not found: {sink_node.block_id}")
+        block = sink_node.block
 
         tool_function: dict[str, Any] = {
             "name": re.sub(r"[^a-zA-Z0-9_-]", "_", block.name).lower(),
@@ -347,17 +437,31 @@ class SmartDecisionMakerBlock(Block):
         # Prefill all missing tool calls with the last tool output/
         # TODO: we need a better way to handle this.
         tool_output = [
-            {
-                "role": "tool",
-                "content": input_data.last_tool_output,
-                "tool_call_id": pending_call_id,
-            }
+            _create_tool_response(pending_call_id, input_data.last_tool_output)
             for pending_call_id, count in pending_tool_calls.items()
             for _ in range(count)
         ]
+
+        # If the SDM block only calls 1 tool at a time, this should not happen.
         if len(tool_output) > 1:
             logger.warning(
-                f"[node_exec_id={node_exec_id}] Multiple pending tool calls are prefilled using a single output. Execution may not be accurate."
+                f"[SmartDecisionMakerBlock-node_exec_id={node_exec_id}] "
+                f"Multiple pending tool calls are prefilled using a single output. "
+                f"Execution may not be accurate."
+            )
+
+        # Fallback on adding tool output in the conversation history as user prompt.
+        if len(tool_output) == 0 and input_data.last_tool_output:
+            logger.warning(
+                f"[SmartDecisionMakerBlock-node_exec_id={node_exec_id}] "
+                f"No pending tool calls found. This may indicate an issue with the "
+                f"conversation history, or an LLM calling two tools at the same time."
+            )
+            tool_output.append(
+                {
+                    "role": "user",
+                    "content": f"Last tool output: {json.dumps(input_data.last_tool_output)}",
+                }
             )
 
         prompt.extend(tool_output)
@@ -367,11 +471,17 @@ class SmartDecisionMakerBlock(Block):
             input_data.prompt = llm.fmt.format_string(input_data.prompt, values)
             input_data.sys_prompt = llm.fmt.format_string(input_data.sys_prompt, values)
 
-        if input_data.sys_prompt:
-            prompt.append({"role": "system", "content": input_data.sys_prompt})
+        prefix = "[Main Objective Prompt]: "
 
-        if input_data.prompt:
-            prompt.append({"role": "user", "content": input_data.prompt})
+        if input_data.sys_prompt and not any(
+            p["role"] == "system" and p["content"].startswith(prefix) for p in prompt
+        ):
+            prompt.append({"role": "system", "content": prefix + input_data.sys_prompt})
+
+        if input_data.prompt and not any(
+            p["role"] == "user" and p["content"].startswith(prefix) for p in prompt
+        ):
+            prompt.append({"role": "user", "content": prefix + input_data.prompt})
 
         response = llm.llm_call(
             credentials=credentials,
@@ -381,10 +491,11 @@ class SmartDecisionMakerBlock(Block):
             max_tokens=input_data.max_tokens,
             tools=tool_functions,
             ollama_host=input_data.ollama_host,
+            parallel_tool_calls=False,
         )
 
         if not response.tool_calls:
-            yield "finished", f"No Decision Made finishing task: {response.response}"
+            yield "finished", response.response
             return
 
         for tool_call in response.tool_calls:

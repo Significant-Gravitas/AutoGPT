@@ -31,12 +31,12 @@ class UpdateTrackingModel(BaseModel, Generic[T]):
     _updated_fields: Set[str] = PrivateAttr(default_factory=set)
 
     def __setattr__(self, name: str, value) -> None:
-        if name in self.model_fields:
+        if name in UpdateTrackingModel.model_fields:
             self._updated_fields.add(name)
         super().__setattr__(name, value)
 
     def mark_updated(self, field_name: str) -> None:
-        if field_name in self.model_fields:
+        if field_name in UpdateTrackingModel.model_fields:
             self._updated_fields.add(field_name)
 
     def clear_updates(self) -> None:
@@ -65,10 +65,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=1000,
         description="Maximum number of workers to use for node execution within a single graph.",
     )
-    use_http_based_rpc: bool = Field(
-        default=True,
-        description="Whether to use HTTP-based RPC for communication between services.",
-    )
     pyro_host: str = Field(
         default="localhost",
         description="The default hostname of the Pyro server.",
@@ -80,6 +76,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     pyro_client_comm_retry: int = Field(
         default=3,
         description="The default number of retries for Pyro client connections.",
+    )
+    rpc_client_call_timeout: int = Field(
+        default=300,
+        description="The default timeout in seconds, for RPC client calls.",
     )
     enable_auth: bool = Field(
         default=True,
@@ -109,6 +109,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default="%Y-%W",  # This will allow for weekly refunds per user.
         description="Time key format for refund requests.",
     )
+    execution_cost_count_threshold: int = Field(
+        default=100,
+        description="Number of executions after which the cost is calculated.",
+    )
+    execution_cost_per_threshold: int = Field(
+        default=1,
+        description="Cost per execution in cents after each threshold.",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -128,6 +136,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     execution_manager_port: int = Field(
         default=8002,
         description="The port for execution manager daemon to run on",
+    )
+    execution_manager_loop_max_retry: int = Field(
+        default=5,
+        description="The maximum number of retries for the execution manager loop",
     )
 
     execution_scheduler_port: int = Field(
@@ -158,6 +170,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     notification_service_port: int = Field(
         default=8007,
         description="The port for notification service daemon to run on",
+    )
+
+    otto_api_url: str = Field(
+        default="",
+        description="The URL for the Otto API service",
     )
 
     platform_base_url: str = Field(
@@ -209,6 +226,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     use_agent_image_generation_v2: bool = Field(
         default=True,
         description="Whether to use the new agent image generation service",
+    )
+    enable_agent_input_subtype_blocks: bool = Field(
+        default=True,
+        description="Whether to enable the agent input subtype blocks",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")
@@ -314,6 +335,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     postmark_webhook_token: str = Field(
         default="",
         description="The token to use for the Postmark webhook",
+    )
+
+    unsubscribe_secret_key: str = Field(
+        default="",
+        description="The secret key to use for the unsubscribe user by token",
     )
 
     # OAuth server credentials for integrations

@@ -23,7 +23,7 @@ class JinaChunkingBlock(Block):
     class Output(BlockSchema):
         chunks: list = SchemaField(description="List of chunked texts")
         tokens: list = SchemaField(
-            description="List of token information for each chunk", optional=True
+            description="List of token information for each chunk",
         )
 
     def __init__(self):

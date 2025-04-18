@@ -109,7 +109,7 @@ export const AgentFlowList = ({
                   lastRun: GraphExecutionMeta | null = null;
                 if (executions) {
                   const _flowRuns = executions.filter(
-                    (r) => r.graph_id == flow.agent_id,
+                    (r) => r.graph_id == flow.graph_id,
                   );
                   runCount = _flowRuns.length;
                   lastRun =
@@ -125,7 +125,10 @@ export const AgentFlowList = ({
                 if (!a.lastRun && !b.lastRun) return 0;
                 if (!a.lastRun) return 1;
                 if (!b.lastRun) return -1;
-                return b.lastRun.started_at - a.lastRun.started_at;
+                return (
+                  b.lastRun.started_at.getTime() -
+                  a.lastRun.started_at.getTime()
+                );
               })
               .map(({ flow, runCount, lastRun }) => (
                 <TableRow

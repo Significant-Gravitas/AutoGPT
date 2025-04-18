@@ -29,7 +29,7 @@ const buttonVariants = cva(
         lg: "h-12 px-5 py-2.5 rounded-full text-lg",
         primary:
           "h-10 w-28 rounded-full sm:h-12 sm:w-32 md:h-[4.375rem] md:w-[11rem] lg:h-[3.125rem] lg:w-[7rem]",
-        icon: "h-10 w-10",
+        icon: "h-10 w-10 justify-center",
         card: "h-12 p-5 agpt-rounded-card justify-center text-lg",
       },
     },

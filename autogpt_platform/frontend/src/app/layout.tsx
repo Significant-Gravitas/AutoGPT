@@ -13,6 +13,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { IconType } from "@/components/ui/icons";
 import { Providers } from "@/app/providers";
 import TallyPopupSimple from "@/components/TallyPopup";
+import OttoChatWidget from "@/components/OttoChatWidget";
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -108,6 +109,7 @@ export default async function RootLayout({
             )}
             <main className="w-full flex-grow">{children}</main>
             <TallyPopupSimple />
+            <OttoChatWidget />
           </div>
           <Toaster />
         </Providers>

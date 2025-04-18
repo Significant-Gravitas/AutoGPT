@@ -1,8 +1,6 @@
 import logging
 from typing import Any
 
-from autogpt_libs.utils.cache import thread_cached
-
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -17,21 +15,6 @@ from backend.data.model import SchemaField
 from backend.util import json
 
 logger = logging.getLogger(__name__)
-
-
-@thread_cached
-def get_executor_manager_client():
-    from backend.executor import ExecutionManager
-    from backend.util.service import get_service_client
-
-    return get_service_client(ExecutionManager)
-
-
-@thread_cached
-def get_event_bus():
-    from backend.data.execution import RedisExecutionEventBus
-
-    return RedisExecutionEventBus()
 
 
 class AgentExecutorBlock(Block):
@@ -75,10 +58,12 @@ class AgentExecutorBlock(Block):
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        executor_manager = get_executor_manager_client()
-        event_bus = get_event_bus()
+        from backend.data.execution import ExecutionEventType
+        from backend.executor import utils as execution_utils
 
-        graph_exec = executor_manager.add_execution(
+        event_bus = execution_utils.get_execution_event_bus()
+
+        graph_exec = execution_utils.add_graph_execution(
             graph_id=input_data.graph_id,
             graph_version=input_data.graph_version,
             user_id=input_data.user_id,
@@ -88,13 +73,11 @@ class AgentExecutorBlock(Block):
         logger.info(f"Starting execution of {log_id}")
 
         for event in event_bus.listen(
-            graph_id=graph_exec.graph_id, graph_exec_id=graph_exec.graph_exec_id
+            user_id=graph_exec.user_id,
+            graph_id=graph_exec.graph_id,
+            graph_exec_id=graph_exec.graph_exec_id,
         ):
-            logger.info(
-                f"Execution {log_id} produced input {event.input_data} output {event.output_data}"
-            )
-
-            if not event.node_id:
+            if event.event_type == ExecutionEventType.GRAPH_EXEC_UPDATE:
                 if event.status in [
                     ExecutionStatus.COMPLETED,
                     ExecutionStatus.TERMINATED,
@@ -104,6 +87,10 @@ class AgentExecutorBlock(Block):
                     break
                 else:
                     continue
+
+            logger.debug(
+                f"Execution {log_id} produced input {event.input_data} output {event.output_data}"
+            )
 
             if not event.block_id:
                 logger.warning(f"{log_id} received event without block_id {event}")
@@ -119,5 +106,7 @@ class AgentExecutorBlock(Block):
                 continue
 
             for output_data in event.output_data.get("output", []):
-                logger.info(f"Execution {log_id} produced {output_name}: {output_data}")
+                logger.debug(
+                    f"Execution {log_id} produced {output_name}: {output_data}"
+                )
                 yield output_name, output_data
