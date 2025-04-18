@@ -546,14 +546,18 @@ def add_graph_execution(
         preset_id=preset_id,
     )
     try:
-        get_execution_event_bus().publish(graph_exec)
-
+        queue = get_execution_queue()
         graph_exec_entry = graph_exec.to_graph_execution_entry()
-        get_execution_queue().publish_message(
+        queue.publish_message(
             routing_key=GRAPH_EXECUTION_ROUTING_KEY,
             message=graph_exec_entry.model_dump_json(),
             exchange=GRAPH_EXECUTION_EXCHANGE,
         )
+
+        bus = get_execution_event_bus()
+        bus.publish(graph_exec)
+
+        return graph_exec_entry
     except Exception as e:
         logger.error(f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {e}")
 
@@ -567,5 +571,3 @@ def add_graph_execution(
             stats=GraphExecutionStats(error=str(e)),
         )
         raise
-
-    return graph_exec_entry
