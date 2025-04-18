@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import logging
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import (
     TYPE_CHECKING,
@@ -12,6 +13,7 @@ from typing import (
     Generic,
     Literal,
     Optional,
+    Sequence,
     TypedDict,
     TypeVar,
     get_args,
@@ -300,9 +302,7 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
         )
         field_schema = model.jsonschema()["properties"][field_name]
         try:
-            schema_extra = _CredentialsFieldSchemaExtra[CP, CT].model_validate(
-                field_schema
-            )
+            schema_extra = CredentialsFieldInfo[CP, CT].model_validate(field_schema)
         except ValidationError as e:
             if "Field required [type=missing" not in str(e):
                 raise
@@ -328,13 +328,89 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     )
 
 
-class _CredentialsFieldSchemaExtra(BaseModel, Generic[CP, CT]):
+class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
     # TODO: move discrimination mechanism out of CredentialsField (frontend + backend)
-    credentials_provider: list[CP]
-    credentials_scopes: Optional[list[str]] = None
-    credentials_types: list[CT]
+    provider: frozenset[CP] = Field(..., alias="credentials_provider")
+    supported_types: frozenset[CT] = Field(..., alias="credentials_types")
+    required_scopes: Optional[frozenset[str]] = Field(None, alias="credentials_scopes")
     discriminator: Optional[str] = None
     discriminator_mapping: Optional[dict[str, CP]] = None
+
+    @classmethod
+    def combine(
+        cls, *fields: tuple[CredentialsFieldInfo[CP, CT], T]
+    ) -> Sequence[tuple[CredentialsFieldInfo[CP, CT], set[T]]]:
+        """
+        Combines multiple CredentialsFieldInfo objects into as few as possible.
+
+        Rules:
+        - Items can only be combined if they have the same supported credentials types
+          and the same supported providers.
+        - When combining items, the `required_scopes` of the result is a join
+          of the `required_scopes` of the original items.
+
+        Params:
+            *fields: (CredentialsFieldInfo, key) objects to group and combine
+
+        Returns:
+            A sequence of tuples containing combined CredentialsFieldInfo objects and
+            the set of keys of the respective original items that were grouped together.
+        """
+        if not fields:
+            return []
+
+        # Group fields by their provider and supported_types
+        grouped_fields: defaultdict[
+            tuple[frozenset[CP], frozenset[CT]],
+            list[tuple[T, CredentialsFieldInfo[CP, CT]]],
+        ] = defaultdict(list)
+
+        for field, key in fields:
+            group_key = (frozenset(field.provider), frozenset(field.supported_types))
+            grouped_fields[group_key].append((key, field))
+
+        # Combine fields within each group
+        result: list[tuple[CredentialsFieldInfo[CP, CT], set[T]]] = []
+
+        for group in grouped_fields.values():
+            # Start with the first field in the group
+            _, combined = group[0]
+
+            # Track the keys that were combined
+            combined_keys = {key for key, _ in group}
+
+            # Combine required_scopes from all fields in the group
+            all_scopes = set()
+            for _, field in group:
+                if field.required_scopes:
+                    all_scopes.update(field.required_scopes)
+
+            # Create a new combined field
+            result.append(
+                (
+                    CredentialsFieldInfo[CP, CT](
+                        credentials_provider=combined.provider,
+                        credentials_types=combined.supported_types,
+                        credentials_scopes=frozenset(all_scopes) or None,
+                        discriminator=combined.discriminator,
+                        discriminator_mapping=combined.discriminator_mapping,
+                    ),
+                    combined_keys,
+                )
+            )
+
+        return result
+
+    def discriminate(self, discriminator_value: Any) -> CredentialsFieldInfo:
+        if not (self.discriminator and self.discriminator_mapping):
+            return self
+
+        discriminator_value = self.discriminator_mapping[discriminator_value]
+        return CredentialsFieldInfo(
+            credentials_provider=frozenset([discriminator_value]),
+            credentials_types=self.supported_types,
+            credentials_scopes=self.required_scopes,
+        )
 
 
 def CredentialsField(

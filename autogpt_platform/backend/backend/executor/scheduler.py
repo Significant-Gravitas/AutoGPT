@@ -70,7 +70,7 @@ def execute_graph(**kwargs):
         log(f"Executing recurring job for graph #{args.graph_id}")
         execution_utils.add_graph_execution(
             graph_id=args.graph_id,
-            data=args.input_data,
+            inputs=args.input_data,
             user_id=args.user_id,
             graph_version=args.graph_version,
         )
