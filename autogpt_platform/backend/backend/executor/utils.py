@@ -587,7 +587,7 @@ def create_execution_queue_config() -> RabbitMQConfig:
     )
 
 
-async def add_graph_execution(
+async def add_graph_execution_async(
     graph_id: str,
     user_id: str,
     inputs: BlockInput,
@@ -652,7 +652,7 @@ async def add_graph_execution(
     return graph_exec
 
 
-def add_graph_execution_sync(
+def add_graph_execution(
     graph_id: str,
     user_id: str,
     inputs: BlockInput,

@@ -15,7 +15,7 @@ from backend.data.integrations import (
     wait_for_webhook_event,
 )
 from backend.data.model import Credentials, CredentialsType, OAuth2Credentials
-from backend.executor.utils import add_graph_execution
+from backend.executor.utils import add_graph_execution_async
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
@@ -317,7 +317,7 @@ async def webhook_ingress_generic(
             continue
         logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
         executions.append(
-            add_graph_execution(
+            add_graph_execution_async(
                 user_id=webhook.user_id,
                 graph_id=node.graph_id,
                 graph_version=node.graph_version,

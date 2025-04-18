@@ -6,7 +6,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, status
 
 import backend.server.v2.library.db as db
 import backend.server.v2.library.model as models
-from backend.executor.utils import add_graph_execution
+from backend.executor.utils import add_graph_execution_async
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +218,7 @@ async def execute_preset(
         # Merge input overrides with preset inputs
         merged_node_input = preset.inputs | node_input
 
-        execution = await add_graph_execution(
+        execution = await add_graph_execution_async(
             graph_id=graph_id,
             user_id=user_id,
             inputs=merged_node_input,

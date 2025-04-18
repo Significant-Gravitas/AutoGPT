@@ -63,7 +63,7 @@ class AgentExecutorBlock(Block):
 
         event_bus = execution_utils.get_execution_event_bus()
 
-        graph_exec = execution_utils.add_graph_execution_sync(
+        graph_exec = execution_utils.add_graph_execution(
             graph_id=input_data.graph_id,
             graph_version=input_data.graph_version,
             user_id=input_data.user_id,
