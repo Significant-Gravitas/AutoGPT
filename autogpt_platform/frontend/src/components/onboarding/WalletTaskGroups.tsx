@@ -190,48 +190,37 @@ export function TaskGroups() {
           ref={setRef(group.name)}
           className="mt-3 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100"
         >
-          {/* Group Header - unchanged */}
+          {/* Group Header */}
           <div
             className="flex cursor-pointer items-center justify-between p-3"
             onClick={() => toggleGroup(group.name)}
           >
             {/* Name and completed count */}
             <div className="flex-1">
-              <div
-                className={cn(
-                  "text-sm font-medium text-zinc-900",
-                  isGroupCompleted(group) ? "text-zinc-600 line-through" : "",
-                )}
-              >
+              <div className="text-sm font-medium text-zinc-900">
                 {group.name}
               </div>
-              <div
-                className={cn(
-                  "mt-1 text-xs font-normal leading-tight text-zinc-500",
-                  isGroupCompleted(group) ? "line-through" : "",
-                )}
-              >
+              <div className="mt-1 text-xs font-normal leading-tight text-zinc-500">
                 {getCompletedCount(group.tasks)} of {group.tasks.length}{" "}
                 completed
               </div>
             </div>
             {/* Reward and chevron */}
             <div className="flex items-center gap-2">
-              <div
-                className={cn(
-                  "text-xs font-medium leading-tight text-violet-600",
-                  isGroupCompleted(group) ? "line-through" : "",
-                )}
-              >
-                $
-                {group.tasks
-                  .reduce((sum, task) => sum + task.amount, 0)
-                  .toFixed(2)}
-              </div>
+              {isGroupCompleted(group) ? (
+                <div className="rounded-full bg-green-200 px-2.5 py-0.5 font-sans text-xs font-medium text-green-700">
+                  Done
+                </div>
+              ) : (
+                <div className="text-xs font-medium leading-tight text-violet-600">
+                  $
+                  {group.tasks
+                    .reduce((sum, task) => sum + task.amount, 0)
+                    .toFixed(2)}
+                </div>
+              )}
               <ChevronDown
-                className={`h-5 w-5 text-slate-950 transition-transform duration-300 ease-in-out ${
-                  group.isOpen ? "rotate-180" : ""
-                }`}
+                className={`h-5 w-5 text-slate-950 transition-transform duration-300 ease-in-out ${group.isOpen ? "rotate-180" : ""}`}
               />
             </div>
           </div>
@@ -251,7 +240,7 @@ export function TaskGroups() {
                 ref={setRef(task.id)}
                 className="mx-3 border-t border-zinc-300 px-1 pb-1 pt-3"
               >
-                <div className="flex items-center justify-between">
+                <div className="mb-2 flex items-center justify-between">
                   {/* Checkmark and name */}
                   <div className="flex items-center gap-2">
                     <div
@@ -291,35 +280,41 @@ export function TaskGroups() {
                 </div>
 
                 {/* Details section */}
-                <div
-                  className={cn(
-                    "mt-2 overflow-hidden pl-6 text-xs font-normal text-zinc-500 transition-all duration-300 ease-in-out",
-                    isTaskCompleted(task) && "line-through",
-                    group.isOpen
-                      ? "max-h-[100px] opacity-100"
-                      : "max-h-0 opacity-0",
-                  )}
-                >
-                  {task.details}
-                </div>
-                {task.video && (
-                  <div
-                    className={cn(
-                      "relative mx-6 aspect-video overflow-hidden rounded-lg transition-all duration-300 ease-in-out",
-                      group.isOpen
-                        ? "my-2 max-h-[200px] opacity-100"
-                        : "max-h-0 opacity-0",
+                {!isGroupCompleted(group) && (
+                  <>
+                    <div
+                      className={cn(
+                        "overflow-hidden pl-6 text-xs font-normal text-zinc-500 transition-all duration-300 ease-in-out",
+                        isTaskCompleted(task) && "line-through",
+                        group.isOpen
+                          ? "max-h-[100px] opacity-100"
+                          : "max-h-0 opacity-0",
+                      )}
+                    >
+                      {task.details}
+                    </div>
+                    {task.video && (
+                      <div
+                        className={cn(
+                          "relative mx-6 aspect-video overflow-hidden rounded-lg transition-all duration-300 ease-in-out",
+                          group.isOpen
+                            ? "my-2 max-h-[200px] opacity-100"
+                            : "max-h-0 opacity-0",
+                        )}
+                      >
+                        <video
+                          src={task.video}
+                          autoPlay
+                          loop
+                          muted
+                          playsInline
+                          className={cn(
+                            "h-full w-full object-cover object-center",
+                          )}
+                        ></video>
+                      </div>
                     )}
-                  >
-                    <video
-                      src={task.video}
-                      autoPlay
-                      loop
-                      muted
-                      playsInline
-                      className={cn("h-full w-full object-cover object-center")}
-                    ></video>
-                  </div>
+                  </>
                 )}
               </div>
             ))}
