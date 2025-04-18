@@ -67,16 +67,6 @@ def get_db_client() -> "DatabaseManager":
 # ============ Execution Cost Helpers ============ #
 
 
-class UsageTransactionMetadata(BaseModel):
-    graph_exec_id: str | None = None
-    graph_id: str | None = None
-    node_id: str | None = None
-    node_exec_id: str | None = None
-    block_id: str | None = None
-    block: str | None = None
-    input: BlockInput | None = None
-
-
 def execution_usage_cost(execution_count: int) -> tuple[int, int]:
     """
     Calculate the cost of executing a graph based on the number of executions.

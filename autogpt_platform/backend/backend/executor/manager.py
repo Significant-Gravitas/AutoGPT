@@ -34,6 +34,7 @@ from autogpt_libs.utils.cache import thread_cached
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data import redis
 from backend.data.block import BlockData, BlockInput, BlockSchema, get_block
+from backend.data.credit import UsageTransactionMetadata
 from backend.data.execution import (
     ExecutionQueue,
     ExecutionStatus,
@@ -47,7 +48,6 @@ from backend.executor.utils import (
     GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
     GRAPH_EXECUTION_QUEUE_NAME,
     CancelExecutionEvent,
-    UsageTransactionMetadata,
     block_usage_cost,
     execution_usage_cost,
     get_execution_event_bus,

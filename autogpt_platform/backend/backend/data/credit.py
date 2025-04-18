@@ -3,6 +3,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timezone
+from typing import Any
 
 import stripe
 from autogpt_libs.utils.cache import thread_cached
@@ -20,6 +21,7 @@ from prisma.types import (
     CreditTransactionCreateInput,
     CreditTransactionWhereInput,
 )
+from pydantic import BaseModel
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from backend.data import db
@@ -33,7 +35,6 @@ from backend.data.model import (
 )
 from backend.data.notifications import NotificationEventDTO, RefundRequestData
 from backend.data.user import get_user_by_id
-from backend.executor.utils import UsageTransactionMetadata
 from backend.notifications import NotificationManager
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.service import get_service_client
@@ -43,6 +44,16 @@ settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
 logger = logging.getLogger(__name__)
 base_url = settings.config.frontend_base_url or settings.config.platform_base_url
+
+
+class UsageTransactionMetadata(BaseModel):
+    graph_exec_id: str | None = None
+    graph_id: str | None = None
+    node_id: str | None = None
+    node_exec_id: str | None = None
+    block_id: str | None = None
+    block: str | None = None
+    input: dict[str, Any] | None = None
 
 
 class UserCreditBase(ABC):
