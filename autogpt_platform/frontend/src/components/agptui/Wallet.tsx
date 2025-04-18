@@ -17,7 +17,7 @@ import * as party from "party-js";
 import WalletRefill from "./WalletRefill";
 
 export default function Wallet() {
-  const { credits, fetchCredits } = useCredits({
+  const { credits, formatCredits, fetchCredits } = useCredits({
     fetchInitialCredits: true,
   });
   const { state, updateState } = useOnboarding();
@@ -74,7 +74,7 @@ export default function Wallet() {
         >
           Wallet{" "}
           <span className="text-sm font-semibold">
-            ${credits ? (credits / 100).toFixed(2) : "-"}
+            {formatCredits(credits)}
           </span>
           {state?.notificationDot && (
             <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
@@ -95,9 +95,7 @@ export default function Wallet() {
           <div className="flex items-center font-inter text-sm font-semibold text-violet-700">
             <div className="rounded-lg bg-violet-100 px-3 py-2">
               Wallet{" "}
-              <span className="font-semibold">
-                ${credits ? (credits / 100).toFixed(2) : "-"}
-              </span>
+              <span className="font-semibold">{formatCredits(credits)}</span>
             </div>
             <PopoverClose>
               <X className="ml-[2.8rem] h-5 w-5 text-zinc-800 hover:text-foreground" />
@@ -114,7 +112,6 @@ export default function Wallet() {
           <p className="mx-1 my-1 font-sans text-xs font-normal text-zinc-500">
             Complete the following tasks to earn more credits!
           </p>
-
           <TaskGroups />
         </ScrollArea>
       </PopoverContent>
