@@ -31,7 +31,7 @@ const TabsTrigger = React.forwardRef<
     className={cn(
       "flex flex-1 items-start justify-center gap-2.5 whitespace-nowrap rounded-2xl px-3 py-2 text-center font-sans text-xs font-medium leading-tight text-gray-500 ring-offset-white transition-all",
       "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-950 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
-      "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)]",
+      "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-subtle",
       className,
     )}
     {...props}
@@ -59,7 +59,7 @@ export { Tabs, TabsList, TabsTrigger, TabsContent };
 <div className="inline-flex h-10 w-80 items-start justify-start rounded-3xl bg-gray-100 p-[5px]">
   <div
     data-state="selected"
-    className="flex flex-1 items-start justify-start gap-2.5 rounded-2xl bg-background px-3 py-1.5 shadow-[0px_1px_2px_0px_rgba(0,0,0,0.05)]"
+    className="flex flex-1 items-start justify-start gap-2.5 rounded-2xl bg-background px-3 py-1.5 shadow-subtle"
   >
     <div className="flex-1 justify-start text-center font-['Geist'] text-xs font-medium leading-tight text-foreground">
       \ One-time top up
