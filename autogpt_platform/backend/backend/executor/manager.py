@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from backend.executor import DatabaseManager
     from backend.notifications.notifications import NotificationManager
 
-from autogpt_libs.utils.cache import thread_cached
+from autogpt_libs.utils.cache import clear_thread_cache, thread_cached
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data import redis
@@ -935,6 +935,7 @@ class ExecutionManager(AppProcess):
         redis.connect()
 
         # Consume Cancel & Run execution requests.
+        clear_thread_cache(get_execution_queue)
         channel = get_execution_queue().get_channel()
         channel.basic_qos(prefetch_count=self.pool_size)
         channel.basic_consume(
