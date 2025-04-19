@@ -54,7 +54,7 @@ replicate = "^1.0.4"
 sentry-sdk = {extras = ["anthropic", "fastapi", "launchdarkly", "openai", "sqlalchemy"], version = "^2.25.1"}
 sqlalchemy = "^2.0.40"
 strenum = "^0.4.9"
-stripe = "^11.5.0"
+stripe = "^12.0.0"
 supabase = "2.15.0"
 tenacity = "^9.0.0"
 todoist-api-python = "^2.1.7"
