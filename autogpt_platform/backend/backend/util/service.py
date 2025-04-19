@@ -5,8 +5,10 @@ import os
 import threading
 import time
 from abc import ABC, abstractmethod
+from functools import cached_property
 from typing import (
     Any,
+    Awaitable,
     Callable,
     Concatenate,
     Coroutine,
@@ -42,16 +44,17 @@ api_call_timeout = config.rpc_client_call_timeout
 
 P = ParamSpec("P")
 R = TypeVar("R")
+EXPOSED_FLAG = "__exposed__"
 
 
 def expose(func: C) -> C:
     func = getattr(func, "__func__", func)
-    setattr(func, "__exposed__", True)
+    setattr(func, EXPOSED_FLAG, True)
     return func
 
 
 def exposed_run_and_wait(
-    f: Callable[P, Coroutine[None, None, R]]
+    f: Callable[P, Coroutine[None, None, R]],
 ) -> Callable[Concatenate[object, P], R]:
     # TODO:
     #  This function lies about its return type to make the DynamicClient
@@ -203,7 +206,7 @@ class AppService(BaseAppService, ABC):
 
         # Register the exposed API routes.
         for attr_name, attr in vars(type(self)).items():
-            if getattr(attr, "__exposed__", False):
+            if getattr(attr, EXPOSED_FLAG, False):
                 route_path = f"/{attr_name}"
                 self.fastapi_app.add_api_route(
                     route_path,
@@ -241,7 +244,7 @@ def close_service_client(client: Any) -> None:
         logger.warning(f"Client {client} is not closable")
 
 
-@conn_retry("FastAPI client", "Creating service client", max_retry=api_comm_retry)
+@conn_retry("AppService client", "Creating service client", max_retry=api_comm_retry)
 def get_service_client(
     service_type: Type[AS],
     call_timeout: int | None = api_call_timeout,
@@ -302,3 +305,153 @@ def get_service_client(
     client.health_check()
 
     return cast(AS, client)
+
+
+class AppServiceClient(ABC):
+    @classmethod
+    @abstractmethod
+    def get_service_type(cls) -> Type[AppService]:
+        pass
+
+    def health_check(self):
+        pass
+
+
+ASC = TypeVar("ASC", bound=AppServiceClient)
+
+
+@conn_retry("AppService client", "Creating service client", max_retry=api_comm_retry)
+def get_app_service_client(
+    service_client_type: Type[ASC],
+    call_timeout: int | None = api_call_timeout,
+) -> ASC:
+    class DynamicClient:
+        def __init__(self):
+            service_type = service_client_type.get_service_type()
+            host = service_type.get_host()
+            port = service_type.get_port()
+            self.base_url = f"http://{host}:{port}".rstrip("/")
+
+        @cached_property
+        def sync_client(self) -> httpx.Client:
+            return httpx.Client(
+                base_url=self.base_url,
+                timeout=call_timeout,
+            )
+
+        @cached_property
+        def async_client(self) -> httpx.AsyncClient:
+            return httpx.AsyncClient(
+                base_url=self.base_url,
+                timeout=call_timeout,
+            )
+
+        def _handle_call_method_response(
+            self, response: httpx.Response, method_name: str
+        ) -> Any:
+            try:
+                response.raise_for_status()
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                logger.error(f"HTTP error in {method_name}: {e.response.text}")
+                error = RemoteCallError.model_validate(e.response.json())
+                # DEBUG HELP: if you made a custom exception, make sure you override self.args to be how to make your exception
+                raise EXCEPTION_MAPPING.get(error.type, Exception)(
+                    *(error.args or [str(e)])
+                )
+
+        def _call_method_sync(self, method_name: str, **kwargs) -> Any:
+            return self._handle_call_method_response(
+                method_name=method_name,
+                response=self.sync_client.post(method_name, json=to_dict(kwargs)),
+            )
+
+        async def _call_method_async(self, method_name: str, **kwargs) -> Any:
+            return self._handle_call_method_response(
+                method_name=method_name,
+                response=await self.async_client.post(
+                    method_name, json=to_dict(kwargs)
+                ),
+            )
+
+        async def aclose(self):
+            self.sync_client.close()
+            await self.async_client.aclose()
+
+        def close(self):
+            self.sync_client.close()
+
+        def _get_params(self, signature: inspect.Signature, *args, **kwargs) -> dict:
+            if args:
+                arg_names = list(signature.parameters.keys())
+                if arg_names[0] in ("self", "cls"):
+                    arg_names = arg_names[1:]
+                kwargs.update(dict(zip(arg_names, args)))
+            return kwargs
+
+        def _get_return(self, expected_return: TypeAdapter | None, result: Any) -> Any:
+            if expected_return:
+                return expected_return.validate_python(result)
+            return result
+
+        def __getattr__(self, name: str) -> Callable[..., Any]:
+            original_func = getattr(service_client_type, name, None)
+            if original_func is None:
+                raise AttributeError(
+                    f"Method {name} not found in {service_client_type}"
+                )
+
+            sig = inspect.signature(original_func)
+            ret_ann = sig.return_annotation
+            if ret_ann != inspect.Signature.empty:
+                expected_return = TypeAdapter(ret_ann)
+            else:
+                expected_return = None
+
+            if inspect.iscoroutinefunction(original_func):
+
+                async def async_method(*args, **kwargs) -> Any:
+                    params = self._get_params(sig, *args, **kwargs)
+                    result = await self._call_method_async(name, **params)
+                    return self._get_return(expected_return, result)
+
+                return async_method
+            else:
+
+                def sync_method(*args, **kwargs) -> Any:
+                    params = self._get_params(sig, *args, **kwargs)
+                    result = self._call_method_sync(name, **params)
+                    return self._get_return(expected_return, result)
+
+                return sync_method
+
+    client = cast(ASC, DynamicClient())
+    client.health_check()
+
+    return client
+
+
+def endpoint_to_sync(
+    func: Callable[Concatenate[Any, P], Awaitable[R]],
+) -> Callable[Concatenate[Any, P], R]:
+    """
+    Produce a *typed* stub that **looks** synchronous to the type‑checker.
+    """
+
+    def _stub(*args: P.args, **kwargs: P.kwargs) -> R:  # pragma: no cover
+        raise RuntimeError("should be intercepted by __getattr__")
+
+    return cast(Callable[Concatenate[Any, P], R], _stub)
+
+
+def endpoint_to_async(
+    func: Callable[Concatenate[Any, P], R],
+) -> Callable[Concatenate[Any, P], Awaitable[R]]:
+    """
+    The async mirror of `to_sync`.
+    """
+
+    async def _stub(*args: P.args, **kwargs: P.kwargs) -> R:  # pragma: no cover
+        raise RuntimeError("should be intercepted by __getattr__")
+
+    return cast(Callable[Concatenate[Any, P], Awaitable[R]], _stub)
