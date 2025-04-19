@@ -32,9 +32,11 @@ from backend.data.model import (
     UserTransaction,
 )
 from backend.data.notifications import NotificationEventDTO, RefundRequestData
-from backend.data.user import get_user_by_id
+from backend.data.user import get_user_by_id, get_user_email_by_id
 from backend.executor.utils import UsageTransactionMetadata
 from backend.notifications import NotificationManager
+from backend.server.model import Pagination
+from backend.server.v2.admin.model import UserHistory, UserHistoryResponse
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
@@ -409,6 +411,7 @@ class UserCredit(UserCreditBase):
                     # Avoid multiple auto top-ups within the same graph execution.
                     key=f"AUTO-TOP-UP-{user_id}-{metadata.graph_exec_id}",
                     ceiling_balance=auto_top_up.threshold,
+                    is_auto_top_up=True,
                 )
             except Exception as e:
                 # Failed top-up is not critical, we can move on.
@@ -621,6 +624,7 @@ class UserCredit(UserCreditBase):
         amount: int,
         key: str | None = None,
         ceiling_balance: int | None = None,
+        is_auto_top_up: bool = False,
     ):
         if amount < 0:
             raise ValueError(f"Top up amount must not be negative: {amount}")
@@ -644,6 +648,11 @@ class UserCredit(UserCreditBase):
             is_active=False,
             transaction_key=key,
             ceiling_balance=ceiling_balance,
+            metadata=(
+                Json({"reason": f"Top up credits for {user_id}"})
+                if not is_auto_top_up
+                else Json({"reason": f"Auto top up credits for {user_id}"})
+            ),
         )
 
         customer_id = await get_stripe_customer_id(user_id)
@@ -903,6 +912,7 @@ class BetaUserCredit(UserCredit):
                 amount=max(self.num_user_credits_refill - balance, 0),
                 transaction_type=CreditTransactionType.GRANT,
                 transaction_key=f"MONTHLY-CREDIT-TOP-UP-{cur_time}",
+                metadata=Json({"reason": "Monthly credit refill"}),
             )
             return balance
         except UniqueViolationError:
@@ -990,3 +1000,81 @@ async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
         return AutoTopUpConfig(threshold=0, amount=0)
 
     return AutoTopUpConfig.model_validate(user.topUpConfig)
+
+
+async def admin_get_user_history(
+    page: int = 1,
+    page_size: int = 20,
+    search: str | None = None,
+    transaction_filter: CreditTransactionType | None = None,
+) -> UserHistoryResponse:
+
+    if page < 1 or page_size < 1:
+        raise ValueError("Invalid pagination input")
+
+    where_clause: CreditTransactionWhereInput = {}
+    if transaction_filter:
+        where_clause["type"] = transaction_filter
+    if search:
+        where_clause["OR"] = [
+            {"userId": {"contains": search, "mode": "insensitive"}},
+            {"User": {"is": {"email": {"contains": search, "mode": "insensitive"}}}},
+            {"User": {"is": {"name": {"contains": search, "mode": "insensitive"}}}},
+        ]
+    transactions = await CreditTransaction.prisma().find_many(
+        where=where_clause,
+        skip=(page - 1) * page_size,
+        take=page_size,
+        include={"User": True},
+        order={"createdAt": "desc"},
+    )
+    total = await CreditTransaction.prisma().count(where=where_clause)
+    total_pages = (total + page_size - 1) // page_size
+
+    history = []
+    for tx in transactions:
+        admin_id = ""
+        admin_email = ""
+        reason = ""
+
+        # this is actually a dict at runtime??????????
+        metadata: dict = tx.metadata or {}  # type: ignore
+
+        if metadata:
+            admin_id = metadata.get("admin_id")
+            admin_email = (
+                (await get_user_email_by_id(admin_id) or f"Unknown Admin: {admin_id}")
+                if admin_id
+                else ""
+            )
+            reason = metadata.get("reason", "No reason provided")
+
+        balance, last_update = await get_user_credit_model()._get_credits(tx.userId)
+
+        history.append(
+            UserHistory(
+                user_id=tx.userId,
+                user_email=(
+                    tx.User.email
+                    if tx.User
+                    else (await get_user_by_id(tx.userId)).email
+                ),
+                current_balance=balance,
+                running_balance=tx.runningBalance or 0,
+                amount=tx.amount,
+                date=tx.createdAt,
+                reason=reason,
+                admin_email=admin_email,
+                type=tx.type,
+                extra_data=str(metadata),
+            )
+        )
+    return UserHistoryResponse(
+        history=history,
+        pagination=Pagination(
+            total_items=total,
+            total_pages=total_pages,
+            current_page=page,
+            page_size=page_size,
+        ),
+    )

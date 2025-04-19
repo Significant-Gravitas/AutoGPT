@@ -99,6 +99,7 @@ class UsageTransactionMetadata(BaseModel):
     block_id: str | None = None
     block: str | None = None
     input: BlockInput | None = None
+    reason: str | None = None
 
 
 def execution_usage_cost(execution_count: int) -> tuple[int, int]:
