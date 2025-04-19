@@ -1022,24 +1022,24 @@ async def migrate_llm_models(migrate_to: LlmModel):
             if field.annotation == LlmModel:
                 llm_model_fields[block.id] = field_name
 
+    # Convert enum values to a list of strings for the SQL query
+    enum_values = [v.value for v in LlmModel]
+    escaped_enum_values = repr(tuple(enum_values))  # hack but works
+
     # Update each block
     for id, path in llm_model_fields.items():
-        # Convert enum values to a list of strings for the SQL query
-        enum_values = [v.value for v in LlmModel.__members__.values()]
-
-        escaped_enum_values = repr(tuple(enum_values))  # hack but works
         query = f"""
-            UPDATE "AgentNode"
-            SET "constantInput" = jsonb_set("constantInput", $1, $2, true)
+            UPDATE platform."AgentNode"
+            SET "constantInput" = jsonb_set("constantInput", $1, to_jsonb($2), true)
             WHERE "agentBlockId" = $3
-            AND "constantInput" ? $4
-            AND "constantInput"->>$4 NOT IN {escaped_enum_values}
+            AND "constantInput" ? ($4)::text
+            AND "constantInput"->>($4)::text NOT IN {escaped_enum_values}
             """
 
         await db.execute_raw(
             query,  # type: ignore - is supposed to be LiteralString
-            "{" + path + "}",
-            f'"{migrate_to.value}"',
+            [path],
+            migrate_to.value,
             id,
             path,
         )
