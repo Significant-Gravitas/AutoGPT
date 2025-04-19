@@ -72,11 +72,11 @@ faker = "^33.3.1"
 httpx = "^0.28.1"
 isort = "^5.13.2"
 poethepoet = "^0.33.1"
-pyright = "^1.1.398"
+pyright = "^1.1.399"
 pytest-mock = "^3.14.0"
 pytest-watcher = "^0.4.2"
 requests = "^2.32.3"
-ruff = "^0.11.2"
+ruff = "^0.11.5"
 # NOTE: please insert new dependencies in their alphabetical location
 
 [build-system]
