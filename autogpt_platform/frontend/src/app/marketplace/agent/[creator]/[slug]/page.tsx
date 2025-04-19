@@ -6,6 +6,7 @@ import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
 import { BecomeACreator } from "@/components/agptui/BecomeACreator";
 import { Separator } from "@/components/ui/separator";
 import { Metadata } from "next";
+import getServerSupabase from "@/lib/supabase/getServerSupabase";
 
 export async function generateMetadata({
   params,
@@ -43,6 +44,9 @@ export default async function Page({
     // We are using slug as we know its has been sanitized and is not null
     search_query: agent.slug.replace(/-/g, " "),
   });
+  const {
+    data: { user },
+  } = await getServerSupabase().auth.getUser();
 
   const breadcrumbs = [
     { name: "Store", link: "/marketplace" },
@@ -61,6 +65,7 @@ export default async function Page({
         <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:flex-row md:gap-8">
           <div className="w-full md:w-auto md:shrink-0">
             <AgentInfo
+              user={user}
               name={agent.agent_name}
               creator={agent.creator}
               shortDescription={agent.description}
