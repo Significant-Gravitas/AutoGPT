@@ -12,8 +12,8 @@ from backend.data import graph as graph_db
 from backend.data.api_key import APIKey
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.execution import NodeExecutionResult
+from backend.executor.utils import add_graph_execution_async
 from backend.server.external.middleware import require_permission
-from backend.server.routers import v1 as internal_api_routes
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -97,13 +97,13 @@ async def execute_graph(
     api_key: APIKey = Depends(require_permission(APIKeyPermission.EXECUTE_GRAPH)),
 ) -> dict[str, Any]:
     try:
-        graph_exec = await internal_api_routes.execute_graph(
+        graph_exec = await add_graph_execution_async(
             graph_id=graph_id,
-            node_input=node_input,
             user_id=api_key.user_id,
+            inputs=node_input,
             graph_version=graph_version,
         )
-        return {"id": graph_exec.graph_exec_id}
+        return {"id": graph_exec.id}
     except Exception as e:
         msg = str(e).encode().decode("unicode_escape")
         raise HTTPException(status_code=400, detail=msg)

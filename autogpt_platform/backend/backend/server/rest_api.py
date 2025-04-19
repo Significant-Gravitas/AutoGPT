@@ -159,7 +159,8 @@ class AgentServer(backend.util.service.AppProcess):
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph_version,
-            node_input=node_input or {},
+            inputs=node_input or {},
+            credentials_inputs={},
         )
 
     @staticmethod

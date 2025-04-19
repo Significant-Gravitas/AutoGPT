@@ -118,8 +118,7 @@ export default function CreditsPage() {
             {topupStatus === "success" && (
               <span className="text-green-500">
                 Your payment was successful. Your credits will be updated
-                shortly. You can click the refresh icon 🔄 in case it is not
-                updated.
+                shortly. Try refreshing the page in case it is not updated.
               </span>
             )}
             {topupStatus === "cancel" && (
