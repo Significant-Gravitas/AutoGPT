@@ -1,5 +1,5 @@
 from backend.app import run_processes
-from backend.executor import DatabaseManager, Scheduler
+from backend.executor import DatabaseManager
 from backend.notifications.notifications import NotificationManager
 from backend.server.rest_api import AgentServer
 
@@ -11,7 +11,6 @@ def main():
     run_processes(
         NotificationManager(),
         DatabaseManager(),
-        Scheduler(),
         AgentServer(),
     )
 

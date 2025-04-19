@@ -88,7 +88,7 @@ services:
       - REDIS_PASSWORD=password
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
-      - EXECUTIONSCHEDULER_HOST=rest_server
+      - SCHEDULER_HOST=websocket_server
       - EXECUTIONMANAGER_HOST=executor
       - NOTIFICATIONMANAGER_HOST=rest_server
       - FRONTEND_BASE_URL=http://localhost:3000
@@ -98,7 +98,6 @@ services:
     ports:
       - "8006:8006"
       - "8007:8007"
-      - "8003:8003" # execution scheduler
     networks:
       - app-network
 
@@ -184,6 +183,7 @@ services:
 
     ports:
       - "8001:8001"
+      - "8003:8003" # execution scheduler
     networks:
       - app-network
 
