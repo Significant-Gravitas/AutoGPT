@@ -37,7 +37,7 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
           vision
         </h2>
 
-        <p className="font-geist mx-auto mb-8 max-w-[90%] text-lg font-normal leading-relaxed text-neutral-700 dark:text-neutral-300 md:mb-10 md:text-xl md:leading-loose lg:mb-14 lg:text-2xl">
+        <p className="mx-auto mb-8 max-w-[90%] text-lg font-normal leading-relaxed text-neutral-700 dark:text-neutral-300 md:mb-10 md:text-xl md:leading-loose lg:mb-14 lg:text-2xl">
           {description}
         </p>
 

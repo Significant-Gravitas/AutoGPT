@@ -87,7 +87,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
 
         {/* Third Section: Description */}
         <div className="mt-2.5 flex w-full flex-col">
-          <p className="line-clamp-3 font-sans text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400">
+          <p className="line-clamp-3 text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400">
             {description}
           </p>
         </div>
@@ -98,11 +98,11 @@ export const StoreCard: React.FC<StoreCardProps> = ({
         {/* Fourth Section: Stats Row - aligned to bottom */}
         <div className="mt-5 w-full">
           <div className="flex items-center justify-between">
-            <div className="font-sans text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+            <div className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
               {runs.toLocaleString()} runs
             </div>
             <div className="flex items-center gap-2">
-              <span className="font-sans text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+              <span className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
                 {rating.toFixed(1)}
               </span>
               <div

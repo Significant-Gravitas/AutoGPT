@@ -41,7 +41,7 @@ export default function StarRating({
   return (
     <div
       className={cn(
-        "font-geist flex items-center gap-0.5 text-sm font-medium text-zinc-800",
+        "flex items-center gap-0.5 text-sm font-medium text-zinc-800",
         className,
       )}
     >

@@ -54,10 +54,10 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
         <h3 className="font-poppins text-2xl font-semibold leading-tight text-neutral-900 dark:text-neutral-100">
           {creatorName}
         </h3>
-        <p className="font-geist text-sm font-normal leading-normal text-neutral-600 dark:text-neutral-400">
+        <p className="text-sm font-normal leading-normal text-neutral-600 dark:text-neutral-400">
           {bio}
         </p>
-        <div className="font-geist text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
+        <div className="text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
           {agentsUploaded} agents
         </div>
       </div>
