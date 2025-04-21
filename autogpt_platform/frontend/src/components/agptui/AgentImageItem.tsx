@@ -99,7 +99,7 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = React.memo(
                 }
               }}
             >
-              <span className="pr-1 font-neue text-sm font-medium leading-6 tracking-tight text-[#272727] dark:text-neutral-200 sm:pr-2 sm:text-base sm:leading-7 md:text-lg md:leading-8 lg:text-xl lg:leading-9">
+              <span className="pr-1 text-sm font-medium leading-6 tracking-tight text-[#272727] dark:text-neutral-200 sm:pr-2 sm:text-base sm:leading-7 md:text-lg md:leading-8 lg:text-xl lg:leading-9">
                 Play demo
               </span>
               <PlayIcon className="h-5 w-5 text-black dark:text-neutral-200 sm:h-6 sm:w-6 md:h-7 md:w-7" />
