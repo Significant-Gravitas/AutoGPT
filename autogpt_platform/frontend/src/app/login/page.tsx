@@ -24,15 +24,22 @@ import {
   AuthFeedback,
   AuthBottomText,
   PasswordInput,
+  Turnstile,
 } from "@/components/auth";
 import { loginFormSchema } from "@/types/auth";
 import { getBehaveAs } from "@/lib/utils";
+import { useTurnstile } from "@/hooks/useTurnstile";
 
 export default function LoginPage() {
   const { supabase, user, isUserLoading } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  
+  const turnstile = useTurnstile({
+    action: "login",
+    autoVerify: false,
+  });
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
@@ -64,16 +71,24 @@ export default function LoginPage() {
         setIsLoading(false);
         return;
       }
+      
+      if (!turnstile.verified) {
+        setFeedback("Please complete the CAPTCHA challenge.");
+        setIsLoading(false);
+        return;
+      }
 
-      const error = await login(data);
+      const error = await login(data, turnstile.token || undefined);
       setIsLoading(false);
       if (error) {
         setFeedback(error);
+        // Reset Turnstile if there was an error to get a fresh token
+        turnstile.reset();
         return;
       }
       setFeedback(null);
     },
-    [form],
+    [form, turnstile],
   );
 
   if (user) {
@@ -140,6 +155,17 @@ export default function LoginPage() {
               </FormItem>
             )}
           />
+          
+          {/* Turnstile CAPTCHA Component */}
+          <Turnstile
+            siteKey={turnstile.siteKey}
+            onVerify={turnstile.handleVerify}
+            onExpire={turnstile.handleExpire}
+            onError={turnstile.handleError}
+            action="login"
+            shouldRender={turnstile.shouldRender}
+          />
+          
           <AuthButton
             onClick={() => onLogin(form.getValues())}
             isLoading={isLoading}

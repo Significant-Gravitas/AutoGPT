@@ -5,6 +5,7 @@ import {
   AuthButton,
   AuthFeedback,
   PasswordInput,
+  Turnstile,
 } from "@/components/auth";
 import {
   Form,
@@ -25,6 +26,7 @@ import { z } from "zod";
 import { changePassword, sendResetEmail } from "./actions";
 import Spinner from "@/components/Spinner";
 import { getBehaveAs } from "@/lib/utils";
+import { useTurnstile } from "@/hooks/useTurnstile";
 
 export default function ResetPasswordPage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -33,6 +35,16 @@ export default function ResetPasswordPage() {
   const [isError, setIsError] = useState(false);
   const [disabled, setDisabled] = useState(false);
 
+  const sendEmailTurnstile = useTurnstile({
+    action: "reset_password",
+    autoVerify: false,
+  });
+  
+  const changePasswordTurnstile = useTurnstile({
+    action: "change_password",
+    autoVerify: false,
+  });
+  
   const sendEmailForm = useForm<z.infer<typeof sendEmailFormSchema>>({
     resolver: zodResolver(sendEmailFormSchema),
     defaultValues: {
@@ -57,12 +69,21 @@ export default function ResetPasswordPage() {
         setIsLoading(false);
         return;
       }
+      
+      if (!sendEmailTurnstile.verified) {
+        setFeedback("Please complete the CAPTCHA challenge.");
+        setIsError(true);
+        setIsLoading(false);
+        return;
+      }
 
-      const error = await sendResetEmail(data.email);
+      const error = await sendResetEmail(data.email, sendEmailTurnstile.token || undefined);
       setIsLoading(false);
       if (error) {
         setFeedback(error);
         setIsError(true);
+        // Reset Turnstile if there was an error to get a fresh token
+        sendEmailTurnstile.reset();
         return;
       }
       setDisabled(true);
@@ -71,7 +92,7 @@ export default function ResetPasswordPage() {
       );
       setIsError(false);
     },
-    [sendEmailForm],
+    [sendEmailForm, sendEmailTurnstile],
   );
 
   const onChangePassword = useCallback(
@@ -83,18 +104,27 @@ export default function ResetPasswordPage() {
         setIsLoading(false);
         return;
       }
+      
+      if (!changePasswordTurnstile.verified) {
+        setFeedback("Please complete the CAPTCHA challenge.");
+        setIsError(true);
+        setIsLoading(false);
+        return;
+      }
 
-      const error = await changePassword(data.password);
+      const error = await changePassword(data.password, changePasswordTurnstile.token || undefined);
       setIsLoading(false);
       if (error) {
         setFeedback(error);
         setIsError(true);
+        // Reset Turnstile if there was an error to get a fresh token
+        changePasswordTurnstile.reset();
         return;
       }
       setFeedback("Password changed successfully. Redirecting to login.");
       setIsError(false);
     },
-    [changePasswordForm],
+    [changePasswordForm, changePasswordTurnstile],
   );
 
   if (isUserLoading) {
@@ -145,6 +175,17 @@ export default function ResetPasswordPage() {
                   </FormItem>
                 )}
               />
+              
+              {/* Turnstile CAPTCHA Component for password change */}
+              <Turnstile
+                siteKey={changePasswordTurnstile.siteKey}
+                onVerify={changePasswordTurnstile.handleVerify}
+                onExpire={changePasswordTurnstile.handleExpire}
+                onError={changePasswordTurnstile.handleError}
+                action="change_password"
+                shouldRender={changePasswordTurnstile.shouldRender}
+              />
+              
               <AuthButton
                 onClick={() => onChangePassword(changePasswordForm.getValues())}
                 isLoading={isLoading}
@@ -175,6 +216,17 @@ export default function ResetPasswordPage() {
                   </FormItem>
                 )}
               />
+              
+              {/* Turnstile CAPTCHA Component for reset email */}
+              <Turnstile
+                siteKey={sendEmailTurnstile.siteKey}
+                onVerify={sendEmailTurnstile.handleVerify}
+                onExpire={sendEmailTurnstile.handleExpire}
+                onError={sendEmailTurnstile.handleError}
+                action="reset_password"
+                shouldRender={sendEmailTurnstile.shouldRender}
+              />
+              
               <AuthButton
                 onClick={() => onSendEmail(sendEmailForm.getValues())}
                 isLoading={isLoading}

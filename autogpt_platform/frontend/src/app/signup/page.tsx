@@ -25,10 +25,12 @@ import {
   AuthButton,
   AuthBottomText,
   PasswordInput,
+  Turnstile,
 } from "@/components/auth";
 import AuthFeedback from "@/components/auth/AuthFeedback";
 import { signupFormSchema } from "@/types/auth";
 import { getBehaveAs } from "@/lib/utils";
+import { useTurnstile } from "@/hooks/useTurnstile";
 
 export default function SignupPage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -36,6 +38,11 @@ export default function SignupPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   //TODO: Remove after closed beta
+  
+  const turnstile = useTurnstile({
+    action: "signup",
+    autoVerify: false,
+  });
 
   const form = useForm<z.infer<typeof signupFormSchema>>({
     resolver: zodResolver(signupFormSchema),
@@ -55,8 +62,14 @@ export default function SignupPage() {
         setIsLoading(false);
         return;
       }
+      
+      if (!turnstile.verified) {
+        setFeedback("Please complete the CAPTCHA challenge.");
+        setIsLoading(false);
+        return;
+      }
 
-      const error = await signup(data);
+      const error = await signup(data, turnstile.token || undefined);
       setIsLoading(false);
       if (error) {
         if (error === "user_already_exists") {
@@ -65,11 +78,13 @@ export default function SignupPage() {
         } else {
           setFeedback(error);
         }
+        // Reset Turnstile if there was an error to get a fresh token
+        turnstile.reset();
         return;
       }
       setFeedback(null);
     },
-    [form],
+    [form, turnstile],
   );
 
   if (user) {
@@ -141,6 +156,17 @@ export default function SignupPage() {
               </FormItem>
             )}
           />
+          
+          {/* Turnstile CAPTCHA Component */}
+          <Turnstile
+            siteKey={turnstile.siteKey}
+            onVerify={turnstile.handleVerify}
+            onExpire={turnstile.handleExpire}
+            onError={turnstile.handleError}
+            action="signup"
+            shouldRender={turnstile.shouldRender}
+          />
+          
           <AuthButton
             onClick={() => onSignup(form.getValues())}
             isLoading={isLoading}
