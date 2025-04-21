@@ -42,7 +42,7 @@ async function shouldShowOnboarding() {
 
 export async function login(
   values: z.infer<typeof loginFormSchema>,
-  turnstileToken?: string
+  turnstileToken?: string,
 ) {
   return await Sentry.withServerActionInstrumentation("login", {}, async () => {
     const supabase = getServerSupabase();
@@ -54,7 +54,7 @@ export async function login(
 
     // Verify Turnstile token if provided
     if (turnstileToken) {
-      const success = await verifyTurnstileToken(turnstileToken, 'login');
+      const success = await verifyTurnstileToken(turnstileToken, "login");
       if (!success) {
         return "CAPTCHA verification failed. Please try again.";
       }

@@ -23,7 +23,10 @@ export async function sendResetEmail(email: string, turnstileToken?: string) {
 
       // Verify Turnstile token if provided
       if (turnstileToken) {
-        const success = await verifyTurnstileToken(turnstileToken, 'reset_password');
+        const success = await verifyTurnstileToken(
+          turnstileToken,
+          "reset_password",
+        );
         if (!success) {
           return "CAPTCHA verification failed. Please try again.";
         }
@@ -43,7 +46,10 @@ export async function sendResetEmail(email: string, turnstileToken?: string) {
   );
 }
 
-export async function changePassword(password: string, turnstileToken?: string) {
+export async function changePassword(
+  password: string,
+  turnstileToken?: string,
+) {
   return await Sentry.withServerActionInstrumentation(
     "changePassword",
     {},
@@ -56,7 +62,10 @@ export async function changePassword(password: string, turnstileToken?: string) 
 
       // Verify Turnstile token if provided
       if (turnstileToken) {
-        const success = await verifyTurnstileToken(turnstileToken, 'change_password');
+        const success = await verifyTurnstileToken(
+          turnstileToken,
+          "change_password",
+        );
         if (!success) {
           return "CAPTCHA verification failed. Please try again.";
         }

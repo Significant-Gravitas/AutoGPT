@@ -38,7 +38,7 @@ export default function SignupPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   //TODO: Remove after closed beta
-  
+
   const turnstile = useTurnstile({
     action: "signup",
     autoVerify: false,
@@ -62,7 +62,7 @@ export default function SignupPage() {
         setIsLoading(false);
         return;
       }
-      
+
       if (!turnstile.verified) {
         setFeedback("Please complete the CAPTCHA challenge.");
         setIsLoading(false);
@@ -156,7 +156,7 @@ export default function SignupPage() {
               </FormItem>
             )}
           />
-          
+
           {/* Turnstile CAPTCHA Component */}
           <Turnstile
             siteKey={turnstile.siteKey}
@@ -166,7 +166,7 @@ export default function SignupPage() {
             action="signup"
             shouldRender={turnstile.shouldRender}
           />
-          
+
           <AuthButton
             onClick={() => onSignup(form.getValues())}
             isLoading={isLoading}

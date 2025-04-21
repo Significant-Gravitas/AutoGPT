@@ -39,12 +39,12 @@ export default function ResetPasswordPage() {
     action: "reset_password",
     autoVerify: false,
   });
-  
+
   const changePasswordTurnstile = useTurnstile({
     action: "change_password",
     autoVerify: false,
   });
-  
+
   const sendEmailForm = useForm<z.infer<typeof sendEmailFormSchema>>({
     resolver: zodResolver(sendEmailFormSchema),
     defaultValues: {
@@ -69,7 +69,7 @@ export default function ResetPasswordPage() {
         setIsLoading(false);
         return;
       }
-      
+
       if (!sendEmailTurnstile.verified) {
         setFeedback("Please complete the CAPTCHA challenge.");
         setIsError(true);
@@ -77,7 +77,10 @@ export default function ResetPasswordPage() {
         return;
       }
 
-      const error = await sendResetEmail(data.email, sendEmailTurnstile.token || undefined);
+      const error = await sendResetEmail(
+        data.email,
+        sendEmailTurnstile.token || undefined,
+      );
       setIsLoading(false);
       if (error) {
         setFeedback(error);
@@ -104,7 +107,7 @@ export default function ResetPasswordPage() {
         setIsLoading(false);
         return;
       }
-      
+
       if (!changePasswordTurnstile.verified) {
         setFeedback("Please complete the CAPTCHA challenge.");
         setIsError(true);
@@ -112,7 +115,10 @@ export default function ResetPasswordPage() {
         return;
       }
 
-      const error = await changePassword(data.password, changePasswordTurnstile.token || undefined);
+      const error = await changePassword(
+        data.password,
+        changePasswordTurnstile.token || undefined,
+      );
       setIsLoading(false);
       if (error) {
         setFeedback(error);
@@ -175,7 +181,7 @@ export default function ResetPasswordPage() {
                   </FormItem>
                 )}
               />
-              
+
               {/* Turnstile CAPTCHA Component for password change */}
               <Turnstile
                 siteKey={changePasswordTurnstile.siteKey}
@@ -185,7 +191,7 @@ export default function ResetPasswordPage() {
                 action="change_password"
                 shouldRender={changePasswordTurnstile.shouldRender}
               />
-              
+
               <AuthButton
                 onClick={() => onChangePassword(changePasswordForm.getValues())}
                 isLoading={isLoading}
@@ -216,7 +222,7 @@ export default function ResetPasswordPage() {
                   </FormItem>
                 )}
               />
-              
+
               {/* Turnstile CAPTCHA Component for reset email */}
               <Turnstile
                 siteKey={sendEmailTurnstile.siteKey}
@@ -226,7 +232,7 @@ export default function ResetPasswordPage() {
                 action="reset_password"
                 shouldRender={sendEmailTurnstile.shouldRender}
               />
-              
+
               <AuthButton
                 onClick={() => onSendEmail(sendEmailForm.getValues())}
                 isLoading={isLoading}

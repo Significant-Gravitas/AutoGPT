@@ -22,7 +22,8 @@ interface UseTurnstileResult {
   shouldRender: boolean;
 }
 
-const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY || ''; 
+const TURNSTILE_SITE_KEY =
+  process.env.NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY || "";
 
 /**
  * Custom hook for managing Turnstile state in forms
@@ -38,24 +39,24 @@ export function useTurnstile({
   const [verified, setVerified] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [shouldRender, setShouldRender] = useState(false);
-  
+
   useEffect(() => {
     const behaveAs = getBehaveAs();
     const hasTurnstileKey = !!TURNSTILE_SITE_KEY;
 
     setShouldRender(behaveAs === BehaveAs.CLOUD && hasTurnstileKey);
-    
+
     if (behaveAs !== BehaveAs.CLOUD || !hasTurnstileKey) {
       setVerified(true);
     }
   }, []);
-  
+
   useEffect(() => {
     if (token && !autoVerify && shouldRender) {
       setVerified(true);
     }
   }, [token, autoVerify, shouldRender]);
-  
+
   const reset = useCallback(() => {
     if (shouldRender) {
       setToken(null);
@@ -64,23 +65,23 @@ export function useTurnstile({
       setError(null);
     }
   }, [shouldRender]);
-  
+
   const handleVerify = useCallback(
     async (newToken: string) => {
       if (!shouldRender) {
         return true;
       }
-      
+
       setToken(newToken);
       setError(null);
-      
+
       if (autoVerify) {
         setVerifying(true);
-        
+
         try {
           const success = await verifyTurnstileToken(newToken, action);
           setVerified(success);
-          
+
           if (success && onSuccess) {
             onSuccess();
           } else if (!success) {
@@ -88,11 +89,14 @@ export function useTurnstile({
             setError(newError);
             if (onError) onError(newError);
           }
-          
+
           setVerifying(false);
           return success;
         } catch (err) {
-          const newError = err instanceof Error ? err : new Error("Unknown error during verification");
+          const newError =
+            err instanceof Error
+              ? err
+              : new Error("Unknown error during verification");
           setError(newError);
           setVerified(false);
           setVerifying(false);
@@ -102,19 +106,19 @@ export function useTurnstile({
       } else {
         setVerified(true);
       }
-      
+
       return true;
     },
-    [action, autoVerify, onSuccess, onError, shouldRender]
+    [action, autoVerify, onSuccess, onError, shouldRender],
   );
-  
+
   const handleExpire = useCallback(() => {
     if (shouldRender) {
       setToken(null);
       setVerified(false);
     }
   }, [shouldRender]);
-  
+
   const handleError = useCallback(
     (err: Error) => {
       if (shouldRender) {
@@ -123,9 +127,9 @@ export function useTurnstile({
         if (onError) onError(err);
       }
     },
-    [onError, shouldRender]
+    [onError, shouldRender],
   );
-  
+
   return {
     token,
     verifying,
@@ -138,4 +142,4 @@ export function useTurnstile({
     siteKey: TURNSTILE_SITE_KEY,
     shouldRender,
   };
-} 
+}

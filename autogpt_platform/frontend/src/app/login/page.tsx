@@ -35,7 +35,7 @@ export default function LoginPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
-  
+
   const turnstile = useTurnstile({
     action: "login",
     autoVerify: false,
@@ -71,7 +71,7 @@ export default function LoginPage() {
         setIsLoading(false);
         return;
       }
-      
+
       if (!turnstile.verified) {
         setFeedback("Please complete the CAPTCHA challenge.");
         setIsLoading(false);
@@ -155,7 +155,7 @@ export default function LoginPage() {
               </FormItem>
             )}
           />
-          
+
           {/* Turnstile CAPTCHA Component */}
           <Turnstile
             siteKey={turnstile.siteKey}
@@ -165,7 +165,7 @@ export default function LoginPage() {
             action="login"
             shouldRender={turnstile.shouldRender}
           />
-          
+
           <AuthButton
             onClick={() => onLogin(form.getValues())}
             isLoading={isLoading}
