@@ -342,6 +342,14 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="The secret key to use for the unsubscribe user by token",
     )
 
+    # Cloudflare Turnstile credentials
+    turnstile_site_key: str = Field(
+        default="", description="Cloudflare Turnstile frontend site key"
+    )
+    turnstile_secret_key: str = Field(
+        default="", description="Cloudflare Turnstile backend secret key"
+    )
+
     # OAuth server credentials for integrations
     # --8<-- [start:OAuthServerCredentialsExample]
     github_client_id: str = Field(default="", description="GitHub OAuth client ID")
