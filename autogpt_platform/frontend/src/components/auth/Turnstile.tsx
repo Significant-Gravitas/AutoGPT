@@ -27,11 +27,6 @@ export function Turnstile({
   const widgetIdRef = useRef<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   
-  // Skip entirely if shouldRender is false
-  if (!shouldRender) {
-    return null;
-  }
-  
   // Load the Turnstile script
   useEffect(() => {
     if (typeof window === "undefined" || !shouldRender) return;
@@ -59,7 +54,9 @@ export function Turnstile({
     document.head.appendChild(script);
     
     return () => {
-      document.head.removeChild(script);
+      if (document.head.contains(script)) {
+        document.head.removeChild(script);
+      }
     };
   }, [onError, shouldRender]);
   
@@ -103,6 +100,11 @@ export function Turnstile({
       window.turnstile.reset(widgetIdRef.current);
     }
   }, [loaded, shouldRender]);
+  
+  // If shouldRender is false, don't render anything
+  if (!shouldRender) {
+    return null;
+  }
   
   return (
     <div

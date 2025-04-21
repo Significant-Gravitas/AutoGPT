@@ -1,4 +1,3 @@
-"use client";
 import { useState, useCallback, useEffect } from "react";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { BehaveAs, getBehaveAs } from "@/lib/utils";
