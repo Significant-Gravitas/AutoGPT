@@ -2,11 +2,7 @@ import { ReactNode } from "react";
 import { Navbar } from "@/components/agptui/Navbar";
 import { IconType } from "@/components/ui/icons";
 
-export default function PlatformLayout({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export default function PlatformLayout({ children }: { children: ReactNode }) {
   return (
     <>
       <Navbar
