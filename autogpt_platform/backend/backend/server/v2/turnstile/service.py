@@ -27,6 +27,9 @@ class TurnstileService:
             return TurnstileVerifyResponse(
                 success=False,
                 error="CONFIGURATION_ERROR",
+                challenge_ts=None,
+                hostname=None,
+                action=None,
             )
 
         try:
@@ -52,6 +55,9 @@ class TurnstileService:
                         return TurnstileVerifyResponse(
                             success=False,
                             error=f"API_ERROR: {response.status}",
+                            challenge_ts=None,
+                            hostname=None,
+                            action=None,
                         )
 
                     data = await response.json()
@@ -75,10 +81,16 @@ class TurnstileService:
             return TurnstileVerifyResponse(
                 success=False,
                 error=f"CONNECTION_ERROR: {str(e)}",
+                challenge_ts=None,
+                hostname=None,
+                action=None,
             )
         except Exception as e:
             logger.error(f"Unexpected error in Turnstile verification: {str(e)}")
             return TurnstileVerifyResponse(
                 success=False,
                 error=f"UNEXPECTED_ERROR: {str(e)}",
+                challenge_ts=None,
+                hostname=None,
+                action=None,
             )
