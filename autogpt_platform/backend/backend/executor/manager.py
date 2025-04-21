@@ -12,7 +12,7 @@ from multiprocessing.pool import AsyncResult, Pool
 from typing import TYPE_CHECKING, Any, Generator, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
-from pika.spec import Basic
+from pika.spec import Basic, BasicProperties
 from redis.lock import Lock as RedisLock
 
 from backend.blocks.io import AgentOutputBlock
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from backend.executor import DatabaseManager
     from backend.notifications.notifications import NotificationManager
 
-from autogpt_libs.utils.cache import thread_cached
+from autogpt_libs.utils.cache import clear_thread_cache, thread_cached
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data import redis
@@ -87,7 +87,7 @@ class LogMetadata:
             "node_id": node_id,
             "block_name": block_name,
         }
-        self.prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|nid:{node_eid}|{block_name}]"
+        self.prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"
 
     def info(self, msg: str, **extra):
         msg = self._wrap(msg, **extra)
@@ -188,7 +188,7 @@ def execute_node(
     # Execute the node
     input_data_str = json.dumps(input_data)
     input_size = len(input_data_str)
-    log_metadata.info("Executed node with input", input=input_data_str)
+    log_metadata.debug("Executed node with input", input=input_data_str)
     update_execution_status(ExecutionStatus.RUNNING)
 
     # Inject extra execution arguments for the blocks via kwargs
@@ -219,7 +219,7 @@ def execute_node(
         ):
             output_data = json.convert_pydantic_to_json(output_data)
             output_size += len(json.dumps(output_data))
-            log_metadata.info("Node produced output", **{output_name: output_data})
+            log_metadata.debug("Node produced output", **{output_name: output_data})
             push_output(output_name, output_data)
             outputs[output_name] = output_data
             for execution in _enqueue_next_nodes(
@@ -724,10 +724,10 @@ class Executor:
                     execution_status = ExecutionStatus.TERMINATED
                     return execution_stats, execution_status, error
 
-                exec_data = queue.get()
+                queued_node_exec = queue.get()
 
                 # Avoid parallel execution of the same node.
-                execution = running_executions.get(exec_data.node_id)
+                execution = running_executions.get(queued_node_exec.node_id)
                 if execution and not execution.ready():
                     # TODO (performance improvement):
                     #   Wait for the completion of the same node execution is blocking.
@@ -736,18 +736,18 @@ class Executor:
                     execution.wait()
 
                 log_metadata.debug(
-                    f"Dispatching node execution {exec_data.node_exec_id} "
-                    f"for node {exec_data.node_id}",
+                    f"Dispatching node execution {queued_node_exec.node_exec_id} "
+                    f"for node {queued_node_exec.node_id}",
                 )
 
                 try:
                     exec_cost_counter = cls._charge_usage(
-                        node_exec=exec_data,
+                        node_exec=queued_node_exec,
                         execution_count=exec_cost_counter + 1,
                         execution_stats=execution_stats,
                     )
                 except InsufficientBalanceError as error:
-                    node_exec_id = exec_data.node_exec_id
+                    node_exec_id = queued_node_exec.node_exec_id
                     cls.db_client.upsert_execution_output(
                         node_exec_id=node_exec_id,
                         output_name="error",
@@ -768,10 +768,23 @@ class Executor:
                     )
                     raise
 
-                running_executions[exec_data.node_id] = cls.executor.apply_async(
+                # Add credentials input overrides
+                node_id = queued_node_exec.node_id
+                if (node_creds_map := graph_exec.node_credentials_input_map) and (
+                    node_field_creds_map := node_creds_map.get(node_id)
+                ):
+                    queued_node_exec.data.update(
+                        {
+                            field_name: creds_meta.model_dump()
+                            for field_name, creds_meta in node_field_creds_map.items()
+                        }
+                    )
+
+                # Initiate node execution
+                running_executions[queued_node_exec.node_id] = cls.executor.apply_async(
                     cls.on_node_execution,
-                    (queue, exec_data),
-                    callback=make_exec_callback(exec_data),
+                    (queue, queued_node_exec),
+                    callback=make_exec_callback(queued_node_exec),
                 )
 
                 # Avoid terminating graph execution when some nodes are still running.
@@ -887,11 +900,29 @@ class ExecutionManager(AppProcess):
         return settings.config.execution_manager_port
 
     def run(self):
-        while True:
+        retry_count_max = settings.config.execution_manager_loop_max_retry
+        retry_count = 0
+
+        for retry_count in range(retry_count_max):
             try:
                 self._run()
-            except Exception:
-                logger.exception(f"[{self.service_name}] error in graph executor loop")
+            except Exception as e:
+                if not self.running:
+                    break
+                logger.exception(
+                    f"[{self.service_name}] Error in execution manager: {e}"
+                )
+
+            if retry_count >= retry_count_max:
+                logger.error(
+                    f"[{self.service_name}] Max retries reached ({retry_count_max}), exiting..."
+                )
+                break
+            else:
+                logger.info(
+                    f"[{self.service_name}] Retrying execution loop in {retry_count} seconds..."
+                )
+                time.sleep(retry_count)
 
     def _run(self):
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
@@ -903,29 +934,35 @@ class ExecutionManager(AppProcess):
         logger.info(f"[{self.service_name}] ⏳ Connecting to Redis...")
         redis.connect()
 
+        # Consume Cancel & Run execution requests.
+        clear_thread_cache(get_execution_queue)
+        channel = get_execution_queue().get_channel()
+        channel.basic_qos(prefetch_count=self.pool_size)
+        channel.basic_consume(
+            queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+            on_message_callback=self._handle_cancel_message,
+            auto_ack=True,
+        )
+        channel.basic_consume(
+            queue=GRAPH_EXECUTION_QUEUE_NAME,
+            on_message_callback=self._handle_run_message,
+            auto_ack=False,
+        )
+
         logger.info(f"[{self.service_name}] Ready to consume messages...")
-        while True:
-            channel = get_execution_queue().get_channel()
+        channel.start_consuming()
 
-            # cancel graph execution requests
-            method_frame, _, body = channel.basic_get(
-                queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
-                auto_ack=True,
-            )
-            if method_frame:
-                self._handle_cancel_message(body)
-
-            # start graph execution requests
-            method_frame, _, body = channel.basic_get(
-                queue=GRAPH_EXECUTION_QUEUE_NAME,
-                auto_ack=False,
-            )
-            if method_frame:
-                self._handle_run_message(channel, method_frame, body)
-            else:
-                time.sleep(0.2)
-
-    def _handle_cancel_message(self, body: bytes):
+    def _handle_cancel_message(
+        self,
+        channel: BlockingChannel,
+        method: Basic.Deliver,
+        properties: BasicProperties,
+        body: bytes,
+    ):
+        """
+        Called whenever we receive a CANCEL message from the queue.
+        (With auto_ack=True, message is considered 'acked' automatically.)
+        """
         try:
             request = CancelExecutionEvent.model_validate_json(body)
             graph_exec_id = request.graph_exec_id
@@ -953,9 +990,13 @@ class ExecutionManager(AppProcess):
             logger.exception(f"Error handling cancel message: {e}")
 
     def _handle_run_message(
-        self, channel: BlockingChannel, method_frame: Basic.GetOk, body: bytes
+        self,
+        channel: BlockingChannel,
+        method: Basic.Deliver,
+        properties: BasicProperties,
+        body: bytes,
     ):
-        delivery_tag = method_frame.delivery_tag
+        delivery_tag = method.delivery_tag
         try:
             graph_exec_entry = GraphExecutionEntry.model_validate_json(body)
         except Exception as e:
@@ -983,11 +1024,17 @@ class ExecutionManager(AppProcess):
         def _on_run_done(f: Future):
             logger.info(f"[{self.service_name}] Run completed for {graph_exec_id}")
             try:
-                channel.basic_ack(delivery_tag)
                 self.active_graph_runs.pop(graph_exec_id, None)
                 if f.exception():
                     logger.error(
                         f"[{self.service_name}] Execution for {graph_exec_id} failed: {f.exception()}"
+                    )
+                    channel.connection.add_callback_threadsafe(
+                        lambda: channel.basic_nack(delivery_tag, requeue=False)
+                    )
+                else:
+                    channel.connection.add_callback_threadsafe(
+                        lambda: channel.basic_ack(delivery_tag)
                     )
             except Exception as e:
                 logger.error(f"[{self.service_name}] Error acknowledging message: {e}")
@@ -999,6 +1046,9 @@ class ExecutionManager(AppProcess):
 
         logger.info(f"[{self.service_name}] ⏳ Shutting down service loop...")
         self.running = False
+
+        logger.info(f"[{self.service_name}] ⏳ Shutting down RabbitMQ channel...")
+        get_execution_queue().get_channel().stop_consuming()
 
         logger.info(f"[{self.service_name}] ⏳ Shutting down graph executor pool...")
         self.executor.shutdown(cancel_futures=True)

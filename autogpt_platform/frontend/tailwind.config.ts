@@ -117,6 +117,9 @@ const config = {
         // Add a full radius for pill-shaped buttons
         full: "9999px",
       },
+      boxShadow: {
+        subtle: "0px 1px 2px 0px rgba(0,0,0,0.05)",
+      },
       keyframes: {
         "accordion-down": {
           from: { height: "0" },

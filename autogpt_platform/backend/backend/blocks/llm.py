@@ -9,7 +9,6 @@ from typing import Any, Iterable, List, Literal, NamedTuple, Optional
 import anthropic
 import ollama
 import openai
-from anthropic import NotGiven
 from anthropic.types import ToolParam
 from groq import Groq
 from pydantic import BaseModel, SecretStr
@@ -249,7 +248,7 @@ class LLMResponse(BaseModel):
 
 def convert_openai_tool_fmt_to_anthropic(
     openai_tools: list[dict] | None = None,
-) -> Iterable[ToolParam] | NotGiven:
+) -> Iterable[ToolParam] | anthropic.NotGiven:
     """
     Convert OpenAI tool format to Anthropic tool format.
     """
@@ -287,6 +286,7 @@ def llm_call(
     max_tokens: int | None,
     tools: list[dict] | None = None,
     ollama_host: str = "localhost:11434",
+    parallel_tool_calls: bool | None = None,
 ) -> LLMResponse:
     """
     Make a call to a language model.
@@ -332,6 +332,9 @@ def llm_call(
             response_format=response_format,  # type: ignore
             max_completion_tokens=max_tokens,
             tools=tools_param,  # type: ignore
+            parallel_tool_calls=(
+                openai.NOT_GIVEN if parallel_tool_calls is None else parallel_tool_calls
+            ),
         )
 
         if response.choices[0].message.tool_calls:
@@ -487,6 +490,9 @@ def llm_call(
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
+            parallel_tool_calls=(
+                openai.NOT_GIVEN if parallel_tool_calls is None else parallel_tool_calls
+            ),
         )
 
         # If there's no response, raise an error

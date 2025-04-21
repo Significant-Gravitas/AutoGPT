@@ -67,15 +67,15 @@ class AgentExecutorBlock(Block):
             graph_id=input_data.graph_id,
             graph_version=input_data.graph_version,
             user_id=input_data.user_id,
-            data=input_data.data,
+            inputs=input_data.data,
         )
-        log_id = f"Graph #{input_data.graph_id}-V{input_data.graph_version}, exec-id: {graph_exec.graph_exec_id}"
+        log_id = f"Graph #{input_data.graph_id}-V{input_data.graph_version}, exec-id: {graph_exec.id}"
         logger.info(f"Starting execution of {log_id}")
 
         for event in event_bus.listen(
             user_id=graph_exec.user_id,
             graph_id=graph_exec.graph_id,
-            graph_exec_id=graph_exec.graph_exec_id,
+            graph_exec_id=graph_exec.id,
         ):
             if event.event_type == ExecutionEventType.GRAPH_EXEC_UPDATE:
                 if event.status in [
@@ -88,7 +88,7 @@ class AgentExecutorBlock(Block):
                 else:
                     continue
 
-            logger.info(
+            logger.debug(
                 f"Execution {log_id} produced input {event.input_data} output {event.output_data}"
             )
 
@@ -106,5 +106,7 @@ class AgentExecutorBlock(Block):
                 continue
 
             for output_data in event.output_data.get("output", []):
-                logger.info(f"Execution {log_id} produced {output_name}: {output_data}")
+                logger.debug(
+                    f"Execution {log_id} produced {output_name}: {output_data}"
+                )
                 yield output_name, output_data

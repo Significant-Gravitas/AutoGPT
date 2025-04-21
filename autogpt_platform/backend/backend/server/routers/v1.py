@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated, Any, Coroutine, Sequence
+from typing import TYPE_CHECKING, Annotated, Any, Sequence
 
 import pydantic
 import stripe
@@ -41,6 +41,7 @@ from backend.data.credit import (
     set_auto_top_up,
 )
 from backend.data.execution import AsyncRedisExecutionEventBus
+from backend.data.model import CredentialsMetaInput
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
     UserOnboardingUpdate,
@@ -87,13 +88,10 @@ def execution_scheduler_client() -> Scheduler:
 
 
 @thread_cached
-def execution_queue_client() -> Coroutine[None, None, AsyncRabbitMQ]:
-    async def f() -> AsyncRabbitMQ:
-        client = AsyncRabbitMQ(create_execution_queue_config())
-        await client.connect()
-        return client
-
-    return f()
+async def execution_queue_client() -> AsyncRabbitMQ:
+    client = AsyncRabbitMQ(create_execution_queue_config())
+    await client.connect()
+    return client
 
 
 @thread_cached
@@ -595,31 +593,21 @@ async def set_graph_active_version(
 )
 async def execute_graph(
     graph_id: str,
-    node_input: Annotated[dict[str, Any], Body(..., default_factory=dict)],
     user_id: Annotated[str, Depends(get_user_id)],
+    inputs: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
+    credentials_inputs: Annotated[
+        dict[str, CredentialsMetaInput], Body(..., embed=True, default_factory=dict)
+    ],
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
 ) -> ExecuteGraphResponse:
-    graph: graph_db.GraphModel | None = await graph_db.get_graph(
-        graph_id=graph_id, user_id=user_id, version=graph_version
-    )
-    if not graph:
-        raise ValueError(f"Graph #{graph_id} not found.")
-
-    graph_exec = await execution_db.create_graph_execution(
+    graph_exec = await execution_utils.add_graph_execution_async(
         graph_id=graph_id,
-        graph_version=graph.version,
-        nodes_input=execution_utils.construct_node_execution_input(
-            graph, user_id, node_input
-        ),
         user_id=user_id,
+        inputs=inputs,
         preset_id=preset_id,
-    )
-    execution_utils.get_execution_event_bus().publish(graph_exec)
-    execution_utils.get_execution_queue().publish_message(
-        routing_key=execution_utils.GRAPH_EXECUTION_ROUTING_KEY,
-        message=graph_exec.to_graph_execution_entry().model_dump_json(),
-        exchange=execution_utils.GRAPH_EXECUTION_EXCHANGE,
+        graph_version=graph_version,
+        graph_credentials_inputs=credentials_inputs,
     )
     return ExecuteGraphResponse(graph_exec_id=graph_exec.id)
 
