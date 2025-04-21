@@ -1,3 +1,5 @@
+from typing import cast
+
 import prisma.enums
 import prisma.types
 
@@ -11,25 +13,25 @@ AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
 }
 
 AGENT_GRAPH_INCLUDE: prisma.types.AgentGraphInclude = {
-    "AgentNodes": {"include": AGENT_NODE_INCLUDE}  # type: ignore
+    "Nodes": {"include": AGENT_NODE_INCLUDE}
 }
 
 EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
     "Input": True,
     "Output": True,
-    "AgentNode": True,
-    "AgentGraphExecution": True,
+    "Node": True,
+    "GraphExecution": True,
 }
 
 MAX_NODE_EXECUTIONS_FETCH = 1000
 
 GRAPH_EXECUTION_INCLUDE_WITH_NODES: prisma.types.AgentGraphExecutionInclude = {
-    "AgentNodeExecutions": {
+    "NodeExecutions": {
         "include": {
             "Input": True,
             "Output": True,
-            "AgentNode": True,
-            "AgentGraphExecution": True,
+            "Node": True,
+            "GraphExecution": True,
         },
         "order_by": [
             {"queuedTime": "desc"},
@@ -41,31 +43,30 @@ GRAPH_EXECUTION_INCLUDE_WITH_NODES: prisma.types.AgentGraphExecutionInclude = {
 }
 
 GRAPH_EXECUTION_INCLUDE: prisma.types.AgentGraphExecutionInclude = {
-    "AgentNodeExecutions": {
-        **GRAPH_EXECUTION_INCLUDE_WITH_NODES["AgentNodeExecutions"],  # type: ignore
+    "NodeExecutions": {
+        **cast(
+            prisma.types.FindManyAgentNodeExecutionArgsFromAgentGraphExecution,
+            GRAPH_EXECUTION_INCLUDE_WITH_NODES["NodeExecutions"],
+        ),
         "where": {
-            "AgentNode": {
-                "AgentBlock": {"id": {"in": IO_BLOCK_IDs}},  # type: ignore
-            },
-            "NOT": {
-                "executionStatus": prisma.enums.AgentExecutionStatus.INCOMPLETE,
-            },
+            "Node": {"is": {"AgentBlock": {"is": {"id": {"in": IO_BLOCK_IDs}}}}},
+            "NOT": [{"executionStatus": prisma.enums.AgentExecutionStatus.INCOMPLETE}],
         },
     }
 }
 
 
 INTEGRATION_WEBHOOK_INCLUDE: prisma.types.IntegrationWebhookInclude = {
-    "AgentNodes": {"include": AGENT_NODE_INCLUDE}  # type: ignore
+    "AgentNodes": {"include": AGENT_NODE_INCLUDE}
 }
 
 
 def library_agent_include(user_id: str) -> prisma.types.LibraryAgentInclude:
     return {
-        "Agent": {
+        "AgentGraph": {
             "include": {
                 **AGENT_GRAPH_INCLUDE,
-                "AgentGraphExecution": {"where": {"userId": user_id}},
+                "Executions": {"where": {"userId": user_id}},
             }
         },
         "Creator": True,

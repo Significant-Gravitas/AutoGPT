@@ -131,11 +131,7 @@ export default function PrivatePage() {
 
   const allCredentials = providers
     ? Object.values(providers).flatMap((provider) =>
-        [
-          ...provider.savedOAuthCredentials,
-          ...provider.savedApiKeys,
-          ...provider.savedUserPasswordCredentials,
-        ]
+        provider.savedCredentials
           .filter((cred) => !hiddenCredentials.includes(cred.id))
           .map((credentials) => ({
             ...credentials,

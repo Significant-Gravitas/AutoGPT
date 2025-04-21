@@ -23,6 +23,7 @@ import AgentRunDetailsView from "@/components/agents/agent-run-details-view";
 import AgentRunsSelectorList from "@/components/agents/agent-runs-selector-list";
 import AgentScheduleDetailsView from "@/components/agents/agent-schedule-details-view";
 import LibraryRunLoadingSkeleton from "./loading";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
@@ -50,6 +51,7 @@ export default function AgentRunsPage(): React.ReactElement {
     useState<boolean>(false);
   const [confirmingDeleteAgentRun, setConfirmingDeleteAgentRun] =
     useState<GraphExecutionMeta | null>(null);
+  const { state, updateState } = useOnboarding();
 
   const openRunDraftView = useCallback(() => {
     selectView({ type: "run" });
@@ -79,20 +81,32 @@ export default function AgentRunsPage(): React.ReactElement {
     [api, graphVersions],
   );
 
+  // Reward user for viewing results of their onboarding agent
+  useEffect(() => {
+    if (!state || !selectedRun || state.completedSteps.includes("GET_RESULTS"))
+      return;
+
+    if (selectedRun.id === state.onboardingAgentExecutionId) {
+      updateState({
+        completedSteps: [...state.completedSteps, "GET_RESULTS"],
+      });
+    }
+  }, [selectedRun, state]);
+
   const fetchAgents = useCallback(() => {
     api.getLibraryAgent(agentID).then((agent) => {
       setAgent(agent);
 
-      getGraphVersion(agent.agent_id, agent.agent_version).then(
+      getGraphVersion(agent.graph_id, agent.graph_version).then(
         (_graph) =>
           (graph && graph.version == _graph.version) || setGraph(_graph),
       );
-      api.getGraphExecutions(agent.agent_id).then((agentRuns) => {
+      api.getGraphExecutions(agent.graph_id).then((agentRuns) => {
         setAgentRuns(agentRuns);
 
         // Preload the corresponding graph versions
         new Set(agentRuns.map((run) => run.graph_version)).forEach((version) =>
-          getGraphVersion(agent.agent_id, version),
+          getGraphVersion(agent.graph_id, version),
         );
 
         if (!selectedView.id && isFirstLoad && agentRuns.length > 0) {
@@ -110,7 +124,7 @@ export default function AgentRunsPage(): React.ReactElement {
     });
     if (selectedView.type == "run" && selectedView.id && agent) {
       api
-        .getGraphExecutionInfo(agent.agent_id, selectedView.id)
+        .getGraphExecutionInfo(agent.graph_id, selectedView.id)
         .then(setSelectedRun);
     }
   }, [api, agentID, getGraphVersion, graph, selectedView, isFirstLoad, agent]);
@@ -124,7 +138,7 @@ export default function AgentRunsPage(): React.ReactElement {
     if (!agent) return;
 
     // Subscribe to all executions for this agent
-    api.subscribeToGraphExecutions(agent.agent_id);
+    api.subscribeToGraphExecutions(agent.graph_id);
   }, [api, agent]);
 
   // Handle execution updates
@@ -132,6 +146,8 @@ export default function AgentRunsPage(): React.ReactElement {
     const detachExecUpdateHandler = api.onWebSocketMessage(
       "graph_execution_event",
       (data) => {
+        if (data.graph_id != agent?.graph_id) return;
+
         setAgentRuns((prev) => {
           const index = prev.findIndex((run) => run.id === data.id);
           if (index === -1) {
@@ -150,7 +166,7 @@ export default function AgentRunsPage(): React.ReactElement {
     return () => {
       detachExecUpdateHandler();
     };
-  }, [api, selectedView.id]);
+  }, [api, agent?.graph_id, selectedView.id]);
 
   // load selectedRun based on selectedView
   useEffect(() => {
@@ -163,7 +179,7 @@ export default function AgentRunsPage(): React.ReactElement {
 
       // Ensure corresponding graph version is available before rendering I/O
       api
-        .getGraphExecutionInfo(agent.agent_id, selectedView.id)
+        .getGraphExecutionInfo(agent.graph_id, selectedView.id)
         .then(async (run) => {
           await getGraphVersion(run.graph_id, run.graph_version);
           setSelectedRun(run);
@@ -176,7 +192,7 @@ export default function AgentRunsPage(): React.ReactElement {
 
     // TODO: filter in backend - https://github.com/Significant-Gravitas/AutoGPT/issues/9183
     setSchedules(
-      (await api.listSchedules()).filter((s) => s.graph_id == agent.agent_id),
+      (await api.listSchedules()).filter((s) => s.graph_id == agent.graph_id),
     );
   }, [api, agent]);
 
@@ -215,7 +231,7 @@ export default function AgentRunsPage(): React.ReactElement {
       agent &&
       // Export sanitized graph from backend
       api
-        .getGraph(agent.agent_id, agent.agent_version, true)
+        .getGraph(agent.graph_id, agent.graph_version, true)
         .then((graph) =>
           exportAsJSONFile(graph, `${graph.name}_v${graph.version}.json`),
         ),
@@ -228,7 +244,7 @@ export default function AgentRunsPage(): React.ReactElement {
         ? [
             {
               label: "Open graph in builder",
-              href: `/build?flowID=${agent.agent_id}&flowVersion=${agent.agent_version}`,
+              href: `/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`,
             },
             { label: "Export agent to file", callback: downloadGraph },
           ]
@@ -243,7 +259,6 @@ export default function AgentRunsPage(): React.ReactElement {
   );
 
   if (!agent || !graph) {
-    /* TODO: implement loading indicators / skeleton page */
     return <LibraryRunLoadingSkeleton />;
   }
 

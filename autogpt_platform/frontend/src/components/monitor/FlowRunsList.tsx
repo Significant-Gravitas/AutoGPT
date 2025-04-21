@@ -48,7 +48,7 @@ export const FlowRunsList: React.FC<{
               <TableCell>
                 <TextRenderer
                   value={
-                    flows.find((f) => f.agent_id == execution.graph_id)?.name
+                    flows.find((f) => f.graph_id == execution.graph_id)?.name
                   }
                   truncateLengthLimit={30}
                 />

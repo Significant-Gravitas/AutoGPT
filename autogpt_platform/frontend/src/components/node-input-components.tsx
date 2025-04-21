@@ -6,18 +6,21 @@ import {
 } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
-import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
 import { beautifyString, cn } from "@/lib/utils";
+import { Node, useNodeId, useNodesData } from "@xyflow/react";
+import { ConnectionData, CustomNodeData } from "@/components/CustomNode";
+import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
 import {
-  BlockIORootSchema,
-  BlockIOSubSchema,
-  BlockIOObjectSubSchema,
-  BlockIOKVSubSchema,
   BlockIOArraySubSchema,
-  BlockIOStringSubSchema,
-  BlockIONumberSubSchema,
   BlockIOBooleanSubSchema,
+  BlockIOCredentialsSubSchema,
+  BlockIOKVSubSchema,
+  BlockIONumberSubSchema,
+  BlockIOObjectSubSchema,
+  BlockIORootSchema,
   BlockIOSimpleTypeSubSchema,
+  BlockIOStringSubSchema,
+  BlockIOSubSchema,
   DataType,
   determineDataType,
 } from "@/lib/autogpt-server-api/types";
@@ -48,8 +51,7 @@ import {
 } from "./ui/multiselect";
 import { LocalValuedInput } from "./ui/input";
 import NodeHandle from "./NodeHandle";
-import { ConnectionData } from "./CustomNode";
-import { CredentialsInput } from "./integrations/credentials-input";
+import { CredentialsInput } from "@/components/integrations/credentials-input";
 
 type NodeObjectInputTreeProps = {
   nodeId: string;
@@ -357,6 +359,7 @@ export const NodeGenericInputField: FC<{
       return (
         <NodeCredentialsInput
           selfKey={propKey}
+          schema={propSchema as BlockIOCredentialsSubSchema}
           value={currentValue}
           errors={errors}
           className={className}
@@ -697,15 +700,19 @@ const NodeOneOfDiscriminatorField: FC<{
 
 const NodeCredentialsInput: FC<{
   selfKey: string;
+  schema: BlockIOCredentialsSubSchema;
   value: any;
   errors: { [key: string]: string | undefined };
   handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
   className?: string;
-}> = ({ selfKey, value, errors, handleInputChange, className }) => {
+}> = ({ selfKey, schema, value, errors, handleInputChange, className }) => {
+  const nodeInputValues = useNodesData<Node<CustomNodeData>>(useNodeId()!)?.data
+    .hardcodedValues;
   return (
     <div className={cn("flex flex-col", className)}>
       <CredentialsInput
-        selfKey={selfKey}
+        schema={schema}
+        siblingInputs={nodeInputValues}
         onSelectCredentials={(credsMeta) =>
           handleInputChange(selfKey, credsMeta)
         }
@@ -772,14 +779,16 @@ const NodeKeyValueInput: FC<{
     );
   }
 
+  const isNumberType =
+    schema.additionalProperties &&
+    ["number", "integer"].includes(schema.additionalProperties.type);
+
   function convertValueType(value: string): string | number | null {
-    if (
-      !schema.additionalProperties ||
-      schema.additionalProperties.type == "string"
-    )
-      return value;
-    if (!value) return null;
-    return Number(value);
+    if (isNumberType) {
+      const numValue = Number(value);
+      return !isNaN(numValue) ? numValue : null;
+    }
+    return value;
   }
 
   function getEntryKey(key: string): string {
@@ -825,7 +834,7 @@ const NodeKeyValueInput: FC<{
                   }
                 />
                 <LocalValuedInput
-                  type="text"
+                  type={isNumberType ? "number" : "text"}
                   placeholder="Value"
                   value={value ?? ""}
                   onChange={(e) =>
