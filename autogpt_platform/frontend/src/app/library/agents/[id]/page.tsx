@@ -23,6 +23,15 @@ import AgentRunDetailsView from "@/components/agents/agent-run-details-view";
 import AgentRunsSelectorList from "@/components/agents/agent-runs-selector-list";
 import AgentScheduleDetailsView from "@/components/agents/agent-schedule-details-view";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
@@ -51,6 +60,7 @@ export default function AgentRunsPage(): React.ReactElement {
   const [confirmingDeleteAgentRun, setConfirmingDeleteAgentRun] =
     useState<GraphExecutionMeta | null>(null);
   const { state, updateState } = useOnboarding();
+  const [copyAgentDialogOpen, setCopyAgentDialogOpen] = useState(false);
 
   const openRunDraftView = useCallback(() => {
     selectView({ type: "run" });
@@ -237,6 +247,12 @@ export default function AgentRunsPage(): React.ReactElement {
     [api, agent],
   );
 
+  const copyAgent = useCallback(async () => {
+    const id = agent?.id;
+    setCopyAgentDialogOpen(false);
+    router.push(`/library/agents/${id}`);
+  }, []);
+
   const agentActions: ButtonAction[] = useMemo(
     () => [
       ...(agent?.can_access_graph
@@ -246,6 +262,10 @@ export default function AgentRunsPage(): React.ReactElement {
               href: `/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`,
             },
             { label: "Export agent to file", callback: downloadGraph },
+            {
+              label: "Edit a copy",
+              callback: () => setCopyAgentDialogOpen(true),
+            },
           ]
         : []),
       {
@@ -339,6 +359,35 @@ export default function AgentRunsPage(): React.ReactElement {
             confirmingDeleteAgentRun && deleteRun(confirmingDeleteAgentRun)
           }
         />
+        {/* Copy agent confirmation dialog */}
+        <Dialog
+          onOpenChange={setCopyAgentDialogOpen}
+          open={copyAgentDialogOpen}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>You're making an editable copy</DialogTitle>
+              <DialogDescription className="pt-2">
+                We'll save a new version of this agent to your library so you
+                can customize it however you'd like. You'll still have the
+                original from the marketplace too — it won't be changed and
+                can't be edited.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCopyAgentDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="button" onClick={copyAgent}>
+                Continue
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
