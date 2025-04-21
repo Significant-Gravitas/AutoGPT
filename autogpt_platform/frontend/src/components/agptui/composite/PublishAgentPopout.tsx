@@ -95,7 +95,10 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
       const loadMyAgents = async () => {
         try {
           setLoading(true);
-          const response = await api.getMyAgents({ page: currentPage, page_size: 20 });
+          const response = await api.getMyAgents({
+            page: currentPage,
+            page_size: 20,
+          });
           setMyAgents(response);
           setCurrentPage(response.pagination.current_page);
           setTotalPages(response.pagination.total_pages);
@@ -191,7 +194,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
       slug,
       categories,
     });
-  
+
     // Create store submission
     try {
       const submission = await api.createStoreSubmission({
@@ -241,7 +244,8 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
                             version: agent.agent_version,
                             lastEdited: agent.last_edited,
                             imageSrc:
-                              agent.agent_image || "https://picsum.photos/300/200",
+                              agent.agent_image ||
+                              "https://picsum.photos/300/200",
                           }))
                           .sort(
                             (a, b) =>
@@ -255,9 +259,11 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
                       onClose={handleClose}
                       onOpenBuilder={() => router.push("/build")}
                     />
-                    <div className="flex justify-between items-center p-4">
+                    <div className="flex items-center justify-between p-4">
                       <button
-                        onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                        onClick={() =>
+                          setCurrentPage((p) => Math.max(1, p - 1))
+                        }
                         disabled={currentPage === 1}
                         className="text-sm font-medium text-blue-600 disabled:text-gray-400"
                       >
@@ -267,7 +273,9 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
                         Page {currentPage} of {totalPages}
                       </span>
                       <button
-                        onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                        onClick={() =>
+                          setCurrentPage((p) => Math.min(totalPages, p + 1))
+                        }
                         disabled={currentPage === totalPages}
                         className="text-sm font-medium text-blue-600 disabled:text-gray-400"
                       >
