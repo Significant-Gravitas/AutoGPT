@@ -161,6 +161,14 @@ smartlead_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+google_maps_credentials = APIKeyCredentials(
+    id="9aa1bde0-4947-4a70-a20c-84daa3850d52",
+    provider="google_maps",
+    api_key=SecretStr(settings.secrets.google_maps_api_key),
+    title="Use Credits for Google Maps",
+    expires_at=None,
+)
+
 zerobounce_credentials = APIKeyCredentials(
     id="63a6e279-2dc2-448e-bf57-85776f7176dc",
     provider="zerobounce",
@@ -190,6 +198,7 @@ DEFAULT_CREDENTIALS = [
     apollo_credentials,
     smartlead_credentials,
     zerobounce_credentials,
+    google_maps_credentials,
 ]
 
 
@@ -263,6 +272,8 @@ class IntegrationCredentialsStore:
             all_credentials.append(smartlead_credentials)
         if settings.secrets.zerobounce_api_key:
             all_credentials.append(zerobounce_credentials)
+        if settings.secrets.google_maps_api_key:
+            all_credentials.append(google_maps_credentials)
         return all_credentials
 
     def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:
