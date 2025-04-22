@@ -8,11 +8,26 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import CredentialsProvider from "@/components/integrations/credentials-provider";
 import { LaunchDarklyProvider } from "@/components/feature-flag/feature-flag-provider";
 import OnboardingProvider from "@/components/onboarding/onboarding-provider";
+import { MockClientProps } from "@/lib/autogpt-server-api/mock_client";
 
-export function Providers({ children, ...props }: ThemeProviderProps) {
+export interface ProvidersProps extends ThemeProviderProps {
+  children: React.ReactNode;
+  useMockBackend?: boolean;
+  mockClientProps?: MockClientProps;
+}
+
+export function Providers({
+  children,
+  useMockBackend,
+  mockClientProps,
+  ...props
+}: ProvidersProps) {
   return (
     <NextThemesProvider {...props}>
-      <BackendAPIProvider>
+      <BackendAPIProvider
+        useMockBackend={useMockBackend}
+        mockClientProps={mockClientProps}
+      >
         <CredentialsProvider>
           <LaunchDarklyProvider>
             <OnboardingProvider>

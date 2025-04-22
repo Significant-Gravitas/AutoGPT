@@ -1,6 +1,10 @@
 import getServerSupabase from "./getServerSupabase";
+import { User } from "@supabase/supabase-js";
 
-const getServerUser = async () => {
+const getServerUser = async (mockUser?: User) => {
+  if (mockUser) {
+    return { user: mockUser, role: "admin", error: null };
+  }
   const supabase = getServerSupabase();
 
   if (!supabase) {

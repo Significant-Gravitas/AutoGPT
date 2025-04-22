@@ -1,6 +1,8 @@
+import React from "react";
 import type { Preview } from "@storybook/react";
 import { initialize, mswLoader } from "msw-storybook-addon";
 import "../src/app/globals.css";
+import { Providers } from "../src/app/providers";
 
 // Initialize MSW
 initialize();
@@ -17,6 +19,17 @@ const preview: Preview = {
       },
     },
   },
+  decorators: [
+    (Story, context) => {
+      const mockOptions = context.parameters.mockBackend || {};
+
+      return (
+        <Providers useMockBackend mockClientProps={mockOptions}>
+          <Story />
+        </Providers>
+      );
+    },
+  ],
   loaders: [mswLoader],
 };
 
