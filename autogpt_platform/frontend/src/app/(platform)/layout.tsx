@@ -62,7 +62,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
           },
         ]}
       />
-      <main className="w-full flex-grow">{children}</main>
+      <main>{children}</main>
     </>
   );
 }
