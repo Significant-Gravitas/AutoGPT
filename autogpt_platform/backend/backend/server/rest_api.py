@@ -11,21 +11,24 @@ from autogpt_libs.feature_flag.client import (
     initialize_launchdarkly,
     shutdown_launchdarkly,
 )
+from autogpt_libs.logging.utils import generate_uvicorn_config
 
 import backend.data.block
 import backend.data.db
 import backend.data.graph
 import backend.data.user
-import backend.server.integrations.router
+import backend.server.routers.postmark.postmark
 import backend.server.routers.v1
+import backend.server.v2.admin.store_admin_routes
 import backend.server.v2.library.db
 import backend.server.v2.library.model
 import backend.server.v2.library.routes
-import backend.server.v2.postmark.postmark
+import backend.server.v2.otto.routes
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
 import backend.util.service
 import backend.util.settings
+from backend.blocks.llm import LlmModel
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.server.external.api import external_app
@@ -54,6 +57,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.block.initialize_blocks()
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
+    await backend.data.graph.migrate_llm_models(LlmModel.GPT4O)
     with launch_darkly_context():
         yield
     await backend.data.db.disconnect()
@@ -68,8 +72,7 @@ docs_url = (
 app = fastapi.FastAPI(
     title="AutoGPT Agent Server",
     description=(
-        "This server is used to execute agents that are created by the "
-        "AutoGPT system."
+        "This server is used to execute agents that are created by the AutoGPT system."
     ),
     summary="AutoGPT Agent Server",
     version="0.1",
@@ -100,11 +103,20 @@ app.include_router(
     backend.server.v2.store.routes.router, tags=["v2"], prefix="/api/store"
 )
 app.include_router(
+    backend.server.v2.admin.store_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/store",
+)
+app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
 )
 app.include_router(
-    backend.server.v2.postmark.postmark.router,
-    tags=["v2", "email"],
+    backend.server.v2.otto.routes.router, tags=["v2"], prefix="/api/otto"
+)
+
+app.include_router(
+    backend.server.routers.postmark.postmark.router,
+    tags=["v1", "email"],
     prefix="/api/email",
 )
 
@@ -129,7 +141,12 @@ class AgentServer(backend.util.service.AppProcess):
             server_app,
             host=backend.util.settings.Config().agent_api_host,
             port=backend.util.settings.Config().agent_api_port,
+            log_config=generate_uvicorn_config(),
         )
+
+    def cleanup(self):
+        super().cleanup()
+        logger.info(f"[{self.service_name}] ⏳ Shutting down Agent Server...")
 
     @staticmethod
     async def test_execute_graph(
@@ -138,11 +155,12 @@ class AgentServer(backend.util.service.AppProcess):
         graph_version: Optional[int] = None,
         node_input: Optional[dict[str, Any]] = None,
     ):
-        return backend.server.routers.v1.execute_graph(
+        return await backend.server.routers.v1.execute_graph(
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph_version,
-            node_input=node_input or {},
+            inputs=node_input or {},
+            credentials_inputs={},
         )
 
     @staticmethod
@@ -150,9 +168,10 @@ class AgentServer(backend.util.service.AppProcess):
         graph_id: str,
         graph_version: int,
         user_id: str,
+        for_export: bool = False,
     ):
         return await backend.server.routers.v1.get_graph(
-            graph_id, user_id, graph_version
+            graph_id, user_id, graph_version, for_export
         )
 
     @staticmethod
@@ -164,20 +183,14 @@ class AgentServer(backend.util.service.AppProcess):
 
     @staticmethod
     async def test_get_graph_run_status(graph_exec_id: str, user_id: str):
-        execution = await backend.data.graph.get_execution_meta(
+        from backend.data.execution import get_graph_execution_meta
+
+        execution = await get_graph_execution_meta(
             user_id=user_id, execution_id=graph_exec_id
         )
         if not execution:
             raise ValueError(f"Execution {graph_exec_id} not found")
         return execution.status
-
-    @staticmethod
-    async def test_get_graph_run_results(
-        graph_id: str, graph_exec_id: str, user_id: str
-    ):
-        return await backend.server.routers.v1.get_graph_execution(
-            graph_id, graph_exec_id, user_id
-        )
 
     @staticmethod
     async def test_delete_graph(graph_id: str, user_id: str):
@@ -245,12 +258,16 @@ class AgentServer(backend.util.service.AppProcess):
     ):
         return await backend.server.v2.store.routes.create_submission(request, user_id)
 
+    ### ADMIN ###
+
     @staticmethod
     async def test_review_store_listing(
         request: backend.server.v2.store.model.ReviewSubmissionRequest,
         user: autogpt_libs.auth.models.User,
     ):
-        return await backend.server.v2.store.routes.review_submission(request, user)
+        return await backend.server.v2.admin.store_admin_routes.review_submission(
+            request.store_listing_version_id, request, user
+        )
 
     @staticmethod
     def test_create_credentials(
@@ -258,7 +275,9 @@ class AgentServer(backend.util.service.AppProcess):
         provider: ProviderName,
         credentials: Credentials,
     ) -> Credentials:
-        return backend.server.integrations.router.create_credentials(
+        from backend.server.integrations.router import create_credentials
+
+        return create_credentials(
             user_id=user_id, provider=provider, credentials=credentials
         )
 

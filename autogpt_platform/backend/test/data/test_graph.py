@@ -6,7 +6,8 @@ import fastapi.exceptions
 import pytest
 
 import backend.server.v2.store.model as store
-from backend.blocks.basic import AgentInputBlock, AgentOutputBlock, StoreValueBlock
+from backend.blocks.basic import StoreValueBlock
+from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.data.block import BlockSchema
 from backend.data.graph import Graph, Link, Node
 from backend.data.model import SchemaField
@@ -16,7 +17,7 @@ from backend.usecases.sample import create_test_user
 from backend.util.test import SpinTestServer
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_graph_creation(server: SpinTestServer):
     """
     Test the creation of a graph with nodes and links.
@@ -70,7 +71,7 @@ async def test_graph_creation(server: SpinTestServer):
     assert links[0].sink_id in {nodes[0].id, nodes[1].id, nodes[2].id}
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_get_input_schema(server: SpinTestServer):
     """
     Test the get_input_schema method of a created graph.
@@ -166,7 +167,7 @@ async def test_get_input_schema(server: SpinTestServer):
     assert output_schema == ExpectedOutputSchema.jsonschema()
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_clean_graph(server: SpinTestServer):
     """
     Test the clean_graph function that:
@@ -199,7 +200,9 @@ async def test_clean_graph(server: SpinTestServer):
     )
 
     # Clean the graph
-    created_graph.clean_graph()
+    created_graph = await server.agent_server.test_get_graph(
+        created_graph.id, created_graph.version, DEFAULT_USER_ID, for_export=True
+    )
 
     # # Verify input block value is cleared
     input_node = next(
@@ -208,7 +211,7 @@ async def test_clean_graph(server: SpinTestServer):
     assert input_node.input_default["value"] == ""
 
 
-@pytest.mark.asyncio(scope="session")
+@pytest.mark.asyncio(loop_scope="session")
 async def test_access_store_listing_graph(server: SpinTestServer):
     """
     Test the access of a store listing graph.
@@ -240,7 +243,7 @@ async def test_access_store_listing_graph(server: SpinTestServer):
     store_submission_request = store.StoreSubmissionRequest(
         agent_id=created_graph.id,
         agent_version=created_graph.version,
-        slug="test-slug",
+        slug=created_graph.id,
         name="Test name",
         sub_heading="Test sub heading",
         video_url=None,

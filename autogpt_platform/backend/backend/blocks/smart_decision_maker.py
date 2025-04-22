@@ -14,7 +14,6 @@ from backend.data.block import (
     BlockOutput,
     BlockSchema,
     BlockType,
-    get_block,
 )
 from backend.data.model import SchemaField
 from backend.util import json
@@ -155,7 +154,7 @@ class SmartDecisionMakerBlock(Block):
             description="The system prompt to provide additional context to the model.",
         )
         conversation_history: list[dict] = SchemaField(
-            default=[],
+            default_factory=list,
             description="The conversation history to provide context for the prompt.",
         )
         last_tool_output: Any = SchemaField(
@@ -169,7 +168,7 @@ class SmartDecisionMakerBlock(Block):
         )
         prompt_values: dict[str, str] = SchemaField(
             advanced=False,
-            default={},
+            default_factory=dict,
             description="Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}.",
         )
         max_tokens: int | None = SchemaField(
@@ -186,7 +185,7 @@ class SmartDecisionMakerBlock(Block):
         @classmethod
         def get_missing_links(cls, data: BlockInput, links: list["Link"]) -> set[str]:
             # conversation_history & last_tool_output validation is handled differently
-            return super().get_missing_links(
+            missing_links = super().get_missing_links(
                 data,
                 [
                     link
@@ -195,6 +194,19 @@ class SmartDecisionMakerBlock(Block):
                     not in ["conversation_history", "last_tool_output"]
                 ],
             )
+
+            # Avoid executing the block if the last_tool_output is connected to a static
+            # link, like StoreValueBlock or AgentInputBlock.
+            if any(link.sink_name == "conversation_history" for link in links) and any(
+                link.sink_name == "last_tool_output" and link.is_static
+                for link in links
+            ):
+                raise ValueError(
+                    "Last Tool Output can't be connected to a static (dashed line) "
+                    "link like the output of `StoreValue` or `AgentInput` block"
+                )
+
+            return missing_links
 
         @classmethod
         def get_missing_input(cls, data: BlockInput) -> set[str]:
@@ -251,9 +263,7 @@ class SmartDecisionMakerBlock(Block):
         Raises:
             ValueError: If the block specified by sink_node.block_id is not found.
         """
-        block = get_block(sink_node.block_id)
-        if not block:
-            raise ValueError(f"Block not found: {sink_node.block_id}")
+        block = sink_node.block
 
         tool_function: dict[str, Any] = {
             "name": re.sub(r"[^a-zA-Z0-9_-]", "_", block.name).lower(),
@@ -441,7 +451,7 @@ class SmartDecisionMakerBlock(Block):
             )
 
         # Fallback on adding tool output in the conversation history as user prompt.
-        if len(tool_output) == 0:
+        if len(tool_output) == 0 and input_data.last_tool_output:
             logger.warning(
                 f"[SmartDecisionMakerBlock-node_exec_id={node_exec_id}] "
                 f"No pending tool calls found. This may indicate an issue with the "
@@ -481,6 +491,7 @@ class SmartDecisionMakerBlock(Block):
             max_tokens=input_data.max_tokens,
             tools=tool_functions,
             ollama_host=input_data.ollama_host,
+            parallel_tool_calls=False,
         )
 
         if not response.tool_calls:

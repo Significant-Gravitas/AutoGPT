@@ -5,7 +5,7 @@ networks:
     name: shared-network
 
 volumes:
-  db-config:
+  supabase-config:
 
 x-agpt-services:
   &agpt-services
@@ -67,19 +67,19 @@ services:
   studio:
     <<: *supabase-services
     extends:
-      file: ./supabase/docker/docker-compose.yml
+      file: ./db/docker/docker-compose.yml
       service: studio
 
   kong:
     <<: *supabase-services
     extends:
-      file: ./supabase/docker/docker-compose.yml
+      file: ./db/docker/docker-compose.yml
       service: kong
 
   auth:
     <<: *supabase-services
     extends:
-      file: ./supabase/docker/docker-compose.yml
+      file: ./db/docker/docker-compose.yml
       service: auth
     environment:
       GOTRUE_MAILER_AUTOCONFIRM: true
@@ -87,54 +87,57 @@ services:
   rest:
     <<: *supabase-services
     extends:
-      file: ./supabase/docker/docker-compose.yml
+      file: ./db/docker/docker-compose.yml
       service: rest
 
   realtime:
     <<: *supabase-services
     extends:
-      file: ./supabase/docker/docker-compose.yml
+      file: ./db/docker/docker-compose.yml
       service: realtime
 
   storage:
     <<: *supabase-services
     extends:
-      file: ./supabase/docker/docker-compose.yml
+      file: ./db/docker/docker-compose.yml
       service: storage
 
   imgproxy:
     <<: *supabase-services
     extends:
-      file: ./supabase/docker/docker-compose.yml
+      file: ./db/docker/docker-compose.yml
       service: imgproxy
 
   meta:
     <<: *supabase-services
     extends:
-      file: ./supabase/docker/docker-compose.yml
+      file: ./db/docker/docker-compose.yml
       service: meta
 
   functions:
     <<: *supabase-services
     extends:
-      file: ./supabase/docker/docker-compose.yml
+      file: ./db/docker/docker-compose.yml
       service: functions
 
   analytics:
     <<: *supabase-services
     extends:
-      file: ./supabase/docker/docker-compose.yml
+      file: ./db/docker/docker-compose.yml
       service: analytics
 
   db:
     <<: *supabase-services
     extends:
-      file: ./supabase/docker/docker-compose.yml
+      file: ./db/docker/docker-compose.yml
       service: db
+    ports:
+      - ${POSTGRES_PORT}:5432 # We don't use Supavisor locally, so we expose the db directly.
+
   vector:
     <<: *supabase-services
     extends:
-      file: ./supabase/docker/docker-compose.yml
+      file: ./db/docker/docker-compose.yml
       service: vector
 
   deps:

@@ -4,10 +4,11 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import WebSocket, WebSocketDisconnect
 
+from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
 from backend.server.ws_api import (
-    Methods,
-    WsMessage,
+    WSMessage,
+    WSMethod,
     handle_subscribe,
     handle_unsubscribe,
     websocket_router,
@@ -29,23 +30,33 @@ async def test_websocket_router_subscribe(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:
     mock_websocket.receive_text.side_effect = [
-        WsMessage(
-            method=Methods.SUBSCRIBE,
-            data={"graph_id": "test_graph", "graph_version": 1},
+        WSMessage(
+            method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
+            data={"graph_exec_id": "test-graph-exec-1"},
         ).model_dump_json(),
         WebSocketDisconnect(),
     ]
+    mock_manager.subscribe_graph_exec.return_value = (
+        f"{DEFAULT_USER_ID}|graph_exec#test-graph-exec-1"
+    )
 
     await websocket_router(
         cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
     )
 
-    mock_manager.connect.assert_called_once_with(mock_websocket)
-    mock_manager.subscribe.assert_called_once_with("test_graph", 1, mock_websocket)
+    mock_manager.connect_socket.assert_called_once_with(mock_websocket)
+    mock_manager.subscribe_graph_exec.assert_called_once_with(
+        user_id=DEFAULT_USER_ID,
+        graph_exec_id="test-graph-exec-1",
+        websocket=mock_websocket,
+    )
     mock_websocket.send_text.assert_called_once()
-    assert '"method":"subscribe"' in mock_websocket.send_text.call_args[0][0]
+    assert (
+        '"method":"subscribe_graph_execution"'
+        in mock_websocket.send_text.call_args[0][0]
+    )
     assert '"success":true' in mock_websocket.send_text.call_args[0][0]
-    mock_manager.disconnect.assert_called_once_with(mock_websocket)
+    mock_manager.disconnect_socket.assert_called_once_with(mock_websocket)
 
 
 @pytest.mark.asyncio
@@ -53,23 +64,30 @@ async def test_websocket_router_unsubscribe(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:
     mock_websocket.receive_text.side_effect = [
-        WsMessage(
-            method=Methods.UNSUBSCRIBE,
-            data={"graph_id": "test_graph", "graph_version": 1},
+        WSMessage(
+            method=WSMethod.UNSUBSCRIBE,
+            data={"graph_exec_id": "test-graph-exec-1"},
         ).model_dump_json(),
         WebSocketDisconnect(),
     ]
+    mock_manager.unsubscribe_graph_exec.return_value = (
+        f"{DEFAULT_USER_ID}|graph_exec#test-graph-exec-1"
+    )
 
     await websocket_router(
         cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
     )
 
-    mock_manager.connect.assert_called_once_with(mock_websocket)
-    mock_manager.unsubscribe.assert_called_once_with("test_graph", 1, mock_websocket)
+    mock_manager.connect_socket.assert_called_once_with(mock_websocket)
+    mock_manager.unsubscribe_graph_exec.assert_called_once_with(
+        user_id=DEFAULT_USER_ID,
+        graph_exec_id="test-graph-exec-1",
+        websocket=mock_websocket,
+    )
     mock_websocket.send_text.assert_called_once()
     assert '"method":"unsubscribe"' in mock_websocket.send_text.call_args[0][0]
     assert '"success":true' in mock_websocket.send_text.call_args[0][0]
-    mock_manager.disconnect.assert_called_once_with(mock_websocket)
+    mock_manager.disconnect_socket.assert_called_once_with(mock_websocket)
 
 
 @pytest.mark.asyncio
@@ -77,7 +95,7 @@ async def test_websocket_router_invalid_method(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:
     mock_websocket.receive_text.side_effect = [
-        WsMessage(method=Methods.EXECUTION_EVENT).model_dump_json(),
+        WSMessage(method=WSMethod.GRAPH_EXECUTION_EVENT).model_dump_json(),
         WebSocketDisconnect(),
     ]
 
@@ -85,28 +103,42 @@ async def test_websocket_router_invalid_method(
         cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager)
     )
 
-    mock_manager.connect.assert_called_once_with(mock_websocket)
+    mock_manager.connect_socket.assert_called_once_with(mock_websocket)
     mock_websocket.send_text.assert_called_once()
     assert '"method":"error"' in mock_websocket.send_text.call_args[0][0]
     assert '"success":false' in mock_websocket.send_text.call_args[0][0]
-    mock_manager.disconnect.assert_called_once_with(mock_websocket)
+    mock_manager.disconnect_socket.assert_called_once_with(mock_websocket)
 
 
 @pytest.mark.asyncio
 async def test_handle_subscribe_success(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:
-    message = WsMessage(
-        method=Methods.SUBSCRIBE, data={"graph_id": "test_graph", "graph_version": 1}
+    message = WSMessage(
+        method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
+        data={"graph_exec_id": "test-graph-exec-id"},
+    )
+    mock_manager.subscribe_graph_exec.return_value = (
+        "user-1|graph_exec#test-graph-exec-id"
     )
 
     await handle_subscribe(
-        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager), message
+        connection_manager=cast(ConnectionManager, mock_manager),
+        websocket=cast(WebSocket, mock_websocket),
+        user_id="user-1",
+        message=message,
     )
 
-    mock_manager.subscribe.assert_called_once_with("test_graph", 1, mock_websocket)
+    mock_manager.subscribe_graph_exec.assert_called_once_with(
+        user_id="user-1",
+        graph_exec_id="test-graph-exec-id",
+        websocket=mock_websocket,
+    )
     mock_websocket.send_text.assert_called_once()
-    assert '"method":"subscribe"' in mock_websocket.send_text.call_args[0][0]
+    assert (
+        '"method":"subscribe_graph_execution"'
+        in mock_websocket.send_text.call_args[0][0]
+    )
     assert '"success":true' in mock_websocket.send_text.call_args[0][0]
 
 
@@ -114,13 +146,16 @@ async def test_handle_subscribe_success(
 async def test_handle_subscribe_missing_data(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:
-    message = WsMessage(method=Methods.SUBSCRIBE)
+    message = WSMessage(method=WSMethod.SUBSCRIBE_GRAPH_EXEC)
 
     await handle_subscribe(
-        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager), message
+        connection_manager=cast(ConnectionManager, mock_manager),
+        websocket=cast(WebSocket, mock_websocket),
+        user_id="user-1",
+        message=message,
     )
 
-    mock_manager.subscribe.assert_not_called()
+    mock_manager.subscribe_graph_exec.assert_not_called()
     mock_websocket.send_text.assert_called_once()
     assert '"method":"error"' in mock_websocket.send_text.call_args[0][0]
     assert '"success":false' in mock_websocket.send_text.call_args[0][0]
@@ -130,15 +165,25 @@ async def test_handle_subscribe_missing_data(
 async def test_handle_unsubscribe_success(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:
-    message = WsMessage(
-        method=Methods.UNSUBSCRIBE, data={"graph_id": "test_graph", "graph_version": 1}
+    message = WSMessage(
+        method=WSMethod.UNSUBSCRIBE, data={"graph_exec_id": "test-graph-exec-id"}
+    )
+    mock_manager.unsubscribe_graph_exec.return_value = (
+        "user-1|graph_exec#test-graph-exec-id"
     )
 
     await handle_unsubscribe(
-        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager), message
+        connection_manager=cast(ConnectionManager, mock_manager),
+        websocket=cast(WebSocket, mock_websocket),
+        user_id="user-1",
+        message=message,
     )
 
-    mock_manager.unsubscribe.assert_called_once_with("test_graph", 1, mock_websocket)
+    mock_manager.unsubscribe_graph_exec.assert_called_once_with(
+        user_id="user-1",
+        graph_exec_id="test-graph-exec-id",
+        websocket=mock_websocket,
+    )
     mock_websocket.send_text.assert_called_once()
     assert '"method":"unsubscribe"' in mock_websocket.send_text.call_args[0][0]
     assert '"success":true' in mock_websocket.send_text.call_args[0][0]
@@ -148,13 +193,16 @@ async def test_handle_unsubscribe_success(
 async def test_handle_unsubscribe_missing_data(
     mock_websocket: AsyncMock, mock_manager: AsyncMock
 ) -> None:
-    message = WsMessage(method=Methods.UNSUBSCRIBE)
+    message = WSMessage(method=WSMethod.UNSUBSCRIBE)
 
     await handle_unsubscribe(
-        cast(WebSocket, mock_websocket), cast(ConnectionManager, mock_manager), message
+        connection_manager=cast(ConnectionManager, mock_manager),
+        websocket=cast(WebSocket, mock_websocket),
+        user_id="user-1",
+        message=message,
     )
 
-    mock_manager.unsubscribe.assert_not_called()
+    mock_manager._unsubscribe.assert_not_called()
     mock_websocket.send_text.assert_called_once()
     assert '"method":"error"' in mock_websocket.send_text.call_args[0][0]
     assert '"success":false' in mock_websocket.send_text.call_args[0][0]

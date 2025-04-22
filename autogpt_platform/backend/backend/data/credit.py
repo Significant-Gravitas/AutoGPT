@@ -11,18 +11,20 @@ from prisma.enums import (
     CreditRefundRequestStatus,
     CreditTransactionType,
     NotificationType,
+    OnboardingStep,
 )
 from prisma.errors import UniqueViolationError
 from prisma.models import CreditRefundRequest, CreditTransaction, User
-from prisma.types import CreditTransactionCreateInput, CreditTransactionWhereInput
-from pydantic import BaseModel
+from prisma.types import (
+    CreditRefundRequestCreateInput,
+    CreditTransactionCreateInput,
+    CreditTransactionWhereInput,
+)
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from backend.data import db
-from backend.data.block import Block, BlockInput, get_block
 from backend.data.block_cost_config import BLOCK_COSTS
-from backend.data.cost import BlockCost, BlockCostType
-from backend.data.execution import NodeExecutionEntry
+from backend.data.cost import BlockCost
 from backend.data.model import (
     AutoTopUpConfig,
     RefundRequest,
@@ -31,6 +33,7 @@ from backend.data.model import (
 )
 from backend.data.notifications import NotificationEventDTO, RefundRequestData
 from backend.data.user import get_user_by_id
+from backend.executor.utils import UsageTransactionMetadata
 from backend.notifications import NotificationManager
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.service import get_service_client
@@ -39,6 +42,7 @@ from backend.util.settings import Settings
 settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
 logger = logging.getLogger(__name__)
+base_url = settings.config.frontend_base_url or settings.config.platform_base_url
 
 
 class UserCreditBase(ABC):
@@ -90,20 +94,20 @@ class UserCreditBase(ABC):
     @abstractmethod
     async def spend_credits(
         self,
-        entry: NodeExecutionEntry,
-        data_size: float,
-        run_time: float,
+        user_id: str,
+        cost: int,
+        metadata: UsageTransactionMetadata,
     ) -> int:
         """
-        Spend the credits for the user based on the block usage.
+        Spend the credits for the user based on the cost.
 
         Args:
-            entry (NodeExecutionEntry): The node execution identifiers & data.
-            data_size (float): The size of the data being processed.
-            run_time (float): The time taken to run the block.
+            user_id (str): The user ID.
+            cost (int): The cost to spend.
+            metadata (UsageTransactionMetadata): The metadata of the transaction.
 
         Returns:
-            int: amount of credit spent
+            int: The remaining balance.
         """
         pass
 
@@ -115,6 +119,18 @@ class UserCreditBase(ABC):
         Args:
             user_id (str): The user ID.
             amount (int): The amount to top up.
+        """
+        pass
+
+    @abstractmethod
+    async def onboarding_reward(self, user_id: str, credits: int, step: OnboardingStep):
+        """
+        Reward the user with credits for completing an onboarding step.
+        Won't reward if the user has already received credits for the step.
+
+        Args:
+            user_id (str): The user ID.
+            step (OnboardingStep): The onboarding step.
         """
         pass
 
@@ -186,6 +202,14 @@ class UserCreditBase(ABC):
         pass
 
     @staticmethod
+    async def create_billing_portal_session(user_id: str) -> str:
+        session = stripe.billing_portal.Session.create(
+            customer=await get_stripe_customer_id(user_id),
+            return_url=base_url + "/profile/credits",
+        )
+        return session.url
+
+    @staticmethod
     def time_now() -> datetime:
         return datetime.now(timezone.utc)
 
@@ -202,7 +226,7 @@ class UserCreditBase(ABC):
                 "userId": user_id,
                 "createdAt": {"lte": top_time},
                 "isActive": True,
-                "runningBalance": {"not": None},  # type: ignore
+                "NOT": [{"runningBalance": None}],
             },
             order={"createdAt": "desc"},
         )
@@ -324,29 +348,19 @@ class UserCreditBase(ABC):
                 amount = min(-user_balance, 0)
 
             # Create the transaction
-            transaction_data: CreditTransactionCreateInput = {
-                "userId": user_id,
-                "amount": amount,
-                "runningBalance": user_balance + amount,
-                "type": transaction_type,
-                "metadata": metadata,
-                "isActive": is_active,
-                "createdAt": self.time_now(),
-            }
+            transaction_data = CreditTransactionCreateInput(
+                userId=user_id,
+                amount=amount,
+                runningBalance=user_balance + amount,
+                type=transaction_type,
+                metadata=metadata,
+                isActive=is_active,
+                createdAt=self.time_now(),
+            )
             if transaction_key:
                 transaction_data["transactionKey"] = transaction_key
             tx = await CreditTransaction.prisma().create(data=transaction_data)
             return user_balance + amount, tx.transactionKey
-
-
-class UsageTransactionMetadata(BaseModel):
-    graph_exec_id: str | None = None
-    graph_id: str | None = None
-    node_id: str | None = None
-    node_exec_id: str | None = None
-    block_id: str | None = None
-    block: str | None = None
-    input: BlockInput | None = None
 
 
 class UserCredit(UserCreditBase):
@@ -369,89 +383,21 @@ class UserCredit(UserCreditBase):
             )
         )
 
-    def _block_usage_cost(
-        self,
-        block: Block,
-        input_data: BlockInput,
-        data_size: float,
-        run_time: float,
-    ) -> tuple[int, BlockInput]:
-        block_costs = BLOCK_COSTS.get(type(block))
-        if not block_costs:
-            return 0, {}
-
-        for block_cost in block_costs:
-            if not self._is_cost_filter_match(block_cost.cost_filter, input_data):
-                continue
-
-            if block_cost.cost_type == BlockCostType.RUN:
-                return block_cost.cost_amount, block_cost.cost_filter
-
-            if block_cost.cost_type == BlockCostType.SECOND:
-                return (
-                    int(run_time * block_cost.cost_amount),
-                    block_cost.cost_filter,
-                )
-
-            if block_cost.cost_type == BlockCostType.BYTE:
-                return (
-                    int(data_size * block_cost.cost_amount),
-                    block_cost.cost_filter,
-                )
-
-        return 0, {}
-
-    def _is_cost_filter_match(
-        self, cost_filter: BlockInput, input_data: BlockInput
-    ) -> bool:
-        """
-        Filter rules:
-          - If cost_filter is an object, then check if cost_filter is the subset of input_data
-          - Otherwise, check if cost_filter is equal to input_data.
-          - Undefined, null, and empty string are considered as equal.
-        """
-        if not isinstance(cost_filter, dict) or not isinstance(input_data, dict):
-            return cost_filter == input_data
-
-        return all(
-            (not input_data.get(k) and not v)
-            or (input_data.get(k) and self._is_cost_filter_match(v, input_data[k]))
-            for k, v in cost_filter.items()
-        )
-
     async def spend_credits(
         self,
-        entry: NodeExecutionEntry,
-        data_size: float,
-        run_time: float,
+        user_id: str,
+        cost: int,
+        metadata: UsageTransactionMetadata,
     ) -> int:
-        block = get_block(entry.block_id)
-        if not block:
-            raise ValueError(f"Block not found: {entry.block_id}")
-
-        cost, matching_filter = self._block_usage_cost(
-            block=block, input_data=entry.data, data_size=data_size, run_time=run_time
-        )
         if cost == 0:
             return 0
 
         balance, _ = await self._add_transaction(
-            user_id=entry.user_id,
+            user_id=user_id,
             amount=-cost,
             transaction_type=CreditTransactionType.USAGE,
-            metadata=Json(
-                UsageTransactionMetadata(
-                    graph_exec_id=entry.graph_exec_id,
-                    graph_id=entry.graph_id,
-                    node_id=entry.node_id,
-                    node_exec_id=entry.node_exec_id,
-                    block_id=entry.block_id,
-                    block=block.name,
-                    input=matching_filter,
-                ).model_dump()
-            ),
+            metadata=Json(metadata.model_dump()),
         )
-        user_id = entry.user_id
 
         # Auto top-up if balance is below threshold.
         auto_top_up = await get_auto_top_up(user_id)
@@ -461,7 +407,7 @@ class UserCredit(UserCreditBase):
                     user_id=user_id,
                     amount=auto_top_up.amount,
                     # Avoid multiple auto top-ups within the same graph execution.
-                    key=f"AUTO-TOP-UP-{user_id}-{entry.graph_exec_id}",
+                    key=f"AUTO-TOP-UP-{user_id}-{metadata.graph_exec_id}",
                     ceiling_balance=auto_top_up.threshold,
                 )
             except Exception as e:
@@ -470,10 +416,28 @@ class UserCredit(UserCreditBase):
                     f"Auto top-up failed for user {user_id}, balance: {balance}, amount: {auto_top_up.amount}, error: {e}"
                 )
 
-        return cost
+        return balance
 
     async def top_up_credits(self, user_id: str, amount: int):
         await self._top_up_credits(user_id, amount)
+
+    async def onboarding_reward(self, user_id: str, credits: int, step: OnboardingStep):
+        key = f"REWARD-{user_id}-{step.value}"
+        if not await CreditTransaction.prisma().find_first(
+            where={
+                "userId": user_id,
+                "transactionKey": key,
+            }
+        ):
+            await self._add_transaction(
+                user_id=user_id,
+                amount=credits,
+                transaction_type=CreditTransactionType.GRANT,
+                transaction_key=key,
+                metadata=Json(
+                    {"reason": f"Reward for completing {step.value} onboarding step."}
+                ),
+            )
 
     async def top_up_refund(
         self, user_id: str, transaction_key: str, metadata: dict[str, str]
@@ -493,15 +457,15 @@ class UserCredit(UserCreditBase):
 
         try:
             refund_request = await CreditRefundRequest.prisma().create(
-                data={
-                    "id": refund_key,
-                    "transactionKey": transaction_key,
-                    "userId": user_id,
-                    "amount": amount,
-                    "reason": metadata.get("reason", ""),
-                    "status": CreditRefundRequestStatus.PENDING,
-                    "result": "The refund request is under review.",
-                }
+                data=CreditRefundRequestCreateInput(
+                    id=refund_key,
+                    transactionKey=transaction_key,
+                    userId=user_id,
+                    amount=amount,
+                    reason=metadata.get("reason", ""),
+                    status=CreditRefundRequestStatus.PENDING,
+                    result="The refund request is under review.",
+                )
             )
         except UniqueViolationError:
             raise ValueError(
@@ -765,10 +729,8 @@ class UserCredit(UserCreditBase):
             ui_mode="hosted",
             payment_intent_data={"setup_future_usage": "off_session"},
             saved_payment_method_options={"payment_method_save": "enabled"},
-            success_url=settings.config.frontend_base_url
-            + "/profile/credits?topup=success",
-            cancel_url=settings.config.frontend_base_url
-            + "/profile/credits?topup=cancel",
+            success_url=base_url + "/profile/credits?topup=success",
+            cancel_url=base_url + "/profile/credits?topup=cancel",
             allow_promotion_codes=True,
         )
 
@@ -962,6 +924,9 @@ class DisabledUserCredit(UserCreditBase):
         return 0
 
     async def top_up_credits(self, *args, **kwargs):
+        pass
+
+    async def onboarding_reward(self, *args, **kwargs):
         pass
 
     async def top_up_intent(self, *args, **kwargs) -> str:

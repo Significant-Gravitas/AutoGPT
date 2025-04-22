@@ -5,83 +5,98 @@ import {
   OnboardingHeader,
 } from "@/components/onboarding/OnboardingStep";
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
-import { useOnboarding } from "../layout";
 import StarRating from "@/components/onboarding/StarRating";
 import { Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useState } from "react";
-import OnboardingAgentInput from "@/components/onboarding/OnboardingAgentInput";
 import Image from "next/image";
-import { LibraryAgent, StoreAgentDetails } from "@/lib/autogpt-server-api";
+import { GraphMeta, StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useRouter } from "next/navigation";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import SchemaTooltip from "@/components/SchemaTooltip";
+import { TypeBasedInput } from "@/components/type-based-input";
 
 export default function Page() {
-  const { state, setState } = useOnboarding(5);
+  const { state, updateState, setStep } = useOnboarding(
+    undefined,
+    "AGENT_CHOICE",
+  );
   const [showInput, setShowInput] = useState(false);
+  const [agent, setAgent] = useState<GraphMeta | null>(null);
   const [storeAgent, setStoreAgent] = useState<StoreAgentDetails | null>(null);
-  const [agent, setAgent] = useState<LibraryAgent | null>(null);
   const router = useRouter();
   const api = useBackendAPI();
 
   useEffect(() => {
-    if (!state?.selectedAgentCreator || !state?.selectedAgentSlug) {
+    setStep(5);
+  }, [setStep]);
+
+  useEffect(() => {
+    if (!state?.selectedStoreListingVersionId) {
       return;
     }
     api
-      .getStoreAgent(state?.selectedAgentCreator!, state?.selectedAgentSlug!)
-      .then((agent) => {
-        setStoreAgent(agent);
-        api
-          .addMarketplaceAgentToLibrary(agent?.store_listing_version_id!)
-          .then((agent) => {
-            setAgent(agent);
-            const update: { [key: string]: any } = {};
-            // Set default values from schema
-            Object.entries(agent?.input_schema?.properties || {}).forEach(
-              ([key, value]) => {
-                // Skip if already set
-                if (state?.agentInput && state?.agentInput[key]) {
-                  update[key] = state?.agentInput[key];
-                  return;
-                }
-                update[key] = value.type !== "null" ? value.default || "" : "";
-              },
-            );
-            setState({
-              agentInput: update,
-            });
-          });
+      .getStoreAgentByVersionId(state?.selectedStoreListingVersionId)
+      .then((storeAgent) => {
+        setStoreAgent(storeAgent);
       });
-  }, [
-    api,
-    setAgent,
-    setStoreAgent,
-    setState,
-    state?.selectedAgentCreator,
-    state?.selectedAgentSlug,
-  ]);
+    api
+      .getAgentMetaByStoreListingVersionId(state?.selectedStoreListingVersionId)
+      .then((agent) => {
+        setAgent(agent);
+        const update: { [key: string]: any } = {};
+        // Set default values from schema
+        Object.entries(agent.input_schema.properties).forEach(
+          ([key, value]) => {
+            // Skip if already set
+            if (state.agentInput && state.agentInput[key]) {
+              update[key] = state.agentInput[key];
+              return;
+            }
+            update[key] = value.type !== "null" ? value.default || "" : "";
+          },
+        );
+        updateState({
+          agentInput: update,
+        });
+      });
+  }, [api, setAgent, updateState, state?.selectedStoreListingVersionId]);
 
   const setAgentInput = useCallback(
     (key: string, value: string) => {
-      setState({
-        ...state,
+      updateState({
         agentInput: {
           ...state?.agentInput,
           [key]: value,
         },
       });
     },
-    [state, state?.agentInput, setState],
+    [state?.agentInput, updateState],
   );
 
   const runAgent = useCallback(() => {
     if (!agent) {
       return;
     }
-    api.executeGraph(agent.agent_id, agent.agent_version, state?.agentInput);
-    router.push("/onboarding/6-congrats");
-  }, [api, agent, router]);
+    api
+      .addMarketplaceAgentToLibrary(storeAgent?.store_listing_version_id || "")
+      .then((libraryAgent) => {
+        api
+          .executeGraph(
+            libraryAgent.graph_id,
+            libraryAgent.graph_version,
+            state?.agentInput || {},
+          )
+          .then(({ graph_exec_id }) => {
+            updateState({
+              onboardingAgentExecutionId: graph_exec_id,
+            });
+            router.push("/onboarding/6-congrats");
+          });
+      });
+  }, [api, agent, router, state?.agentInput, storeAgent, updateState]);
 
   const runYourAgent = (
     <div className="ml-[54px] w-[481px] pl-5">
@@ -97,7 +112,13 @@ export default function Page() {
         <div
           onClick={() => {
             setShowInput(true);
-            setState({ step: 6 });
+            setStep(6);
+            updateState({
+              completedSteps: [
+                ...(state?.completedSteps || []),
+                "AGENT_NEW_RUN",
+              ],
+            });
           }}
           className={cn(
             "mt-16 flex h-[68px] w-[330px] items-center justify-center rounded-xl border-2 border-violet-700 bg-neutral-50",
@@ -186,29 +207,37 @@ export default function Page() {
               <span className="mt-4 text-base font-normal leading-normal text-zinc-600">
                 When you&apos;re done, click <b>Run Agent</b>.
               </span>
-              <div className="mt-12 inline-flex w-[492px] flex-col items-start justify-start gap-2 rounded-[20px] border border-zinc-300 bg-white p-6">
-                <OnboardingText className="mb-3 font-semibold" variant="header">
-                  Input
-                </OnboardingText>
-                {Object.entries(agent?.input_schema?.properties || {}).map(
-                  ([key, value]) => (
-                    <OnboardingAgentInput
-                      key={key}
-                      name={value.title!}
-                      description={value.description || ""}
-                      placeholder={value.placeholder || ""}
-                      value={state?.agentInput?.[key] || ""}
-                      onChange={(v) => setAgentInput(key, v)}
-                    />
-                  ),
-                )}
-              </div>
+              <Card className="agpt-box mt-4">
+                <CardHeader>
+                  <CardTitle className="font-poppins text-lg">Input</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-4">
+                  {Object.entries(agent?.input_schema.properties || {}).map(
+                    ([key, inputSubSchema]) => (
+                      <div key={key} className="flex flex-col space-y-2">
+                        <label className="flex items-center gap-1 text-sm font-medium">
+                          {inputSubSchema.title || key}
+                          <SchemaTooltip
+                            description={inputSubSchema.description}
+                          />
+                        </label>
+                        <TypeBasedInput
+                          schema={inputSubSchema}
+                          value={state?.agentInput?.[key]}
+                          placeholder={inputSubSchema.description}
+                          onChange={(value) => setAgentInput(key, value)}
+                        />
+                      </div>
+                    ),
+                  )}
+                </CardContent>
+              </Card>
               <OnboardingButton
                 variant="violet"
                 className="mt-8 w-[136px]"
                 disabled={
                   Object.values(state?.agentInput || {}).some(
-                    (value) => value.trim() === "",
+                    (value) => String(value).trim() === "",
                   ) || !agent
                 }
                 onClick={runAgent}
