@@ -1,4 +1,4 @@
-import React from "react";
+import React, { Suspense } from "react";
 import type { Metadata } from "next";
 import { Inter, Poppins } from "next/font/google";
 import { GoogleAnalytics } from "@next/third-parties/google";
@@ -52,7 +52,9 @@ export default async function RootLayout({
           <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
             {children}
             <TallyPopupSimple />
-            <OttoChatWidget />
+            <Suspense fallback={null}>
+              <OttoChatWidget />
+            </Suspense>
           </div>
           <Toaster />
         </Providers>
