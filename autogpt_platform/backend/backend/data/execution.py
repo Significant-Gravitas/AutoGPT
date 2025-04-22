@@ -216,7 +216,7 @@ class GraphExecutionWithNodes(GraphExecution):
                     node_exec_id=node_exec.node_exec_id,
                     node_id=node_exec.node_id,
                     block_id=node_exec.block_id,
-                    data=node_exec.input_data,
+                    inputs=node_exec.input_data,
                 )
                 for node_exec in self.node_executions
             ],
@@ -723,7 +723,7 @@ class NodeExecutionEntry(BaseModel):
     node_exec_id: str
     node_id: str
     block_id: str
-    data: BlockInput
+    inputs: BlockInput
 
 
 class ExecutionQueue(Generic[T]):

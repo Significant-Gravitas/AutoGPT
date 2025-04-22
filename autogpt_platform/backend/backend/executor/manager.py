@@ -9,14 +9,18 @@ import time
 from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import contextmanager
 from multiprocessing.pool import AsyncResult, Pool
-from typing import TYPE_CHECKING, Any, Generator, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
 from redis.lock import Lock as RedisLock
 
 from backend.blocks.io import AgentOutputBlock
-from backend.data.model import GraphExecutionStats, NodeExecutionStats
+from backend.data.model import (
+    CredentialsMetaInput,
+    GraphExecutionStats,
+    NodeExecutionStats,
+)
 from backend.data.notifications import (
     AgentRunData,
     LowBalanceData,
@@ -125,6 +129,9 @@ def execute_node(
     creds_manager: IntegrationCredentialsManager,
     data: NodeExecutionEntry,
     execution_stats: NodeExecutionStats | None = None,
+    node_credentials_input_map: Optional[
+        dict[str, dict[str, CredentialsMetaInput]]
+    ] = None,
 ) -> ExecutionStream:
     """
     Execute a node in the graph. This will trigger a block execution on a node,
@@ -172,7 +179,7 @@ def execute_node(
     )
 
     # Sanity check: validate the execution input.
-    input_data, error = validate_exec(node, data.data, resolve_input=False)
+    input_data, error = validate_exec(node, data.inputs, resolve_input=False)
     if input_data is None:
         log_metadata.error(f"Skip execution, input validation error: {error}")
         push_output("error", error)
@@ -182,8 +189,14 @@ def execute_node(
     # Re-shape the input data for agent block.
     # AgentExecutorBlock specially separate the node input_data & its input_default.
     if isinstance(node_block, AgentExecutorBlock):
-        input_data = {**node.input_default, "data": input_data}
-    data.data = input_data
+        _input_data = AgentExecutorBlock.Input(
+            **node.input_default,
+            inputs=input_data,
+        )
+        if node_credentials_input_map:
+            _input_data.node_credentials_input_map = node_credentials_input_map
+        input_data = _input_data.model_dump()
+    data.inputs = input_data
 
     # Execute the node
     input_data_str = json.dumps(input_data)
@@ -292,7 +305,7 @@ def _enqueue_next_nodes(
             node_exec_id=node_exec_id,
             node_id=node_id,
             block_id=block_id,
-            data=data,
+            inputs=data,
         )
 
     def register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
@@ -469,6 +482,9 @@ class Executor:
         cls,
         q: ExecutionQueue[NodeExecutionEntry],
         node_exec: NodeExecutionEntry,
+        node_credentials_input_map: Optional[
+            dict[str, dict[str, CredentialsMetaInput]]
+        ] = None,
     ) -> NodeExecutionStats:
         log_metadata = LogMetadata(
             user_id=node_exec.user_id,
@@ -481,7 +497,7 @@ class Executor:
 
         execution_stats = NodeExecutionStats()
         timing_info, _ = cls._on_node_execution(
-            q, node_exec, log_metadata, execution_stats
+            q, node_exec, log_metadata, execution_stats, node_credentials_input_map
         )
         execution_stats.walltime = timing_info.wall_time
         execution_stats.cputime = timing_info.cpu_time
@@ -501,6 +517,9 @@ class Executor:
         node_exec: NodeExecutionEntry,
         log_metadata: LogMetadata,
         stats: NodeExecutionStats | None = None,
+        node_credentials_input_map: Optional[
+            dict[str, dict[str, CredentialsMetaInput]]
+        ] = None,
     ):
         try:
             log_metadata.info(f"Start node execution {node_exec.node_exec_id}")
@@ -509,6 +528,7 @@ class Executor:
                 creds_manager=cls.creds_manager,
                 data=node_exec,
                 execution_stats=stats,
+                node_credentials_input_map=node_credentials_input_map,
             ):
                 q.add(execution)
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
@@ -610,7 +630,9 @@ class Executor:
             logger.error(f"Block {node_exec.block_id} not found.")
             return execution_count
 
-        cost, matching_filter = block_usage_cost(block=block, input_data=node_exec.data)
+        cost, matching_filter = block_usage_cost(
+            block=block, input_data=node_exec.inputs
+        )
         if cost > 0:
             cls.db_client.spend_credits(
                 user_id=node_exec.user_id,
@@ -773,7 +795,7 @@ class Executor:
                 if (node_creds_map := graph_exec.node_credentials_input_map) and (
                     node_field_creds_map := node_creds_map.get(node_id)
                 ):
-                    queued_node_exec.data.update(
+                    queued_node_exec.inputs.update(
                         {
                             field_name: creds_meta.model_dump()
                             for field_name, creds_meta in node_field_creds_map.items()
@@ -783,7 +805,7 @@ class Executor:
                 # Initiate node execution
                 running_executions[queued_node_exec.node_id] = cls.executor.apply_async(
                     cls.on_node_execution,
-                    (queue, queued_node_exec),
+                    (queue, queued_node_exec, node_creds_map),
                     callback=make_exec_callback(queued_node_exec),
                 )
 
