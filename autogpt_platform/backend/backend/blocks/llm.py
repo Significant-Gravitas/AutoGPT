@@ -89,14 +89,17 @@ class LlmModelMeta(EnumMeta):
 class LlmModel(str, Enum, metaclass=LlmModelMeta):
     # OpenAI models
     O3_MINI = "o3-mini"
+    O3 = "o3-2025-04-16"
     O1 = "o1"
     O1_PREVIEW = "o1-preview"
     O1_MINI = "o1-mini"
+    GPT41 = "gpt-4.1-2025-04-14"
     GPT4O_MINI = "gpt-4o-mini"
     GPT4O = "gpt-4o"
     GPT4_TURBO = "gpt-4-turbo"
     GPT3_5_TURBO = "gpt-3.5-turbo"
     # Anthropic models
+    CLAUDE_3_7_SONNET = "claude-3-7-sonnet-20250219"
     CLAUDE_3_5_SONNET = "claude-3-5-sonnet-latest"
     CLAUDE_3_5_HAIKU = "claude-3-5-haiku-latest"
     CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
@@ -117,6 +120,7 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     OLLAMA_DOLPHIN = "dolphin-mistral:latest"
     # OpenRouter models
     GEMINI_FLASH_1_5 = "google/gemini-flash-1.5"
+    GEMINI_2_5_PRO = "google/gemini-2.5-pro-preview-03-25"
     GROK_BETA = "x-ai/grok-beta"
     MISTRAL_NEMO = "mistralai/mistral-nemo"
     COHERE_COMMAND_R_08_2024 = "cohere/command-r-08-2024"
@@ -156,12 +160,14 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
 
 MODEL_METADATA = {
     # https://platform.openai.com/docs/models
+    LlmModel.O3: ModelMetadata("openai", 200000, 100000),
     LlmModel.O3_MINI: ModelMetadata("openai", 200000, 100000),  # o3-mini-2025-01-31
     LlmModel.O1: ModelMetadata("openai", 200000, 100000),  # o1-2024-12-17
     LlmModel.O1_PREVIEW: ModelMetadata(
         "openai", 128000, 32768
     ),  # o1-preview-2024-09-12
     LlmModel.O1_MINI: ModelMetadata("openai", 128000, 65536),  # o1-mini-2024-09-12
+    LlmModel.GPT41: ModelMetadata("openai", 1047576, 32768),
     LlmModel.GPT4O_MINI: ModelMetadata(
         "openai", 128000, 16384
     ),  # gpt-4o-mini-2024-07-18
@@ -171,6 +177,9 @@ MODEL_METADATA = {
     ),  # gpt-4-turbo-2024-04-09
     LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385, 4096),  # gpt-3.5-turbo-0125
     # https://docs.anthropic.com/en/docs/about-claude/models
+    LlmModel.CLAUDE_3_7_SONNET: ModelMetadata(
+        "anthropic", 200000, 8192
+    ),  # claude-3-7-sonnet-20250219
     LlmModel.CLAUDE_3_5_SONNET: ModelMetadata(
         "anthropic", 200000, 8192
     ),  # claude-3-5-sonnet-20241022
@@ -196,6 +205,7 @@ MODEL_METADATA = {
     LlmModel.OLLAMA_DOLPHIN: ModelMetadata("ollama", 32768, None),
     # https://openrouter.ai/models
     LlmModel.GEMINI_FLASH_1_5: ModelMetadata("open_router", 1000000, 8192),
+    LlmModel.GEMINI_2_5_PRO: ModelMetadata("open_router", 1050000, 8192),
     LlmModel.GROK_BETA: ModelMetadata("open_router", 131072, 131072),
     LlmModel.MISTRAL_NEMO: ModelMetadata("open_router", 128000, 4096),
     LlmModel.COHERE_COMMAND_R_08_2024: ModelMetadata("open_router", 128000, 4096),

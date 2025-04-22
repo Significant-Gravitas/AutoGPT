@@ -1,6 +1,6 @@
 "use client";
 
-import { logout } from "@/app/login/actions";
+import { logout } from "@/app/(platform)/login/actions";
 import { IconLogOut } from "@/components/ui/icons";
 
 export const ProfilePopoutMenuLogoutButton = () => {

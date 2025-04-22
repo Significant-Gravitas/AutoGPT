@@ -1,6 +1,6 @@
 "use client";
 
-import { useLibraryPageContext } from "@/app/library/state-provider";
+import { useLibraryPageContext } from "@/app/(platform)/library/state-provider";
 import LibrarySortMenu from "./library-sort-menu";
 
 export default function LibraryActionSubHeader(): React.ReactNode {
