@@ -26,9 +26,8 @@ from backend.data.model import (
     CredentialsMetaInput,
     is_credentials_field_name,
 )
-from backend.util import type as type_utils
-from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
 from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.util import type as type_utils
 
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
 from .db import BaseDbModel, transaction
@@ -858,15 +857,18 @@ async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphMo
     """
     Forks a graph by copying it and all its nodes and links to a new graph.
     """
+    from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
+
     async with transaction() as tx:
         graph = await get_graph(graph_id, graph_version, user_id=user_id)
         if not graph:
             raise ValueError(f"Graph {graph_id} v{graph_version} not found")
 
-        graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
         # Set forked from ID and version as itself as it's about ot be copied
         graph.forked_from_id = graph.id
         graph.forked_from_version = graph.version
+        graph.name = f"{graph.name} (copy)"
+        graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
         graph.validate_graph(for_run=False)
 
         await __create_graph(tx, graph, user_id)

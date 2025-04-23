@@ -13,15 +13,14 @@ import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
 import backend.server.v2.store.image_gen as store_image_gen
 import backend.server.v2.store.media as store_media
+from backend.data import db
+from backend.data import graph as graph_db
 from backend.data.db import locked_transaction
 from backend.data.includes import library_agent_include
 from backend.util.settings import Config
-from backend.data import graph as graph_db, db
-
 
 logger = logging.getLogger(__name__)
 config = Config()
-
 
 
 async def list_library_agents(
@@ -241,7 +240,8 @@ async def create_library_agent(
                         "graphVersionId": {"id": graph.id, "version": graph.version}
                     }
                 },
-            )
+            ),
+            include={"AgentGraph": True},
         )
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error creating agent in library: {e}")
@@ -681,32 +681,21 @@ async def deep_clone_library_agent(library_agent_id: str, user_id: str):
     Raises:
         DatabaseError: If there's an error during the cloning process.
     """
-    logger.debug(
-        f"Cloning library agent {library_agent_id} for user {user_id}"
-    )
+    logger.debug(f"Cloning library agent {library_agent_id} for user {user_id}")
     try:
         async with db.locked_transaction(f"usr_trx_{user_id}-clone_agent"):
             # Fetch the original agent
-            original_agent = await prisma.models.LibraryAgent.prisma().find_first(
-                where={"id": library_agent_id, "userId": user_id},
-                include={"AgentGraph": True},
-            )
-            if not original_agent:
-                raise store_exceptions.AgentNotFoundError(
-                    f"Library agent {library_agent_id} not found"
-                )
-            
+            original_agent = await get_library_agent(library_agent_id, user_id)
+
             # Check if user owns the library agent
-            if original_agent.userId != user_id:
+            if not original_agent.can_access_graph:
                 raise store_exceptions.DatabaseError(
                     f"User {user_id} does not own library agent {library_agent_id}"
                 )
-            
+
             # Clone the underlying graph and nodes
             new_graph = await graph_db.fork_graph(
-                original_agent.agentGraphId,
-                original_agent.agentGraphVersion,
-                user_id
+                original_agent.graph_id, original_agent.graph_version, user_id
             )
 
             # Create a library agent for the new graph
