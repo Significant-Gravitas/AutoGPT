@@ -24,10 +24,7 @@ export function Providers({
 }: ProvidersProps) {
   return (
     <NextThemesProvider {...props}>
-      <BackendAPIProvider
-        useMockBackend={useMockBackend}
-        mockClientProps={mockClientProps}
-      >
+      <BackendAPIProvider mockClientProps={mockClientProps}>
         <CredentialsProvider>
           <LaunchDarklyProvider>
             <OnboardingProvider>

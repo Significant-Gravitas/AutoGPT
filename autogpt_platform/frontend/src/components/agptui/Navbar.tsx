@@ -9,6 +9,7 @@ import { ProfileDetails } from "@/lib/autogpt-server-api/types";
 import { NavbarLink } from "./NavbarLink";
 import getServerUser from "@/lib/supabase/getServerUser";
 import BackendAPI from "@/lib/autogpt-server-api";
+import MockClient from "@/lib/autogpt-server-api/mock_client";
 
 // Disable theme toggle for now
 // import { ThemeToggle } from "./ThemeToggle";
@@ -32,7 +33,7 @@ interface NavbarProps {
 }
 
 async function getProfileData() {
-  const api = new BackendAPI();
+  const api = process.env.STORYBOOK ? new MockClient() : new BackendAPI();
   const profile = await Promise.resolve(api.getStoreProfile());
 
   return profile;

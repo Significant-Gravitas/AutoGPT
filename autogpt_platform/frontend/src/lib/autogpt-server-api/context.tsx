@@ -8,21 +8,19 @@ const BackendAPIProviderContext = createContext<BackendAPI | null>(null);
 
 interface BackendAPIProviderProps {
   children?: React.ReactNode;
-  useMockBackend?: boolean;
   mockClientProps?: MockClientProps;
 }
 
 export function BackendAPIProvider({
   children,
-  useMockBackend,
   mockClientProps,
 }: BackendAPIProviderProps): React.ReactNode {
   const api = useMemo(() => {
-    if (useMockBackend) {
+    if (process.env.STORYBOOK) {
       return new MockClient(mockClientProps);
     }
     return new BackendAPI();
-  }, [useMockBackend, mockClientProps]);
+  }, [mockClientProps]);
 
   return (
     <BackendAPIProviderContext.Provider value={api}>

@@ -24,7 +24,7 @@ const preview: Preview = {
       const mockOptions = context.parameters.mockBackend || {};
 
       return (
-        <Providers useMockBackend mockClientProps={mockOptions}>
+        <Providers mockClientProps={mockOptions}>
           <Story />
         </Providers>
       );

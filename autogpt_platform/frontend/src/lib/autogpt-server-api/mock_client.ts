@@ -1,3 +1,4 @@
+// If the component is inside the storybook and wants to communicate with the backend, it will automatically use this mock client
 import { faker } from "@faker-js/faker";
 import BackendAPI from "./client";
 import { Block, BlockUIType, ProfileDetails, User } from "./types";
@@ -100,6 +101,7 @@ export default class MockClient extends BackendAPI {
   }
 
   override getStoreProfile(page?: string): Promise<ProfileDetails> {
+    console.log("He is mocking in here inside getStoreProfile");
     return Promise.resolve(this.props.profile);
   }
 }
