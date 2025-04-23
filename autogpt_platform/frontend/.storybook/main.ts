@@ -9,6 +9,11 @@ const config: StorybookConfig = {
     "@storybook/addon-essentials",
     "@storybook/addon-interactions",
   ],
+  // dummy env variable
+  env: {
+    NEXT_PUBLIC_SUPABASE_URL: "https://your-project.supabase.co",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "your-anon-key",
+  },
   features: {
     experimentalRSC: true,
   },
