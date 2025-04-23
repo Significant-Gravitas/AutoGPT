@@ -32,6 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
@@ -61,6 +62,7 @@ export default function AgentRunsPage(): React.ReactElement {
     useState<GraphExecutionMeta | null>(null);
   const { state, updateState } = useOnboarding();
   const [copyAgentDialogOpen, setCopyAgentDialogOpen] = useState(false);
+  const { toast } = useToast();
 
   const openRunDraftView = useCallback(() => {
     selectView({ type: "run" });
@@ -248,9 +250,20 @@ export default function AgentRunsPage(): React.ReactElement {
   );
 
   const copyAgent = useCallback(async () => {
-    const id = agent?.id;
     setCopyAgentDialogOpen(false);
-    router.push(`/library/agents/${id}`);
+    api
+      .deepCloneLibraryAgent(agent?.id!)
+      .then((newAgent) => {
+        router.push(`/library/agents/${newAgent.id}`);
+      })
+      .catch((error) => {
+        console.error("Error copying agent:", error);
+        toast({
+          title: "Error copying agent",
+          description: `An error occurred while copying the agent: ${error.message}`,
+          variant: "destructive",
+        });
+      });
   }, []);
 
   const agentActions: ButtonAction[] = useMemo(
