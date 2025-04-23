@@ -17,9 +17,9 @@ from backend.data import db
 from backend.data import graph as graph_db
 from backend.data.db import locked_transaction
 from backend.data.includes import library_agent_include
-from backend.util.settings import Config
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
+from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
 config = Config()

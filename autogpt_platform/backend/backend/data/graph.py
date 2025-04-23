@@ -26,7 +26,6 @@ from backend.data.model import (
     CredentialsMetaInput,
     is_credentials_field_name,
 )
-
 from backend.util import type as type_utils
 
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
