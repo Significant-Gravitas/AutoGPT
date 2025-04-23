@@ -61,6 +61,7 @@ from backend.util.decorator import error_logged, time_measured
 from backend.util.file import clean_exec_files
 from backend.util.logging import configure_logging
 from backend.util.process import AppProcess, set_service_name
+from backend.util.retry import func_retry
 from backend.util.service import close_service_client, get_service_client
 from backend.util.settings import Settings
 
@@ -422,6 +423,7 @@ class Executor:
     """
 
     @classmethod
+    @func_retry
     def on_node_executor_start(cls):
         configure_logging()
         set_service_name("NodeExecutor")
@@ -527,6 +529,7 @@ class Executor:
                 stats.error = e
 
     @classmethod
+    @func_retry
     def on_graph_executor_start(cls):
         configure_logging()
         set_service_name("GraphExecutor")
