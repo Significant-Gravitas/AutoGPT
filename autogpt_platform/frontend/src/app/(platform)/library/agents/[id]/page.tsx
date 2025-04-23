@@ -264,7 +264,7 @@ export default function AgentRunsPage(): React.ReactElement {
           variant: "destructive",
         });
       });
-  }, []);
+  }, [agentID, api, router, toast]);
 
   const agentActions: ButtonAction[] = useMemo(
     () => [
@@ -379,12 +379,12 @@ export default function AgentRunsPage(): React.ReactElement {
         >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>You're making an editable copy</DialogTitle>
+              <DialogTitle>You&apos;re making an editable copy</DialogTitle>
               <DialogDescription className="pt-2">
-                We'll save a new version of this agent to your library so you
-                can customize it however you'd like. You'll still have the
-                original from the marketplace too — it won't be changed and
-                can't be edited.
+                We&apos;ll save a new version of this agent to your library so
+                you can customize it however you&apos;d like. You&apos;ll still
+                have the original from the marketplace too — it won&apos;t be
+                changed and can&apos;t be edited.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="justify-end">
