@@ -667,23 +667,23 @@ async def delete_preset(user_id: str, preset_id: str) -> None:
         raise store_exceptions.DatabaseError("Failed to delete preset") from e
 
 
-async def deep_clone_library_agent(library_agent_id: str, user_id: str):
+async def fork_library_agent(library_agent_id: str, user_id: str):
     """
-    Clones a library agent and its underyling graph and nodes for the given user.
+    Clones a library agent and its underyling graph and nodes (with new ids) for the given user.
 
     Args:
-        library_agent_id: The ID of the library agent to clone.
+        library_agent_id: The ID of the library agent to fork.
         user_id: The ID of the user who owns the library agent.
 
     Returns:
-        The cloned LibraryAgent.
+        The forked LibraryAgent.
 
     Raises:
-        DatabaseError: If there's an error during the cloning process.
+        DatabaseError: If there's an error during the forking process.
     """
-    logger.debug(f"Cloning library agent {library_agent_id} for user {user_id}")
+    logger.debug(f"Forking library agent {library_agent_id} for user {user_id}")
     try:
-        async with db.locked_transaction(f"usr_trx_{user_id}-clone_agent"):
+        async with db.locked_transaction(f"usr_trx_{user_id}-fork_agent"):
             # Fetch the original agent
             original_agent = await get_library_agent(library_agent_id, user_id)
 
@@ -695,15 +695,13 @@ async def deep_clone_library_agent(library_agent_id: str, user_id: str):
             #         f"User {user_id} cannot access library agent graph {library_agent_id}"
             #     )
 
-            # Clone the underlying graph and nodes
+            # Fork the underlying graph and nodes
             new_graph = await graph_db.fork_graph(
                 original_agent.graph_id, original_agent.graph_version, user_id
             )
 
             # Create a library agent for the new graph
-            library_agent = await create_library_agent(new_graph, user_id)
-
-            return library_model.LibraryAgent.from_db(library_agent)
+            return await create_library_agent(new_graph, user_id)
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error cloning library agent: {e}")
-        raise store_exceptions.DatabaseError("Failed to clone library agent") from e
+        raise store_exceptions.DatabaseError("Failed to fork library agent") from e

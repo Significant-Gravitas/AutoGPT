@@ -600,11 +600,8 @@ export default class BackendAPI {
     await this._request("PUT", `/library/agents/${libraryAgentId}`, params);
   }
 
-  /**
-   * Clone Library Agent and its underyling graph&nodes.
-   */
-  deepCloneLibraryAgent(libraryAgentId: LibraryAgentID): Promise<LibraryAgent> {
-    return this._request("POST", `/library/agents/${libraryAgentId}/clone`);
+  forkLibraryAgent(libraryAgentId: LibraryAgentID): Promise<LibraryAgent> {
+    return this._request("POST", `/library/agents/${libraryAgentId}/fork`);
   }
 
   listLibraryAgentPresets(params?: {

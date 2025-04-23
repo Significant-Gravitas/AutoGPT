@@ -120,8 +120,8 @@ model AgentGraph {
 
   forkedFromId      String?
   forkedFromVersion Int?
-  forkedFrom        AgentGraph? @relation("AgentForks", fields: [forkedFromId, forkedFromVersion], references: [id, version])
-  forks             AgentGraph[] @relation("AgentForks")
+  forkedFrom        AgentGraph? @relation("AgentGraphForks", fields: [forkedFromId, forkedFromVersion], references: [id, version])
+  forks             AgentGraph[] @relation("AgentGraphForks")
 
   Nodes      AgentNode[]
   Executions AgentGraphExecution[]
