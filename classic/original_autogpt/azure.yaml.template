@@ -1,0 +1,7 @@
+azure_api_type: azure
+azure_api_version: api-version-for-azure
+azure_endpoint: your-azure-openai-endpoint
+azure_model_map:
+    gpt-3.5-turbo-0125: gpt35-deployment-id-for-azure
+    gpt-4-turbo-preview: gpt4-deployment-id-for-azure
+    text-embedding-3-small: embedding-deployment-id-for-azure

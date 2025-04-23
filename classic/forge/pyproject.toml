@@ -1,0 +1,108 @@
+[tool.poetry]
+name = "AutoGPT-Forge"
+version = "0.2.0"
+description = ""
+authors = ["AutoGPT <support@agpt.co>"]
+license = "MIT"
+readme = "README.md"
+packages = [{ include = "forge" }]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+agbenchmark = { path = "../benchmark", optional = true }
+# agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
+aiohttp = "^3.8.5"
+anthropic = "^0.25.1"
+beautifulsoup4 = "^4.12.2"
+boto3 = "^1.33.6"
+charset-normalizer = "^3.1.0"
+chromadb = "^0.4.10"
+click = "*"
+colorama = "^0.4.6"
+demjson3 = "^3.0.0"
+docker = "*"
+duckduckgo-search = "^6.1.7"
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.7.1/en_core_web_sm-3.7.1-py3-none-any.whl" }
+fastapi = "^0.109.1"
+gitpython = "^3.1.32"
+google-api-python-client = "^2.116"
+google-cloud-logging = "^3.8.0"
+google-cloud-storage = "^2.13.0"
+groq = "^0.8.0"
+gTTS = "^2.3.1"
+jinja2 = "^3.1.2"
+jsonschema = "*"
+litellm = "^1.17.9"
+numpy = ">=1.26.0,<2.0.0"
+openai = "^1.7.2"
+Pillow = "*"
+playsound = "~1.2.2"
+pydantic = "^2.7.2"
+python-docx = "*"
+python-dotenv = "^1.0.0"
+python-multipart = "^0.0.7"
+pylatexenc = "*"
+pypdf = "^3.1.0"
+pyyaml = "^6.0"
+requests = "*"
+selenium = "^4.13.0"
+sqlalchemy = "^2.0.19"
+sentry-sdk = "^1.40.4"
+spacy = "^3.0.0"
+tenacity = "^8.2.2"
+tiktoken = ">=0.7.0,<1.0.0"
+toml = "^0.10.2"
+uvicorn = { extras = ["standard"], version = ">=0.23.2,<1" }
+watchdog = "4.0.0"
+webdriver-manager = "^4.0.2"
+
+[tool.poetry.extras]
+benchmark = ["agbenchmark"]
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.12.1"
+flake8 = "^7.0.0"
+isort = "^5.13.1"
+pyright = "^1.1.364"
+pre-commit = "^3.3.3"
+
+# Type stubs
+boto3-stubs = { extras = ["s3"], version = "^1.33.6" }
+google-api-python-client-stubs = "^1.24"
+types-beautifulsoup4 = "*"
+types-Pillow = "*"
+types-requests = "^2.31.0.2"
+
+# Testing
+pytest = "^7.4.0"
+pytest-asyncio = "^0.23.3"
+pytest-cov = "^5.0.0"
+pytest-mock = "*"
+pytest-recording = "*"
+mock = "^5.1.0"
+vcrpy = { git = "https://github.com/Significant-Gravitas/vcrpy.git", rev = "master" }
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+
+
+[tool.isort]
+profile = "black"
+
+
+[tool.pyright]
+pythonVersion = "3.10"
+
+
+[tool.pytest.ini_options]
+pythonpath = ["forge"]
+testpaths = ["forge", "tests"]
+markers = ["slow"]

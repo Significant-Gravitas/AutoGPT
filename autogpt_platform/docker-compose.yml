@@ -1,0 +1,158 @@
+networks:
+  app-network:
+    name: app-network
+  shared-network:
+    name: shared-network
+
+volumes:
+  supabase-config:
+
+x-agpt-services:
+  &agpt-services
+  networks:
+    - app-network
+    - shared-network
+
+x-supabase-services:
+  &supabase-services
+  networks:
+    - app-network
+    - shared-network
+
+services:
+  # AGPT services
+  migrate:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: migrate
+
+  redis:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: redis
+
+  rabbitmq:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: rabbitmq
+
+  rest_server:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: rest_server
+
+  executor:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: executor
+
+  websocket_server:
+    <<: *agpt-services
+    extends:
+      file: ./docker-compose.platform.yml
+      service: websocket_server
+
+#  frontend:
+#    <<: *agpt-services
+#    extends:
+#      file: ./docker-compose.platform.yml
+#      service: frontend
+
+  # Supabase services
+  studio:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: studio
+
+  kong:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: kong
+
+  auth:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: auth
+    environment:
+      GOTRUE_MAILER_AUTOCONFIRM: true
+
+  rest:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: rest
+
+  realtime:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: realtime
+
+  storage:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: storage
+
+  imgproxy:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: imgproxy
+
+  meta:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: meta
+
+  functions:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: functions
+
+  analytics:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: analytics
+
+  db:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: db
+    ports:
+      - ${POSTGRES_PORT}:5432 # We don't use Supavisor locally, so we expose the db directly.
+
+  vector:
+    <<: *supabase-services
+    extends:
+      file: ./db/docker/docker-compose.yml
+      service: vector
+
+  deps:
+    <<: *supabase-services
+    profiles:
+      - local
+    image: busybox
+    command: /bin/true
+    depends_on:
+      - studio
+      - kong
+      - auth
+      - meta
+      - analytics
+      - db
+      - vector
+      - redis
+      - rabbitmq

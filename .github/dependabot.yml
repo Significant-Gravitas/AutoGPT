@@ -1,0 +1,151 @@
+version: 2
+updates:
+  # autogpt_libs (Poetry project)
+  - package-ecosystem: "pip"
+    directory: "autogpt_platform/autogpt_libs"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    target-branch: "dev"
+    commit-message:
+      prefix: "chore(libs/deps)"
+      prefix-development: "chore(libs/deps-dev)"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+        update-types:
+        - "minor"
+        - "patch"
+      development-dependencies:
+        dependency-type: "development"
+        update-types:
+        - "minor"
+        - "patch"
+
+  # backend (Poetry project)
+  - package-ecosystem: "pip"
+    directory: "autogpt_platform/backend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    target-branch: "dev"
+    commit-message:
+      prefix: "chore(backend/deps)"
+      prefix-development: "chore(backend/deps-dev)"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+        update-types:
+        - "minor"
+        - "patch"
+      development-dependencies:
+        dependency-type: "development"
+        update-types:
+        - "minor"
+        - "patch"
+
+  # frontend (Next.js project)
+  - package-ecosystem: "npm"
+    directory: "autogpt_platform/frontend"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    target-branch: "dev"
+    commit-message:
+      prefix: "chore(frontend/deps)"
+      prefix-development: "chore(frontend/deps-dev)"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+        update-types:
+        - "minor"
+        - "patch"
+      development-dependencies:
+        dependency-type: "development"
+        update-types:
+        - "minor"
+        - "patch"
+
+  # infra (Terraform)
+  - package-ecosystem: "terraform"
+    directory: "autogpt_platform/infra"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    target-branch: "dev"
+    commit-message:
+      prefix: "chore(infra/deps)"
+      prefix-development: "chore(infra/deps-dev)"
+
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+        update-types:
+        - "minor"
+        - "patch"
+      development-dependencies:
+        dependency-type: "development"
+        update-types:
+        - "minor"
+        - "patch"
+
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    target-branch: "dev"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+        update-types:
+        - "minor"
+        - "patch"
+      development-dependencies:
+        dependency-type: "development"
+        update-types:
+        - "minor"
+        - "patch"
+
+
+  # Docker
+  - package-ecosystem: "docker"
+    directory: "autogpt_platform/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    target-branch: "dev"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+        update-types:
+        - "minor"
+        - "patch"
+      development-dependencies:
+        dependency-type: "development"
+        update-types:
+        - "minor"
+        - "patch"
+
+  # Docs
+  - package-ecosystem: 'pip'
+    directory: "docs/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 1
+    target-branch: "dev"
+    commit-message:
+      prefix: "chore(docs/deps)"
+    groups:
+      production-dependencies:
+        dependency-type: "production"
+        update-types:
+        - "minor"
+        - "patch"
+      development-dependencies:
+        dependency-type: "development"
+        update-types:
+        - "minor"
+        - "patch"

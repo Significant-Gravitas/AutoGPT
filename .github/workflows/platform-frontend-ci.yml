@@ -1,0 +1,121 @@
+name: AutoGPT Platform - Frontend CI
+
+on:
+  push:
+    branches: [master, dev]
+    paths:
+      - ".github/workflows/platform-frontend-ci.yml"
+      - "autogpt_platform/frontend/**"
+  pull_request:
+    paths:
+      - ".github/workflows/platform-frontend-ci.yml"
+      - "autogpt_platform/frontend/**"
+  merge_group:
+
+defaults:
+  run:
+    shell: bash
+    working-directory: autogpt_platform/frontend
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
+
+      - name: Install dependencies
+        run: |
+          yarn install --frozen-lockfile
+
+      - name: Run lint
+        run: |
+          yarn lint
+
+  type-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
+
+      - name: Install dependencies
+        run: |
+          yarn install --frozen-lockfile
+
+      - name: Run tsc check
+        run: |
+          yarn type-check
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, webkit]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
+
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          large-packages: false # slow
+          docker-images: false # limited benefit
+
+      - name: Copy default supabase .env
+        run: |
+          cp ../.env.example ../.env
+
+      - name: Copy backend .env
+        run: |
+          cp ../backend/.env.example ../backend/.env
+
+      - name: Run docker compose
+        run: |
+          docker compose -f ../docker-compose.yml up -d
+
+      - name: Install dependencies
+        run: |
+          yarn install --frozen-lockfile
+
+      - name: Setup Builder .env
+        run: |
+          cp .env.example .env
+
+      - name: Install Browser '${{ matrix.browser }}'
+        run: yarn playwright install --with-deps ${{ matrix.browser }}
+
+      - name: Run tests
+        timeout-minutes: 20
+        run: |
+          yarn test --project=${{ matrix.browser }}
+
+      - name: Print Final Docker Compose logs
+        if: always()
+        run: |
+          docker compose -f ../docker-compose.yml logs
+
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-${{ matrix.browser }}
+          path: playwright-report/
+          retention-days: 30

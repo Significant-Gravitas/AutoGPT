@@ -1,0 +1,103 @@
+/* flow.css or index.css */
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto",
+    "Oxygen", "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans",
+    "Helvetica Neue", sans-serif;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
+    monospace;
+}
+
+.modal {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  margin-right: -50%;
+  transform: translate(-50%, -50%);
+  background: #ffffff;
+  padding: 20px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  color: #000000;
+}
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.75);
+}
+
+.modal h2 {
+  margin-top: 0;
+}
+
+.modal button {
+  margin-right: 10px;
+}
+
+.modal form {
+  display: flex;
+  flex-direction: column;
+}
+
+.modal form div {
+  margin-bottom: 15px;
+}
+
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: -600px;
+  width: 350px;
+  height: calc(100vh - 68px); /* Full height minus top offset */
+  background-color: #ffffff;
+  color: #000000;
+  padding: 20px;
+  transition: left 0.3s ease;
+  z-index: 1000;
+  overflow-y: auto;
+  margin-top: 68px; /* Margin to push content below the top fixed area */
+}
+
+.sidebar.open {
+  left: 0;
+}
+
+.sidebar h3 {
+  margin: 0 0 10px;
+}
+
+.sidebar input {
+  margin: 0 0 10px;
+}
+
+.sidebarNodeRowStyle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #e2e2e2;
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  cursor: grab;
+}
+
+.sidebarNodeRowStyle.dragging {
+  opacity: 0.5;
+}
+
+.flow-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+}

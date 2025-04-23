@@ -1,0 +1,17 @@
+#!/bin/bash
+
+ ENV_PATH=$(poetry env info --path)
+ if [ -d "$ENV_PATH" ]; then
+     if [ -e delete ]; then
+         rm -rf "$ENV_PATH" || { echo "Please manually remove $ENV_PATH"; exit 1; }
+     else 
+       echo "Press ENTER to remove $ENV_PATH"
+       read && { rm -r "$ENV_PATH" && echo "Removed the poetry environment at $ENV_PATH."; } || { echo "Please manually remove $ENV_PATH."; exit 1; }
+     fi 
+ else
+     echo "No poetry environment found."
+ fi
+
+ poetry install --extras benchmark
+ echo "Setup completed successfully."
+ exit 0

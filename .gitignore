@@ -1,13 +1,11 @@
 ## Original ignores
 .github_access_token
-autogpt/keys.py
-autogpt/*.json
+classic/original_autogpt/keys.py
+classic/original_autogpt/*.json
 auto_gpt_workspace/*
 *.mpeg
 .env
 azure.yaml
-ai_settings.yaml
-last_run_ai_settings.yaml
 .vscode
 .idea/*
 auto-gpt.json
@@ -34,7 +32,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -160,11 +157,11 @@ openai/
 CURRENT_BULLETIN.md
 
 # AgBenchmark
-agbenchmark/reports/
+classic/benchmark/agbenchmark/reports/
 
 # Nodejs
 package-lock.json
-package.json
+
 
 # Allow for locally private items
 # private
@@ -172,8 +169,10 @@ pri*
 # ignore
 ig*
 .github_access_token
-arena/TestAgent.json
+LICENSE.rtf
+autogpt_platform/backend/settings.py
+/.auth
+/autogpt_platform/frontend/.auth
 
-# evo.ninja
-autogpts/evo.ninja/*
-!autogpts/evo.ninja/setup
+*.ign.*
+.test-contents

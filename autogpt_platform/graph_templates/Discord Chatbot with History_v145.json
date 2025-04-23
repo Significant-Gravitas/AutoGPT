@@ -1,0 +1,384 @@
+{
+  "id": "5f72e49b-ea7f-4877-8889-ecc8e92b013f",
+  "version": 145,
+  "is_active": false,
+  "is_template": true,
+  "name": "Discord Chatbot with History",
+  "description": "A Discord chatbot that keeps every message it receives in it's history.",
+  "nodes": [
+    {
+      "id": "e9e58d6b-bfc9-4306-975e-90a5ccbb3f3b",
+      "block_id": "31d1064e-7446-4693-a7d4-65e5ca1180d1",
+      "input_default": {
+        "key": "role",
+        "value": "user"
+      },
+      "metadata": {
+        "position": {
+          "x": 737.3259386869368,
+          "y": 505.6854685956772
+        }
+      }
+    },
+    {
+      "id": "a33a4e7f-70fa-43ca-a0dd-713411ec4c9b",
+      "block_id": "aeb08fc1-2fc1-4141-bc8e-f758f183a822",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 2175.7004054753124,
+          "y": 366.24540645815057
+        }
+      }
+    },
+    {
+      "id": "6659e8b4-0411-4cd2-8880-a3ae99883c99",
+      "block_id": "31d1064e-7446-4693-a7d4-65e5ca1180d1",
+      "input_default": {
+        "key": "role",
+        "value": "assistant"
+      },
+      "metadata": {
+        "position": {
+          "x": 775.141957627548,
+          "y": -829.6505739542441
+        }
+      }
+    },
+    {
+      "id": "800b1a42-e33b-4c49-aa80-8c68b9bfda71",
+      "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      "input_default": {
+        "data": "role"
+      },
+      "metadata": {
+        "position": {
+          "x": 214.4880185152615,
+          "y": -815.1198577000733
+        }
+      }
+    },
+    {
+      "id": "2e7b1dde-1335-453f-9182-9e4cda8aa07b",
+      "block_id": "aeb08fc1-2fc1-4141-bc8e-f758f183a822",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 1331.6793782438176,
+          "y": -101.73628661892974
+        }
+      }
+    },
+    {
+      "id": "d1bd8855-8ec3-45a3-88e4-25fc18ea3e94",
+      "block_id": "31d1064e-7446-4693-a7d4-65e5ca1180d1",
+      "input_default": {
+        "key": "content"
+      },
+      "metadata": {
+        "position": {
+          "x": 1353.5556971523963,
+          "y": 611.2816255229992
+        }
+      }
+    },
+    {
+      "id": "d3a038c5-9963-4357-852d-07399ffcc50f",
+      "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      "input_default": {
+        "data": "PUT YOUR DISCORD BOT TOKEN HERE!"
+      },
+      "metadata": {
+        "position": {
+          "x": -1316.153175163784,
+          "y": 85.9057841053135
+        }
+      }
+    },
+    {
+      "id": "f7a64a0d-93f0-406f-9c6f-50a65a3bf53f",
+      "block_id": "31d1064e-7446-4693-a7d4-65e5ca1180d1",
+      "input_default": {
+        "key": "content"
+      },
+      "metadata": {
+        "position": {
+          "x": 1327.2447359979349,
+          "y": -645.3297745619017
+        }
+      }
+    },
+    {
+      "id": "b45cfa51-5ead-4621-9f1c-f847dfea3e4c",
+      "block_id": "df06086a-d5ac-4abb-9996-2ad0acb2eff7",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": -552.196238724137,
+          "y": 474.0490915742754
+        }
+      }
+    },
+    {
+      "id": "498d2649-791f-4515-a3f0-b81d5b6520c8",
+      "block_id": "31d1064e-7446-4693-a7d4-65e5ca1180d1",
+      "input_default": {
+        "key": "role",
+        "value": "system"
+      },
+      "metadata": {
+        "position": {
+          "x": 221.03893486055767,
+          "y": -124.33651842880738
+        }
+      }
+    },
+    {
+      "id": "5511d3f0-0904-4fbf-bbf3-52dec184051f",
+      "block_id": "aeb08fc1-2fc1-4141-bc8e-f758f183a822",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": 2172.4586356499044,
+          "y": -128.9353646437745
+        }
+      }
+    },
+    {
+      "id": "8eedcf71-1146-4f54-b522-bf9b6e2d26b2",
+      "block_id": "d0822ab5-9f8a-44a3-8971-531dd0178b6b",
+      "input_default": {},
+      "metadata": {
+        "position": {
+          "x": -554.8257650483943,
+          "y": 28.0334045611869
+        }
+      }
+    },
+    {
+      "id": "62562e36-99e3-464b-a0fe-a177a2d693fc",
+      "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      "input_default": {
+        "input": "START"
+      },
+      "metadata": {
+        "position": {
+          "x": -1959.2865815964,
+          "y": 85.22646004039905
+        }
+      }
+    },
+    {
+      "id": "413ab216-49a4-4ac9-86da-d1660f4c2577",
+      "block_id": "31d1064e-7446-4693-a7d4-65e5ca1180d1",
+      "input_default": {
+        "key": "content",
+        "value": "You are AutoGPT, a helpful AI assistant. Your goal is to provide short, simple responses to user queries. Follow these guidelines:\n\n1. Always respond in a single sentence.\n2. Use easy-to-understand words.\n3. Keep your answers brief and to the point.\n\nRespond to the user's input following the guidelines above. Do not use complex language or lengthy explanations. Aim to be helpful while keeping your response concise and easy to understand."
+      },
+      "metadata": {
+        "position": {
+          "x": 772.0582893064322,
+          "y": -109.56787239160224
+        }
+      }
+    },
+    {
+      "id": "26a7c8ec-5489-443d-b55c-b110c5a9db84",
+      "block_id": "1ff065e9-88e8-4358-9d82-8dc91f622ba9",
+      "input_default": {
+        "data": "role"
+      },
+      "metadata": {
+        "position": {
+          "x": 201.67231225097294,
+          "y": 504.2932124979209
+        }
+      }
+    },
+    {
+      "id": "a568daee-45d2-4429-bf33-cbe9e1261f7b",
+      "block_id": "32a87eab-381e-4dd4-bdb8-4c47151be35a",
+      "input_default": {
+        "model": "llama-3.1-70b-versatile",
+        "max_tokens": 2000
+      },
+      "metadata": {
+        "position": {
+          "x": -1319.474244095698,
+          "y": -568.4625431535043
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "id": "90598028-c18d-4588-b823-a96c1c822cdf",
+      "source_id": "b45cfa51-5ead-4621-9f1c-f847dfea3e4c",
+      "sink_id": "26a7c8ec-5489-443d-b55c-b110c5a9db84",
+      "source_name": "message_content",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "9c86e3f5-6416-469e-9c48-ccc9796a03d3",
+      "source_id": "a568daee-45d2-4429-bf33-cbe9e1261f7b",
+      "sink_id": "f7a64a0d-93f0-406f-9c6f-50a65a3bf53f",
+      "source_name": "response",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "ac88fadb-b095-4d6d-96a4-af3feecfd433",
+      "source_id": "5511d3f0-0904-4fbf-bbf3-52dec184051f",
+      "sink_id": "a33a4e7f-70fa-43ca-a0dd-713411ec4c9b",
+      "source_name": "updated_list",
+      "sink_name": "list",
+      "is_static": false
+    },
+    {
+      "id": "fb533284-298e-41fa-a0d8-562decec6f0f",
+      "source_id": "b45cfa51-5ead-4621-9f1c-f847dfea3e4c",
+      "sink_id": "8eedcf71-1146-4f54-b522-bf9b6e2d26b2",
+      "source_name": "channel_name",
+      "sink_name": "channel_name",
+      "is_static": false
+    },
+    {
+      "id": "fe8a3033-4b19-4b58-b3a8-27277b4268d6",
+      "source_id": "f7a64a0d-93f0-406f-9c6f-50a65a3bf53f",
+      "sink_id": "5511d3f0-0904-4fbf-bbf3-52dec184051f",
+      "source_name": "updated_dictionary",
+      "sink_name": "entry",
+      "is_static": false
+    },
+    {
+      "id": "0e59e5a8-4015-4bab-b514-4d135e173209",
+      "source_id": "a33a4e7f-70fa-43ca-a0dd-713411ec4c9b",
+      "sink_id": "5511d3f0-0904-4fbf-bbf3-52dec184051f",
+      "source_name": "updated_list",
+      "sink_name": "list",
+      "is_static": false
+    },
+    {
+      "id": "6b4e546a-46b3-4ac1-aa49-9fd88de659f6",
+      "source_id": "26a7c8ec-5489-443d-b55c-b110c5a9db84",
+      "sink_id": "e9e58d6b-bfc9-4306-975e-90a5ccbb3f3b",
+      "source_name": "output",
+      "sink_name": "key",
+      "is_static": false
+    },
+    {
+      "id": "e9be7989-524f-4ba6-a6f6-e07ab11cebaa",
+      "source_id": "b45cfa51-5ead-4621-9f1c-f847dfea3e4c",
+      "sink_id": "d1bd8855-8ec3-45a3-88e4-25fc18ea3e94",
+      "source_name": "message_content",
+      "sink_name": "value",
+      "is_static": false
+    },
+    {
+      "id": "7a65d4ac-9791-455a-ac69-741f6d479960",
+      "source_id": "a33a4e7f-70fa-43ca-a0dd-713411ec4c9b",
+      "sink_id": "a568daee-45d2-4429-bf33-cbe9e1261f7b",
+      "source_name": "updated_list",
+      "sink_name": "messages",
+      "is_static": false
+    },
+    {
+      "id": "11af9994-c89f-4b5a-9256-2e51ddd58935",
+      "source_id": "d1bd8855-8ec3-45a3-88e4-25fc18ea3e94",
+      "sink_id": "a33a4e7f-70fa-43ca-a0dd-713411ec4c9b",
+      "source_name": "updated_dictionary",
+      "sink_name": "entry",
+      "is_static": false
+    },
+    {
+      "id": "260b4c80-7135-43f6-8523-b41e9f8eaf51",
+      "source_id": "62562e36-99e3-464b-a0fe-a177a2d693fc",
+      "sink_id": "d3a038c5-9963-4357-852d-07399ffcc50f",
+      "source_name": "output",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "2ed8435c-c278-4fb5-8f16-2f6e255949a6",
+      "source_id": "498d2649-791f-4515-a3f0-b81d5b6520c8",
+      "sink_id": "413ab216-49a4-4ac9-86da-d1660f4c2577",
+      "source_name": "updated_dictionary",
+      "sink_name": "dictionary",
+      "is_static": false
+    },
+    {
+      "id": "412771b2-62f6-4200-85b1-35cd64902a0e",
+      "source_id": "d3a038c5-9963-4357-852d-07399ffcc50f",
+      "sink_id": "b45cfa51-5ead-4621-9f1c-f847dfea3e4c",
+      "source_name": "output",
+      "sink_name": "discord_bot_token",
+      "is_static": false
+    },
+    {
+      "id": "87de0ca8-bf8a-49cc-ba92-26af9848e2be",
+      "source_id": "a568daee-45d2-4429-bf33-cbe9e1261f7b",
+      "sink_id": "800b1a42-e33b-4c49-aa80-8c68b9bfda71",
+      "source_name": "response",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "badaa566-75bc-4e06-8abf-a71addb109a1",
+      "source_id": "800b1a42-e33b-4c49-aa80-8c68b9bfda71",
+      "sink_id": "6659e8b4-0411-4cd2-8880-a3ae99883c99",
+      "source_name": "output",
+      "sink_name": "key",
+      "is_static": false
+    },
+    {
+      "id": "1a9b5f11-8dfb-4428-8c10-969c90027be2",
+      "source_id": "e9e58d6b-bfc9-4306-975e-90a5ccbb3f3b",
+      "sink_id": "d1bd8855-8ec3-45a3-88e4-25fc18ea3e94",
+      "source_name": "updated_dictionary",
+      "sink_name": "dictionary",
+      "is_static": false
+    },
+    {
+      "id": "e05b805d-2692-4bae-960c-76fa3fbba14a",
+      "source_id": "413ab216-49a4-4ac9-86da-d1660f4c2577",
+      "sink_id": "2e7b1dde-1335-453f-9182-9e4cda8aa07b",
+      "source_name": "updated_dictionary",
+      "sink_name": "entry",
+      "is_static": false
+    },
+    {
+      "id": "05a26116-d67a-4865-bc54-aa8677a053ee",
+      "source_id": "a568daee-45d2-4429-bf33-cbe9e1261f7b",
+      "sink_id": "8eedcf71-1146-4f54-b522-bf9b6e2d26b2",
+      "source_name": "response",
+      "sink_name": "message_content",
+      "is_static": false
+    },
+    {
+      "id": "12a1092f-ebff-4d74-a428-02f2974a2380",
+      "source_id": "6659e8b4-0411-4cd2-8880-a3ae99883c99",
+      "sink_id": "f7a64a0d-93f0-406f-9c6f-50a65a3bf53f",
+      "source_name": "updated_dictionary",
+      "sink_name": "dictionary",
+      "is_static": false
+    },
+    {
+      "id": "73797cb4-1f34-46db-8df6-9f1697b6d254",
+      "source_id": "8eedcf71-1146-4f54-b522-bf9b6e2d26b2",
+      "sink_id": "d3a038c5-9963-4357-852d-07399ffcc50f",
+      "source_name": "status",
+      "sink_name": "input",
+      "is_static": false
+    },
+    {
+      "id": "c6debbc9-1b12-48dd-a1b5-8ab4d692d112",
+      "source_id": "2e7b1dde-1335-453f-9182-9e4cda8aa07b",
+      "sink_id": "a33a4e7f-70fa-43ca-a0dd-713411ec4c9b",
+      "source_name": "updated_list",
+      "sink_name": "list",
+      "is_static": false
+    }
+  ],
+  "subgraphs": {}
+}

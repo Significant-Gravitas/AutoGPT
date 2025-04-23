@@ -1,0 +1,91 @@
+[tool.poetry]
+name = "agpt"
+version = "0.5.0"
+authors = ["Significant Gravitas <support@agpt.co>"]
+readme = "README.md"
+description = "An open-source attempt to make GPT-4 autonomous"
+homepage = "https://github.com/Significant-Gravitas/AutoGPT/tree/master/autogpt"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+packages = [{ include = "autogpt" }]
+
+
+[tool.poetry.scripts]
+autogpt = "autogpt.app.cli:cli"
+serve = "autogpt.app.cli:serve"
+
+
+[tool.poetry.dependencies]
+python = "^3.10"
+autogpt-forge = { path = "../forge", develop = true }
+# autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "forge"}
+click = "*"
+colorama = "^0.4.6"
+distro = "^1.8.0"
+fastapi = "^0.109.1"
+gitpython = "^3.1.32"
+hypercorn = "^0.14.4"
+openai = "^1.7.2"
+orjson = "^3.8.10"
+pydantic = "^2.7.2"
+python-dotenv = "^1.0.0"
+requests = "*"
+sentry-sdk = "^1.40.4"
+
+# Benchmarking
+agbenchmark = { path = "../benchmark", optional = true }
+# agbenchmark = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "benchmark", optional = true}
+
+[tool.poetry.extras]
+benchmark = ["agbenchmark"]
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.12.1"
+flake8 = "^7.0.0"
+isort = "^5.13.1"
+pre-commit = "*"
+pyright = "^1.1.364"
+
+# Type stubs
+types-colorama = "*"
+
+# Testing
+pytest = "*"
+pytest-asyncio = "*"
+pytest-cov = "*"
+pytest-mock = "*"
+pytest-recording = "*"
+pytest-xdist = "*"
+
+[tool.poetry.group.build]
+optional = true
+
+[tool.poetry.group.build.dependencies]
+cx-freeze = { git = "https://github.com/ntindle/cx_Freeze.git", rev = "main" }
+# HACK: switch to cx-freeze release package after #2442 and #2472 are merged: https://github.com/marcelotduarte/cx_Freeze/pulls?q=is:pr+%232442+OR+%232472+
+# cx-freeze = { version = "^7.2.0", optional = true }
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+
+[tool.black]
+line-length = 88
+target-version = ['py310']
+include = '\.pyi?$'
+
+
+[tool.isort]
+profile = "black"
+skip_glob = ["data"]
+
+
+[tool.pyright]
+pythonVersion = "3.10"
+exclude = ["data/**", "**/node_modules", "**/__pycache__", "**/.*"]
+ignore = ["../classic/forge/**"]

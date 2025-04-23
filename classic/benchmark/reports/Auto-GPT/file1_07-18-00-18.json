@@ -1,0 +1,177 @@
+{
+    "command": "agbenchmark start",
+    "completion_time": "2023-07-18-00:22",
+    "metrics": {
+        "run_time": "239.83 seconds",
+        "highest_difficulty": "interface: 1"
+    },
+    "tests": {
+        "TestWriteFile": {
+            "data_path": "agbenchmark/challenges/interface/write_file",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "interface",
+                "success": true,
+                "success_%": 100.0,
+                "run_time": "35.666 seconds"
+            }
+        },
+        "TestBasicCodeGeneration": {
+            "data_path": "agbenchmark/challenges/code/d4",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "novice",
+                "success": false,
+                "fail_reason": "assert 1 in [0.0]",
+                "success_%": 0.0,
+                "run_time": "15.512 seconds"
+            }
+        },
+        "TestSearch": {
+            "data_path": "agbenchmark/challenges/interface/search",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "interface",
+                "success": false,
+                "fail_reason": "assert 1 in [0.0, 0.0]",
+                "success_%": 0.0,
+                "run_time": "126.148 seconds"
+            }
+        },
+        "TestReadFile": {
+            "data_path": "agbenchmark/challenges/interface/read_file",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "interface",
+                "success": false,
+                "fail_reason": "assert 1 in [0.0]",
+                "success_%": 0.0,
+                "run_time": "62.169 seconds"
+            }
+        },
+        "TestThreeSum": {
+            "data_path": "agbenchmark/challenges/code/d5",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "intermediate",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestThreeSum::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestBasicCodeGeneration::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        },
+        "TestBasicRetrieval": {
+            "data_path": "agbenchmark/challenges/retrieval/r1",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "basic",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestBasicRetrieval::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestSearch::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        },
+        "TestDebugSimpleTypoWithGuidance": {
+            "data_path": "agbenchmark/challenges/code/d1",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "basic",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestDebugSimpleTypoWithGuidance::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestReadFile::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        },
+        "TestBasicMemory": {
+            "data_path": "agbenchmark/challenges/memory/m1",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "basic",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestBasicMemory::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestReadFile::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        },
+        "TestRetrieval2": {
+            "data_path": "agbenchmark/challenges/retrieval/r2",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "novice",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRetrieval2::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestBasicRetrieval::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        },
+        "TestCreateSimpleWebServer": {
+            "data_path": "agbenchmark/challenges/code/d3",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "advanced",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestCreateSimpleWebServer::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestDebugSimpleTypoWithGuidance::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        },
+        "TestDebugSimpleTypoWithoutGuidance": {
+            "data_path": "agbenchmark/challenges/code/d2",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "novice",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestDebugSimpleTypoWithoutGuidance::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestDebugSimpleTypoWithGuidance::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        },
+        "TestRememberMultipleIds": {
+            "data_path": "agbenchmark/challenges/memory/m2",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "novice",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRememberMultipleIds::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestBasicMemory::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        },
+        "TestRetrieval3": {
+            "data_path": "agbenchmark/challenges/retrieval/r3",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "intermediate",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRetrieval3::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRetrieval2::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        },
+        "TestRememberMultipleIdsWithNoise": {
+            "data_path": "agbenchmark/challenges/memory/m3",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "intermediate",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRememberMultipleIdsWithNoise::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRememberMultipleIds::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        },
+        "TestRememberMultiplePhrasesWithNoise": {
+            "data_path": "agbenchmark/challenges/memory/m4",
+            "is_regression": false,
+            "metrics": {
+                "difficulty": "advanced",
+                "success": false,
+                "fail_reason": "venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRememberMultiplePhrasesWithNoise::test_method[challenge_data0] depends on venv/lib/python3.10/site-packages/agbenchmark/challenges/test_all.py::TestRememberMultipleIdsWithNoise::test_method[challenge_data0]",
+                "success_%": 0.0,
+                "run_time": "0.001 seconds"
+            }
+        }
+    },
+    "config": {
+        "workspace": "classic/original_autogpt/workspace/auto_gpt_workspace"
+    }
+}

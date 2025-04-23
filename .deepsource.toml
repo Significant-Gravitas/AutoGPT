@@ -1,0 +1,18 @@
+version = 1
+
+test_patterns = ["**/*.spec.ts","**/*_test.py","**/*_tests.py","**/test_*.py"]
+
+exclude_patterns = ["classic/**"]
+
+[[analyzers]]
+name = "javascript"
+
+[analyzers.meta]
+plugins = ["react"]
+environment = ["nodejs"]
+
+[[analyzers]]
+name = "python"
+
+[analyzers.meta]
+runtime_version = "3.x.x"

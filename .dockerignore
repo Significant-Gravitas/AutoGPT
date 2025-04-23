@@ -1,0 +1,61 @@
+# Ignore everything by default, selectively add things to context
+*
+
+# Platform - Libs
+!autogpt_platform/autogpt_libs/autogpt_libs/
+!autogpt_platform/autogpt_libs/pyproject.toml
+!autogpt_platform/autogpt_libs/poetry.lock
+!autogpt_platform/autogpt_libs/README.md
+
+# Platform - Backend
+!autogpt_platform/backend/backend/
+!autogpt_platform/backend/migrations/
+!autogpt_platform/backend/schema.prisma
+!autogpt_platform/backend/pyproject.toml
+!autogpt_platform/backend/poetry.lock
+!autogpt_platform/backend/README.md
+
+# Platform - Market
+!autogpt_platform/market/market/
+!autogpt_platform/market/scripts.py
+!autogpt_platform/market/schema.prisma
+!autogpt_platform/market/pyproject.toml
+!autogpt_platform/market/poetry.lock
+!autogpt_platform/market/README.md
+
+# Platform - Frontend
+!autogpt_platform/frontend/src/
+!autogpt_platform/frontend/public/
+!autogpt_platform/frontend/package.json
+!autogpt_platform/frontend/yarn.lock
+!autogpt_platform/frontend/tsconfig.json
+!autogpt_platform/frontend/README.md
+## config
+!autogpt_platform/frontend/*.config.*
+!autogpt_platform/frontend/.env.*
+
+# Classic - AutoGPT
+!classic/original_autogpt/autogpt/
+!classic/original_autogpt/pyproject.toml
+!classic/original_autogpt/poetry.lock
+!classic/original_autogpt/README.md
+!classic/original_autogpt/tests/
+
+# Classic - Benchmark
+!classic/benchmark/agbenchmark/
+!classic/benchmark/pyproject.toml
+!classic/benchmark/poetry.lock
+!classic/benchmark/README.md
+
+# Classic - Forge
+!classic/forge/
+!classic/forge/pyproject.toml
+!classic/forge/poetry.lock
+!classic/forge/README.md
+
+# Classic - Frontend
+!classic/frontend/build/web/
+
+# Explicitly re-ignore some folders
+.*
+**/__pycache__

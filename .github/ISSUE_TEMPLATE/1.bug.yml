@@ -16,7 +16,7 @@ body:
         [discussions]: https://github.com/Significant-Gravitas/AutoGPT/discussions
         [#tech-support]: https://discord.com/channels/1092243196446249134/1092275629602394184
         [existing issues]: https://github.com/Significant-Gravitas/AutoGPT/issues?q=is%3Aissue
-        [wiki page on Contributing]: https://github.com/Significant-Gravitas/Nexus/wiki/Contributing
+        [wiki page on Contributing]: https://github.com/Significant-Gravitas/AutoGPT/wiki/Contributing
 
   - type: checkboxes
     attributes:
@@ -88,14 +88,16 @@ body:
 
   - type: dropdown
     attributes:
-      label: Do you use OpenAI GPT-3 or GPT-4?
+      label: What LLM Provider do you use?
       description: >
-        If you are using AutoGPT with `--gpt3only`, your problems may be caused by
+        If you are using AutoGPT with `SMART_LLM=gpt-3.5-turbo`, your problems may be caused by
         the [limitations](https://github.com/Significant-Gravitas/AutoGPT/issues?q=is%3Aissue+label%3A%22AI+model+limitation%22) of GPT-3.5.
       options:
-        - GPT-3.5
-        - GPT-4
-        - GPT-4(32k)
+        - Azure
+        - Groq
+        - Anthropic
+        - Llamafile
+        - Other (detail in issue)
     validations:
       required: true
 
@@ -125,6 +127,13 @@ body:
           attributes:
             label: Specify the area
             description: Please specify the area you think is best related to the issue.
+
+  - type: input
+    attributes:
+      label: What commit or version are you using?
+      description: It is helpful for us to reproduce to know what version of the software you were using when this happened. Please run `git log -n 1 --pretty=format:"%H"` to output the full commit hash.
+    validations:
+      required: true
 
   - type: textarea
     attributes:

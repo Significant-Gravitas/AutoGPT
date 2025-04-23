@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        First, check out our [wiki page on Contributing](https://github.com/Significant-Gravitas/Nexus/wiki/Contributing)
+        First, check out our [wiki page on Contributing](https://github.com/Significant-Gravitas/AutoGPT/wiki/Contributing)
         Please provide a searchable summary of the issue in the title above ⬆️.
   - type: checkboxes
     attributes:

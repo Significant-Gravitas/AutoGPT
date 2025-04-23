@@ -1,0 +1,212 @@
+interactions:
+- request:
+    body: '{"messages": [{"content": "\nYour task is to devise up to 5 highly effective
+      goals and an appropriate role-based name (_GPT) for an autonomous agent, ensuring
+      that the goals are optimally aligned with the successful completion of its assigned
+      task.\n\nThe user will provide the task, you will provide only the output in
+      the exact format specified below with no explanation or conversation.\n\nExample
+      input:\nHelp me with marketing my business\n\nExample output:\nName: CMOGPT\nDescription:
+      a professional digital marketer AI that assists Solopreneurs in growing their
+      businesses by providing world-class expertise in solving marketing problems
+      for SaaS, content products, agencies, and more.\nGoals:\n- Engage in effective
+      problem-solving, prioritization, planning, and supporting execution to address
+      your marketing needs as your virtual Chief Marketing Officer.\n\n- Provide specific,
+      actionable, and concise advice to help you make informed decisions without the
+      use of platitudes or overly wordy explanations.\n\n- Identify and prioritize
+      quick wins and cost-effective campaigns that maximize results with minimal time
+      and budget investment.\n\n- Proactively take the lead in guiding you and offering
+      suggestions when faced with unclear information or uncertainty to ensure your
+      marketing strategy remains on track.\n", "role": "system"}, {"content": "Task:
+      ''Help me create a rock opera about cybernetic giraffes''\nRespond only with
+      the output in the exact format specified in the system prompt, with no explanation
+      or conversation.", "role": "user"}], "model": "gpt-3.5-turbo", "temperature":
+      0.0}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '1623'
+      Content-Type:
+      - application/json
+      X-Content-Hash:
+      - 85e7cf25528e4015877bc3db5bbf9674c92e7d77d5476788f64bbf697481c3c0
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA3SUQW/cRgyF7/0VxJy1C69j165uToIkRZHGaIoeEhcBd0RJzI6GkyFn7Y3h/16M
+        tI59SK8jDvm99zi6d9y51vkRzU8prC7++Ofy+tXh9cj7D3R1dv79/fXu9v2pvPz05tsn1zjZfiVv
+        xxtrL1MKZCzRNc5nQqPOtZtfL883pyfnv100bpKOgmvdkGz1Yn2+spK3sjp5cbJxjSuKA7n23qUs
+        U7IvJjuK6trTy7PGPfX+cb65vGiciWH4cXR2sXlonB+FPalrP9+7ifSxbZZArnWoymoYrUJKNIpV
+        wJ84UQt/id99SG+v/76Jr0l95lQntoARrn6HWRLvCbxELaH2ABvRQBN5xsDfSYEjjBQSxwEwG6sp
+        YOxgKsqeMSpsc/1mI3GGEvlbIdizskQFEwjc0/qJA1iX7j17DOEAHSkPkbpauyipE22kI51EkB6y
+        +B1IoozaQMqy564OpbtE2WAo3GH0NINpSUlyFZKlDKMUm7tRNM70JDll8aS6volvBYO2N3EFryQE
+        3EpGI7hlG+EgpXJ1tKcgCRBqahRCna0m+RA40mKZx2Qlky7DVKnySA/+sKUcydjDwBn7nhb/LGPU
+        gFYdrpKr/GcyoZc8oa0r1tX/2jLRJBm3gcCPmNEbZW3Ao/nxACpx0GYeRnHAoUJ3jEGGcmS+5RBg
+        R5QAS8eVWGcdvK+bDn2WCdSwminQc2QdZ6DrOQCCnqjbot8dfR8GUptzlwVV9pQxBFDLxVd35sKE
+        vqJIP9c8k2wCFHUuAy8jac2p3uApobe+hCXwmbQaNDd4RJ/J3lFIc2oR9zzUHGuJkR9j3TfAunum
+        dXjK0pWZ5LnvDXD0oXRLwjjQcUEbCDyMxnFYHFUp1de+r+2air78HwDBcgkH4GmiPCt4Yp4RPx73
+        s1JyrBiT2IxRXxXmHdnxPf3cmwnveCpTbSv66Kmx35GBYiBdu4fGLWl9yYQq0bVOTZJrHMeO7lx7
+        8vDvwy//AQAA//8DAJMll+IcBQAA
+    headers:
+      Access-Control-Allow-Origin:
+      - '*'
+      Alt-Svc:
+      - h3=":443"; ma=86400
+      - h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+      Cache-Control:
+      - no-cache, must-revalidate
+      Cf-Cache-Status:
+      - DYNAMIC
+      Cf-Ray:
+      - 7cd79738dd8022d0-ORD
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Fri, 26 May 2023 17:03:38 GMT
+      Function-Execution-Id:
+      - u75anm04ybm4
+      Openai-Model:
+      - gpt-3.5-turbo-0301
+      Openai-Organization:
+      - significant-gravitas
+      Openai-Processing-Ms:
+      - '20744'
+      Openai-Version:
+      - '2020-10-01'
+      Server:
+      - Google Frontend
+      Strict-Transport-Security:
+      - max-age=15724800; includeSubDomains
+      Vary:
+      - Accept-Encoding
+      X-Cloud-Trace-Context:
+      - c402bf3036960902e1be5293361e5c65;o=1
+      X-Powered-By:
+      - Express
+      X-Ratelimit-Limit-Requests:
+      - '3500'
+      X-Ratelimit-Limit-Tokens:
+      - '90000'
+      X-Ratelimit-Remaining-Requests:
+      - '3499'
+      X-Ratelimit-Remaining-Tokens:
+      - '89617'
+      X-Ratelimit-Reset-Requests:
+      - 17ms
+      X-Ratelimit-Reset-Tokens:
+      - 254ms
+      X-Request-Id:
+      - b44e6c90eb755e0bef60a3f2b20c1e10
+    status:
+      code: 200
+      message: OK
+- request:
+    body: '{"messages": [{"content": "\nYour task is to devise up to 5 highly effective
+      goals and an appropriate role-based name (_GPT) for an autonomous agent, ensuring
+      that the goals are optimally aligned with the successful completion of its assigned
+      task.\n\nThe user will provide the task, you will provide only the output in
+      the exact format specified below with no explanation or conversation.\n\nExample
+      input:\nHelp me with marketing my business\n\nExample output:\nName: CMOGPT\nDescription:
+      a professional digital marketer AI that assists Solopreneurs in growing their
+      businesses by providing world-class expertise in solving marketing problems
+      for SaaS, content products, agencies, and more.\nGoals:\n- Engage in effective
+      problem-solving, prioritization, planning, and supporting execution to address
+      your marketing needs as your virtual Chief Marketing Officer.\n\n- Provide specific,
+      actionable, and concise advice to help you make informed decisions without the
+      use of platitudes or overly wordy explanations.\n\n- Identify and prioritize
+      quick wins and cost-effective campaigns that maximize results with minimal time
+      and budget investment.\n\n- Proactively take the lead in guiding you and offering
+      suggestions when faced with unclear information or uncertainty to ensure your
+      marketing strategy remains on track.\n", "role": "system"}, {"content": "Task:
+      ''Help me create a rock opera about cybernetic giraffes''\nRespond only with
+      the output in the exact format specified in the system prompt, with no explanation
+      or conversation.", "role": "user"}], "model": "gpt-4-0314", "temperature": 0.0}'
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Content-Length:
+      - '1620'
+      Content-Type:
+      - application/json
+      X-Content-Hash:
+      - 37e220315181f2969a9b7eb6fa5df305799392e544329f68fdae60fe01200a18
+    method: POST
+    uri: https://api.openai.com/v1/chat/completions
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAAA2xUwW4bRwy96yuIPcuG7SqxrVtSJ0EuTtH2YtRFMJrl7jKaJaccrmw18L8HnJUt
+        t8hFwA4f+R4fKX5fADTUNmto4hAsjjmdXD60H/sP57fDH61+vrq7K+++fHz/5tvdba9y3Sw9Qzbf
+        MNpz1mmUMSc0Ep7DUTEYetXzt9eri7Ori7erGhilxeRpfbaT1cnZL+erQ8YgFLE0a/hrAQDwvf66
+        Nm7xsVnD2fL5ZcRSQo/N+gUE0Kgkf2lCKVQssDXLYzAKG3KVextGXMPvErdfMmr49Nuf93yDJSpl
+        l7+GAFU87RACt0DMsps/330G71MKKtgQDErGSCHRv1iAGKKGzoh7mJj+meZ05D70/qYStyBOWZbw
+        QDZAgE7iVEAYNgm5dRSNjp7pbMARS60SQzZyFdxDMdG9YUrE/ek9f5KQyvqeT+AGd5gkewMy5hkA
+        HFTnchHZULGFoDJ5zf0GldEoQk8aug7L3NUzmXNPLSHHgwp8zEm0wl7USQeGcWBJ0u+XwMEmxWWF
+        24CkQM5aMLq5p/fsQn+dTYQRR9GwSbNT7Z7DSBHGqVA8KJFxQ3wgREbt905YrawWHoQEU4ohkdVw
+        NXkJyEPg6B44qro2e1mnyz0EBhpH1OLu4GNGrb2+iEwpbESD4cy1lwlMALlMiv6lx0XZUSFhoALd
+        lNIeFOtWtEsgjqLZyzhlzaIWw2xoh9huQtyCDSpTP8hkVWxWiVjKQckNFurZOabgxYspbecGfD13
+        yFVDsdAjYMIR2Q6j3Ohz/w+iqXV3fjp2gUQdLl9587/hHI3KqJ3oGI5OfZgdcZaOOKRXq+6dtFOd
+        vZuTJVEZ3JYoA3q5eVOySofFLawN4iPGyRymWKZUBRH7Xr/6G3jexJ1oj2ZV53GE0Iked/e0ORyC
+        p5cL0hFTGb4qhiLsV6GY5Bn2tAD4u16k6T9HpskqY7avJltkP1MXVxdzveZ4/I7R88vLQ9TEQjoG
+        Vm+uF87ytPgBAAD//wMAUi35pHoFAAA=
+    headers:
+      CF-Cache-Status:
+      - DYNAMIC
+      CF-RAY:
+      - 803a42163cee084c-IAD
+      Cache-Control:
+      - no-cache, must-revalidate
+      Connection:
+      - keep-alive
+      Content-Encoding:
+      - gzip
+      Content-Type:
+      - application/json
+      Date:
+      - Fri, 08 Sep 2023 21:24:44 GMT
+      Server:
+      - cloudflare
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400
+      openai-model:
+      - gpt-4-0314
+      openai-organization:
+      - significant-gravitas
+      openai-processing-ms:
+      - '19598'
+      openai-version:
+      - '2020-10-01'
+      strict-transport-security:
+      - max-age=15724800; includeSubDomains
+      x-ratelimit-limit-requests:
+      - '200'
+      x-ratelimit-limit-tokens:
+      - '40000'
+      x-ratelimit-remaining-requests:
+      - '199'
+      x-ratelimit-remaining-tokens:
+      - '27304'
+      x-ratelimit-reset-requests:
+      - 300ms
+      x-ratelimit-reset-tokens:
+      - 19.043s
+      x-request-id:
+      - 8dba4e8ded88e2d7797cf85ea3dae37d
+    status:
+      code: 200
+      message: OK
+version: 1
