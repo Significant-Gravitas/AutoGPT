@@ -16,6 +16,16 @@ const config: StorybookConfig = {
     name: "@storybook/nextjs",
     options: {},
   },
-  staticDirs: ["../public"],
+  staticDirs: [
+    "../public",
+    {
+      from: "../node_modules/geist/dist/fonts/geist-sans",
+      to: "/fonts/geist-sans",
+    },
+    {
+      from: "../node_modules/geist/dist/fonts/geist-mono",
+      to: "/fonts/geist-mono",
+    },
+  ],
 };
 export default config;
