@@ -27,20 +27,24 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
       data-testid="featured-store-card"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`flex h-full flex-col ${backgroundColor} rounded-[1.5rem] border-none`}
+      className={`flex h-[47rem] w-full flex-col md:w-[24rem] lg:w-[27.5rem] ${backgroundColor} rounded-[1.5rem] border-none px-5 pb-5 pt-7 transition-colors duration-200`}
     >
-      <CardHeader>
-        <CardTitle className="line-clamp-2 text-base sm:text-xl">
+      <CardHeader className="mb-7 min-h-48 space-y-3 p-0">
+        <CardTitle className="line-clamp-3 font-poppins text-4xl font-medium text-neutral-900">
           {agent.agent_name}
         </CardTitle>
-        <CardDescription className="text-sm">
-          By {agent.creator}
+        <CardDescription className="line-clamp-2 font-sans text-xl font-normal text-neutral-800">
+          {agent.sub_heading}
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex-1 p-4">
-        <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl">
+
+      <CardContent className="mb-4 flex flex-1 flex-col gap-4 p-0">
+        <p className="line-clamp-1 font-sans text-xl text-neutral-800">
+          By {agent.creator}
+        </p>
+        <div className="relative flex-1 overflow-hidden rounded-xl">
           <Image
-            src={agent.agent_image || "/AUTOgpt_Logo_dark.png"}
+            src={agent.agent_image || "/default_agent_image.jpg"}
             alt={`${agent.agent_name} preview`}
             fill
             sizes="100%"
@@ -48,22 +52,34 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
               isHovered ? "opacity-0" : "opacity-100"
             }`}
           />
+          <Image
+            src={agent.creator_avatar || "/default_avatar.avif"}
+            alt={`${agent.creator} avatar`}
+            width={74}
+            height={74}
+            className={`absolute bottom-3 left-3 aspect-square rounded-full transition-opacity duration-200 ${
+              isHovered ? "opacity-0" : "opacity-100"
+            }`}
+          />
           <div
-            className={`absolute inset-0 overflow-y-auto p-4 transition-opacity duration-200 ${
+            className={`absolute inset-0 overflow-hidden p-0 transition-opacity duration-200 ${
               isHovered ? "opacity-100" : "opacity-0"
             }`}
           >
-            <CardDescription className="line-clamp-[6] text-xs sm:line-clamp-[8] sm:text-sm">
+            <CardDescription
+              data-testid="agent-description"
+              className="line-clamp-6 font-sans text-base text-neutral-800"
+            >
               {agent.description}
             </CardDescription>
           </div>
         </div>
       </CardContent>
-      <CardFooter className="flex items-center justify-between">
-        <div className="font-semibold">
+      <CardFooter className="flex min-h-7 items-center justify-between p-0">
+        <div className="font-sans text-lg font-semibold text-neutral-800">
           {agent.runs?.toLocaleString() ?? "0"} runs
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 font-sans text-lg font-semibold text-neutral-800">
           <p>{agent.rating.toFixed(1) ?? "0.0"}</p>
           {StarRatingIcons(agent.rating)}
         </div>
