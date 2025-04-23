@@ -600,6 +600,10 @@ export default class BackendAPI {
     await this._request("PUT", `/library/agents/${libraryAgentId}`, params);
   }
 
+  forkLibraryAgent(libraryAgentId: LibraryAgentID): Promise<LibraryAgent> {
+    return this._request("POST", `/library/agents/${libraryAgentId}/fork`);
+  }
+
   listLibraryAgentPresets(params?: {
     page?: number;
     page_size?: number;
