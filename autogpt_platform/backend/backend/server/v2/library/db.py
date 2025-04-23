@@ -688,10 +688,12 @@ async def deep_clone_library_agent(library_agent_id: str, user_id: str):
             original_agent = await get_library_agent(library_agent_id, user_id)
 
             # Check if user owns the library agent
-            if not original_agent.can_access_graph:
-                raise store_exceptions.DatabaseError(
-                    f"User {user_id} does not own library agent {library_agent_id}"
-                )
+            # TODO: once we have open/closed sourced agents this needs to be enabled ~kcze
+            # + update library/agents/[id]/page.tsx agent actions
+            # if not original_agent.can_access_graph:
+            #     raise store_exceptions.DatabaseError(
+            #         f"User {user_id} cannot access library agent graph {library_agent_id}"
+            #     )
 
             # Clone the underlying graph and nodes
             new_graph = await graph_db.fork_graph(

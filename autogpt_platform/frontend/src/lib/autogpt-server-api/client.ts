@@ -602,7 +602,6 @@ export default class BackendAPI {
 
   /**
    * Clone Library Agent and its underyling graph&nodes.
-   * User must own
    */
   deepCloneLibraryAgent(libraryAgentId: LibraryAgentID): Promise<LibraryAgent> {
     return this._request("POST", `/library/agents/${libraryAgentId}/clone`);

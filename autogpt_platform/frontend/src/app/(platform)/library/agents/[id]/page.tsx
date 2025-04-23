@@ -274,13 +274,13 @@ export default function AgentRunsPage(): React.ReactElement {
               label: "Open graph in builder",
               href: `/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`,
             },
-            { label: "Export agent to file", callback: downloadGraph },
-            {
-              label: "Edit a copy",
-              callback: () => setCopyAgentDialogOpen(true),
-            },
           ]
         : []),
+      { label: "Export agent to file", callback: downloadGraph },
+      {
+        label: "Edit a copy",
+        callback: () => setCopyAgentDialogOpen(true),
+      },
       {
         label: "Delete agent",
         variant: "destructive",
