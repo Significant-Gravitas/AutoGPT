@@ -26,7 +26,7 @@ from backend.data.model import (
     CredentialsMetaInput,
     is_credentials_field_name,
 )
-from backend.integrations.creds_manager import IntegrationCredentialsManager
+
 from backend.util import type as type_utils
 
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
@@ -35,7 +35,6 @@ from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 from .integrations import Webhook
 
 logger = logging.getLogger(__name__)
-integration_creds_manager = IntegrationCredentialsManager()
 
 
 class Link(BaseDbModel):
@@ -857,8 +856,6 @@ async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphMo
     """
     Forks a graph by copying it and all its nodes and links to a new graph.
     """
-    from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
-
     async with transaction() as tx:
         graph = await get_graph(graph_id, graph_version, user_id=user_id)
         if not graph:
@@ -872,11 +869,6 @@ async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphMo
         graph.validate_graph(for_run=False)
 
         await __create_graph(tx, graph, user_id)
-
-        graph = await on_graph_activate(
-            graph,
-            get_credentials=lambda id: integration_creds_manager.get(user_id, id),
-        )
 
     return graph
 

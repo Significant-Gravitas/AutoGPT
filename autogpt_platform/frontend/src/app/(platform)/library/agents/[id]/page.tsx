@@ -252,7 +252,7 @@ export default function AgentRunsPage(): React.ReactElement {
   const copyAgent = useCallback(async () => {
     setCopyAgentDialogOpen(false);
     api
-      .deepCloneLibraryAgent(agentID!)
+      .forkLibraryAgent(agentID)
       .then((newAgent) => {
         router.push(`/library/agents/${newAgent.id}`);
       })

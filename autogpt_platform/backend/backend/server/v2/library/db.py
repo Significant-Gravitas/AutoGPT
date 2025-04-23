@@ -18,9 +18,12 @@ from backend.data import graph as graph_db
 from backend.data.db import locked_transaction
 from backend.data.includes import library_agent_include
 from backend.util.settings import Config
+from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
 
 logger = logging.getLogger(__name__)
 config = Config()
+integration_creds_manager = IntegrationCredentialsManager()
 
 
 async def list_library_agents(
@@ -208,7 +211,7 @@ async def add_generated_agent_image(
 async def create_library_agent(
     graph: backend.data.graph.GraphModel,
     user_id: str,
-) -> prisma.models.LibraryAgent:
+) -> library_model.LibraryAgent:
     """
     Adds an agent to the user's library (LibraryAgent table).
 
@@ -229,7 +232,7 @@ async def create_library_agent(
     )
 
     try:
-        return await prisma.models.LibraryAgent.prisma().create(
+        agent = await prisma.models.LibraryAgent.prisma().create(
             data=prisma.types.LibraryAgentCreateInput(
                 isCreatedByUser=(user_id == graph.user_id),
                 useGraphIsActiveVersion=True,
@@ -243,6 +246,7 @@ async def create_library_agent(
             ),
             include={"AgentGraph": True},
         )
+        return library_model.LibraryAgent.from_db(agent)
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error creating agent in library: {e}")
         raise store_exceptions.DatabaseError("Failed to create agent in library") from e
@@ -698,6 +702,10 @@ async def fork_library_agent(library_agent_id: str, user_id: str):
             # Fork the underlying graph and nodes
             new_graph = await graph_db.fork_graph(
                 original_agent.graph_id, original_agent.graph_version, user_id
+            )
+            new_graph = await on_graph_activate(
+                new_graph,
+                get_credentials=lambda id: integration_creds_manager.get(user_id, id),
             )
 
             # Create a library agent for the new graph
