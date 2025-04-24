@@ -26,6 +26,7 @@ import { InputItem } from "@/components/RunnerUIWrapper";
 import { GraphMeta } from "@/lib/autogpt-server-api";
 import { default as NextLink } from "next/link";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { get } from "lodash";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -258,7 +259,7 @@ export default function useAgentGraph(
     isToolSourceName(sourceName) ? "tools" : sourceName;
 
   const getToolArgName = (sourceName: string) =>
-    isToolSourceName(sourceName) ? sourceName.split("_#_")[1] : null;
+    isToolSourceName(sourceName) ? sourceName.split("_~_")[1] : null;
 
   const getToolFuncName = (nodeId: string) => {
     const sinkNode = nodes.find((node) => node.id === nodeId);
@@ -295,6 +296,14 @@ export default function useAgentGraph(
                 (isToolSourceName(key) &&
                   getToolArgName(key) !== edge.targetHandle)
               ) {
+                console.log(
+                  key,
+                  cleanupSourceName(key),
+                  edge.targetHandle,
+                  " are not equal ",
+                  getToolArgName(key),
+                  edge.sourceHandle,
+                );
                 continue;
               }
               const count = executionData.output_data[key].length;
@@ -909,7 +918,7 @@ export default function useAgentGraph(
       console.debug(
         "Saving new Graph version; old vs new:",
         comparedPayload,
-        payload,
+        comparedSavedAgent,
       );
       setNodesSyncedWithSavedAgent(false);
 
