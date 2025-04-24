@@ -174,7 +174,7 @@ export const MissingImage: Story = {
       ...Default.args.agent,
       agent_image: "",
     },
-    backgroundColor: BACKGROUND_COLORS[1],
+    backgroundColor: BACKGROUND_COLORS[2],
   },
 };
 
