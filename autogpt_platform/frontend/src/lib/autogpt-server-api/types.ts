@@ -280,8 +280,15 @@ export type GraphMeta = {
   is_active: boolean;
   name: string;
   description: string;
+  forked_from_id?: GraphID | null;
+  forked_from_version?: number | null;
   input_schema: GraphIOSchema;
   output_schema: GraphIOSchema;
+  credentials_input_schema: {
+    type: "object";
+    properties: { [key: string]: BlockIOCredentialsSubSchema };
+    required: (keyof GraphMeta["credentials_input_schema"]["properties"])[];
+  };
 };
 
 export type GraphID = Brand<string, "GraphID">;
@@ -317,6 +324,7 @@ export type GraphUpdateable = Omit<
   | "links"
   | "input_schema"
   | "output_schema"
+  | "credentials_input_schema"
   | "has_webhook_trigger"
 > & {
   version?: number;

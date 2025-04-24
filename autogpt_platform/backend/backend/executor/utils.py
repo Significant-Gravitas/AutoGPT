@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 from autogpt_libs.utils.cache import thread_cached
 from pydantic import BaseModel
@@ -14,15 +14,27 @@ from backend.data.block import (
 )
 from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCostType
-from backend.data.execution import GraphExecutionEntry, RedisExecutionEventBus
-from backend.data.graph import GraphModel, Node
+from backend.data.execution import (
+    AsyncRedisExecutionEventBus,
+    ExecutionStatus,
+    GraphExecutionStats,
+    GraphExecutionWithNodes,
+    RedisExecutionEventBus,
+    create_graph_execution,
+    update_graph_execution_stats,
+    update_node_execution_status_batch,
+)
+from backend.data.graph import GraphModel, Node, get_graph
+from backend.data.model import CredentialsMetaInput
 from backend.data.rabbitmq import (
+    AsyncRabbitMQ,
     Exchange,
     ExchangeType,
     Queue,
     RabbitMQConfig,
     SyncRabbitMQ,
 )
+from backend.util.exceptions import NotFoundError
 from backend.util.mock import MockObject
 from backend.util.service import get_service_client
 from backend.util.settings import Config
@@ -44,9 +56,21 @@ def get_execution_event_bus() -> RedisExecutionEventBus:
 
 
 @thread_cached
+def get_async_execution_event_bus() -> AsyncRedisExecutionEventBus:
+    return AsyncRedisExecutionEventBus()
+
+
+@thread_cached
 def get_execution_queue() -> SyncRabbitMQ:
     client = SyncRabbitMQ(create_execution_queue_config())
     client.connect()
+    return client
+
+
+@thread_cached
+async def get_async_execution_queue() -> AsyncRabbitMQ:
+    client = AsyncRabbitMQ(create_execution_queue_config())
+    await client.connect()
     return client
 
 
@@ -347,7 +371,13 @@ def merge_execution_input(data: BlockInput) -> BlockInput:
     return data
 
 
-def _validate_node_input_credentials(graph: GraphModel, user_id: str):
+def _validate_node_input_credentials(
+    graph: GraphModel,
+    user_id: str,
+    node_credentials_input_map: Optional[
+        dict[str, dict[str, CredentialsMetaInput]]
+    ] = None,
+):
     """Checks all credentials for all nodes of the graph"""
 
     for node in graph.nodes:
@@ -361,9 +391,22 @@ def _validate_node_input_credentials(graph: GraphModel, user_id: str):
             continue
 
         for field_name, credentials_meta_type in credentials_fields.items():
-            credentials_meta = credentials_meta_type.model_validate(
-                node.input_default[field_name]
-            )
+            if (
+                node_credentials_input_map
+                and (node_credentials_inputs := node_credentials_input_map.get(node.id))
+                and field_name in node_credentials_inputs
+            ):
+                credentials_meta = node_credentials_input_map[node.id][field_name]
+            elif field_name in node.input_default:
+                credentials_meta = credentials_meta_type.model_validate(
+                    node.input_default[field_name]
+                )
+            else:
+                raise ValueError(
+                    f"Credentials absent for {block.name} node #{node.id} "
+                    f"input '{field_name}'"
+                )
+
             # Fetch the corresponding Credentials and perform sanity checks
             credentials = get_integration_credentials_store().get_creds_by_id(
                 user_id, credentials_meta.id
@@ -389,10 +432,46 @@ def _validate_node_input_credentials(graph: GraphModel, user_id: str):
                 )
 
 
+def make_node_credentials_input_map(
+    graph: GraphModel,
+    graph_credentials_input: dict[str, CredentialsMetaInput],
+) -> dict[str, dict[str, CredentialsMetaInput]]:
+    """
+    Maps credentials for an execution to the correct nodes.
+
+    Params:
+        graph: The graph to be executed.
+        graph_credentials_input: A (graph_input_name, credentials_meta) map.
+
+    Returns:
+        dict[node_id, dict[field_name, CredentialsMetaInput]]: Node credentials input map.
+    """
+    result: dict[str, dict[str, CredentialsMetaInput]] = {}
+
+    # Get aggregated credentials fields for the graph
+    graph_cred_inputs = graph.aggregate_credentials_inputs()
+
+    for graph_input_name, (_, compatible_node_fields) in graph_cred_inputs.items():
+        # Best-effort map: skip missing items
+        if graph_input_name not in graph_credentials_input:
+            continue
+
+        # Use passed-in credentials for all compatible node input fields
+        for node_id, node_field_name in compatible_node_fields:
+            if node_id not in result:
+                result[node_id] = {}
+            result[node_id][node_field_name] = graph_credentials_input[graph_input_name]
+
+    return result
+
+
 def construct_node_execution_input(
     graph: GraphModel,
     user_id: str,
-    data: BlockInput,
+    graph_inputs: BlockInput,
+    node_credentials_input_map: Optional[
+        dict[str, dict[str, CredentialsMetaInput]]
+    ] = None,
 ) -> list[tuple[str, BlockInput]]:
     """
     Validates and prepares the input data for executing a graph.
@@ -404,13 +483,14 @@ def construct_node_execution_input(
         graph (GraphModel): The graph model to execute.
         user_id (str): The ID of the user executing the graph.
         data (BlockInput): The input data for the graph execution.
+        node_credentials_map: `dict[node_id, dict[input_name, CredentialsMetaInput]]`
 
     Returns:
         list[tuple[str, BlockInput]]: A list of tuples, each containing the node ID and
             the corresponding input data for that node.
     """
     graph.validate_graph(for_run=True)
-    _validate_node_input_credentials(graph, user_id)
+    _validate_node_input_credentials(graph, user_id, node_credentials_input_map)
 
     nodes_input = []
     for node in graph.starting_nodes:
@@ -424,8 +504,8 @@ def construct_node_execution_input(
         # Extract request input data, and assign it to the input pin.
         if block.block_type == BlockType.INPUT:
             input_name = node.input_default.get("name")
-            if input_name and input_name in data:
-                input_data = {"value": data[input_name]}
+            if input_name and input_name in graph_inputs:
+                input_data = {"value": graph_inputs[input_name]}
 
         # Extract webhook payload, and assign it to the input pin
         webhook_payload_key = f"webhook_{node.webhook_id}_payload"
@@ -433,11 +513,17 @@ def construct_node_execution_input(
             block.block_type in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
             and node.webhook_id
         ):
-            if webhook_payload_key not in data:
+            if webhook_payload_key not in graph_inputs:
                 raise ValueError(
                     f"Node {block.name} #{node.id} webhook payload is missing"
                 )
-            input_data = {"payload": data[webhook_payload_key]}
+            input_data = {"payload": graph_inputs[webhook_payload_key]}
+
+        # Apply node credentials overrides
+        if node_credentials_input_map and (
+            node_credentials := node_credentials_input_map.get(node.id)
+        ):
+            input_data.update({k: v.model_dump() for k, v in node_credentials.items()})
 
         input_data, error = validate_exec(node, input_data)
         if input_data is None:
@@ -505,47 +591,158 @@ def create_execution_queue_config() -> RabbitMQConfig:
     )
 
 
-def add_graph_execution(
+async def add_graph_execution_async(
     graph_id: str,
-    data: BlockInput,
     user_id: str,
-    graph_version: int | None = None,
-    preset_id: str | None = None,
-) -> GraphExecutionEntry:
+    inputs: BlockInput,
+    preset_id: Optional[str] = None,
+    graph_version: Optional[int] = None,
+    graph_credentials_inputs: Optional[dict[str, CredentialsMetaInput]] = None,
+) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
 
     Args:
-        graph_id (str): The ID of the graph to execute.
-        data (BlockInput): The input data for the graph execution.
-        user_id (str): The ID of the user executing the graph.
-        graph_version (int | None): The version of the graph to execute. Defaults to None.
-        preset_id (str | None): The ID of the preset to use. Defaults to None.
+        graph_id: The ID of the graph to execute.
+        user_id: The ID of the user executing the graph.
+        inputs: The input data for the graph execution.
+        preset_id: The ID of the preset to use.
+        graph_version: The version of the graph to execute.
+        graph_credentials_inputs: Credentials inputs to use in the execution.
+            Keys should map to the keys generated by `GraphModel.aggregate_credentials_inputs`.
+    Returns:
+        GraphExecutionEntry: The entry for the graph execution.
+    Raises:
+        ValueError: If the graph is not found or if there are validation errors.
+    """  # noqa
+    graph: GraphModel | None = await get_graph(
+        graph_id=graph_id, user_id=user_id, version=graph_version
+    )
+    if not graph:
+        raise NotFoundError(f"Graph #{graph_id} not found.")
+
+    node_credentials_input_map = (
+        make_node_credentials_input_map(graph, graph_credentials_inputs)
+        if graph_credentials_inputs
+        else None
+    )
+
+    graph_exec = await create_graph_execution(
+        user_id=user_id,
+        graph_id=graph_id,
+        graph_version=graph.version,
+        starting_nodes_input=construct_node_execution_input(
+            graph=graph,
+            user_id=user_id,
+            graph_inputs=inputs,
+            node_credentials_input_map=node_credentials_input_map,
+        ),
+        preset_id=preset_id,
+    )
+    try:
+        queue = await get_async_execution_queue()
+        graph_exec_entry = graph_exec.to_graph_execution_entry()
+        if node_credentials_input_map:
+            graph_exec_entry.node_credentials_input_map = node_credentials_input_map
+        await queue.publish_message(
+            routing_key=GRAPH_EXECUTION_ROUTING_KEY,
+            message=graph_exec_entry.model_dump_json(),
+            exchange=GRAPH_EXECUTION_EXCHANGE,
+        )
+
+        bus = get_async_execution_event_bus()
+        await bus.publish(graph_exec)
+
+        return graph_exec
+    except Exception as e:
+        logger.error(f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {e}")
+
+        await update_node_execution_status_batch(
+            [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
+            ExecutionStatus.FAILED,
+        )
+        await update_graph_execution_stats(
+            graph_exec_id=graph_exec.id,
+            status=ExecutionStatus.FAILED,
+            stats=GraphExecutionStats(error=str(e)),
+        )
+        raise
+
+
+def add_graph_execution(
+    graph_id: str,
+    user_id: str,
+    inputs: BlockInput,
+    preset_id: Optional[str] = None,
+    graph_version: Optional[int] = None,
+    graph_credentials_inputs: Optional[dict[str, CredentialsMetaInput]] = None,
+) -> GraphExecutionWithNodes:
+    """
+    Adds a graph execution to the queue and returns the execution entry.
+
+    Args:
+        graph_id: The ID of the graph to execute.
+        user_id: The ID of the user executing the graph.
+        inputs: The input data for the graph execution.
+        preset_id: The ID of the preset to use.
+        graph_version: The version of the graph to execute.
+        graph_credentials_inputs: Credentials inputs to use in the execution.
+            Keys should map to the keys generated by `GraphModel.aggregate_credentials_inputs`.
     Returns:
         GraphExecutionEntry: The entry for the graph execution.
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
     """
-    graph: GraphModel | None = get_db_client().get_graph(
+    db = get_db_client()
+    graph: GraphModel | None = db.get_graph(
         graph_id=graph_id, user_id=user_id, version=graph_version
     )
     if not graph:
-        raise ValueError(f"Graph #{graph_id} not found.")
+        raise NotFoundError(f"Graph #{graph_id} not found.")
 
-    graph_exec = get_db_client().create_graph_execution(
+    node_credentials_input_map = (
+        make_node_credentials_input_map(graph, graph_credentials_inputs)
+        if graph_credentials_inputs
+        else None
+    )
+
+    graph_exec = db.create_graph_execution(
+        user_id=user_id,
         graph_id=graph_id,
         graph_version=graph.version,
-        nodes_input=construct_node_execution_input(graph, user_id, data),
-        user_id=user_id,
+        starting_nodes_input=construct_node_execution_input(
+            graph=graph,
+            user_id=user_id,
+            graph_inputs=inputs,
+            node_credentials_input_map=node_credentials_input_map,
+        ),
         preset_id=preset_id,
     )
-    get_execution_event_bus().publish(graph_exec)
+    try:
+        queue = get_execution_queue()
+        graph_exec_entry = graph_exec.to_graph_execution_entry()
+        if node_credentials_input_map:
+            graph_exec_entry.node_credentials_input_map = node_credentials_input_map
+        queue.publish_message(
+            routing_key=GRAPH_EXECUTION_ROUTING_KEY,
+            message=graph_exec_entry.model_dump_json(),
+            exchange=GRAPH_EXECUTION_EXCHANGE,
+        )
 
-    graph_exec_entry = graph_exec.to_graph_execution_entry()
-    get_execution_queue().publish_message(
-        routing_key=GRAPH_EXECUTION_ROUTING_KEY,
-        message=graph_exec_entry.model_dump_json(),
-        exchange=GRAPH_EXECUTION_EXCHANGE,
-    )
+        bus = get_execution_event_bus()
+        bus.publish(graph_exec)
 
-    return graph_exec_entry
+        return graph_exec
+    except Exception as e:
+        logger.error(f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {e}")
+
+        db.update_node_execution_status_batch(
+            [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
+            ExecutionStatus.FAILED,
+        )
+        db.update_graph_execution_stats(
+            graph_exec_id=graph_exec.id,
+            status=ExecutionStatus.FAILED,
+            stats=GraphExecutionStats(error=str(e)),
+        )
+        raise

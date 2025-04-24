@@ -7,9 +7,9 @@ export default function OnboardingLayout({
 }) {
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-gray-100">
-      <div className="mx-auto flex w-full flex-col items-center">
+      <main className="mx-auto flex w-full flex-col items-center">
         {children}
-      </div>
+      </main>
     </div>
   );
 }

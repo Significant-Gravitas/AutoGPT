@@ -29,7 +29,8 @@ if TYPE_CHECKING:
     from backend.executor import DatabaseManager
     from backend.notifications.notifications import NotificationManager
 
-from autogpt_libs.utils.cache import thread_cached
+from autogpt_libs.utils.cache import clear_thread_cache, thread_cached
+from prometheus_client import Gauge, start_http_server
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data import redis
@@ -61,11 +62,23 @@ from backend.util.decorator import error_logged, time_measured
 from backend.util.file import clean_exec_files
 from backend.util.logging import configure_logging
 from backend.util.process import AppProcess, set_service_name
+from backend.util.retry import func_retry
 from backend.util.service import close_service_client, get_service_client
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
+
+active_runs_gauge = Gauge(
+    "execution_manager_active_runs", "Number of active graph runs"
+)
+pool_size_gauge = Gauge(
+    "execution_manager_pool_size", "Maximum number of graph workers"
+)
+utilization_gauge = Gauge(
+    "execution_manager_utilization_ratio",
+    "Ratio of active graph runs to max graph workers",
+)
 
 
 class LogMetadata:
@@ -87,7 +100,7 @@ class LogMetadata:
             "node_id": node_id,
             "block_name": block_name,
         }
-        self.prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|nid:{node_eid}|{block_name}]"
+        self.prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"
 
     def info(self, msg: str, **extra):
         msg = self._wrap(msg, **extra)
@@ -422,6 +435,7 @@ class Executor:
     """
 
     @classmethod
+    @func_retry
     def on_node_executor_start(cls):
         configure_logging()
         set_service_name("NodeExecutor")
@@ -527,6 +541,7 @@ class Executor:
                 stats.error = e
 
     @classmethod
+    @func_retry
     def on_graph_executor_start(cls):
         configure_logging()
         set_service_name("GraphExecutor")
@@ -724,10 +739,10 @@ class Executor:
                     execution_status = ExecutionStatus.TERMINATED
                     return execution_stats, execution_status, error
 
-                exec_data = queue.get()
+                queued_node_exec = queue.get()
 
                 # Avoid parallel execution of the same node.
-                execution = running_executions.get(exec_data.node_id)
+                execution = running_executions.get(queued_node_exec.node_id)
                 if execution and not execution.ready():
                     # TODO (performance improvement):
                     #   Wait for the completion of the same node execution is blocking.
@@ -736,18 +751,18 @@ class Executor:
                     execution.wait()
 
                 log_metadata.debug(
-                    f"Dispatching node execution {exec_data.node_exec_id} "
-                    f"for node {exec_data.node_id}",
+                    f"Dispatching node execution {queued_node_exec.node_exec_id} "
+                    f"for node {queued_node_exec.node_id}",
                 )
 
                 try:
                     exec_cost_counter = cls._charge_usage(
-                        node_exec=exec_data,
+                        node_exec=queued_node_exec,
                         execution_count=exec_cost_counter + 1,
                         execution_stats=execution_stats,
                     )
                 except InsufficientBalanceError as error:
-                    node_exec_id = exec_data.node_exec_id
+                    node_exec_id = queued_node_exec.node_exec_id
                     cls.db_client.upsert_execution_output(
                         node_exec_id=node_exec_id,
                         output_name="error",
@@ -768,10 +783,23 @@ class Executor:
                     )
                     raise
 
-                running_executions[exec_data.node_id] = cls.executor.apply_async(
+                # Add credentials input overrides
+                node_id = queued_node_exec.node_id
+                if (node_creds_map := graph_exec.node_credentials_input_map) and (
+                    node_field_creds_map := node_creds_map.get(node_id)
+                ):
+                    queued_node_exec.data.update(
+                        {
+                            field_name: creds_meta.model_dump()
+                            for field_name, creds_meta in node_field_creds_map.items()
+                        }
+                    )
+
+                # Initiate node execution
+                running_executions[queued_node_exec.node_id] = cls.executor.apply_async(
                     cls.on_node_execution,
-                    (queue, exec_data),
-                    callback=make_exec_callback(exec_data),
+                    (queue, queued_node_exec),
+                    callback=make_exec_callback(queued_node_exec),
                 )
 
                 # Avoid terminating graph execution when some nodes are still running.
@@ -882,13 +910,20 @@ class ExecutionManager(AppProcess):
         self.running = True
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
 
-    @classmethod
-    def get_port(cls) -> int:
-        return settings.config.execution_manager_port
-
     def run(self):
+        pool_size_gauge.set(self.pool_size)
+        active_runs_gauge.set(0)
+        utilization_gauge.set(0)
         retry_count_max = settings.config.execution_manager_loop_max_retry
         retry_count = 0
+
+        self.metrics_server = threading.Thread(
+            target=start_http_server,
+            args=(settings.config.execution_manager_port,),
+            daemon=True,
+        )
+        self.metrics_server.start()
+        logger.info(f"[{self.service_name}] Starting execution manager...")
 
         for retry_count in range(retry_count_max):
             try:
@@ -922,6 +957,7 @@ class ExecutionManager(AppProcess):
         redis.connect()
 
         # Consume Cancel & Run execution requests.
+        clear_thread_cache(get_execution_queue)
         channel = get_execution_queue().get_channel()
         channel.basic_qos(prefetch_count=self.pool_size)
         channel.basic_consume(
@@ -1006,11 +1042,15 @@ class ExecutionManager(AppProcess):
             Executor.on_graph_execution, graph_exec_entry, cancel_event
         )
         self.active_graph_runs[graph_exec_id] = (future, cancel_event)
+        active_runs_gauge.set(len(self.active_graph_runs))
+        utilization_gauge.set(len(self.active_graph_runs) / self.pool_size)
 
         def _on_run_done(f: Future):
             logger.info(f"[{self.service_name}] Run completed for {graph_exec_id}")
             try:
                 self.active_graph_runs.pop(graph_exec_id, None)
+                active_runs_gauge.set(len(self.active_graph_runs))
+                utilization_gauge.set(len(self.active_graph_runs) / self.pool_size)
                 if f.exception():
                     logger.error(
                         f"[{self.service_name}] Execution for {graph_exec_id} failed: {f.exception()}"
