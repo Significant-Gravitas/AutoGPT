@@ -280,6 +280,8 @@ export type GraphMeta = {
   is_active: boolean;
   name: string;
   description: string;
+  forked_from_id?: GraphID | null;
+  forked_from_version?: number | null;
   input_schema: GraphIOSchema;
   output_schema: GraphIOSchema;
   credentials_input_schema: {
