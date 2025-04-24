@@ -856,7 +856,7 @@ async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphMo
     Forks a graph by copying it and all its nodes and links to a new graph.
     """
     async with transaction() as tx:
-        graph = await get_graph(graph_id, graph_version, user_id=user_id)
+        graph = await get_graph(graph_id, graph_version, user_id, True)
         if not graph:
             raise ValueError(f"Graph {graph_id} v{graph_version} not found")
 
