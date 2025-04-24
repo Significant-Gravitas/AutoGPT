@@ -118,6 +118,11 @@ model AgentGraph {
   // This allows us to delete user data with deleting the agent which maybe in use by other users
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  forkedFromId      String?
+  forkedFromVersion Int?
+  forkedFrom        AgentGraph? @relation("AgentGraphForks", fields: [forkedFromId, forkedFromVersion], references: [id, version])
+  forks             AgentGraph[] @relation("AgentGraphForks")
+
   Nodes      AgentNode[]
   Executions AgentGraphExecution[]
 

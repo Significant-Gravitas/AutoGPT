@@ -73,3 +73,10 @@ def conn_retry(
         return async_wrapper if is_coroutine else sync_wrapper
 
     return decorator
+
+
+func_retry = retry(
+    reraise=False,
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=1, max=30),
+)
