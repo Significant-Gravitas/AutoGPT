@@ -23,7 +23,7 @@ export function hashString(str: string): number {
 
 /** Derived from https://stackoverflow.com/a/32922084 */
 export function deepEquals(x: any, y: any): boolean {
-  const ok = Object.keys,
+  const ok = (obj: any) => Object.keys(obj).filter((key) => obj[key] !== null),
     tx = typeof x,
     ty = typeof y;
 
