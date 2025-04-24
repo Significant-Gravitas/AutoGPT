@@ -1,7 +1,14 @@
 // If the component is inside the storybook and wants to communicate with the backend, it will automatically use this mock client
 import { faker } from "@faker-js/faker";
 import BackendAPI from "./client";
-import { Block, BlockUIType, ProfileDetails, User } from "./types";
+import {
+  Block,
+  BlockUIType,
+  CredentialsMetaResponse,
+  ProfileDetails,
+  User,
+  UserOnboarding,
+} from "./types";
 
 export interface MockClientProps {
   credits?: number;
@@ -103,5 +110,45 @@ export default class MockClient extends BackendAPI {
   override getStoreProfile(page?: string): Promise<ProfileDetails> {
     console.log("He is mocking in here inside getStoreProfile");
     return Promise.resolve(this.props.profile);
+  }
+
+  override isOnboardingEnabled(): Promise<boolean> {
+    return Promise.resolve(true);
+  }
+
+  override listCredentials(
+    provider?: string,
+  ): Promise<CredentialsMetaResponse[]> {
+    return Promise.resolve([
+      {
+        id: faker.string.uuid(),
+        provider: "openai",
+        type: "api_key",
+        title: "My OpenAI API Key",
+      },
+      {
+        id: faker.string.uuid(),
+        provider: "google",
+        type: "oauth2",
+        title: "Google Account",
+        scopes: ["https://www.googleapis.com/auth/gmail.send"],
+        username: "user@example.com",
+      },
+    ]);
+  }
+
+  override getUserOnboarding(): Promise<UserOnboarding> {
+    return Promise.resolve({
+      completedSteps: [],
+      notificationDot: false,
+      notified: [],
+      rewardedFor: [],
+      usageReason: null,
+      integrations: [],
+      otherIntegrations: null,
+      selectedStoreListingVersionId: null,
+      agentInput: null,
+      onboardingAgentExecutionId: null,
+    });
   }
 }
