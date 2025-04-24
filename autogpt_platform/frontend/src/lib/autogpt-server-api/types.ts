@@ -556,6 +556,7 @@ export enum BlockUIType {
 
 export enum SpecialBlockID {
   AGENT = "e189baac-8c20-45a1-94a7-55177ea42565",
+  SMART_DECISION = "3b191d9f-356f-482d-8238-ba04b6d18381",
   OUTPUT = "363ae599-353e-4804-937e-b2ee3cef3da4",
 }
 
