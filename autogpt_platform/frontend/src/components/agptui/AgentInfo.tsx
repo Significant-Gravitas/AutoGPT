@@ -97,117 +97,116 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   };
 
   return (
-    <div className="w-full max-w-[396px] px-4 sm:px-6 lg:w-[396px] lg:px-0">
-      {/* Title */}
-      <div className="mb-3 w-full font-poppins text-2xl font-medium leading-normal text-neutral-900 dark:text-neutral-100 sm:text-3xl lg:mb-4 lg:text-[35px] lg:leading-10">
-        {name}
-      </div>
-
-      {/* Creator */}
-      <div className="mb-3 flex w-full items-center gap-1.5 lg:mb-4">
-        <div className="font-geist text-base font-normal text-neutral-800 dark:text-neutral-200 sm:text-lg lg:text-xl">
-          by
-        </div>
-        <Link
-          href={`/marketplace/creator/${encodeURIComponent(creator)}`}
-          className="font-geist text-base font-medium text-neutral-800 hover:underline dark:text-neutral-200 sm:text-lg lg:text-xl"
-        >
-          {creator}
-        </Link>
-      </div>
-
-      {/* Short Description */}
-      <div className="font-geist mb-4 line-clamp-2 w-full text-base font-normal leading-normal text-neutral-600 dark:text-neutral-300 sm:text-lg lg:mb-6 lg:text-xl lg:leading-7">
-        {shortDescription}
-      </div>
-
-      {/* Run Agent Button */}
-      <div className="mb-4 w-full lg:mb-[60px]">
-        {user ? (
-          <button
-            onClick={handleAddToLibrary}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-[38px] bg-violet-600 px-4 py-3 transition-colors hover:bg-violet-700 sm:w-auto sm:gap-2.5 sm:px-5 sm:py-3.5 lg:px-6 lg:py-4"
+    <div className="w-full max-w-[25rem] space-y-11">
+      {/* Top part */}
+      <div>
+        <h2 className="mb-3 font-poppins text-4xl font-medium text-neutral-900">
+          {name}
+        </h2>
+        <div className="mb-7 flex w-full items-center gap-1.5 font-sans">
+          <p className="text-xl font-normal text-neutral-800">by</p>
+          <Link
+            href={`/marketplace/creator/${encodeURIComponent(creator)}`}
+            className="text-xl font-medium text-neutral-800 hover:underline"
           >
-            <IconPlay className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
-            <span className="font-poppins text-base font-medium text-neutral-50 sm:text-lg">
-              Add To Library
-            </span>
-          </button>
-        ) : (
-          <button
-            onClick={handleDownloadToLibrary}
-            className={`inline-flex w-full items-center justify-center gap-2 rounded-[38px] px-4 py-3 transition-colors sm:w-auto sm:gap-2.5 sm:px-5 sm:py-3.5 lg:px-6 lg:py-4 ${
-              downloading
-                ? "bg-neutral-400"
-                : "bg-violet-600 hover:bg-violet-700"
-            }`}
-            disabled={downloading}
-          >
-            {downloading ? (
-              <LoaderIcon className="h-5 w-5 animate-spin text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
-            ) : (
-              <DownloadIcon className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
-            )}
-            <span className="font-poppins text-base font-medium text-neutral-50 sm:text-lg">
-              {downloading ? "Downloading..." : "Download Agent as File"}
-            </span>
-          </button>
-        )}
-      </div>
-
-      {/* Rating and Runs */}
-      <div className="mb-4 flex w-full items-center justify-between lg:mb-[44px]">
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          <span className="font-geist whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
-            {rating.toFixed(1)}
-          </span>
-          <div className="flex gap-0.5">{StarRatingIcons(rating)}</div>
+            {creator}
+          </Link>
         </div>
-        <div className="font-geist whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
-          {runs.toLocaleString()} runs
+
+        <p className="mb-7 line-clamp-2 font-sans text-xl font-normal text-neutral-600">
+          {shortDescription}
+        </p>
+
+        <div className="mb-14 w-full">
+          {user ? (
+            <button
+              onClick={handleAddToLibrary}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-[38px] bg-violet-600 px-4 py-3 transition-colors hover:bg-violet-700 sm:w-auto sm:gap-2.5 sm:px-5 sm:py-3.5 lg:px-6 lg:py-4"
+            >
+              <IconPlay className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
+              <span className="font-poppins text-base font-medium text-neutral-50 sm:text-lg">
+                Add To Library
+              </span>
+            </button>
+          ) : (
+            <button
+              onClick={handleDownloadToLibrary}
+              className={`inline-flex w-full items-center justify-center gap-2 rounded-[38px] px-4 py-3 transition-colors sm:w-auto sm:gap-2.5 sm:px-5 sm:py-3.5 lg:px-6 lg:py-4 ${
+                downloading
+                  ? "bg-neutral-400"
+                  : "bg-violet-600 hover:bg-violet-700"
+              }`}
+              disabled={downloading}
+            >
+              {downloading ? (
+                <LoaderIcon className="h-5 w-5 animate-spin text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
+              ) : (
+                <DownloadIcon className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
+              )}
+              <span className="font-poppins text-base font-medium text-neutral-50 sm:text-lg">
+                {downloading ? "Downloading..." : "Download Agent as File"}
+              </span>
+            </button>
+          )}
+        </div>
+
+        <div className="flex w-full items-center justify-between">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <span className="font-sans text-lg font-semibold text-neutral-800">
+              {rating.toFixed(1)}
+            </span>
+            <div className="flex gap-0.5">{StarRatingIcons(rating)}</div>
+          </div>
+          <div className="font-sans text-lg font-semibold text-neutral-800">
+            {runs.toLocaleString()} runs
+          </div>
         </div>
       </div>
 
       {/* Separator */}
       <Separator className="mb-4 lg:mb-[44px]" />
 
-      {/* Description Section */}
-      <div className="mb-4 w-full lg:mb-[36px]">
-        <div className="mb-1.5 font-sans text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
-          Description
+      {/* Bottom part */}
+      <div className="space-y-9">
+        <div className="space-y-2.5">
+          <p className="font-sans text-base font-medium text-neutral-800">
+            Description
+          </p>
+          <p className="whitespace-pre-line font-sans text-base font-normal text-neutral-600">
+            {longDescription}
+          </p>
         </div>
-        <div className="whitespace-pre-line font-sans text-base font-normal leading-6 text-neutral-600 dark:text-neutral-400">
-          {longDescription}
-        </div>
-      </div>
 
-      {/* Categories */}
-      <div className="mb-4 flex w-full flex-col gap-1.5 sm:gap-2 lg:mb-[36px]">
-        <div className="font-geist decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
-          Categories
+        {/* Categories */}
+        <div className="space-y-2.5">
+          <p className="font-sans text-base font-medium text-neutral-800">
+            Categories
+          </p>
+          <div className="flex flex-wrap gap-2.5">
+            {categories.map((category, index) => (
+              <p
+                key={index}
+                className="rounded-full border border-neutral-600 bg-white px-5 py-3 font-sans text-base font-normal text-neutral-800"
+              >
+                {category}
+              </p>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-1.5 sm:gap-2">
-          {categories.map((category, index) => (
-            <div
-              key={index}
-              className="font-geist decoration-skip-ink-none whitespace-nowrap rounded-full border border-neutral-600 bg-white px-2 py-0.5 text-base font-normal leading-6 text-neutral-800 underline-offset-[from-font] dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 sm:px-[16px] sm:py-[10px]"
-            >
-              {category}
-            </div>
-          ))}
-        </div>
-      </div>
 
-      {/* Version History */}
-      <div className="flex w-full flex-col gap-0.5 sm:gap-1">
-        <div className="font-geist decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
-          Version history
-        </div>
-        <div className="font-geist decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
-          Last updated {lastUpdated}
-        </div>
-        <div className="text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
-          Version {version}
+        {/* TODO : Rating Agent */}
+
+        {/* Version History */}
+        <div className="flex flex-col gap-2.5">
+          <p className="font-base font-sans font-medium text-neutral-800">
+            Version history
+          </p>
+          <p className="font-sans text-base font-normal text-neutral-600">
+            Last updated {lastUpdated}
+          </p>
+          <p className="font-sans text-base font-normal text-neutral-600">
+            Version {version}
+          </p>
         </div>
       </div>
     </div>
