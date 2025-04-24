@@ -269,7 +269,7 @@ export default function useAgentGraph(
               (flow) => flow.id === sinkNode.data.hardcodedValues.graph_id,
             )?.name || "agentexecutorblock"
           : "agentexecutorblock"
-        : sinkNode.data.title
+        : sinkNode.data.title.split(" ")[0]
       : "";
 
     return sinkNodeName;
