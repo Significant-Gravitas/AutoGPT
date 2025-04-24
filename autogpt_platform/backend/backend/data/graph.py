@@ -172,6 +172,8 @@ class BaseGraph(BaseDbModel):
     description: str
     nodes: list[Node] = []
     links: list[Link] = []
+    forked_from_id: str | None = None
+    forked_from_version: int | None = None
 
     @computed_field
     @property
@@ -570,6 +572,8 @@ class GraphModel(Graph):
             id=graph.id,
             user_id=graph.userId if not for_export else "",
             version=graph.version,
+            forked_from_id=graph.forkedFromId,
+            forked_from_version=graph.forkedFromVersion,
             is_active=graph.isActive,
             name=graph.name or "",
             description=graph.description or "",
@@ -847,6 +851,27 @@ async def create_graph(graph: Graph, user_id: str) -> GraphModel:
     raise ValueError(f"Created graph {graph.id} v{graph.version} is not in DB")
 
 
+async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphModel:
+    """
+    Forks a graph by copying it and all its nodes and links to a new graph.
+    """
+    async with transaction() as tx:
+        graph = await get_graph(graph_id, graph_version, user_id, True)
+        if not graph:
+            raise ValueError(f"Graph {graph_id} v{graph_version} not found")
+
+        # Set forked from ID and version as itself as it's about ot be copied
+        graph.forked_from_id = graph.id
+        graph.forked_from_version = graph.version
+        graph.name = f"{graph.name} (copy)"
+        graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
+        graph.validate_graph(for_run=False)
+
+        await __create_graph(tx, graph, user_id)
+
+    return graph
+
+
 async def __create_graph(tx, graph: Graph, user_id: str):
     graphs = [graph] + graph.sub_graphs
 
@@ -859,6 +884,8 @@ async def __create_graph(tx, graph: Graph, user_id: str):
                 description=graph.description,
                 isActive=graph.is_active,
                 userId=user_id,
+                forkedFromId=graph.forked_from_id,
+                forkedFromVersion=graph.forked_from_version,
             )
             for graph in graphs
         ]
