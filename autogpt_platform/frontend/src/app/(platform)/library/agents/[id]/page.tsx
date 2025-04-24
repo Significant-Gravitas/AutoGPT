@@ -268,22 +268,22 @@ export default function AgentRunsPage(): React.ReactElement {
 
   const agentActions: ButtonAction[] = useMemo(
     () => [
-      ...(agent?.can_access_graph
+      {
+        label: "Customize agent",
+        href: `/build?flowID=${agent?.graph_id}&flowVersion=${agent?.graph_version}`,
+        disabled: !agent?.can_access_graph,
+      },
+      { label: "Export agent to file", callback: downloadGraph },
+      ...(!agent?.can_access_graph
         ? [
             {
-              label: "Open graph in builder",
-              href: `/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`,
+              label: "Edit a copy",
+              callback: () => setCopyAgentDialogOpen(true),
             },
           ]
         : []),
-      { label: "Export agent to file", callback: downloadGraph },
-      {
-        label: "Edit a copy",
-        callback: () => setCopyAgentDialogOpen(true),
-      },
       {
         label: "Delete agent",
-        variant: "destructive",
         callback: () => setAgentDeleteDialogOpen(true),
       },
     ],
@@ -381,10 +381,11 @@ export default function AgentRunsPage(): React.ReactElement {
             <DialogHeader>
               <DialogTitle>You&apos;re making an editable copy</DialogTitle>
               <DialogDescription className="pt-2">
-                We&apos;ll save a new version of this agent to your library so
-                you can customize it however you&apos;d like. You&apos;ll still
-                have the original from the marketplace too — it won&apos;t be
-                changed and can&apos;t be edited.
+                The original Marketplace agent stays the same and cannot be
+                edited. We&apos;ll save a new version of this agent to your
+                Library. From there, you can customize it however you&apos;d
+                like by clicking &quot;Customize agent&quot; — this will open
+                the builder where you can see and modify the inner workings.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="justify-end">
