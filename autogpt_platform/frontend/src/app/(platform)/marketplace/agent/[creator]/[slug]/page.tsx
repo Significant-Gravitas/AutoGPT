@@ -17,7 +17,7 @@ export async function generateMetadata({
   const agent = await api.getStoreAgent(params.creator, params.slug);
 
   return {
-    title: `${agent.agent_name} - AutoGPT Store`,
+    title: `${agent.agent_name} - AutoGPT Marketplace`,
     description: agent.description,
   };
 }
@@ -49,7 +49,7 @@ export default async function Page({
   } = await getServerSupabase().auth.getUser();
 
   const breadcrumbs = [
-    { name: "Store", link: "/marketplace" },
+    { name: "Marketplace", link: "/marketplace" },
     {
       name: agent.creator,
       link: `/marketplace/creator/${encodeURIComponent(agent.creator)}`,
