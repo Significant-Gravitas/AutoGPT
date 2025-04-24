@@ -7,6 +7,8 @@ import { Status, StatusType } from "./Status";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { TrashIcon } from "@radix-ui/react-icons";
 import { StoreSubmissionRequest } from "@/lib/autogpt-server-api/types";
+import { TableCell, TableRow } from "../ui/table";
+import { Checkbox } from "../ui/checkbox";
 
 export interface AgentTableRowProps {
   agent_id: string;
@@ -82,28 +84,22 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
   }, [agent_id, selectedAgents, setSelectedAgents]);
 
   return (
-    <div className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex">
-      <div className="flex items-center">
-        <div className="flex items-center">
-          <input
-            type="checkbox"
-            id={checkboxId}
-            aria-label={`Select ${agentName}`}
-            className="mr-4 h-5 w-5 rounded border-2 border-neutral-400 dark:border-neutral-600"
-            checked={selectedAgents.has(agent_id)}
-            onChange={handleCheckboxChange}
-          />
-          {/* Single label instead of multiple */}
-          <label htmlFor={checkboxId} className="sr-only">
-            Select {agentName}
-          </label>
-        </div>
-      </div>
+    <TableRow className="space-x-2.5 hover:bg-neutral-50 dark:hover:bg-neutral-800">
+      <TableCell className="w-[40px]">
+        <Checkbox
+          id={checkboxId}
+          aria-label={`Select ${agentName}`}
+          checked={selectedAgents.has(agent_id)}
+          onCheckedChange={handleCheckboxChange}
+        />
+        <label htmlFor={checkboxId} className="sr-only">
+          Select {agentName}
+        </label>
+      </TableCell>
 
-      <div className="grid w-full grid-cols-[minmax(400px,1fr),180px,140px,100px,100px,40px] items-center gap-4">
-        {/* Agent info column */}
+      <TableCell>
         <div className="flex items-center gap-4">
-          <div className="relative h-[70px] w-[125px] overflow-hidden rounded-[10px] bg-[#d9d9d9] dark:bg-neutral-700">
+          <div className="relative aspect-video w-[125px] overflow-hidden rounded-[10px] bg-[#d9d9d9] dark:bg-neutral-700">
             <Image
               src={imageSrc?.[0] ?? "/nada.png"}
               alt={agentName}
@@ -112,74 +108,69 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
             />
           </div>
           <div className="flex flex-col">
-            <h3 className="text-[15px] font-medium text-neutral-800 dark:text-neutral-200">
+            <h3 className="font-sans text-sm font-medium text-neutral-800">
               {agentName}
             </h3>
-            <p className="line-clamp-2 text-sm text-neutral-600 dark:text-neutral-400">
+            <p className="line-clamp-2 font-sans text-sm font-normal text-neutral-600">
               {description}
             </p>
           </div>
         </div>
+      </TableCell>
 
-        {/* Date column */}
-        <div className="pl-14 text-sm text-neutral-600 dark:text-neutral-400">
-          {dateSubmitted}
-        </div>
+      <TableCell className="font-sans text-sm font-normal text-neutral-600">
+        {dateSubmitted}
+      </TableCell>
 
-        {/* Status column */}
-        <div>
-          <Status status={status} />
-        </div>
+      <TableCell>
+        <Status status={status} />
+      </TableCell>
 
-        {/* Runs column */}
-        <div className="text-right text-sm text-neutral-600 dark:text-neutral-400">
-          {runs?.toLocaleString() ?? "0"}
-        </div>
+      <TableCell className="text-right font-sans text-sm font-normal text-neutral-600">
+        {runs?.toLocaleString() ?? "-"}
+      </TableCell>
 
-        {/* Reviews column */}
-        <div className="text-right">
-          {rating ? (
-            <div className="flex items-center justify-end gap-1">
-              <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
-                {rating.toFixed(1)}
-              </span>
-              <IconStarFilled className="h-4 w-4 text-neutral-800 dark:text-neutral-200" />
-            </div>
-          ) : (
-            <span className="text-sm text-neutral-600 dark:text-neutral-400">
-              No reviews
+      <TableCell className="text-right font-sans text-sm font-normal text-neutral-600">
+        {rating ? (
+          <div className="flex items-center justify-end gap-1">
+            <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+              {rating.toFixed(1)}
             </span>
-          )}
-        </div>
+            <IconStarFilled className="h-4 w-4 text-neutral-800 dark:text-neutral-200" />
+          </div>
+        ) : (
+          <span className="text-sm text-neutral-600 dark:text-neutral-400">
+            No reviews
+          </span>
+        )}
+      </TableCell>
 
-        {/* Actions - Three dots menu */}
-        <div className="flex justify-end">
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger>
-              <button className="rounded-full p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700">
-                <IconMore className="h-5 w-5 text-neutral-800 dark:text-neutral-200" />
-              </button>
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
-              <DropdownMenu.Item
-                onSelect={handleEdit}
-                className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                <IconEdit className="mr-2 h-5 w-5 dark:text-gray-100" />
-                <span className="dark:text-gray-100">Edit</span>
-              </DropdownMenu.Item>
-              <DropdownMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
-              <DropdownMenu.Item
-                onSelect={handleDelete}
-                className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
-              >
-                <TrashIcon className="mr-2 h-5 w-5 text-red-500 dark:text-red-400" />
-                <span className="dark:text-red-400">Delete</span>
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
-        </div>
-      </div>
-    </div>
+      <TableCell className="text-right font-sans text-sm font-normal text-neutral-600">
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger>
+            <button className="rounded-full p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700">
+              <IconMore className="h-5 w-5 text-neutral-800 dark:text-neutral-200" />
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
+            <DropdownMenu.Item
+              onSelect={handleEdit}
+              className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              <IconEdit className="mr-2 h-5 w-5 dark:text-gray-100" />
+              <span className="dark:text-gray-100">Edit</span>
+            </DropdownMenu.Item>
+            <DropdownMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
+            <DropdownMenu.Item
+              onSelect={handleDelete}
+              className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+              <TrashIcon className="mr-2 h-5 w-5 text-red-500 dark:text-red-400" />
+              <span className="dark:text-red-400">Delete</span>
+            </DropdownMenu.Item>
+          </DropdownMenu.Content>
+        </DropdownMenu.Root>
+      </TableCell>
+    </TableRow>
   );
 };
