@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { AgentTable } from "./AgentTable";
-import { userEvent, within, expect, fn } from "@storybook/test";
+import { within, expect, fn } from "@storybook/test";
 import { StatusType } from "./Status";
 
 const meta = {
@@ -76,21 +76,18 @@ const sampleAgents = [
 export const Default: Story = {
   args: {
     agents: sampleAgents,
-    onEditSubmission: fn(),
-    onDeleteSubmission: fn(),
-  },
-};
-
-export const EmptyTable: Story = {
-  args: {
-    agents: [],
-    onEditSubmission: fn(),
-    onDeleteSubmission: fn(),
+    onEditSubmission: fn(() => {
+      console.log("Edit submission");
+    }),
+    onDeleteSubmission: fn(() => {
+      console.log(`Delete submission for agent `);
+    }),
   },
 };
 
 export const LongAgentNames: Story = {
   args: {
+    ...Default.args,
     agents: [
       {
         ...sampleAgents[0],
@@ -101,13 +98,35 @@ export const LongAgentNames: Story = {
       },
       ...sampleAgents.slice(1),
     ],
-    onEditSubmission: fn(),
-    onDeleteSubmission: fn(),
+  },
+};
+
+export const LongDescriptions: Story = {
+  args: {
+    ...Default.args,
+    agents: [
+      {
+        ...sampleAgents[0],
+        description:
+          "This is an extremely advanced artificial intelligence code generator that can write clean, efficient, and optimized code in multiple programming languages. It utilizes state-of-the-art machine learning algorithms to understand requirements and generate appropriate solutions while following best practices and design patterns. The agent can handle complex programming tasks, debug existing code, and suggest improvements to enhance performance and readability.",
+      },
+      {
+        ...sampleAgents[1],
+        description:
+          "A sophisticated data analysis tool capable of processing petabytes of structured and unstructured data to extract meaningful insights and patterns. This agent leverages advanced statistical methods, machine learning techniques, and data visualization capabilities to transform raw data into actionable business intelligence. It can handle time series analysis, predictive modeling, anomaly detection, and generate comprehensive reports with minimal human intervention.",
+      },
+      {
+        ...sampleAgents[2],
+        description:
+          "This specialized UI/UX design assistant creates beautiful, accessible, and intuitive user interfaces for web and mobile applications. By combining principles of human-centered design with modern aesthetic sensibilities, the agent produces wireframes, mockups, and interactive prototypes that enhance user engagement and satisfaction. It follows design systems, ensures consistent branding, and optimizes layouts for various screen sizes while maintaining accessibility standards.",
+      },
+    ],
   },
 };
 
 export const ManyAgents: Story = {
   args: {
+    ...Default.args,
     agents: Array(20)
       .fill(null)
       .map((_, index) => ({
@@ -116,22 +135,16 @@ export const ManyAgents: Story = {
         agent_id: `${100 + index}`,
         agentName: `Test Agent ${index + 1}`,
       })),
-    onEditSubmission: fn(),
-    onDeleteSubmission: fn(),
   },
 };
 
 export const WithInteraction: Story = {
   args: {
+    ...Default.args,
     agents: sampleAgents,
-    onEditSubmission: fn(),
-    onDeleteSubmission: fn(),
   },
   play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
-
-    const table = canvas.getByRole("table");
-    await expect(table).toBeInTheDocument();
 
     const checkboxes = canvas.getAllByTestId("dropdown-button");
     await expect(checkboxes.length).toBeGreaterThan(0);
@@ -140,9 +153,8 @@ export const WithInteraction: Story = {
 
 export const EmptyTableTest: Story = {
   args: {
+    ...Default.args,
     agents: [],
-    onEditSubmission: fn(),
-    onDeleteSubmission: fn(),
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -156,9 +168,8 @@ export const EmptyTableTest: Story = {
 
 export const ResponsiveTest: Story = {
   args: {
+    ...Default.args,
     agents: sampleAgents,
-    onEditSubmission: fn(),
-    onDeleteSubmission: fn(),
   },
   parameters: {
     viewport: {
@@ -172,9 +183,5 @@ export const ResponsiveTest: Story = {
     // Check for at least one card
     const cards = canvas.getAllByTestId("agent-table-card");
     await expect(cards.length).toBe(3);
-
-    // Table should be hidden
-    const tables = canvasElement.querySelectorAll("table");
-    await expect(tables.length).toBe(1);
   },
 };

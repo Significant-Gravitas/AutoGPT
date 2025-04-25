@@ -85,7 +85,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({
               <TableHead className="font-sans text-sm font-medium text-neutral-800">
                 Runs
               </TableHead>
-              <TableHead className="font-sans text-sm font-medium text-neutral-800">
+              <TableHead className="text-right font-sans text-sm font-medium text-neutral-800">
                 Reviews
               </TableHead>
               <TableHead className="font-sans text-sm font-medium text-neutral-800"></TableHead>

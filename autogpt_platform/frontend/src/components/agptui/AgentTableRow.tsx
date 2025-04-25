@@ -4,11 +4,17 @@ import * as React from "react";
 import Image from "next/image";
 import { IconStarFilled, IconMore, IconEdit } from "@/components/ui/icons";
 import { Status, StatusType } from "./Status";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { TrashIcon } from "@radix-ui/react-icons";
 import { StoreSubmissionRequest } from "@/lib/autogpt-server-api/types";
 import { TableCell, TableRow } from "../ui/table";
 import { Checkbox } from "../ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 
 export interface AgentTableRowProps {
   agent_id: string;
@@ -97,9 +103,9 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
         </label>
       </TableCell>
 
-      <TableCell>
+      <TableCell className="max-w-md">
         <div className="flex items-center gap-4">
-          <div className="relative aspect-video w-[125px] overflow-hidden rounded-[10px] bg-[#d9d9d9] dark:bg-neutral-700">
+          <div className="relative aspect-video w-[125px] min-w-[125px] overflow-hidden rounded-xl bg-[#d9d9d9] dark:bg-neutral-700">
             <Image
               src={imageSrc?.[0] ?? "/nada.png"}
               alt={agentName}
@@ -146,30 +152,27 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
       </TableCell>
 
       <TableCell className="text-right font-sans text-sm font-normal text-neutral-600">
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger>
-            <button className="rounded-full p-1 hover:bg-neutral-100 dark:hover:bg-neutral-700">
-              <IconMore className="h-5 w-5 text-neutral-800 dark:text-neutral-200" />
-            </button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Content className="z-10 rounded-xl border bg-white p-1 shadow-md dark:bg-gray-800">
-            <DropdownMenu.Item
-              onSelect={handleEdit}
-              className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+        <DropdownMenu>
+          <DropdownMenuTrigger data-testid="dropdown-button">
+            <IconMore className="h-5 w-5 text-neutral-800 dark:text-neutral-200" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="z-10">
+            <DropdownMenuItem onClick={handleEdit}>
+              <div className="flex items-center font-sans text-sm font-normal text-neutral-600">
+                <IconEdit className="mr-2 h-5 w-5" />
+                <span>Edit</span>
+              </div>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={handleDelete}
+              className="font-sans text-sm font-normal text-red-500"
             >
-              <IconEdit className="mr-2 h-5 w-5 dark:text-gray-100" />
-              <span className="dark:text-gray-100">Edit</span>
-            </DropdownMenu.Item>
-            <DropdownMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
-            <DropdownMenu.Item
-              onSelect={handleDelete}
-              className="flex cursor-pointer items-center rounded-md px-3 py-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
-            >
-              <TrashIcon className="mr-2 h-5 w-5 text-red-500 dark:text-red-400" />
-              <span className="dark:text-red-400">Delete</span>
-            </DropdownMenu.Item>
-          </DropdownMenu.Content>
-        </DropdownMenu.Root>
+              <TrashIcon className="mr-2 h-5 w-5 text-red-500" />
+              <span>Delete</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </TableCell>
     </TableRow>
   );
