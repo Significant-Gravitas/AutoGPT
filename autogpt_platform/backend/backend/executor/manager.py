@@ -267,7 +267,7 @@ def execute_node(
         raise e
     finally:
         # Ensure credentials are released even if execution fails
-        if creds_lock and creds_lock.locked():
+        if creds_lock and creds_lock.locked() and creds_lock.owned():
             try:
                 creds_lock.release()
             except Exception as e:
@@ -1115,7 +1115,7 @@ def synchronized(key: str, timeout: int = 60):
         lock.acquire()
         yield
     finally:
-        if lock.locked():
+        if lock.locked() and lock.owned():
             lock.release()
 
 
