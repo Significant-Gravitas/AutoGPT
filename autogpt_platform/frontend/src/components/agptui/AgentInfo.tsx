@@ -2,7 +2,7 @@
 
 import { StarRatingIcons } from "@/components/ui/icons";
 import { Separator } from "@/components/ui/separator";
-import BackendAPI from "@/lib/autogpt-server-api";
+import BackendAPI, { LibraryAgent } from "@/lib/autogpt-server-api";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { FC, useCallback, useMemo, useState } from "react";
 
 interface AgentInfoProps {
+  user: User | null;
   name: string;
   creator: string;
   shortDescription: string;
@@ -23,10 +24,11 @@ interface AgentInfoProps {
   lastUpdated: string;
   version: string;
   storeListingVersionId: string;
-  user: User | null;
+  libraryAgent: LibraryAgent | null;
 }
 
 export const AgentInfo: FC<AgentInfoProps> = ({
+  user,
   name,
   creator,
   shortDescription,
@@ -37,7 +39,7 @@ export const AgentInfo: FC<AgentInfoProps> = ({
   lastUpdated,
   version,
   storeListingVersionId,
-  user,
+  libraryAgent,
 }) => {
   const router = useRouter();
   const api = useMemo(() => new BackendAPI(), []);
@@ -46,14 +48,28 @@ export const AgentInfo: FC<AgentInfoProps> = ({
   const [adding, setAdding] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
-  const handleAddToLibrary = useCallback(async () => {
+  const libraryAction = useCallback(async () => {
     setAdding(true);
+    if (libraryAgent) {
+      // Redirect to the library agent page
+      router.push(`/library/agents/${libraryAgent.id}`);
+      toast({
+        description: "Redirecting to your library...",
+        duration: 2000,
+      });
+      return;
+    }
     try {
       const newLibraryAgent = await api.addMarketplaceAgentToLibrary(
         storeListingVersionId,
       );
       completeStep("MARKETPLACE_ADD_AGENT");
       router.push(`/library/agents/${newLibraryAgent.id}`);
+      toast({
+        title: "Agent Added",
+        description: "Redirecting to your library...",
+        duration: 2000,
+      });
     } catch (error) {
       console.error("Failed to add agent to library:", error);
       toast({
@@ -62,11 +78,6 @@ export const AgentInfo: FC<AgentInfoProps> = ({
         variant: "destructive",
       });
     }
-    toast({
-      title: "Agent Added",
-      description: "Redirecting to your library...",
-      duration: 2000,
-    });
   }, [toast, api, storeListingVersionId, completeStep, router]);
 
   const handleDownload = useCallback(async () => {
@@ -143,14 +154,14 @@ export const AgentInfo: FC<AgentInfoProps> = ({
         {user && (
           <button
             className={cn(
-              "inline-flex min-w-24 items-center justify-center rounded-full bg-zinc-700 px-4 py-3",
-              "transition-colors duration-200 hover:bg-zinc-600 disabled:bg-zinc-400",
+              "inline-flex min-w-24 items-center justify-center rounded-full bg-violet-600 px-4 py-3",
+              "transition-colors duration-200 hover:bg-violet-500 disabled:bg-zinc-400",
             )}
-            onClick={handleAddToLibrary}
+            onClick={libraryAction}
             disabled={adding}
           >
             <span className="justify-start font-sans text-sm font-medium leading-snug text-primary-foreground">
-              Add to library
+              {libraryAgent ? "See runs" : "Add to library"}
             </span>
           </button>
         )}

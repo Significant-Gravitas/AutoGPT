@@ -47,6 +47,9 @@ export default async function Page({
   const {
     data: { user },
   } = await getServerSupabase().auth.getUser();
+  const libraryAgent = await api.getLibraryAgentByStoreListingVersionID(
+    agent.store_listing_version_id,
+  );
 
   const breadcrumbs = [
     { name: "Marketplace", link: "/marketplace" },
@@ -76,6 +79,7 @@ export default async function Page({
               lastUpdated={agent.updated_at}
               version={agent.versions[agent.versions.length - 1]}
               storeListingVersionId={agent.store_listing_version_id}
+              libraryAgent={libraryAgent}
             />
           </div>
           <AgentImages
