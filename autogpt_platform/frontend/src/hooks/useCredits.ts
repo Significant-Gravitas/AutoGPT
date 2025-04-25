@@ -131,9 +131,7 @@ export default function useCredits({
     }
     const value = Math.abs(credit);
     const sign = credit < 0 ? "-" : "";
-    const precision =
-      2 - (value % 100 === 0 ? 1 : 0) - (value % 10 === 0 ? 1 : 0);
-    return `${sign}$${(value / 100).toFixed(precision)}`;
+    return `${sign}$${(value / 100).toFixed(2)}`;
   }, []);
 
   return {
