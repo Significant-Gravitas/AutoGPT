@@ -175,6 +175,52 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         raise store_exceptions.DatabaseError("Failed to fetch library agent") from e
 
 
+async def get_library_agent_by_store_version_id(
+    store_listing_version_id: str,
+    user_id: str,
+):
+    """
+    Get the library agent metadata for a given store listing version ID and user ID.
+    """
+    logger.debug(
+        f"Getting library agent for store listing ID: {store_listing_version_id}"
+    )
+
+    try:
+        store_listing_version = (
+            await prisma.models.StoreListingVersion.prisma().find_unique(
+                where={"id": store_listing_version_id},
+            )
+        )
+        if not store_listing_version:
+            logger.warning(
+                f"Store listing version not found: {store_listing_version_id}"
+            )
+            raise store_exceptions.AgentNotFoundError(
+                f"Store listing version {store_listing_version_id} not found or invalid"
+            )
+
+        # Check if user already has this agent
+        agent = await prisma.models.LibraryAgent.prisma().find_first(
+            where={
+                "userId": user_id,
+                "agentGraphId": store_listing_version.agentGraphId,
+                "agentGraphVersion": store_listing_version.agentGraphVersion,
+                "isDeleted": False,
+            },
+            include={"AgentGraph": True},
+        )
+        if agent:
+            return library_model.LibraryAgent.from_db(agent)
+        else:
+            return None
+    except store_exceptions.AgentNotFoundError:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting library agent: {e}")
+        raise store_exceptions.DatabaseError("Failed to fetch agent details") from e
+
+
 async def add_generated_agent_image(
     graph: backend.data.graph.GraphModel,
     library_agent_id: str,
@@ -406,7 +452,7 @@ async def add_store_agent_to_library(
                         "agentGraphId": graph.id,
                         "agentGraphVersion": graph.version,
                     },
-                    include=library_agent_include(user_id),
+                    include={"AgentGraph": True},
                 )
             )
             if existing_library_agent:
