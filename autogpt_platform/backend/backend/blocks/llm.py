@@ -489,7 +489,7 @@ def llm_call(
             model=llm_model.value,
             prompt=f"{sys_messages}\n\n{usr_messages}",
             stream=False,
-            max_tokens=max_tokens,
+            options={"num_ctx": max_tokens},
         )
         return LLMResponse(
             raw_response=response.get("response") or "",
