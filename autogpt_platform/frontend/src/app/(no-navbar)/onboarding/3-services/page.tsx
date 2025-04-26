@@ -166,10 +166,6 @@ export default function Page() {
         <OnboardingButton
           className="mb-2"
           href="/onboarding/4-agent"
-          disabled={
-            state?.integrations.length === 0 &&
-            isEmptyOrWhitespace(state.otherIntegrations)
-          }
         >
           Next
         </OnboardingButton>
