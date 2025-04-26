@@ -411,10 +411,13 @@ class GraphModel(Graph):
 
     @staticmethod
     def _validate_graph(graph: BaseGraph, for_run: bool = False):
+        def is_tool_pin(name: str) -> bool:
+            return name.startswith("tools_^_")
+
         def sanitize(name):
             sanitized_name = name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
-            if sanitized_name.startswith("tools_^_"):
-                return sanitized_name.split("_^_")[0]
+            if is_tool_pin(sanitized_name):
+                return "tools"
             return sanitized_name
 
         # Validate smart decision maker nodes
@@ -555,7 +558,7 @@ class GraphModel(Graph):
                         if block.block_type not in [BlockType.AGENT]
                         else vals.get("input_schema", {}).get("properties", {}).keys()
                     )
-                if sanitized_name not in fields and not name.startswith("tools_^_"):
+                if sanitized_name not in fields and not is_tool_pin(name):
                     fields_msg = f"Allowed fields: {fields}"
                     raise ValueError(f"{prefix}, `{name}` invalid, {fields_msg}")
 
@@ -856,7 +859,7 @@ async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphMo
     Forks a graph by copying it and all its nodes and links to a new graph.
     """
     async with transaction() as tx:
-        graph = await get_graph(graph_id, graph_version, user_id=user_id)
+        graph = await get_graph(graph_id, graph_version, user_id, True)
         if not graph:
             raise ValueError(f"Graph {graph_id} v{graph_version} not found")
 
