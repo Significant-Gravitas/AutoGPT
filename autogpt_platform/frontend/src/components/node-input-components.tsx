@@ -1025,7 +1025,9 @@ const NodeMultiSelectInput: FC<{
   displayName,
   handleInputChange,
 }) => {
-  const optionSchema = schema.properties || (schema as any).anyOf[0].properties;
+  const optionSchema =
+    schema.properties ||
+    ((schema as any).anyOf?.length > 0 ? (schema as any).anyOf[0].properties : {});
   const options = Object.keys(optionSchema);
 
   return (
