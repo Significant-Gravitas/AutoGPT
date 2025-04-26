@@ -36,14 +36,17 @@ from backend.integrations.credentials_store import (
 # =============== Configure the cost for each LLM Model call =============== #
 
 MODEL_COST: dict[LlmModel, int] = {
+    LlmModel.O3: 7,
     LlmModel.O3_MINI: 2,  # $1.10 / $4.40
     LlmModel.O1: 16,  # $15 / $60
     LlmModel.O1_PREVIEW: 16,
     LlmModel.O1_MINI: 4,
+    LlmModel.GPT41: 2,
     LlmModel.GPT4O_MINI: 1,
     LlmModel.GPT4O: 3,
     LlmModel.GPT4_TURBO: 10,
     LlmModel.GPT3_5_TURBO: 1,
+    LlmModel.CLAUDE_3_7_SONNET: 5,
     LlmModel.CLAUDE_3_5_SONNET: 4,
     LlmModel.CLAUDE_3_5_HAIKU: 1,  # $0.80 / $4.00
     LlmModel.CLAUDE_3_HAIKU: 1,
@@ -60,6 +63,7 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.DEEPSEEK_LLAMA_70B: 1,  # ? / ?
     LlmModel.OLLAMA_DOLPHIN: 1,
     LlmModel.GEMINI_FLASH_1_5: 1,
+    LlmModel.GEMINI_2_5_PRO: 4,
     LlmModel.GROK_BETA: 5,
     LlmModel.MISTRAL_NEMO: 1,
     LlmModel.COHERE_COMMAND_R_08_2024: 1,

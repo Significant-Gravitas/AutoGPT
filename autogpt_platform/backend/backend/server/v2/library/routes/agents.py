@@ -190,3 +190,14 @@ async def update_library_agent(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update library agent",
         ) from e
+
+
+@router.post("/{library_agent_id}/fork")
+async def fork_library_agent(
+    library_agent_id: str,
+    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+) -> library_model.LibraryAgent:
+    return await library_db.fork_library_agent(
+        library_agent_id=library_agent_id,
+        user_id=user_id,
+    )

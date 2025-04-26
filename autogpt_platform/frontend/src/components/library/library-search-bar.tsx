@@ -4,7 +4,7 @@ import debounce from "lodash/debounce";
 import { Input } from "@/components/ui/input";
 import { Search, X } from "lucide-react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useLibraryPageContext } from "@/app/library/state-provider";
+import { useLibraryPageContext } from "@/app/(platform)/library/state-provider";
 
 export default function LibrarySearchBar(): React.ReactNode {
   const inputRef = useRef<HTMLInputElement>(null);

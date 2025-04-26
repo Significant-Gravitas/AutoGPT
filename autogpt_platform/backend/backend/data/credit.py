@@ -20,7 +20,6 @@ from prisma.types import (
     CreditTransactionCreateInput,
     CreditTransactionWhereInput,
 )
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 from backend.data import db
 from backend.data.block_cost_config import BLOCK_COSTS
@@ -36,6 +35,7 @@ from backend.data.user import get_user_by_id
 from backend.executor.utils import UsageTransactionMetadata
 from backend.notifications import NotificationManager
 from backend.util.exceptions import InsufficientBalanceError
+from backend.util.retry import func_retry
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
@@ -262,11 +262,7 @@ class UserCreditBase(ABC):
         )
         return transaction_balance, transaction_time
 
-    @retry(
-        stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        reraise=True,
-    )
+    @func_retry
     async def _enable_transaction(
         self,
         transaction_key: str,

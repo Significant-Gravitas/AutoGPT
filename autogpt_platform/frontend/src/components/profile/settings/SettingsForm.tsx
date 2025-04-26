@@ -18,7 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { updateSettings } from "@/app/profile/(user)/settings/actions";
+import { updateSettings } from "@/app/(platform)/profile/(user)/settings/actions";
 import { toast } from "@/components/ui/use-toast";
 import {
   NotificationPreference,
