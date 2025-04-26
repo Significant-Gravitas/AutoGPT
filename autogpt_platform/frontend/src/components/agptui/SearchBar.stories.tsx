@@ -6,14 +6,10 @@ const meta = {
   title: "AGPT UI/Search Bar",
   component: SearchBar,
   parameters: {
-    layout: {
-      center: true,
-      padding: 0,
-    },
     nextjs: {
       appDirectory: true,
       navigation: {
-        pathname: "/search",
+        pathname: "/marketplace/search",
         query: {
           searchTerm: "",
         },
@@ -27,6 +23,8 @@ const meta = {
     iconColor: { control: "text" },
     textColor: { control: "text" },
     placeholderColor: { control: "text" },
+    width: { control: "text" },
+    height: { control: "text" },
   },
   decorators: [
     (Story) => (
@@ -56,13 +54,34 @@ export const CustomStyles: Story = {
   },
 };
 
+export const CustomDimensions: Story = {
+  args: {
+    placeholder: "Custom size search bar",
+    width: "w-full md:w-[30rem]",
+    height: "h-[45px]",
+  },
+};
+
+export const DarkMode: Story = {
+  args: {
+    placeholder: "Dark mode search",
+    backgroundColor: "bg-neutral-800",
+    iconColor: "text-neutral-400",
+    textColor: "text-neutral-200",
+    placeholderColor: "text-neutral-400",
+  },
+  parameters: {
+    backgrounds: { default: "dark" },
+  },
+};
+
 export const WithInteraction: Story = {
   args: {
     placeholder: "Type and press Enter",
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const input = canvas.getByPlaceholderText("Type and press Enter");
+    const input = canvas.getByTestId("store-search-input");
 
     await userEvent.type(input, "test query");
     await userEvent.keyboard("{Enter}");
@@ -77,10 +96,31 @@ export const EmptySubmit: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const input = canvas.getByPlaceholderText("Empty submit test");
+    const input = canvas.getByTestId("store-search-input");
 
+    await userEvent.click(input);
     await userEvent.keyboard("{Enter}");
 
     await expect(input).toHaveValue("");
+  },
+};
+
+export const MobileViewCompact: Story = {
+  args: {
+    placeholder: "Search on mobile",
+    width: "w-full",
+    height: "h-[45px]",
+  },
+  parameters: {
+    viewport: {
+      defaultViewport: "mobile1",
+    },
+  },
+};
+
+export const ExtraLongPlaceholder: Story = {
+  args: {
+    placeholder:
+      "This is an extremely long placeholder text that demonstrates how the search bar handles overflow with very long placeholder text",
   },
 };
