@@ -4,6 +4,7 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 
 import { MagnifyingGlassIcon } from "@radix-ui/react-icons";
+import { Input } from "../ui/input";
 
 interface SearchBarProps {
   placeholder?: string;
@@ -47,12 +48,12 @@ export const SearchBar: React.FC<SearchBarProps> = ({
       className={`${width} ${height} px-4 pt-2 md:px-6 md:pt-1 ${backgroundColor} flex items-center justify-center gap-2 rounded-full md:gap-5`}
     >
       <MagnifyingGlassIcon className={`h-5 w-5 md:h-7 md:w-7 ${iconColor}`} />
-      <input
+      <Input
         type="text"
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         placeholder={placeholder}
-        className={`flex-grow border-none bg-transparent ${textColor} font-sans text-lg font-normal leading-[2.25rem] tracking-tight md:text-xl placeholder:${placeholderColor} focus:outline-none`}
+        className={`flex-grow border-none bg-transparent ${textColor} p-0 font-sans text-lg font-normal leading-[2.25rem] tracking-tight md:text-xl placeholder:${placeholderColor} m-0 shadow-none focus:shadow-none focus:outline-none focus:ring-0`}
         data-testid="store-search-input"
       />
     </form>
