@@ -47,9 +47,11 @@ export default async function Page({
   const {
     data: { user },
   } = await getServerSupabase().auth.getUser();
-  const libraryAgent = await api.getLibraryAgentByStoreListingVersionID(
-    agent.store_listing_version_id,
-  );
+  const libraryAgent = user
+    ? await api.getLibraryAgentByStoreListingVersionID(
+        agent.store_listing_version_id,
+      )
+    : null;
 
   const breadcrumbs = [
     { name: "Marketplace", link: "/marketplace" },
