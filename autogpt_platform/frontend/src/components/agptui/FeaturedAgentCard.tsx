@@ -53,7 +53,7 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
             }`}
           />
           <Image
-            src={agent.creator_avatar || "/default_avatar.avif"}
+            src={agent.creator_avatar || "/default_avatar.png"}
             alt={`${agent.creator} avatar`}
             width={74}
             height={74}

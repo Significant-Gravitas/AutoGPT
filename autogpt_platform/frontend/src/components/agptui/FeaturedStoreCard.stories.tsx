@@ -57,7 +57,7 @@ export const Default: Story = {
         "Transform ideas into breathtaking images with this AI-powered Image Generator.",
       agent_image:
         "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-      creator_avatar: "/default_avatar.avif",
+      creator_avatar: "/default_avatar.png",
       creator: "John Ababesh",
       runs: 200000,
       rating: 4.6,
