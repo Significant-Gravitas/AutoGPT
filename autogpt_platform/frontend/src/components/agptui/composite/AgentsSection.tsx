@@ -26,13 +26,13 @@ interface AgentsSectionProps {
   agents: Agent[];
   hideAvatars?: boolean;
   margin?: string;
+  className?: string;
 }
 
 export const AgentsSection: React.FC<AgentsSectionProps> = ({
   sectionTitle,
   agents: allAgents,
   hideAvatars = false,
-  margin = "37px",
 }) => {
   const router = useRouter();
 
@@ -46,15 +46,15 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
   };
 
   return (
-    <div className="flex flex-col items-center justify-center">
-      <div className="w-full max-w-[1360px]">
+    <div className="flex w-full flex-col items-center justify-center">
+      <div className="w-full">
         <div
-          className={`mb-[${margin}] font-poppins text-lg font-semibold text-[#282828] dark:text-neutral-200`}
+          className={`mb-9 pl-4 font-poppins text-lg font-semibold text-neutral-800 dark:text-neutral-200 md:pl-0`}
         >
           {sectionTitle}
         </div>
         {!displayedAgents || displayedAgents.length === 0 ? (
-          <div className="text-center text-gray-500 dark:text-gray-400">
+          <div className="font-poppins text-gray-500 dark:text-gray-400">
             No agents found
           </div>
         ) : (
