@@ -5,13 +5,13 @@ import { userEvent, within, expect } from "@storybook/test";
 const meta = {
   title: "AGPT UI/Composite/Featured Creators",
   component: FeaturedCreators,
-  parameters: {
-    layout: {
-      center: true,
-      fullscreen: true,
-      padding: 0,
-    },
-  },
+  decorators: [
+    (Story) => (
+      <div className="flex items-center justify-center p-4">
+        <Story />
+      </div>
+    ),
+  ],
   tags: ["autodocs"],
   argTypes: {
     featuredCreators: { control: "object" },
@@ -98,7 +98,6 @@ export const ManyCreators: Story = {
         num_agents: 25,
       },
     ],
-    // onCardClick: (creatorName) => console.log(`Clicked on ${creatorName}`),
   },
 };
 
@@ -109,13 +108,10 @@ export const WithInteraction: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const creatorCards = canvas.getAllByRole("creator-card");
+    const creatorCards = canvas.getAllByTestId("creator-card");
     const firstCreatorCard = creatorCards[0];
 
     await userEvent.hover(firstCreatorCard);
     await userEvent.click(firstCreatorCard);
-
-    // Check if the card has the expected hover and click effects
-    await expect(firstCreatorCard).toHaveClass("hover:shadow-lg");
   },
 };

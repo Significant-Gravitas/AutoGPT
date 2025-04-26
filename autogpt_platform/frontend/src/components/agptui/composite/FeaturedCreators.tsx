@@ -32,12 +32,12 @@ export const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({
 
   return (
     <div className="flex w-full flex-col items-center justify-center">
-      <div className="w-full max-w-[1360px]">
+      <div className="w-full">
         <h2 className="mb-9 font-poppins text-lg font-semibold text-neutral-800 dark:text-neutral-200">
           {title}
         </h2>
 
-        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div className="flex flex-wrap gap-5">
           {displayedCreators.map((creator, index) => (
             <CreatorCard
               key={index}
