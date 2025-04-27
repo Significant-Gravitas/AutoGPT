@@ -116,6 +116,7 @@ export default function PrivatePage() {
       "544c62b5-1d0f-4156-8fb4-9525f11656eb", // Apollo
       "3bcdbda3-84a3-46af-8fdb-bfd2472298b8", // SmartLead
       "63a6e279-2dc2-448e-bf57-85776f7176dc", // ZeroBounce
+      "9aa1bde0-4947-4a70-a20c-84daa3850d52", // Google Maps
     ],
     [],
   );
