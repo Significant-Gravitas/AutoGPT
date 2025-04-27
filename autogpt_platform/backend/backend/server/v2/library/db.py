@@ -39,7 +39,7 @@ async def list_library_agents(
     Args:
         user_id: The ID of the user whose LibraryAgents we want to retrieve.
         search_term: Optional string to filter agents by name/description.
-        sort_by: Sorting field (createdAt, updatedAt, isFavorite, isCreatedByUser).
+        sort_by: Sorting field (createdAt, updatedAt, lastExecution).
         page: Current page (1-indexed).
         page_size: Number of items per page.
 
@@ -87,12 +87,17 @@ async def list_library_agents(
         ]
 
     # Determine sorting
-    order_by: prisma.types.LibraryAgentOrderByInput | None = None
+    order_by: list[dict] = []
 
     if sort_by == library_model.LibraryAgentSort.CREATED_AT:
-        order_by = {"createdAt": "asc"}
+        order_by = [{"createdAt": "asc"}]
     elif sort_by == library_model.LibraryAgentSort.UPDATED_AT:
-        order_by = {"updatedAt": "desc"}
+        order_by = [{"updatedAt": "desc"}]
+    elif sort_by == library_model.LibraryAgentSort.LAST_EXECUTION:
+        order_by = [
+            {"AgentGraph": {"Executions": {"startedAt": "desc"}}},
+            {"updatedAt": "desc"}  # fallback if no executions
+        ]
 
     try:
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
@@ -367,7 +372,7 @@ async def add_store_agent_to_library(
 
     Args:
         store_listing_version_id: The ID of the store listing version containing the agent.
-        user_id: The user’s library to which the agent is being added.
+        user_id: The user's library to which the agent is being added.
 
     Returns:
         The newly created LibraryAgent if successfully added, the existing corresponding one if any.
