@@ -17,6 +17,7 @@ import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { TypeBasedInput } from "@/components/type-based-input";
+import SmartImage from "@/components/agptui/SmartImage";
 
 export default function Page() {
   const { state, updateState, setStep } = useOnboarding(
@@ -161,18 +162,16 @@ export default function Page() {
             </span>
             <div className="mt-4 flex h-20 rounded-lg bg-violet-50 p-2">
               {/* Left image */}
-              <Image
-                src={storeAgent?.agent_image[0] || ""}
-                alt="Description"
-                width={350}
-                height={196}
-                className="h-full w-auto rounded-lg object-contain"
+              <SmartImage
+                src={storeAgent?.agent_image[0]}
+                alt="Agent cover"
+                imageContain
+                className="w-[350px] rounded-lg"
               />
-
               {/* Right content */}
               <div className="ml-2 flex flex-1 flex-col">
                 <span className="w-[292px] truncate font-sans text-[14px] font-medium leading-normal text-zinc-800">
-                  {agent?.name}
+                  {storeAgent?.agent_name}
                 </span>
                 <span className="mt-[5px] w-[292px] truncate font-sans text-xs font-normal leading-tight text-zinc-600">
                   by {storeAgent?.creator}
