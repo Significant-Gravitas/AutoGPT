@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
 import { addDollars } from "@/app/admin/spending/actions";
+import useCredits from "@/hooks/useCredits";
 
 export function AdminAddMoneyButton({
   userId,
@@ -35,11 +36,7 @@ export function AdminAddMoneyButton({
     defaultAmount ? Math.abs(defaultAmount / 100).toFixed(2) : "1.00",
   );
 
-  // Calculate credits from dollar amount
-  const calculateCredits = (dollars: string) => {
-    const amount = Number.parseFloat(dollars) || 0;
-    return Math.round(amount * 100);
-  };
+  const { formatCredits } = useCredits();
 
   const handleApproveSubmit = async (formData: FormData) => {
     setIsAddMoneyDialogOpen(false);
@@ -88,7 +85,7 @@ export function AdminAddMoneyButton({
             <input
               type="hidden"
               name="amount"
-              value={calculateCredits(dollarAmount)}
+              value={formatCredits(Number(dollarAmount))}
             />
 
             <div className="grid gap-4 py-4">
