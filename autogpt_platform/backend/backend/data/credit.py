@@ -3,6 +3,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timezone
+from typing import cast
 
 import stripe
 from autogpt_libs.utils.cache import thread_cached
@@ -1059,8 +1060,7 @@ async def admin_get_user_history(
         admin_email = ""
         reason = ""
 
-        # this is actually a dict at runtime??????????
-        metadata: dict = tx.metadata or {}  # type: ignore
+        metadata: dict = cast(dict, tx.metadata) or {}
 
         if metadata:
             admin_id = metadata.get("admin_id")
