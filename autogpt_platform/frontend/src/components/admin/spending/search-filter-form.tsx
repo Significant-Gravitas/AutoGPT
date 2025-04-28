@@ -86,7 +86,7 @@ export function SearchAndFilterAdminSpending({
           router.push(`${pathname}?${params.toString()}`);
         }}
       >
-        <SelectTrigger className="w-[180px]">
+        <SelectTrigger className="w-1/4">
           <SelectValue placeholder="Select Status" />
         </SelectTrigger>
         <SelectContent>
