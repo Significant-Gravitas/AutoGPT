@@ -63,7 +63,7 @@ export default async function Page({
             <AgentInfo
               name={agent.agent_name}
               creator={agent.creator}
-              shortDescription={agent.description}
+              shortDescription={agent.sub_heading}
               longDescription={agent.description}
               rating={agent.rating}
               runs={agent.runs}
