@@ -88,6 +88,33 @@ class StoreValueBlock(Block):
         yield "output", input_data.data or input_data.input
 
 
+class PrintToConsoleBlock(Block):
+    class Input(BlockSchema):
+        text: Any = SchemaField(description="The data to print to the console.")
+
+    class Output(BlockSchema):
+        output: Any = SchemaField(description="The data printed to the console.")
+        status: str = SchemaField(description="The status of the print operation.")
+
+    def __init__(self):
+        super().__init__(
+            id="f3b1c1b2-4c4f-4f0d-8d2f-4c4f0d8d2f4c",
+            description="Print the given text to the console, this is used for a debugging purpose.",
+            categories={BlockCategory.BASIC},
+            input_schema=PrintToConsoleBlock.Input,
+            output_schema=PrintToConsoleBlock.Output,
+            test_input={"text": "Hello, World!"},
+            test_output=[
+                ("output", "Hello, World!"),
+                ("status", "printed"),
+            ],
+        )
+
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        yield "output", input_data.text
+        yield "status", "printed"
+
+
 class FindInDictionaryBlock(Block):
     class Input(BlockSchema):
         input: Any = SchemaField(description="Dictionary to lookup from")
