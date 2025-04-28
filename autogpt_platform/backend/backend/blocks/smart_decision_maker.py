@@ -247,6 +247,10 @@ class SmartDecisionMakerBlock(Block):
         )
 
     @staticmethod
+    def cleanup(s: str):
+        return re.sub(r"[^a-zA-Z0-9_-]", "_", s).lower()
+
+    @staticmethod
     def _create_block_function_signature(
         sink_node: "Node", links: list["Link"]
     ) -> dict[str, Any]:
@@ -266,7 +270,7 @@ class SmartDecisionMakerBlock(Block):
         block = sink_node.block
 
         tool_function: dict[str, Any] = {
-            "name": re.sub(r"[^a-zA-Z0-9_-]", "_", block.name).lower(),
+            "name": SmartDecisionMakerBlock.cleanup(block.name),
             "description": block.description,
         }
 
@@ -281,7 +285,7 @@ class SmartDecisionMakerBlock(Block):
                 and sink_block_input_schema.model_fields[link.sink_name].description
                 else f"The {link.sink_name} of the tool"
             )
-            properties[link.sink_name.lower()] = {
+            properties[SmartDecisionMakerBlock.cleanup(link.sink_name)] = {
                 "type": "string",
                 "description": description,
             }
@@ -326,7 +330,7 @@ class SmartDecisionMakerBlock(Block):
             )
 
         tool_function: dict[str, Any] = {
-            "name": re.sub(r"[^a-zA-Z0-9_-]", "_", sink_graph_meta.name).lower(),
+            "name": SmartDecisionMakerBlock.cleanup(sink_graph_meta.name),
             "description": sink_graph_meta.description,
         }
 
@@ -341,7 +345,7 @@ class SmartDecisionMakerBlock(Block):
                 in sink_block_input_schema["properties"][link.sink_name]
                 else f"The {link.sink_name} of the tool"
             )
-            properties[link.sink_name.lower()] = {
+            properties[SmartDecisionMakerBlock.cleanup(link.sink_name)] = {
                 "type": "string",
                 "description": description,
             }
@@ -503,7 +507,7 @@ class SmartDecisionMakerBlock(Block):
             tool_args = json.loads(tool_call.function.arguments)
 
             for arg_name, arg_value in tool_args.items():
-                yield f"tools_^_{tool_name}_{arg_name}".lower(), arg_value
+                yield f"tools_^_{tool_name}_~_{arg_name}", arg_value
 
         response.prompt.append(response.raw_response)
         yield "conversations", response.prompt

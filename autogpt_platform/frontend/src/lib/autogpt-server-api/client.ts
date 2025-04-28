@@ -563,6 +563,12 @@ export default class BackendAPI {
     );
   }
 
+  downloadStoreAgentAdmin(storeListingVersionId: string): Promise<BlobPart> {
+    const url = `/store/admin/submissions/download/${storeListingVersionId}`;
+
+    return this._get(url);
+  }
+
   ////////////////////////////////////////
   //////////// V2 LIBRARY API ////////////
   ////////////////////////////////////////
@@ -598,6 +604,10 @@ export default class BackendAPI {
     },
   ): Promise<void> {
     await this._request("PUT", `/library/agents/${libraryAgentId}`, params);
+  }
+
+  forkLibraryAgent(libraryAgentId: LibraryAgentID): Promise<LibraryAgent> {
+    return this._request("POST", `/library/agents/${libraryAgentId}/fork`);
   }
 
   listLibraryAgentPresets(params?: {
