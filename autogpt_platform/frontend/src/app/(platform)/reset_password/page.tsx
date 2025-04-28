@@ -79,7 +79,7 @@ export default function ResetPasswordPage() {
 
       const error = await sendResetEmail(
         data.email,
-        sendEmailTurnstile.token || undefined,
+        sendEmailTurnstile.token as string,
       );
       setIsLoading(false);
       if (error) {
@@ -117,7 +117,7 @@ export default function ResetPasswordPage() {
 
       const error = await changePassword(
         data.password,
-        changePasswordTurnstile.token || undefined,
+        changePasswordTurnstile.token as string,
       );
       setIsLoading(false);
       if (error) {

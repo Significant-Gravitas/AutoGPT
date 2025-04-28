@@ -69,7 +69,7 @@ export default function SignupPage() {
         return;
       }
 
-      const error = await signup(data, turnstile.token || undefined);
+      const error = await signup(data, turnstile.token as string);
       setIsLoading(false);
       if (error) {
         if (error === "user_already_exists") {

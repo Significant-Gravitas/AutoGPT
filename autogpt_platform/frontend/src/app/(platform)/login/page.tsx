@@ -78,7 +78,7 @@ export default function LoginPage() {
         return;
       }
 
-      const error = await login(data, turnstile.token || undefined);
+      const error = await login(data, turnstile.token as string);
       setIsLoading(false);
       if (error) {
         setFeedback(error);
