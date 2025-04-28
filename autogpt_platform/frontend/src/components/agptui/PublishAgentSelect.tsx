@@ -48,7 +48,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
+    <div className="m-auto flex h-fit w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
       {/* Top */}
       <div className="relative flex h-28 items-center justify-center border-b border-slate-200 dark:border-slate-700">
         <div className="absolute right-4 top-4">
@@ -91,7 +91,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
           <div className="flex-grow overflow-hidden">
             <h3 className="sr-only">List of agents</h3>
             <div
-              className="h-[300px] overflow-y-auto px-6 py-6 sm:h-[400px] md:h-[500px]"
+              className="h-72 overflow-y-auto px-6 py-6 sm:h-[400px] md:h-[500px]"
               role="region"
               aria-labelledby="agentListHeading"
             >

@@ -6,6 +6,17 @@ import { Button } from "../agptui/Button";
 import { IconClose, IconPlus } from "../ui/icons";
 import BackendAPI from "@/lib/autogpt-server-api";
 import { toast } from "../ui/use-toast";
+import { X } from "lucide-react";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { Textarea } from "../ui/textarea";
 
 export interface PublishAgentInfoInitialData {
   agent_id: string;
@@ -165,85 +176,88 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
   };
 
   return (
-    <div className="mx-auto flex w-full flex-col rounded-3xl bg-white dark:bg-gray-800">
-      <div className="relative p-6">
-        <div className="absolute right-4 top-2">
-          <button
+    <div className="mx-auto flex w-full max-w-2xl flex-col rounded-3xl bg-white">
+      {/* Top section */}
+      <div className="relative flex h-28 items-center justify-center border-b border-slate-200 dark:border-slate-700">
+        {/* Cancel Button */}
+        <div className="absolute right-4 top-4">
+          <Button
             onClick={onClose}
-            className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-transparent p-0 transition-colors hover:bg-gray-200"
             aria-label="Close"
           >
-            <IconClose
-              size="default"
-              className="text-neutral-600 dark:text-neutral-300"
-            />
-          </button>
+            <X className="h-4 w-4" />
+          </Button>
         </div>
-        <h3 className="h3-poppins text-center text-2xl font-semibold leading-loose text-neutral-900 dark:text-neutral-100">
-          Publish Agent
-        </h3>
-        <p className="p text-center text-base font-normal leading-7 text-neutral-600 dark:text-neutral-400">
-          Write a bit of details about your agent
-        </p>
+        {/* Content */}
+        <div className="text-center">
+          <h3 className="font-poppins text-2xl font-semibold text-neutral-900">
+            Publish Agent
+          </h3>
+          <p className="font-sans text-base font-normal text-neutral-600">
+            Write a bit of details about your agent{" "}
+          </p>
+        </div>
       </div>
 
-      <div className="flex-grow space-y-5 overflow-y-auto p-6">
+      {/* Form fields */}
+      <div className="h-[38rem] flex-grow space-y-5 overflow-y-auto p-6">
         <div className="space-y-1.5">
-          <label
+          <Label
             htmlFor="title"
-            className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
+            className="font-sans text-sm font-medium text-[#020617]"
           >
             Title
-          </label>
-          <input
+          </Label>
+          <Input
             id="title"
             type="text"
             placeholder="Agent name"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="p-ui-medium w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="h-11 rounded-full border border-[#E2E8F0] px-4 py-2.5 font-sans text-base text-neutral-500"
           />
         </div>
 
         <div className="space-y-1.5">
-          <label
+          <Label
             htmlFor="subheader"
-            className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
+            className="font-sans text-sm font-medium text-[#020617]"
           >
             Subheader
-          </label>
-          <input
+          </Label>
+          <Input
             id="subheader"
             type="text"
             placeholder="A tagline for your agent"
             value={subheader}
             onChange={(e) => setSubheader(e.target.value)}
-            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-sans text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="h-11 rounded-full border border-[#E2E8F0] px-4 py-2.5 font-sans text-base text-neutral-500"
           />
         </div>
 
         <div className="space-y-1.5">
-          <label
+          <Label
             htmlFor="slug"
-            className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
+            className="font-sans text-sm font-medium text-[#020617]"
           >
             Slug
-          </label>
-          <input
+          </Label>
+          <Input
             id="slug"
             type="text"
             placeholder="URL-friendly name for your agent"
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
-            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-sans text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="h-11 rounded-full border border-[#E2E8F0] px-4 py-2.5 font-sans text-base text-neutral-500"
           />
         </div>
 
         <div className="space-y-2.5">
-          <label className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300">
+          <Label className="font-sans text-sm font-medium text-[#020617]">
             Thumbnail images
-          </label>
-          <div className="flex h-[350px] items-center justify-center overflow-hidden rounded-[20px] border border-neutral-300 p-2.5 dark:border-neutral-600">
+          </Label>
+          <div className="flex h-[350px] items-center justify-center overflow-hidden rounded-[20px] border border-dashed border-neutral-300 p-2.5 dark:border-neutral-600">
             {selectedImage !== null && selectedImage !== undefined ? (
               <Image
                 src={selectedImage}
@@ -268,10 +282,13 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                 <Button
                   onClick={handleAddImage}
                   variant="ghost"
-                  className="flex h-[70px] w-[100px] flex-col items-center justify-center rounded-md bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-700 dark:hover:bg-neutral-600"
+                  className="h-[70px] w-[100px] flex-col items-center justify-center rounded-md bg-neutral-200 hover:bg-neutral-300 dark:bg-neutral-700 dark:hover:bg-neutral-600"
                 >
-                  <label htmlFor="image-upload" className="cursor-pointer">
-                    <input
+                  <Label
+                    htmlFor="image-upload"
+                    className="flex flex-col items-center justify-center font-sans text-sm font-medium text-[#020617]"
+                  >
+                    <Input
                       id="image-upload"
                       type="file"
                       accept="image/*"
@@ -282,10 +299,10 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                       size="lg"
                       className="text-neutral-600 dark:text-neutral-300"
                     />
-                    <span className="mt-1 font-sans text-xs font-normal text-neutral-600 dark:text-neutral-300">
+                    <span className="mt-1 font-sans text-sm font-normal text-neutral-600 dark:text-neutral-300">
                       Add image
                     </span>
-                  </label>
+                  </Label>
                 </Button>
               </div>
             ) : (
@@ -334,15 +351,15 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         </div>
 
         <div className="space-y-1.5">
-          <label className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300">
+          <Label className="font-sans text-sm font-medium text-[#020617]">
             AI image generator
-          </label>
+          </Label>
           <div className="flex items-center justify-between">
-            <p className="text-base font-normal leading-normal text-slate-700 dark:text-slate-400">
+            <p className="font-sans text-neutral-500">
               You can use AI to generate a cover image for you
             </p>
             <Button
-              className={`bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 ${
+              className={`bg-neutral-800 font-sans text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 ${
                 images.length >= 5 ? "cursor-not-allowed opacity-50" : ""
               }`}
               onClick={handleGenerateImage}
@@ -358,67 +375,66 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         </div>
 
         <div className="space-y-1.5">
-          <label
+          <Label
             htmlFor="youtube"
-            className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
+            className="font-sans text-sm font-medium text-[#020617]"
           >
             YouTube video link
-          </label>
-          <input
+          </Label>
+          <Input
             id="youtube"
             type="text"
             placeholder="Paste a video link here"
             value={youtubeLink}
             onChange={(e) => setYoutubeLink(e.target.value)}
-            className="w-full rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-14 font-sans text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
+            className="h-11 rounded-full border border-[#E2E8F0] px-4 py-2.5 font-sans text-base text-neutral-500"
           />
         </div>
 
         <div className="space-y-1.5">
-          <label
+          <Label
             htmlFor="category"
-            className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
+            className="font-sans text-sm font-medium text-[#020617]"
           >
             Category
-          </label>
-          <select
-            id="category"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            className="w-full appearance-none rounded-[55px] border border-slate-200 py-2.5 pl-4 pr-5 font-sans text-base font-normal leading-normal text-slate-500 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
-          >
-            <option value="">Select a category for your agent</option>
-            <option value="productivity">Productivity</option>
-            <option value="writing">Writing & Content</option>
-            <option value="development">Development</option>
-            <option value="data">Data & Analytics</option>
-            <option value="marketing">Marketing & SEO</option>
-            <option value="research">Research & Learning</option>
-            <option value="creative">Creative & Design</option>
-            <option value="business">Business & Finance</option>
-            <option value="personal">Personal Assistant</option>
-            <option value="other">Other</option>
-            {/* Add more options here */}
-          </select>
+          </Label>
+          <Select value={category} onValueChange={setCategory}>
+            <SelectTrigger className="h-11 rounded-full border border-[#E2E8F0] px-4 py-2.5 font-sans text-base text-neutral-500">
+              <SelectValue placeholder="Select a category for your agent" />
+            </SelectTrigger>
+            <SelectContent className="font-sans">
+              <SelectItem value="productivity">Productivity</SelectItem>
+              <SelectItem value="writing">Writing & Content</SelectItem>
+              <SelectItem value="development">Development</SelectItem>
+              <SelectItem value="data">Data & Analytics</SelectItem>
+              <SelectItem value="marketing">Marketing & SEO</SelectItem>
+              <SelectItem value="research">Research & Learning</SelectItem>
+              <SelectItem value="creative">Creative & Design</SelectItem>
+              <SelectItem value="business">Business & Finance</SelectItem>
+              <SelectItem value="personal">Personal Assistant</SelectItem>
+              <SelectItem value="other">Other</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="space-y-1.5">
-          <label
+          <Label
             htmlFor="description"
-            className="text-sm font-medium leading-tight text-slate-950 dark:text-slate-300"
+            className="font-sans text-sm font-medium text-[#020617]"
           >
             Description
-          </label>
-          <textarea
+          </Label>
+          <Textarea
             id="description"
             placeholder="Describe your agent and what it does"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="h-[100px] w-full resize-none rounded-2xl border border-slate-200 bg-white py-2.5 pl-4 pr-14 font-sans text-base font-normal leading-normal text-slate-900 dark:border-slate-700 dark:bg-gray-700 dark:text-slate-300"
-          ></textarea>
+            className="h-[100px] w-full resize-none rounded-2xl border border-[#E2E8F0] px-4 py-2.5 font-sans text-base text-neutral-500"
+          ></Textarea>
         </div>
       </div>
 
+      {/* Bottom buttons */}
       <div className="flex justify-between gap-4 border-t border-slate-200 p-6 dark:border-slate-700">
         <Button
           onClick={onBack}

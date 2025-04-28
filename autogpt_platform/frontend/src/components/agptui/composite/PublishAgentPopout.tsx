@@ -204,50 +204,38 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     switch (step) {
       case "select":
         return (
-          <div className="flex min-h-screen items-center justify-center">
-            <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
-              <div className="h-full overflow-y-auto">
-                <PublishAgentSelect
-                  agents={
-                    myAgents?.agents
-                      .map((agent) => ({
-                        name: agent.agent_name,
-                        id: agent.agent_id,
-                        version: agent.agent_version,
-                        lastEdited: agent.last_edited,
-                        imageSrc:
-                          agent.agent_image || "https://picsum.photos/300/200",
-                      }))
-                      .sort(
-                        (a, b) =>
-                          new Date(b.lastEdited).getTime() -
-                          new Date(a.lastEdited).getTime(),
-                      ) || []
-                  }
-                  onSelect={handleAgentSelect}
-                  onCancel={handleClose}
-                  onNext={handleNextFromSelect}
-                  onClose={handleClose}
-                  onOpenBuilder={() => router.push("/build")}
-                />
-              </div>
-            </div>
-          </div>
+          <PublishAgentSelect
+            agents={
+              myAgents?.agents
+                .map((agent) => ({
+                  name: agent.agent_name,
+                  id: agent.agent_id,
+                  version: agent.agent_version,
+                  lastEdited: agent.last_edited,
+                  imageSrc:
+                    agent.agent_image || "https://picsum.photos/300/200",
+                }))
+                .sort(
+                  (a, b) =>
+                    new Date(b.lastEdited).getTime() -
+                    new Date(a.lastEdited).getTime(),
+                ) || []
+            }
+            onSelect={handleAgentSelect}
+            onCancel={handleClose}
+            onNext={handleNextFromSelect}
+            onClose={handleClose}
+            onOpenBuilder={() => router.push("/build")}
+          />
         );
       case "info":
         return (
-          <div className="flex min-h-screen items-center justify-center">
-            <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
-              <div className="h-[700px] overflow-y-auto">
-                <PublishAgentInfo
-                  onBack={handleBack}
-                  onSubmit={handleNextFromInfo}
-                  onClose={handleClose}
-                  initialData={initialData}
-                />
-              </div>
-            </div>
-          </div>
+          <PublishAgentInfo
+            onBack={handleBack}
+            onSubmit={handleNextFromInfo}
+            onClose={handleClose}
+            initialData={initialData}
+          />
         );
       case "review":
         return publishData ? (

@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { PublishAgentInfo } from "./PublishAgentSelectInfo";
+import { expect, userEvent, within } from "@storybook/test";
 
 const meta: Meta<typeof PublishAgentInfo> = {
   title: "AGPT UI/Publish Agent Info",
@@ -7,11 +8,16 @@ const meta: Meta<typeof PublishAgentInfo> = {
   tags: ["autodocs"],
   decorators: [
     (Story) => (
-      <div style={{ maxWidth: "670px", margin: "0 auto" }}>
+      <div className="backdrop-blur-4 flex h-screen items-center justify-center bg-black/40">
         <Story />
       </div>
     ),
   ],
+  argTypes: {
+    onBack: { action: "back clicked" },
+    onSubmit: { action: "submit clicked" },
+    onClose: { action: "close clicked" },
+  },
 };
 
 export default meta;
@@ -22,6 +28,13 @@ export const Default: Story = {
     onBack: () => console.log("Back clicked"),
     onSubmit: () => console.log("Submit clicked"),
     onClose: () => console.log("Close clicked"),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const titleInput = canvas.getByLabelText(/title/i);
+
+    await userEvent.type(titleInput, "Test Agent");
+    await expect(titleInput).toHaveValue("Test Agent");
   },
 };
 
@@ -35,7 +48,7 @@ export const Filled: Story = {
       subheader: "Boost your website's search engine rankings",
       thumbnailSrc: "https://picsum.photos/seed/seo/500/350",
       youtubeLink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-      category: "SEO",
+      category: "marketing",
       description:
         "This AI agent specializes in analyzing websites and providing actionable recommendations to improve search engine optimization. It can perform keyword research, analyze backlinks, and suggest content improvements.",
     },
@@ -52,7 +65,7 @@ export const ThreeImages: Story = {
       subheader: "Showcasing multiple images",
       thumbnailSrc: "https://picsum.photos/seed/initial/500/350",
       youtubeLink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-      category: "SEO",
+      category: "marketing",
       description:
         "This agent allows you to upload and manage multiple images.",
       additionalImages: [
@@ -63,24 +76,22 @@ export const ThreeImages: Story = {
   },
 };
 
-export const SixImages: Story = {
+export const MaxImages: Story = {
   args: {
     ...Default.args,
     initialData: {
       agent_id: "1",
       slug: "super-seo-optimizer",
       title: "Gallery Agent",
-      subheader: "Showcasing a gallery of images",
+      subheader: "Showcasing maximum allowed images",
       thumbnailSrc: "https://picsum.photos/seed/gallery1/500/350",
       youtubeLink: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-      category: "SEO",
-      description: "This agent displays a gallery of six images.",
+      category: "marketing",
+      description: "This agent displays the maximum number of allowed images.",
       additionalImages: [
         "https://picsum.photos/seed/gallery2/500/350",
         "https://picsum.photos/seed/gallery3/500/350",
         "https://picsum.photos/seed/gallery4/500/350",
-        "https://picsum.photos/seed/gallery5/500/350",
-        "https://picsum.photos/seed/gallery6/500/350",
       ],
     },
   },

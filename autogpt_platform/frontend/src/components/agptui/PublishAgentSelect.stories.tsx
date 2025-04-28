@@ -6,7 +6,7 @@ const meta: Meta<typeof PublishAgentSelect> = {
   title: "AGPT UI/Publish Agent Select",
   decorators: [
     (Story) => (
-      <div className="flex items-center justify-center py-4 md:p-4">
+      <div className="backdrop-blur-4 flex h-screen items-center justify-center bg-black/40">
         <Story />
       </div>
     ),
