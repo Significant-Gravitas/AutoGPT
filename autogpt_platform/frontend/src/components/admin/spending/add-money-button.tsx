@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
 import { addDollars } from "@/app/admin/spending/actions";
 
-export function AddCreditButton({
+export function AdminAddMoneyButton({
   userId,
   userEmail,
   currentBalance,
@@ -30,7 +30,7 @@ export function AddCreditButton({
   defaultComments?: string;
 }) {
   const router = useRouter();
-  const [isAddCreditDialogOpen, setIsAddCreditDialogOpen] = useState(false);
+  const [isAddMoneyDialogOpen, setIsAddMoneyDialogOpen] = useState(false);
   const [dollarAmount, setDollarAmount] = useState(
     defaultAmount ? Math.abs(defaultAmount / 100).toFixed(2) : "1.00",
   );
@@ -42,7 +42,7 @@ export function AddCreditButton({
   };
 
   const handleApproveSubmit = async (formData: FormData) => {
-    setIsAddCreditDialogOpen(false);
+    setIsAddMoneyDialogOpen(false);
     try {
       await addDollars(formData);
       router.refresh(); // Refresh the current route
@@ -58,7 +58,7 @@ export function AddCreditButton({
         variant="default"
         onClick={(e) => {
           e.stopPropagation();
-          setIsAddCreditDialogOpen(true);
+          setIsAddMoneyDialogOpen(true);
         }}
       >
         Add Dollars
@@ -66,8 +66,8 @@ export function AddCreditButton({
 
       {/* Add $$$ Dialog */}
       <Dialog
-        open={isAddCreditDialogOpen}
-        onOpenChange={setIsAddCreditDialogOpen}
+        open={isAddMoneyDialogOpen}
+        onOpenChange={setIsAddMoneyDialogOpen}
       >
         <DialogContent>
           <DialogHeader>
@@ -109,10 +109,6 @@ export function AddCreditButton({
                     placeholder="0.00"
                   />
                 </div>
-                <p className="text-xs text-gray-500">
-                  This will add {calculateCredits(dollarAmount)} credits (1
-                  credit = 1¢)
-                </p>
               </div>
             </div>
 
@@ -132,7 +128,7 @@ export function AddCreditButton({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setIsAddCreditDialogOpen(false)}
+                onClick={() => setIsAddMoneyDialogOpen(false)}
               >
                 Cancel
               </Button>

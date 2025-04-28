@@ -10,7 +10,7 @@ import {
 import { PaginationControls } from "../../ui/pagination-controls";
 import { SearchAndFilterAdminSpending } from "./search-filter-form";
 import { getUsersTransactionHistory } from "@/app/admin/spending/actions";
-import { AddCreditButton } from "./add-credit-button";
+import { AdminAddMoneyButton } from "./add-money-button";
 import { CreditTransactionType } from "@/lib/autogpt-server-api";
 
 export async function AdminUserGrantHistory({
@@ -142,7 +142,7 @@ export async function AdminUserGrantHistory({
                     ${transaction.current_balance / 100}
                   </TableCell> */}
                   <TableCell className="text-right">
-                    <AddCreditButton
+                    <AdminAddMoneyButton
                       userId={transaction.user_id}
                       userEmail={transaction.user_email}
                       currentBalance={transaction.current_balance}
