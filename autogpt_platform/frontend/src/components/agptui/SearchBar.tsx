@@ -23,7 +23,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
   iconColor = "text-[#646464] dark:text-neutral-400",
   textColor = "text-[#707070] dark:text-neutral-200",
   placeholderColor = "text-[#707070] dark:text-neutral-400",
-  width = "w-9/10 lg:w-[56.25rem]",
+  width = "w-[90%] lg:w-[56.25rem]",
   height = "h-[60px]",
 }) => {
   const router = useRouter();
@@ -45,7 +45,7 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     <form
       onSubmit={handleSubmit}
       data-testid="store-search-bar"
-      className={`${width} ${height} px-4 pt-2 md:px-6 md:pt-1 ${backgroundColor} flex items-center justify-center gap-2 rounded-full md:gap-5`}
+      className={`${width} ${height} px-4 pt-1 md:px-6 md:pt-1 ${backgroundColor} flex items-center justify-center gap-2 rounded-full md:gap-5`}
     >
       <MagnifyingGlassIcon className={`h-5 w-5 md:h-7 md:w-7 ${iconColor}`} />
       <Input
