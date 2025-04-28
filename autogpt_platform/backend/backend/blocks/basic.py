@@ -90,9 +90,10 @@ class StoreValueBlock(Block):
 
 class PrintToConsoleBlock(Block):
     class Input(BlockSchema):
-        text: str = SchemaField(description="The text to print to the console.")
+        text: Any = SchemaField(description="The data to print to the console.")
 
     class Output(BlockSchema):
+        output: Any = SchemaField(description="The data printed to the console.")
         status: str = SchemaField(description="The status of the print operation.")
 
     def __init__(self):
@@ -103,11 +104,14 @@ class PrintToConsoleBlock(Block):
             input_schema=PrintToConsoleBlock.Input,
             output_schema=PrintToConsoleBlock.Output,
             test_input={"text": "Hello, World!"},
-            test_output=("status", "printed"),
+            test_output=[
+                ("output", "Hello, World!"),
+                ("status", "printed"),
+            ],
         )
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        # print(">>>>> Print: ", input_data.text)
+        yield "output", input_data.text
         yield "status", "printed"
 
 
