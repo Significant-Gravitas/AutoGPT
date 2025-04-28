@@ -23,6 +23,7 @@ import {
   AgentRunStatus,
   agentRunStatusMap,
 } from "@/components/agents/agent-run-status-chip";
+import useCredits from "@/hooks/useCredits";
 
 export default function AgentRunDetailsView({
   agent,
@@ -40,6 +41,7 @@ export default function AgentRunDetailsView({
   deleteRun: () => void;
 }): React.ReactNode {
   const api = useBackendAPI();
+  const { formatCredits } = useCredits();
 
   const runStatus: AgentRunStatus = useMemo(
     () => agentRunStatusMap[run.status],
@@ -66,11 +68,11 @@ export default function AgentRunDetailsView({
               value: moment.duration(run.stats.duration, "seconds").humanize(),
             },
             { label: "Steps", value: run.stats.node_exec_count },
-            { label: "Cost", value: `${run.stats.cost} credits` },
+            { label: "Cost", value: formatCredits(run.stats.cost) },
           ]
         : []),
     ];
-  }, [run, runStatus]);
+  }, [run, runStatus, formatCredits]);
 
   const agentRunInputs:
     | Record<
