@@ -782,10 +782,15 @@ class UserCredit(UserCreditBase):
         # Check the Checkout Session's payment_status property
         # to determine if fulfillment should be performed
         if checkout_session.payment_status in ["paid", "no_payment_required"]:
-            assert isinstance(checkout_session.payment_intent, stripe.PaymentIntent)
+            if payment_intent := checkout_session.payment_intent:
+                assert isinstance(payment_intent, stripe.PaymentIntent)
+                new_transaction_key = payment_intent.id
+            else:
+                new_transaction_key = None
+
             await self._enable_transaction(
                 transaction_key=credit_transaction.transactionKey,
-                new_transaction_key=checkout_session.payment_intent.id,
+                new_transaction_key=new_transaction_key,
                 user_id=credit_transaction.userId,
                 metadata=Json(checkout_session),
             )
