@@ -90,6 +90,21 @@ To run the backend services, follow these steps:
   ```
   This command will start all the necessary backend services defined in the `docker-compose.combined.yml` file in detached mode.
 
+!!! Note
+    On Raspberry Pi 5 with Raspberry Pi OS, the default 16K page size will cause issues with the `supabase-vector` container (expected: 4K).  
+    To fix this, edit `/boot/firmware/config.txt` and add:
+    
+    ```
+    kernel=kernel8.img
+    ```
+    
+    Then reboot. You can check your page size with:
+    
+    ```bash
+    getconf PAGESIZE
+    ```
+    
+    `16384` means 16K (incorrect), and `4096` means 4K (correct). After adjusting, `docker compose up -d --build` should work normally.
 
 ### Running the frontend application
 
