@@ -351,6 +351,8 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="Cloudflare Turnstile backend secret key",
     )
+    turnstile_verify_url: str = Field(
+        default="https://challenges.cloudflare.com/turnstile/v0/siteverify",
         description="Cloudflare Turnstile verify URL",
     )
 
