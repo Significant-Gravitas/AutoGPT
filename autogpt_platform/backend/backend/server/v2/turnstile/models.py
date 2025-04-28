@@ -8,7 +8,7 @@ class TurnstileVerifyRequest(BaseModel):
 
     token: str = Field(..., description="The Turnstile token to verify")
     action: Optional[str] = Field(
-        None, description="The action that the user is attempting to perform"
+        default=None, description="The action that the user is attempting to perform"
     )
 
 
@@ -16,17 +16,17 @@ class TurnstileVerifyResponse(BaseModel):
     """Response model for the Turnstile verification endpoint."""
 
     success: bool = Field(
-        ..., description="Whether the token verification was successful"
+        description="Whether the token verification was successful"
     )
     error: Optional[str] = Field(
-        None, description="Error message if verification failed"
+        default=None, description="Error message if verification failed"
     )
     challenge_ts: Optional[str] = Field(
-        None, description="Timestamp of the challenge (ISO format)"
+        default=None, description="Timestamp of the challenge (ISO format)"
     )
     hostname: Optional[str] = Field(
-        None, description="Hostname of the site where the challenge was solved"
+        default=None, description="Hostname of the site where the challenge was solved"
     )
     action: Optional[str] = Field(
-        None, description="The action associated with this verification"
+        default=None, description="The action associated with this verification"
     )
