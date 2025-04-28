@@ -20,7 +20,6 @@ from prisma.types import (
     CreditTransactionCreateInput,
     CreditTransactionWhereInput,
 )
-from tenacity import retry, stop_after_attempt, wait_exponential
 
 from backend.data import db
 from backend.data.block_cost_config import BLOCK_COSTS
@@ -38,6 +37,7 @@ from backend.notifications import NotificationManager
 from backend.server.model import Pagination
 from backend.server.v2.admin.model import UserHistory, UserHistoryResponse
 from backend.util.exceptions import InsufficientBalanceError
+from backend.util.retry import func_retry
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
@@ -264,11 +264,7 @@ class UserCreditBase(ABC):
         )
         return transaction_balance, transaction_time
 
-    @retry(
-        stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        reraise=True,
-    )
+    @func_retry
     async def _enable_transaction(
         self,
         transaction_key: str,
@@ -795,10 +791,15 @@ class UserCredit(UserCreditBase):
         # Check the Checkout Session's payment_status property
         # to determine if fulfillment should be performed
         if checkout_session.payment_status in ["paid", "no_payment_required"]:
-            assert isinstance(checkout_session.payment_intent, stripe.PaymentIntent)
+            if payment_intent := checkout_session.payment_intent:
+                assert isinstance(payment_intent, stripe.PaymentIntent)
+                new_transaction_key = payment_intent.id
+            else:
+                new_transaction_key = None
+
             await self._enable_transaction(
                 transaction_key=credit_transaction.transactionKey,
-                new_transaction_key=checkout_session.payment_intent.id,
+                new_transaction_key=new_transaction_key,
                 user_id=credit_transaction.userId,
                 metadata=Json(checkout_session),
             )

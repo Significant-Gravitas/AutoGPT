@@ -16,9 +16,13 @@ from backend.data.block_cost_config import BLOCK_COSTS
 from backend.data.cost import BlockCostType
 from backend.data.execution import (
     AsyncRedisExecutionEventBus,
+    ExecutionStatus,
+    GraphExecutionStats,
     GraphExecutionWithNodes,
     RedisExecutionEventBus,
     create_graph_execution,
+    update_graph_execution_stats,
+    update_node_execution_status_batch,
 )
 from backend.data.graph import GraphModel, Node, get_graph
 from backend.data.model import CredentialsMetaInput
@@ -612,9 +616,6 @@ async def add_graph_execution_async(
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
     """  # noqa
-    execution_event_bus = get_async_execution_event_bus()
-    graph_execution_queue = await get_async_execution_queue()
-
     graph: GraphModel | None = await get_graph(
         graph_id=graph_id, user_id=user_id, version=graph_version
     )
@@ -639,18 +640,34 @@ async def add_graph_execution_async(
         ),
         preset_id=preset_id,
     )
-    await execution_event_bus.publish(graph_exec)
+    try:
+        queue = await get_async_execution_queue()
+        graph_exec_entry = graph_exec.to_graph_execution_entry()
+        if node_credentials_input_map:
+            graph_exec_entry.node_credentials_input_map = node_credentials_input_map
+        await queue.publish_message(
+            routing_key=GRAPH_EXECUTION_ROUTING_KEY,
+            message=graph_exec_entry.model_dump_json(),
+            exchange=GRAPH_EXECUTION_EXCHANGE,
+        )
 
-    graph_exec_entry = graph_exec.to_graph_execution_entry()
-    if node_credentials_input_map:
-        graph_exec_entry.node_credentials_input_map = node_credentials_input_map
-    await graph_execution_queue.publish_message(
-        routing_key=GRAPH_EXECUTION_ROUTING_KEY,
-        message=graph_exec_entry.model_dump_json(),
-        exchange=GRAPH_EXECUTION_EXCHANGE,
-    )
+        bus = get_async_execution_event_bus()
+        await bus.publish(graph_exec)
 
-    return graph_exec
+        return graph_exec
+    except Exception as e:
+        logger.error(f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {e}")
+
+        await update_node_execution_status_batch(
+            [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
+            ExecutionStatus.FAILED,
+        )
+        await update_graph_execution_stats(
+            graph_exec_id=graph_exec.id,
+            status=ExecutionStatus.FAILED,
+            stats=GraphExecutionStats(error=str(e)),
+        )
+        raise
 
 
 def add_graph_execution(
@@ -676,8 +693,9 @@ def add_graph_execution(
         GraphExecutionEntry: The entry for the graph execution.
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
-    """  # noqa
-    graph: GraphModel | None = get_db_client().get_graph(
+    """
+    db = get_db_client()
+    graph: GraphModel | None = db.get_graph(
         graph_id=graph_id, user_id=user_id, version=graph_version
     )
     if not graph:
@@ -689,7 +707,7 @@ def add_graph_execution(
         else None
     )
 
-    graph_exec = get_db_client().create_graph_execution(
+    graph_exec = db.create_graph_execution(
         user_id=user_id,
         graph_id=graph_id,
         graph_version=graph.version,
@@ -701,15 +719,31 @@ def add_graph_execution(
         ),
         preset_id=preset_id,
     )
-    get_execution_event_bus().publish(graph_exec)
+    try:
+        queue = get_execution_queue()
+        graph_exec_entry = graph_exec.to_graph_execution_entry()
+        if node_credentials_input_map:
+            graph_exec_entry.node_credentials_input_map = node_credentials_input_map
+        queue.publish_message(
+            routing_key=GRAPH_EXECUTION_ROUTING_KEY,
+            message=graph_exec_entry.model_dump_json(),
+            exchange=GRAPH_EXECUTION_EXCHANGE,
+        )
 
-    graph_exec_entry = graph_exec.to_graph_execution_entry()
-    if node_credentials_input_map:
-        graph_exec_entry.node_credentials_input_map = node_credentials_input_map
-    get_execution_queue().publish_message(
-        routing_key=GRAPH_EXECUTION_ROUTING_KEY,
-        message=graph_exec_entry.model_dump_json(),
-        exchange=GRAPH_EXECUTION_EXCHANGE,
-    )
+        bus = get_execution_event_bus()
+        bus.publish(graph_exec)
 
-    return graph_exec
+        return graph_exec
+    except Exception as e:
+        logger.error(f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {e}")
+
+        db.update_node_execution_status_batch(
+            [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
+            ExecutionStatus.FAILED,
+        )
+        db.update_graph_execution_stats(
+            graph_exec_id=graph_exec.id,
+            status=ExecutionStatus.FAILED,
+            stats=GraphExecutionStats(error=str(e)),
+        )
+        raise
