@@ -9,10 +9,10 @@ export const MyStory = {
   parameters: {
     mockBackend: {
       credits: 100,
-      isAuthenticated: true
+      isAuthenticated: true,
       // Other custom mock data
-    }
-  }
+    },
+  },
 };
 ```
 
@@ -48,12 +48,12 @@ export const WithMSW = {
   parameters: {
     msw: {
       handlers: [
-        http.get('/api/user', () => {
-          return HttpResponse.json({ name: 'John', role: 'admin' })
-        })
-      ]
-    }
-  }
+        http.get("/api/user", () => {
+          return HttpResponse.json({ name: "John", role: "admin" });
+        }),
+      ],
+    },
+  },
 };
 ```
 
