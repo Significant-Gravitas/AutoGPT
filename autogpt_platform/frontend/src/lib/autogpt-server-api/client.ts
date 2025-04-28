@@ -585,9 +585,15 @@ export default class BackendAPI {
     return this._get("/credits/admin/users_history", params);
   }
 
-  /////////////////////////////////////////
-  /////////// V2 LIBRARY API //////////////
-  /////////////////////////////////////////
+  downloadStoreAgentAdmin(storeListingVersionId: string): Promise<BlobPart> {
+    const url = `/store/admin/submissions/download/${storeListingVersionId}`;
+
+    return this._get(url);
+  }
+
+  ////////////////////////////////////////
+  //////////// V2 LIBRARY API ////////////
+  ////////////////////////////////////////
 
   listLibraryAgents(params?: {
     search_term?: string;
