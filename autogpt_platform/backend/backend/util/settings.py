@@ -351,6 +351,8 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         default="",
         description="Cloudflare Turnstile backend secret key",
     )
+        description="Cloudflare Turnstile verify URL",
+    )
 
     # OAuth server credentials for integrations
     # --8<-- [start:OAuthServerCredentialsExample]

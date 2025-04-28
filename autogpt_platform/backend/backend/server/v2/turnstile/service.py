@@ -9,10 +9,6 @@ from .models import TurnstileVerifyRequest, TurnstileVerifyResponse
 logger = logging.getLogger(__name__)
 settings = Settings()
 
-# Cloudflare Turnstile API endpoint
-TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
-
-
 class TurnstileService:
     @staticmethod
     async def verify_token(request: TurnstileVerifyRequest) -> TurnstileVerifyResponse:
@@ -20,9 +16,10 @@ class TurnstileService:
         Verify a Cloudflare Turnstile token by making a request to the Cloudflare API.
         """
         # Get the secret key from settings
-        secret_key = settings.secrets.turnstile_secret_key
+        turnstile_secret_key = settings.secrets.turnstile_secret_key
+        turnstile_verify_url = settings.secrets.turnstile_verify_url
 
-        if not secret_key:
+        if not turnstile_secret_key:
             logger.error("Turnstile secret key is not configured")
             return TurnstileVerifyResponse(
                 success=False,
@@ -35,7 +32,7 @@ class TurnstileService:
         try:
             async with aiohttp.ClientSession() as session:
                 payload = {
-                    "secret": secret_key,
+                    "secret": turnstile_secret_key,
                     "response": request.token,
                 }
 
@@ -45,7 +42,7 @@ class TurnstileService:
                 logger.debug(f"Verifying Turnstile token with action: {request.action}")
 
                 async with session.post(
-                    TURNSTILE_VERIFY_URL,
+                    turnstile_verify_url,
                     data=payload,
                     timeout=aiohttp.ClientTimeout(total=10),
                 ) as response:
