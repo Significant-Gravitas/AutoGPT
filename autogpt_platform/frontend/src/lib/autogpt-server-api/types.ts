@@ -778,12 +778,18 @@ export interface CreditTransaction {
   transaction_time: Date;
   transaction_type: string;
   amount: number;
-  balance: number;
+  running_balance: number;
+  current_balance: number;
   description: string;
   usage_graph_id: GraphID;
   usage_execution_id: GraphExecutionID;
   usage_node_count: number;
   usage_starting_time: Date;
+  user_id: string;
+  user_email: string | null;
+  reason: string | null;
+  admin_email: string | null;
+  extra_data: string | null;
 }
 
 export interface TransactionHistory {
