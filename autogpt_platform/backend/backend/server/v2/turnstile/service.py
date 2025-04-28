@@ -9,6 +9,7 @@ from .models import TurnstileVerifyRequest, TurnstileVerifyResponse
 logger = logging.getLogger(__name__)
 settings = Settings()
 
+
 class TurnstileService:
     @staticmethod
     async def verify_token(request: TurnstileVerifyRequest) -> TurnstileVerifyResponse:

@@ -15,9 +15,7 @@ class TurnstileVerifyRequest(BaseModel):
 class TurnstileVerifyResponse(BaseModel):
     """Response model for the Turnstile verification endpoint."""
 
-    success: bool = Field(
-        description="Whether the token verification was successful"
-    )
+    success: bool = Field(description="Whether the token verification was successful")
     error: Optional[str] = Field(
         default=None, description="Error message if verification failed"
     )
