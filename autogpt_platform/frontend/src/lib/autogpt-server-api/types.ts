@@ -776,7 +776,7 @@ export interface CreateAPIKeyResponse {
 export interface CreditTransaction {
   transaction_key: string;
   transaction_time: Date;
-  transaction_type: string;
+  transaction_type: CreditTransactionType;
   amount: number;
   running_balance: number;
   current_balance: number;
@@ -913,21 +913,8 @@ export enum CreditTransactionType {
   CARD_CHECK = "CARD_CHECK",
 }
 
-export type UserBalanceHistory = {
-  user_id: string;
-  user_email: string;
-  amount: number;
-  date: Date;
-  current_balance: number;
-  running_balance: number;
-  reason: string;
-  admin_email: string;
-  type: CreditTransactionType;
-  extra_data?: any;
-};
-
 export type UsersBalanceHistoryResponse = {
-  history: UserBalanceHistory[];
+  history: CreditTransaction[];
   pagination: Pagination;
 };
 

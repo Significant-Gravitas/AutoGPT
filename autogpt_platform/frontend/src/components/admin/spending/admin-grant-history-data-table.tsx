@@ -121,9 +121,11 @@ export async function AdminUserGrantHistory({
                     {transaction.user_email}
                   </TableCell>
 
-                  <TableCell>{formatType(transaction.type)}</TableCell>
+                  <TableCell>
+                    {formatType(transaction.transaction_type)}
+                  </TableCell>
                   <TableCell className="text-gray-600">
-                    {formatDate(transaction.date)}
+                    {formatDate(transaction.transaction_time)}
                   </TableCell>
                   <TableCell>{transaction.reason}</TableCell>
                   <TableCell className="text-gray-600">
@@ -133,7 +135,10 @@ export async function AdminUserGrantHistory({
                     ${(transaction.running_balance + -transaction.amount) / 100}
                   </TableCell>
                   <TableCell>
-                    {formatAmount(transaction.amount, transaction.type)}
+                    {formatAmount(
+                      transaction.amount,
+                      transaction.transaction_type,
+                    )}
                   </TableCell>
                   <TableCell className="font-medium text-green-600">
                     ${transaction.running_balance / 100}
@@ -144,15 +149,19 @@ export async function AdminUserGrantHistory({
                   <TableCell className="text-right">
                     <AdminAddMoneyButton
                       userId={transaction.user_id}
-                      userEmail={transaction.user_email}
+                      userEmail={
+                        transaction.user_email ?? "User Email wasn't attached"
+                      }
                       currentBalance={transaction.current_balance}
                       defaultAmount={
-                        transaction.type === CreditTransactionType.USAGE
+                        transaction.transaction_type ===
+                        CreditTransactionType.USAGE
                           ? -transaction.amount
                           : undefined
                       }
                       defaultComments={
-                        transaction.type === CreditTransactionType.USAGE
+                        transaction.transaction_type ===
+                        CreditTransactionType.USAGE
                           ? "Refund for usage"
                           : undefined
                       }
