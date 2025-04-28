@@ -82,7 +82,15 @@ class SendWebRequestBlock(Block):
                 json=body if input_data.json_format else None,
                 data=body if not input_data.json_format else None,
             )
-            result = response.json() if input_data.json_format else response.text
+
+            if input_data.json_format:
+                if response.status_code == 204 or not response.content.strip():
+                    result = None
+                else:
+                    result = response.json()
+            else:
+                result = response.text
+
             yield "response", result
 
         except HTTPError as e:
