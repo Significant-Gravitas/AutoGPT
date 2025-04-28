@@ -563,6 +563,12 @@ export default class BackendAPI {
     );
   }
 
+  downloadStoreAgentAdmin(storeListingVersionId: string): Promise<BlobPart> {
+    const url = `/store/admin/submissions/download/${storeListingVersionId}`;
+
+    return this._get(url);
+  }
+
   ////////////////////////////////////////
   //////////// V2 LIBRARY API ////////////
   ////////////////////////////////////////
