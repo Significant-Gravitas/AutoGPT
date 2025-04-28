@@ -3,7 +3,7 @@
 import * as React from "react";
 import Image from "next/image";
 import { Button } from "../agptui/Button";
-import { IconClose } from "../ui/icons";
+import { X } from "lucide-react";
 
 export interface Agent {
   name: string;
@@ -49,24 +49,22 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
 
   return (
     <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
-      <div className="relative border-b border-slate-200 p-4 dark:border-slate-700 sm:p-6">
+      {/* Top */}
+      <div className="relative flex h-28 items-center justify-center border-b border-slate-200 dark:border-slate-700">
         <div className="absolute right-4 top-4">
-          <button
+          <Button
             onClick={onClose}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-transparent p-0 transition-colors hover:bg-gray-200"
             aria-label="Close"
           >
-            <IconClose
-              size="default"
-              className="text-neutral-600 dark:text-neutral-400"
-            />
-          </button>
+            <X className="h-4 w-4" />
+          </Button>
         </div>
         <div className="text-center">
-          <h3 className="font-poppins text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
+          <h3 className="font-poppins text-2xl font-semibold text-neutral-900">
             Publish Agent
           </h3>
-          <p className="font-geist text-sm font-normal text-neutral-600 dark:text-neutral-400">
+          <p className="font-sans text-base font-normal text-neutral-600">
             Select your project that you&apos;d like to publish
           </p>
         </div>
@@ -90,10 +88,10 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
         </div>
       ) : (
         <>
-          <div className="flex-grow overflow-hidden p-4 sm:p-6">
+          <div className="flex-grow overflow-hidden">
             <h3 className="sr-only">List of agents</h3>
             <div
-              className="h-[300px] overflow-y-auto pr-2 sm:h-[400px] md:h-[500px]"
+              className="h-[300px] overflow-y-auto px-6 py-6 sm:h-[400px] md:h-[500px]"
               role="region"
               aria-labelledby="agentListHeading"
             >
@@ -135,7 +133,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                         <p className="font-poppins text-base font-medium leading-normal text-neutral-800 dark:text-neutral-100 sm:text-base">
                           {agent.name}
                         </p>
-                        <small className="font-geist text-xs font-normal leading-[14px] text-neutral-500 dark:text-neutral-400 sm:text-sm">
+                        <small className="font-sans text-xs font-normal leading-[14px] text-neutral-500 dark:text-neutral-400 sm:text-sm">
                           Edited {agent.lastEdited}
                         </small>
                       </div>
@@ -147,7 +145,11 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
           </div>
 
           <div className="flex justify-between gap-4 border-t border-slate-200 p-4 dark:border-slate-700 sm:p-6">
-            <Button onClick={onCancel} size="lg" className="w-full sm:flex-1">
+            <Button
+              onClick={onCancel}
+              size="lg"
+              className="flex w-full items-center justify-center sm:flex-1"
+            >
               Back
             </Button>
             <Button
@@ -158,7 +160,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
               }}
               disabled={!selectedAgentId || !selectedAgentVersion}
               size="lg"
-              className="w-full bg-neutral-800 text-white hover:bg-neutral-900 sm:flex-1"
+              className="flex w-full items-center justify-center bg-neutral-800 text-white hover:bg-neutral-900 sm:flex-1"
             >
               Next
             </Button>

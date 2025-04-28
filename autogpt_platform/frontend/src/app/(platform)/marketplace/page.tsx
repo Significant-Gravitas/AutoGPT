@@ -149,7 +149,7 @@ export default async function Page({}: {}) {
   const { featuredAgents, topAgents, featuredCreators } = await getStoreData();
 
   return (
-    <div className="mx-auto w-screen max-w-[1360px]">
+    <div className="mx-auto w-screen max-w-[1360px] overflow-x-hidden">
       <main className="px-4">
         <HeroSection />
         <FeaturedSection featuredAgents={featuredAgents.agents} />

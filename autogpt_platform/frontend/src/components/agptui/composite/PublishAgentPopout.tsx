@@ -1,12 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-  PopoverAnchor,
-} from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { PublishAgentSelect } from "../PublishAgentSelect";
 import {
   PublishAgentInfo,
@@ -21,6 +16,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useToast } from "@/components/ui/use-toast";
+
 interface PublishAgentPopoutProps {
   trigger?: React.ReactNode;
   openPopout?: boolean;
@@ -69,7 +65,6 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   >(null);
   const [open, setOpen] = React.useState(false);
 
-  const popupId = React.useId();
   const router = useRouter();
   const api = useBackendAPI();
 
@@ -279,28 +274,13 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   };
 
   return (
-    <Popover
-      open={open}
-      onOpenChange={(isOpen) => {
-        if (isOpen !== open) {
-          setOpen(isOpen);
-        }
-      }}
-    >
-      <PopoverTrigger asChild>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
         {trigger || <Button>Publish Agent</Button>}
-      </PopoverTrigger>
-      <PopoverAnchor asChild>
-        <div className="fixed left-0 top-0 hidden h-screen w-screen items-center justify-center"></div>
-      </PopoverAnchor>
-
-      <PopoverContent
-        id={popupId}
-        align="center"
-        className="z-50 h-screen w-screen bg-transparent"
-      >
+      </DialogTrigger>
+      <DialogContent className="bg-blck/40 h-screen w-screen max-w-full rounded-none border-none backdrop-blur-[0.375rem]">
         {renderContent()}
-      </PopoverContent>
-    </Popover>
+      </DialogContent>
+    </Dialog>
   );
 };
