@@ -20,24 +20,21 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
   };
 
   return (
-    <div className="relative mx-auto h-auto min-h-[300px] w-full max-w-[1360px] md:min-h-[400px] lg:h-[459px]">
+    <div className="mb-18 w-full sm:mb-36 md:mb-72">
       {/* Title */}
-      <h2 className="mb-[77px] font-poppins text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
+      <h2 className="mb-18 font-poppins text-lg font-semibold text-neutral-800">
         {title}
       </h2>
 
       {/* Content Container */}
-      <div className="mx-auto w-full max-w-[900px] px-4 text-center md:px-6 lg:px-0">
-        <h2 className="mb-6 text-center font-poppins text-[48px] font-semibold leading-[54px] tracking-[-0.012em] text-neutral-950 dark:text-neutral-50 md:mb-8 lg:mb-12">
+      <div className="flex flex-col items-center justify-center">
+        <h2 className="mb-9 text-center font-poppins text-3xl font-semibold leading-[3rem] text-neutral-950 md:text-5xl">
           Build AI agents and share
           <br />
-          <span className="text-violet-600 dark:text-violet-400">
-            your
-          </span>{" "}
-          vision
+          your vision
         </h2>
 
-        <p className="font-geist mx-auto mb-8 max-w-[90%] text-lg font-normal leading-relaxed text-neutral-700 dark:text-neutral-300 md:mb-10 md:text-xl md:leading-loose lg:mb-14 lg:text-2xl">
+        <p className="mb-12 text-center font-sans text-lg font-normal text-neutral-700 md:text-2xl">
           {description}
         </p>
 

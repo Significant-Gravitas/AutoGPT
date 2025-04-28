@@ -5,9 +5,13 @@ import { userEvent, within } from "@storybook/test";
 const meta = {
   title: "AGPT UI/Become A Creator",
   component: BecomeACreator,
-  parameters: {
-    layout: "centered",
-  },
+  decorators: [
+    (Story) => (
+      <div className="flex items-center justify-center p-4">
+        <Story />
+      </div>
+    ),
+  ],
   tags: ["autodocs"],
   argTypes: {
     title: { control: "text" },
@@ -35,14 +39,6 @@ export const CustomText: Story = {
     description: "Share your ideas and build amazing AI agents with us",
     buttonText: "Start Creating",
     onButtonClick: () => console.log("Custom button clicked"),
-  },
-};
-
-export const LongDescription: Story = {
-  args: {
-    ...Default.args,
-    description:
-      "Join our vibrant community of innovators, developers, and AI enthusiasts. Share your unique perspectives, collaborate on groundbreaking projects, and help shape the future of AI technology.",
   },
 };
 

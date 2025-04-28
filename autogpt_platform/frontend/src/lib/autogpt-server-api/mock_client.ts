@@ -5,6 +5,7 @@ import {
   Block,
   BlockUIType,
   CredentialsMetaResponse,
+  MyAgentsResponse,
   ProfileDetails,
   User,
   UserOnboarding,
@@ -149,6 +150,40 @@ export default class MockClient extends BackendAPI {
       selectedStoreListingVersionId: null,
       agentInput: null,
       onboardingAgentExecutionId: null,
+    });
+  }
+
+  override getMyAgents(params?: {
+    page?: number;
+    page_size?: number;
+  }): Promise<MyAgentsResponse> {
+    return Promise.resolve({
+      agents: [
+        {
+          agent_id: faker.string.uuid() as any,
+          agent_version: 1,
+          agent_name: "Test Agent 1",
+          agent_image: "default_agent_image.jpg",
+          last_edited: new Date().toISOString(),
+          description: faker.lorem.paragraph(),
+        },
+        {
+          agent_id: faker.string.uuid() as any,
+          agent_version: 1,
+          agent_name: "Test Agent 2",
+          agent_image: "default_agent_image.jpg",
+          last_edited: new Date().toISOString(),
+          description: faker.lorem.paragraph(),
+        },
+      ],
+      pagination: {
+        current_page: params?.page || 1,
+        page_size: params?.page_size || 10,
+        total_pages: 1,
+        total_items: 2,
+        has_next: false,
+        has_previous: false,
+      },
     });
   }
 }
