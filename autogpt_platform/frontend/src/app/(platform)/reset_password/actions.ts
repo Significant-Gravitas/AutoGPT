@@ -5,10 +5,7 @@ import * as Sentry from "@sentry/nextjs";
 import { headers } from "next/headers";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 
-export async function sendResetEmail(
-  email: string,
-  turnstileToken: string
-) {
+export async function sendResetEmail(email: string, turnstileToken: string) {
   return await Sentry.withServerActionInstrumentation(
     "sendResetEmail",
     {},
@@ -47,10 +44,7 @@ export async function sendResetEmail(
   );
 }
 
-export async function changePassword(
-  password: string,
-  turnstileToken: string,
-) {
+export async function changePassword(password: string, turnstileToken: string) {
   return await Sentry.withServerActionInstrumentation(
     "changePassword",
     {},
