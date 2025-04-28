@@ -10,7 +10,7 @@ import { verifyTurnstileToken } from "@/lib/turnstile";
 
 export async function signup(
   values: z.infer<typeof signupFormSchema>,
-  turnstileToken?: string,
+  turnstileToken: string,
 ) {
   "use server";
   return await Sentry.withServerActionInstrumentation(
@@ -24,11 +24,9 @@ export async function signup(
       }
 
       // Verify Turnstile token if provided
-      if (turnstileToken) {
-        const success = await verifyTurnstileToken(turnstileToken, "signup");
-        if (!success) {
-          return "CAPTCHA verification failed. Please try again.";
-        }
+      const success = await verifyTurnstileToken(turnstileToken, "signup");
+      if (!success) {
+        return "CAPTCHA verification failed. Please try again.";
       }
 
       // We are sure that the values are of the correct type because zod validates the form
