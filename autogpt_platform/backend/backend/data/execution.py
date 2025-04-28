@@ -492,21 +492,12 @@ async def upsert_execution_output(
 async def update_graph_execution_start_time(
     graph_exec_id: str,
 ) -> GraphExecution | None:
-    count = await AgentGraphExecution.prisma().update_many(
-        where={
-            "id": graph_exec_id,
-            "executionStatus": ExecutionStatus.QUEUED,
-        },
+    res = await AgentGraphExecution.prisma().update(
+        where={"id": graph_exec_id},
         data={
             "executionStatus": ExecutionStatus.RUNNING,
             "startedAt": datetime.now(tz=timezone.utc),
         },
-    )
-    if count == 0:
-        return None
-
-    res = await AgentGraphExecution.prisma().find_unique(
-        where={"id": graph_exec_id},
         include=GRAPH_EXECUTION_INCLUDE,
     )
     return GraphExecution.from_db(res) if res else None
