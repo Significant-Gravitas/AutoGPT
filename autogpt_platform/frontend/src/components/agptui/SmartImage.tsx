@@ -6,10 +6,16 @@ import { useState } from "react";
 interface SmartImageProps {
   src?: string | null;
   alt: string;
+  imageContain?: boolean;
   className?: string;
 }
 
-export default function SmartImage({ src, alt, className }: SmartImageProps) {
+export default function SmartImage({
+  src,
+  alt,
+  imageContain,
+  className,
+}: SmartImageProps) {
   const [isLoading, setIsLoading] = useState(true);
   const shouldShowSkeleton = isLoading || !src;
 
@@ -20,18 +26,17 @@ export default function SmartImage({ src, alt, className }: SmartImageProps) {
           src={src}
           alt={alt}
           fill
-          sizes="100%"
           onLoad={() => setIsLoading(false)}
           className={cn(
-            "h-full w-full object-cover object-center transition-opacity duration-200",
+            "rounded-inherit object-center transition-opacity duration-300",
             isLoading ? "opacity-0" : "opacity-100",
-            "rounded-inherit",
+            imageContain ? "object-contain" : "object-cover",
           )}
+          sizes="100%"
         />
       )}
-
       {shouldShowSkeleton && (
-        <div className="absolute inset-0 animate-pulse bg-zinc-300" />
+        <div className="rounded-inherit absolute inset-0 animate-pulse bg-gray-300 dark:bg-gray-700" />
       )}
     </div>
   );

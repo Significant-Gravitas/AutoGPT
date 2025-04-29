@@ -163,10 +163,7 @@ export default function Page() {
       </div>
 
       <OnboardingFooter>
-        <OnboardingButton
-          className="mb-2"
-          href="/onboarding/4-agent"
-        >
+        <OnboardingButton className="mb-2" href="/onboarding/4-agent">
           Next
         </OnboardingButton>
       </OnboardingFooter>
