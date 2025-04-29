@@ -736,6 +736,58 @@ async def get_graph(
     return GraphModel.from_db(graph, for_export)
 
 
+async def get_graph_as_admin(
+    graph_id: str,
+    version: int | None = None,
+    user_id: str | None = None,
+    for_export: bool = False,
+) -> GraphModel | None:
+    """
+    Intentionally parallels the get_graph but should only be used for admin tasks, because can return any graph that's been submitted
+    Retrieves a graph from the DB.
+    Defaults to the version with `is_active` if `version` is not passed.
+
+    Returns `None` if the record is not found.
+    """
+    logger.warning(f"Getting {graph_id=} {version=} as ADMIN {user_id=} {for_export=}")
+    where_clause: AgentGraphWhereInput = {
+        "id": graph_id,
+    }
+
+    if version is not None:
+        where_clause["version"] = version
+
+    graph = await AgentGraph.prisma().find_first(
+        where=where_clause,
+        include=AGENT_GRAPH_INCLUDE,
+        order={"version": "desc"},
+    )
+
+    # For access, the graph must be owned by the user or listed in the store
+    if graph is None or (
+        graph.userId != user_id
+        and not (
+            await StoreListingVersion.prisma().find_first(
+                where={
+                    "agentGraphId": graph_id,
+                    "agentGraphVersion": version or graph.version,
+                }
+            )
+        )
+    ):
+        return None
+
+    if for_export:
+        sub_graphs = await get_sub_graphs(graph)
+        return GraphModel.from_db(
+            graph=graph,
+            sub_graphs=sub_graphs,
+            for_export=for_export,
+        )
+
+    return GraphModel.from_db(graph, for_export)
+
+
 async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
     """
     Iteratively fetches all sub-graphs of a given graph, and flattens them into a list.

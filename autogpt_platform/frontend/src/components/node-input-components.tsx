@@ -429,9 +429,9 @@ export const NodeGenericInputField: FC<{
             // If you want to build an object of booleans from `selection`
             // (like your old code), do it here. Otherwise adapt to your actual UI.
             // Example:
-            const allKeys = schema.properties
-              ? Object.keys(schema.properties)
-              : [];
+            const subSchema =
+              schema.properties || (schema as any).anyOf[0].properties;
+            const allKeys = subSchema ? Object.keys(subSchema) : [];
             handleInputChange(
               key,
               Object.fromEntries(
@@ -1041,7 +1041,12 @@ const NodeMultiSelectInput: FC<{
   displayName,
   handleInputChange,
 }) => {
-  const options = Object.keys(schema.properties);
+  const optionSchema =
+    schema.properties ||
+    ((schema as any).anyOf?.length > 0
+      ? (schema as any).anyOf[0].properties
+      : {});
+  const options = Object.keys(optionSchema);
 
   return (
     <div className={cn("flex flex-col", className)}>
@@ -1060,7 +1065,7 @@ const NodeMultiSelectInput: FC<{
         <MultiSelectorContent className="nowheel">
           <MultiSelectorList>
             {options
-              .map((key) => ({ ...schema.properties[key], key }))
+              .map((key) => ({ ...optionSchema[key], key }))
               .map(({ key, title, description }) => (
                 <MultiSelectorItem key={key} value={key} title={description}>
                   {title ?? key}
