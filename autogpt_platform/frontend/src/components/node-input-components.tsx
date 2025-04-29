@@ -771,12 +771,18 @@ const NodeKeyValueInput: FC<{
   );
 
   function updateKeyValuePairs(newPairs: typeof keyValuePairs) {
-    setKeyValuePairs(newPairs);
-
-    handleInputChange(
-      selfKey,
-      newPairs.reduce((obj, { key, value }) => ({ ...obj, [key]: value }), {}),
+    // Check for exact duplicates only
+    const hasExactDuplicate = newPairs.some((pair, index) => 
+      newPairs.findIndex(p => p.key === pair.key) !== index
     );
+
+    if (!hasExactDuplicate) {
+      setKeyValuePairs(newPairs);
+      handleInputChange(
+        selfKey,
+        newPairs.reduce((obj, { key, value }) => ({ ...obj, [key]: value }), {}),
+      );
+    }
   }
 
   const isNumberType =
@@ -794,6 +800,7 @@ const NodeKeyValueInput: FC<{
   function getEntryKey(key: string): string {
     return `${selfKey}_#_${key}`;
   }
+
   function isConnected(key: string): boolean {
     return connections.some(
       (c) => c.targetHandle === getEntryKey(key) && c.target === nodeId,
@@ -806,8 +813,6 @@ const NodeKeyValueInput: FC<{
     >
       <div>
         {keyValuePairs.map(({ key, value }, index) => (
-          // The `index` is used as a DOM key instead of the actual `key`
-          // because the `key` can change with each input, causing the input to lose focus.
           <div key={index}>
             <NodeHandle
               title={`#${key}`}
@@ -824,14 +829,18 @@ const NodeKeyValueInput: FC<{
                   type="text"
                   placeholder="Key"
                   value={key ?? ""}
-                  onChange={(e) =>
-                    updateKeyValuePairs(
-                      keyValuePairs.toSpliced(index, 1, {
-                        key: e.target.value,
-                        value: value,
-                      }),
-                    )
-                  }
+                  onChange={(e) => {
+                    const newKey = e.target.value;
+                    // Only update if the new key is not an exact duplicate
+                    if (!keyValuePairs.some(pair => pair.key === newKey && pair.key !== key)) {
+                      updateKeyValuePairs(
+                        keyValuePairs.toSpliced(index, 1, {
+                          key: newKey,
+                          value: value,
+                        }),
+                      );
+                    }
+                  }}
                 />
                 <LocalValuedInput
                   type={isNumberType ? "number" : "text"}
