@@ -793,6 +793,7 @@ async def create_store_version(
             changes_summary=changes_summary,
             version=next_version,
         )
+
     except prisma.errors.PrismaError as e:
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to create new store version"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import enum
 import logging
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -449,6 +450,12 @@ class ContributorDetails(BaseModel):
     name: str = Field(title="Name", description="The name of the contributor.")
 
 
+class TopUpType(enum.Enum):
+    AUTO = "AUTO"
+    MANUAL = "MANUAL"
+    UNCATEGORIZED = "UNCATEGORIZED"
+
+
 class AutoTopUpConfig(BaseModel):
     amount: int
     """Amount of credits to top up."""
@@ -461,12 +468,18 @@ class UserTransaction(BaseModel):
     transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
     transaction_type: CreditTransactionType = CreditTransactionType.USAGE
     amount: int = 0
-    balance: int = 0
+    running_balance: int = 0
+    current_balance: int = 0
     description: str | None = None
     usage_graph_id: str | None = None
     usage_execution_id: str | None = None
     usage_node_count: int = 0
     usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
+    user_id: str
+    user_email: str | None = None
+    reason: str | None = None
+    admin_email: str | None = None
+    extra_data: str | None = None
 
 
 class TransactionHistory(BaseModel):
