@@ -46,6 +46,7 @@ async def spend_credits(entry: NodeExecutionEntry) -> int:
             block_id=entry.block_id,
             block=entry.block_id,
             input=matching_filter,
+            reason=f"Ran block {entry.block_id} {block.name}",
         ),
     )
 
