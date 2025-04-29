@@ -767,20 +767,23 @@ const NodeKeyValueInput: FC<{
 
   useEffect(
     () => setKeyValuePairs(getPairValues()),
-    [connections, entries, schema.default, getPairValues],
+    [getPairValues, connections, entries, schema.default],
   );
 
   function updateKeyValuePairs(newPairs: typeof keyValuePairs) {
     // Check for exact duplicates only
-    const hasExactDuplicate = newPairs.some((pair, index) => 
-      newPairs.findIndex(p => p.key === pair.key) !== index
+    const hasExactDuplicate = newPairs.some(
+      (pair, index) => newPairs.findIndex((p) => p.key === pair.key) !== index,
     );
 
     if (!hasExactDuplicate) {
       setKeyValuePairs(newPairs);
       handleInputChange(
         selfKey,
-        newPairs.reduce((obj, { key, value }) => ({ ...obj, [key]: value }), {}),
+        newPairs.reduce(
+          (obj, { key, value }) => ({ ...obj, [key]: value }),
+          {},
+        ),
       );
     }
   }
@@ -832,7 +835,11 @@ const NodeKeyValueInput: FC<{
                   onChange={(e) => {
                     const newKey = e.target.value;
                     // Only update if the new key is not an exact duplicate
-                    if (!keyValuePairs.some(pair => pair.key === newKey && pair.key !== key)) {
+                    if (
+                      !keyValuePairs.some(
+                        (pair) => pair.key === newKey && pair.key !== key,
+                      )
+                    ) {
                       updateKeyValuePairs(
                         keyValuePairs.toSpliced(index, 1, {
                           key: newKey,
