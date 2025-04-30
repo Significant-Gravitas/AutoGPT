@@ -6,13 +6,13 @@ from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
 from backend.blocks.jina.search import ExtractWebsiteContentBlock, SearchTheWebBlock
 from backend.blocks.llm import (
+    MODEL_METADATA,
     AIConversationBlock,
     AIListGeneratorBlock,
     AIStructuredResponseGeneratorBlock,
     AITextGeneratorBlock,
     AITextSummarizerBlock,
     LlmModel,
-    MODEL_METADATA,
 )
 from backend.blocks.replicate_flux_advanced import ReplicateFluxAdvancedModelBlock
 from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock

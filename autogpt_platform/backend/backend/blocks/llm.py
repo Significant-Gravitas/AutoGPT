@@ -3,7 +3,6 @@ import logging
 from abc import ABC
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
-from re import L
 from types import MappingProxyType
 from typing import Any, Iterable, List, Literal, NamedTuple, Optional
 
@@ -11,6 +10,8 @@ import anthropic
 import ollama
 import openai
 from anthropic.types import ToolParam
+from groq import Groq
+from pydantic import BaseModel, SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import (
@@ -24,8 +25,6 @@ from backend.integrations.providers import ProviderName
 from backend.util import json
 from backend.util.settings import BehaveAs, Settings
 from backend.util.text import TextFormatter
-from groq import Groq
-from pydantic import BaseModel, SecretStr
 
 logger = logging.getLogger(__name__)
 fmt = TextFormatter()

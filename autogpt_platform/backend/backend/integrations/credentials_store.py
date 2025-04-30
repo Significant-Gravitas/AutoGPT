@@ -2,7 +2,7 @@ import base64
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from pydantic import SecretStr
 

@@ -3,15 +3,15 @@ import os
 from enum import Enum
 from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
 
-from backend.util.data import get_data_path
-
-from pydantic import BaseModel, Field, field_validator, PrivateAttr, ValidationInfo
+from pydantic import BaseModel, Field, PrivateAttr, ValidationInfo, field_validator
 from pydantic_settings import (
     BaseSettings,
     JsonConfigSettingsSource,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
 )
+
+from backend.util.data import get_data_path
 
 T = TypeVar("T", bound=BaseSettings)
 
