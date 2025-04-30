@@ -298,7 +298,9 @@ export default function CreditsPage() {
                   >
                     <b>{formatCredits(transaction.amount)}</b>
                   </TableCell>
-                  <TableCell>{formatCredits(transaction.balance)}</TableCell>
+                  <TableCell>
+                    {formatCredits(transaction.running_balance)}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
