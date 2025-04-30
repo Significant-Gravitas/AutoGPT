@@ -3,7 +3,7 @@
 import * as React from "react";
 import { IconClose } from "../ui/icons";
 import Image from "next/image";
-import { Button } from "../agptui/Button";
+import { Button } from "./Button";
 import { X } from "lucide-react";
 
 interface PublishAgentAwaitingReviewProps {

@@ -3,7 +3,7 @@ import { FeaturedAgentCard } from "./FeaturedAgentCard";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
-  title: "AGPT UI/Featured Store Card",
+  title: "new/Featured Store Card",
   component: FeaturedAgentCard,
   parameters: {
     layout: {

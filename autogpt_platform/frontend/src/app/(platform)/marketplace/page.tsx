@@ -150,7 +150,7 @@ export default async function Page({}: {}) {
 
   return (
     <div className="mx-auto w-screen max-w-[1360px] overflow-x-hidden">
-      <main className="px-4">
+      <main>
         <HeroSection />
         <FeaturedSection featuredAgents={featuredAgents.agents} />
         {/* 100px margin because our featured sections button are placed 40px below the container */}

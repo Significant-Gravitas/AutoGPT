@@ -8,13 +8,14 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
       <Navbar
         links={[
           {
+            name: "Home",
+            href: "/home",
+          },
+          {
             name: "Marketplace",
             href: "/marketplace",
           },
-          {
-            name: "Library",
-            href: "/library",
-          },
+
           {
             name: "Build",
             href: "/build",

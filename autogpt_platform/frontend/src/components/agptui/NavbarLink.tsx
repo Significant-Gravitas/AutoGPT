@@ -1,60 +1,50 @@
 "use client";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+
 import {
   IconShoppingCart,
   IconBoxes,
   IconLibrary,
   IconLaptop,
 } from "@/components/ui/icons";
-import { usePathname } from "next/navigation";
 
 interface NavbarLinkProps {
   name: string;
   href: string;
 }
 
+const icons = {
+  "/marketplace": IconShoppingCart,
+  "/build": IconBoxes,
+  "/monitor": IconLaptop,
+  "/home": IconLibrary,
+};
+
 export const NavbarLink = ({ name, href }: NavbarLinkProps) => {
   const pathname = usePathname();
-  const parts = pathname.split("/");
-  const activeLink = "/" + (parts.length > 2 ? parts[2] : parts[1]);
+  const isActive = pathname === href;
+
+  const Icon = icons[href as keyof typeof icons];
 
   return (
-    <Link
-      href={href}
-      data-testid={`navbar-link-${name.toLowerCase()}`}
-      className="font-poppins text-[20px] leading-[28px]"
-    >
+    <Link href={href} data-testid={`navbar-link-${name.toLowerCase()}`}>
       <div
-        className={`h-[48px] px-5 py-4 ${
-          activeLink === href
-            ? "rounded-2xl bg-neutral-800 dark:bg-neutral-200"
-            : ""
-        } flex items-center justify-start gap-3`}
+        className={`flex h-10 items-center justify-start gap-2 px-3 py-2 ${
+          isActive ? "rounded-lg bg-zinc-800 dark:bg-neutral-200" : ""
+        }`}
       >
-        {href === "/marketplace" && (
-          <IconShoppingCart
-            className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
-          />
-        )}
-        {href === "/build" && (
-          <IconBoxes
-            className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
-          />
-        )}
-        {href === "/monitor" && (
-          <IconLaptop
-            className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
-          />
-        )}
-        {href === "/library" && (
-          <IconLibrary
-            className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
+        {Icon && (
+          <Icon
+            className={`h-5 w-5 ${
+              isActive ? "text-zinc-50 dark:text-black" : ""
+            }`}
           />
         )}
         <div
-          className={`hidden font-poppins text-[20px] font-medium leading-[28px] lg:block ${
-            activeLink === href
-              ? "text-neutral-50 dark:text-neutral-900"
+          className={`hidden font-poppins text-base font-medium lg:block ${
+            isActive
+              ? "text-zinc-50 dark:text-neutral-900"
               : "text-neutral-900 dark:text-neutral-50"
           }`}
         >

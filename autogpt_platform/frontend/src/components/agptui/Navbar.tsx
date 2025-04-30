@@ -10,9 +10,8 @@ import { NavbarLink } from "./NavbarLink";
 import getServerUser from "@/lib/supabase/getServerUser";
 import BackendAPI from "@/lib/autogpt-server-api";
 import MockClient from "@/lib/autogpt-server-api/mock_client";
-
-// Disable theme toggle for now
-// import { ThemeToggle } from "./ThemeToggle";
+import Image from "next/image";
+import AutogptButton from "./AutogptButton";
 
 interface NavLink {
   name: string;
@@ -49,19 +48,28 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
 
   return (
     <>
-      <nav className="sticky top-0 z-40 hidden h-16 w-full items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] dark:border-gray-700 dark:bg-gray-900 md:inline-flex">
-        <div className="flex items-center gap-11">
-          <div className="relative h-10 w-20">
-            <IconAutoGPTLogo className="h-full w-full" />
-          </div>
+      <nav className="md:justify-center-center sticky top-0 z-40 hidden h-16 w-full border-b border-zinc-50 bg-neutral-50/20 px-4 backdrop-blur-[26px] md:flex md:items-center">
+        {/* Nav Links */}
+        <div className="flex flex-1 items-center gap-5">
           {links.map((link) => (
             <NavbarLink key={link.name} name={link.name} href={link.href} />
           ))}
         </div>
-        {/* Profile section */}
-        <div className="flex items-center gap-4">
+
+        {/* Icon */}
+        <Link href="/" className="flex items-center">
+          <Image
+            src="/agpt-logo.svg"
+            alt="AutoGPT Logo"
+            width={90}
+            height={40}
+          />
+        </Link>
+
+        {/* Popouts */}
+        <div className="flex flex-1 items-center justify-end gap-3">
           {isLoggedIn ? (
-            <div className="flex items-center gap-4">
+            <>
               {profile && <Wallet />}
               <ProfilePopoutMenu
                 menuItemGroups={menuItemGroups}
@@ -69,21 +77,15 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
                 userEmail={profile?.name}
                 avatarSrc={profile?.avatar_url}
               />
-            </div>
+            </>
           ) : (
             <Link href="/login">
-              <Button
-                size="sm"
-                className="flex items-center justify-end space-x-2"
-              >
-                <IconLogIn className="h-5 h-[48px] w-5" />
-                <span>Log In</span>
-              </Button>
+              <AutogptButton variant={"default"}>Login</AutogptButton>
             </Link>
           )}
-          {/* <ThemeToggle /> */}
         </div>
       </nav>
+
       {/* Mobile Navbar - Adjust positioning */}
       <>
         {isLoggedIn ? (

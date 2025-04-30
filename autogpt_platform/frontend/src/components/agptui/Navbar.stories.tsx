@@ -30,7 +30,7 @@ const mockCreditData = {
 // });
 
 const meta = {
-  title: "AGPT UI/Navbar",
+  title: "new/Navbar",
   component: Navbar,
   decorators: [
     (Story) => (
