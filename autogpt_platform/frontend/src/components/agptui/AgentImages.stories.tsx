@@ -4,13 +4,13 @@ import { AgentImages } from "./AgentImages";
 const meta = {
   title: "AGPT UI/Agent Images",
   component: AgentImages,
-  parameters: {
-    layout: {
-      center: true,
-      fullscreen: true,
-      padding: 0,
-    },
-  },
+  decorators: [
+    (Story) => (
+      <div className="flex h-full w-full items-center justify-center p-4">
+        <Story />
+      </div>
+    ),
+  ],
   tags: ["autodocs"],
   argTypes: {
     images: { control: "object" },
@@ -25,7 +25,7 @@ export const Default: Story = {
     images: [
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
       "https://youtu.be/KWonAsyKF3g?si=JMibxlN_6OVo6LhJ",
-      "https://storage.googleapis.com/agpt-dev-website-media/DJINeo.mp4",
+      "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
     ],
   },
 };
@@ -42,7 +42,7 @@ export const OnlyImages: Story = {
 export const WithVideos: Story = {
   args: {
     images: [
-      "https://storage.googleapis.com/agpt-dev-website-media/DJINeo.mp4",
+      "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
       "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
       "https://youtu.be/KWonAsyKF3g?si=JMibxlN_6OVo6LhJ",
     ],

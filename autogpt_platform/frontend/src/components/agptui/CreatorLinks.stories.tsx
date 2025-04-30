@@ -4,9 +4,13 @@ import { CreatorLinks } from "./CreatorLinks";
 const meta = {
   title: "AGPT UI/Creator Links",
   component: CreatorLinks,
-  parameters: {
-    layout: "centered",
-  },
+  decorators: [
+    (Story) => (
+      <div className="flex h-screen w-full items-center justify-center p-4">
+        <Story />
+      </div>
+    ),
+  ],
   tags: ["autodocs"],
   argTypes: {
     links: {

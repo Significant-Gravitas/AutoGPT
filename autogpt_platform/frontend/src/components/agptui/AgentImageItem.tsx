@@ -32,6 +32,8 @@ interface AgentImageItemProps {
 export const AgentImageItem: React.FC<AgentImageItemProps> = React.memo(
   ({ image, index, playingVideoIndex, handlePlay, handlePause }) => {
     const videoRef = React.useRef<HTMLVideoElement>(null);
+    const [isVideoPlaying, setIsVideoPlaying] = React.useState(false);
+    const [thumbnail, setThumbnail] = React.useState<string>("");
 
     React.useEffect(() => {
       if (
@@ -42,6 +44,17 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = React.memo(
         videoRef.current.pause();
       }
     }, [playingVideoIndex, index]);
+
+    React.useEffect(() => {
+      if (videoRef.current && isValidVideoFile(image)) {
+        videoRef.current.currentTime = 0.1;
+        const canvas = document.createElement("canvas");
+        canvas.width = videoRef.current.videoWidth;
+        canvas.height = videoRef.current.videoHeight;
+        canvas.getContext("2d")?.drawImage(videoRef.current, 0, 0);
+        setThumbnail(canvas.toDataURL());
+      }
+    }, [image]);
 
     const isVideoFile = isValidVideoFile(image);
 
@@ -63,12 +76,18 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = React.memo(
                 <video
                   ref={videoRef}
                   className="absolute inset-0 h-full w-full object-cover"
-                  controls
+                  controls={isVideoPlaying}
                   preload="metadata"
-                  poster={`${image}#t=0.1`}
+                  poster={thumbnail || `${image}#t=0.1`}
                   style={{ objectPosition: "center 25%" }}
-                  onPlay={() => handlePlay(index)}
-                  onPause={() => handlePause(index)}
+                  onPlay={() => {
+                    setIsVideoPlaying(true);
+                    handlePlay(index);
+                  }}
+                  onPause={() => {
+                    setIsVideoPlaying(false);
+                    handlePause(index);
+                  }}
                   autoPlay={false}
                   title="Video"
                 >
@@ -93,16 +112,18 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = React.memo(
           <div className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3 md:bottom-4 md:left-4 lg:bottom-[1.25rem] lg:left-[1.25rem]">
             <Button
               size="default"
+              className="space-x-2 border border-zinc-300 bg-zinc-400/50 backdrop-blur-xl hover:bg-zinc-400/80 sm:h-14"
               onClick={() => {
                 if (videoRef.current) {
                   videoRef.current.play();
                 }
               }}
             >
-              <span className="pr-1 font-neue text-sm font-medium leading-6 tracking-tight text-[#272727] dark:text-neutral-200 sm:pr-2 sm:text-base sm:leading-7 md:text-lg md:leading-8 lg:text-xl lg:leading-9">
+              <PlayIcon className="h-5 w-5 text-white dark:text-neutral-200 sm:h-6 sm:w-6 md:h-7 md:w-7" />
+
+              <span className="font-poppins text-sm font-medium text-white dark:text-neutral-200 sm:text-lg">
                 Play demo
               </span>
-              <PlayIcon className="h-5 w-5 text-black dark:text-neutral-200 sm:h-6 sm:w-6 md:h-7 md:w-7" />
             </Button>
           </div>
         )}

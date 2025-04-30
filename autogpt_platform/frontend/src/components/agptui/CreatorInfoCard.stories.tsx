@@ -4,9 +4,13 @@ import { CreatorInfoCard } from "./CreatorInfoCard";
 const meta = {
   title: "AGPT UI/Creator Info Card",
   component: CreatorInfoCard,
-  parameters: {
-    layout: "centered",
-  },
+  decorators: [
+    (Story) => (
+      <div className="flex h-screen w-screen items-center justify-center p-4">
+        <Story />
+      </div>
+    ),
+  ],
   tags: ["autodocs"],
   argTypes: {
     username: { control: "text" },
