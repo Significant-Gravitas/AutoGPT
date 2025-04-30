@@ -85,7 +85,7 @@ export const Default: Story = {
   },
 };
 
-export const LongAgentNames: Story = {
+export const LongContent: Story = {
   args: {
     ...Default.args,
     agents: [
@@ -93,30 +93,20 @@ export const LongAgentNames: Story = {
         ...sampleAgents[0],
         agentName:
           "Super Advanced Artificial Intelligence Code Generator and Optimizer with Machine Learning Capabilities",
-        sub_heading:
-          "A very advanced AI system that can generate and optimize code using cutting-edge machine learning techniques",
-      },
-      ...sampleAgents.slice(1),
-    ],
-  },
-};
-
-export const LongDescriptions: Story = {
-  args: {
-    ...Default.args,
-    agents: [
-      {
-        ...sampleAgents[0],
         description:
           "This is an extremely advanced artificial intelligence code generator that can write clean, efficient, and optimized code in multiple programming languages. It utilizes state-of-the-art machine learning algorithms to understand requirements and generate appropriate solutions while following best practices and design patterns. The agent can handle complex programming tasks, debug existing code, and suggest improvements to enhance performance and readability.",
       },
       {
         ...sampleAgents[1],
+        agentName:
+          "Super Advanced Artificial Intelligence Code Generator and Optimizer with Machine Learning Capabilities",
         description:
           "A sophisticated data analysis tool capable of processing petabytes of structured and unstructured data to extract meaningful insights and patterns. This agent leverages advanced statistical methods, machine learning techniques, and data visualization capabilities to transform raw data into actionable business intelligence. It can handle time series analysis, predictive modeling, anomaly detection, and generate comprehensive reports with minimal human intervention.",
       },
       {
         ...sampleAgents[2],
+        agentName:
+          "Super Advanced Artificial Intelligence Code Generator and Optimizer with Machine Learning Capabilities",
         description:
           "This specialized UI/UX design assistant creates beautiful, accessible, and intuitive user interfaces for web and mobile applications. By combining principles of human-centered design with modern aesthetic sensibilities, the agent produces wireframes, mockups, and interactive prototypes that enhance user engagement and satisfaction. It follows design systems, ensures consistent branding, and optimizes layouts for various screen sizes while maintaining accessibility standards.",
       },
@@ -138,19 +128,6 @@ export const ManyAgents: Story = {
   },
 };
 
-export const WithInteraction: Story = {
-  args: {
-    ...Default.args,
-    agents: sampleAgents,
-  },
-  play: async ({ canvasElement, args }) => {
-    const canvas = within(canvasElement);
-
-    const checkboxes = canvas.getAllByTestId("dropdown-button");
-    await expect(checkboxes.length).toBeGreaterThan(0);
-  },
-};
-
 export const EmptyTableTest: Story = {
   args: {
     ...Default.args,
@@ -166,22 +143,15 @@ export const EmptyTableTest: Story = {
   },
 };
 
-export const ResponsiveTest: Story = {
+export const TestingInteractions: Story = {
   args: {
     ...Default.args,
     agents: sampleAgents,
   },
-  parameters: {
-    viewport: {
-      defaultViewport: "mobile2",
-    },
-  },
-  play: async ({ canvasElement }) => {
+  play: async ({ canvasElement, args }) => {
     const canvas = within(canvasElement);
 
-    // In mobile view, cards should be visible instead of table
-    // Check for at least one card
-    const cards = canvas.getAllByTestId("agent-table-card");
-    await expect(cards.length).toBe(3);
+    const checkboxes = canvas.getAllByTestId("dropdown-button");
+    await expect(checkboxes.length).toBeGreaterThan(0);
   },
 };

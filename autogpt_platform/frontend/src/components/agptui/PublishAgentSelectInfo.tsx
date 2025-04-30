@@ -306,7 +306,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                 </Button>
               </div>
             ) : (
-              <>
+              <div className="flex flex-wrap gap-2.5">
                 {images.map((src, index) => (
                   <div key={index} className="relative flex-shrink-0">
                     <Image
@@ -345,7 +345,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                     </span>
                   </Button>
                 )}
-              </>
+              </div>
             )}
           </div>
         </div>

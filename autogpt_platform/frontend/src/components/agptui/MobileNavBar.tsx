@@ -154,20 +154,20 @@ export const MobileNavBar: React.FC<MobileNavBarProps> = ({
                   className="w-screen rounded-b-2xl bg-white/40 backdrop-blur-xl dark:bg-neutral-900"
                 >
                   <div className="mb-4 inline-flex w-full items-end justify-start gap-4">
-                    <Avatar className="h-14 w-14 border border-[#474747] dark:border-[#cfcfcf]">
+                    <Avatar className="h-14 w-14 self-start dark:border-[#cfcfcf]">
                       <AvatarImage
                         src={avatarSrc}
                         alt={userName || "Unknown User"}
                       />
-                      <AvatarFallback>
+                      <AvatarFallback size={56}>
                         {userName?.charAt(0) || "U"}
                       </AvatarFallback>
                     </Avatar>
-                    <div className="relative h-14 w-full">
-                      <div className="absolute left-0 top-0 text-lg font-semibold leading-7 text-[#474747] dark:text-[#cfcfcf]">
+                    <div className="relative w-full">
+                      <div className="text-lg font-semibold leading-7 text-[#474747] dark:text-[#cfcfcf]">
                         {userName || "Unknown User"}
                       </div>
-                      <div className="absolute left-0 top-6 font-inter text-base font-normal leading-7 text-[#474747] dark:text-[#cfcfcf]">
+                      <div className="top-6 font-inter text-base font-normal leading-7 text-[#474747] dark:text-[#cfcfcf]">
                         {userEmail || "No Email Set"}
                       </div>
                     </div>

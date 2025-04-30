@@ -60,33 +60,6 @@ Key features include:
   },
 };
 
-export const WithInteraction: Story = {
-  args: {
-    ...Default.args,
-    name: "Task Planner Pro",
-    creator: "Productivity AI",
-    shortDescription: "Plan and organize your tasks efficiently with AI",
-    longDescription:
-      "An intelligent task management system that helps you organize, prioritize, and complete your tasks more efficiently. Features smart scheduling and AI-powered suggestions.",
-    rating: 4.2,
-    runs: 50000,
-    categories: ["Productivity", "Task Management", "AI"],
-    lastUpdated: "3 days ago",
-    version: "1.5.2",
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-
-    // Test add to library button
-    const addButton = canvas.getByText("Download Agent as File");
-    await userEvent.hover(addButton);
-
-    // Test category interaction
-    const category = canvas.getByText("Productivity");
-    await userEvent.hover(category);
-  },
-};
-
 export const ExtraLongName: Story = {
   args: {
     ...Default.args,
@@ -175,38 +148,6 @@ export const HighRuns: Story = {
   },
 };
 
-export const ZeroRuns: Story = {
-  args: {
-    ...Default.args,
-    name: "Brand New Agent",
-    creator: "First-time Creator",
-    runs: 0,
-    lastUpdated: "Just now",
-    version: "0.0.1",
-  },
-};
-
-export const FullRating: Story = {
-  args: {
-    ...Default.args,
-    rating: 5.0,
-  },
-};
-
-export const ZeroRating: Story = {
-  args: {
-    ...Default.args,
-    rating: 0,
-  },
-};
-
-export const DecimalRating: Story = {
-  args: {
-    ...Default.args,
-    rating: 3.5,
-  },
-};
-
 export const Downloading: Story = {
   args: {
     ...Default.args,
@@ -239,5 +180,32 @@ export const Downloading: Story = {
     // Should show downloading state
     const loadingButton = canvas.getByText("Downloading...");
     await expect(loadingButton).toBeInTheDocument();
+  },
+};
+
+export const TestingInteractions: Story = {
+  args: {
+    ...Default.args,
+    name: "Task Planner Pro",
+    creator: "Productivity AI",
+    shortDescription: "Plan and organize your tasks efficiently with AI",
+    longDescription:
+      "An intelligent task management system that helps you organize, prioritize, and complete your tasks more efficiently. Features smart scheduling and AI-powered suggestions.",
+    rating: 4.2,
+    runs: 50000,
+    categories: ["Productivity", "Task Management", "AI"],
+    lastUpdated: "3 days ago",
+    version: "1.5.2",
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    // Test add to library button
+    const addButton = canvas.getByText("Download Agent as File");
+    await userEvent.hover(addButton);
+
+    // Test category interaction
+    const category = canvas.getByText("Productivity");
+    await userEvent.hover(category);
   },
 };

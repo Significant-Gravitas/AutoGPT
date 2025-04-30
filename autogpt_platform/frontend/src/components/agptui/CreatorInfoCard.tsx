@@ -22,7 +22,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
 }) => {
   return (
     <div
-      className="inline-flex h-auto min-h-[32rem] w-full max-w-[440px] flex-col items-start justify-between rounded-[26px] bg-violet-100 p-4 dark:bg-violet-900 sm:min-h-[40rem] sm:w-[440px] sm:p-6"
+      className="inline-flex h-auto min-h-[32rem] w-full max-w-[440px] flex-col items-start justify-between overflow-hidden rounded-[26px] bg-violet-100 p-4 dark:bg-violet-900 sm:min-h-[40rem] sm:w-[440px] sm:p-6"
       role="article"
       aria-label={`Creator profile for ${username}`}
     >

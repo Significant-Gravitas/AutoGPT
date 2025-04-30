@@ -33,16 +33,7 @@ export const Default: Story = {
   },
 };
 
-export const CustomText: Story = {
-  args: {
-    title: "Become a Creator Today!",
-    description: "Share your ideas and build amazing AI agents with us",
-    buttonText: "Start Creating",
-    onButtonClick: () => console.log("Custom button clicked"),
-  },
-};
-
-export const WithInteraction: Story = {
+export const TestingInteractions: Story = {
   args: {
     ...Default.args,
   },

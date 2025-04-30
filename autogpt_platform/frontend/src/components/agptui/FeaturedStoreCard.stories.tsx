@@ -66,7 +66,65 @@ export const Default: Story = {
   },
 };
 
-export const WithInteraction: Story = {
+export const ExtraLarge: Story = {
+  args: {
+    agent: {
+      agent_name:
+        "Universal Language Translator Pro with Advanced Neural Network Technology and Cross-Cultural Communication Capabilities",
+      sub_heading:
+        "Breaking language barriers with cutting-edge AI translation technology that revolutionizes global communication for businesses and individuals across continents while preserving cultural nuances and contextual meanings",
+      description:
+        "Experience seamless communication across 150+ languages with our advanced neural translation engine. Perfect for international businesses, travelers, and language enthusiasts. Features real-time conversation translation, document processing, and cultural context adaptation to ensure your message is delivered exactly as intended in any language. Our proprietary machine learning algorithms continuously improve translation accuracy with each interaction, adapting to regional dialects and specialized terminology. The system includes voice recognition capabilities, image-to-text translation for signs and documents, and can operate offline in emergency situations where internet connectivity is limited. With dedicated mobile apps for iOS and Android plus browser extensions, you'll never encounter language barriers again, whether in business negotiations, academic research, or while exploring new destinations.",
+      agent_image: Default.args.agent.agent_image,
+      creator_avatar: Default.args.agent.creator_avatar,
+      creator:
+        "Global Linguistics Technologies International Corporation and Research Institute for Cross-Cultural Communication",
+      runs: 1000000000,
+      rating: 4.9,
+      slug: "universal-translator-pro-with-advanced-neural-networks-and-multilingual-support-for-global-enterprise-solutions-and-individual-travelers",
+    },
+    backgroundColor: BACKGROUND_COLORS[2],
+  },
+};
+
+export const MinimalText: Story = {
+  args: {
+    agent: {
+      agent_name: "A",
+      sub_heading: "B",
+      description: "C",
+      agent_image: Default.args.agent.agent_image,
+      creator_avatar: Default.args.agent.creator_avatar,
+      creator: "D",
+      runs: 0,
+      rating: 0,
+      slug: Default.args.agent.slug,
+    },
+    backgroundColor: BACKGROUND_COLORS[0],
+  },
+};
+
+export const MissingImage: Story = {
+  args: {
+    agent: {
+      ...Default.args.agent,
+      agent_image: "",
+    },
+    backgroundColor: BACKGROUND_COLORS[1],
+  },
+};
+
+export const MissingAvatar: Story = {
+  args: {
+    agent: {
+      ...Default.args.agent,
+      creator_avatar: "",
+    },
+    backgroundColor: BACKGROUND_COLORS[2],
+  },
+};
+
+export const TestingInteractions: Story = {
   args: {
     agent: {
       ...Default.args.agent,
@@ -97,93 +155,5 @@ export const WithInteraction: Story = {
 
     await userEvent.unhover(card);
     await new Promise((resolve) => setTimeout(resolve, 300));
-  },
-};
-
-export const ExtraLarge: Story = {
-  args: {
-    agent: {
-      agent_name:
-        "Universal Language Translator Pro with Advanced Neural Network Technology and Cross-Cultural Communication Capabilities",
-      sub_heading:
-        "Breaking language barriers with cutting-edge AI translation technology that revolutionizes global communication for businesses and individuals across continents while preserving cultural nuances and contextual meanings",
-      description:
-        "Experience seamless communication across 150+ languages with our advanced neural translation engine. Perfect for international businesses, travelers, and language enthusiasts. Features real-time conversation translation, document processing, and cultural context adaptation to ensure your message is delivered exactly as intended in any language. Our proprietary machine learning algorithms continuously improve translation accuracy with each interaction, adapting to regional dialects and specialized terminology. The system includes voice recognition capabilities, image-to-text translation for signs and documents, and can operate offline in emergency situations where internet connectivity is limited. With dedicated mobile apps for iOS and Android plus browser extensions, you'll never encounter language barriers again, whether in business negotiations, academic research, or while exploring new destinations.",
-      agent_image: Default.args.agent.agent_image,
-      creator_avatar: Default.args.agent.creator_avatar,
-      creator:
-        "Global Linguistics Technologies International Corporation and Research Institute for Cross-Cultural Communication",
-      runs: 1000000,
-      rating: 4.9,
-      slug: "universal-translator-pro-with-advanced-neural-networks-and-multilingual-support-for-global-enterprise-solutions-and-individual-travelers",
-    },
-    backgroundColor: BACKGROUND_COLORS[2],
-  },
-};
-
-export const MinimalText: Story = {
-  args: {
-    agent: {
-      agent_name: "A",
-      sub_heading: "B",
-      description: "C",
-      agent_image: Default.args.agent.agent_image,
-      creator_avatar: Default.args.agent.creator_avatar,
-      creator: "D",
-      runs: 0,
-      rating: 0,
-      slug: Default.args.agent.slug,
-    },
-    backgroundColor: BACKGROUND_COLORS[0],
-  },
-};
-
-export const FullRating: Story = {
-  args: {
-    agent: {
-      ...Default.args.agent,
-      rating: 5,
-    },
-    backgroundColor: BACKGROUND_COLORS[1],
-  },
-};
-
-export const DecimalRating: Story = {
-  args: {
-    agent: {
-      ...Default.args.agent,
-      rating: 3.5,
-    },
-    backgroundColor: BACKGROUND_COLORS[2],
-  },
-};
-
-export const LargeRuns: Story = {
-  args: {
-    agent: {
-      ...Default.args.agent,
-      runs: 1000000000,
-    },
-    backgroundColor: BACKGROUND_COLORS[0],
-  },
-};
-
-export const MissingImage: Story = {
-  args: {
-    agent: {
-      ...Default.args.agent,
-      agent_image: "",
-    },
-    backgroundColor: BACKGROUND_COLORS[1],
-  },
-};
-
-export const MissingAvatar: Story = {
-  args: {
-    agent: {
-      ...Default.args.agent,
-      creator_avatar: "",
-    },
-    backgroundColor: BACKGROUND_COLORS[2],
   },
 };

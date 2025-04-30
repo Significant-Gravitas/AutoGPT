@@ -48,7 +48,23 @@ export const LongPath: Story = {
   },
 };
 
-export const WithInteraction: Story = {
+export const LongNames: Story = {
+  args: {
+    items: [
+      { name: "Home", link: "/" },
+      {
+        name: "AI-Powered Writing Assistants, AI-Powered Writing Assistants ",
+        link: "/ai-writing-assistants",
+      },
+      {
+        name: "Advanced Grammar and Style Checker",
+        link: "/ai-writing-assistants/grammar-style-checker",
+      },
+    ],
+  },
+};
+
+export const TestingInteractions: Story = {
   args: {
     items: [
       { name: "Home", link: "/" },
@@ -62,18 +78,5 @@ export const WithInteraction: Story = {
 
     await userEvent.hover(homeLink);
     await userEvent.click(homeLink);
-  },
-};
-
-export const LongNames: Story = {
-  args: {
-    items: [
-      { name: "Home", link: "/" },
-      { name: "AI-Powered Writing Assistants", link: "/ai-writing-assistants" },
-      {
-        name: "Advanced Grammar and Style Checker",
-        link: "/ai-writing-assistants/grammar-style-checker",
-      },
-    ],
   },
 };

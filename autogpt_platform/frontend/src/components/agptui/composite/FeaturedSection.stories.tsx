@@ -150,25 +150,9 @@ export const WithExtremelyLongTexts: Story = {
           "Experience seamless communication across 150+ languages with our advanced neural translation engine. Perfect for international businesses, travelers, and language enthusiasts. Features real-time conversation translation, document processing, and cultural context adaptation to ensure your message is delivered exactly as intended in any language. Our proprietary machine learning algorithms continuously improve translation accuracy with each interaction, adapting to regional dialects and specialized terminology. The system includes voice recognition capabilities, image-to-text translation for signs and documents, and can operate offline in emergency situations where internet connectivity is limited. With dedicated mobile apps for iOS and Android plus browser extensions, you'll never encounter language barriers again, whether in business negotiations, academic research, or while exploring new destinations.",
         creator:
           "Global Linguistics Technologies International Corporation and Research Institute for Cross-Cultural Communication",
+        runs: 999999999999,
       },
       mockFeaturedAgents[1],
-    ],
-  },
-};
-
-export const WithExtremeValues: Story = {
-  args: {
-    featuredAgents: [
-      {
-        ...mockFeaturedAgents[0],
-        runs: 999999999999,
-        rating: 5,
-      },
-      {
-        ...mockFeaturedAgents[1],
-        runs: 0,
-        rating: 0,
-      },
     ],
   },
 };

@@ -83,7 +83,7 @@ export const LongUserName: Story = {
   },
 };
 
-export const WithInteraction: Story = {
+export const TestingInteractions: Story = {
   args: {
     ...Default.args,
   },

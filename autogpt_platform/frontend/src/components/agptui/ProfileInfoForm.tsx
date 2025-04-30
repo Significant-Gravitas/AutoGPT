@@ -11,6 +11,9 @@ import { CreatorDetails, ProfileDetails } from "@/lib/autogpt-server-api/types";
 import { Separator } from "@/components/ui/separator";
 import useSupabase from "@/hooks/useSupabase";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { Textarea } from "../ui/textarea";
 
 export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -98,8 +101,8 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
   };
 
   return (
-    <div className="w-full min-w-[800px] px-4 sm:px-8">
-      <h1 className="font-circular mb-6 text-[28px] font-normal text-neutral-900 dark:text-neutral-100 sm:mb-8 sm:text-[35px]">
+    <div className="md:min-w-md w-full px-4 sm:px-8">
+      <h1 className="mb-6 font-poppins text-4xl font-medium text-neutral-900">
         Profile
       </h1>
 
@@ -117,8 +120,8 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
               <IconPersonFill className="absolute left-[30px] top-[24px] h-[77.80px] w-[70.63px] text-[#7e7e7e] dark:text-[#999999]" />
             )}
           </div>
-          <label className="font-circular mt-11 inline-flex h-[43px] items-center justify-center rounded-[22px] bg-[#15171A] px-6 py-2 text-sm font-normal text-white transition-colors hover:bg-[#2D2F34] dark:bg-white dark:text-[#15171A] dark:hover:bg-[#E5E5E5]">
-            <input
+          <Label className="mt-11 inline-flex h-[43px] items-center justify-center rounded-[22px] bg-[#15171A] px-6 py-2 font-sans text-sm font-normal text-white transition-colors hover:cursor-pointer hover:bg-[#2D2F34] dark:bg-white dark:text-[#15171A] dark:hover:bg-[#E5E5E5]">
+            <Input
               type="file"
               accept="image/*"
               className="hidden"
@@ -130,21 +133,22 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
               }}
             />
             Edit photo
-          </label>
+          </Label>
         </div>
 
-        <form className="space-y-4 sm:space-y-6" onSubmit={submitForm}>
-          <div className="w-full">
-            <label className="font-circular mb-1.5 block text-base font-normal leading-tight text-neutral-700 dark:text-neutral-300">
-              Display name
-            </label>
-            <div className="rounded-[55px] border border-slate-200 px-4 py-2.5 dark:border-slate-700 dark:bg-slate-800">
-              <input
+        <form className="space-y-8" onSubmit={submitForm}>
+          {/* Top section */}
+          <section className="space-y-6">
+            <div className="w-full space-y-1.5">
+              <Label className="block font-sans text-base font-medium text-[#020617]">
+                Display name
+              </Label>
+              <Input
                 type="text"
                 name="displayName"
                 defaultValue={profileData.name}
                 placeholder="Enter your display name"
-                className="font-circular w-full border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
+                className="h-11 w-full rounded-full border border-[#E2E8F0] px-4 py-2.5 font-inter text-base font-normal text-[#7e7e7e] outline-none"
                 onChange={(e) => {
                   const newProfileData = {
                     ...profileData,
@@ -154,19 +158,17 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                 }}
               />
             </div>
-          </div>
 
-          <div className="w-full">
-            <label className="font-circular mb-1.5 block text-base font-normal leading-tight text-neutral-700 dark:text-neutral-300">
-              Handle
-            </label>
-            <div className="rounded-[55px] border border-slate-200 px-4 py-2.5 dark:border-slate-700 dark:bg-slate-800">
-              <input
+            <div className="w-full space-y-1.5">
+              <Label className="block font-sans text-base font-medium text-[#020617]">
+                Handle
+              </Label>
+              <Input
                 type="text"
                 name="handle"
                 defaultValue={profileData.username}
                 placeholder="@username"
-                className="font-circular w-full border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
+                className="h-11 w-full rounded-full border border-[#E2E8F0] px-4 py-2.5 font-inter text-base font-normal text-[#7e7e7e] outline-none"
                 onChange={(e) => {
                   const newProfileData = {
                     ...profileData,
@@ -176,18 +178,16 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                 }}
               />
             </div>
-          </div>
 
-          <div className="w-full">
-            <label className="font-circular mb-1.5 block text-base font-normal leading-tight text-neutral-700 dark:text-neutral-300">
-              Bio
-            </label>
-            <div className="h-[220px] rounded-2xl border border-slate-200 py-2.5 pl-4 pr-4 dark:border-slate-700 dark:bg-slate-800">
-              <textarea
+            <div className="w-full space-y-1.5">
+              <Label className="block font-sans text-base font-medium text-[#020617]">
+                Bio
+              </Label>
+              <Textarea
                 name="bio"
                 defaultValue={profileData.description}
                 placeholder="Tell us about yourself..."
-                className="font-circular h-full w-full resize-none border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
+                className="min-h-56 w-full resize-none rounded-[1rem] border border-[#E2E8F0] px-4 py-2.5 font-inter text-base font-normal text-[#7e7e7e] outline-none"
                 onChange={(e) => {
                   const newProfileData = {
                     ...profileData,
@@ -197,13 +197,16 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
                 }}
               />
             </div>
-          </div>
+          </section>
 
-          <section className="mb-8">
-            <h2 className="font-circular mb-4 text-lg font-normal leading-7 text-neutral-700 dark:text-neutral-300">
+          <Separator className="bg-neutral-300" />
+
+          {/* mid section */}
+          <section className="mb-8 space-y-6">
+            <h2 className="font-poppins text-lg font-semibold text-neutral-500">
               Your links
             </h2>
-            <p className="font-circular mb-6 text-base font-normal leading-tight text-neutral-600 dark:text-neutral-400">
+            <p className="font-sans text-base font-medium text-[#020617]">
               You can display up to 5 links on your profile
             </p>
 
@@ -211,41 +214,38 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
               {[1, 2, 3, 4, 5].map((linkNum) => {
                 const link = profileData.links[linkNum - 1];
                 return (
-                  <div key={linkNum} className="w-full">
-                    <label className="font-circular mb-1.5 block text-base font-normal leading-tight text-neutral-700 dark:text-neutral-300">
+                  <div key={linkNum} className="w-full space-y-1.5">
+                    <Label className="block font-sans text-base font-medium text-[#020617]">
                       Link {linkNum}
-                    </label>
-                    <div className="rounded-[55px] border border-slate-200 px-4 py-2.5 dark:border-slate-700 dark:bg-slate-800">
-                      <input
-                        type="text"
-                        name={`link${linkNum}`}
-                        placeholder="https://"
-                        defaultValue={link || ""}
-                        className="font-circular w-full border-none bg-transparent text-base font-normal text-neutral-900 placeholder:text-neutral-400 focus:outline-none dark:text-white dark:placeholder:text-neutral-500"
-                        onChange={(e) => {
-                          const newLinks = [...profileData.links];
-                          newLinks[linkNum - 1] = e.target.value;
-                          const newProfileData = {
-                            ...profileData,
-                            links: newLinks,
-                          };
-                          setProfileData(newProfileData);
-                        }}
-                      />
-                    </div>
+                    </Label>
+                    <Input
+                      type="text"
+                      name={`link${linkNum}`}
+                      placeholder="https://"
+                      defaultValue={link || ""}
+                      className="h-11 w-full rounded-full border border-[#E2E8F0] px-4 py-2.5 font-inter text-base font-normal text-[#7e7e7e] outline-none"
+                      onChange={(e) => {
+                        const newLinks = [...profileData.links];
+                        newLinks[linkNum - 1] = e.target.value;
+                        const newProfileData = {
+                          ...profileData,
+                          links: newLinks,
+                        };
+                        setProfileData(newProfileData);
+                      }}
+                    />
                   </div>
                 );
               })}
             </div>
           </section>
 
-          <Separator />
-
-          <div className="flex h-[50px] items-center justify-end gap-3 py-8">
+          {/* buttons */}
+          <section className="flex h-[50px] items-center justify-end gap-3 py-8">
             <Button
               type="button"
               variant="secondary"
-              className="font-circular h-[50px] rounded-[35px] bg-neutral-200 px-6 py-3 text-base font-medium text-neutral-800 transition-colors hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-600 dark:hover:bg-neutral-600"
+              className="h-[50px] rounded-[35px] bg-neutral-200 px-6 py-3 font-sans text-base font-medium text-neutral-800 transition-colors hover:bg-neutral-300 dark:border-neutral-700 dark:bg-neutral-700 dark:text-neutral-200 dark:hover:border-neutral-600 dark:hover:bg-neutral-600"
               onClick={() => {
                 setProfileData(profile);
               }}
@@ -255,12 +255,12 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
             <Button
               type="submit"
               disabled={isSubmitting}
-              className="font-circular h-[50px] rounded-[35px] bg-neutral-800 px-6 py-3 text-base font-medium text-white transition-colors hover:bg-neutral-900 dark:bg-neutral-200 dark:text-neutral-900 dark:hover:bg-neutral-100"
+              className="h-[50px] rounded-[35px] bg-neutral-800 px-6 py-3 font-sans text-base font-medium text-white transition-colors hover:bg-neutral-900 dark:bg-neutral-200 dark:text-neutral-900 dark:hover:bg-neutral-100"
               onClick={submitForm}
             >
               {isSubmitting ? "Saving..." : "Save changes"}
             </Button>
-          </div>
+          </section>
         </form>
       </div>
     </div>

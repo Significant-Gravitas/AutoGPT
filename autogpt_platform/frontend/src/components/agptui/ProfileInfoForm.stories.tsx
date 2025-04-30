@@ -4,9 +4,13 @@ import { ProfileInfoForm } from "./ProfileInfoForm";
 const meta: Meta<typeof ProfileInfoForm> = {
   title: "AGPT UI/Profile/Profile Info Form",
   component: ProfileInfoForm,
-  parameters: {
-    layout: "fullscreen",
-  },
+  decorators: [
+    (Story) => (
+      <div className="flex h-screen w-full justify-center p-4">
+        <Story />
+      </div>
+    ),
+  ],
   tags: ["autodocs"],
   argTypes: {
     profile: {

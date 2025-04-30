@@ -114,7 +114,7 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
             />
           </div>
           <div className="flex flex-col">
-            <h3 className="font-sans text-sm font-medium text-neutral-800">
+            <h3 className="line-clamp-2 font-sans text-sm font-medium text-neutral-800">
               {agentName}
             </h3>
             <p className="line-clamp-2 font-sans text-sm font-normal text-neutral-600">

@@ -6,7 +6,11 @@ import { IconType } from "../ui/icons";
 const meta = {
   title: "AGPT UI/Mobile Nav Bar",
   component: MobileNavBar,
-
+  parameters: {
+    viewport: {
+      defaultViewport: "mobile2",
+    },
+  },
   tags: ["autodocs"],
   argTypes: {
     userName: { control: "text" },

@@ -50,62 +50,18 @@ export const NoImage: Story = {
   },
 };
 
-export const LongName: Story = {
+export const LongContent: Story = {
   args: {
     index: 1,
     creatorName: "Alexandria Rodriguez-Fitzgerald Johnson III",
     creatorImage: defaultAvatarImage,
-    bio: "AI enthusiast with a background in computational linguistics.",
-    agentsUploaded: 8,
+    bio: "Excited to start my journey in AI agent development! I have a background in computer science and machine learning, with a special interest in creating agents that can assist with everyday tasks and solve complex problems efficiently.",
+    agentsUploaded: 500000,
     onClick: () => console.log("LongName CreatorCard clicked"),
   },
 };
 
-export const LongBio: Story = {
-  args: {
-    index: 1,
-    creatorName: "Jane Smith",
-    creatorImage: defaultAvatarImage,
-    bio: "Excited to start my journey in AI agent development! I have a background in computer science and machine learning, with a special interest in creating agents that can assist with everyday tasks and solve complex problems efficiently.",
-    agentsUploaded: 1,
-    onClick: () => console.log("LongBio CreatorCard clicked"),
-  },
-};
-
-export const ExperiencedCreator: Story = {
-  args: {
-    index: 2,
-    creatorName: "Alex Johnson",
-    creatorImage: defaultAvatarImage,
-    bio: "Veteran AI researcher with a focus on natural language processing and machine learning.",
-    agentsUploaded: 500000,
-    onClick: () => console.log("ExperiencedCreator CreatorCard clicked"),
-  },
-};
-
-export const ZeroAgents: Story = {
-  args: {
-    index: 3,
-    creatorName: "New Creator",
-    creatorImage: defaultAvatarImage,
-    bio: "Just joined the platform and excited to create my first agent!",
-    agentsUploaded: 0,
-    onClick: () => console.log("ZeroAgents CreatorCard clicked"),
-  },
-};
-
-export const MobileView: Story = {
-  args: {
-    ...Default.args,
-  },
-  parameters: {
-    viewport: {
-      defaultViewport: "mobile2",
-    },
-  },
-};
-
-export const WithInteraction: Story = {
+export const TestingInteractions: Story = {
   args: {
     index: 3,
     creatorName: "Sam Brown",

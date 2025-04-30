@@ -126,7 +126,7 @@ export const NineAgents: Story = {
   },
 };
 
-export const WithInteraction: Story = {
+export const TestingInteractions: Story = {
   args: {
     ...defaultArgs,
     agents: mockAgents,

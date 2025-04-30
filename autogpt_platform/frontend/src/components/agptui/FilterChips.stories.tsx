@@ -52,22 +52,10 @@ export const LongBadgeNames: Story = {
   args: {
     badges: [
       "Machine Learning",
-      "Natural Language Processing",
+      "Natural Language Processing, Natural Language Processing, Natural Language Processing",
       "Computer Vision",
       "Data Science",
     ],
     multiSelect: true,
-  },
-};
-
-export const MobileView: Story = {
-  args: {
-    badges: defaultBadges,
-    multiSelect: true,
-  },
-  parameters: {
-    viewport: {
-      defaultViewport: "mobile2",
-    },
   },
 };
