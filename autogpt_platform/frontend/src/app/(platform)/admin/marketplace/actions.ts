@@ -56,3 +56,9 @@ export async function getAdminListingsWithVersions(
   const response = await api.getAdminListingsWithVersions(data);
   return response;
 }
+
+export async function downloadAsAdmin(storeListingVersion: string) {
+  const api = new BackendApi();
+  const file = await api.downloadStoreAgentAdmin(storeListingVersion);
+  return file;
+}
