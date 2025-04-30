@@ -17,13 +17,13 @@ from sqlalchemy import MetaData, create_engine
 
 from backend.data.block import BlockInput
 from backend.executor import utils as execution_utils
-from backend.notifications.notifications import NotificationManager
+from backend.notifications.notifications import NotificationManagerClient
 from backend.util.service import (
     AppService,
     AppServiceClient,
     endpoint_to_async,
     expose,
-    get_service_client,
+    get_app_service_client,
 )
 from backend.util.settings import Config
 
@@ -65,9 +65,7 @@ def job_listener(event):
 
 @thread_cached
 def get_notification_client():
-    from backend.notifications import NotificationManager
-
-    return get_service_client(NotificationManager)
+    return get_app_service_client(NotificationManagerClient)
 
 
 def execute_graph(**kwargs):
@@ -76,7 +74,7 @@ def execute_graph(**kwargs):
         log(f"Executing recurring job for graph #{args.graph_id}")
         execution_utils.add_graph_execution(
             graph_id=args.graph_id,
-            data=args.input_data,
+            inputs=args.input_data,
             user_id=args.user_id,
             graph_version=args.graph_version,
         )
@@ -164,11 +162,6 @@ class Scheduler(AppService):
     @classmethod
     def db_pool_size(cls) -> int:
         return config.scheduler_db_pool_size
-
-    @property
-    @thread_cached
-    def notification_client(self) -> NotificationManager:
-        return get_service_client(NotificationManager)
 
     def run_service(self):
         load_dotenv()

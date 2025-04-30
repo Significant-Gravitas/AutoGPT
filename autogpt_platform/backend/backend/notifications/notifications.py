@@ -31,7 +31,13 @@ from backend.data.notifications import (
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import generate_unsubscribe_link
 from backend.notifications.email import EmailSender
-from backend.util.service import AppService, expose, get_service_client
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    endpoint_to_async,
+    expose,
+    get_service_client,
+)
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -774,3 +780,13 @@ class NotificationManager(AppService):
         super().cleanup()
         logger.info(f"[{self.service_name}] ⏳ Disconnecting RabbitMQ...")
         self.run_and_wait(self.rabbitmq_service.disconnect())
+
+
+class NotificationManagerClient(AppServiceClient):
+    @classmethod
+    def get_service_type(cls):
+        return NotificationManager
+
+    queue_notification = endpoint_to_async(NotificationManager.queue_notification)
+    process_existing_batches = NotificationManager.process_existing_batches
+    queue_weekly_summary = NotificationManager.queue_weekly_summary

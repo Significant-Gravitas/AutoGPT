@@ -19,6 +19,7 @@ import backend.data.graph
 import backend.data.user
 import backend.server.routers.postmark.postmark
 import backend.server.routers.v1
+import backend.server.v2.admin.credit_admin_routes
 import backend.server.v2.admin.store_admin_routes
 import backend.server.v2.library.db
 import backend.server.v2.library.model
@@ -28,6 +29,7 @@ import backend.server.v2.store.model
 import backend.server.v2.store.routes
 import backend.util.service
 import backend.util.settings
+from backend.blocks.llm import LlmModel
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.server.external.api import external_app
@@ -56,8 +58,7 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.block.initialize_blocks()
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
-    # FIXME ERROR: operator does not exist: text ? unknown
-    # await backend.data.graph.migrate_llm_models(LlmModel.GPT4O)
+    await backend.data.graph.migrate_llm_models(LlmModel.GPT4O)
     with launch_darkly_context():
         yield
     await backend.data.db.disconnect()
@@ -106,6 +107,11 @@ app.include_router(
     backend.server.v2.admin.store_admin_routes.router,
     tags=["v2", "admin"],
     prefix="/api/store",
+)
+app.include_router(
+    backend.server.v2.admin.credit_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/credits",
 )
 app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
@@ -159,7 +165,8 @@ class AgentServer(backend.util.service.AppProcess):
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph_version,
-            node_input=node_input or {},
+            inputs=node_input or {},
+            credentials_inputs={},
         )
 
     @staticmethod

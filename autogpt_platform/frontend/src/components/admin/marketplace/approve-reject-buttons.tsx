@@ -15,7 +15,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { StoreSubmission } from "@/lib/autogpt-server-api/types";
 import { useRouter } from "next/navigation";
-import { approveAgent, rejectAgent } from "@/app/admin/marketplace/actions";
+import {
+  approveAgent,
+  rejectAgent,
+} from "@/app/(platform)/admin/marketplace/actions";
 
 export function ApproveRejectButtons({
   version,

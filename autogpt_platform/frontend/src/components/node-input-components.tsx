@@ -6,18 +6,21 @@ import {
 } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
-import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
 import { beautifyString, cn } from "@/lib/utils";
+import { Node, useNodeId, useNodesData } from "@xyflow/react";
+import { ConnectionData, CustomNodeData } from "@/components/CustomNode";
+import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
 import {
-  BlockIORootSchema,
-  BlockIOSubSchema,
-  BlockIOObjectSubSchema,
-  BlockIOKVSubSchema,
   BlockIOArraySubSchema,
-  BlockIOStringSubSchema,
-  BlockIONumberSubSchema,
   BlockIOBooleanSubSchema,
+  BlockIOCredentialsSubSchema,
+  BlockIOKVSubSchema,
+  BlockIONumberSubSchema,
+  BlockIOObjectSubSchema,
+  BlockIORootSchema,
   BlockIOSimpleTypeSubSchema,
+  BlockIOStringSubSchema,
+  BlockIOSubSchema,
   DataType,
   determineDataType,
 } from "@/lib/autogpt-server-api/types";
@@ -48,8 +51,7 @@ import {
 } from "./ui/multiselect";
 import { LocalValuedInput } from "./ui/input";
 import NodeHandle from "./NodeHandle";
-import { ConnectionData } from "./CustomNode";
-import { CredentialsInput } from "./integrations/credentials-input";
+import { CredentialsInput } from "@/components/integrations/credentials-input";
 
 type NodeObjectInputTreeProps = {
   nodeId: string;
@@ -357,6 +359,7 @@ export const NodeGenericInputField: FC<{
       return (
         <NodeCredentialsInput
           selfKey={propKey}
+          schema={propSchema as BlockIOCredentialsSubSchema}
           value={currentValue}
           errors={errors}
           className={className}
@@ -426,9 +429,9 @@ export const NodeGenericInputField: FC<{
             // If you want to build an object of booleans from `selection`
             // (like your old code), do it here. Otherwise adapt to your actual UI.
             // Example:
-            const allKeys = schema.properties
-              ? Object.keys(schema.properties)
-              : [];
+            const subSchema =
+              schema.properties || (schema as any).anyOf[0].properties;
+            const allKeys = subSchema ? Object.keys(subSchema) : [];
             handleInputChange(
               key,
               Object.fromEntries(
@@ -697,15 +700,19 @@ const NodeOneOfDiscriminatorField: FC<{
 
 const NodeCredentialsInput: FC<{
   selfKey: string;
+  schema: BlockIOCredentialsSubSchema;
   value: any;
   errors: { [key: string]: string | undefined };
   handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
   className?: string;
-}> = ({ selfKey, value, errors, handleInputChange, className }) => {
+}> = ({ selfKey, schema, value, errors, handleInputChange, className }) => {
+  const nodeInputValues = useNodesData<Node<CustomNodeData>>(useNodeId()!)?.data
+    .hardcodedValues;
   return (
     <div className={cn("flex flex-col", className)}>
       <CredentialsInput
-        selfKey={selfKey}
+        schema={schema}
+        siblingInputs={nodeInputValues}
         onSelectCredentials={(credsMeta) =>
           handleInputChange(selfKey, credsMeta)
         }
@@ -1018,7 +1025,12 @@ const NodeMultiSelectInput: FC<{
   displayName,
   handleInputChange,
 }) => {
-  const options = Object.keys(schema.properties);
+  const optionSchema =
+    schema.properties ||
+    ((schema as any).anyOf?.length > 0
+      ? (schema as any).anyOf[0].properties
+      : {});
+  const options = Object.keys(optionSchema);
 
   return (
     <div className={cn("flex flex-col", className)}>
@@ -1037,7 +1049,7 @@ const NodeMultiSelectInput: FC<{
         <MultiSelectorContent className="nowheel">
           <MultiSelectorList>
             {options
-              .map((key) => ({ ...schema.properties[key], key }))
+              .map((key) => ({ ...optionSchema[key], key }))
               .map(({ key, title, description }) => (
                 <MultiSelectorItem key={key} value={key} title={description}>
                   {title ?? key}

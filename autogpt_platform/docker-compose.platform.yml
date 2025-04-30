@@ -142,7 +142,7 @@ services:
       - NOTIFICATIONMANAGER_HOST=rest_server
       - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw= # DO NOT USE IN PRODUCTION!!
     ports:
-      - "8002:8000"
+      - "8002:8002"
     networks:
       - app-network
 

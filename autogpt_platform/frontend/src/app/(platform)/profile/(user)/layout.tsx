@@ -18,11 +18,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           href: "/profile/dashboard",
           icon: <IconDashboardLayout className="h-6 w-6" />,
         },
-        {
-          text: "Billing",
-          href: "/profile/credits",
-          icon: <IconCoin className="h-6 w-6" />,
-        },
+        ...(process.env.NEXT_PUBLIC_SHOW_BILLING_PAGE === "true"
+          ? [
+              {
+                text: "Billing",
+                href: "/profile/credits",
+                icon: <IconCoin className="h-6 w-6" />,
+              },
+            ]
+          : []),
         {
           text: "Integrations",
           href: "/profile/integrations",
