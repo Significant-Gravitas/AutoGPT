@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { Button } from "../ui/button";
 
 interface FilterOption {
   label: string;
@@ -38,26 +39,23 @@ export const SearchFilterChips: React.FC<SearchFilterChipsProps> = ({
   return (
     <div className="flex gap-2.5">
       {filters.map((filter) => (
-        <button
+        <Button
           key={filter.value}
+          variant={selected === filter.value ? "default" : "outline"}
           onClick={() => handleFilterClick(filter.value)}
-          className={`flex items-center gap-2.5 rounded-[34px] px-5 py-2 ${
-            selected === filter.value
-              ? "bg-neutral-800 text-white dark:bg-neutral-100 dark:text-neutral-900"
-              : "border border-neutral-600 text-neutral-800 dark:border-neutral-400 dark:text-neutral-200"
-          }`}
+          className={`flex h-12 items-center gap-2.5 rounded-[34px] px-5 py-2 ${selected === filter.value ? "border border-neutral-800" : "border border-neutral-600"}`}
         >
           <span
-            className={`text-base ${selected === filter.value ? "font-medium" : ""}`}
+            className={`font-sans text-base ${selected === filter.value ? "font-medium" : "font-normal"}`}
           >
             {filter.label}
           </span>
           <span
-            className={`text-base ${selected === filter.value ? "font-medium" : ""}`}
+            className={`font-sans text-base ${selected === filter.value ? "font-medium" : "font-normal"}`}
           >
             {filter.count}
           </span>
-        </button>
+        </Button>
       ))}
     </div>
   );
