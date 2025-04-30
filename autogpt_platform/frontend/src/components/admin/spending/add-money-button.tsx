@@ -85,7 +85,7 @@ export function AdminAddMoneyButton({
             <input
               type="hidden"
               name="amount"
-              value={formatCredits(Number(dollarAmount))}
+              value={Math.round(parseFloat(dollarAmount) * 100)}
             />
 
             <div className="grid gap-4 py-4">
