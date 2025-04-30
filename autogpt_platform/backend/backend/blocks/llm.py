@@ -581,9 +581,9 @@ def llm_call(
         # If there's no response, raise an error
         if not response.choices:
             if response:
-                raise ValueError(f"OpenRouter error: {response}")
+                raise ValueError(f"Llama API error: {response}")
             else:
-                raise ValueError("No response from OpenRouter.")
+                raise ValueError("No response from Llama API.")
 
         if response.choices[0].message.tool_calls:
             tool_calls = [
