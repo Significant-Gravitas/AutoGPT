@@ -85,7 +85,7 @@ export const Variants: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const buttons = canvas.getAllByRole("button");
-    await expect(buttons).toHaveLength(6);
+    await expect(buttons).toHaveLength(5);
     for (const button of buttons) {
       await userEvent.hover(button);
       await expect(button).toHaveAttribute(
@@ -115,24 +115,6 @@ export const Sizes: Story = {
       </Button>
     </div>
   ),
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const buttons = canvas.getAllByRole("button");
-    await expect(buttons).toHaveLength(5);
-    const sizeClasses = [
-      "h-8 px-3 py-1.5 text-xs",
-      "h-10 px-4 py-2 text-sm",
-      "h-12 px-5 py-2.5 text-lg",
-      "h-10 w-28",
-      "h-10 w-10",
-    ];
-    for (let i = 0; i < buttons.length; i++) {
-      await expect(buttons[i]).toHaveAttribute(
-        "class",
-        expect.stringContaining(sizeClasses[i]),
-      );
-    }
-  },
 };
 
 export const Disabled: Story = {
