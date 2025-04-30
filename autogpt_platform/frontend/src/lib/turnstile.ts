@@ -1,11 +1,18 @@
 /**
  * Utility functions for working with Cloudflare Turnstile
  */
+import { BehaveAs, getBehaveAs } from "@/lib/utils";
 
 export async function verifyTurnstileToken(
   token: string,
   action?: string,
 ): Promise<boolean> {
+  // Skip verification in local development
+  const behaveAs = getBehaveAs();
+  if (behaveAs !== BehaveAs.CLOUD) {
+    return true;
+  }
+
   try {
     const response = await fetch(
       `${process.env.NEXT_PUBLIC_AGPT_SERVER_URL}/turnstile/verify`,
