@@ -49,9 +49,9 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
 
   return (
     <>
-      <nav className="sticky top-0 z-40 mx-[16px] hidden h-16 items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] dark:border-gray-700 dark:bg-gray-900 md:inline-flex">
+      <nav className="sticky top-0 z-40 mx-[16px] hidden h-16 w-full items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] dark:border-gray-700 dark:bg-gray-900 md:inline-flex">
         <div className="flex items-center gap-11">
-          <div className="relative h-10 w-[88.87px]">
+          <div className="relative h-10 w-20">
             <IconAutoGPTLogo className="h-full w-full" />
           </div>
           {links.map((link) => (
@@ -87,7 +87,7 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
       {/* Mobile Navbar - Adjust positioning */}
       <>
         {isLoggedIn ? (
-          <div className="fixed right-4 top-4 z-50">
+          <div className="sticky top-0 z-50 w-full md:hidden">
             <MobileNavBar
               userName={profile?.username}
               menuItemGroups={[

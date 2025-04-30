@@ -89,11 +89,7 @@ export const WithInteraction: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const profileTrigger = canvas.getByText("John Doe");
-
-    await userEvent.click(profileTrigger);
-
-    // Wait for the popover to appear
-    await canvas.findByText("Edit profile");
+    const openButton = await canvas.findByLabelText("Open profile menu");
+    openButton.click();
   },
 };

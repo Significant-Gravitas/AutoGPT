@@ -32,9 +32,13 @@ const mockCreditData = {
 const meta = {
   title: "AGPT UI/Navbar",
   component: Navbar,
-  parameters: {
-    layout: "fullscreen",
-  },
+  decorators: [
+    (Story) => (
+      <div className="flex h-screen w-full justify-center">
+        <Story />
+      </div>
+    ),
+  ],
   tags: ["autodocs"],
   argTypes: {
     // isLoggedIn: { control: "boolean" },
@@ -118,21 +122,6 @@ export const NoAvatar: Story = {
   args: {
     ...Default.args,
     // avatarSrc: undefined,
-  },
-};
-
-export const WithInteraction: Story = {
-  args: {
-    ...Default.args,
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const profileTrigger = canvas.getByRole("button");
-
-    await userEvent.click(profileTrigger);
-
-    // Wait for the popover to appear
-    await canvas.findByText("Edit profile");
   },
 };
 

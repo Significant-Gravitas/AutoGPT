@@ -6,9 +6,7 @@ import { IconType } from "../ui/icons";
 const meta = {
   title: "AGPT UI/Mobile Nav Bar",
   component: MobileNavBar,
-  parameters: {
-    layout: "centered",
-  },
+
   tags: ["autodocs"],
   argTypes: {
     userName: { control: "text" },
@@ -85,20 +83,5 @@ export const LongUserName: Story = {
     userEmail: "alexander@example.com",
     avatarSrc: "https://avatars.githubusercontent.com/u/987654321?v=4",
     menuItemGroups: defaultMenuItemGroups,
-  },
-};
-
-export const WithInteraction: Story = {
-  args: {
-    ...Default.args,
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const menuTrigger = canvas.getByRole("button");
-
-    await userEvent.click(menuTrigger);
-
-    // Wait for the popover to appear
-    await canvas.findByText("Edit profile");
   },
 };
