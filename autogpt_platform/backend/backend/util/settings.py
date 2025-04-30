@@ -3,15 +3,15 @@ import os
 from enum import Enum
 from typing import Any, Dict, Generic, List, Set, Tuple, Type, TypeVar
 
-from pydantic import BaseModel, Field, PrivateAttr, ValidationInfo, field_validator
+from backend.util.data import get_data_path
+
+from pydantic import BaseModel, Field, field_validator, PrivateAttr, ValidationInfo
 from pydantic_settings import (
     BaseSettings,
     JsonConfigSettingsSource,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
 )
-
-from backend.util.data import get_data_path
 
 T = TypeVar("T", bound=BaseSettings)
 
@@ -366,6 +366,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
     groq_api_key: str = Field(default="", description="Groq API key")
     open_router_api_key: str = Field(default="", description="Open Router API Key")
+    llama_api_key: str = Field(default="", description="Llama API Key")
 
     reddit_client_id: str = Field(default="", description="Reddit client ID")
     reddit_client_secret: str = Field(default="", description="Reddit client secret")

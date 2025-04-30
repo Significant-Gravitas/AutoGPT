@@ -2,7 +2,7 @@ import base64
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
-from typing import TYPE_CHECKING, Optional
+from typing import Optional, TYPE_CHECKING
 
 from pydantic import SecretStr
 
@@ -174,6 +174,14 @@ zerobounce_credentials = APIKeyCredentials(
     provider="zerobounce",
     api_key=SecretStr(settings.secrets.zerobounce_api_key),
     title="Use Credits for ZeroBounce",
+    expires_at=None,
+)
+
+llama_api_credentials = APIKeyCredentials(
+    id="d44045af-1c33-4833-9e19-752313214de2",
+    provider="llama_api",
+    api_key=SecretStr(settings.secrets.llama_api_key),
+    title="Use Credits for Llama API",
     expires_at=None,
 )
 
