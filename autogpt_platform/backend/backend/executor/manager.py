@@ -27,8 +27,8 @@ from backend.executor.utils import create_execution_queue_config
 from backend.util.exceptions import InsufficientBalanceError
 
 if TYPE_CHECKING:
-    from backend.executor import DatabaseManager
-    from backend.notifications.notifications import NotificationManager
+    from backend.executor import DatabaseManagerClient
+    from backend.notifications.notifications import NotificationManagerClient
 
 from autogpt_libs.utils.cache import thread_cached
 from prometheus_client import Gauge, start_http_server
@@ -135,7 +135,7 @@ ExecutionStream = Generator[NodeExecutionEntry, None, None]
 
 
 def execute_node(
-    db_client: "DatabaseManager",
+    db_client: "DatabaseManagerClient",
     creds_manager: IntegrationCredentialsManager,
     data: NodeExecutionEntry,
     execution_stats: NodeExecutionStats | None = None,
@@ -284,7 +284,7 @@ def execute_node(
 
 
 def _enqueue_next_nodes(
-    db_client: "DatabaseManager",
+    db_client: "DatabaseManagerClient",
     node: Node,
     output: BlockData,
     user_id: str,
@@ -1064,26 +1064,22 @@ class ExecutionManager(AppProcess):
 
         log(f"{prefix} ✅ Finished GraphExec cleanup")
 
-    @property
-    def db_client(self) -> "DatabaseManager":
-        return get_db_client()
-
 
 # ------- UTILITIES ------- #
 
 
 @thread_cached
-def get_db_client() -> "DatabaseManager":
-    from backend.executor import DatabaseManager
+def get_db_client() -> "DatabaseManagerClient":
+    from backend.executor import DatabaseManagerClient
 
-    return get_service_client(DatabaseManager)
+    return get_service_client(DatabaseManagerClient)
 
 
 @thread_cached
-def get_notification_service() -> "NotificationManager":
-    from backend.notifications import NotificationManager
+def get_notification_service() -> "NotificationManagerClient":
+    from backend.notifications import NotificationManagerClient
 
-    return get_service_client(NotificationManager)
+    return get_service_client(NotificationManagerClient)
 
 
 def send_execution_update(entry: GraphExecution | NodeExecutionResult):

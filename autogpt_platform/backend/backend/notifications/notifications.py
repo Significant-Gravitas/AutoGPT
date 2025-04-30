@@ -114,16 +114,16 @@ def create_notification_config() -> RabbitMQConfig:
 
 @thread_cached
 def get_scheduler():
-    from backend.executor import Scheduler
+    from backend.executor.scheduler import SchedulerClient
 
-    return get_service_client(Scheduler)
+    return get_service_client(SchedulerClient)
 
 
 @thread_cached
 def get_db():
-    from backend.executor.database import DatabaseManager
+    from backend.executor.database import DatabaseManagerClient
 
-    return get_service_client(DatabaseManager)
+    return get_service_client(DatabaseManagerClient)
 
 
 class NotificationManager(AppService):

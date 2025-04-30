@@ -26,10 +26,10 @@ logger = logging.getLogger(__name__)
 
 @thread_cached
 def get_database_manager_client():
-    from backend.executor import DatabaseManager
+    from backend.executor import DatabaseManagerClient
     from backend.util.service import get_service_client
 
-    return get_service_client(DatabaseManager)
+    return get_service_client(DatabaseManagerClient)
 
 
 def _get_tool_requests(entry: dict[str, Any]) -> list[str]:

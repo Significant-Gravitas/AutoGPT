@@ -39,7 +39,7 @@ from backend.server.model import Pagination
 from backend.server.v2.admin.model import UserHistoryResponse
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.retry import func_retry
-from backend.util.service import get_app_service_client
+from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
 settings = Settings()
@@ -376,7 +376,7 @@ class UserCreditBase(ABC):
 class UserCredit(UserCreditBase):
     @thread_cached
     def notification_client(self) -> NotificationManagerClient:
-        return get_app_service_client(NotificationManagerClient)
+        return get_service_client(NotificationManagerClient)
 
     async def _send_refund_notification(
         self,

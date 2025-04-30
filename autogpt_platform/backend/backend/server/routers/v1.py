@@ -75,7 +75,7 @@ from backend.server.model import (
     UpdatePermissionsRequest,
 )
 from backend.server.utils import get_user_id
-from backend.util.service import get_app_service_client
+from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
@@ -84,7 +84,7 @@ if TYPE_CHECKING:
 
 @thread_cached
 def execution_scheduler_client() -> scheduler.SchedulerClient:
-    return get_app_service_client(scheduler.SchedulerClient)
+    return get_service_client(scheduler.SchedulerClient)
 
 
 @thread_cached

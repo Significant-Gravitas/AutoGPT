@@ -23,7 +23,7 @@ from backend.util.service import (
     AppServiceClient,
     endpoint_to_async,
     expose,
-    get_app_service_client,
+    get_service_client,
 )
 from backend.util.settings import Config
 
@@ -65,7 +65,7 @@ def job_listener(event):
 
 @thread_cached
 def get_notification_client():
-    return get_app_service_client(NotificationManagerClient)
+    return get_service_client(NotificationManagerClient)
 
 
 def execute_graph(**kwargs):
