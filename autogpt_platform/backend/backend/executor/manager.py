@@ -64,7 +64,7 @@ from backend.util.file import clean_exec_files
 from backend.util.logging import configure_logging
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import func_retry
-from backend.util.service import close_service_client, get_service_client
+from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -461,7 +461,7 @@ class Executor:
         log(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting Redis...")
         redis.disconnect()
         log(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting DB manager...")
-        close_service_client(cls.db_client)
+        cls.db_client.close()
         log(f"[on_node_executor_stop {cls.pid}] ✅ Finished NodeExec cleanup")
         sys.exit(0)
 

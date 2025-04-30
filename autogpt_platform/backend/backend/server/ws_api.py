@@ -45,13 +45,6 @@ def get_connection_manager():
     return _connection_manager
 
 
-# @thread_cached
-# def get_db_client():
-#     from backend.executor import DatabaseManagerClient
-
-#     return get_service_client(DatabaseManagerClient)
-
-
 async def event_broadcaster(manager: ConnectionManager):
     try:
         event_queue = AsyncRedisExecutionEventBus()

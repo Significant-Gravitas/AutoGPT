@@ -309,9 +309,5 @@ class SchedulerClient(AppServiceClient):
     add_execution_schedule = endpoint_to_async(Scheduler.add_execution_schedule)
     delete_schedule = endpoint_to_async(Scheduler.delete_schedule)
     get_execution_schedules = endpoint_to_async(Scheduler.get_execution_schedules)
-    add_batched_notification_schedule = endpoint_to_async(
-        Scheduler.add_batched_notification_schedule
-    )
-    add_weekly_notification_schedule = endpoint_to_async(
-        Scheduler.add_weekly_notification_schedule
-    )
+    add_batched_notification_schedule = Scheduler.add_batched_notification_schedule
+    add_weekly_notification_schedule = Scheduler.add_weekly_notification_schedule

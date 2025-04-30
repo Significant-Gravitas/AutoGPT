@@ -227,13 +227,6 @@ class AppService(BaseAppService, ABC):
 AS = TypeVar("AS", bound=AppService)
 
 
-def close_service_client(client: Any) -> None:
-    if hasattr(client, "close"):
-        client.close()
-    else:
-        logger.warning(f"Client {client} is not closable")
-
-
 class AppServiceClient(ABC):
     @classmethod
     @abstractmethod
@@ -241,6 +234,9 @@ class AppServiceClient(ABC):
         pass
 
     def health_check(self):
+        pass
+
+    def close(self):
         pass
 
 
