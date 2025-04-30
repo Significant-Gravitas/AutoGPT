@@ -4,6 +4,7 @@ import * as React from "react";
 import { IconClose } from "../ui/icons";
 import Image from "next/image";
 import { Button } from "../agptui/Button";
+import { X } from "lucide-react";
 
 interface PublishAgentAwaitingReviewProps {
   agentName: string;
@@ -28,37 +29,35 @@ export const PublishAgentAwaitingReview: React.FC<
 }) => {
   return (
     <div
-      className="inline-flex min-h-screen w-full flex-col items-center justify-center rounded-none bg-white dark:bg-neutral-900 sm:h-auto sm:min-h-[824px] sm:rounded-3xl"
       role="dialog"
       aria-labelledby="modal-title"
+      className="m-auto flex h-fit w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800"
     >
-      <div className="relative h-[180px] w-full rounded-none bg-white dark:bg-neutral-800 sm:h-[140px] sm:rounded-t-3xl">
-        <div className="absolute left-0 top-[40px] flex w-full flex-col items-center justify-start px-6 sm:top-[40px]">
-          <div
-            id="modal-title"
-            className="mb-4 text-center font-poppins text-xl font-semibold leading-relaxed text-neutral-900 dark:text-neutral-100 sm:mb-2 sm:text-2xl"
+      {/* Top  */}
+      <div className="relative items-center justify-center border-b border-slate-200 pb-4 pt-12 dark:border-slate-700 md:flex md:h-28">
+        <div className="absolute right-4 top-4">
+          <Button
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-transparent p-0 transition-colors hover:bg-gray-200"
+            aria-label="Close"
           >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="px-4 text-center">
+          <h3 className="font-poppins text-lg font-semibold text-neutral-900 md:text-2xl">
             Agent is awaiting review
-          </div>
-          <div className="max-w-[280px] text-center font-inter text-sm font-normal leading-relaxed text-slate-500 dark:text-slate-400 sm:max-w-none">
+          </h3>
+          <p className="hidden font-sans text-sm font-normal text-neutral-600 sm:flex">
             In the meantime you can check your progress on your Creator
             Dashboard page
-          </div>
+          </p>
         </div>
-        <button
-          onClick={onClose}
-          className="absolute right-4 top-4 flex h-[38px] w-[38px] items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200 dark:bg-neutral-700 dark:hover:bg-neutral-600"
-          aria-label="Close dialog"
-        >
-          <IconClose
-            size="default"
-            className="text-neutral-600 dark:text-neutral-300"
-          />
-        </button>
       </div>
 
-      <div className="flex flex-1 flex-col items-center gap-8 px-6 py-6 sm:gap-6">
+      <div className="h-[50vh] flex-grow space-y-5 overflow-y-auto p-4 md:h-[38rem] md:p-6">
         <div className="mt-4 flex w-full flex-col items-center gap-6 sm:mt-0 sm:gap-4">
+          {/* Heading */}
           <div className="flex flex-col items-center gap-3 sm:gap-2">
             <div className="text-center font-sans text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
               {agentName}
@@ -68,6 +67,7 @@ export const PublishAgentAwaitingReview: React.FC<
             </div>
           </div>
 
+          {/* Image */}
           <div
             className="h-[280px] w-full rounded-xl bg-neutral-200 dark:bg-neutral-700 sm:h-[350px]"
             role="img"
@@ -86,8 +86,9 @@ export const PublishAgentAwaitingReview: React.FC<
             )}
           </div>
 
+          {/* Description */}
           <div
-            className="h-[150px] w-full overflow-y-auto font-sans text-base font-normal leading-normal text-neutral-600 dark:text-neutral-400 sm:h-[180px]"
+            className="w-full whitespace-pre-line font-sans text-base font-normal text-neutral-600 dark:text-neutral-400"
             tabIndex={0}
             role="region"
             aria-label="Agent description"
@@ -100,13 +101,13 @@ export const PublishAgentAwaitingReview: React.FC<
       <div className="flex w-full flex-col items-center justify-center gap-4 border-t border-slate-200 p-6 dark:border-slate-700 sm:flex-row">
         <Button
           onClick={onDone}
-          className="h-12 w-full rounded-[59px] sm:flex-1"
+          className="flex h-12 w-full items-center justify-center rounded-[59px] sm:flex-1"
         >
           Done
         </Button>
         <Button
           onClick={onViewProgress}
-          className="h-12 w-full rounded-[59px] bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600 sm:flex-1"
+          className="flex h-12 w-full items-center justify-center rounded-[59px] bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-700 dark:text-neutral-100 dark:hover:bg-neutral-600 sm:flex-1"
         >
           View progress
         </Button>

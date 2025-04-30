@@ -176,7 +176,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col rounded-3xl bg-white">
+    <div className="mx-auto flex h-fit w-full max-w-2xl flex-col rounded-3xl bg-white">
       {/* Top section */}
       <div className="relative flex h-28 items-center justify-center border-b border-slate-200 dark:border-slate-700">
         {/* Cancel Button */}
@@ -201,7 +201,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
       </div>
 
       {/* Form fields */}
-      <div className="h-[38rem] flex-grow space-y-5 overflow-y-auto p-6">
+      <div className="h-[50vh] flex-grow space-y-5 overflow-y-auto p-4 md:h-[38rem] md:p-6">
         <div className="space-y-1.5">
           <Label
             htmlFor="title"
@@ -215,7 +215,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="Agent name"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            className="h-11 rounded-full border border-[#E2E8F0] px-4 py-2.5 font-sans text-base text-neutral-500"
+            className="h-11 rounded-full border border-[#E2E8F0] px-4 py-2.5 font-sans text-sm text-neutral-500 md:text-base"
           />
         </div>
 
@@ -232,7 +232,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="A tagline for your agent"
             value={subheader}
             onChange={(e) => setSubheader(e.target.value)}
-            className="h-11 rounded-full border border-[#E2E8F0] px-4 py-2.5 font-sans text-base text-neutral-500"
+            className="h-11 rounded-full border border-[#E2E8F0] px-4 py-2.5 font-sans text-sm text-neutral-500 md:text-base"
           />
         </div>
 
@@ -249,7 +249,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="URL-friendly name for your agent"
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
-            className="h-11 rounded-full border border-[#E2E8F0] px-4 py-2.5 font-sans text-base text-neutral-500"
+            className="h-11 rounded-full border border-[#E2E8F0] px-4 py-2.5 font-sans text-sm text-neutral-500 md:text-base"
           />
         </div>
 
@@ -354,12 +354,12 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
           <Label className="font-sans text-sm font-medium text-[#020617]">
             AI image generator
           </Label>
-          <div className="flex items-center justify-between">
-            <p className="font-sans text-neutral-500">
+          <div className="flex flex-col justify-between gap-2 md:flex-row md:items-center">
+            <p className="font-sans text-sm text-neutral-500 md:text-base">
               You can use AI to generate a cover image for you
             </p>
             <Button
-              className={`bg-neutral-800 font-sans text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 ${
+              className={`w-fit bg-neutral-800 font-sans text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 ${
                 images.length >= 5 ? "cursor-not-allowed opacity-50" : ""
               }`}
               onClick={handleGenerateImage}
@@ -387,7 +387,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="Paste a video link here"
             value={youtubeLink}
             onChange={(e) => setYoutubeLink(e.target.value)}
-            className="h-11 rounded-full border border-[#E2E8F0] px-4 py-2.5 font-sans text-base text-neutral-500"
+            className="h-11 rounded-full border border-[#E2E8F0] px-4 py-2.5 font-sans text-sm text-neutral-500 md:text-base"
           />
         </div>
 
@@ -399,7 +399,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             Category
           </Label>
           <Select value={category} onValueChange={setCategory}>
-            <SelectTrigger className="h-11 rounded-full border border-[#E2E8F0] px-4 py-2.5 font-sans text-base text-neutral-500">
+            <SelectTrigger className="h-11 rounded-full border border-[#E2E8F0] px-4 py-2.5 font-sans text-sm text-neutral-500 md:text-base">
               <SelectValue placeholder="Select a category for your agent" />
             </SelectTrigger>
             <SelectContent className="font-sans">
@@ -429,7 +429,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             placeholder="Describe your agent and what it does"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            className="h-[100px] w-full resize-none rounded-2xl border border-[#E2E8F0] px-4 py-2.5 font-sans text-base text-neutral-500"
+            className="h-[100px] w-full resize-none rounded-2xl border border-[#E2E8F0] px-4 py-2.5 font-sans text-sm text-neutral-500 md:text-base"
           ></Textarea>
         </div>
       </div>
@@ -439,14 +439,14 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
         <Button
           onClick={onBack}
           size="lg"
-          className="w-full dark:border-slate-700 dark:text-slate-300 sm:flex-1"
+          className="flex w-full items-center justify-center text-sm dark:border-slate-700 dark:text-slate-300 sm:flex-1 md:text-base"
         >
           Back
         </Button>
         <Button
           onClick={handleSubmit}
           size="lg"
-          className="w-full bg-neutral-800 text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 sm:flex-1"
+          className="flex w-full items-center justify-center bg-neutral-800 text-sm text-white hover:bg-neutral-900 dark:bg-neutral-600 dark:hover:bg-neutral-500 sm:flex-1 md:text-base"
         >
           Submit for review
         </Button>

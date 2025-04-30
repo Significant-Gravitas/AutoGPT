@@ -239,24 +239,18 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
         );
       case "review":
         return publishData ? (
-          <div className="flex justify-center">
-            <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
-              <div className="h-[600px] overflow-y-auto">
-                <PublishAgentAwaitingReview
-                  agentName={publishData.name}
-                  subheader={publishData.sub_heading}
-                  description={publishData.description}
-                  thumbnailSrc={publishData.image_urls[0]}
-                  onClose={handleClose}
-                  onDone={handleClose}
-                  onViewProgress={() => {
-                    router.push("/profile/dashboard");
-                    handleClose();
-                  }}
-                />
-              </div>
-            </div>
-          </div>
+          <PublishAgentAwaitingReview
+            agentName={publishData.name}
+            subheader={publishData.sub_heading}
+            description={publishData.description}
+            thumbnailSrc={publishData.image_urls[0]}
+            onClose={handleClose}
+            onDone={handleClose}
+            onViewProgress={() => {
+              router.push("/profile/dashboard");
+              handleClose();
+            }}
+          />
         ) : null;
     }
   };
@@ -266,7 +260,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
       <DialogTrigger asChild>
         {trigger || <Button>Publish Agent</Button>}
       </DialogTrigger>
-      <DialogContent className="bg-blck/40 h-screen w-screen max-w-full rounded-none border-none backdrop-blur-[0.375rem]">
+      <DialogContent className="h-screen w-screen max-w-full overflow-auto rounded-none border-none bg-black/40 backdrop-blur-[0.375rem]">
         {renderContent()}
       </DialogContent>
     </Dialog>
