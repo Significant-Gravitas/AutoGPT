@@ -33,7 +33,7 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
         <CardTitle className="line-clamp-3 font-poppins text-3xl font-medium text-zinc-800">
           {agent.agent_name}
         </CardTitle>
-        <CardDescription className="line-clamp-1 font-sans text-lg font-normal text-zinc-800">
+        <CardDescription className="line-clamp-1 font-sans text-base font-normal text-zinc-800">
           By {agent.creator}
         </CardDescription>
       </CardHeader>
@@ -65,7 +65,7 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
           >
             <CardDescription
               data-testid="agent-description"
-              className="line-clamp-6 font-sans text-sm text-neutral-800"
+              className="line-clamp-6 font-sans text-sm text-zinc-600"
             >
               {agent.description}
             </CardDescription>

@@ -1,9 +1,8 @@
+"use client";
 import * as React from "react";
 import Link from "next/link";
-import { Button } from "./Button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { Menu } from "lucide-react";
 import { IconDashboardLayout } from "../ui/icons";
+import { usePathname } from "next/navigation";
 
 export interface SidebarLink {
   text: string;
@@ -28,54 +27,32 @@ const getDefaultIconForLink = () => {
 export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
   // Extract all links from linkGroups
   const allLinks = linkGroups.flatMap((group) => group.links);
+  const pathname = usePathname();
 
   // Function to render link items
   const renderLinks = () => {
-    return allLinks.map((link, index) => (
-      <Link
-        key={`${link.href}-${index}`}
-        href={link.href}
-        className="inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
-      >
-        {link.icon || getDefaultIconForLink()}
-        <div className="p-ui-medium text-base font-medium leading-normal">
-          {link.text}
-        </div>
-      </Link>
-    ));
+    return allLinks.map((link, index) => {
+      const isActive = pathname === link.href;
+      return (
+        <Link
+          key={`${link.href}-${index}`}
+          href={link.href}
+          className={`inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 ${
+            isActive
+              ? "bg-neutral-800 text-white dark:bg-neutral-700 dark:text-white"
+              : "text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+          }`}
+        >
+          {link.icon || getDefaultIconForLink()}
+          <p className="font-sans text-base font-medium">{link.text}</p>
+        </Link>
+      );
+    });
   };
 
   return (
-    <>
-      <Sheet>
-        <SheetTrigger asChild>
-          <Button
-            aria-label="Open sidebar menu"
-            className="fixed left-4 top-4 z-50 flex h-14 w-14 items-center justify-center rounded-lg border border-neutral-500 bg-neutral-200 hover:bg-gray-200/50 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-gray-700/50 md:block lg:hidden"
-          >
-            <Menu className="h-8 w-8 stroke-black dark:stroke-white" />
-            <span className="sr-only">Open sidebar menu</span>
-          </Button>
-        </SheetTrigger>
-        <SheetContent
-          side="left"
-          className="z-50 w-[280px] border-none p-0 dark:bg-neutral-900 sm:w-[280px]"
-        >
-          <div className="h-full w-full rounded-2xl bg-zinc-200 dark:bg-zinc-800">
-            <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
-              {renderLinks()}
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      <div className="relative hidden h-[912px] w-[234px] border-none lg:block">
-        <div className="h-full w-full rounded-2xl bg-zinc-200 dark:bg-zinc-800">
-          <div className="inline-flex h-[264px] flex-col items-start justify-start gap-6 p-3">
-            {renderLinks()}
-          </div>
-        </div>
-      </div>
-    </>
+    <div className="sticky top-24 flex h-[calc(100vh-7rem)] w-60 flex-col gap-6 rounded-[1rem] bg-zinc-200 p-3">
+      {renderLinks()}
+    </div>
   );
 };

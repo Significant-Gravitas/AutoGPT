@@ -149,7 +149,7 @@ export default function PrivatePage() {
     : [];
 
   return (
-    <div className="mx-auto max-w-3xl md:py-8">
+    <div className="mx-auto max-w-3xl md:pb-8">
       <h2 className="mb-4 text-lg">Connections & Credentials</h2>
       <Table>
         <TableHeader>

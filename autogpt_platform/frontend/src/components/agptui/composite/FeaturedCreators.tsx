@@ -33,7 +33,7 @@ export const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({
   return (
     <div className="flex w-full flex-col items-center justify-center">
       <div className="w-full">
-        <h2 className="mb-9 font-poppins text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+        <h2 className="mb-9 text-base font-medium text-zinc-500 dark:text-zinc-200">
           {title}
         </h2>
 

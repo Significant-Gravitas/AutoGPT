@@ -11,6 +11,8 @@ import { useToast } from "@/components/ui/use-toast";
 import useSupabase from "@/hooks/useSupabase";
 import { DownloadIcon, LoaderIcon } from "lucide-react";
 import { useOnboarding } from "../onboarding/onboarding-provider";
+import AutogptButton from "./AutogptButton";
+import { Chip } from "./Chip";
 interface AgentInfoProps {
   name: string;
   creator: string;
@@ -97,37 +99,33 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   };
 
   return (
-    <div className="w-full max-w-[25rem] space-y-11">
+    <div className="w-full max-w-[27rem] space-y-7">
       {/* Top part */}
-      <div>
-        <h2 className="mb-3 font-poppins text-4xl font-medium text-neutral-900">
-          {name}
-        </h2>
-        <div className="mb-7 flex w-full items-center gap-1.5 font-sans">
-          <p className="text-xl font-normal text-neutral-800">by</p>
-          <Link
-            href={`/marketplace/creator/${encodeURIComponent(creator)}`}
-            className="text-xl font-medium text-neutral-800 hover:underline"
-          >
-            {creator}
-          </Link>
+      <div className="space-y-14">
+        {/* Agent name */}
+        <div>
+          <h2 className="font-poppins text-[1.75rem] font-medium leading-[2.5rem] text-zinc-800">
+            {name}
+          </h2>
+
+          {/* Creator name */}
+          <div className="mb-7 flex w-full items-center gap-1.5 font-sans">
+            <p className="text-base font-normal text-zinc-800">by</p>
+            <Link
+              href={`/marketplace/creator/${encodeURIComponent(creator)}`}
+              className="text-base font-medium text-zinc-800 hover:underline"
+            >
+              {creator}
+            </Link>
+          </div>
         </div>
 
-        <p className="mb-7 line-clamp-2 font-sans text-xl font-normal text-neutral-600">
-          {shortDescription}
-        </p>
-
-        <div className="mb-14 w-full">
+        {/* Download and run button */}
+        <div className="w-full">
           {user ? (
-            <button
-              onClick={handleAddToLibrary}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-[38px] bg-violet-600 px-4 py-3 transition-colors hover:bg-violet-700 sm:w-auto sm:gap-2.5 sm:px-5 sm:py-3.5 lg:px-6 lg:py-4"
-            >
-              <IconPlay className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
-              <span className="font-poppins text-base font-medium text-neutral-50 sm:text-lg">
-                Add To Library
-              </span>
-            </button>
+            <AutogptButton variant={"secondary"} onClick={handleAddToLibrary}>
+              Add To Library
+            </AutogptButton>
           ) : (
             <button
               onClick={handleDownloadToLibrary}
@@ -149,47 +147,42 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
             </button>
           )}
         </div>
-
-        <div className="flex w-full items-center justify-between">
+        {/* Runs and ratings */}
+        <div className="flex w-full items-center gap-10">
           <div className="flex items-center gap-1.5 sm:gap-2">
-            <span className="font-sans text-lg font-semibold text-neutral-800">
+            <span className="font-sans text-base font-medium text-zinc-800">
               {rating.toFixed(1)}
             </span>
             <div className="flex gap-0.5">{StarRatingIcons(rating)}</div>
           </div>
-          <div className="font-sans text-lg font-semibold text-neutral-800">
+          <div className="font-sans text-base font-medium text-zinc-800">
             {runs.toLocaleString()} runs
           </div>
         </div>
       </div>
 
       {/* Separator */}
-      <Separator className="mb-4 lg:mb-[44px]" />
+      <Separator className="bg-neutral-300" />
 
       {/* Bottom part */}
       <div className="space-y-9">
         <div className="space-y-2.5">
-          <p className="font-sans text-base font-medium text-neutral-800">
+          <p className="font-sans text-base font-medium text-zinc-800">
             Description
           </p>
-          <p className="whitespace-pre-line font-sans text-base font-normal text-neutral-600">
+          <p className="whitespace-pre-line font-sans text-base font-normal text-zinc-600">
             {longDescription}
           </p>
         </div>
 
         {/* Categories */}
         <div className="space-y-2.5">
-          <p className="font-sans text-base font-medium text-neutral-800">
+          <p className="font-sans text-base font-medium text-zinc-800">
             Categories
           </p>
           <div className="flex flex-wrap gap-2.5">
             {categories.map((category, index) => (
-              <p
-                key={index}
-                className="rounded-full border border-neutral-600 bg-white px-5 py-3 font-sans text-base font-normal text-neutral-800"
-              >
-                {category}
-              </p>
+              <Chip key={index}>{category}</Chip>
             ))}
           </div>
         </div>
@@ -197,16 +190,18 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
         {/* TODO : Rating Agent */}
 
         {/* Version History */}
-        <div className="flex flex-col gap-2.5">
-          <p className="font-base font-sans font-medium text-neutral-800">
+        <div className="space-y-2.5">
+          <p className="font-sans text-base font-medium text-zinc-800">
             Version history
           </p>
-          <p className="font-sans text-base font-normal text-neutral-600">
-            Last updated {lastUpdated}
-          </p>
-          <p className="font-sans text-base font-normal text-neutral-600">
-            Version {version}
-          </p>
+          <div className="space-y-1.5">
+            <p className="font-sans text-base font-normal text-zinc-600">
+              Last updated {lastUpdated}
+            </p>
+            <p className="font-sans text-base font-normal text-zinc-600">
+              Version {version}
+            </p>
+          </div>
         </div>
       </div>
     </div>

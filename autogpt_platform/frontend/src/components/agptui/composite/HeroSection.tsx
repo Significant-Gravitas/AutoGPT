@@ -23,7 +23,7 @@ export const HeroSection: React.FC = () => {
   return (
     <div className="mx-auto flex w-[90%] flex-col items-center justify-center pb-12 pt-16 md:w-full md:pb-28 md:pt-32">
       {/* Title */}
-      <h1 className="mb-4 text-center font-poppins text-2xl font-semibold leading-8 text-neutral-950 md:mb-9 md:text-5xl md:leading-[3rem]">
+      <h1 className="mb-4 text-center font-poppins text-2xl font-semibold leading-8 text-zinc-900 md:mb-9 md:text-[2.75rem] md:leading-[3.5rem]">
         <span>Explore AI agents built for </span>
         <span className="text-violet-600">you</span>
         <br />
@@ -32,7 +32,7 @@ export const HeroSection: React.FC = () => {
       </h1>
 
       {/* Description */}
-      <h3 className="mb-6 text-center font-sans text-lg text-neutral-700 md:mb-12 md:text-2xl">
+      <h3 className="mb-6 text-center font-sans text-lg text-zinc-600 md:mb-12 md:text-xl">
         Bringing you AI agents designed by thinkers from around the world
       </h3>
 

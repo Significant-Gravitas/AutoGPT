@@ -9,7 +9,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
         links={[
           {
             name: "Home",
-            href: "/home",
+            href: "/library",
           },
           {
             name: "Marketplace",
@@ -63,7 +63,7 @@ export default function PlatformLayout({ children }: { children: ReactNode }) {
           },
         ]}
       />
-      <main>{children}</main>
+      <main className="w-full pt-8">{children}</main>
     </>
   );
 }

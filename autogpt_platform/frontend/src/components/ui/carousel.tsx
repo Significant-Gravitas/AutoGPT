@@ -211,9 +211,9 @@ const CarouselPrevious = React.forwardRef<
         variant={variant}
         size={size}
         className={cn(
-          "pointer absolute h-[52px] w-[52px] rounded-full",
+          "pointer absolute h-10 w-10 rounded-full border border-zinc-700 bg-white text-zinc-800 hover:bg-zinc-800 hover:text-white",
           orientation === "horizontal"
-            ? "right-20 top-0"
+            ? "right-24 top-0"
             : "-top-12 left-1/2 -translate-x-1/2 rotate-90",
           className,
         )}
@@ -226,7 +226,7 @@ const CarouselPrevious = React.forwardRef<
         }}
         {...props}
       >
-        <ChevronLeft className="h-8 w-8" strokeWidth={1.25} />
+        <ChevronLeft className="h-5 w-5" strokeWidth={1.25} />
         <span className="sr-only">Previous slide</span>
       </Button>
     );
@@ -257,9 +257,9 @@ const CarouselNext = React.forwardRef<
         variant={variant}
         size={size}
         className={cn(
-          "absolute h-[52px] w-[52px] rounded-full",
+          "order absolute h-10 w-10 rounded-full border-zinc-700 bg-white text-zinc-800 hover:bg-zinc-800 hover:text-white",
           orientation === "horizontal"
-            ? "right-4 top-0"
+            ? "right-12 top-0"
             : "-bottom-12 left-1/2 -translate-x-1/2 rotate-90",
           className,
         )}
@@ -267,7 +267,7 @@ const CarouselNext = React.forwardRef<
         onClick={handleClick}
         {...props}
       >
-        <ChevronRight className="h-8 w-8" strokeWidth={1.25} />
+        <ChevronRight className="h-5 w-5" strokeWidth={1.25} />
         <span className="sr-only">Next slide</span>
       </Button>
     );
@@ -311,8 +311,8 @@ const CarouselIndicator = React.forwardRef<
           onClick={() => scrollTo(index)}
           className={cn(
             selectedIndex === index
-              ? "h-3 w-[52px] rounded-[39px] bg-neutral-800 transition-all duration-500 dark:bg-neutral-200"
-              : "h-3 w-3 rounded-full bg-neutral-300 transition-all duration-500 dark:bg-neutral-600",
+              ? "h-3 w-[52px] rounded-[39px] bg-zinc-600 transition-all duration-500 dark:bg-neutral-200"
+              : "h-3 w-3 rounded-full bg-zinc-300 transition-all duration-500 dark:bg-neutral-600",
             "cursor-pointer",
           )}
         />

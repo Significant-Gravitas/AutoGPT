@@ -149,11 +149,13 @@ export default async function Page({}: {}) {
   const { featuredAgents, topAgents, featuredCreators } = await getStoreData();
 
   return (
-    <div className="mx-auto w-screen max-w-[1360px] overflow-x-hidden">
-      <main>
+    <main>
+      <section className="px-10">
         <HeroSection />
-        <FeaturedSection featuredAgents={featuredAgents.agents} />
-        {/* 100px margin because our featured sections button are placed 40px below the container */}
+      </section>
+      <FeaturedSection featuredAgents={featuredAgents.agents} />
+      {/* 100px margin because our featured sections button are placed 40px below the container */}
+      <section className="px-10">
         <Separator className="mb-6 mt-24" />
         <AgentsSection
           sectionTitle="Top Agents"
@@ -166,10 +168,9 @@ export default async function Page({}: {}) {
         <Separator className="mb-[25px] mt-[60px]" />
         <BecomeACreator
           title="Become a Creator"
-          description="Join our ever-growing community of hackers and tinkerers"
-          buttonText="Become a Creator"
+          buttonText="Upload your agent"
         />
-      </main>
-    </div>
+      </section>
+    </main>
   );
 }

@@ -44,50 +44,48 @@ export default async function Page({
     const creatorAgents = await api.getStoreAgents({ creator: params.creator });
 
     return (
-      <div className="mx-auto w-screen max-w-[1360px]">
-        <main className="mt-5 px-4">
-          <BreadCrumbs
-            items={[
-              { name: "Store", link: "/marketplace" },
-              { name: creator.name, link: "#" },
-            ]}
-          />
+      <main className="px-10">
+        <BreadCrumbs
+          items={[
+            { name: "Store", link: "/marketplace" },
+            { name: creator.name, link: "#" },
+          ]}
+        />
 
-          <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:flex-row md:gap-8">
-            <div className="w-full md:w-auto md:shrink-0">
-              <CreatorInfoCard
-                username={creator.name}
-                handle={creator.username}
-                avatarSrc={creator.avatar_url}
-                categories={creator.top_categories}
-                averageRating={creator.agent_rating}
-                totalRuns={creator.agent_runs}
-              />
-            </div>
-            <div className="flex min-w-0 flex-1 flex-col gap-4 sm:gap-6 md:gap-8">
-              <p className="font-geist text-underline-position-from-font text-decoration-skip-none text-left text-base font-medium leading-6">
-                About
-              </p>
-              <div
-                className="font-poppins text-[48px] font-normal leading-[59px] text-neutral-900 dark:text-zinc-50"
-                style={{ whiteSpace: "pre-line" }}
-              >
-                {creator.description}
-              </div>
-
-              <CreatorLinks links={creator.links} />
-            </div>
-          </div>
-          <div className="mt-8 sm:mt-12 md:mt-16 lg:pb-[58px]">
-            <Separator className="mb-6 bg-gray-200" />
-            <AgentsSection
-              agents={creatorAgents.agents}
-              hideAvatars={true}
-              sectionTitle={`Agents by ${creator.name}`}
+        <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:flex-row md:gap-8">
+          <div>
+            <CreatorInfoCard
+              username={creator.name}
+              handle={creator.username}
+              avatarSrc={creator.avatar_url}
+              categories={creator.top_categories}
+              averageRating={creator.agent_rating}
+              totalRuns={creator.agent_runs}
             />
           </div>
-        </main>
-      </div>
+          <div className="flex-1 space-y-7">
+            <div>
+              <p className="font-sans text-base font-medium text-zinc-800">
+                About
+              </p>
+              <h1 className="font-poppins text-4xl font-normal leading-[3.25rem] text-zinc-800">
+                {creator.description}
+              </h1>
+            </div>
+
+            <CreatorLinks links={creator.links} />
+          </div>
+        </div>
+
+        <div className="mt-8 sm:mt-12 md:mt-16 lg:pb-[58px]">
+          <Separator className="mb-6 bg-gray-200" />
+          <AgentsSection
+            agents={creatorAgents.agents}
+            hideAvatars={true}
+            sectionTitle={`Agents by ${creator.name}`}
+          />
+        </div>
+      </main>
     );
   } catch (error) {
     return (

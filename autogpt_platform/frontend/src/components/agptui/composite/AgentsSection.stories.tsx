@@ -3,7 +3,7 @@ import { Agent, AgentsSection } from "./AgentsSection";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
-  title: "AGPT UI/Composite/Agents Section",
+  title: "new/Composite/Agents Section",
   component: AgentsSection,
 
   decorators: [

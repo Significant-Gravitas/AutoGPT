@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Badge } from "@/components/ui/badge";
+import { Chip } from "./Chip";
 
 interface FilterChipsProps {
   badges: string[];
@@ -38,17 +39,13 @@ export const FilterChips: React.FC<FilterChipsProps> = ({
   return (
     <div className="flex flex-wrap items-center justify-center gap-3">
       {badges.map((badge) => (
-        <Badge
+        <div
           data-testid="filter-chip"
           key={badge}
-          variant={selectedFilters.includes(badge) ? "secondary" : "outline"}
-          className="rounded-[2rem] border border-neutral-600 px-5 py-3 hover:cursor-pointer hover:bg-neutral-200"
           onClick={() => handleBadgeClick(badge)}
         >
-          <p className="font-sans text-base font-normal text-neutral-800 md:text-xl">
-            {badge}
-          </p>
-        </Badge>
+          <Chip className="hover:cursor-pointer">{badge}</Chip>
+        </div>
       ))}
     </div>
   );

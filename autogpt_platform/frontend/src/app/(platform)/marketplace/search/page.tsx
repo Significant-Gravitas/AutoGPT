@@ -116,67 +116,67 @@ function SearchResults({
   };
 
   return (
-    <div className="w-full">
-      <div className="mx-auto min-h-screen max-w-[1440px] px-10 lg:min-w-[1440px]">
-        <div className="mt-8 flex items-center">
-          <div className="flex-1">
-            <h2 className="font-geist text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
-              Results for:
-            </h2>
-            <h1 className="font-poppins text-2xl font-semibold leading-[32px] text-neutral-800 dark:text-neutral-100">
-              {searchTerm}
-            </h1>
-          </div>
-          <div className="flex-none">
-            <SearchBar width="w-[439px]" height="h-[60px]" />
-          </div>
+    <div className="px-10">
+      <div className="mt-8 flex items-center">
+        <div className="flex-1">
+          <h2 className="font-geist text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+            Results for:
+          </h2>
+          <h1 className="font-poppins text-2xl font-semibold leading-[32px] text-neutral-800 dark:text-neutral-100">
+            {searchTerm}
+          </h1>
         </div>
+        <div className="flex-none">
+          <SearchBar width="w-[439px]" height="h-[60px]" />
+        </div>
+      </div>
 
-        {isLoading ? (
-          <div className="mt-20 flex flex-col items-center justify-center">
-            <p className="text-neutral-500 dark:text-neutral-400">Loading...</p>
+      {isLoading ? (
+        <div className="mt-20 flex flex-col items-center justify-center">
+          <p className="text-neutral-500 dark:text-neutral-400">Loading...</p>
+        </div>
+      ) : totalCount > 0 ? (
+        <>
+          <div className="mt-[36px] flex items-center justify-between">
+            <SearchFilterChips
+              totalCount={totalCount}
+              agentsCount={agentsCount}
+              creatorsCount={creatorsCount}
+              onFilterChange={handleFilterChange}
+            />
+            <SortDropdown onSort={handleSortChange} />
           </div>
-        ) : totalCount > 0 ? (
-          <>
-            <div className="mt-[36px] flex items-center justify-between">
-              <SearchFilterChips
-                totalCount={totalCount}
-                agentsCount={agentsCount}
-                creatorsCount={creatorsCount}
-                onFilterChange={handleFilterChange}
-              />
-              <SortDropdown onSort={handleSortChange} />
-            </div>
-            {/* Content section */}
-            <div className="min-h-[500px] max-w-[1440px]">
-              {showAgents && agentsCount > 0 && (
-                <div className="mt-[36px]">
-                  <AgentsSection agents={agents} sectionTitle="Agents" />
-                </div>
-              )}
+          {/* Content section */}
+          <div className="">
+            {showAgents && agentsCount > 0 && (
+              <div className="mt-[36px]">
+                <AgentsSection agents={agents} sectionTitle="Agents" />
+              </div>
+            )}
 
-              {showAgents && agentsCount > 0 && creatorsCount > 0 && (
-                <Separator />
-              )}
-              {showCreators && creatorsCount > 0 && (
+            {showAgents && agentsCount > 0 && creatorsCount > 0 && (
+              <Separator />
+            )}
+            {showCreators && creatorsCount > 0 && (
+              <div className="mt-[36px]">
                 <FeaturedCreators
                   featuredCreators={creators}
                   title="Creators"
                 />
-              )}
-            </div>
-          </>
-        ) : (
-          <div className="mt-20 flex flex-col items-center justify-center">
-            <h3 className="mb-2 text-xl font-medium text-neutral-600 dark:text-neutral-300">
-              No results found
-            </h3>
-            <p className="text-neutral-500 dark:text-neutral-400">
-              Try adjusting your search terms or filters
-            </p>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      ) : (
+        <div className="mt-20 flex flex-col items-center justify-center">
+          <h3 className="mb-2 text-xl font-medium text-neutral-600 dark:text-neutral-300">
+            No results found
+          </h3>
+          <p className="text-neutral-500 dark:text-neutral-400">
+            Try adjusting your search terms or filters
+          </p>
+        </div>
+      )}
     </div>
   );
 }

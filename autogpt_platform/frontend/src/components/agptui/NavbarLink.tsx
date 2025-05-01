@@ -17,7 +17,7 @@ interface NavbarLinkProps {
 const icons = {
   "/marketplace": IconShoppingCart,
   "/build": IconBoxes,
-  "/monitor": IconLaptop,
+  "/library": IconLibrary,
   "/home": IconLibrary,
 };
 

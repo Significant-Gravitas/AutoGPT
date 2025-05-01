@@ -54,52 +54,46 @@ export default async function Page({
   ];
 
   return (
-    <div className="mx-auto w-screen max-w-[1360px]">
-      <main className="mt-5 px-4">
-        <BreadCrumbs items={breadcrumbs} />
+    <main className="mt-9 px-10">
+      <BreadCrumbs items={breadcrumbs} />
 
-        <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:flex-row md:gap-8">
-          <div className="w-full md:w-auto md:shrink-0">
-            <AgentInfo
-              name={agent.agent_name}
-              creator={agent.creator}
-              shortDescription={agent.sub_heading}
-              longDescription={agent.description}
-              rating={agent.rating}
-              runs={agent.runs}
-              categories={agent.categories}
-              lastUpdated={agent.updated_at}
-              version={agent.versions[agent.versions.length - 1]}
-              storeListingVersionId={agent.store_listing_version_id}
-            />
-          </div>
-          <AgentImages
-            images={
-              agent.agent_video
-                ? [agent.agent_video, ...agent.agent_image]
-                : agent.agent_image
-            }
+      <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:flex-row md:gap-8">
+        <div className="w-full md:w-auto md:shrink-0">
+          <AgentInfo
+            name={agent.agent_name}
+            creator={agent.creator}
+            shortDescription={agent.sub_heading}
+            longDescription={agent.description}
+            rating={agent.rating}
+            runs={agent.runs}
+            categories={agent.categories}
+            lastUpdated={agent.updated_at}
+            version={agent.versions[agent.versions.length - 1]}
+            storeListingVersionId={agent.store_listing_version_id}
           />
         </div>
-        <Separator className="mb-[25px] mt-[60px]" />
-        <AgentsSection
-          margin="32px"
-          agents={otherAgents.agents}
-          sectionTitle={`Other agents by ${agent.creator}`}
+        <AgentImages
+          images={
+            agent.agent_video
+              ? [agent.agent_video, ...agent.agent_image]
+              : agent.agent_image
+          }
         />
-        <Separator className="mb-[25px] mt-[60px]" />
-        <AgentsSection
-          margin="32px"
-          agents={similarAgents.agents}
-          sectionTitle="Similar agents"
-        />
-        <Separator className="mb-[25px] mt-[60px]" />
-        <BecomeACreator
-          title="Become a Creator"
-          description="Join our ever-growing community of hackers and tinkerers"
-          buttonText="Become a Creator"
-        />
-      </main>
-    </div>
+      </div>
+      <Separator className="mb-[25px] mt-[60px]" />
+      <AgentsSection
+        margin="32px"
+        agents={otherAgents.agents}
+        sectionTitle={`Other agents by ${agent.creator}`}
+      />
+      <Separator className="mb-[25px] mt-[60px]" />
+      <AgentsSection
+        margin="32px"
+        agents={similarAgents.agents}
+        sectionTitle="Similar agents"
+      />
+      <Separator className="mb-[25px] mt-[60px]" />
+      <BecomeACreator title="Become a Creator" buttonText="Become a Creator" />
+    </main>
   );
 }

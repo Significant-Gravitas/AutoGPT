@@ -126,3 +126,10 @@ export const Link: Story = {
     variant: "link",
   },
 };
+
+export const Loading: Story = {
+  args: {
+    children: "Loading Button",
+    isLoading: true,
+  },
+};

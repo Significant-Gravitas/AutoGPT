@@ -33,6 +33,7 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
   sectionTitle,
   agents: allAgents,
   hideAvatars = false,
+  className,
 }) => {
   const router = useRouter();
 
@@ -46,10 +47,12 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
   };
 
   return (
-    <div className="flex w-full flex-col items-center justify-center">
+    <div
+      className={`flex w-full flex-col items-center justify-center ${className}`}
+    >
       <div className="w-full">
         <div
-          className={`mb-9 pl-4 font-poppins text-lg font-semibold text-neutral-800 dark:text-neutral-200 md:pl-0`}
+          className={`mb-9 pl-4 text-base font-medium text-zinc-500 dark:text-zinc-200 md:pl-0`}
         >
           {sectionTitle}
         </div>
@@ -85,7 +88,7 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
               </CarouselContent>
             </Carousel>
 
-            <div className="hidden grid-cols-1 place-items-center gap-6 md:grid md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+            <div className="hidden grid-cols-1 place-items-center gap-5 md:grid md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
               {displayedAgents.map((agent, index) => (
                 <StoreCard
                   key={index}

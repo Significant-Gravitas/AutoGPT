@@ -29,7 +29,7 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
 
   return (
     <div
-      className={`h-64 w-full px-5 pb-5 pt-6 md:w-80 ${backgroundColor} inline-flex cursor-pointer flex-col items-start justify-start gap-3.5 rounded-[1.5rem] transition-all duration-200 hover:brightness-95`}
+      className={`aspect-square w-80 space-y-4 rounded-3xl bg-amber-100 p-5 pt-6 hover:cursor-pointer hover:bg-amber-200`}
       onClick={onClick}
       data-testid="creator-card"
     >
@@ -37,25 +37,26 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
         <Image
           src={creatorImage}
           alt={creatorName}
-          width={80}
-          height={80}
-          className="h-20 w-20 rounded-full"
+          width={84}
+          height={84}
+          className="rounded-full"
           priority
         />
       ) : (
         <div className="h-20 w-20 rounded-full bg-neutral-300 dark:bg-neutral-600" />
       )}
 
-      <div className="flex flex-col gap-2">
-        <h3 className="line-clamp-1 font-poppins text-2xl font-semibold text-neutral-800 dark:text-neutral-100">
+      <div className="flex h-36 flex-col gap-2">
+        <h3 className="line-clamp-1 font-poppins text-3xl font-medium text-zinc-800 dark:text-neutral-100">
           {creatorName}
         </h3>
-        <p className="line-clamp-2 font-sans text-base font-normal text-neutral-800 dark:text-neutral-400">
+        <p className="line-clamp-3 font-sans text-base font-normal text-zinc-600 dark:text-neutral-400">
           {bio}
         </p>
-        <div className="font-sans text-lg font-semibold text-neutral-800 dark:text-neutral-200">
-          {agentsUploaded} agents
-        </div>
+      </div>
+
+      <div className="font-sans text-sm font-medium text-zinc-800 dark:text-neutral-200">
+        {agentsUploaded} agents
       </div>
     </div>
   );

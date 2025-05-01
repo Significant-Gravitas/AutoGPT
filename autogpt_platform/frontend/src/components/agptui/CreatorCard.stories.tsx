@@ -3,7 +3,7 @@ import { CreatorCard } from "./CreatorCard";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
-  title: "AGPT UI/Creator Card",
+  title: "new/Creator Card",
   component: CreatorCard,
   decorators: [
     (Story) => (

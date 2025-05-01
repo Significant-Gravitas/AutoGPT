@@ -3,12 +3,12 @@ import { StoreCard } from "./StoreCard";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
-  title: "AGPT UI/StoreCard",
+  title: "new/StoreCard",
   component: StoreCard,
 
   decorators: [
     (Story) => (
-      <div className="flex items-center justify-center">
+      <div className="flex items-center justify-center p-4">
         <Story />
       </div>
     ),

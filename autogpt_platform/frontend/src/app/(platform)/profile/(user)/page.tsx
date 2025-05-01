@@ -30,7 +30,10 @@ export default async function Page({}: {}) {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center px-4">
+    <div className="space-y-6 pb-10">
+      <h1 className="font-poppins text-[1.75rem] font-medium leading-[2.5rem] text-zinc-500">
+        Profile
+      </h1>
       <ProfileInfoForm profile={profile as CreatorDetails} />
     </div>
   );

@@ -16,45 +16,45 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {
           text: "Creator Dashboard",
           href: "/profile/dashboard",
-          icon: <IconDashboardLayout className="h-6 w-6" />,
+          icon: <IconDashboardLayout className="h-6 w-6 stroke-[1.25px]" />,
         },
         ...(process.env.NEXT_PUBLIC_SHOW_BILLING_PAGE === "true"
           ? [
               {
                 text: "Billing",
                 href: "/profile/credits",
-                icon: <IconCoin className="h-6 w-6" />,
+                icon: <IconCoin className="h-6 w-6 stroke-[1.25px]" />,
               },
             ]
           : []),
         {
           text: "Integrations",
           href: "/profile/integrations",
-          icon: <IconIntegrations className="h-6 w-6" />,
+          icon: <IconIntegrations className="h-6 w-6 stroke-[1.25px]" />,
         },
         {
           text: "API Keys",
           href: "/profile/api_keys",
-          icon: <KeyIcon className="h-6 w-6" />,
+          icon: <KeyIcon className="h-6 w-6 stroke-[1.25px]" />,
         },
         {
           text: "Profile",
           href: "/profile",
-          icon: <IconProfile className="h-6 w-6" />,
+          icon: <IconProfile className="h-6 w-6 stroke-[1.25px]" />,
         },
         {
           text: "Settings",
           href: "/profile/settings",
-          icon: <IconSliders className="h-6 w-6" />,
+          icon: <IconSliders className="h-6 w-6 stroke-[1.25px]" />,
         },
       ],
     },
   ];
 
   return (
-    <div className="flex min-h-screen w-screen max-w-[1360px] flex-col lg:flex-row">
+    <div className="flex flex-row gap-14 px-4 pr-10">
       <Sidebar linkGroups={sidebarLinkGroups} />
-      <div className="flex-1 pl-4">{children}</div>
+      <div className="flex-1">{children}</div>
     </div>
   );
 }

@@ -49,7 +49,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({
   );
 
   return (
-    <div className="w-full">
+    <div className="w-full border-t border-neutral-300">
       {/* Table for desktop view */}
       <div className="hidden md:block">
         <Table>
@@ -106,7 +106,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({
             ) : (
               <TableRow>
                 <TableCell colSpan={7} className="py-4 text-center">
-                  <span className="font-sans text-base text-neutral-600 dark:text-neutral-400">
+                  <span className="font-sans text-base text-zinc-600 dark:text-neutral-400">
                     No agents available. Create your first agent to get started!
                   </span>
                 </TableCell>
