@@ -6,9 +6,9 @@ from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     create_graph_execution,
     get_graph_execution,
-    get_incomplete_node_executions,
+    get_graph_execution_meta,
     get_latest_node_execution,
-    get_node_execution_results,
+    get_node_executions,
     update_graph_execution_start_time,
     update_graph_execution_stats,
     update_node_execution_stats,
@@ -86,9 +86,9 @@ class DatabaseManager(AppService):
 
     # Executions
     get_graph_execution = _(get_graph_execution)
+    get_graph_execution_meta = _(get_graph_execution_meta)
     create_graph_execution = _(create_graph_execution)
-    get_node_execution_results = _(get_node_execution_results)
-    get_incomplete_node_executions = _(get_incomplete_node_executions)
+    get_node_executions = _(get_node_executions)
     get_latest_node_execution = _(get_latest_node_execution)
     update_node_execution_status = _(update_node_execution_status)
     update_node_execution_status_batch = _(update_node_execution_status_batch)
@@ -142,9 +142,9 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Executions
     get_graph_execution = _(d.get_graph_execution)
+    get_graph_execution_meta = _(d.get_graph_execution_meta)
     create_graph_execution = _(d.create_graph_execution)
-    get_node_execution_results = _(d.get_node_execution_results)
-    get_incomplete_node_executions = _(d.get_incomplete_node_executions)
+    get_node_executions = _(d.get_node_executions)
     get_latest_node_execution = _(d.get_latest_node_execution)
     update_node_execution_status = _(d.update_node_execution_status)
     update_node_execution_status_batch = _(d.update_node_execution_status_batch)
