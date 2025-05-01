@@ -255,6 +255,7 @@ def get_service_client(
                 base_url=self.base_url,
                 timeout=call_timeout,
             )
+            logger.info(f"making a service client for {host}:{port}")
 
         def _call_method(self, method_name: str, **kwargs) -> Any:
             try:
