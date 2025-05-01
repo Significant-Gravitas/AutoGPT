@@ -53,6 +53,10 @@ async def _spend_credits(
     return await _user_credit_model.spend_credits(user_id, cost, metadata)
 
 
+async def _get_credits(user_id: str) -> int:
+    return await _user_credit_model.get_credits(user_id)
+
+
 class DatabaseManager(AppService):
 
     def run_service(self) -> None:
@@ -97,6 +101,7 @@ class DatabaseManager(AppService):
 
     # Credits
     spend_credits = exposed_run_and_wait(_spend_credits)
+    get_credits = exposed_run_and_wait(_get_credits)
 
     # User + User Metadata + User Integrations
     get_user_metadata = exposed_run_and_wait(get_user_metadata)
