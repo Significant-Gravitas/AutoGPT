@@ -945,7 +945,7 @@ class BetaUserCredit(UserCredit):
 
 class DisabledUserCredit(UserCreditBase):
     async def get_credits(self, *args, **kwargs) -> int:
-        return 0
+        return 100
 
     async def get_transaction_history(self, *args, **kwargs) -> TransactionHistory:
         return TransactionHistory(transactions=[], next_transaction_time=None)

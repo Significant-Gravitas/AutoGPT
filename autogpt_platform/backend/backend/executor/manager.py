@@ -598,11 +598,11 @@ class Executor:
         node_exec: NodeExecutionEntry,
         execution_count: int,
         execution_stats: GraphExecutionStats,
-    ) -> int:
+    ):
         block = get_block(node_exec.block_id)
         if not block:
             logger.error(f"Block {node_exec.block_id} not found.")
-            return execution_count
+            return
 
         cost, matching_filter = block_usage_cost(block=block, input_data=node_exec.data)
         if cost > 0:
@@ -622,7 +622,7 @@ class Executor:
             )
             execution_stats.cost += cost
 
-        cost, execution_count = execution_usage_cost(execution_count)
+        cost, usage_count = execution_usage_cost(execution_count)
         if cost > 0:
             cls.db_client.spend_credits(
                 user_id=node_exec.user_id,
@@ -631,15 +631,13 @@ class Executor:
                     graph_exec_id=node_exec.graph_exec_id,
                     graph_id=node_exec.graph_id,
                     input={
-                        "execution_count": execution_count,
+                        "execution_count": usage_count,
                         "charge": "Execution Cost",
                     },
-                    reason=f"Execution Cost for ex_id:{node_exec.graph_exec_id} g_id:{node_exec.graph_id}",
+                    reason=f"Execution Cost for {usage_count} blocks of ex_id:{node_exec.graph_exec_id} g_id:{node_exec.graph_id}",
                 ),
             )
             execution_stats.cost += cost
-
-        return execution_count
 
     @classmethod
     @time_measured
@@ -677,11 +675,18 @@ class Executor:
         cancel_thread.start()
 
         try:
+            if cls.db_client.get_credits(graph_exec.user_id) <= 0:
+                raise InsufficientBalanceError(
+                    user_id=graph_exec.user_id,
+                    message="You have no credits left to run an agent.",
+                    balance=0,
+                    amount=1,
+                )
+
             queue = ExecutionQueue[NodeExecutionEntry]()
             for node_exec in graph_exec.start_node_execs:
                 queue.add(node_exec)
 
-            exec_cost_counter = 0
             running_executions: dict[str, AsyncResult] = {}
 
             def make_exec_callback(exec_data: NodeExecutionEntry):
@@ -737,9 +742,9 @@ class Executor:
                 )
 
                 try:
-                    exec_cost_counter = cls._charge_usage(
+                    cls._charge_usage(
                         node_exec=queued_node_exec,
-                        execution_count=exec_cost_counter + 1,
+                        execution_count=increment_execution_count(graph_exec.user_id),
                         execution_stats=execution_stats,
                     )
                 except InsufficientBalanceError as error:
@@ -1099,6 +1104,19 @@ def synchronized(key: str, timeout: int = 60):
     finally:
         if lock.locked() and lock.owned():
             lock.release()
+
+
+def increment_execution_count(user_id: str) -> int:
+    """
+    Increment the execution count for a given user,
+    this will be used to charge the user for the execution cost.
+    """
+    r = redis.get_redis()
+    k = f"uec:{user_id}"  # User Execution Count global key
+    counter = cast(int, r.incr(k))
+    if counter == 1:
+        r.expire(k, settings.config.execution_counter_expiration_time)
+    return counter
 
 
 def llprint(message: str):
