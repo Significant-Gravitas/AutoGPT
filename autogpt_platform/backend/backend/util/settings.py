@@ -117,6 +117,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=1,
         description="Cost per execution in cents after each threshold.",
     )
+    execution_counter_expiration_time: int = Field(
+        default=60 * 60 * 24,
+        description="Time in seconds after which the execution counter is reset.",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
