@@ -575,12 +575,12 @@ class Executor:
         )
         if exec_meta is None:
             log_metadata.warning(
-                f"Skipped graph execution {graph_exec.graph_exec_id}, the graph execution is not found."
+                f"Skipped graph execution #{graph_exec.graph_exec_id}, the graph execution is not found."
             )
             return
 
         if exec_meta.status == ExecutionStatus.QUEUED:
-            log_metadata.info(f"⚙️ Starting graph execution {graph_exec.graph_exec_id}")
+            log_metadata.info(f"⚙️ Starting graph execution #{graph_exec.graph_exec_id}")
             exec_meta.status = ExecutionStatus.RUNNING
             send_execution_update(
                 cls.db_client.update_graph_execution_start_time(
@@ -589,7 +589,7 @@ class Executor:
             )
         elif exec_meta.status == ExecutionStatus.RUNNING:
             log_metadata.info(
-                f"⚙️ Graph execution {graph_exec.graph_exec_id} is already running, continuing where it left off."
+                f"⚙️ Graph execution #{graph_exec.graph_exec_id} is already running, continuing where it left off."
             )
         else:
             log_metadata.warning(
