@@ -1,6 +1,12 @@
 import pytest
 
-from backend.util.service import AppService, expose, get_service_client
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    endpoint_to_async,
+    expose,
+    get_service_client,
+)
 
 TEST_SERVICE_PORT = 8765
 
@@ -32,10 +38,25 @@ class ServiceTest(AppService):
         return self.run_and_wait(add_async(a, b))
 
 
+class ServiceTestClient(AppServiceClient):
+    @classmethod
+    def get_service_type(cls):
+        return ServiceTest
+
+    add = ServiceTest.add
+    subtract = ServiceTest.subtract
+    fun_with_async = ServiceTest.fun_with_async
+
+    add_async = endpoint_to_async(ServiceTest.add)
+    subtract_async = endpoint_to_async(ServiceTest.subtract)
+
+
 @pytest.mark.asyncio(loop_scope="session")
 async def test_service_creation(server):
     with ServiceTest():
-        client = get_service_client(ServiceTest)
+        client = get_service_client(ServiceTestClient)
         assert client.add(5, 3) == 8
         assert client.subtract(10, 4) == 6
         assert client.fun_with_async(5, 3) == 8
+        assert await client.add_async(5, 3) == 8
+        assert await client.subtract_async(10, 4) == 6
