@@ -158,10 +158,10 @@ The block formulates a prompt based on the given focus or source data, sends it 
 ### Possible use case
 Automatically generating a list of key points or action items from a long meeting transcript or summarizing the main topics discussed in a series of documents.
 
+# Providers
+There are severals providers that AutoGPT users can use for running inference with LLM models.
 
-## Providers
-
-### Llama API
+## Llama API
 Llama API is a Meta-hosted API service that helps you integrate Llama models quickly and efficiently. Using OpenAI comptability endpoints, you can easily access the power of Llama models without the need for complex setup or configuration!
 
 Join the [waitlist](https://llama.developer.meta.com/join_waitlist) to get access!
