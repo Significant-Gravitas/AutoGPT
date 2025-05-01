@@ -57,7 +57,7 @@ from backend.data.user import (
     update_user_email,
     update_user_notification_preference,
 )
-from backend.executor import Scheduler, scheduler
+from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.executor.utils import create_execution_queue_config
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -83,8 +83,8 @@ if TYPE_CHECKING:
 
 
 @thread_cached
-def execution_scheduler_client() -> Scheduler:
-    return get_service_client(Scheduler)
+def execution_scheduler_client() -> scheduler.SchedulerClient:
+    return get_service_client(scheduler.SchedulerClient)
 
 
 @thread_cached
@@ -663,7 +663,7 @@ async def _cancel_execution(graph_exec_id: str):
     )
     node_execs = [
         node_exec.model_copy(update={"status": execution_db.ExecutionStatus.TERMINATED})
-        for node_exec in await execution_db.get_node_execution_results(
+        for node_exec in await execution_db.get_node_executions(
             graph_exec_id=graph_exec_id,
             statuses=[
                 execution_db.ExecutionStatus.QUEUED,
@@ -779,14 +779,12 @@ async def create_schedule(
             detail=f"Graph #{schedule.graph_id} v.{schedule.graph_version} not found.",
         )
 
-    return await asyncio.to_thread(
-        lambda: execution_scheduler_client().add_execution_schedule(
-            graph_id=schedule.graph_id,
-            graph_version=graph.version,
-            cron=schedule.cron,
-            input_data=schedule.input_data,
-            user_id=user_id,
-        )
+    return await execution_scheduler_client().add_execution_schedule(
+        graph_id=schedule.graph_id,
+        graph_version=graph.version,
+        cron=schedule.cron,
+        input_data=schedule.input_data,
+        user_id=user_id,
     )
 
 
@@ -795,11 +793,11 @@ async def create_schedule(
     tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
-def delete_schedule(
+async def delete_schedule(
     schedule_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[Any, Any]:
-    execution_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
+    await execution_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
     return {"id": schedule_id}
 
 
@@ -808,11 +806,11 @@ def delete_schedule(
     tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
-def get_execution_schedules(
+async def get_execution_schedules(
     user_id: Annotated[str, Depends(get_user_id)],
     graph_id: str | None = None,
 ) -> list[scheduler.ExecutionJobInfo]:
-    return execution_scheduler_client().get_execution_schedules(
+    return await execution_scheduler_client().get_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,
     )
