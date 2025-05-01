@@ -104,19 +104,21 @@ class UsageTransactionMetadata(BaseModel):
 
 def execution_usage_cost(execution_count: int) -> tuple[int, int]:
     """
-    Calculate the cost of executing a graph based on the number of executions.
+    Calculate the cost of executing a graph based on the current number of node executions.
 
     Args:
-        execution_count: Number of executions
+        execution_count: Number of node executions
 
     Returns:
-        Tuple of cost amount and remaining execution count
+        Tuple of cost amount and the number of execution count that is included in the cost.
     """
     return (
-        execution_count
-        // config.execution_cost_count_threshold
-        * config.execution_cost_per_threshold,
-        execution_count % config.execution_cost_count_threshold,
+        (
+            config.execution_cost_per_threshold
+            if execution_count % config.execution_cost_count_threshold == 0
+            else 0
+        ),
+        config.execution_cost_count_threshold,
     )
 
 
