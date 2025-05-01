@@ -373,8 +373,10 @@ def _enqueue_next_nodes(
 
             # If link is static, there could be some incomplete executions waiting for it.
             # Load and complete the input missing input data, and try to re-enqueue them.
-            for iexec in db_client.get_incomplete_node_executions(
-                next_node_id, graph_exec_id
+            for iexec in db_client.get_node_executions(
+                node_id=next_node_id,
+                graph_exec_id=graph_exec_id,
+                statuses=[ExecutionStatus.INCOMPLETE],
             ):
                 idata = iexec.input_data
                 ineid = iexec.node_exec_id
@@ -566,16 +568,35 @@ class Executor:
             node_eid="*",
             block_name="-",
         )
-        exec_meta = cls.db_client.update_graph_execution_start_time(
-            graph_exec.graph_exec_id
+
+        exec_meta = cls.db_client.get_graph_execution_meta(
+            user_id=graph_exec.user_id,
+            execution_id=graph_exec.graph_exec_id,
         )
         if exec_meta is None:
-            logger.warning(
+            log_metadata.warning(
                 f"Skipped graph execution {graph_exec.graph_exec_id}, the graph execution is not found."
             )
             return
 
-        send_execution_update(exec_meta)
+        if exec_meta.status == ExecutionStatus.QUEUED:
+            log_metadata.info(f"⚙️ Starting graph execution {graph_exec.graph_exec_id}")
+            exec_meta.status = ExecutionStatus.RUNNING
+            send_execution_update(
+                cls.db_client.update_graph_execution_start_time(
+                    graph_exec.graph_exec_id
+                )
+            )
+        elif exec_meta.status == ExecutionStatus.RUNNING:
+            log_metadata.info(
+                f"⚙️ Graph execution {graph_exec.graph_exec_id} is already running, continuing where it left off."
+            )
+        else:
+            log_metadata.warning(
+                f"Skipped graph execution {graph_exec.graph_exec_id}, the graph execution status is `{exec_meta.status}`."
+            )
+            return
+
         timing_info, (exec_stats, status, error) = cls._on_graph_execution(
             graph_exec, cancel, log_metadata
         )
@@ -655,7 +676,6 @@ class Executor:
             ExecutionStatus: The final status of the graph execution.
             Exception | None: The error that occurred during the execution, if any.
         """
-        log_metadata.info(f"Start graph execution {graph_exec.graph_exec_id}")
         execution_stats = GraphExecutionStats()
         execution_status = ExecutionStatus.RUNNING
         error = None
@@ -678,8 +698,11 @@ class Executor:
 
         try:
             queue = ExecutionQueue[NodeExecutionEntry]()
-            for node_exec in graph_exec.start_node_execs:
-                queue.add(node_exec)
+            for node_exec in cls.db_client.get_node_executions(
+                graph_exec.graph_exec_id,
+                statuses=[ExecutionStatus.RUNNING, ExecutionStatus.QUEUED],
+            ):
+                queue.add(node_exec.to_node_execution_entry())
 
             exec_cost_counter = 0
             running_executions: dict[str, AsyncResult] = {}
@@ -800,24 +823,21 @@ class Executor:
                         execution.wait(3)
 
             log_metadata.info(f"Finished graph execution {graph_exec.graph_exec_id}")
+            execution_status = ExecutionStatus.COMPLETED
 
         except Exception as e:
             error = e
-        finally:
-            if error:
-                log_metadata.error(
-                    f"Failed graph execution {graph_exec.graph_exec_id}: {error}"
-                )
-                execution_status = ExecutionStatus.FAILED
-            else:
-                execution_status = ExecutionStatus.COMPLETED
+            log_metadata.error(
+                f"Failed graph execution {graph_exec.graph_exec_id}: {error}"
+            )
+            execution_status = ExecutionStatus.FAILED
 
+        finally:
             if not cancel.is_set():
                 finished = True
                 cancel.set()
             cancel_thread.join()
             clean_exec_files(graph_exec.graph_exec_id)
-
             return execution_stats, execution_status, error
 
     @classmethod
@@ -829,7 +849,7 @@ class Executor:
         metadata = cls.db_client.get_graph_metadata(
             graph_exec.graph_id, graph_exec.graph_version
         )
-        outputs = cls.db_client.get_node_execution_results(
+        outputs = cls.db_client.get_node_executions(
             graph_exec.graph_exec_id,
             block_ids=[AgentOutputBlock().id],
         )
@@ -1057,7 +1077,7 @@ class ExecutionManager(AppProcess):
 
         if hasattr(self, "executor"):
             log(f"{prefix} ⏳ Shutting down GraphExec pool...")
-            self.executor.shutdown(cancel_futures=True, wait=True)
+            self.executor.shutdown(cancel_futures=False, wait=True)
 
         log(f"{prefix} ⏳ Disconnecting Redis...")
         redis.disconnect()
@@ -1082,7 +1102,9 @@ def get_notification_service() -> "NotificationManagerClient":
     return get_service_client(NotificationManagerClient)
 
 
-def send_execution_update(entry: GraphExecution | NodeExecutionResult):
+def send_execution_update(entry: GraphExecution | NodeExecutionResult | None):
+    if entry is None:
+        return
     return get_execution_event_bus().publish(entry)
 
 
