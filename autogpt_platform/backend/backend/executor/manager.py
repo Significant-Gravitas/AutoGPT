@@ -27,8 +27,8 @@ from backend.executor.utils import create_execution_queue_config
 from backend.util.exceptions import InsufficientBalanceError
 
 if TYPE_CHECKING:
-    from backend.executor import DatabaseManager
-    from backend.notifications.notifications import NotificationManager
+    from backend.executor import DatabaseManagerClient
+    from backend.notifications.notifications import NotificationManagerClient
 
 from autogpt_libs.utils.cache import thread_cached
 from prometheus_client import Gauge, start_http_server
@@ -36,6 +36,7 @@ from prometheus_client import Gauge, start_http_server
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data import redis
 from backend.data.block import BlockData, BlockInput, BlockSchema, get_block
+from backend.data.credit import UsageTransactionMetadata
 from backend.data.execution import (
     ExecutionQueue,
     ExecutionStatus,
@@ -49,7 +50,6 @@ from backend.executor.utils import (
     GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
     GRAPH_EXECUTION_QUEUE_NAME,
     CancelExecutionEvent,
-    UsageTransactionMetadata,
     block_usage_cost,
     execution_usage_cost,
     get_execution_event_bus,
@@ -64,7 +64,7 @@ from backend.util.file import clean_exec_files
 from backend.util.logging import configure_logging
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import func_retry
-from backend.util.service import close_service_client, get_service_client
+from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -135,7 +135,7 @@ ExecutionStream = Generator[NodeExecutionEntry, None, None]
 
 
 def execute_node(
-    db_client: "DatabaseManager",
+    db_client: "DatabaseManagerClient",
     creds_manager: IntegrationCredentialsManager,
     data: NodeExecutionEntry,
     execution_stats: NodeExecutionStats | None = None,
@@ -284,7 +284,7 @@ def execute_node(
 
 
 def _enqueue_next_nodes(
-    db_client: "DatabaseManager",
+    db_client: "DatabaseManagerClient",
     node: Node,
     output: BlockData,
     user_id: str,
@@ -461,7 +461,7 @@ class Executor:
         log(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting Redis...")
         redis.disconnect()
         log(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting DB manager...")
-        close_service_client(cls.db_client)
+        cls.db_client.close()
         log(f"[on_node_executor_stop {cls.pid}] ✅ Finished NodeExec cleanup")
         sys.exit(0)
 
@@ -1064,26 +1064,22 @@ class ExecutionManager(AppProcess):
 
         log(f"{prefix} ✅ Finished GraphExec cleanup")
 
-    @property
-    def db_client(self) -> "DatabaseManager":
-        return get_db_client()
-
 
 # ------- UTILITIES ------- #
 
 
 @thread_cached
-def get_db_client() -> "DatabaseManager":
-    from backend.executor import DatabaseManager
+def get_db_client() -> "DatabaseManagerClient":
+    from backend.executor import DatabaseManagerClient
 
-    return get_service_client(DatabaseManager)
+    return get_service_client(DatabaseManagerClient)
 
 
 @thread_cached
-def get_notification_service() -> "NotificationManager":
-    from backend.notifications import NotificationManager
+def get_notification_service() -> "NotificationManagerClient":
+    from backend.notifications import NotificationManagerClient
 
-    return get_service_client(NotificationManager)
+    return get_service_client(NotificationManagerClient)
 
 
 def send_execution_update(entry: GraphExecution | NodeExecutionResult):
