@@ -41,7 +41,7 @@ from backend.util.settings import Config
 from backend.util.type import convert
 
 if TYPE_CHECKING:
-    from backend.executor import DatabaseManager
+    from backend.executor import DatabaseManagerClient
     from backend.integrations.credentials_store import IntegrationCredentialsStore
 
 config = Config()
@@ -82,23 +82,13 @@ def get_integration_credentials_store() -> "IntegrationCredentialsStore":
 
 
 @thread_cached
-def get_db_client() -> "DatabaseManager":
-    from backend.executor import DatabaseManager
+def get_db_client() -> "DatabaseManagerClient":
+    from backend.executor import DatabaseManagerClient
 
-    return get_service_client(DatabaseManager)
+    return get_service_client(DatabaseManagerClient)
 
 
 # ============ Execution Cost Helpers ============ #
-
-
-class UsageTransactionMetadata(BaseModel):
-    graph_exec_id: str | None = None
-    graph_id: str | None = None
-    node_id: str | None = None
-    node_exec_id: str | None = None
-    block_id: str | None = None
-    block: str | None = None
-    input: BlockInput | None = None
 
 
 def execution_usage_cost(execution_count: int) -> tuple[int, int]:

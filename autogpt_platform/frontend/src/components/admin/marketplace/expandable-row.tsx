@@ -19,6 +19,8 @@ import {
   SubmissionStatus,
 } from "@/lib/autogpt-server-api/types";
 import { ApproveRejectButtons } from "./approve-reject-buttons";
+import { downloadAsAdmin } from "@/app/(platform)/admin/marketplace/actions";
+import { DownloadAgentAdminButton } from "./download-agent-button";
 
 // Moved the getStatusBadge function into the client component
 const getStatusBadge = (status: SubmissionStatus) => {
@@ -77,10 +79,11 @@ export function ExpandableRow({
         </TableCell>
         <TableCell className="text-right">
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="outline">
-              <ExternalLink className="mr-2 h-4 w-4" />
-              Builder
-            </Button>
+            {latestVersion?.store_listing_version_id && (
+              <DownloadAgentAdminButton
+                storeListingVersionId={latestVersion.store_listing_version_id}
+              />
+            )}
 
             {latestVersion?.status === SubmissionStatus.PENDING && (
               <ApproveRejectButtons version={latestVersion} />
@@ -180,17 +183,13 @@ export function ExpandableRow({
                         {/* <TableCell>{version.categories.join(", ")}</TableCell> */}
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() =>
-                                (window.location.href = `/admin/agents/${version.store_listing_version_id}`)
-                              }
-                            >
-                              <ExternalLink className="mr-2 h-4 w-4" />
-                              Builder
-                            </Button>
-
+                            {version.store_listing_version_id && (
+                              <DownloadAgentAdminButton
+                                storeListingVersionId={
+                                  version.store_listing_version_id
+                                }
+                              />
+                            )}
                             {version.status === SubmissionStatus.PENDING && (
                               <ApproveRejectButtons version={version} />
                             )}

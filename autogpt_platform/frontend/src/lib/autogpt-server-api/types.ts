@@ -776,14 +776,20 @@ export interface CreateAPIKeyResponse {
 export interface CreditTransaction {
   transaction_key: string;
   transaction_time: Date;
-  transaction_type: string;
+  transaction_type: CreditTransactionType;
   amount: number;
-  balance: number;
+  running_balance: number;
+  current_balance: number;
   description: string;
   usage_graph_id: GraphID;
   usage_execution_id: GraphExecutionID;
   usage_node_count: number;
   usage_starting_time: Date;
+  user_id: string;
+  user_email: string | null;
+  reason: string | null;
+  admin_email: string | null;
+  extra_data: string | null;
 }
 
 export interface TransactionHistory {
@@ -899,6 +905,23 @@ export type AdminPendingSubmissionsRequest = {
   page_size: number;
 };
 
+export enum CreditTransactionType {
+  TOP_UP = "TOP_UP",
+  USAGE = "USAGE",
+  GRANT = "GRANT",
+  REFUND = "REFUND",
+  CARD_CHECK = "CARD_CHECK",
+}
+
+export type UsersBalanceHistoryResponse = {
+  history: CreditTransaction[];
+  pagination: Pagination;
+};
+
+export type AddUserCreditsResponse = {
+  new_balance: number;
+  transaction_key: string;
+};
 const _stringFormatToDataTypeMap: Partial<Record<string, DataType>> = {
   date: DataType.DATE,
   time: DataType.TIME,
