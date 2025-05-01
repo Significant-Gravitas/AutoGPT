@@ -383,7 +383,7 @@ class UserCredit(UserCreditBase):
         notification_request: RefundRequestData,
         notification_type: NotificationType,
     ):
-        await self.notification_client().queue_notification(
+        await self.notification_client().queue_notification_async(
             NotificationEventDTO(
                 user_id=notification_request.user_id,
                 type=notification_type,
@@ -953,7 +953,7 @@ class BetaUserCredit(UserCredit):
 
 class DisabledUserCredit(UserCreditBase):
     async def get_credits(self, *args, **kwargs) -> int:
-        return 0
+        return 100
 
     async def get_transaction_history(self, *args, **kwargs) -> TransactionHistory:
         return TransactionHistory(transactions=[], next_transaction_time=None)
