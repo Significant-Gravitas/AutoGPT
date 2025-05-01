@@ -56,6 +56,10 @@ async def _spend_credits(
     return await _user_credit_model.spend_credits(user_id, cost, metadata)
 
 
+async def _get_credits(user_id: str) -> int:
+    return await _user_credit_model.get_credits(user_id)
+
+
 class DatabaseManager(AppService):
 
     def run_service(self) -> None:
@@ -73,7 +77,11 @@ class DatabaseManager(AppService):
         return config.database_api_port
 
     @staticmethod
-    def _(f: Callable[P, R]) -> Callable[Concatenate[object, P], R]:
+    def _(
+        f: Callable[P, R], name: str | None = None
+    ) -> Callable[Concatenate[object, P], R]:
+        if name is not None:
+            f.__name__ = name
         return cast(Callable[Concatenate[object, P], R], expose(f))
 
     # Executions
@@ -97,7 +105,8 @@ class DatabaseManager(AppService):
     get_graph_metadata = _(get_graph_metadata)
 
     # Credits
-    spend_credits = _(_spend_credits)
+    spend_credits = _(_spend_credits, name="spend_credits")
+    get_credits = _(_get_credits, name="get_credits")
 
     # User + User Metadata + User Integrations
     get_user_metadata = _(get_user_metadata)
@@ -153,6 +162,7 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Credits
     spend_credits = _(d.spend_credits)
+    get_credits = _(d.get_credits)
 
     # User + User Metadata + User Integrations
     get_user_metadata = _(d.get_user_metadata)
