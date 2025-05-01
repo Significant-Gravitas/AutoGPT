@@ -87,16 +87,18 @@ async def list_library_agents(
         ]
 
     # Determine sorting
-    order_by: list[dict] = []
+    order_by: prisma.types.LibraryAgentOrderByInput = {}
 
     if sort_by == library_model.LibraryAgentSort.CREATED_AT:
-        order_by = [{"createdAt": "asc"}]
+        order_by = {"createdAt": "asc"}
     elif sort_by == library_model.LibraryAgentSort.UPDATED_AT:
-        order_by = [{"updatedAt": "desc"}]
+        order_by = {"updatedAt": "desc"}
     elif sort_by == library_model.LibraryAgentSort.LAST_EXECUTION:
+        # Sort by the most recent AgentGraph.Execution (startedAt) first.
+        # If no executions exist, fall back to sorting by updatedAt.
         order_by = [
             {"AgentGraph": {"Executions": {"startedAt": "desc"}}},
-            {"updatedAt": "desc"}  # fallback if no executions
+            {"updatedAt": "desc"}
         ]
 
     try:
