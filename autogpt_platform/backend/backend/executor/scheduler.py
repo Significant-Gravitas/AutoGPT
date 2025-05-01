@@ -17,8 +17,14 @@ from sqlalchemy import MetaData, create_engine
 
 from backend.data.block import BlockInput
 from backend.executor import utils as execution_utils
-from backend.notifications.notifications import NotificationManager
-from backend.util.service import AppService, expose, get_service_client
+from backend.notifications.notifications import NotificationManagerClient
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    endpoint_to_async,
+    expose,
+    get_service_client,
+)
 from backend.util.settings import Config
 
 
@@ -59,9 +65,7 @@ def job_listener(event):
 
 @thread_cached
 def get_notification_client():
-    from backend.notifications import NotificationManager
-
-    return get_service_client(NotificationManager)
+    return get_service_client(NotificationManagerClient)
 
 
 def execute_graph(**kwargs):
@@ -158,11 +162,6 @@ class Scheduler(AppService):
     @classmethod
     def db_pool_size(cls) -> int:
         return config.scheduler_db_pool_size
-
-    @property
-    @thread_cached
-    def notification_client(self) -> NotificationManager:
-        return get_service_client(NotificationManager)
 
     def run_service(self):
         load_dotenv()
@@ -300,3 +299,15 @@ class Scheduler(AppService):
             ),
             job,
         )
+
+
+class SchedulerClient(AppServiceClient):
+    @classmethod
+    def get_service_type(cls):
+        return Scheduler
+
+    add_execution_schedule = endpoint_to_async(Scheduler.add_execution_schedule)
+    delete_schedule = endpoint_to_async(Scheduler.delete_schedule)
+    get_execution_schedules = endpoint_to_async(Scheduler.get_execution_schedules)
+    add_batched_notification_schedule = Scheduler.add_batched_notification_schedule
+    add_weekly_notification_schedule = Scheduler.add_weekly_notification_schedule
