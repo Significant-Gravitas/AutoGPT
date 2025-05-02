@@ -6,6 +6,13 @@ import { redirect } from "next/navigation";
 export async function finishOnboarding() {
   const api = new BackendAPI();
   const onboarding = await api.getUserOnboarding();
-  revalidatePath("/library", "layout");
-  redirect("/library");
+  const listingId = onboarding?.selectedStoreListingVersionId;
+  if (listingId) {
+    const libraryAgent = await api.addMarketplaceAgentToLibrary(listingId);
+    revalidatePath(`/library/agents/${libraryAgent.id}`, "layout");
+    redirect(`/library/agents/${libraryAgent.id}`);
+  } else {
+    revalidatePath("/library", "layout");
+    redirect("/library");
+  }
 }
