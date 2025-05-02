@@ -787,6 +787,7 @@ class NotificationManagerClient(AppServiceClient):
     def get_service_type(cls):
         return NotificationManager
 
-    queue_notification = endpoint_to_async(NotificationManager.queue_notification)
+    queue_notification_async = endpoint_to_async(NotificationManager.queue_notification)
+    queue_notification = NotificationManager.queue_notification
     process_existing_batches = NotificationManager.process_existing_batches
     queue_weekly_summary = NotificationManager.queue_weekly_summary
