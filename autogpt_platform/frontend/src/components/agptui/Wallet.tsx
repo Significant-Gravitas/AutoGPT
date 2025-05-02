@@ -21,6 +21,8 @@ export default function Wallet() {
     fetchInitialCredits: true,
   });
   const { state, updateState } = useOnboarding();
+  const [prevCredits, setPrevCredits] = useState<number | null>(credits);
+  const [flash, setFlash] = useState(false);
   const [stepsLength, setStepsLength] = useState<number | null>(
     state?.completedSteps?.length || null,
   );
@@ -76,22 +78,47 @@ export default function Wallet() {
     }, 800);
   }, [state?.completedSteps, state?.notified]);
 
+  // Wallet flash on credits change
+  useEffect(() => {
+    if (credits === prevCredits) {
+      return;
+    }
+    setPrevCredits(credits);
+    if (prevCredits === null) {
+      return;
+    }
+    setFlash(true);
+    setTimeout(() => {
+      setFlash(false);
+    }, 300);
+  }, [credits]);
+
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
-          ref={walletRef}
-          className="relative flex items-center gap-1 rounded-md bg-zinc-200 px-3 py-2 text-sm transition-colors duration-200 hover:bg-zinc-300"
-          onClick={onWalletOpen}
-        >
-          Wallet{" "}
-          <span className="text-sm font-semibold">
-            {formatCredits(credits)}
-          </span>
-          {state?.notificationDot && (
-            <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
-          )}
-        </button>
+        <div className="relative inline-block">
+          <button
+            ref={walletRef}
+            className={cn(
+              "relative flex items-center gap-1 rounded-md bg-zinc-200 px-3 py-2 text-sm transition-colors duration-200 hover:bg-zinc-300",
+            )}
+            onClick={onWalletOpen}
+          >
+            Wallet{" "}
+            <span className="text-sm font-semibold">
+              {formatCredits(credits)}
+            </span>
+            {state?.notificationDot && (
+              <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
+            )}
+          </button>
+          <div
+            className={cn(
+              "pointer-events-none absolute inset-0 rounded-md bg-violet-400 duration-2000 ease-in-out",
+              flash ? "opacity-50 duration-0" : "opacity-0",
+            )}
+          />
+        </div>
       </PopoverTrigger>
       <PopoverContent
         className={cn(
