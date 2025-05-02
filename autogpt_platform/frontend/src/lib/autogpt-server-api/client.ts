@@ -53,6 +53,8 @@ import {
   UserOnboarding,
   ReviewSubmissionRequest,
   SubmissionStatus,
+  AddUserCreditsResponse,
+  UsersBalanceHistoryResponse,
   CredentialsMetaInput,
 } from "./types";
 import { createBrowserClient } from "@supabase/ssr";
@@ -539,9 +541,9 @@ export default class BackendAPI {
     return this._get(url);
   }
 
-  ////////////////////////////////////////
-  ////////////// Admin API ///////////////
-  ////////////////////////////////////////
+  /////////////////////////////////////////
+  /////////// Admin API ///////////////////
+  /////////////////////////////////////////
 
   getAdminListingsWithVersions(params?: {
     status?: SubmissionStatus;
@@ -561,6 +563,32 @@ export default class BackendAPI {
       `/store/admin/submissions/${storeListingVersionId}/review`,
       review,
     );
+  }
+
+  addUserCredits(
+    user_id: string,
+    amount: number,
+    comments: string,
+  ): Promise<AddUserCreditsResponse> {
+    return this._request("POST", "/credits/admin/add_credits", {
+      user_id,
+      amount,
+      comments,
+    });
+  }
+
+  getUsersHistory(params?: {
+    search?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<UsersBalanceHistoryResponse> {
+    return this._get("/credits/admin/users_history", params);
+  }
+
+  downloadStoreAgentAdmin(storeListingVersionId: string): Promise<BlobPart> {
+    const url = `/store/admin/submissions/download/${storeListingVersionId}`;
+
+    return this._get(url);
   }
 
   ////////////////////////////////////////
@@ -598,6 +626,10 @@ export default class BackendAPI {
     },
   ): Promise<void> {
     await this._request("PUT", `/library/agents/${libraryAgentId}`, params);
+  }
+
+  forkLibraryAgent(libraryAgentId: LibraryAgentID): Promise<LibraryAgent> {
+    return this._request("POST", `/library/agents/${libraryAgentId}/fork`);
   }
 
   listLibraryAgentPresets(params?: {

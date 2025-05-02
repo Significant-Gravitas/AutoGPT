@@ -6,10 +6,10 @@ from prisma.models import CreditTransaction
 
 from backend.blocks.llm import AITextGeneratorBlock
 from backend.data.block import get_block
-from backend.data.credit import BetaUserCredit
+from backend.data.credit import BetaUserCredit, UsageTransactionMetadata
 from backend.data.execution import NodeExecutionEntry
 from backend.data.user import DEFAULT_USER_ID
-from backend.executor.utils import UsageTransactionMetadata, block_usage_cost
+from backend.executor.utils import block_usage_cost
 from backend.integrations.credentials_store import openai_credentials
 from backend.util.test import SpinTestServer
 
@@ -46,6 +46,7 @@ async def spend_credits(entry: NodeExecutionEntry) -> int:
             block_id=entry.block_id,
             block=entry.block_id,
             input=matching_filter,
+            reason=f"Ran block {entry.block_id} {block.name}",
         ),
     )
 

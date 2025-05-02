@@ -288,6 +288,13 @@ def convert_openai_tool_fmt_to_anthropic(
     return anthropic_tools
 
 
+def estimate_token_count(prompt_messages: list[dict]) -> int:
+    char_count = sum(len(str(msg.get("content", ""))) for msg in prompt_messages)
+    message_overhead = len(prompt_messages) * 4
+    estimated_tokens = (char_count // 4) + message_overhead
+    return int(estimated_tokens * 1.2)
+
+
 def llm_call(
     credentials: APIKeyCredentials,
     llm_model: LlmModel,
@@ -319,7 +326,14 @@ def llm_call(
             - completion_tokens: The number of tokens used in the completion.
     """
     provider = llm_model.metadata.provider
-    max_tokens = max_tokens or llm_model.max_output_tokens or 4096
+
+    # Calculate available tokens based on context window and input length
+    estimated_input_tokens = estimate_token_count(prompt)
+    context_window = llm_model.context_window
+    model_max_output = llm_model.max_output_tokens or 4096
+    user_max = max_tokens or model_max_output
+    available_tokens = max(context_window - estimated_input_tokens, 0)
+    max_tokens = max(min(available_tokens, model_max_output, user_max), 0)
 
     if provider == "openai":
         tools_param = tools if tools else openai.NOT_GIVEN
@@ -475,6 +489,7 @@ def llm_call(
             model=llm_model.value,
             prompt=f"{sys_messages}\n\n{usr_messages}",
             stream=False,
+            options={"num_ctx": max_tokens},
         )
         return LLMResponse(
             raw_response=response.get("response") or "",
@@ -773,6 +788,16 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                 prompt.append({"role": "user", "content": retry_prompt})
             except Exception as e:
                 logger.exception(f"Error calling LLM: {e}")
+                if (
+                    "maximum context length" in str(e).lower()
+                    or "token limit" in str(e).lower()
+                ):
+                    if input_data.max_tokens is None:
+                        input_data.max_tokens = llm_model.max_output_tokens or 4096
+                    input_data.max_tokens = int(input_data.max_tokens * 0.85)
+                    logger.debug(
+                        f"Reducing max_tokens to {input_data.max_tokens} for next attempt"
+                    )
                 retry_prompt = f"Error calling LLM: {e}"
             finally:
                 self.merge_stats(

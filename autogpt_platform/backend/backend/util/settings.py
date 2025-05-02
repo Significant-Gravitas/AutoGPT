@@ -117,6 +117,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=1,
         description="Cost per execution in cents after each threshold.",
     )
+    execution_counter_expiration_time: int = Field(
+        default=60 * 60 * 24,
+        description="Time in seconds after which the execution counter is reset.",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -136,10 +140,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     execution_manager_port: int = Field(
         default=8002,
         description="The port for execution manager daemon to run on",
-    )
-    execution_manager_loop_max_retry: int = Field(
-        default=5,
-        description="The maximum number of retries for the execution manager loop",
     )
 
     execution_scheduler_port: int = Field(

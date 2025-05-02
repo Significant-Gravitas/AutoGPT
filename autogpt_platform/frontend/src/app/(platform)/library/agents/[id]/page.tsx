@@ -23,6 +23,16 @@ import AgentRunDetailsView from "@/components/agents/agent-run-details-view";
 import AgentRunsSelectorList from "@/components/agents/agent-runs-selector-list";
 import AgentScheduleDetailsView from "@/components/agents/agent-schedule-details-view";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
@@ -51,6 +61,8 @@ export default function AgentRunsPage(): React.ReactElement {
   const [confirmingDeleteAgentRun, setConfirmingDeleteAgentRun] =
     useState<GraphExecutionMeta | null>(null);
   const { state, updateState } = useOnboarding();
+  const [copyAgentDialogOpen, setCopyAgentDialogOpen] = useState(false);
+  const { toast } = useToast();
 
   const openRunDraftView = useCallback(() => {
     selectView({ type: "run" });
@@ -237,20 +249,41 @@ export default function AgentRunsPage(): React.ReactElement {
     [api, agent],
   );
 
+  const copyAgent = useCallback(async () => {
+    setCopyAgentDialogOpen(false);
+    api
+      .forkLibraryAgent(agentID)
+      .then((newAgent) => {
+        router.push(`/library/agents/${newAgent.id}`);
+      })
+      .catch((error) => {
+        console.error("Error copying agent:", error);
+        toast({
+          title: "Error copying agent",
+          description: `An error occurred while copying the agent: ${error.message}`,
+          variant: "destructive",
+        });
+      });
+  }, [agentID, api, router, toast]);
+
   const agentActions: ButtonAction[] = useMemo(
     () => [
-      ...(agent?.can_access_graph
+      {
+        label: "Customize agent",
+        href: `/build?flowID=${agent?.graph_id}&flowVersion=${agent?.graph_version}`,
+        disabled: !agent?.can_access_graph,
+      },
+      { label: "Export agent to file", callback: downloadGraph },
+      ...(!agent?.can_access_graph
         ? [
             {
-              label: "Open graph in builder",
-              href: `/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`,
+              label: "Edit a copy",
+              callback: () => setCopyAgentDialogOpen(true),
             },
-            { label: "Export agent to file", callback: downloadGraph },
           ]
         : []),
       {
         label: "Delete agent",
-        variant: "destructive",
         callback: () => setAgentDeleteDialogOpen(true),
       },
     ],
@@ -339,6 +372,36 @@ export default function AgentRunsPage(): React.ReactElement {
             confirmingDeleteAgentRun && deleteRun(confirmingDeleteAgentRun)
           }
         />
+        {/* Copy agent confirmation dialog */}
+        <Dialog
+          onOpenChange={setCopyAgentDialogOpen}
+          open={copyAgentDialogOpen}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>You&apos;re making an editable copy</DialogTitle>
+              <DialogDescription className="pt-2">
+                The original Marketplace agent stays the same and cannot be
+                edited. We&apos;ll save a new version of this agent to your
+                Library. From there, you can customize it however you&apos;d
+                like by clicking &quot;Customize agent&quot; — this will open
+                the builder where you can see and modify the inner workings.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCopyAgentDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="button" onClick={copyAgent}>
+                Continue
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

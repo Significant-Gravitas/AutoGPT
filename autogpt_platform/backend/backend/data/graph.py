@@ -172,6 +172,8 @@ class BaseGraph(BaseDbModel):
     description: str
     nodes: list[Node] = []
     links: list[Link] = []
+    forked_from_id: str | None = None
+    forked_from_version: int | None = None
 
     @computed_field
     @property
@@ -410,10 +412,13 @@ class GraphModel(Graph):
 
     @staticmethod
     def _validate_graph(graph: BaseGraph, for_run: bool = False):
+        def is_tool_pin(name: str) -> bool:
+            return name.startswith("tools_^_")
+
         def sanitize(name):
             sanitized_name = name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
-            if sanitized_name.startswith("tools_^_"):
-                return sanitized_name.split("_^_")[0]
+            if is_tool_pin(sanitized_name):
+                return "tools"
             return sanitized_name
 
         # Validate smart decision maker nodes
@@ -554,7 +559,7 @@ class GraphModel(Graph):
                         if block.block_type not in [BlockType.AGENT]
                         else vals.get("input_schema", {}).get("properties", {}).keys()
                     )
-                if sanitized_name not in fields and not name.startswith("tools_^_"):
+                if sanitized_name not in fields and not is_tool_pin(name):
                     fields_msg = f"Allowed fields: {fields}"
                     raise ValueError(f"{prefix}, `{name}` invalid, {fields_msg}")
 
@@ -571,6 +576,8 @@ class GraphModel(Graph):
             id=graph.id,
             user_id=graph.userId if not for_export else "",
             version=graph.version,
+            forked_from_id=graph.forkedFromId,
+            forked_from_version=graph.forkedFromVersion,
             is_active=graph.isActive,
             name=graph.name or "",
             description=graph.description or "",
@@ -730,6 +737,58 @@ async def get_graph(
     return GraphModel.from_db(graph, for_export)
 
 
+async def get_graph_as_admin(
+    graph_id: str,
+    version: int | None = None,
+    user_id: str | None = None,
+    for_export: bool = False,
+) -> GraphModel | None:
+    """
+    Intentionally parallels the get_graph but should only be used for admin tasks, because can return any graph that's been submitted
+    Retrieves a graph from the DB.
+    Defaults to the version with `is_active` if `version` is not passed.
+
+    Returns `None` if the record is not found.
+    """
+    logger.warning(f"Getting {graph_id=} {version=} as ADMIN {user_id=} {for_export=}")
+    where_clause: AgentGraphWhereInput = {
+        "id": graph_id,
+    }
+
+    if version is not None:
+        where_clause["version"] = version
+
+    graph = await AgentGraph.prisma().find_first(
+        where=where_clause,
+        include=AGENT_GRAPH_INCLUDE,
+        order={"version": "desc"},
+    )
+
+    # For access, the graph must be owned by the user or listed in the store
+    if graph is None or (
+        graph.userId != user_id
+        and not (
+            await StoreListingVersion.prisma().find_first(
+                where={
+                    "agentGraphId": graph_id,
+                    "agentGraphVersion": version or graph.version,
+                }
+            )
+        )
+    ):
+        return None
+
+    if for_export:
+        sub_graphs = await get_sub_graphs(graph)
+        return GraphModel.from_db(
+            graph=graph,
+            sub_graphs=sub_graphs,
+            for_export=for_export,
+        )
+
+    return GraphModel.from_db(graph, for_export)
+
+
 async def get_sub_graphs(graph: AgentGraph) -> list[AgentGraph]:
     """
     Iteratively fetches all sub-graphs of a given graph, and flattens them into a list.
@@ -848,6 +907,27 @@ async def create_graph(graph: Graph, user_id: str) -> GraphModel:
     raise ValueError(f"Created graph {graph.id} v{graph.version} is not in DB")
 
 
+async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphModel:
+    """
+    Forks a graph by copying it and all its nodes and links to a new graph.
+    """
+    async with transaction() as tx:
+        graph = await get_graph(graph_id, graph_version, user_id, True)
+        if not graph:
+            raise ValueError(f"Graph {graph_id} v{graph_version} not found")
+
+        # Set forked from ID and version as itself as it's about ot be copied
+        graph.forked_from_id = graph.id
+        graph.forked_from_version = graph.version
+        graph.name = f"{graph.name} (copy)"
+        graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
+        graph.validate_graph(for_run=False)
+
+        await __create_graph(tx, graph, user_id)
+
+    return graph
+
+
 async def __create_graph(tx, graph: Graph, user_id: str):
     graphs = [graph] + graph.sub_graphs
 
@@ -860,6 +940,8 @@ async def __create_graph(tx, graph: Graph, user_id: str):
                 description=graph.description,
                 isActive=graph.is_active,
                 userId=user_id,
+                forkedFromId=graph.forked_from_id,
+                forkedFromVersion=graph.forked_from_version,
             )
             for graph in graphs
         ]

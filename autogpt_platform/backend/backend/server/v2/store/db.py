@@ -793,6 +793,7 @@ async def create_store_version(
             changes_summary=changes_summary,
             version=next_version,
         )
+
     except prisma.errors.PrismaError as e:
         raise backend.server.v2.store.exceptions.DatabaseError(
             "Failed to create new store version"
@@ -1361,3 +1362,31 @@ async def get_admin_listings_with_versions(
                 page_size=page_size,
             ),
         )
+
+
+async def get_agent_as_admin(
+    user_id: str | None,
+    store_listing_version_id: str,
+) -> GraphModel:
+    """Get agent using the version ID and store listing version ID."""
+    store_listing_version = (
+        await prisma.models.StoreListingVersion.prisma().find_unique(
+            where={"id": store_listing_version_id}
+        )
+    )
+
+    if not store_listing_version:
+        raise ValueError(f"Store listing version {store_listing_version_id} not found")
+
+    graph = await backend.data.graph.get_graph_as_admin(
+        user_id=user_id,
+        graph_id=store_listing_version.agentGraphId,
+        version=store_listing_version.agentGraphVersion,
+        for_export=True,
+    )
+    if not graph:
+        raise ValueError(
+            f"Agent {store_listing_version.agentGraphId} v{store_listing_version.agentGraphVersion} not found"
+        )
+
+    return graph

@@ -122,7 +122,7 @@ async def get_graph_execution_results(
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
-    results = await execution_db.get_node_execution_results(graph_exec_id)
+    results = await execution_db.get_node_executions(graph_exec_id)
     last_result = results[-1] if results else None
     execution_status = (
         last_result.status if last_result else AgentExecutionStatus.INCOMPLETE
