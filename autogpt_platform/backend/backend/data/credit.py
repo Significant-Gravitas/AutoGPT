@@ -438,22 +438,19 @@ class UserCredit(UserCreditBase):
         )
 
     async def onboarding_reward(self, user_id: str, credits: int, step: OnboardingStep):
-        key = f"REWARD-{user_id}-{step.value}"
-        if not await CreditTransaction.prisma().find_first(
-            where={
-                "userId": user_id,
-                "transactionKey": key,
-            }
-        ):
+        try:
             await self._add_transaction(
                 user_id=user_id,
                 amount=credits,
                 transaction_type=CreditTransactionType.GRANT,
-                transaction_key=key,
+                transaction_key=f"REWARD-{user_id}-{step.value}",
                 metadata=Json(
                     {"reason": f"Reward for completing {step.value} onboarding step."}
                 ),
             )
+        except UniqueViolationError:
+            # Already rewarded for this step
+            pass
 
     async def top_up_refund(
         self, user_id: str, transaction_key: str, metadata: dict[str, str]
