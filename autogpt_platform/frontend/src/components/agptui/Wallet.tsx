@@ -62,20 +62,18 @@ export default function Wallet() {
     setStepsLength(state?.completedSteps?.length);
     // And make confetti
     if (walletRef.current) {
-      party.confetti(walletRef.current, {
-        count: 30,
-        spread: 120,
-        shapes: ["square", "circle"],
-        size: party.variation.range(1, 2),
-        speed: party.variation.range(200, 300),
-        modules: [fadeOut],
-      });
+      setTimeout(() => {
+        fetchCredits();
+        party.confetti(walletRef.current!, {
+          count: 30,
+          spread: 120,
+          shapes: ["square", "circle"],
+          size: party.variation.range(1, 2),
+          speed: party.variation.range(200, 300),
+          modules: [fadeOut],
+        });
+      }, 800);
     }
-    // Fetch credits after a short delay
-    // to allow the confetti to finish and backend to process
-    setTimeout(() => {
-      fetchCredits();
-    }, 800);
   }, [state?.completedSteps, state?.notified]);
 
   // Wallet flash on credits change

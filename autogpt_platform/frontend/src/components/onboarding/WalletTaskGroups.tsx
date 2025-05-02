@@ -23,7 +23,7 @@ export function TaskGroups() {
   const [groups, setGroups] = useState<TaskGroup[]>([
     {
       name: "Run your first agent",
-      isOpen: false,
+      isOpen: true,
       tasks: [
         {
           id: "CONGRATS",
@@ -43,7 +43,7 @@ export function TaskGroups() {
     },
     {
       name: "Explore the Marketplace",
-      isOpen: false,
+      isOpen: true,
       tasks: [
         {
           id: "MARKETPLACE_VISIT",
@@ -72,7 +72,7 @@ export function TaskGroups() {
     },
     {
       name: "Build your own agent",
-      isOpen: false,
+      isOpen: true,
       tasks: [
         {
           id: "BUILDER_OPEN",
@@ -317,6 +317,7 @@ export function TaskGroups() {
                           playsInline
                           className={cn(
                             "h-full w-full object-cover object-center",
+                            isTaskCompleted(task) && "grayscale",
                           )}
                         ></video>
                       </div>
