@@ -339,10 +339,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     )
 
     # Cloudflare Turnstile credentials
-    turnstile_site_key: str = Field(
-        default="",
-        description="Cloudflare Turnstile frontend site key",
-    )
     turnstile_secret_key: str = Field(
         default="",
         description="Cloudflare Turnstile backend secret key",
