@@ -663,7 +663,7 @@ async def _cancel_execution(graph_exec_id: str):
     )
     node_execs = [
         node_exec.model_copy(update={"status": execution_db.ExecutionStatus.TERMINATED})
-        for node_exec in await execution_db.get_node_execution_results(
+        for node_exec in await execution_db.get_node_executions(
             graph_exec_id=graph_exec_id,
             statuses=[
                 execution_db.ExecutionStatus.QUEUED,
