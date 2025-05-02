@@ -43,7 +43,8 @@ class GoogleSheetsReadBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsReadBlock.Input,
             output_schema=GoogleSheetsReadBlock.Output,
-            disabled=not GOOGLE_OAUTH_IS_CONFIGURED or settings.config.app_env == AppEnvironment.PRODUCTION ,
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED
+            or settings.config.app_env == AppEnvironment.PRODUCTION,
             test_input={
                 "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                 "range": "Sheet1!A1:B2",
