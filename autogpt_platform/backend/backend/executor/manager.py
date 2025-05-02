@@ -189,10 +189,8 @@ def execute_node(
     # Re-shape the input data for agent block.
     # AgentExecutorBlock specially separate the node input_data & its input_default.
     if isinstance(node_block, AgentExecutorBlock):
-        _input_data = AgentExecutorBlock.Input(
-            **node.input_default,
-            inputs=input_data,
-        )
+        _input_data = AgentExecutorBlock.Input(**node.input_default)
+        _input_data.inputs = input_data
         if node_credentials_input_map:
             _input_data.node_credentials_input_map = node_credentials_input_map
         input_data = _input_data.model_dump()
