@@ -261,7 +261,6 @@ def get_service_client(
                 base_url=self.base_url,
                 timeout=call_timeout,
             )
-            logger.info(f"making a service client for {host}:{port}")
 
         @cached_property
         def async_client(self) -> httpx.AsyncClient:
