@@ -104,7 +104,9 @@ export default function Wallet() {
         </div>
         <ScrollArea className="max-h-[85vh] overflow-y-auto">
           {/* Top ups */}
-          <WalletRefill />
+          {process.env.NEXT_PUBLIC_SHOW_BILLING_PAGE === "true" && (
+            <WalletRefill />
+          )}
           {/* Tasks */}
           <p className="mx-1 mt-4 font-sans text-xs font-medium text-violet-700">
             Onboarding tasks

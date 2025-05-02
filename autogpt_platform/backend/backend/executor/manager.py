@@ -5,7 +5,6 @@ import os
 import signal
 import sys
 import threading
-import time
 from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import contextmanager
 from multiprocessing.pool import AsyncResult, Pool
@@ -23,17 +22,21 @@ from backend.data.notifications import (
     NotificationEventDTO,
     NotificationType,
 )
+from backend.data.rabbitmq import SyncRabbitMQ
+from backend.executor.utils import create_execution_queue_config
 from backend.util.exceptions import InsufficientBalanceError
 
 if TYPE_CHECKING:
-    from backend.executor import DatabaseManager
-    from backend.notifications.notifications import NotificationManager
+    from backend.executor import DatabaseManagerClient
+    from backend.notifications.notifications import NotificationManagerClient
 
-from autogpt_libs.utils.cache import clear_thread_cache, thread_cached
+from autogpt_libs.utils.cache import thread_cached
+from prometheus_client import Gauge, start_http_server
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data import redis
 from backend.data.block import BlockData, BlockInput, BlockSchema, get_block
+from backend.data.credit import UsageTransactionMetadata
 from backend.data.execution import (
     ExecutionQueue,
     ExecutionStatus,
@@ -47,7 +50,6 @@ from backend.executor.utils import (
     GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
     GRAPH_EXECUTION_QUEUE_NAME,
     CancelExecutionEvent,
-    UsageTransactionMetadata,
     block_usage_cost,
     execution_usage_cost,
     get_execution_event_bus,
@@ -61,11 +63,23 @@ from backend.util.decorator import error_logged, time_measured
 from backend.util.file import clean_exec_files
 from backend.util.logging import configure_logging
 from backend.util.process import AppProcess, set_service_name
-from backend.util.service import close_service_client, get_service_client
+from backend.util.retry import func_retry
+from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
+
+active_runs_gauge = Gauge(
+    "execution_manager_active_runs", "Number of active graph runs"
+)
+pool_size_gauge = Gauge(
+    "execution_manager_pool_size", "Maximum number of graph workers"
+)
+utilization_gauge = Gauge(
+    "execution_manager_utilization_ratio",
+    "Ratio of active graph runs to max graph workers",
+)
 
 
 class LogMetadata:
@@ -121,7 +135,7 @@ ExecutionStream = Generator[NodeExecutionEntry, None, None]
 
 
 def execute_node(
-    db_client: "DatabaseManager",
+    db_client: "DatabaseManagerClient",
     creds_manager: IntegrationCredentialsManager,
     data: NodeExecutionEntry,
     execution_stats: NodeExecutionStats | None = None,
@@ -254,7 +268,7 @@ def execute_node(
         raise e
     finally:
         # Ensure credentials are released even if execution fails
-        if creds_lock and creds_lock.locked():
+        if creds_lock and creds_lock.locked() and creds_lock.owned():
             try:
                 creds_lock.release()
             except Exception as e:
@@ -270,7 +284,7 @@ def execute_node(
 
 
 def _enqueue_next_nodes(
-    db_client: "DatabaseManager",
+    db_client: "DatabaseManagerClient",
     node: Node,
     output: BlockData,
     user_id: str,
@@ -359,8 +373,10 @@ def _enqueue_next_nodes(
 
             # If link is static, there could be some incomplete executions waiting for it.
             # Load and complete the input missing input data, and try to re-enqueue them.
-            for iexec in db_client.get_incomplete_node_executions(
-                next_node_id, graph_exec_id
+            for iexec in db_client.get_node_executions(
+                node_id=next_node_id,
+                graph_exec_id=graph_exec_id,
+                statuses=[ExecutionStatus.INCOMPLETE],
             ):
                 idata = iexec.input_data
                 ineid = iexec.node_exec_id
@@ -422,6 +438,7 @@ class Executor:
     """
 
     @classmethod
+    @func_retry
     def on_node_executor_start(cls):
         configure_logging()
         set_service_name("NodeExecutor")
@@ -432,36 +449,28 @@ class Executor:
 
         # Set up shutdown handlers
         cls.shutdown_lock = threading.Lock()
-        atexit.register(cls.on_node_executor_stop)  # handle regular shutdown
-        signal.signal(  # handle termination
-            signal.SIGTERM, lambda _, __: cls.on_node_executor_sigterm()
-        )
+        atexit.register(cls.on_node_executor_stop)
+        signal.signal(signal.SIGTERM, lambda _, __: cls.on_node_executor_sigterm())
+        signal.signal(signal.SIGINT, lambda _, __: cls.on_node_executor_sigterm())
 
     @classmethod
-    def on_node_executor_stop(cls):
+    def on_node_executor_stop(cls, log=logger.info):
         if not cls.shutdown_lock.acquire(blocking=False):
             return  # already shutting down
 
-        logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Releasing locks...")
+        log(f"[on_node_executor_stop {cls.pid}] ⏳ Releasing locks...")
         cls.creds_manager.release_all_locks()
-        logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting Redis...")
+        log(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting Redis...")
         redis.disconnect()
-        logger.info(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting DB manager...")
-        close_service_client(cls.db_client)
-        logger.info(f"[on_node_executor_stop {cls.pid}] ✅ Finished cleanup")
+        log(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting DB manager...")
+        cls.db_client.close()
+        log(f"[on_node_executor_stop {cls.pid}] ✅ Finished NodeExec cleanup")
+        sys.exit(0)
 
     @classmethod
     def on_node_executor_sigterm(cls):
-        llprint(f"[on_node_executor_sigterm {cls.pid}] ⚠️ SIGTERM received")
-        if not cls.shutdown_lock.acquire(blocking=False):
-            return  # already shutting down
-
-        llprint(f"[on_node_executor_stop {cls.pid}] ⏳ Releasing locks...")
-        cls.creds_manager.release_all_locks()
-        llprint(f"[on_node_executor_stop {cls.pid}] ⏳ Disconnecting Redis...")
-        redis.disconnect()
-        llprint(f"[on_node_executor_stop {cls.pid}] ✅ Finished cleanup")
-        sys.exit(0)
+        llprint(f"[on_node_executor_sigterm {cls.pid}] ⚠️ NodeExec SIGTERM received")
+        cls.on_node_executor_stop(log=llprint)
 
     @classmethod
     @error_logged
@@ -527,6 +536,7 @@ class Executor:
                 stats.error = e
 
     @classmethod
+    @func_retry
     def on_graph_executor_start(cls):
         configure_logging()
         set_service_name("GraphExecutor")
@@ -536,21 +546,7 @@ class Executor:
         cls.pid = os.getpid()
         cls.notification_service = get_notification_service()
         cls._init_node_executor_pool()
-        logger.info(
-            f"Graph executor {cls.pid} started with {cls.pool_size} node workers"
-        )
-
-        # Set up shutdown handler
-        atexit.register(cls.on_graph_executor_stop)
-
-    @classmethod
-    def on_graph_executor_stop(cls):
-        prefix = f"[on_graph_executor_stop {cls.pid}]"
-        logger.info(f"{prefix} ⏳ Terminating node executor pool...")
-        cls.executor.terminate()
-        logger.info(f"{prefix} ⏳ Disconnecting DB manager...")
-        close_service_client(cls.db_client)
-        logger.info(f"{prefix} ✅ Finished cleanup")
+        logger.info(f"GraphExec {cls.pid} started with {cls.pool_size} node workers")
 
     @classmethod
     def _init_node_executor_pool(cls):
@@ -572,16 +568,35 @@ class Executor:
             node_eid="*",
             block_name="-",
         )
-        exec_meta = cls.db_client.update_graph_execution_start_time(
-            graph_exec.graph_exec_id
+
+        exec_meta = cls.db_client.get_graph_execution_meta(
+            user_id=graph_exec.user_id,
+            execution_id=graph_exec.graph_exec_id,
         )
         if exec_meta is None:
-            logger.warning(
-                f"Skipped graph execution {graph_exec.graph_exec_id}, the graph execution is not found or not currently in the QUEUED state."
+            log_metadata.warning(
+                f"Skipped graph execution #{graph_exec.graph_exec_id}, the graph execution is not found."
             )
             return
 
-        send_execution_update(exec_meta)
+        if exec_meta.status == ExecutionStatus.QUEUED:
+            log_metadata.info(f"⚙️ Starting graph execution #{graph_exec.graph_exec_id}")
+            exec_meta.status = ExecutionStatus.RUNNING
+            send_execution_update(
+                cls.db_client.update_graph_execution_start_time(
+                    graph_exec.graph_exec_id
+                )
+            )
+        elif exec_meta.status == ExecutionStatus.RUNNING:
+            log_metadata.info(
+                f"⚙️ Graph execution #{graph_exec.graph_exec_id} is already running, continuing where it left off."
+            )
+        else:
+            log_metadata.warning(
+                f"Skipped graph execution {graph_exec.graph_exec_id}, the graph execution status is `{exec_meta.status}`."
+            )
+            return
+
         timing_info, (exec_stats, status, error) = cls._on_graph_execution(
             graph_exec, cancel, log_metadata
         )
@@ -604,11 +619,11 @@ class Executor:
         node_exec: NodeExecutionEntry,
         execution_count: int,
         execution_stats: GraphExecutionStats,
-    ) -> int:
+    ):
         block = get_block(node_exec.block_id)
         if not block:
             logger.error(f"Block {node_exec.block_id} not found.")
-            return execution_count
+            return
 
         cost, matching_filter = block_usage_cost(block=block, input_data=node_exec.data)
         if cost > 0:
@@ -623,11 +638,12 @@ class Executor:
                     block_id=node_exec.block_id,
                     block=block.name,
                     input=matching_filter,
+                    reason=f"Ran block {node_exec.block_id} {block.name}",
                 ),
             )
             execution_stats.cost += cost
 
-        cost, execution_count = execution_usage_cost(execution_count)
+        cost, usage_count = execution_usage_cost(execution_count)
         if cost > 0:
             cls.db_client.spend_credits(
                 user_id=node_exec.user_id,
@@ -636,14 +652,13 @@ class Executor:
                     graph_exec_id=node_exec.graph_exec_id,
                     graph_id=node_exec.graph_id,
                     input={
-                        "execution_count": execution_count,
+                        "execution_count": usage_count,
                         "charge": "Execution Cost",
                     },
+                    reason=f"Execution Cost for {usage_count} blocks of ex_id:{node_exec.graph_exec_id} g_id:{node_exec.graph_id}",
                 ),
             )
             execution_stats.cost += cost
-
-        return execution_count
 
     @classmethod
     @time_measured
@@ -659,7 +674,6 @@ class Executor:
             ExecutionStatus: The final status of the graph execution.
             Exception | None: The error that occurred during the execution, if any.
         """
-        log_metadata.info(f"Start graph execution {graph_exec.graph_exec_id}")
         execution_stats = GraphExecutionStats()
         execution_status = ExecutionStatus.RUNNING
         error = None
@@ -681,11 +695,21 @@ class Executor:
         cancel_thread.start()
 
         try:
-            queue = ExecutionQueue[NodeExecutionEntry]()
-            for node_exec in graph_exec.start_node_execs:
-                queue.add(node_exec)
+            if cls.db_client.get_credits(graph_exec.user_id) <= 0:
+                raise InsufficientBalanceError(
+                    user_id=graph_exec.user_id,
+                    message="You have no credits left to run an agent.",
+                    balance=0,
+                    amount=1,
+                )
 
-            exec_cost_counter = 0
+            queue = ExecutionQueue[NodeExecutionEntry]()
+            for node_exec in cls.db_client.get_node_executions(
+                graph_exec.graph_exec_id,
+                statuses=[ExecutionStatus.RUNNING, ExecutionStatus.QUEUED],
+            ):
+                queue.add(node_exec.to_node_execution_entry())
+
             running_executions: dict[str, AsyncResult] = {}
 
             def make_exec_callback(exec_data: NodeExecutionEntry):
@@ -741,9 +765,9 @@ class Executor:
                 )
 
                 try:
-                    exec_cost_counter = cls._charge_usage(
+                    cls._charge_usage(
                         node_exec=queued_node_exec,
-                        execution_count=exec_cost_counter + 1,
+                        execution_count=increment_execution_count(graph_exec.user_id),
                         execution_stats=execution_stats,
                     )
                 except InsufficientBalanceError as error:
@@ -804,24 +828,21 @@ class Executor:
                         execution.wait(3)
 
             log_metadata.info(f"Finished graph execution {graph_exec.graph_exec_id}")
+            execution_status = ExecutionStatus.COMPLETED
 
         except Exception as e:
             error = e
-        finally:
-            if error:
-                log_metadata.error(
-                    f"Failed graph execution {graph_exec.graph_exec_id}: {error}"
-                )
-                execution_status = ExecutionStatus.FAILED
-            else:
-                execution_status = ExecutionStatus.COMPLETED
+            log_metadata.error(
+                f"Failed graph execution {graph_exec.graph_exec_id}: {error}"
+            )
+            execution_status = ExecutionStatus.FAILED
 
+        finally:
             if not cancel.is_set():
                 finished = True
                 cancel.set()
             cancel_thread.join()
             clean_exec_files(graph_exec.graph_exec_id)
-
             return execution_stats, execution_status, error
 
     @classmethod
@@ -833,7 +854,7 @@ class Executor:
         metadata = cls.db_client.get_graph_metadata(
             graph_exec.graph_id, graph_exec.graph_version
         )
-        outputs = cls.db_client.get_node_execution_results(
+        outputs = cls.db_client.get_node_executions(
             graph_exec.graph_exec_id,
             block_ids=[AgentOutputBlock().id],
         )
@@ -894,35 +915,23 @@ class ExecutionManager(AppProcess):
         self.pool_size = settings.config.num_graph_workers
         self.running = True
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
-
-    @classmethod
-    def get_port(cls) -> int:
-        return settings.config.execution_manager_port
+        atexit.register(self._on_cleanup)
+        signal.signal(signal.SIGTERM, lambda sig, frame: self._on_sigterm())
+        signal.signal(signal.SIGINT, lambda sig, frame: self._on_sigterm())
 
     def run(self):
-        retry_count_max = settings.config.execution_manager_loop_max_retry
-        retry_count = 0
+        pool_size_gauge.set(self.pool_size)
+        active_runs_gauge.set(0)
+        utilization_gauge.set(0)
 
-        for retry_count in range(retry_count_max):
-            try:
-                self._run()
-            except Exception as e:
-                if not self.running:
-                    break
-                logger.exception(
-                    f"[{self.service_name}] Error in execution manager: {e}"
-                )
-
-            if retry_count >= retry_count_max:
-                logger.error(
-                    f"[{self.service_name}] Max retries reached ({retry_count_max}), exiting..."
-                )
-                break
-            else:
-                logger.info(
-                    f"[{self.service_name}] Retrying execution loop in {retry_count} seconds..."
-                )
-                time.sleep(retry_count)
+        self.metrics_server = threading.Thread(
+            target=start_http_server,
+            args=(settings.config.execution_manager_port,),
+            daemon=True,
+        )
+        self.metrics_server.start()
+        logger.info(f"[{self.service_name}] Starting execution manager...")
+        self._run()
 
     def _run(self):
         logger.info(f"[{self.service_name}] ⏳ Spawn max-{self.pool_size} workers...")
@@ -934,23 +943,33 @@ class ExecutionManager(AppProcess):
         logger.info(f"[{self.service_name}] ⏳ Connecting to Redis...")
         redis.connect()
 
-        # Consume Cancel & Run execution requests.
-        clear_thread_cache(get_execution_queue)
-        channel = get_execution_queue().get_channel()
-        channel.basic_qos(prefetch_count=self.pool_size)
-        channel.basic_consume(
-            queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
-            on_message_callback=self._handle_cancel_message,
-            auto_ack=True,
-        )
-        channel.basic_consume(
+        cancel_client = SyncRabbitMQ(create_execution_queue_config())
+        cancel_client.connect()
+        cancel_channel = cancel_client.get_channel()
+        logger.info(f"[{self.service_name}] ⏳ Starting cancel message consumer...")
+        threading.Thread(
+            target=lambda: (
+                cancel_channel.basic_consume(
+                    queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+                    on_message_callback=self._handle_cancel_message,
+                    auto_ack=True,
+                ),
+                cancel_channel.start_consuming(),
+            ),
+            daemon=True,
+        ).start()
+
+        run_client = SyncRabbitMQ(create_execution_queue_config())
+        run_client.connect()
+        run_channel = run_client.get_channel()
+        run_channel.basic_qos(prefetch_count=self.pool_size)
+        run_channel.basic_consume(
             queue=GRAPH_EXECUTION_QUEUE_NAME,
             on_message_callback=self._handle_run_message,
             auto_ack=False,
         )
-
-        logger.info(f"[{self.service_name}] Ready to consume messages...")
-        channel.start_consuming()
+        logger.info(f"[{self.service_name}] ⏳ Starting to consume run messages...")
+        run_channel.start_consuming()
 
     def _handle_cancel_message(
         self,
@@ -1020,11 +1039,15 @@ class ExecutionManager(AppProcess):
             Executor.on_graph_execution, graph_exec_entry, cancel_event
         )
         self.active_graph_runs[graph_exec_id] = (future, cancel_event)
+        active_runs_gauge.set(len(self.active_graph_runs))
+        utilization_gauge.set(len(self.active_graph_runs) / self.pool_size)
 
         def _on_run_done(f: Future):
             logger.info(f"[{self.service_name}] Run completed for {graph_exec_id}")
             try:
                 self.active_graph_runs.pop(graph_exec_id, None)
+                active_runs_gauge.set(len(self.active_graph_runs))
+                utilization_gauge.set(len(self.active_graph_runs) / self.pool_size)
                 if f.exception():
                     logger.error(
                         f"[{self.service_name}] Execution for {graph_exec_id} failed: {f.exception()}"
@@ -1043,42 +1066,50 @@ class ExecutionManager(AppProcess):
 
     def cleanup(self):
         super().cleanup()
+        self._on_cleanup()
 
-        logger.info(f"[{self.service_name}] ⏳ Shutting down service loop...")
+    def _on_sigterm(self):
+        llprint(f"[{self.service_name}] ⚠️ GraphExec SIGTERM received")
+        self._on_cleanup(log=llprint)
+
+    def _on_cleanup(self, log=logger.info):
+        prefix = f"[{self.service_name}][on_graph_executor_stop {os.getpid()}]"
+        log(f"{prefix} ⏳ Shutting down service loop...")
         self.running = False
 
-        logger.info(f"[{self.service_name}] ⏳ Shutting down RabbitMQ channel...")
+        log(f"{prefix} ⏳ Shutting down RabbitMQ channel...")
         get_execution_queue().get_channel().stop_consuming()
 
-        logger.info(f"[{self.service_name}] ⏳ Shutting down graph executor pool...")
-        self.executor.shutdown(cancel_futures=True)
+        if hasattr(self, "executor"):
+            log(f"{prefix} ⏳ Shutting down GraphExec pool...")
+            self.executor.shutdown(cancel_futures=False, wait=True)
 
-        logger.info(f"[{self.service_name}] ⏳ Disconnecting Redis...")
+        log(f"{prefix} ⏳ Disconnecting Redis...")
         redis.disconnect()
 
-    @property
-    def db_client(self) -> "DatabaseManager":
-        return get_db_client()
+        log(f"{prefix} ✅ Finished GraphExec cleanup")
 
 
 # ------- UTILITIES ------- #
 
 
 @thread_cached
-def get_db_client() -> "DatabaseManager":
-    from backend.executor import DatabaseManager
+def get_db_client() -> "DatabaseManagerClient":
+    from backend.executor import DatabaseManagerClient
 
-    return get_service_client(DatabaseManager)
+    return get_service_client(DatabaseManagerClient)
 
 
 @thread_cached
-def get_notification_service() -> "NotificationManager":
-    from backend.notifications import NotificationManager
+def get_notification_service() -> "NotificationManagerClient":
+    from backend.notifications import NotificationManagerClient
 
-    return get_service_client(NotificationManager)
+    return get_service_client(NotificationManagerClient)
 
 
-def send_execution_update(entry: GraphExecution | NodeExecutionResult):
+def send_execution_update(entry: GraphExecution | NodeExecutionResult | None):
+    if entry is None:
+        return
     return get_execution_event_bus().publish(entry)
 
 
@@ -1089,8 +1120,21 @@ def synchronized(key: str, timeout: int = 60):
         lock.acquire()
         yield
     finally:
-        if lock.locked():
+        if lock.locked() and lock.owned():
             lock.release()
+
+
+def increment_execution_count(user_id: str) -> int:
+    """
+    Increment the execution count for a given user,
+    this will be used to charge the user for the execution cost.
+    """
+    r = redis.get_redis()
+    k = f"uec:{user_id}"  # User Execution Count global key
+    counter = cast(int, r.incr(k))
+    if counter == 1:
+        r.expire(k, settings.config.execution_counter_expiration_time)
+    return counter
 
 
 def llprint(message: str):
@@ -1098,5 +1142,4 @@ def llprint(message: str):
     Low-level print/log helper function for use in signal handlers.
     Regular log/print statements are not allowed in signal handlers.
     """
-    if logger.getEffectiveLevel() == logging.DEBUG:
-        os.write(sys.stdout.fileno(), (message + "\n").encode())
+    os.write(sys.stdout.fileno(), (message + "\n").encode())

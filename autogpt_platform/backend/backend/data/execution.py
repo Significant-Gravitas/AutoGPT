@@ -208,18 +208,6 @@ class GraphExecutionWithNodes(GraphExecution):
             graph_id=self.graph_id,
             graph_version=self.graph_version or 0,
             graph_exec_id=self.id,
-            start_node_execs=[
-                NodeExecutionEntry(
-                    user_id=self.user_id,
-                    graph_exec_id=node_exec.graph_exec_id,
-                    graph_id=node_exec.graph_id,
-                    node_exec_id=node_exec.node_exec_id,
-                    node_id=node_exec.node_id,
-                    block_id=node_exec.block_id,
-                    data=node_exec.input_data,
-                )
-                for node_exec in self.node_executions
-            ],
             node_credentials_input_map={},  # FIXME
         )
 
@@ -278,6 +266,17 @@ class NodeExecutionResult(BaseModel):
             queue_time=_node_exec.queuedTime,
             start_time=_node_exec.startedTime,
             end_time=_node_exec.endedTime,
+        )
+
+    def to_node_execution_entry(self) -> "NodeExecutionEntry":
+        return NodeExecutionEntry(
+            user_id=self.user_id,
+            graph_exec_id=self.graph_exec_id,
+            graph_id=self.graph_id,
+            node_exec_id=self.node_exec_id,
+            node_id=self.node_id,
+            block_id=self.block_id,
+            data=self.input_data,
         )
 
 
@@ -492,21 +491,12 @@ async def upsert_execution_output(
 async def update_graph_execution_start_time(
     graph_exec_id: str,
 ) -> GraphExecution | None:
-    count = await AgentGraphExecution.prisma().update_many(
-        where={
-            "id": graph_exec_id,
-            "executionStatus": ExecutionStatus.QUEUED,
-        },
+    res = await AgentGraphExecution.prisma().update(
+        where={"id": graph_exec_id},
         data={
             "executionStatus": ExecutionStatus.RUNNING,
             "startedAt": datetime.now(tz=timezone.utc),
         },
-    )
-    if count == 0:
-        return None
-
-    res = await AgentGraphExecution.prisma().find_unique(
-        where={"id": graph_exec_id},
         include=GRAPH_EXECUTION_INCLUDE,
     )
     return GraphExecution.from_db(res) if res else None
@@ -625,8 +615,9 @@ async def delete_graph_execution(
         )
 
 
-async def get_node_execution_results(
+async def get_node_executions(
     graph_exec_id: str,
+    node_id: str | None = None,
     block_ids: list[str] | None = None,
     statuses: list[ExecutionStatus] | None = None,
     limit: int | None = None,
@@ -634,6 +625,8 @@ async def get_node_execution_results(
     where_clause: AgentNodeExecutionWhereInput = {
         "agentGraphExecutionId": graph_exec_id,
     }
+    if node_id:
+        where_clause["agentNodeId"] = node_id
     if block_ids:
         where_clause["Node"] = {"is": {"agentBlockId": {"in": block_ids}}}
     if statuses:
@@ -690,20 +683,6 @@ async def get_latest_node_execution(
     return NodeExecutionResult.from_db(execution)
 
 
-async def get_incomplete_node_executions(
-    node_id: str, graph_eid: str
-) -> list[NodeExecutionResult]:
-    executions = await AgentNodeExecution.prisma().find_many(
-        where={
-            "agentNodeId": node_id,
-            "agentGraphExecutionId": graph_eid,
-            "executionStatus": ExecutionStatus.INCOMPLETE,
-        },
-        include=EXECUTION_RESULT_INCLUDE,
-    )
-    return [NodeExecutionResult.from_db(execution) for execution in executions]
-
-
 # ----------------- Execution Infrastructure ----------------- #
 
 
@@ -712,7 +691,6 @@ class GraphExecutionEntry(BaseModel):
     graph_exec_id: str
     graph_id: str
     graph_version: int
-    start_node_execs: list["NodeExecutionEntry"]
     node_credentials_input_map: Optional[dict[str, dict[str, CredentialsMetaInput]]]
 
 

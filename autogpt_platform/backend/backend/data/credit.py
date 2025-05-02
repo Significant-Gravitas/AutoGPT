@@ -1,8 +1,8 @@
-import asyncio
 import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timezone
+from typing import Any, cast
 
 import stripe
 from autogpt_libs.utils.cache import thread_cached
@@ -20,7 +20,7 @@ from prisma.types import (
     CreditTransactionCreateInput,
     CreditTransactionWhereInput,
 )
-from tenacity import retry, stop_after_attempt, wait_exponential
+from pydantic import BaseModel
 
 from backend.data import db
 from backend.data.block_cost_config import BLOCK_COSTS
@@ -28,14 +28,17 @@ from backend.data.cost import BlockCost
 from backend.data.model import (
     AutoTopUpConfig,
     RefundRequest,
+    TopUpType,
     TransactionHistory,
     UserTransaction,
 )
 from backend.data.notifications import NotificationEventDTO, RefundRequestData
-from backend.data.user import get_user_by_id
-from backend.executor.utils import UsageTransactionMetadata
-from backend.notifications import NotificationManager
+from backend.data.user import get_user_by_id, get_user_email_by_id
+from backend.notifications import NotificationManagerClient
+from backend.server.model import Pagination
+from backend.server.v2.admin.model import UserHistoryResponse
 from backend.util.exceptions import InsufficientBalanceError
+from backend.util.retry import func_retry
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
@@ -43,6 +46,17 @@ settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
 logger = logging.getLogger(__name__)
 base_url = settings.config.frontend_base_url or settings.config.platform_base_url
+
+
+class UsageTransactionMetadata(BaseModel):
+    graph_exec_id: str | None = None
+    graph_id: str | None = None
+    node_id: str | None = None
+    node_exec_id: str | None = None
+    block_id: str | None = None
+    block: str | None = None
+    input: dict[str, Any] | None = None
+    reason: str | None = None
 
 
 class UserCreditBase(ABC):
@@ -262,11 +276,7 @@ class UserCreditBase(ABC):
         )
         return transaction_balance, transaction_time
 
-    @retry(
-        stop=stop_after_attempt(5),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        reraise=True,
-    )
+    @func_retry
     async def _enable_transaction(
         self,
         transaction_key: str,
@@ -365,21 +375,19 @@ class UserCreditBase(ABC):
 
 class UserCredit(UserCreditBase):
     @thread_cached
-    def notification_client(self) -> NotificationManager:
-        return get_service_client(NotificationManager)
+    def notification_client(self) -> NotificationManagerClient:
+        return get_service_client(NotificationManagerClient)
 
     async def _send_refund_notification(
         self,
         notification_request: RefundRequestData,
         notification_type: NotificationType,
     ):
-        await asyncio.to_thread(
-            lambda: self.notification_client().queue_notification(
-                NotificationEventDTO(
-                    user_id=notification_request.user_id,
-                    type=notification_type,
-                    data=notification_request.model_dump(),
-                )
+        await self.notification_client().queue_notification_async(
+            NotificationEventDTO(
+                user_id=notification_request.user_id,
+                type=notification_type,
+                data=notification_request.model_dump(),
             )
         )
 
@@ -409,6 +417,7 @@ class UserCredit(UserCreditBase):
                     # Avoid multiple auto top-ups within the same graph execution.
                     key=f"AUTO-TOP-UP-{user_id}-{metadata.graph_exec_id}",
                     ceiling_balance=auto_top_up.threshold,
+                    top_up_type=TopUpType.AUTO,
                 )
             except Exception as e:
                 # Failed top-up is not critical, we can move on.
@@ -418,8 +427,15 @@ class UserCredit(UserCreditBase):
 
         return balance
 
-    async def top_up_credits(self, user_id: str, amount: int):
-        await self._top_up_credits(user_id, amount)
+    async def top_up_credits(
+        self,
+        user_id: str,
+        amount: int,
+        top_up_type: TopUpType = TopUpType.UNCATEGORIZED,
+    ):
+        await self._top_up_credits(
+            user_id=user_id, amount=amount, top_up_type=top_up_type
+        )
 
     async def onboarding_reward(self, user_id: str, credits: int, step: OnboardingStep):
         key = f"REWARD-{user_id}-{step.value}"
@@ -602,7 +618,7 @@ class UserCredit(UserCreditBase):
 
             evidence_text += (
                 f"- {tx.description}: Amount ${tx.amount / 100:.2f} on {tx.transaction_time.isoformat()}, "
-                f"resulting balance ${tx.balance / 100:.2f} {additional_comment}\n"
+                f"resulting balance ${tx.running_balance / 100:.2f} {additional_comment}\n"
             )
         evidence_text += (
             "\nThis evidence demonstrates that the transaction was authorized and that the charged amount was used to render the service as agreed."
@@ -621,7 +637,24 @@ class UserCredit(UserCreditBase):
         amount: int,
         key: str | None = None,
         ceiling_balance: int | None = None,
+        top_up_type: TopUpType = TopUpType.UNCATEGORIZED,
+        metadata: dict | None = None,
     ):
+        # init metadata, without sharing it with the world
+        metadata = metadata or {}
+        if not metadata["reason"]:
+            match top_up_type:
+                case TopUpType.MANUAL:
+                    metadata["reason"] = {"reason": f"Top up credits for {user_id}"}
+                case TopUpType.AUTO:
+                    metadata["reason"] = {
+                        "reason": f"Auto top up credits for {user_id}"
+                    }
+                case _:
+                    metadata["reason"] = {
+                        "reason": f"Top up reason unknown for {user_id}"
+                    }
+
         if amount < 0:
             raise ValueError(f"Top up amount must not be negative: {amount}")
 
@@ -644,6 +677,7 @@ class UserCredit(UserCreditBase):
             is_active=False,
             transaction_key=key,
             ceiling_balance=ceiling_balance,
+            metadata=(Json(metadata)),
         )
 
         customer_id = await get_stripe_customer_id(user_id)
@@ -786,10 +820,15 @@ class UserCredit(UserCreditBase):
         # Check the Checkout Session's payment_status property
         # to determine if fulfillment should be performed
         if checkout_session.payment_status in ["paid", "no_payment_required"]:
-            assert isinstance(checkout_session.payment_intent, stripe.PaymentIntent)
+            if payment_intent := checkout_session.payment_intent:
+                assert isinstance(payment_intent, stripe.PaymentIntent)
+                new_transaction_key = payment_intent.id
+            else:
+                new_transaction_key = None
+
             await self._enable_transaction(
                 transaction_key=credit_transaction.transactionKey,
-                new_transaction_key=checkout_session.payment_intent.id,
+                new_transaction_key=new_transaction_key,
                 user_id=credit_transaction.userId,
                 metadata=Json(checkout_session),
             )
@@ -822,8 +861,9 @@ class UserCredit(UserCreditBase):
             take=transaction_count_limit,
         )
 
+        # doesn't fill current_balance, reason, user_email, admin_email, or extra_data
         grouped_transactions: dict[str, UserTransaction] = defaultdict(
-            lambda: UserTransaction()
+            lambda: UserTransaction(user_id=user_id)
         )
         tx_time = None
         for t in transactions:
@@ -853,7 +893,7 @@ class UserCredit(UserCreditBase):
 
             if tx_time > gt.transaction_time:
                 gt.transaction_time = tx_time
-                gt.balance = t.runningBalance or 0
+                gt.running_balance = t.runningBalance or 0
 
         return TransactionHistory(
             transactions=list(grouped_transactions.values()),
@@ -903,6 +943,7 @@ class BetaUserCredit(UserCredit):
                 amount=max(self.num_user_credits_refill - balance, 0),
                 transaction_type=CreditTransactionType.GRANT,
                 transaction_key=f"MONTHLY-CREDIT-TOP-UP-{cur_time}",
+                metadata=Json({"reason": "Monthly credit refill"}),
             )
             return balance
         except UniqueViolationError:
@@ -912,7 +953,7 @@ class BetaUserCredit(UserCredit):
 
 class DisabledUserCredit(UserCreditBase):
     async def get_credits(self, *args, **kwargs) -> int:
-        return 0
+        return 100
 
     async def get_transaction_history(self, *args, **kwargs) -> TransactionHistory:
         return TransactionHistory(transactions=[], next_transaction_time=None)
@@ -990,3 +1031,81 @@ async def get_auto_top_up(user_id: str) -> AutoTopUpConfig:
         return AutoTopUpConfig(threshold=0, amount=0)
 
     return AutoTopUpConfig.model_validate(user.topUpConfig)
+
+
+async def admin_get_user_history(
+    page: int = 1,
+    page_size: int = 20,
+    search: str | None = None,
+    transaction_filter: CreditTransactionType | None = None,
+) -> UserHistoryResponse:
+
+    if page < 1 or page_size < 1:
+        raise ValueError("Invalid pagination input")
+
+    where_clause: CreditTransactionWhereInput = {}
+    if transaction_filter:
+        where_clause["type"] = transaction_filter
+    if search:
+        where_clause["OR"] = [
+            {"userId": {"contains": search, "mode": "insensitive"}},
+            {"User": {"is": {"email": {"contains": search, "mode": "insensitive"}}}},
+            {"User": {"is": {"name": {"contains": search, "mode": "insensitive"}}}},
+        ]
+    transactions = await CreditTransaction.prisma().find_many(
+        where=where_clause,
+        skip=(page - 1) * page_size,
+        take=page_size,
+        include={"User": True},
+        order={"createdAt": "desc"},
+    )
+    total = await CreditTransaction.prisma().count(where=where_clause)
+    total_pages = (total + page_size - 1) // page_size
+
+    history = []
+    for tx in transactions:
+        admin_id = ""
+        admin_email = ""
+        reason = ""
+
+        metadata: dict = cast(dict, tx.metadata) or {}
+
+        if metadata:
+            admin_id = metadata.get("admin_id")
+            admin_email = (
+                (await get_user_email_by_id(admin_id) or f"Unknown Admin: {admin_id}")
+                if admin_id
+                else ""
+            )
+            reason = metadata.get("reason", "No reason provided")
+
+        balance, last_update = await get_user_credit_model()._get_credits(tx.userId)
+
+        history.append(
+            UserTransaction(
+                transaction_key=tx.transactionKey,
+                transaction_time=tx.createdAt,
+                transaction_type=tx.type,
+                amount=tx.amount,
+                current_balance=balance,
+                running_balance=tx.runningBalance or 0,
+                user_id=tx.userId,
+                user_email=(
+                    tx.User.email
+                    if tx.User
+                    else (await get_user_by_id(tx.userId)).email
+                ),
+                reason=reason,
+                admin_email=admin_email,
+                extra_data=str(metadata),
+            )
+        )
+    return UserHistoryResponse(
+        history=history,
+        pagination=Pagination(
+            total_items=total,
+            total_pages=total_pages,
+            current_page=page,
+            page_size=page_size,
+        ),
+    )

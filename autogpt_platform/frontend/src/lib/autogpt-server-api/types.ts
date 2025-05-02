@@ -280,6 +280,8 @@ export type GraphMeta = {
   is_active: boolean;
   name: string;
   description: string;
+  forked_from_id?: GraphID | null;
+  forked_from_version?: number | null;
   input_schema: GraphIOSchema;
   output_schema: GraphIOSchema;
   credentials_input_schema: {
@@ -556,6 +558,7 @@ export enum BlockUIType {
 
 export enum SpecialBlockID {
   AGENT = "e189baac-8c20-45a1-94a7-55177ea42565",
+  SMART_DECISION = "3b191d9f-356f-482d-8238-ba04b6d18381",
   OUTPUT = "363ae599-353e-4804-937e-b2ee3cef3da4",
 }
 
@@ -773,14 +776,20 @@ export interface CreateAPIKeyResponse {
 export interface CreditTransaction {
   transaction_key: string;
   transaction_time: Date;
-  transaction_type: string;
+  transaction_type: CreditTransactionType;
   amount: number;
-  balance: number;
+  running_balance: number;
+  current_balance: number;
   description: string;
   usage_graph_id: GraphID;
   usage_execution_id: GraphExecutionID;
   usage_node_count: number;
   usage_starting_time: Date;
+  user_id: string;
+  user_email: string | null;
+  reason: string | null;
+  admin_email: string | null;
+  extra_data: string | null;
 }
 
 export interface TransactionHistory {
@@ -896,6 +905,23 @@ export type AdminPendingSubmissionsRequest = {
   page_size: number;
 };
 
+export enum CreditTransactionType {
+  TOP_UP = "TOP_UP",
+  USAGE = "USAGE",
+  GRANT = "GRANT",
+  REFUND = "REFUND",
+  CARD_CHECK = "CARD_CHECK",
+}
+
+export type UsersBalanceHistoryResponse = {
+  history: CreditTransaction[];
+  pagination: Pagination;
+};
+
+export type AddUserCreditsResponse = {
+  new_balance: number;
+  transaction_key: string;
+};
 const _stringFormatToDataTypeMap: Partial<Record<string, DataType>> = {
   date: DataType.DATE,
   time: DataType.TIME,
