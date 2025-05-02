@@ -51,12 +51,12 @@ export const AgentInfo: FC<AgentInfoProps> = ({
   const libraryAction = useCallback(async () => {
     setAdding(true);
     if (libraryAgent) {
-      // Redirect to the library agent page
-      router.push(`/library/agents/${libraryAgent.id}`);
       toast({
         description: "Redirecting to your library...",
         duration: 2000,
       });
+      // Redirect to the library agent page
+      router.push(`/library/agents/${libraryAgent.id}`);
       return;
     }
     try {
