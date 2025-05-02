@@ -3,7 +3,7 @@ from googleapiclient.discovery import build
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.settings import Settings
+from backend.util.settings import AppEnvironment, Settings
 
 from ._auth import (
     GOOGLE_OAUTH_IS_CONFIGURED,
@@ -36,13 +36,15 @@ class GoogleSheetsReadBlock(Block):
         )
 
     def __init__(self):
+        settings = Settings()
         super().__init__(
             id="5724e902-3635-47e9-a108-aaa0263a4988",
             description="This block reads data from a Google Sheets spreadsheet.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsReadBlock.Input,
             output_schema=GoogleSheetsReadBlock.Output,
-            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED
+            or settings.config.app_env == AppEnvironment.PRODUCTION,
             test_input={
                 "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                 "range": "Sheet1!A1:B2",
