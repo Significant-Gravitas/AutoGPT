@@ -9,7 +9,6 @@ import StarRating from "@/components/onboarding/StarRating";
 import { Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useState } from "react";
-import Image from "next/image";
 import { GraphMeta, StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useRouter } from "next/navigation";
@@ -17,6 +16,7 @@ import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { TypeBasedInput } from "@/components/type-based-input";
+import SmartImage from "@/components/agptui/SmartImage";
 
 export default function Page() {
   const { state, updateState, setStep } = useOnboarding(
@@ -99,7 +99,7 @@ export default function Page() {
   }, [api, agent, router, state?.agentInput, storeAgent, updateState]);
 
   const runYourAgent = (
-    <div className="ml-[54px] w-[481px] pl-5">
+    <div className="ml-[104px] w-[481px] pl-5">
       <div className="flex flex-col">
         <OnboardingText variant="header">Run your first agent</OnboardingText>
         <span className="mt-9 text-base font-normal leading-normal text-zinc-600">
@@ -147,32 +147,25 @@ export default function Page() {
   return (
     <OnboardingStep dotted>
       <OnboardingHeader backHref={"/onboarding/4-agent"} transparent />
-      <div
-        className={cn(
-          "flex w-full items-center justify-center",
-          showInput ? "mt-[32px]" : "mt-[192px]",
-        )}
-      >
-        {/* Left side */}
-        <div className="mr-[52px] w-[481px]">
-          <div className="h-[156px] w-[481px] rounded-xl bg-white px-6 pb-5 pt-4">
-            <span className="font-sans text-xs font-medium tracking-wide text-zinc-500">
-              SELECTED AGENT
-            </span>
+      {/* Agent card */}
+      <div className="fixed left-1/4 top-1/2 w-[481px] -translate-x-1/2 -translate-y-1/2">
+        <div className="h-[156px] w-[481px] rounded-xl bg-white px-6 pb-5 pt-4">
+          <span className="font-sans text-xs font-medium tracking-wide text-zinc-500">
+            SELECTED AGENT
+          </span>
+          {storeAgent ? (
             <div className="mt-4 flex h-20 rounded-lg bg-violet-50 p-2">
               {/* Left image */}
-              <Image
-                src={storeAgent?.agent_image[0] || ""}
-                alt="Description"
-                width={350}
-                height={196}
-                className="h-full w-auto rounded-lg object-contain"
+              <SmartImage
+                src={storeAgent?.agent_image[0]}
+                alt="Agent cover"
+                imageContain
+                className="w-[350px] rounded-lg"
               />
-
               {/* Right content */}
               <div className="ml-2 flex flex-1 flex-col">
                 <span className="w-[292px] truncate font-sans text-[14px] font-medium leading-normal text-zinc-800">
-                  {agent?.name}
+                  {storeAgent?.agent_name}
                 </span>
                 <span className="mt-[5px] w-[292px] truncate font-sans text-xs font-normal leading-tight text-zinc-600">
                   by {storeAgent?.creator}
@@ -189,13 +182,19 @@ export default function Page() {
                 </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="mt-4 flex h-20 animate-pulse rounded-lg bg-gray-300 p-2" />
+          )}
         </div>
+      </div>
+      <div className="flex min-h-[80vh] items-center justify-center">
+        {/* Left side */}
+        <div className="w-[481px]" />
         {/* Right side */}
         {!showInput ? (
           runYourAgent
         ) : (
-          <div className="ml-[54px] w-[481px] pl-5">
+          <div className="ml-[104px] w-[481px] pl-5">
             <div className="flex flex-col">
               <OnboardingText variant="header">
                 Provide details for your agent
