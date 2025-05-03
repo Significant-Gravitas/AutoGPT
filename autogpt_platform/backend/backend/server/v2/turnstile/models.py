@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 class TurnstileVerifyRequest(BaseModel):
     """Request model for verifying a Turnstile token."""
 
-    token: str = Field(..., description="The Turnstile token to verify")
+    token: str = Field(description="The Turnstile token to verify")
     action: Optional[str] = Field(
         default=None, description="The action that the user is attempting to perform"
     )
@@ -19,7 +19,7 @@ class TurnstileVerifyResponse(BaseModel):
     error: Optional[str] = Field(
         default=None, description="Error message if verification failed"
     )
-    challenge_ts: Optional[str] = Field(
+    challenge_timestamp: Optional[str] = Field(
         default=None, description="Timestamp of the challenge (ISO format)"
     )
     hostname: Optional[str] = Field(
