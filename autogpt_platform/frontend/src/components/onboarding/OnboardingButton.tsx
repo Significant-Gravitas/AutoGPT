@@ -1,5 +1,7 @@
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import { useCallback, useMemo, useState } from "react";
+import Spinner from "../Spinner";
 
 const variants = {
   default: "bg-zinc-700 hover:bg-zinc-800",
@@ -13,6 +15,7 @@ type OnboardingButtonProps = {
   disabled?: boolean;
   onClick?: () => void;
   href?: string;
+  icon?: React.ReactNode;
 };
 
 export default function OnboardingButton({
@@ -22,26 +25,48 @@ export default function OnboardingButton({
   disabled,
   onClick,
   href,
+  icon,
 }: OnboardingButtonProps) {
-  const buttonClasses = cn(
-    "font-sans text-white text-sm font-medium",
-    "inline-flex justify-center items-center",
-    "h-12 min-w-[100px] rounded-full py-3 px-5 gap-2.5",
-    "transition-colors duration-200",
-    className,
-    disabled ? "bg-zinc-300 cursor-not-allowed" : variants[variant],
+  const [loading, setLoading] = useState(false);
+
+  const buttonClasses = useMemo(
+    () =>
+      cn(
+        "font-sans text-white text-sm font-medium",
+        "inline-flex justify-center items-center",
+        "h-12 min-w-[100px] rounded-full py-3 px-5",
+        "transition-colors duration-200",
+        className,
+        disabled ? "bg-zinc-300 cursor-not-allowed" : variants[variant],
+      ),
+    [disabled, variant, className],
   );
+
+  const onClickInternal = useCallback(() => {
+    setLoading(true);
+    if (onClick) {
+      onClick();
+    }
+  }, [setLoading]);
 
   if (href && !disabled) {
     return (
-      <Link href={href} className={buttonClasses}>
+      <Link href={href} onClick={onClickInternal} className={buttonClasses}>
+        {loading && <Spinner className="h-5 w-5" />}
+        {icon && !loading && <>{icon}</>}
         {children}
       </Link>
     );
   }
 
   return (
-    <button onClick={onClick} disabled={disabled} className={buttonClasses}>
+    <button
+      onClick={onClickInternal}
+      disabled={disabled}
+      className={buttonClasses}
+    >
+      {loading && <Spinner className="h-5 w-5" />}
+      {icon && !loading && <>{icon}</>}
       {children}
     </button>
   );

@@ -240,8 +240,8 @@ export default function Page() {
                   ) || !agent
                 }
                 onClick={runAgent}
+                icon={<Play className="mr-2" size={18} />}
               >
-                <Play className="" size={18} />
                 Run agent
               </OnboardingButton>
             </div>
