@@ -6,9 +6,9 @@ from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     create_graph_execution,
     get_graph_execution,
-    get_incomplete_node_executions,
+    get_graph_execution_meta,
     get_latest_node_execution,
-    get_node_execution_results,
+    get_node_executions,
     update_graph_execution_start_time,
     update_graph_execution_stats,
     update_node_execution_stats,
@@ -56,6 +56,10 @@ async def _spend_credits(
     return await _user_credit_model.spend_credits(user_id, cost, metadata)
 
 
+async def _get_credits(user_id: str) -> int:
+    return await _user_credit_model.get_credits(user_id)
+
+
 class DatabaseManager(AppService):
 
     def run_service(self) -> None:
@@ -73,14 +77,18 @@ class DatabaseManager(AppService):
         return config.database_api_port
 
     @staticmethod
-    def _(f: Callable[P, R]) -> Callable[Concatenate[object, P], R]:
+    def _(
+        f: Callable[P, R], name: str | None = None
+    ) -> Callable[Concatenate[object, P], R]:
+        if name is not None:
+            f.__name__ = name
         return cast(Callable[Concatenate[object, P], R], expose(f))
 
     # Executions
     get_graph_execution = _(get_graph_execution)
+    get_graph_execution_meta = _(get_graph_execution_meta)
     create_graph_execution = _(create_graph_execution)
-    get_node_execution_results = _(get_node_execution_results)
-    get_incomplete_node_executions = _(get_incomplete_node_executions)
+    get_node_executions = _(get_node_executions)
     get_latest_node_execution = _(get_latest_node_execution)
     update_node_execution_status = _(update_node_execution_status)
     update_node_execution_status_batch = _(update_node_execution_status_batch)
@@ -97,7 +105,8 @@ class DatabaseManager(AppService):
     get_graph_metadata = _(get_graph_metadata)
 
     # Credits
-    spend_credits = _(_spend_credits)
+    spend_credits = _(_spend_credits, name="spend_credits")
+    get_credits = _(_get_credits, name="get_credits")
 
     # User + User Metadata + User Integrations
     get_user_metadata = _(get_user_metadata)
@@ -133,9 +142,9 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Executions
     get_graph_execution = _(d.get_graph_execution)
+    get_graph_execution_meta = _(d.get_graph_execution_meta)
     create_graph_execution = _(d.create_graph_execution)
-    get_node_execution_results = _(d.get_node_execution_results)
-    get_incomplete_node_executions = _(d.get_incomplete_node_executions)
+    get_node_executions = _(d.get_node_executions)
     get_latest_node_execution = _(d.get_latest_node_execution)
     update_node_execution_status = _(d.update_node_execution_status)
     update_node_execution_status_batch = _(d.update_node_execution_status_batch)
@@ -153,6 +162,7 @@ class DatabaseManagerClient(AppServiceClient):
 
     # Credits
     spend_credits = _(d.spend_credits)
+    get_credits = _(d.get_credits)
 
     # User + User Metadata + User Integrations
     get_user_metadata = _(d.get_user_metadata)
