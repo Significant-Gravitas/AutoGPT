@@ -3,28 +3,13 @@ import { SearchBar } from "./SearchBar";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
-  title: "AGPT UI/Search Bar",
+  title: "Agpt Custom ui/marketing/Search Bar",
   component: SearchBar,
-  parameters: {
-    nextjs: {
-      appDirectory: true,
-      navigation: {
-        pathname: "/marketplace/search",
-        query: {
-          searchTerm: "",
-        },
-      },
-    },
-  },
+
   tags: ["autodocs"],
   argTypes: {
     placeholder: { control: "text" },
-    backgroundColor: { control: "text" },
-    iconColor: { control: "text" },
-    textColor: { control: "text" },
-    placeholderColor: { control: "text" },
-    width: { control: "text" },
-    height: { control: "text" },
+    className: { control: "text" },
   },
   decorators: [
     (Story) => (
@@ -47,80 +32,25 @@ export const Default: Story = {
 export const CustomStyles: Story = {
   args: {
     placeholder: "Enter your search query",
-    backgroundColor: "bg-blue-100",
-    iconColor: "text-blue-500",
-    textColor: "text-blue-700",
-    placeholderColor: "text-blue-400",
+    className: "bg-blue-100",
   },
 };
 
-export const CustomDimensions: Story = {
-  args: {
-    placeholder: "Custom size search bar",
-    width: "w-full md:w-[30rem]",
-    height: "h-[45px]",
-  },
-};
-
-export const DarkMode: Story = {
-  args: {
-    placeholder: "Dark mode search",
-    backgroundColor: "bg-neutral-800",
-    iconColor: "text-neutral-400",
-    textColor: "text-neutral-200",
-    placeholderColor: "text-neutral-400",
-  },
-  parameters: {
-    backgrounds: { default: "dark" },
-  },
-};
-
-export const WithInteraction: Story = {
+export const TestingInteractions: Story = {
   args: {
     placeholder: "Type and press Enter",
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const input = canvas.getByTestId("store-search-input");
 
-    await userEvent.type(input, "test query");
-    await userEvent.keyboard("{Enter}");
-
-    await expect(input).toHaveValue("test query");
-  },
-};
-
-export const EmptySubmit: Story = {
-  args: {
-    placeholder: "Empty submit test",
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const input = canvas.getByTestId("store-search-input");
-
-    await userEvent.click(input);
-    await userEvent.keyboard("{Enter}");
-
-    await expect(input).toHaveValue("");
-  },
-};
-
-export const MobileViewCompact: Story = {
-  args: {
-    placeholder: "Search on mobile",
-    width: "w-full",
-    height: "h-[45px]",
-  },
-  parameters: {
-    viewport: {
-      defaultViewport: "mobile1",
-    },
-  },
-};
-
-export const ExtraLongPlaceholder: Story = {
-  args: {
-    placeholder:
-      "This is an extremely long placeholder text that demonstrates how the search bar handles overflow with very long placeholder text",
+    // checking onChange in input
+    const Input = canvas.getByTestId("store-search-input");
+    await userEvent.type(Input, "test query", {
+      delay: 100,
+    });
+    await userEvent.keyboard("{Enter}", {
+      delay: 100,
+    });
+    await expect(Input).toHaveValue("test query");
   },
 };

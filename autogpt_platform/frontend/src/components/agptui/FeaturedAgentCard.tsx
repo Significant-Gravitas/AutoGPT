@@ -27,7 +27,7 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
       data-testid="featured-store-card"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      className={`flex h-[30rem] w-full max-w-[27.5rem] flex-col hover:cursor-pointer md:w-[24rem] lg:w-[27.5rem] ${backgroundColor} rounded-[1.5rem] border-none px-5 pb-5 pt-6 transition-colors duration-200`}
+      className={`flex h-[30rem] w-full min-w-[94vw] max-w-[27.5rem] flex-col hover:cursor-pointer md:w-[24rem] md:min-w-0 lg:w-[27.5rem] ${backgroundColor} rounded-[1.5rem] border-none px-5 pb-5 pt-6 transition-colors duration-200`}
     >
       <CardHeader className="mb-7 h-[9.5rem] space-y-3 p-0">
         <CardTitle className="line-clamp-3 font-poppins text-3xl font-medium text-zinc-800">

@@ -1,9 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { FilterChips } from "./FilterChips";
-import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
-  title: "AGPT UI/Filter Chips",
+  title: "Agpt Custom UI/marketing/Filter Chips",
   component: FilterChips,
   parameters: {
     layout: "centered",

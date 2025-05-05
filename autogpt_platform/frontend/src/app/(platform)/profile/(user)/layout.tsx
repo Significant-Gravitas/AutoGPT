@@ -52,7 +52,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   ];
 
   return (
-    <div className="flex flex-row gap-14 px-4 pr-10">
+    <div className="flex flex-row gap-14 px-4 pr-10 pt-8">
       <Sidebar linkGroups={sidebarLinkGroups} />
       <div className="flex-1">{children}</div>
     </div>

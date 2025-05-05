@@ -38,7 +38,7 @@ export default async function RootLayout({
     >
       <body
         className={cn(
-          "mx-auto w-screen max-w-[1500px] overflow-x-hidden bg-white antialiased transition-colors",
+          "bg-white antialiased transition-colors",
           inter.className,
         )}
       >

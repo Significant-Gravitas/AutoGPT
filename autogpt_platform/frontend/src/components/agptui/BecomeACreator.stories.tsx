@@ -3,7 +3,7 @@ import { BecomeACreator } from "./BecomeACreator";
 import { userEvent, within } from "@storybook/test";
 
 const meta = {
-  title: "AGPT UI/Become A Creator",
+  title: "Agpt Custom ui/marketing/Become A Creator",
   component: BecomeACreator,
   decorators: [
     (Story) => (
@@ -15,7 +15,6 @@ const meta = {
   tags: ["autodocs"],
   argTypes: {
     title: { control: "text" },
-    description: { control: "text" },
     buttonText: { control: "text" },
     onButtonClick: { action: "buttonClicked" },
   },
@@ -26,9 +25,8 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
-    title: "Want to contribute?",
-    description: "Join our ever-growing community of hackers and tinkerers",
-    buttonText: "Become a Creator",
+    title: "Become a Creator",
+    buttonText: "Upload your agent",
     onButtonClick: () => console.log("Button clicked"),
   },
 };

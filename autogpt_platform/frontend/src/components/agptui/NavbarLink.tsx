@@ -23,7 +23,10 @@ const icons = {
 
 export const NavbarLink = ({ name, href }: NavbarLinkProps) => {
   const pathname = usePathname();
-  const isActive = pathname === href;
+  const isActive =
+    href === "/marketplace"
+      ? pathname.includes("/marketplace")
+      : pathname === href;
 
   const Icon = icons[href as keyof typeof icons];
 

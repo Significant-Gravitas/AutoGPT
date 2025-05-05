@@ -180,7 +180,7 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
               name="bio"
               defaultValue={profileData.description}
               placeholder="Tell us about yourself..."
-              className="m-0 h-10 min-h-56 w-full resize-none rounded-3xl border border-zinc-300 bg-white py-2 pl-4 font-sans text-base font-normal text-zinc-800 shadow-none outline-none placeholder:text-zinc-400 focus:border-2 focus:border-[#CBD5E1] focus:shadow-none focus:ring-0"
+              className="m-0 h-10 min-h-56 w-full resize-none rounded-3xl border border-[#E2E8F0] bg-white py-2 pl-4 font-sans text-base font-normal text-zinc-800 shadow-none outline-none ring-0 placeholder:text-zinc-400 focus:border-2 focus:border-[#CBD5E1] focus:shadow-none focus:ring-0"
               onChange={(e) => {
                 const newProfileData = {
                   ...profileData,

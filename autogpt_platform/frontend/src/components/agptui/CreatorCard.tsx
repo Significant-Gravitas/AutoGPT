@@ -1,20 +1,13 @@
 import * as React from "react";
 import Image from "next/image";
 
-const BACKGROUND_COLORS = [
-  "bg-amber-100 dark:bg-amber-800", // #fef3c7 / #92400e
-  "bg-violet-100 dark:bg-violet-800", // #ede9fe / #5b21b6
-  "bg-green-100 dark:bg-green-800", // #dcfce7 / #065f46
-  "bg-blue-100 dark:bg-blue-800", // #dbeafe / #1e3a8a
-];
-
 interface CreatorCardProps {
   creatorName: string;
   creatorImage: string;
   bio: string;
   agentsUploaded: number;
   onClick: () => void;
-  index: number;
+  key: number;
 }
 
 export const CreatorCard: React.FC<CreatorCardProps> = ({
@@ -23,13 +16,12 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
   bio,
   agentsUploaded,
   onClick,
-  index,
+  key,
 }) => {
-  const backgroundColor = BACKGROUND_COLORS[index % BACKGROUND_COLORS.length];
-
   return (
     <div
-      className={`aspect-square w-80 space-y-4 rounded-3xl bg-amber-100 p-5 pt-6 hover:cursor-pointer hover:bg-amber-200`}
+      key={key}
+      className={`aspect-square w-full space-y-4 rounded-3xl bg-amber-100 p-5 pt-6 hover:cursor-pointer hover:bg-amber-200 sm:w-80`}
       onClick={onClick}
       data-testid="creator-card"
     >

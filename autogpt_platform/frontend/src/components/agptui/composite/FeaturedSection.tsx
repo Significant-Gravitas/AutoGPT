@@ -46,8 +46,8 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
   };
 
   return (
-    <section className="w-full space-y-8">
-      <h2 className="pl-10 font-poppins text-base font-medium text-zinc-500">
+    <section className="w-full space-y-7">
+      <h2 className="pl-4 font-poppins text-base font-medium text-zinc-500 md:pl-10">
         Featured agents
       </h2>
 
@@ -61,7 +61,7 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
           {featuredAgents.map((agent, index) => (
             <CarouselItem
               key={index}
-              className={`w-fit flex-none ${index === featuredAgents.length - 1 ? "mr-4" : ""} ${index === 0 ? "pl-14" : ""}`}
+              className={`flex w-screen flex-none items-center justify-center md:w-fit ${index === featuredAgents.length - 1 ? "md:mr-4" : ""} ${index === 0 ? "pl-8 md:pl-14" : ""}`}
             >
               <Link
                 href={`/marketplace/agent/${encodeURIComponent(agent.creator)}/${encodeURIComponent(agent.slug)}`}
@@ -75,7 +75,7 @@ export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
             </CarouselItem>
           ))}
         </CarouselContent>
-        <div className="relative mt-4 px-10">
+        <div className="relative mt-4 px-4 md:px-10">
           <CarouselIndicator />
           <CarouselPrevious
             afterClick={handlePrevSlide}

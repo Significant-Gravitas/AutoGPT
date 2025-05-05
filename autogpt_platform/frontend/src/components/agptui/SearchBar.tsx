@@ -5,26 +5,17 @@ import { useRouter } from "next/navigation";
 
 import { MagnifyingGlassIcon } from "@radix-ui/react-icons";
 import { Input } from "../ui/input";
+import { cn } from "@/lib/utils";
 
 interface SearchBarProps {
   placeholder?: string;
-  backgroundColor?: string;
-  iconColor?: string;
-  textColor?: string;
-  placeholderColor?: string;
-  width?: string;
-  height?: string;
+  className?: string;
 }
 
 /** SearchBar component for user input and search functionality. */
 export const SearchBar: React.FC<SearchBarProps> = ({
   placeholder = 'Search for tasks like "optimise SEO"',
-  backgroundColor = "bg-neutral-100 dark:bg-neutral-800",
-  iconColor = "text-[#646464] dark:text-neutral-400",
-  textColor = "text-[#707070] dark:text-neutral-200",
-  placeholderColor = "text-[#707070] dark:text-neutral-400",
-  width = "w-[100%] lg:w-[56.25rem]",
-  height = "h-[60px]",
+  className,
 }) => {
   const router = useRouter();
 
@@ -32,7 +23,6 @@ export const SearchBar: React.FC<SearchBarProps> = ({
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    console.log(searchQuery);
 
     if (searchQuery.trim()) {
       // Encode the search term and navigate to the desired path
@@ -45,15 +35,18 @@ export const SearchBar: React.FC<SearchBarProps> = ({
     <form
       onSubmit={handleSubmit}
       data-testid="store-search-bar"
-      className={`${width} ${height} px-4 pt-1 md:px-6 md:pt-1 ${backgroundColor} flex items-center justify-center gap-2 rounded-full md:gap-5`}
+      className={cn(
+        `flex h-14 w-full items-center justify-center gap-2 rounded-full bg-[#F3F3F3] px-6 py-2.5 md:h-18 md:gap-5`,
+        className,
+      )}
     >
-      <MagnifyingGlassIcon className={`h-5 w-5 md:h-7 md:w-7 ${iconColor}`} />
+      <MagnifyingGlassIcon className={`h-5 w-5 text-[#020617] md:h-7 md:w-7`} />
       <Input
         type="text"
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         placeholder={placeholder}
-        className={`flex-grow border-none bg-transparent ${textColor} p-0 font-sans text-lg font-normal leading-[2.25rem] tracking-tight md:text-xl placeholder:${placeholderColor} m-0 shadow-none focus:shadow-none focus:outline-none focus:ring-0`}
+        className={`m-0 flex-grow border-none bg-transparent p-0 font-sans text-base font-normal text-zinc-800 shadow-none placeholder:text-neutral-500 focus:shadow-none focus:outline-none focus:ring-0 md:text-xl`}
         data-testid="store-search-input"
       />
     </form>

@@ -48,7 +48,7 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
 
   return (
     <>
-      <nav className="md:justify-center-center sticky top-0 z-40 hidden h-16 w-full border-b border-zinc-50 bg-neutral-50/20 px-4 backdrop-blur-[26px] md:flex md:items-center">
+      <nav className="sticky top-0 z-40 hidden h-16 w-full border-b border-zinc-50 bg-neutral-50/20 px-4 backdrop-blur-[26px] md:flex md:items-center md:justify-center">
         {/* Nav Links */}
         <div className="flex flex-1 items-center gap-5">
           {links.map((link) => (

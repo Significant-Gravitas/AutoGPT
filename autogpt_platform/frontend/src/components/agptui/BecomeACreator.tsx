@@ -21,7 +21,7 @@ export const BecomeACreator: React.FC<BecomeACreatorProps> = ({
   return (
     <div className="mb-18 w-full sm:mb-36 md:mb-72">
       {/* Title */}
-      <h2 className="mb-18 text-base font-medium text-zinc-500 dark:text-zinc-200">
+      <h2 className="mb-18 font-poppins text-base font-medium text-zinc-500">
         {title}
       </h2>
 

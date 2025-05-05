@@ -31,25 +31,22 @@ export const FeaturedCreators: React.FC<FeaturedCreatorsProps> = ({
   const displayedCreators = featuredCreators.slice(0, 4);
 
   return (
-    <div className="flex w-full flex-col items-center justify-center">
-      <div className="w-full">
-        <h2 className="mb-9 text-base font-medium text-zinc-500 dark:text-zinc-200">
-          {title}
-        </h2>
+    <div className="w-full space-y-9">
+      <h2 className="text-base font-medium text-zinc-500 dark:text-zinc-200">
+        {title}
+      </h2>
 
-        <div className="flex flex-wrap gap-5">
-          {displayedCreators.map((creator, index) => (
-            <CreatorCard
-              key={index}
-              creatorName={creator.name || creator.username}
-              creatorImage={creator.avatar_url}
-              bio={creator.description}
-              agentsUploaded={creator.num_agents}
-              onClick={() => handleCardClick(creator.username)}
-              index={index}
-            />
-          ))}
-        </div>
+      <div className="flex flex-wrap gap-5">
+        {displayedCreators.map((creator, index) => (
+          <CreatorCard
+            key={index}
+            creatorName={creator.name || creator.username}
+            creatorImage={creator.avatar_url}
+            bio={creator.description}
+            agentsUploaded={creator.num_agents}
+            onClick={() => handleCardClick(creator.username)}
+          />
+        ))}
       </div>
     </div>
   );

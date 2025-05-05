@@ -9,6 +9,7 @@ import CredentialsProvider from "@/components/integrations/credentials-provider"
 import { LaunchDarklyProvider } from "@/components/feature-flag/feature-flag-provider";
 import OnboardingProvider from "@/components/onboarding/onboarding-provider";
 import { MockClientProps } from "@/lib/autogpt-server-api/mock_client";
+import PageStructureContainer from "@/components/page-structure-container-provider";
 
 export interface ProvidersProps extends ThemeProviderProps {
   children: React.ReactNode;
@@ -28,7 +29,9 @@ export function Providers({
         <CredentialsProvider>
           <LaunchDarklyProvider>
             <OnboardingProvider>
-              <TooltipProvider>{children}</TooltipProvider>
+              <TooltipProvider>
+                <PageStructureContainer>{children}</PageStructureContainer>
+              </TooltipProvider>
             </OnboardingProvider>
           </LaunchDarklyProvider>
         </CredentialsProvider>

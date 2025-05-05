@@ -3,7 +3,7 @@ import { Chip } from "./Chip";
 
 const meta: Meta<typeof Chip> = {
   component: Chip,
-  title: "new/BasicBadge",
+  title: "Agpt Custom ui/general/BasicBadge",
   argTypes: {
     children: {
       control: "text",

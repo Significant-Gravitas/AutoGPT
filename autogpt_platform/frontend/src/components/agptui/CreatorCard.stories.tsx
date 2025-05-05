@@ -1,9 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { CreatorCard } from "./CreatorCard";
-import { userEvent, within, expect } from "@storybook/test";
+import { userEvent, within } from "@storybook/test";
 
 const meta = {
-  title: "new/Creator Card",
+  title: "Agpt Custom ui/marketing/Creator Card",
   component: CreatorCard,
   decorators: [
     (Story) => (
@@ -19,7 +19,7 @@ const meta = {
     bio: { control: "text" },
     agentsUploaded: { control: "number" },
     onClick: { action: "clicked" },
-    index: { control: "number" },
+    key: { control: "number" },
   },
 } satisfies Meta<typeof CreatorCard>;
 
@@ -30,7 +30,7 @@ const defaultAvatarImage = "/default_avatar.png";
 
 export const Default: Story = {
   args: {
-    index: 0,
+    key: 0,
     creatorName: "John Doe",
     creatorImage: defaultAvatarImage,
     bio: "AI enthusiast and developer with a passion for creating innovative agents.",
@@ -41,7 +41,7 @@ export const Default: Story = {
 
 export const NoImage: Story = {
   args: {
-    index: 0,
+    key: 0,
     creatorName: "John Doe",
     creatorImage: "",
     bio: "AI enthusiast and developer with a passion for creating innovative agents.",
@@ -52,7 +52,7 @@ export const NoImage: Story = {
 
 export const LongContent: Story = {
   args: {
-    index: 1,
+    key: 1,
     creatorName: "Alexandria Rodriguez-Fitzgerald Johnson III",
     creatorImage: defaultAvatarImage,
     bio: "Excited to start my journey in AI agent development! I have a background in computer science and machine learning, with a special interest in creating agents that can assist with everyday tasks and solve complex problems efficiently.",
@@ -63,7 +63,7 @@ export const LongContent: Story = {
 
 export const TestingInteractions: Story = {
   args: {
-    index: 3,
+    key: 3,
     creatorName: "Sam Brown",
     creatorImage: defaultAvatarImage,
     bio: "Exploring the frontiers of AI and its applications in everyday life.",
