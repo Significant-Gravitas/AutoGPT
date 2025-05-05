@@ -382,7 +382,7 @@ Currently, there are only 3 active services:
 
 - AgentServer (the API, defined in `server.py`)
 - ExecutionManager (the executor, defined in `manager.py`)
-- ExecutionScheduler (the scheduler, defined in `scheduler.py`)
+- Scheduler (the scheduler, defined in `scheduler.py`)
 
 The services run in independent Python processes and communicate through an IPC.
 A communication layer (`service.py`) is created to decouple the communication library from the implementation.
