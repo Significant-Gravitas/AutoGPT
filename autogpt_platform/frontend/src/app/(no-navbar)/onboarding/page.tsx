@@ -13,7 +13,7 @@ export default async function OnboardingPage() {
   // CONGRATS is the last step in intro onboarding
   if (onboarding.completedSteps.includes("CONGRATS")) redirect("/marketplace");
   else if (onboarding.completedSteps.includes("AGENT_INPUT"))
-    redirect("/onboarding/6-congrats");
+    redirect("/onboarding/5-run");
   else if (onboarding.completedSteps.includes("AGENT_NEW_RUN"))
     redirect("/onboarding/5-run");
   else if (onboarding.completedSteps.includes("AGENT_CHOICE"))
