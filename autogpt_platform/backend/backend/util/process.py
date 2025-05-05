@@ -3,7 +3,7 @@ import os
 import signal
 import sys
 from abc import ABC, abstractmethod
-from multiprocessing import Process, set_start_method
+from multiprocessing import Process, get_all_start_methods, set_start_method
 from typing import Optional
 
 from backend.util.logging import configure_logging
@@ -30,7 +30,12 @@ class AppProcess(ABC):
     process: Optional[Process] = None
     cleaned_up = False
 
-    set_start_method("spawn", force=True)
+    if "forkserver" in get_all_start_methods():
+        set_start_method("forkserver", force=True)
+    else:
+        logger.warning("Forkserver start method is not available. Using spawn instead.")
+        set_start_method("spawn", force=True)
+
     configure_logging()
     sentry_init()
 
@@ -48,6 +53,7 @@ class AppProcess(ABC):
     def service_name(cls) -> str:
         return cls.__name__
 
+    @abstractmethod
     def cleanup(self):
         """
         Implement this method on a subclass to do post-execution cleanup,

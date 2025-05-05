@@ -37,7 +37,7 @@ class GitHubTriggerBase:
             placeholder="{owner}/{repo}",
         )
         # --8<-- [start:example-payload-field]
-        payload: dict = SchemaField(hidden=True, default={})
+        payload: dict = SchemaField(hidden=True, default_factory=dict)
         # --8<-- [end:example-payload-field]
 
     class Output(BlockSchema):

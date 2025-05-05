@@ -5,11 +5,10 @@ from typing import Protocol
 
 import uvicorn
 from autogpt_libs.auth import parse_jwt_token
-from autogpt_libs.utils.cache import thread_cached
+from autogpt_libs.logging.utils import generate_uvicorn_config
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
-from backend.data import redis
 from backend.data.execution import AsyncRedisExecutionEventBus
 from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
@@ -19,7 +18,7 @@ from backend.server.model import (
     WSSubscribeGraphExecutionRequest,
     WSSubscribeGraphExecutionsRequest,
 )
-from backend.util.service import AppProcess, get_service_client
+from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
 
 logger = logging.getLogger(__name__)
@@ -46,24 +45,14 @@ def get_connection_manager():
     return _connection_manager
 
 
-@thread_cached
-def get_db_client():
-    from backend.executor import DatabaseManager
-
-    return get_service_client(DatabaseManager)
-
-
 async def event_broadcaster(manager: ConnectionManager):
     try:
-        redis.connect()
         event_queue = AsyncRedisExecutionEventBus()
         async for event in event_queue.listen("*"):
             await manager.send_execution_update(event)
     except Exception as e:
         logger.exception(f"Event broadcaster error: {e}")
         raise
-    finally:
-        redis.disconnect()
 
 
 async def authenticate_websocket(websocket: WebSocket) -> str:
@@ -286,8 +275,14 @@ class WebsocketServer(AppProcess):
             allow_methods=["*"],
             allow_headers=["*"],
         )
+
         uvicorn.run(
             server_app,
             host=Config().websocket_server_host,
             port=Config().websocket_server_port,
+            log_config=generate_uvicorn_config(),
         )
+
+    def cleanup(self):
+        super().cleanup()
+        logger.info(f"[{self.service_name}] ⏳ Shutting down WebSocket Server...")

@@ -22,6 +22,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { GraphMeta } from "@/lib/autogpt-server-api";
+import jaro from "jaro-winkler";
 
 interface BlocksControlProps {
   blocks: Block[];
@@ -89,21 +90,73 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
         }) satisfies Block,
     );
 
+    /**
+     * Evaluates how well a block matches the search query and returns a relevance score.
+     * The scoring algorithm works as follows:
+     * - Returns 1 if no query (all blocks match equally)
+     * - Normalized query for case-insensitive matching
+     * - Returns 3 for exact substring matches in block name (highest priority)
+     * - Returns 2 when all query words appear in the block name (regardless of order)
+     * - Returns 1.X for blocks with names similar to query using Jaro-Winkler distance (X is similarity score)
+     * - Returns 0.5 when all query words appear in the block description (lowest priority)
+     * - Returns 0 for no match
+     *
+     * Higher scores will appear first in search results.
+     */
+    const matchesSearch = (block: Block, query: string): number => {
+      if (!query) return 1;
+      const normalizedQuery = query.toLowerCase().trim();
+      const queryWords = normalizedQuery.split(/\s+/);
+      const blockName = block.name.toLowerCase();
+      const beautifiedName = beautifyString(block.name).toLowerCase();
+      const description = block.description.toLowerCase();
+
+      // 1. Exact match in name (highest priority)
+      if (
+        blockName.includes(normalizedQuery) ||
+        beautifiedName.includes(normalizedQuery)
+      ) {
+        return 3;
+      }
+
+      // 2. All query words in name (regardless of order)
+      const allWordsInName = queryWords.every(
+        (word) => blockName.includes(word) || beautifiedName.includes(word),
+      );
+      if (allWordsInName) return 2;
+
+      // 3. Similarity with name (Jaro-Winkler)
+      const similarityThreshold = 0.65;
+      const nameSimilarity = jaro(blockName, normalizedQuery);
+      const beautifiedSimilarity = jaro(beautifiedName, normalizedQuery);
+      const maxSimilarity = Math.max(nameSimilarity, beautifiedSimilarity);
+      if (maxSimilarity > similarityThreshold) {
+        return 1 + maxSimilarity; // Score between 1 and 2
+      }
+
+      // 4. All query words in description (lower priority)
+      const allWordsInDescription = queryWords.every((word) =>
+        description.includes(word),
+      );
+      if (allWordsInDescription) return 0.5;
+
+      return 0;
+    };
+
     return blockList
       .concat(agentBlockList)
+      .map((block) => ({
+        block,
+        score: matchesSearch(block, searchQuery),
+      }))
       .filter(
-        (block: Block) =>
-          (block.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            beautifyString(block.name)
-              .toLowerCase()
-              .includes(searchQuery.toLowerCase()) ||
-            block.description
-              .toLowerCase()
-              .includes(searchQuery.toLowerCase())) &&
+        ({ block, score }) =>
+          score > 0 &&
           (!selectedCategory ||
             block.categories.some((cat) => cat.category === selectedCategory)),
       )
-      .map((block) => ({
+      .sort((a, b) => b.score - a.score)
+      .map(({ block }) => ({
         ...block,
         notAvailable:
           (block.uiType == BlockUIType.WEBHOOK &&

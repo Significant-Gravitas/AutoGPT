@@ -16,9 +16,15 @@ from pydantic import BaseModel
 from sqlalchemy import MetaData, create_engine
 
 from backend.data.block import BlockInput
-from backend.executor.manager import ExecutionManager
-from backend.notifications.notifications import NotificationManager
-from backend.util.service import AppService, expose, get_service_client
+from backend.executor import utils as execution_utils
+from backend.notifications.notifications import NotificationManagerClient
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    endpoint_to_async,
+    expose,
+    get_service_client,
+)
 from backend.util.settings import Config
 
 
@@ -58,24 +64,17 @@ def job_listener(event):
 
 
 @thread_cached
-def get_execution_client() -> ExecutionManager:
-    return get_service_client(ExecutionManager)
-
-
-@thread_cached
 def get_notification_client():
-    from backend.notifications import NotificationManager
-
-    return get_service_client(NotificationManager)
+    return get_service_client(NotificationManagerClient)
 
 
 def execute_graph(**kwargs):
     args = ExecutionJobArgs(**kwargs)
     try:
         log(f"Executing recurring job for graph #{args.graph_id}")
-        get_execution_client().add_execution(
+        execution_utils.add_graph_execution(
             graph_id=args.graph_id,
-            data=args.input_data,
+            inputs=args.input_data,
             user_id=args.user_id,
             graph_version=args.graph_version,
         )
@@ -164,19 +163,9 @@ class Scheduler(AppService):
     def db_pool_size(cls) -> int:
         return config.scheduler_db_pool_size
 
-    @property
-    @thread_cached
-    def execution_client(self) -> ExecutionManager:
-        return get_service_client(ExecutionManager)
-
-    @property
-    @thread_cached
-    def notification_client(self) -> NotificationManager:
-        return get_service_client(NotificationManager)
-
     def run_service(self):
         load_dotenv()
-        db_schema, db_url = _extract_schema_from_url(os.getenv("DATABASE_URL"))
+        db_schema, db_url = _extract_schema_from_url(os.getenv("DIRECT_URL"))
         self.scheduler = BlockingScheduler(
             jobstores={
                 Jobstores.EXECUTION.value: SQLAlchemyJobStore(
@@ -205,6 +194,12 @@ class Scheduler(AppService):
         )
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.start()
+
+    def cleanup(self):
+        super().cleanup()
+        logger.info(f"[{self.service_name}] ⏳ Shutting down scheduler...")
+        if self.scheduler:
+            self.scheduler.shutdown(wait=False)
 
     @expose
     def add_execution_schedule(
@@ -304,3 +299,15 @@ class Scheduler(AppService):
             ),
             job,
         )
+
+
+class SchedulerClient(AppServiceClient):
+    @classmethod
+    def get_service_type(cls):
+        return Scheduler
+
+    add_execution_schedule = endpoint_to_async(Scheduler.add_execution_schedule)
+    delete_schedule = endpoint_to_async(Scheduler.delete_schedule)
+    get_execution_schedules = endpoint_to_async(Scheduler.get_execution_schedules)
+    add_batched_notification_schedule = Scheduler.add_batched_notification_schedule
+    add_weekly_notification_schedule = Scheduler.add_weekly_notification_schedule

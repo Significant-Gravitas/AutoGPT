@@ -1,6 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { Category } from "./autogpt-server-api/types";
+
+import { Category, Graph } from "@/lib/autogpt-server-api/types";
 import { NodeDimension } from "@/components/Flow";
 
 export function cn(...inputs: ClassValue[]) {
@@ -22,7 +23,7 @@ export function hashString(str: string): number {
 
 /** Derived from https://stackoverflow.com/a/32922084 */
 export function deepEquals(x: any, y: any): boolean {
-  const ok = Object.keys,
+  const ok = (obj: any) => Object.keys(obj).filter((key) => obj[key] !== null),
     tx = typeof x,
     ty = typeof y;
 
@@ -120,28 +121,9 @@ const applyExceptions = (str: string): string => {
   return str;
 };
 
-/** Recursively remove all "credentials" properties from exported JSON files */
-export function removeCredentials(obj: any) {
-  if (obj && typeof obj === "object") {
-    if (Array.isArray(obj)) {
-      obj.forEach((item) => removeCredentials(item));
-    } else {
-      delete obj.credentials;
-      Object.values(obj).forEach((value) => removeCredentials(value));
-    }
-  }
-  return obj;
-}
-
 export function exportAsJSONFile(obj: object, filename: string): void {
-  // Deep clone the object to avoid modifying the original
-  const sanitizedObj = JSON.parse(JSON.stringify(obj));
-
-  // Sanitize the object
-  removeCredentials(sanitizedObj);
-
   // Create downloadable blob
-  const jsonString = JSON.stringify(sanitizedObj, null, 2);
+  const jsonString = JSON.stringify(obj, null, 2);
   const blob = new Blob([jsonString], { type: "application/json" });
   const url = URL.createObjectURL(blob);
 
@@ -261,6 +243,25 @@ export function getBehaveAs(): BehaveAs {
   return process.env.NEXT_PUBLIC_BEHAVE_AS === "CLOUD"
     ? BehaveAs.CLOUD
     : BehaveAs.LOCAL;
+}
+
+export enum AppEnv {
+  LOCAL = "local",
+  DEV = "dev",
+  PROD = "prod",
+}
+
+export function getAppEnv(): AppEnv {
+  const env = process.env.NEXT_PUBLIC_APP_ENV;
+  if (env === "dev") return AppEnv.DEV;
+  if (env === "prod") return AppEnv.PROD;
+  // Some places use prod and others production
+  if (env === "production") return AppEnv.PROD;
+  return AppEnv.LOCAL;
+}
+
+export function getEnvironmentStr(): string {
+  return `app:${getAppEnv().toLowerCase()}-behave:${getBehaveAs().toLowerCase()}`;
 }
 
 function rectanglesOverlap(

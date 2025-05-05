@@ -48,7 +48,7 @@ export const FlowRunsList: React.FC<{
               <TableCell>
                 <TextRenderer
                   value={
-                    flows.find((f) => f.agent_id == execution.graph_id)?.name
+                    flows.find((f) => f.graph_id == execution.graph_id)?.name
                   }
                   truncateLengthLimit={30}
                 />
@@ -62,7 +62,11 @@ export const FlowRunsList: React.FC<{
                   className="w-full justify-center"
                 />
               </TableCell>
-              <TableCell>{formatDuration(execution.duration)}</TableCell>
+              <TableCell>
+                {execution.stats
+                  ? formatDuration(execution.stats.duration)
+                  : ""}
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>

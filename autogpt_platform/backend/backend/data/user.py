@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from prisma import Json
 from prisma.enums import NotificationType
 from prisma.models import User
-from prisma.types import UserUpdateInput
+from prisma.types import JsonFilter, UserCreateInput, UserUpdateInput
 
 from backend.data.db import prisma
 from backend.data.model import UserIntegrations, UserMetadata, UserMetadataRaw
@@ -36,11 +36,11 @@ async def get_or_create_user(user_data: dict) -> User:
         user = await prisma.user.find_unique(where={"id": user_id})
         if not user:
             user = await prisma.user.create(
-                data={
-                    "id": user_id,
-                    "email": user_email,
-                    "name": user_data.get("user_metadata", {}).get("name"),
-                }
+                data=UserCreateInput(
+                    id=user_id,
+                    email=user_email,
+                    name=user_data.get("user_metadata", {}).get("name"),
+                )
             )
 
         return User.model_validate(user)
@@ -84,11 +84,11 @@ async def create_default_user() -> Optional[User]:
     user = await prisma.user.find_unique(where={"id": DEFAULT_USER_ID})
     if not user:
         user = await prisma.user.create(
-            data={
-                "id": DEFAULT_USER_ID,
-                "email": "default@example.com",
-                "name": "Default User",
-            }
+            data=UserCreateInput(
+                id=DEFAULT_USER_ID,
+                email="default@example.com",
+                name="Default User",
+            )
         )
     return User.model_validate(user)
 
@@ -135,16 +135,21 @@ async def migrate_and_encrypt_user_integrations():
     """Migrate integration credentials and OAuth states from metadata to integrations column."""
     users = await User.prisma().find_many(
         where={
-            "metadata": {
-                "path": ["integration_credentials"],
-                "not": Json({"a": "yolo"}),  # bogus value works to check if key exists
-            }  # type: ignore
+            "metadata": cast(
+                JsonFilter,
+                {
+                    "path": ["integration_credentials"],
+                    "not": Json(
+                        {"a": "yolo"}
+                    ),  # bogus value works to check if key exists
+                },
+            )
         }
     )
     logger.info(f"Migrating integration credentials for {len(users)} users")
 
     for user in users:
-        raw_metadata = cast(UserMetadataRaw, user.metadata)
+        raw_metadata = cast(dict, user.metadata)
         metadata = UserMetadata.model_validate(raw_metadata)
 
         # Get existing integrations data
@@ -160,7 +165,6 @@ async def migrate_and_encrypt_user_integrations():
         await update_user_integrations(user_id=user.id, data=integrations)
 
         # Remove from metadata
-        raw_metadata = dict(raw_metadata)
         raw_metadata.pop("integration_credentials", None)
         raw_metadata.pop("integration_oauth_states", None)
 

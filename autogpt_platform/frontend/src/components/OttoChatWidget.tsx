@@ -6,7 +6,7 @@ import { useToast } from "@/components/ui/use-toast";
 import useAgentGraph from "../hooks/useAgentGraph";
 import ReactMarkdown from "react-markdown";
 import { GraphID } from "@/lib/autogpt-server-api/types";
-import { askOtto } from "@/app/build/actions";
+import { askOtto } from "@/app/(platform)/build/actions";
 
 interface Message {
   type: "user" | "assistant";

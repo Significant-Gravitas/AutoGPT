@@ -26,9 +26,9 @@ export const FlowRunInfo: React.FC<
   const api = useBackendAPI();
 
   const fetchBlockResults = useCallback(async () => {
-    const graph = await api.getGraph(agent.agent_id, agent.agent_version);
+    const graph = await api.getGraph(agent.graph_id, agent.graph_version);
     const graphExecution = await api.getGraphExecutionInfo(
-      agent.agent_id,
+      agent.graph_id,
       execution.id,
     );
 
@@ -49,7 +49,7 @@ export const FlowRunInfo: React.FC<
         ),
       ),
     );
-  }, [api, agent.agent_id, agent.agent_version, execution.id]);
+  }, [api, agent.graph_id, agent.graph_version, execution.id]);
 
   // Fetch graph and execution data
   useEffect(() => {
@@ -57,15 +57,15 @@ export const FlowRunInfo: React.FC<
     fetchBlockResults();
   }, [isOutputOpen, fetchBlockResults]);
 
-  if (execution.graph_id != agent.agent_id) {
+  if (execution.graph_id != agent.graph_id) {
     throw new Error(
       `FlowRunInfo can't be used with non-matching execution.graph_id and flow.id`,
     );
   }
 
   const handleStopRun = useCallback(() => {
-    api.stopGraphExecution(agent.agent_id, execution.id);
-  }, [api, agent.agent_id, execution.id]);
+    api.stopGraphExecution(agent.graph_id, execution.id);
+  }, [api, agent.graph_id, execution.id]);
 
   return (
     <>
@@ -98,7 +98,7 @@ export const FlowRunInfo: React.FC<
         </CardHeader>
         <CardContent>
           <p className="hidden">
-            <strong>Agent ID:</strong> <code>{agent.agent_id}</code>
+            <strong>Agent ID:</strong> <code>{agent.graph_id}</code>
           </p>
           <p className="hidden">
             <strong>Run ID:</strong> <code>{execution.id}</code>
@@ -115,11 +115,13 @@ export const FlowRunInfo: React.FC<
             <strong>Finished:</strong>{" "}
             {moment(execution.ended_at).format("YYYY-MM-DD HH:mm:ss")}
           </p>
-          <p>
-            <strong>Duration (run time):</strong>{" "}
-            {execution.duration.toFixed(1)} (
-            {execution.total_run_time.toFixed(1)}) seconds
-          </p>
+          {execution.stats && (
+            <p>
+              <strong>Duration (run time):</strong>{" "}
+              {execution.stats.duration.toFixed(1)} (
+              {execution.stats.node_exec_time.toFixed(1)}) seconds
+            </p>
+          )}
         </CardContent>
       </Card>
       <RunnerOutputUI

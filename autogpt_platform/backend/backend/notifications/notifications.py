@@ -9,6 +9,7 @@ from autogpt_libs.utils.cache import thread_cached
 from prisma.enums import NotificationType
 from pydantic import BaseModel
 
+from backend.data import rabbitmq
 from backend.data.notifications import (
     BaseSummaryData,
     BaseSummaryParams,
@@ -30,7 +31,13 @@ from backend.data.notifications import (
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import generate_unsubscribe_link
 from backend.notifications.email import EmailSender
-from backend.util.service import AppService, expose, get_service_client
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    endpoint_to_async,
+    expose,
+    get_service_client,
+)
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -107,16 +114,16 @@ def create_notification_config() -> RabbitMQConfig:
 
 @thread_cached
 def get_scheduler():
-    from backend.executor import Scheduler
+    from backend.executor.scheduler import SchedulerClient
 
-    return get_service_client(Scheduler)
+    return get_service_client(SchedulerClient)
 
 
 @thread_cached
 def get_db():
-    from backend.executor.database import DatabaseManager
+    from backend.executor.database import DatabaseManagerClient
 
-    return get_service_client(DatabaseManager)
+    return get_service_client(DatabaseManagerClient)
 
 
 class NotificationManager(AppService):
@@ -127,6 +134,20 @@ class NotificationManager(AppService):
         self.rabbitmq_config = create_notification_config()
         self.running = True
         self.email_sender = EmailSender()
+
+    @property
+    def rabbit(self) -> rabbitmq.AsyncRabbitMQ:
+        """Access the RabbitMQ service. Will raise if not configured."""
+        if not self.rabbitmq_service:
+            raise RuntimeError("RabbitMQ not configured for this service")
+        return self.rabbitmq_service
+
+    @property
+    def rabbit_config(self) -> rabbitmq.RabbitMQConfig:
+        """Access the RabbitMQ config. Will raise if not configured."""
+        if not self.rabbitmq_config:
+            raise RuntimeError("RabbitMQ not configured for this service")
+        return self.rabbitmq_config
 
     @classmethod
     def get_port(cls) -> int:
@@ -688,10 +709,14 @@ class NotificationManager(AppService):
                 )
 
     def run_service(self):
+        logger.info(f"[{self.service_name}] ⏳ Configuring RabbitMQ...")
+        self.rabbitmq_service = rabbitmq.AsyncRabbitMQ(self.rabbitmq_config)
+        self.run_and_wait(self.rabbitmq_service.connect())
+
         logger.info(f"[{self.service_name}] Started notification service")
 
         # Set up scheduler for batch processing of all notification types
-        # this can be changed later to spawn differnt cleanups on different schedules
+        # this can be changed later to spawn different cleanups on different schedules
         try:
             get_scheduler().add_batched_notification_schedule(
                 notification_types=list(NotificationType),
@@ -753,3 +778,16 @@ class NotificationManager(AppService):
         """Cleanup service resources"""
         self.running = False
         super().cleanup()
+        logger.info(f"[{self.service_name}] ⏳ Disconnecting RabbitMQ...")
+        self.run_and_wait(self.rabbitmq_service.disconnect())
+
+
+class NotificationManagerClient(AppServiceClient):
+    @classmethod
+    def get_service_type(cls):
+        return NotificationManager
+
+    queue_notification_async = endpoint_to_async(NotificationManager.queue_notification)
+    queue_notification = NotificationManager.queue_notification
+    process_existing_batches = NotificationManager.process_existing_batches
+    queue_weekly_summary = NotificationManager.queue_weekly_summary

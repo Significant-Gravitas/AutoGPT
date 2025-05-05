@@ -34,7 +34,7 @@ def conn_retry(
     def on_retry(retry_state):
         prefix = _log_prefix(resource_name, conn_id)
         exception = retry_state.outcome.exception()
-        logger.error(f"{prefix} {action_name} failed: {exception}. Retrying now...")
+        logger.warning(f"{prefix} {action_name} failed: {exception}. Retrying now...")
 
     def decorator(func):
         is_coroutine = asyncio.iscoroutinefunction(func)
@@ -73,3 +73,10 @@ def conn_retry(
         return async_wrapper if is_coroutine else sync_wrapper
 
     return decorator
+
+
+func_retry = retry(
+    reraise=False,
+    stop=stop_after_attempt(5),
+    wait=wait_exponential(multiplier=1, min=1, max=30),
+)

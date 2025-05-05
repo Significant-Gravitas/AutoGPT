@@ -19,7 +19,7 @@ class HubSpotEngagementBlock(Block):
         )
         email_data: dict = SchemaField(
             description="Email data including recipient, subject, content",
-            default={},
+            default_factory=dict,
         )
         contact_id: str = SchemaField(
             description="Contact ID for engagement tracking", default=""
@@ -27,7 +27,6 @@ class HubSpotEngagementBlock(Block):
         timeframe_days: int = SchemaField(
             description="Number of days to look back for engagement",
             default=30,
-            optional=True,
         )
 
     class Output(BlockSchema):

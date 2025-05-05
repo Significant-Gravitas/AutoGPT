@@ -250,15 +250,19 @@ export type LinkCreatable = Omit<Link, "id" | "is_static"> & {
 /* Mirror of backend/data/execution.py:GraphExecutionMeta */
 export type GraphExecutionMeta = {
   id: GraphExecutionID;
-  started_at: Date;
-  ended_at: Date;
-  cost?: number;
-  duration: number;
-  total_run_time: number;
-  status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
+  user_id: UserID;
   graph_id: GraphID;
   graph_version: number;
   preset_id?: string;
+  status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
+  started_at: Date;
+  ended_at: Date;
+  stats?: {
+    cost: number;
+    duration: number;
+    node_exec_time: number;
+    node_exec_count: number;
+  };
 };
 
 export type GraphExecutionID = Brand<string, "GraphExecutionID">;
@@ -272,12 +276,20 @@ export type GraphExecution = GraphExecutionMeta & {
 
 export type GraphMeta = {
   id: GraphID;
+  user_id: UserID;
   version: number;
   is_active: boolean;
   name: string;
   description: string;
+  forked_from_id?: GraphID | null;
+  forked_from_version?: number | null;
   input_schema: GraphIOSchema;
   output_schema: GraphIOSchema;
+  credentials_input_schema: {
+    type: "object";
+    properties: { [key: string]: BlockIOCredentialsSubSchema };
+    required: (keyof GraphMeta["credentials_input_schema"]["properties"])[];
+  };
 };
 
 export type GraphID = Brand<string, "GraphID">;
@@ -302,11 +314,19 @@ export type GraphIOSubSchema = Omit<
 export type Graph = GraphMeta & {
   nodes: Array<Node>;
   links: Array<Link>;
+  has_webhook_trigger: boolean;
 };
 
 export type GraphUpdateable = Omit<
   Graph,
-  "version" | "is_active" | "links" | "input_schema" | "output_schema"
+  | "user_id"
+  | "version"
+  | "is_active"
+  | "links"
+  | "input_schema"
+  | "output_schema"
+  | "credentials_input_schema"
+  | "has_webhook_trigger"
 > & {
   version?: number;
   is_active?: boolean;
@@ -345,8 +365,8 @@ export type NodeExecutionResult = {
 /* Mirror of backend/server/v2/library/model.py:LibraryAgent */
 export type LibraryAgent = {
   id: LibraryAgentID;
-  agent_id: GraphID;
-  agent_version: number;
+  graph_id: GraphID;
+  graph_version: number;
   image_url?: string;
   creator_name: string;
   creator_image_url: string;
@@ -382,8 +402,8 @@ export interface LibraryAgentResponse {
 export interface LibraryAgentPreset {
   id: string;
   updated_at: Date;
-  agent_id: string;
-  agent_version: number;
+  graph_id: GraphID;
+  graph_version: number;
   name: string;
   description: string;
   is_active: boolean;
@@ -403,8 +423,8 @@ export interface CreateLibraryAgentPresetRequest {
   name: string;
   description: string;
   inputs: { [key: string]: any };
-  agent_id: string;
-  agent_version: number;
+  graph_id: GraphID;
+  graph_version: number;
   is_active: boolean;
 }
 
@@ -500,7 +520,7 @@ export type NotificationPreferenceDTO = {
 };
 
 export type NotificationPreference = NotificationPreferenceDTO & {
-  user_id: string;
+  user_id: UserID;
   emails_sent_today: number;
   last_reset_date: Date;
 };
@@ -520,9 +540,11 @@ export type Webhook = {
 };
 
 export type User = {
-  id: string;
+  id: UserID;
   email: string;
 };
+
+export type UserID = Brand<string, "UserID">;
 
 export enum BlockUIType {
   STANDARD = "Standard",
@@ -537,6 +559,7 @@ export enum BlockUIType {
 
 export enum SpecialBlockID {
   AGENT = "e189baac-8c20-45a1-94a7-55177ea42565",
+  SMART_DECISION = "3b191d9f-356f-482d-8238-ba04b6d18381",
   OUTPUT = "363ae599-353e-4804-937e-b2ee3cef3da4",
 }
 
@@ -677,7 +700,7 @@ export type Schedule = {
   id: ScheduleID;
   name: string;
   cron: string;
-  user_id: string;
+  user_id: UserID;
   graph_id: GraphID;
   graph_version: number;
   input_data: { [key: string]: any };
@@ -754,14 +777,20 @@ export interface CreateAPIKeyResponse {
 export interface CreditTransaction {
   transaction_key: string;
   transaction_time: Date;
-  transaction_type: string;
+  transaction_type: CreditTransactionType;
   amount: number;
-  balance: number;
+  running_balance: number;
+  current_balance: number;
   description: string;
   usage_graph_id: GraphID;
   usage_execution_id: GraphExecutionID;
   usage_node_count: number;
   usage_starting_time: Date;
+  user_id: string;
+  user_email: string | null;
+  reason: string | null;
+  admin_email: string | null;
+  extra_data: string | null;
 }
 
 export interface TransactionHistory {
@@ -771,7 +800,7 @@ export interface TransactionHistory {
 
 export interface RefundRequest {
   id: string;
-  user_id: string;
+  user_id: UserID;
   transaction_key: string;
   amount: number;
   reason: string;
@@ -788,15 +817,26 @@ export type OnboardingStep =
   | "AGENT_CHOICE"
   | "AGENT_NEW_RUN"
   | "AGENT_INPUT"
-  | "CONGRATS";
+  | "CONGRATS"
+  | "GET_RESULTS"
+  | "MARKETPLACE_VISIT"
+  | "MARKETPLACE_ADD_AGENT"
+  | "MARKETPLACE_RUN_AGENT"
+  | "BUILDER_OPEN"
+  | "BUILDER_SAVE_AGENT"
+  | "BUILDER_RUN_AGENT";
 
 export interface UserOnboarding {
   completedSteps: OnboardingStep[];
+  notificationDot: boolean;
+  notified: OnboardingStep[];
+  rewardedFor: OnboardingStep[];
   usageReason: string | null;
   integrations: string[];
   otherIntegrations: string | null;
   selectedStoreListingVersionId: string | null;
-  agentInput: { [key: string]: string } | null;
+  agentInput: { [key: string]: string | number } | null;
+  onboardingAgentExecutionId: GraphExecutionID | null;
 }
 
 /* *** UTILITIES *** */
@@ -866,6 +906,23 @@ export type AdminPendingSubmissionsRequest = {
   page_size: number;
 };
 
+export enum CreditTransactionType {
+  TOP_UP = "TOP_UP",
+  USAGE = "USAGE",
+  GRANT = "GRANT",
+  REFUND = "REFUND",
+  CARD_CHECK = "CARD_CHECK",
+}
+
+export type UsersBalanceHistoryResponse = {
+  history: CreditTransaction[];
+  pagination: Pagination;
+};
+
+export type AddUserCreditsResponse = {
+  new_balance: number;
+  transaction_key: string;
+};
 const _stringFormatToDataTypeMap: Partial<Record<string, DataType>> = {
   date: DataType.DATE,
   time: DataType.TIME,
