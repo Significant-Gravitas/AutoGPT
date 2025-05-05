@@ -73,6 +73,8 @@ services:
         condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
+      # scheduler_server:
+      #   condition: service_healthy
     environment:
       - SUPABASE_URL=http://kong:8000
       - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
@@ -88,7 +90,7 @@ services:
       - REDIS_PASSWORD=password
       - ENABLE_AUTH=true
       - PYRO_HOST=0.0.0.0
-      - EXECUTIONSCHEDULER_HOST=rest_server
+      - SCHEDULER_HOST=scheduler_server
       - EXECUTIONMANAGER_HOST=executor
       - NOTIFICATIONMANAGER_HOST=rest_server
       - FRONTEND_BASE_URL=http://localhost:3000
@@ -98,7 +100,6 @@ services:
     ports:
       - "8006:8006"
       - "8007:8007"
-      - "8003:8003" # execution scheduler
     networks:
       - app-network
 
@@ -184,6 +185,61 @@ services:
 
     ports:
       - "8001:8001"
+    networks:
+      - app-network
+
+  scheduler_server:
+    build:
+      context: ../
+      dockerfile: autogpt_platform/backend/Dockerfile
+      target: server
+    command: ["python", "-m", "backend.scheduler"]
+    develop:
+      watch:
+        - path: ./
+          target: autogpt_platform/backend/
+          action: rebuild
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # healthcheck:
+    #   test:
+    #     [
+    #       "CMD",
+    #       "curl",
+    #       "-f",
+    #       "-X",
+    #       "POST",
+    #       "http://localhost:8003/health_check",
+    #     ]
+    #   interval: 10s
+    #   timeout: 10s
+    #   retries: 5
+    environment:
+      - DATABASEMANAGER_HOST=rest_server
+      - NOTIFICATIONMANAGER_HOST=rest_server
+      - SUPABASE_JWT_SECRET=your-super-secret-jwt-token-with-at-least-32-characters-long
+      - DATABASE_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      - DIRECT_URL=postgresql://postgres:your-super-secret-and-long-postgres-password@db:5432/postgres?connect_timeout=60&schema=platform
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=password
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_DEFAULT_USER=rabbitmq_user_default
+      - RABBITMQ_DEFAULT_PASS=k0VMxyIJF9S35f3x2uaw5IWAl6Y536O7
+      - ENABLE_AUTH=true
+      - PYRO_HOST=0.0.0.0
+      - BACKEND_CORS_ALLOW_ORIGINS=["http://localhost:3000"]
+
+    ports:
+      - "8003:8003"
     networks:
       - app-network
 
