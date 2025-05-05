@@ -1097,7 +1097,7 @@ class ExecutionManager(AppProcess):
 def get_db_client() -> "DatabaseManagerClient":
     from backend.executor import DatabaseManagerClient
 
-    # Disable health check for the DB client to avoid breaking process initializer.
+    # Disable health check for the service client to avoid breaking process initializer.
     return get_service_client(DatabaseManagerClient, health_check=False)
 
 
@@ -1105,7 +1105,7 @@ def get_db_client() -> "DatabaseManagerClient":
 def get_notification_service() -> "NotificationManagerClient":
     from backend.notifications import NotificationManagerClient
 
-    # Disable health check for the DB client to avoid breaking process initializer.
+    # Disable health check for the service client to avoid breaking process initializer.
     return get_service_client(NotificationManagerClient, health_check=False)
 
 
