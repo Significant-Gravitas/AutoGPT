@@ -247,6 +247,7 @@ ASC = TypeVar("ASC", bound=AppServiceClient)
 def get_service_client(
     service_client_type: Type[ASC],
     call_timeout: int | None = api_call_timeout,
+    health_check: bool = True,
 ) -> ASC:
     class DynamicClient:
         def __init__(self):
@@ -351,7 +352,8 @@ def get_service_client(
                 return sync_method
 
     client = cast(ASC, DynamicClient())
-    client.health_check()
+    if health_check:
+        client.health_check()
 
     return client
 
