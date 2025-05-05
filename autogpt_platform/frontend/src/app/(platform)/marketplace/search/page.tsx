@@ -117,12 +117,12 @@ function SearchResults({
 
   return (
     <div className="px-10">
-      <div className="mt-8 flex items-center">
+      <div className="mt-9 flex items-center">
         <div className="flex-1">
-          <h2 className="font-geist text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+          <h2 className="font-sans text-base font-medium leading-normal text-zinc-800 dark:text-neutral-200">
             Results for:
           </h2>
-          <h1 className="font-poppins text-2xl font-semibold leading-[32px] text-neutral-800 dark:text-neutral-100">
+          <h1 className="font-poppins text-2xl font-medium leading-[32px] text-zinc-800 dark:text-neutral-100">
             {searchTerm}
           </h1>
         </div>
@@ -137,7 +137,7 @@ function SearchResults({
         </div>
       ) : totalCount > 0 ? (
         <>
-          <div className="mt-[36px] flex items-center justify-between">
+          <div className="mt-9 flex items-center justify-between">
             <SearchFilterChips
               totalCount={totalCount}
               agentsCount={agentsCount}
@@ -147,9 +147,9 @@ function SearchResults({
             <SortDropdown onSort={handleSortChange} />
           </div>
           {/* Content section */}
-          <div className="">
+          <div className="space-y-9 py-9">
             {showAgents && agentsCount > 0 && (
-              <div className="mt-[36px]">
+              <div>
                 <AgentsSection agents={agents} sectionTitle="Agents" />
               </div>
             )}
@@ -158,7 +158,7 @@ function SearchResults({
               <Separator />
             )}
             {showCreators && creatorsCount > 0 && (
-              <div className="mt-[36px]">
+              <div>
                 <FeaturedCreators
                   featuredCreators={creators}
                   title="Creators"

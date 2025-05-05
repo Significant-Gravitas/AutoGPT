@@ -44,7 +44,7 @@ export default async function Page({
     const creatorAgents = await api.getStoreAgents({ creator: params.creator });
 
     return (
-      <main className="px-10">
+      <main className="mt-9 px-10">
         <BreadCrumbs
           items={[
             { name: "Store", link: "/marketplace" },
@@ -52,7 +52,7 @@ export default async function Page({
           ]}
         />
 
-        <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:flex-row md:gap-8">
+        <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-[3.2rem] md:flex-row md:gap-10">
           <div>
             <CreatorInfoCard
               username={creator.name}
@@ -64,7 +64,7 @@ export default async function Page({
             />
           </div>
           <div className="flex-1 space-y-7">
-            <div>
+            <div className="space-y-3">
               <p className="font-sans text-base font-medium text-zinc-800">
                 About
               </p>
@@ -77,14 +77,13 @@ export default async function Page({
           </div>
         </div>
 
-        <div className="mt-8 sm:mt-12 md:mt-16 lg:pb-[58px]">
-          <Separator className="mb-6 bg-gray-200" />
-          <AgentsSection
-            agents={creatorAgents.agents}
-            hideAvatars={true}
-            sectionTitle={`Agents by ${creator.name}`}
-          />
-        </div>
+        <Separator className="mb-9 mt-12 bg-gray-200" />
+        <AgentsSection
+          className="mb-36"
+          agents={creatorAgents.agents}
+          hideAvatars={true}
+          sectionTitle={`Agents by ${creator.name}`}
+        />
       </main>
     );
   } catch (error) {

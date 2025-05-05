@@ -2,6 +2,7 @@ import * as React from "react";
 import Image from "next/image";
 import { PlayIcon } from "@radix-ui/react-icons";
 import { Button } from "./Button";
+import AutogptButton from "./AutogptButton";
 
 const isValidVideoFile = (url: string): boolean => {
   const videoExtensions = /\.(mp4|webm|ogg)$/i;
@@ -60,7 +61,7 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = React.memo(
 
     return (
       <div className="relative">
-        <div className="h-[15rem] overflow-hidden rounded-[26px] bg-[#a8a8a8] dark:bg-neutral-700 sm:h-[20rem] sm:w-full md:h-[25rem] lg:h-[30rem]">
+        <div className="h-[15rem] overflow-hidden rounded-[1.5rem] bg-[#a8a8a8] dark:bg-neutral-700 sm:h-[20rem] sm:w-full md:h-[25rem] lg:h-[32rem]">
           {isValidVideoUrl(image) ? (
             getYouTubeVideoId(image) ? (
               <iframe
@@ -102,29 +103,24 @@ export const AgentImageItem: React.FC<AgentImageItemProps> = React.memo(
                 src={image}
                 alt="Image"
                 fill
-                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                className="rounded-xl object-cover"
+                className="rounded-[1.5rem] object-cover"
               />
             </div>
           )}
         </div>
         {isVideoFile && playingVideoIndex !== index && (
-          <div className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3 md:bottom-4 md:left-4 lg:bottom-[1.25rem] lg:left-[1.25rem]">
-            <Button
-              size="default"
-              className="space-x-2 border border-zinc-300 bg-zinc-400/50 backdrop-blur-xl hover:bg-zinc-400/80 sm:h-14"
+          <div className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3 md:bottom-4 md:left-4 lg:bottom-6 lg:left-6">
+            <AutogptButton
+              icon
+              variant={"secondary"}
               onClick={() => {
                 if (videoRef.current) {
                   videoRef.current.play();
                 }
               }}
             >
-              <PlayIcon className="h-5 w-5 text-white dark:text-neutral-200 sm:h-6 sm:w-6 md:h-7 md:w-7" />
-
-              <span className="font-poppins text-sm font-medium text-white dark:text-neutral-200 sm:text-lg">
-                Play demo
-              </span>
-            </Button>
+              Play
+            </AutogptButton>
           </div>
         )}
       </div>

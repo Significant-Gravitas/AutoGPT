@@ -67,7 +67,7 @@ export default function Page({}: {}) {
   return (
     <main className="flex-1 space-y-7.5 pb-8">
       {/* Title */}
-      <h1 className="font-poppins text-[1.75rem] font-medium leading-[2.5rem] text-zinc-800">
+      <h1 className="font-poppins text-[1.75rem] font-medium leading-[2.5rem] text-zinc-500">
         Agent dashboard
       </h1>
 

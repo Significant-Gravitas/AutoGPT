@@ -20,6 +20,7 @@ import {
 import Link from "next/link";
 import { ProfilePopoutMenuLogoutButton } from "./ProfilePopoutMenuLogoutButton";
 import { PublishAgentPopout } from "./composite/PublishAgentPopout";
+import AutogptButton from "./AutogptButton";
 
 interface ProfilePopoutMenuProps {
   userName?: string;
@@ -72,9 +73,9 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
+        <AutogptButton
           type="button"
-          className="flex cursor-pointer items-center space-x-3"
+          variant={"link"}
           aria-label="Open profile menu"
           aria-controls={popupId}
           aria-haspopup="true"
@@ -86,12 +87,12 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
               {userName?.charAt(0) || "U"}
             </AvatarFallback>
           </Avatar>
-        </button>
+        </AutogptButton>
       </PopoverTrigger>
 
       <PopoverContent
         id={popupId}
-        className="flex w-[300px] flex-col items-start justify-start gap-4 rounded-[26px] bg-zinc-400/70 p-6 shadow backdrop-blur-2xl dark:bg-zinc-800/70"
+        className="mr-8 flex w-[300px] flex-col items-start justify-start gap-4 rounded-[26px] bg-zinc-400/70 p-6 shadow backdrop-blur-2xl dark:bg-zinc-800/70"
       >
         {/* Header with avatar and user info */}
         <div className="inline-flex items-center justify-start gap-4 self-stretch">

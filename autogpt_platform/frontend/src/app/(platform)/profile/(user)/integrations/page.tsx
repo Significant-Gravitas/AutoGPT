@@ -149,83 +149,91 @@ export default function PrivatePage() {
     : [];
 
   return (
-    <div className="mx-auto max-w-3xl md:pb-8">
-      <h2 className="mb-4 text-lg">Connections & Credentials</h2>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Provider</TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead>Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {allCredentials.map((cred) => (
-            <TableRow key={cred.id}>
-              <TableCell>
-                <div className="flex items-center space-x-1.5">
-                  <cred.ProviderIcon className="h-4 w-4" />
-                  <strong>{cred.providerName}</strong>
-                </div>
-              </TableCell>
-              <TableCell>
-                <div className="flex h-full items-center space-x-1.5">
-                  <cred.TypeIcon />
-                  <span>{cred.title || cred.username}</span>
-                </div>
-                <small className="text-muted-foreground">
-                  {
-                    {
-                      oauth2: "OAuth2 credentials",
-                      api_key: "API key",
-                      user_password: "Username & password",
-                    }[cred.type]
-                  }{" "}
-                  - <code>{cred.id}</code>
-                </small>
-              </TableCell>
-              <TableCell className="w-0 whitespace-nowrap">
-                <Button
-                  variant="destructive"
-                  onClick={() => removeCredentials(cred.provider, cred.id)}
-                >
-                  <Trash2Icon className="mr-1.5 size-4" /> Delete
-                </Button>
-              </TableCell>
+    <div className="space-y-6 pb-10">
+      <h1 className="font-poppins text-[1.75rem] font-medium leading-[2.5rem] text-zinc-500">
+        Profile
+      </h1>
+      <div>
+        <h2 className="font-poppins text-base font-medium text-zinc-800">
+          Connections & Credentials
+        </h2>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Provider</TableHead>
+              <TableHead>Name</TableHead>
+              <TableHead>Actions</TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+          <TableBody>
+            {allCredentials.map((cred) => (
+              <TableRow key={cred.id}>
+                <TableCell>
+                  <div className="flex items-center space-x-1.5">
+                    <cred.ProviderIcon className="h-4 w-4" />
+                    <strong>{cred.providerName}</strong>
+                  </div>
+                </TableCell>
+                <TableCell>
+                  <div className="flex h-full items-center space-x-1.5">
+                    <cred.TypeIcon />
+                    <span>{cred.title || cred.username}</span>
+                  </div>
+                  <small className="text-muted-foreground">
+                    {
+                      {
+                        oauth2: "OAuth2 credentials",
+                        api_key: "API key",
+                        user_password: "Username & password",
+                      }[cred.type]
+                    }{" "}
+                    - <code>{cred.id}</code>
+                  </small>
+                </TableCell>
+                <TableCell className="w-0 whitespace-nowrap">
+                  <Button
+                    variant="destructive"
+                    onClick={() => removeCredentials(cred.provider, cred.id)}
+                  >
+                    <Trash2Icon className="mr-1.5 size-4" /> Delete
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
 
-      <AlertDialog open={confirmationDialogState.open}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {confirmationDialogState.open && confirmationDialogState.message}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={() =>
-                confirmationDialogState.open &&
-                confirmationDialogState.onReject()
-              }
-            >
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              onClick={() =>
-                confirmationDialogState.open &&
-                confirmationDialogState.onConfirm()
-              }
-            >
-              Continue
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        <AlertDialog open={confirmationDialogState.open}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {confirmationDialogState.open &&
+                  confirmationDialogState.message}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel
+                onClick={() =>
+                  confirmationDialogState.open &&
+                  confirmationDialogState.onReject()
+                }
+              >
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                variant="destructive"
+                onClick={() =>
+                  confirmationDialogState.open &&
+                  confirmationDialogState.onConfirm()
+                }
+              >
+                Continue
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
     </div>
   );
 }

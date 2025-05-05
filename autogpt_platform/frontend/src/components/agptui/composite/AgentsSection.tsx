@@ -49,7 +49,7 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
   return (
     <div className={`w-full space-y-9 ${className}`}>
       <h2 className="font-poppins text-base font-medium text-zinc-500">
-        Top agents
+        {sectionTitle ? sectionTitle : "Top agents"}
       </h2>
       {!displayedAgents || displayedAgents.length === 0 ? (
         <div className="font-poppins text-gray-500 dark:text-gray-400">

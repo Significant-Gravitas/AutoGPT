@@ -1,5 +1,6 @@
 import * as React from "react";
 import Image from "next/image";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 
 interface CreatorCardProps {
   creatorName: string;
@@ -25,18 +26,17 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
       onClick={onClick}
       data-testid="creator-card"
     >
-      {creatorImage ? (
-        <Image
-          src={creatorImage}
-          alt={creatorName}
+      <Avatar className="h-[84px] w-[84px]">
+        <AvatarImage
           width={84}
           height={84}
-          className="rounded-full"
-          priority
+          src={creatorImage}
+          alt={`${creatorName}`}
         />
-      ) : (
-        <div className="h-20 w-20 rounded-full bg-neutral-300 dark:bg-neutral-600" />
-      )}
+        <AvatarFallback size={84} className="h-[84px] w-[84px]">
+          {creatorName.charAt(0)}
+        </AvatarFallback>
+      </Avatar>
 
       <div className="flex h-36 flex-col gap-2">
         <h3 className="line-clamp-1 font-poppins text-3xl font-medium text-zinc-800 dark:text-neutral-100">

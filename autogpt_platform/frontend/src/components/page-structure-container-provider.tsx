@@ -9,10 +9,19 @@ const PageStructureContainer: React.FC<ProfileColorContainerProps> = ({
   children,
 }) => {
   const pathname = usePathname();
-  const isProfilePage = pathname?.includes("/profile") || false;
+
+  const backgroundMap = {
+    "/profile": "bg-zinc-50",
+    "/library": "bg-gray-100",
+  };
+
+  const bgClass =
+    Object.entries(backgroundMap).find(([path]) =>
+      pathname.includes(path),
+    )?.[1] || "bg-white";
 
   return (
-    <div className={`${isProfilePage ? "bg-zinc-50" : "bg-white"}`}>
+    <div className={bgClass}>
       <div className="mx-auto max-w-[1500px]">{children}</div>
     </div>
   );

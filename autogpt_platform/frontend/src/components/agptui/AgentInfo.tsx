@@ -101,7 +101,7 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   return (
     <div className="w-full max-w-[27rem] space-y-7">
       {/* Top part */}
-      <div className="space-y-14">
+      <div className="space-y-[3.25rem]">
         {/* Agent name */}
         <div>
           <h2 className="font-poppins text-[1.75rem] font-medium leading-[2.5rem] text-zinc-800">
@@ -121,35 +121,26 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
         </div>
 
         {/* Download and run button */}
+        {/* TODO - Add one more button */}
         <div className="w-full">
           {user ? (
             <AutogptButton variant={"secondary"} onClick={handleAddToLibrary}>
               Add To Library
             </AutogptButton>
           ) : (
-            <button
+            <AutogptButton
               onClick={handleDownloadToLibrary}
-              className={`inline-flex w-full items-center justify-center gap-2 rounded-[38px] px-4 py-3 transition-colors sm:w-auto sm:gap-2.5 sm:px-5 sm:py-3.5 lg:px-6 lg:py-4 ${
-                downloading
-                  ? "bg-neutral-400"
-                  : "bg-violet-600 hover:bg-violet-700"
-              }`}
-              disabled={downloading}
+              variant={"secondary"}
+              isLoading={downloading}
             >
-              {downloading ? (
-                <LoaderIcon className="h-5 w-5 animate-spin text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
-              ) : (
-                <DownloadIcon className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
-              )}
-              <span className="font-poppins text-base font-medium text-neutral-50 sm:text-lg">
-                {downloading ? "Downloading..." : "Download Agent as File"}
-              </span>
-            </button>
+              Download
+            </AutogptButton>
           )}
         </div>
+
         {/* Runs and ratings */}
         <div className="flex w-full items-center gap-10">
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-1.5">
             <span className="font-sans text-base font-medium text-zinc-800">
               {rating.toFixed(1)}
             </span>
@@ -182,7 +173,12 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
           </p>
           <div className="flex flex-wrap gap-2.5">
             {categories.map((category, index) => (
-              <Chip key={index}>{category}</Chip>
+              <Chip
+                key={index}
+                className="hover:border-zinc-400 hover:bg-white"
+              >
+                {category}
+              </Chip>
             ))}
           </div>
         </div>

@@ -5,7 +5,6 @@ import { useState, useRef } from "react";
 
 import Image from "next/image";
 
-import { Button } from "./Button";
 import { IconPersonFill } from "@/components/ui/icons";
 import { CreatorDetails, ProfileDetails } from "@/lib/autogpt-server-api/types";
 import { Separator } from "@/components/ui/separator";

@@ -46,10 +46,6 @@ export default async function Page({
 
   const breadcrumbs = [
     { name: "Store", link: "/marketplace" },
-    {
-      name: agent.creator,
-      link: `/marketplace/creator/${encodeURIComponent(agent.creator)}`,
-    },
     { name: agent.agent_name, link: "#" },
   ];
 
@@ -57,7 +53,7 @@ export default async function Page({
     <main className="mt-9 px-10">
       <BreadCrumbs items={breadcrumbs} />
 
-      <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-[3rem] md:flex-row md:gap-8">
+      <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-[3.2rem] md:flex-row md:gap-8">
         <div className="w-full md:w-auto md:shrink-0">
           <AgentInfo
             name={agent.agent_name}
@@ -80,19 +76,17 @@ export default async function Page({
           }
         />
       </div>
-      <Separator className="mb-[25px] mt-[60px]" />
+      <Separator className="mb-9 mt-7" />
       <AgentsSection
-        margin="32px"
         agents={otherAgents.agents}
         sectionTitle={`Other agents by ${agent.creator}`}
       />
-      <Separator className="mb-[25px] mt-[60px]" />
+      <Separator className="mb-9 mt-11" />
       <AgentsSection
-        margin="32px"
         agents={similarAgents.agents}
         sectionTitle="Similar agents"
       />
-      <Separator className="mb-[25px] mt-[60px]" />
+      <Separator className="mb-9 mt-11" />
       <BecomeACreator title="Become a Creator" buttonText="Become a Creator" />
     </main>
   );

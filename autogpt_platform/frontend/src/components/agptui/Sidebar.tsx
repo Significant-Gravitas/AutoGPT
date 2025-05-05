@@ -37,10 +37,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ linkGroups }) => {
         <Link
           key={`${link.href}-${index}`}
           href={link.href}
-          className={`inline-flex w-full items-center gap-2.5 rounded-xl px-3 py-3 ${
+          className={`inline-flex w-full items-center gap-2.5 rounded-xl p-3 ${
             isActive
-              ? "bg-neutral-800 text-white dark:bg-neutral-700 dark:text-white"
-              : "text-neutral-800 hover:bg-neutral-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
+              ? "bg-zinc-800 text-white dark:bg-neutral-700 dark:text-white"
+              : "text-neutral-800 hover:bg-zinc-800 hover:text-white dark:text-neutral-200 dark:hover:bg-neutral-700 dark:hover:text-white"
           }`}
         >
           {link.icon || getDefaultIconForLink()}

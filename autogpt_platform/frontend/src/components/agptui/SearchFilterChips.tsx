@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Button } from "../ui/button";
+import AutogptButton from "./AutogptButton";
 
 interface FilterOption {
   label: string;
@@ -39,14 +40,13 @@ export const SearchFilterChips: React.FC<SearchFilterChipsProps> = ({
   return (
     <div className="flex gap-2.5">
       {filters.map((filter) => (
-        <Button
+        <AutogptButton
           key={filter.value}
           variant={selected === filter.value ? "default" : "outline"}
           onClick={() => handleFilterClick(filter.value)}
-          className={`flex h-12 items-center gap-2.5 rounded-[34px] px-5 py-2 ${selected === filter.value ? "border border-neutral-800" : "border border-neutral-600"}`}
         >
           <span
-            className={`font-sans text-base ${selected === filter.value ? "font-medium" : "font-normal"}`}
+            className={`mr-2 font-sans text-base ${selected === filter.value ? "font-medium" : "font-normal"}`}
           >
             {filter.label}
           </span>
@@ -55,7 +55,7 @@ export const SearchFilterChips: React.FC<SearchFilterChipsProps> = ({
           >
             {filter.count}
           </span>
-        </Button>
+        </AutogptButton>
       ))}
     </div>
   );

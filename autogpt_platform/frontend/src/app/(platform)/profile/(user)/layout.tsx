@@ -14,9 +14,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     {
       links: [
         {
-          text: "Creator Dashboard",
-          href: "/profile/dashboard",
-          icon: <IconDashboardLayout className="h-6 w-6 stroke-[1.25px]" />,
+          text: "API Keys",
+          href: "/profile/api_keys",
+          icon: <KeyIcon className="h-6 w-6 stroke-[1.25px]" />,
         },
         ...(process.env.NEXT_PUBLIC_SHOW_BILLING_PAGE === "true"
           ? [
@@ -28,15 +28,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             ]
           : []),
         {
+          text: "Creator Dashboard",
+          href: "/profile/dashboard",
+          icon: <IconDashboardLayout className="h-6 w-6 stroke-[1.25px]" />,
+        },
+
+        {
           text: "Integrations",
           href: "/profile/integrations",
           icon: <IconIntegrations className="h-6 w-6 stroke-[1.25px]" />,
         },
-        {
-          text: "API Keys",
-          href: "/profile/api_keys",
-          icon: <KeyIcon className="h-6 w-6 stroke-[1.25px]" />,
-        },
+
         {
           text: "Profile",
           href: "/profile",

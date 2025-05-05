@@ -23,7 +23,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
 }) => {
   return (
     <div
-      className="h-auto w-full max-w-md space-y-6 overflow-hidden rounded-[26px] bg-violet-100 px-5 pb-7 pt-6 dark:bg-violet-900 sm:w-[27rem]"
+      className="h-auto w-full max-w-md space-y-6 overflow-hidden rounded-[26px] bg-violet-100 px-5 pb-7 pt-6 dark:bg-violet-900 sm:w-[27.5rem]"
       role="article"
       aria-label={`Creator profile for ${username}`}
     >
@@ -41,7 +41,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
           </AvatarFallback>
         </Avatar>
         <div className="flex w-full flex-col items-start justify-start gap-1.5">
-          <div className="w-full font-poppins text-3xl font-medium text-zinc-800 dark:text-zinc-100">
+          <div className="w-full font-poppins text-[1.75rem] font-medium leading-[2.5rem] text-zinc-800 dark:text-zinc-100">
             {username}
           </div>
           <div className="w-full font-sans text-base font-normal text-zinc-800 dark:text-zinc-200">
@@ -52,7 +52,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
 
       <Separator className="bg-zinc-300" />
 
-      <div className="flex flex-col items-start justify-start gap-2.5">
+      <div className="flex flex-col items-start justify-start gap-4">
         <div className="w-full font-sans text-sm font-medium text-zinc-800 dark:text-zinc-200 sm:text-base">
           Top categories
         </div>
@@ -67,7 +67,9 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
               className="flex items-center justify-center gap-2.5"
               role="listitem"
             >
-              <Chip className="bg-transparent">{category}</Chip>
+              <Chip className="bg-transparent hover:border-zinc-400 hover:bg-transparent">
+                {category}
+              </Chip>
             </div>
           ))}
         </div>
@@ -77,11 +79,11 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
 
       <div className="flex w-full flex-col items-center justify-between gap-4 sm:flex-row sm:gap-0">
         {/* Average Rating */}
-        <div className="flex w-full flex-col items-start justify-start gap-2.5">
+        <div className="flex w-full flex-col items-start justify-start gap-4">
           <div className="w-full font-sans text-sm font-medium leading-normal text-zinc-800 dark:text-zinc-200 sm:text-base">
             Average rating
           </div>
-          <div className="inline-flex items-center gap-2">
+          <div className="inline-flex items-center justify-center gap-2">
             <div className="font-sans text-sm font-medium text-zinc-800 dark:text-zinc-200">
               {averageRating.toFixed(1)}
             </div>
@@ -95,7 +97,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
           </div>
         </div>
         {/* Number of runs */}
-        <div className="flex w-full flex-col items-start justify-start gap-2.5">
+        <div className="flex w-full flex-col items-start justify-start gap-4">
           <div className="w-full font-sans text-sm font-medium leading-normal text-zinc-800 dark:text-zinc-200 sm:text-base">
             Number of runs
           </div>

@@ -16,6 +16,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useToast } from "@/components/ui/use-toast";
+import AutogptButton from "../AutogptButton";
 
 interface PublishAgentPopoutProps {
   trigger?: React.ReactNode;
