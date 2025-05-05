@@ -164,7 +164,7 @@ There are severals providers that AutoGPT users can use for running inference wi
 ## Llama API
 Llama API is a Meta-hosted API service that helps you integrate Llama models quickly and efficiently. Using OpenAI comptability endpoints, you can easily access the power of Llama models without the need for complex setup or configuration!
 
-Join the [waitlist](https://llama.developer.meta.com/join_waitlist) to get access!
+Join the [waitlist](https://llama.developer.meta.com?utm_source=partner-autogpt&utm_medium=readme) to get access!
 
 Try the Llama API provider by selecting any of the following LLM Model names from the AI blocks mentioned above:
 - Llama-4-Scout-17B-16E-Instruct-FP8
