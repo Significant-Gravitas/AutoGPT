@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import CreatorLink from "./CreatorLink";
 
 const meta: Meta<typeof CreatorLink> = {
-  title: "new/CreatorLink",
+  title: "Agpt Custom UI/marketing/CreatorLink",
   component: CreatorLink,
   tags: ["autodocs"],
   decorators: [

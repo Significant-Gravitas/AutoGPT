@@ -2,7 +2,7 @@ import { Meta, StoryObj } from "@storybook/react";
 import AutogptInput from "./AutogptInput";
 
 const meta: Meta<typeof AutogptInput> = {
-  title: "new/AutogptInput",
+  title: "Agpt Custom UI/general/AutogptInput",
   component: AutogptInput,
   decorators: [
     (Story) => (

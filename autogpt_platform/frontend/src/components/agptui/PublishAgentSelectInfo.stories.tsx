@@ -3,7 +3,7 @@ import { PublishAgentInfo } from "./PublishAgentSelectInfo";
 import { expect, userEvent, within } from "@storybook/test";
 
 const meta: Meta<typeof PublishAgentInfo> = {
-  title: "AGPT UI/Publish Agent Info",
+  title: "Agpt Custom UI/marketing/Publish Agent Select Info",
   component: PublishAgentInfo,
   tags: ["autodocs"],
   decorators: [

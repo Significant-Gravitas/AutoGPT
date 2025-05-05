@@ -3,10 +3,7 @@ import { Navbar } from "./Navbar";
 import { userEvent, within } from "@storybook/test";
 import { IconType } from "../ui/icons";
 import { ProfileDetails } from "@/lib/autogpt-server-api/types";
-// You can't import this here, jest is not available in storybook and will crash it
-// import { jest } from "@jest/globals";
 
-// Mock the API responses
 const mockProfileData: ProfileDetails = {
   name: "John Doe",
   username: "johndoe",
@@ -19,18 +16,8 @@ const mockCreditData = {
   credits: 1500,
 };
 
-// Mock the API module
-// jest.mock("@/lib/autogpt-server-api", () => {
-//   return function () {
-//     return {
-//       getStoreProfile: () => Promise.resolve(mockProfileData),
-//       getUserCredit: () => Promise.resolve(mockCreditData),
-//     };
-//   };
-// });
-
 const meta = {
-  title: "new/Navbar",
+  title: "Agpt Custom UI/general/Navbar",
   component: Navbar,
   decorators: [
     (Story) => (
@@ -88,9 +75,19 @@ const defaultMenuItemGroups = [
 ];
 
 const defaultLinks = [
-  { name: "Marketplace", href: "/marketplace" },
-  { name: "Library", href: "/library" },
-  { name: "Build", href: "/builder" },
+  {
+    name: "Home",
+    href: "/library",
+  },
+  {
+    name: "Marketplace",
+    href: "/marketplace",
+  },
+
+  {
+    name: "Build",
+    href: "/build",
+  },
 ];
 
 export const Default: Story = {

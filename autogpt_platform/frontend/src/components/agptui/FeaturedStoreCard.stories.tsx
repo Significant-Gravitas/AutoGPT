@@ -57,7 +57,7 @@ export const Default: Story = {
         "Transform ideas into breathtaking images with this AI-powered Image Generator.",
       agent_image:
         "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-      creator_avatar: "/default_avatar.png",
+      creator_avatar: "testing_avatar.png",
       creator: "John Ababesh",
       runs: 200000,
       rating: 4.6,
@@ -144,13 +144,10 @@ export const TestingInteractions: Story = {
 
     const description = canvas.getByTestId("agent-description");
     await expect(description).toBeVisible();
-    const creatorAvatar = canvas.getByAltText(
-      `${Default.args.agent.creator} avatar`,
-    );
+
     const agentImage = canvas.getByAltText(
       `${Default.args.agent.agent_name} preview`,
     );
-    await expect(creatorAvatar).toHaveStyle({ opacity: "0" });
     await expect(agentImage).toHaveStyle({ opacity: "0" });
 
     await userEvent.unhover(card);

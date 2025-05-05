@@ -3,7 +3,7 @@ import { Agent, PublishAgentSelect } from "./PublishAgentSelect";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta: Meta<typeof PublishAgentSelect> = {
-  title: "AGPT UI/Publish Agent Select",
+  title: "Agpt Custom UI/marketing/Publish Agent Select",
   decorators: [
     (Story) => (
       <div className="backdrop-blur-4 flex h-screen items-center justify-center bg-black/40">
@@ -109,20 +109,6 @@ export const SingleAgent: Story = {
   args: {
     ...defaultArgs,
     agents: [mockAgents[0]],
-  },
-};
-
-export const SixAgents: Story = {
-  args: {
-    ...defaultArgs,
-    agents: mockAgents.slice(0, 6),
-  },
-};
-
-export const NineAgents: Story = {
-  args: {
-    ...defaultArgs,
-    agents: mockAgents,
   },
 };
 

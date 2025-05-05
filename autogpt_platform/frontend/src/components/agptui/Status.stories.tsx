@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { Status, StatusType } from "./Status";
 
 const meta = {
-  title: "AGPT UI/Status",
+  title: "Agpt Custom UI/general/Status",
   component: Status,
   parameters: {
     layout: "centered",
@@ -41,18 +41,4 @@ export const Rejected: Story = {
   args: {
     status: "rejected" as StatusType,
   },
-};
-
-export const AllStatuses: Story = {
-  args: {
-    status: "draft" as StatusType,
-  },
-  render: () => (
-    <div className="flex flex-col gap-4">
-      <Status status="draft" />
-      <Status status="awaiting_review" />
-      <Status status="approved" />
-      <Status status="rejected" />
-    </div>
-  ),
 };

@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { Sidebar } from "./Sidebar";
 
 const meta = {
-  title: "AGPT UI/Sidebar",
+  title: "Agpt Custom UI/marketing/Sidebar",
   component: Sidebar,
   parameters: {
     layout: "centered",

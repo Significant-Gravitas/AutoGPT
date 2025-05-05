@@ -26,8 +26,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const defaultAvatarImage = "/default_avatar.png";
-
+const defaultAvatarImage = "testing_avatar.png";
 export const Default: Story = {
   args: {
     key: 0,

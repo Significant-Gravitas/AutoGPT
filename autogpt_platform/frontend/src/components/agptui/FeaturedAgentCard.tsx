@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/card";
 import { useState } from "react";
 import { StoreAgent } from "@/lib/autogpt-server-api";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 
 interface FeaturedStoreCardProps {
   agent: StoreAgent;
@@ -41,7 +42,7 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
       <CardContent className="mb-4 flex flex-1 flex-col gap-4 p-0">
         <div className="relative flex-1 overflow-hidden rounded-xl">
           <Image
-            src={agent.agent_image || "/default_agent_image.jpg"}
+            src={agent.agent_image}
             alt={`${agent.agent_name} preview`}
             fill
             sizes="100%"
@@ -49,15 +50,22 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
               isHovered ? "opacity-0" : "opacity-100"
             }`}
           />
-          <Image
-            src={agent.creator_avatar || "/default_avatar.png"}
-            alt={`${agent.creator} avatar`}
-            width={50}
-            height={50}
-            className={`absolute bottom-3 left-3 aspect-square rounded-full border border-zinc-200 transition-opacity duration-200 ${
+          <Avatar
+            className={`absolute bottom-3 left-3 aspect-square h-[50px] w-[50px] rounded-full border border-zinc-200 transition-opacity duration-200 ${
               isHovered ? "opacity-0" : "opacity-100"
             }`}
-          />
+          >
+            <AvatarImage
+              width={50}
+              height={50}
+              src={agent.creator_avatar}
+              alt={`${agent.creator_avatar} avatar`}
+            />
+            <AvatarFallback size={50}>
+              {agent.creator_avatar.charAt(0)}
+            </AvatarFallback>
+          </Avatar>
+
           <div
             className={`absolute inset-0 overflow-hidden p-0 transition-opacity duration-200 ${
               isHovered ? "opacity-100" : "opacity-0"

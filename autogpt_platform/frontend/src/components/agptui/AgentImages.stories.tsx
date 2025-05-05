@@ -2,11 +2,11 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { AgentImages } from "./AgentImages";
 
 const meta = {
-  title: "AGPT UI/Agent Images",
+  title: "Agpt Custom UI/marketing/Agent Images",
   component: AgentImages,
   decorators: [
     (Story) => (
-      <div className="flex h-full w-full items-center justify-center p-4">
+      <div className="mx-auto flex h-full w-[80%] items-center justify-center p-4">
         <Story />
       </div>
     ),
@@ -26,33 +26,6 @@ export const Default: Story = {
       "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
       "https://youtu.be/KWonAsyKF3g?si=JMibxlN_6OVo6LhJ",
       "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-    ],
-  },
-};
-
-export const OnlyImages: Story = {
-  args: {
-    images: [
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-      "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
-    ],
-  },
-};
-
-export const WithVideos: Story = {
-  args: {
-    images: [
-      "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-      "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-      "https://youtu.be/KWonAsyKF3g?si=JMibxlN_6OVo6LhJ",
-    ],
-  },
-};
-
-export const SingleItem: Story = {
-  args: {
-    images: [
-      "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
     ],
   },
 };

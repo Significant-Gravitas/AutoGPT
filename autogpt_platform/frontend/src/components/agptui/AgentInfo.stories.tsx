@@ -1,9 +1,8 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { AgentInfo } from "./AgentInfo";
-import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
-  title: "AGPT UI/Agent Info",
+  title: "Agpt Custom UI/marketing/Agent Info",
   component: AgentInfo,
   parameters: {
     layout: {
@@ -60,29 +59,12 @@ Key features include:
   },
 };
 
-export const ExtraLongName: Story = {
+export const LongContent: Story = {
   args: {
     ...Default.args,
     name: "Super Advanced Ultra-Intelligent Universal Comprehensive AI-Powered Video Generator Pro Plus Premium Enterprise Edition With Extended Capabilities",
-    creator: "Toran Richards & Company International",
-    shortDescription:
-      "Transform ideas into breathtaking videos with this AI-powered Video Generator.",
-    rating: 4.7,
-    runs: 1500,
-  },
-};
-
-export const ExtraLongCreator: Story = {
-  args: {
-    ...Default.args,
     creator:
       "Global Artificial Intelligence Research and Development Consortium for Advanced Technology Implementation and Enterprise Solutions",
-  },
-};
-
-export const ExtraLongDescription: Story = {
-  args: {
-    ...Default.args,
     longDescription: `Create Viral-Ready Content in Seconds! Transform trending topics into engaging videos with this cutting-edge AI Video Generator. Perfect for content creators, social media managers, and marketers looking to quickly produce high-quality content.
 
 Our advanced AI algorithms analyze current trends and viewer preferences to generate videos that are more likely to engage your target audience and achieve better conversion rates. The system adapts to your brand voice and style guidelines to maintain consistency across all your content.
@@ -101,12 +83,7 @@ Key features include:
 The AI Video Generator integrates seamlessly with your existing workflow and content management systems. You can import assets from Adobe Creative Suite, Canva, and other popular design tools. Our cloud-based processing ensures fast rendering without taxing your local system resources.
 
 With our enterprise plan, you'll get priority support, custom template development, and advanced branding options to ensure your videos stand out in today's crowded digital landscape.`,
-  },
-};
 
-export const ManyCategories: Story = {
-  args: {
-    ...Default.args,
     categories: [
       "Video",
       "Content Creation",
@@ -121,6 +98,7 @@ export const ManyCategories: Story = {
       "Automation",
       "Productivity Tools",
     ],
+    runs: 1000000000,
   },
 };
 
@@ -128,22 +106,5 @@ export const NoCategories: Story = {
   args: {
     ...Default.args,
     categories: [],
-  },
-};
-
-export const HighRuns: Story = {
-  args: {
-    ...Default.args,
-    name: "Code Assistant",
-    creator: "DevAI",
-    shortDescription:
-      "Get AI-powered coding help for various programming languages",
-    longDescription:
-      "An advanced AI coding assistant that supports multiple programming languages and frameworks. Features include code completion, refactoring suggestions, and bug detection.",
-    rating: 4.8,
-    runs: 1000000000,
-    categories: ["Programming", "AI", "Developer Tools"],
-    lastUpdated: "1 day ago",
-    version: "2.1.3",
   },
 };

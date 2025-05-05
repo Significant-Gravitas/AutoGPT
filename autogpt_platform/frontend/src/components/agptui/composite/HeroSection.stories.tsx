@@ -83,29 +83,3 @@ export const FilterInteraction: Story = {
     }
   },
 };
-
-export const MobileView: Story = {
-  parameters: {
-    viewport: {
-      defaultViewport: "mobile2",
-    },
-  },
-  args: {
-    onSearch: (query: string) => console.log(`Searched: ${query}`),
-    onFilterChange: (selectedFilters: string[]) =>
-      console.log(`Filters changed: ${selectedFilters.join(", ")}`),
-  },
-};
-
-export const TabletView: Story = {
-  parameters: {
-    viewport: {
-      defaultViewport: "tablet",
-    },
-  },
-  args: {
-    onSearch: (query: string) => console.log(`Searched: ${query}`),
-    onFilterChange: (selectedFilters: string[]) =>
-      console.log(`Filters changed: ${selectedFilters.join(", ")}`),
-  },
-};

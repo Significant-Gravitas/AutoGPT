@@ -1,9 +1,14 @@
+/**
+ * @deprecated This Button component will be deprecated in the future.
+ * Please use Shadcn Button or the custom AutogptButton component instead.
+ */
+
 import type { Meta, StoryObj } from "@storybook/react";
 import { Button } from "./Button";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
-  title: "AGPT UI/Button",
+  title: "Agpt Custom UI/general/Button",
   component: Button,
   parameters: {
     layout: "centered",

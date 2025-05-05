@@ -1,10 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { MobileNavBar } from "./MobileNavBar";
-import { userEvent, within } from "@storybook/test";
 import { IconType } from "../ui/icons";
 
 const meta = {
-  title: "AGPT UI/Mobile Nav Bar",
+  title: "Agpt Custom UI/general/Mobile Nav Bar",
   component: MobileNavBar,
   parameters: {
     viewport: {

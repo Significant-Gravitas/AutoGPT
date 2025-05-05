@@ -2,11 +2,11 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { CreatorInfoCard } from "./CreatorInfoCard";
 
 const meta = {
-  title: "new/Creator Info Card",
+  title: "Agpt Custom UI/marketing/Creator Info Card",
   component: CreatorInfoCard,
   decorators: [
     (Story) => (
-      <div className="flex h-screen w-screen items-center justify-center p-4">
+      <div className="flex items-center justify-center p-4">
         <Story />
       </div>
     ),

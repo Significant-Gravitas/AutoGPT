@@ -26,9 +26,8 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const defaultAgentImage = "default_agent_image.jpg";
-const defaultAvatarImage = "default_avatar.png";
-
+const defaultAgentImage = "/testing_agent_image.jpg";
+const defaultAvatarImage = "/testing_avatar.png";
 const mockTopAgents = [
   {
     agent_name: "SEO Optimizer Pro",
@@ -85,21 +84,6 @@ export const NoAgents: Story = {
   args: {
     sectionTitle: "Recommended Agents",
     agents: [],
-  },
-};
-
-export const WithInteraction: Story = {
-  args: {
-    sectionTitle: "Popular Agents",
-    agents: mockTopAgents,
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    // Using the proper test ID that's defined in the StoreCard component
-    const firstCard = canvas.getAllByTestId("store-card")[0];
-    await userEvent.hover(firstCard);
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    await userEvent.click(firstCard);
   },
 };
 
@@ -184,86 +168,17 @@ export const MultiRowAgents: Story = {
   },
 };
 
-export const HiddenAvatars: Story = {
+export const WithInteraction: Story = {
   args: {
-    ...Default.args,
-    hideAvatars: true,
-    sectionTitle: "Agents with Hidden Avatars",
-  },
-};
-
-export const LongAgentNames: Story = {
-  args: {
-    sectionTitle: "Test Cases",
-    agents: [
-      {
-        agent_name:
-          "Universal Language Translator Pro with Advanced Neural Network Technology",
-        agent_image: defaultAgentImage,
-        description:
-          "Breaking language barriers with cutting-edge AI translation technology for global communication.",
-        runs: 120000,
-        rating: 4.9,
-        creator_avatar: defaultAvatarImage,
-        slug: "universal-language-translator",
-        creator: "Global Linguistics Technologies",
-        sub_heading: "Translation Services",
-      },
-      ...mockTopAgents.slice(0, 2),
-    ],
-  },
-};
-
-export const LongDescriptions: Story = {
-  args: {
-    sectionTitle: "Test Cases",
-    agents: [
-      {
-        agent_name: "AI Writing Assistant",
-        agent_image: defaultAgentImage,
-        description:
-          "Enhance your writing with our advanced AI-powered assistant. It offers real-time suggestions for grammar, style, and tone, helps with research and fact-checking, and provides vocabulary enhancements for more engaging content. Perfect for content creators, marketers, and writers of all levels.",
-        runs: 75000,
-        rating: 4.7,
-        creator_avatar: defaultAvatarImage,
-        slug: "ai-writing-assistant",
-        creator: "ContentGenius",
-        sub_heading: "Writing Enhancement",
-      },
-      ...mockTopAgents.slice(0, 2),
-    ],
-  },
-};
-
-export const ZeroValues: Story = {
-  args: {
-    sectionTitle: "New Agents",
-    agents: [
-      {
-        agent_name: "New Project Template",
-        agent_image: defaultAgentImage,
-        description:
-          "A basic template for new projects with no user data or ratings yet.",
-        runs: 0,
-        rating: 0,
-        creator_avatar: defaultAvatarImage,
-        slug: "new-project-template",
-        creator: "Template Systems",
-        sub_heading: "Project Templates",
-      },
-      ...mockTopAgents.slice(0, 2),
-    ],
-  },
-};
-
-export const MobileView: Story = {
-  args: {
-    sectionTitle: "Mobile Optimized Agents",
+    sectionTitle: "Popular Agents",
     agents: mockTopAgents,
   },
-  parameters: {
-    viewport: {
-      defaultViewport: "mobile2",
-    },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // Using the proper test ID that's defined in the StoreCard component
+    const firstCard = canvas.getAllByTestId("store-card")[0];
+    await userEvent.hover(firstCard);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await userEvent.click(firstCard);
   },
 };

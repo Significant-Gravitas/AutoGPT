@@ -3,7 +3,7 @@ import { FeaturedCreators } from "./FeaturedCreators";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
-  title: "AGPT UI/Composite/Featured Creators",
+  title: "Agpt Custom UI/marketing/Featured Creators",
   component: FeaturedCreators,
   decorators: [
     (Story) => (

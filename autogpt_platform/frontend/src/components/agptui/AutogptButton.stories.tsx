@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import AutogptButton from "./AutogptButton";
 
 const meta = {
-  title: "New/AutogptButton",
+  title: "Agpt Custom UI/general/AutogptButton",
   component: AutogptButton,
   parameters: {
     layout: "centered",

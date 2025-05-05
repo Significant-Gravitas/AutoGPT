@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { SearchFilterChips } from "./SearchFilterChips";
 
 const meta = {
-  title: "AGPT UI/Search Filter Chips",
+  title: "Agpt Custom UI/marketing/Search Filter Chips",
   component: SearchFilterChips,
   parameters: {
     layout: "centered",
