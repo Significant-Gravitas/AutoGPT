@@ -80,7 +80,7 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
             </>
           ) : (
             <Link href="/login">
-              <AutogptButton variant={"default"}>Login</AutogptButton>
+              <AutogptButton variant={"default"}>Log In</AutogptButton>
             </Link>
           )}
         </div>
