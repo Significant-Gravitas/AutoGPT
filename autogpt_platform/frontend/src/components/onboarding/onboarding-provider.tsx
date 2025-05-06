@@ -1,4 +1,5 @@
 "use client";
+import useSupabase from "@/hooks/useSupabase";
 import { OnboardingStep, UserOnboarding } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { usePathname, useRouter } from "next/navigation";
@@ -62,6 +63,7 @@ export default function OnboardingProvider({
   const api = useBackendAPI();
   const pathname = usePathname();
   const router = useRouter();
+  const { user, isUserLoading } = useSupabase();
 
   useEffect(() => {
     const fetchOnboarding = async () => {
@@ -83,8 +85,11 @@ export default function OnboardingProvider({
         router.push("/marketplace");
       }
     };
+    if (isUserLoading || !user) {
+      return;
+    }
     fetchOnboarding();
-  }, [api, pathname, router]);
+  }, [api, pathname, router, user, isUserLoading]);
 
   const updateState = useCallback(
     (newState: Omit<Partial<UserOnboarding>, "rewardedFor">) => {
