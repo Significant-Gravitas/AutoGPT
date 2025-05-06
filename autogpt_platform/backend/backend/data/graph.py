@@ -501,6 +501,10 @@ class GraphModel(Graph):
 
                 # Require presence of discriminator (always)
                 if discriminator := field_json_schema.get("discriminator"):
+                    # discriminator is either the name of a field (str) or
+                    # a dict {"propertyName": field_name, "mapping": {value: subschema}}
+                    if isinstance(discriminator, dict):
+                        discriminator = discriminator["propertyName"]
                     dependencies.append(discriminator)
 
                 if not dependencies:
