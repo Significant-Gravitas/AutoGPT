@@ -80,7 +80,7 @@ export const AgentInfo: FC<AgentInfoProps> = ({
         variant: "destructive",
       });
     }
-  }, [toast, api, storeListingVersionId, completeStep, router]);
+  }, [toast, api, storeListingVersionId, completeStep, router, libraryAgent]);
 
   const handleDownload = useCallback(async () => {
     const downloadAgent = async (): Promise<void> => {
@@ -150,33 +150,19 @@ export const AgentInfo: FC<AgentInfoProps> = ({
 
         {/* Download and run button */}
         {/* TODO - Add one more button */}
-        <div className="w-full">
+        <div className="flex w-full items-center gap-3">
           {user && (
-          <button
-            className={cn(
-              "inline-flex min-w-24 items-center justify-center rounded-full bg-violet-600 px-4 py-3",
-              "transition-colors duration-200 hover:bg-violet-500 disabled:bg-zinc-400",
-            )}
-            onClick={libraryAction}
-            disabled={adding}
-          >
-            <span className="justify-start font-sans text-sm font-medium leading-snug text-primary-foreground">
-              {libraryAgent ? "See runs" : "Add to library"}
-            </span>
-          </button>
-        )}
-        <button
-          className={cn(
-            "inline-flex min-w-24 items-center justify-center rounded-full bg-zinc-200 px-4 py-3",
-            "transition-colors duration-200 hover:bg-zinc-200/70 disabled:bg-zinc-200/40",
+            <AutogptButton onClick={libraryAction} disabled={adding} icon>
+              {libraryAgent ? "Run agent" : "Add to library"}
+            </AutogptButton>
           )}
-          onClick={handleDownload}
-          disabled={downloading}
-        >
-          <div className="justify-start text-center font-sans text-sm font-medium leading-snug text-zinc-800">
+          <AutogptButton
+            variant={"secondary"}
+            onClick={handleDownload}
+            disabled={downloading}
+          >
             Download agent
-          </div>
-        </button>
+          </AutogptButton>
         </div>
 
         {/* Runs and ratings */}
@@ -206,7 +192,6 @@ export const AgentInfo: FC<AgentInfoProps> = ({
             {longDescription}
           </p>
         </div>
-
 
         {/* Categories */}
         <div className="space-y-2.5">
