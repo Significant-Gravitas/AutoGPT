@@ -42,6 +42,7 @@ export default function SignupPage() {
   const turnstile = useTurnstile({
     action: "signup",
     autoVerify: false,
+    resetOnError: false,
   });
 
   const form = useForm<z.infer<typeof signupFormSchema>>({
@@ -74,12 +75,16 @@ export default function SignupPage() {
       if (error) {
         if (error === "user_already_exists") {
           setFeedback("User with this email already exists");
+          turnstile.reset();
           return;
         } else {
           setFeedback(error);
+          turnstile.reset();
         }
-        // Reset Turnstile if there was an error to get a fresh token
-        turnstile.reset();
+        // Only reset Turnstile for CAPTCHA-related errors
+        if (error.includes("CAPTCHA")) {
+          turnstile.reset();
+        }
         return;
       }
       setFeedback(null);

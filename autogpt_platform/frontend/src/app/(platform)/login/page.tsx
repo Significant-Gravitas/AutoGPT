@@ -39,6 +39,7 @@ export default function LoginPage() {
   const turnstile = useTurnstile({
     action: "login",
     autoVerify: false,
+    resetOnError: false,
   });
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
@@ -82,8 +83,12 @@ export default function LoginPage() {
       setIsLoading(false);
       if (error) {
         setFeedback(error);
-        // Reset Turnstile if there was an error to get a fresh token
-        turnstile.reset();
+        if (error.includes("CAPTCHA")) {
+          turnstile.reset();
+        }
+        if (error.includes("Invalid login credentials")) {
+          turnstile.reset();
+        }
         return;
       }
       setFeedback(null);

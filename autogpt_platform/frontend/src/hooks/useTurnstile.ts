@@ -7,6 +7,7 @@ interface UseTurnstileOptions {
   autoVerify?: boolean;
   onSuccess?: () => void;
   onError?: (error: Error) => void;
+  resetOnError?: boolean;
 }
 
 interface UseTurnstileResult {
@@ -33,12 +34,14 @@ export function useTurnstile({
   autoVerify = true,
   onSuccess,
   onError,
+  resetOnError = false,
 }: UseTurnstileOptions = {}): UseTurnstileResult {
   const [token, setToken] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [verified, setVerified] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [shouldRender, setShouldRender] = useState(false);
+  const [widgetId, setWidgetId] = useState<string | null>(null);
 
   useEffect(() => {
     const behaveAs = getBehaveAs();
@@ -57,14 +60,29 @@ export function useTurnstile({
     }
   }, [token, autoVerify, shouldRender]);
 
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.turnstile) {
+      const originalRender = window.turnstile.render;
+      window.turnstile.render = (container, options) => {
+        const id = originalRender(container, options);
+        setWidgetId(id);
+        return id;
+      };
+    }
+  }, []);
+
   const reset = useCallback(() => {
-    if (shouldRender) {
-      setToken(null);
+    if (shouldRender && window.turnstile && widgetId) {
+      window.turnstile.reset(widgetId);
+      
+      if (resetOnError) {
+        setToken(null);
+        setVerified(false);
+      }
       setVerifying(false);
-      setVerified(false);
       setError(null);
     }
-  }, [shouldRender]);
+  }, [shouldRender, resetOnError, widgetId]);
 
   const handleVerify = useCallback(
     async (newToken: string) => {
@@ -88,6 +106,9 @@ export function useTurnstile({
             const newError = new Error("Turnstile verification failed");
             setError(newError);
             if (onError) onError(newError);
+            if (resetOnError) {
+              setVerified(false);
+            }
           }
 
           setVerifying(false);
@@ -98,7 +119,9 @@ export function useTurnstile({
               ? err
               : new Error("Unknown error during verification");
           setError(newError);
-          setVerified(false);
+          if (resetOnError) {
+            setVerified(false);
+          }
           setVerifying(false);
           if (onError) onError(newError);
           return false;
@@ -109,7 +132,7 @@ export function useTurnstile({
 
       return true;
     },
-    [action, autoVerify, onSuccess, onError, shouldRender],
+    [action, autoVerify, onSuccess, onError, resetOnError, shouldRender],
   );
 
   const handleExpire = useCallback(() => {
@@ -123,11 +146,13 @@ export function useTurnstile({
     (err: Error) => {
       if (shouldRender) {
         setError(err);
-        setVerified(false);
+        if (resetOnError) {
+          setVerified(false);
+        }
         if (onError) onError(err);
       }
     },
-    [onError, shouldRender],
+    [onError, shouldRender, resetOnError],
   );
 
   return {
