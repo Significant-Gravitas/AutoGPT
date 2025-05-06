@@ -491,7 +491,6 @@ class GraphModel(Graph):
             # Validate dependencies between fields
             for field_name in input_fields.keys():
                 field_json_schema = InputSchema.get_field_schema(field_name)
-                logger.info(f"Field {field_name} schema: {field_json_schema}")
 
                 dependencies: list[str] = []
 
@@ -515,7 +514,6 @@ class GraphModel(Graph):
                 field_has_value = has_value(node, field_name)
                 field_is_required = field_name in required_fields
 
-                logger.info(f"Dependencies: {dependencies}")
                 # Check for missing dependencies when dependent field is present
                 missing_deps = [dep for dep in dependencies if not has_value(node, dep)]
                 if missing_deps and (field_has_value or field_is_required):
