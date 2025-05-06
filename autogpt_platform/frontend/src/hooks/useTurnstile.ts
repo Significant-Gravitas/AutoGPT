@@ -61,7 +61,7 @@ export function useTurnstile({
   }, [token, autoVerify, shouldRender]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.turnstile) {
+    if (typeof window !== "undefined" && window.turnstile) {
       const originalRender = window.turnstile.render;
       window.turnstile.render = (container, options) => {
         const id = originalRender(container, options);
@@ -74,7 +74,7 @@ export function useTurnstile({
   const reset = useCallback(() => {
     if (shouldRender && window.turnstile && widgetId) {
       window.turnstile.reset(widgetId);
-      
+
       if (resetOnError) {
         setToken(null);
         setVerified(false);
