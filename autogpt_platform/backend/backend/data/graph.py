@@ -499,12 +499,13 @@ class GraphModel(Graph):
                 if for_run:
                     dependencies.extend(field_json_schema.get("depends_on", []))
 
-                # Require presence of discriminator (always)
-                if discriminator := field_json_schema.get("discriminator"):
-                    # discriminator is either the name of a field (str) or
-                    # a dict {"propertyName": field_name, "mapping": {value: subschema}}
-                    if isinstance(discriminator, dict):
-                        discriminator = discriminator["propertyName"]
+                # Require presence of credentials discriminator (always).
+                # The `discriminator` is either the name of a sibling field (str),
+                # or an object that discriminates between possible types for this field:
+                # {"propertyName": prop_name, "mapping": {prop_value: sub_schema}}
+                if (
+                    discriminator := field_json_schema.get("discriminator")
+                ) and isinstance(discriminator, str):
                     dependencies.append(discriminator)
 
                 if not dependencies:
