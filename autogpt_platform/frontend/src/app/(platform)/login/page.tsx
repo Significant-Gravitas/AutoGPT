@@ -82,7 +82,7 @@ export default function LoginPage() {
   }
 
   if (isUserLoading || user) {
-    return <Spinner />;
+    return <Spinner className="h-[80vh]" />;
   }
 
   if (!supabase) {

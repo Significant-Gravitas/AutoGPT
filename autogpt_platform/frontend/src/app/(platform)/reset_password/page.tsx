@@ -98,7 +98,7 @@ export default function ResetPasswordPage() {
   );
 
   if (isUserLoading) {
-    return <Spinner />;
+    return <Spinner className="h-[80vh]" />;
   }
 
   if (!supabase) {
