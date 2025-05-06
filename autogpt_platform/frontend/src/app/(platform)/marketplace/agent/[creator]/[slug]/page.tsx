@@ -61,31 +61,31 @@ export default async function Page({
   return (
     <main className="mt-9 px-10">
       <BreadCrumbs items={breadcrumbs} />
-        <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:flex-row md:gap-8">
-          <div className="w-full md:w-auto md:shrink-0">
-            <AgentInfo
-              user={user}
-              name={agent.agent_name}
-              creator={agent.creator}
-              shortDescription={agent.sub_heading}
-              longDescription={agent.description}
-              rating={agent.rating}
-              runs={agent.runs}
-              categories={agent.categories}
-              lastUpdated={agent.updated_at}
-              version={agent.versions[agent.versions.length - 1]}
-              storeListingVersionId={agent.store_listing_version_id}
-              libraryAgent={libraryAgent}
-            />
-          </div>
-          <AgentImages
-            images={
-              agent.agent_video
-                ? [agent.agent_video, ...agent.agent_image]
-                : agent.agent_image
-            }
+      <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:flex-row md:gap-8">
+        <div className="w-full md:w-auto md:shrink-0">
+          <AgentInfo
+            user={user}
+            name={agent.agent_name}
+            creator={agent.creator}
+            shortDescription={agent.sub_heading}
+            longDescription={agent.description}
+            rating={agent.rating}
+            runs={agent.runs}
+            categories={agent.categories}
+            lastUpdated={agent.updated_at}
+            version={agent.versions[agent.versions.length - 1]}
+            storeListingVersionId={agent.store_listing_version_id}
+            libraryAgent={libraryAgent}
           />
         </div>
+        <AgentImages
+          images={
+            agent.agent_video
+              ? [agent.agent_video, ...agent.agent_image]
+              : agent.agent_image
+          }
+        />
+      </div>
       <Separator className="mb-9 mt-7" />
       <AgentsSection
         agents={otherAgents.agents}
