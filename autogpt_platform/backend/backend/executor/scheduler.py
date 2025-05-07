@@ -89,7 +89,7 @@ class LateExecutionException(Exception):
     pass
 
 
-def report_late_executions():
+def report_late_executions() -> str:
     late_executions = execution_utils.get_db_client().get_graph_executions(
         statuses=[ExecutionStatus.QUEUED],
         created_time_gte=datetime.now(timezone.utc)
@@ -100,11 +100,7 @@ def report_late_executions():
     )
 
     if not late_executions:
-        logger.info(
-            ">>>>>>>>>>>> No late executions detected. "
-            f"Last check was {config.execution_late_notification_checkrange_secs} seconds ago."
-        )
-        return
+        return "No late executions detected."
 
     num_late_executions = len(late_executions)
     num_users = len(set([r.user_id for r in late_executions]))
@@ -116,6 +112,7 @@ def report_late_executions():
     )
     logger.error(error)
     sentry_alert(error)
+    return str(error)
 
 
 def process_existing_batches(**kwargs):
@@ -337,7 +334,7 @@ class Scheduler(AppService):
 
     @expose
     def execute_report_late_executions(self):
-        report_late_executions()
+        return report_late_executions()
 
 
 class SchedulerClient(AppServiceClient):
