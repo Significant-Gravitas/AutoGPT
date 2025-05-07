@@ -12,6 +12,7 @@ type OnboardingButtonProps = {
   className?: string;
   variant?: keyof typeof variants;
   children?: React.ReactNode;
+  loading?: boolean;
   disabled?: boolean;
   onClick?: () => void;
   href?: string;
@@ -22,12 +23,14 @@ export default function OnboardingButton({
   className,
   variant = "default",
   children,
+  loading,
   disabled,
   onClick,
   href,
   icon,
 }: OnboardingButtonProps) {
-  const [loading, setLoading] = useState(false);
+  const [internalLoading, setInternalLoading] = useState(false);
+  const isLoading = loading !== undefined ? loading : internalLoading;
 
   const buttonClasses = useMemo(
     () =>
@@ -43,17 +46,17 @@ export default function OnboardingButton({
   );
 
   const onClickInternal = useCallback(() => {
-    setLoading(true);
+    setInternalLoading(true);
     if (onClick) {
       onClick();
     }
-  }, [setLoading]);
+  }, [setInternalLoading]);
 
   if (href && !disabled) {
     return (
       <Link href={href} onClick={onClickInternal} className={buttonClasses}>
-        {loading && <Spinner className="h-5 w-5" />}
-        {icon && !loading && <>{icon}</>}
+        {isLoading && <Spinner className="h-5 w-5" />}
+        {icon && !isLoading && <>{icon}</>}
         {children}
       </Link>
     );
@@ -65,8 +68,8 @@ export default function OnboardingButton({
       disabled={disabled}
       className={buttonClasses}
     >
-      {loading && <Spinner className="h-5 w-5" />}
-      {icon && !loading && <>{icon}</>}
+      {isLoading && <Spinner className="h-5 w-5" />}
+      {icon && !isLoading && <>{icon}</>}
       {children}
     </button>
   );
