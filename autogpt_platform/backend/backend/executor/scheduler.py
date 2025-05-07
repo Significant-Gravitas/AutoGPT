@@ -1,5 +1,6 @@
 import logging
 import os
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
@@ -16,8 +17,10 @@ from pydantic import BaseModel
 from sqlalchemy import MetaData, create_engine
 
 from backend.data.block import BlockInput
+from backend.data.execution import ExecutionStatus
 from backend.executor import utils as execution_utils
 from backend.notifications.notifications import NotificationManagerClient
+from backend.util.metrics import sentry_alert
 from backend.util.service import (
     AppService,
     AppServiceClient,
@@ -80,6 +83,39 @@ def execute_graph(**kwargs):
         )
     except Exception as e:
         logger.exception(f"Error executing graph {args.graph_id}: {e}")
+
+
+class LateExecutionException(Exception):
+    pass
+
+
+def report_late_executions():
+    late_executions = execution_utils.get_db_client().get_graph_executions(
+        statuses=[ExecutionStatus.QUEUED],
+        created_time_gte=datetime.now(timezone.utc)
+        - timedelta(seconds=config.execution_late_notification_checkrange_secs),
+        created_time_lte=datetime.now(timezone.utc)
+        - timedelta(seconds=config.execution_late_notification_threshold_secs),
+        limit=1000,
+    )
+
+    if not late_executions:
+        logger.info(
+            ">>>>>>>>>>>> No late executions detected. "
+            f"Last check was {config.execution_late_notification_checkrange_secs} seconds ago."
+        )
+        return
+
+    num_late_executions = len(late_executions)
+    num_users = len(set([r.user_id for r in late_executions]))
+    error = LateExecutionException(
+        f"Late executions detected: {num_late_executions} late executions from {num_users} users "
+        f"in the last {config.execution_late_notification_checkrange_secs} seconds. "
+        f"Graph has been queued for more than {config.execution_late_notification_threshold_secs} seconds. "
+        "Please check the executor status."
+    )
+    logger.error(error)
+    sentry_alert(error)
 
 
 def process_existing_batches(**kwargs):
@@ -192,6 +228,36 @@ class Scheduler(AppService):
                 Jobstores.WEEKLY_NOTIFICATIONS.value: MemoryJobStore(),
             }
         )
+
+        # Notification PROCESS WEEKLY SUMMARY
+        self.scheduler.add_job(
+            process_weekly_summary,
+            CronTrigger.from_crontab("0 * * * *"),
+            id="process_weekly_summary",
+            kwargs={},
+            replace_existing=True,
+            jobstore=Jobstores.WEEKLY_NOTIFICATIONS.value,
+        )
+
+        # Notification PROCESS EXISTING BATCHES
+        # self.scheduler.add_job(
+        #     process_existing_batches,
+        #     id="process_existing_batches",
+        #     CronTrigger.from_crontab("0 12 * * 5"),
+        #     replace_existing=True,
+        #     jobstore=Jobstores.BATCHED_NOTIFICATIONS.value,
+        # )
+
+        # Notification LATE EXECUTIONS ALERT
+        self.scheduler.add_job(
+            report_late_executions,
+            id="report_late_executions",
+            trigger="interval",
+            replace_existing=True,
+            seconds=config.execution_late_notification_threshold_secs,
+            jobstore=Jobstores.EXECUTION.value,
+        )
+
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.start()
 
@@ -262,43 +328,16 @@ class Scheduler(AppService):
         return schedules
 
     @expose
-    def add_batched_notification_schedule(
-        self,
-        notification_types: list[NotificationType],
-        data: dict,
-        cron: str,
-    ) -> NotificationJobInfo:
-        job_args = NotificationJobArgs(
-            notification_types=notification_types,
-            cron=cron,
-        )
-        job = self.scheduler.add_job(
-            process_existing_batches,
-            CronTrigger.from_crontab(cron),
-            kwargs=job_args.model_dump(),
-            replace_existing=True,
-            jobstore=Jobstores.BATCHED_NOTIFICATIONS.value,
-        )
-        log(f"Added job {job.id} with cron schedule '{cron}' input data: {data}")
-        return NotificationJobInfo.from_db(job_args, job)
+    def execute_process_existing_batches(self, kwargs: dict):
+        process_existing_batches(**kwargs)
 
     @expose
-    def add_weekly_notification_schedule(self, cron: str) -> NotificationJobInfo:
+    def execute_process_weekly_summary(self):
+        process_weekly_summary()
 
-        job = self.scheduler.add_job(
-            process_weekly_summary,
-            CronTrigger.from_crontab(cron),
-            kwargs={},
-            replace_existing=True,
-            jobstore=Jobstores.WEEKLY_NOTIFICATIONS.value,
-        )
-        log(f"Added job {job.id} with cron schedule '{cron}'")
-        return NotificationJobInfo.from_db(
-            NotificationJobArgs(
-                cron=cron, notification_types=[NotificationType.WEEKLY_SUMMARY]
-            ),
-            job,
-        )
+    @expose
+    def execute_report_late_executions(self):
+        report_late_executions()
 
 
 class SchedulerClient(AppServiceClient):
@@ -309,5 +348,3 @@ class SchedulerClient(AppServiceClient):
     add_execution_schedule = endpoint_to_async(Scheduler.add_execution_schedule)
     delete_schedule = endpoint_to_async(Scheduler.delete_schedule)
     get_execution_schedules = endpoint_to_async(Scheduler.get_execution_schedules)
-    add_batched_notification_schedule = Scheduler.add_batched_notification_schedule
-    add_weekly_notification_schedule = Scheduler.add_weekly_notification_schedule
