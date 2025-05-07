@@ -188,6 +188,9 @@ class NotificationJobInfo(NotificationJobArgs):
 class Scheduler(AppService):
     scheduler: BlockingScheduler
 
+    def __init__(self, register_system_tasks: bool = True):
+        self.register_system_tasks = register_system_tasks
+
     @classmethod
     def get_port(cls) -> int:
         return config.execution_scheduler_port
@@ -226,34 +229,35 @@ class Scheduler(AppService):
             }
         )
 
-        # Notification PROCESS WEEKLY SUMMARY
-        self.scheduler.add_job(
-            process_weekly_summary,
-            CronTrigger.from_crontab("0 * * * *"),
-            id="process_weekly_summary",
-            kwargs={},
-            replace_existing=True,
-            jobstore=Jobstores.WEEKLY_NOTIFICATIONS.value,
-        )
+        if self.register_system_tasks:
+            # Notification PROCESS WEEKLY SUMMARY
+            self.scheduler.add_job(
+                process_weekly_summary,
+                CronTrigger.from_crontab("0 * * * *"),
+                id="process_weekly_summary",
+                kwargs={},
+                replace_existing=True,
+                jobstore=Jobstores.WEEKLY_NOTIFICATIONS.value,
+            )
 
-        # Notification PROCESS EXISTING BATCHES
-        # self.scheduler.add_job(
-        #     process_existing_batches,
-        #     id="process_existing_batches",
-        #     CronTrigger.from_crontab("0 12 * * 5"),
-        #     replace_existing=True,
-        #     jobstore=Jobstores.BATCHED_NOTIFICATIONS.value,
-        # )
+            # Notification PROCESS EXISTING BATCHES
+            # self.scheduler.add_job(
+            #     process_existing_batches,
+            #     id="process_existing_batches",
+            #     CronTrigger.from_crontab("0 12 * * 5"),
+            #     replace_existing=True,
+            #     jobstore=Jobstores.BATCHED_NOTIFICATIONS.value,
+            # )
 
-        # Notification LATE EXECUTIONS ALERT
-        self.scheduler.add_job(
-            report_late_executions,
-            id="report_late_executions",
-            trigger="interval",
-            replace_existing=True,
-            seconds=config.execution_late_notification_threshold_secs,
-            jobstore=Jobstores.EXECUTION.value,
-        )
+            # Notification LATE EXECUTIONS ALERT
+            self.scheduler.add_job(
+                report_late_executions,
+                id="report_late_executions",
+                trigger="interval",
+                replace_existing=True,
+                seconds=config.execution_late_notification_threshold_secs,
+                jobstore=Jobstores.EXECUTION.value,
+            )
 
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.start()
