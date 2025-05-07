@@ -325,7 +325,7 @@ class Scheduler(AppService):
                 f"Found job {job.id} with cron schedule {job.trigger} and args {job.kwargs}"
             )
             try:
-                job_args = GraphExecutionJobArgs.model_validate(**job.kwargs)
+                job_args = GraphExecutionJobArgs.model_validate(job.kwargs)
             except ValidationError:
                 continue
             if (
