@@ -85,6 +85,30 @@ async def get_library_agent(
     return await library_db.get_library_agent(id=library_agent_id, user_id=user_id)
 
 
+@router.get(
+    "/marketplace/{store_listing_version_id}/",
+    tags=["store, library"],
+    response_model=library_model.LibraryAgent | None,
+)
+async def get_library_agent_by_store_listing_version_id(
+    store_listing_version_id: str,
+    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+):
+    """
+    Get Library Agent from Store Listing Version ID.
+    """
+    try:
+        return await library_db.get_library_agent_by_store_version_id(
+            store_listing_version_id, user_id
+        )
+    except Exception as e:
+        logger.error(f"Could not fetch library agent from store version ID: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to add agent to library",
+        ) from e
+
+
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,
