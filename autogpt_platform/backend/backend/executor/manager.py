@@ -255,6 +255,7 @@ def execute_node(
                 graph_exec_id=graph_exec_id,
                 graph_id=graph_id,
                 log_metadata=log_metadata,
+                node_credentials_input_map=node_credentials_input_map,
             ):
                 yield execution
 
@@ -273,6 +274,7 @@ def execute_node(
             graph_exec_id=graph_exec_id,
             graph_id=graph_id,
             log_metadata=log_metadata,
+            node_credentials_input_map=node_credentials_input_map,
         ):
             yield execution
 
@@ -302,6 +304,7 @@ def _enqueue_next_nodes(
     graph_exec_id: str,
     graph_id: str,
     log_metadata: LogMetadata,
+    node_credentials_input_map: Optional[dict[str, dict[str, CredentialsMetaInput]]],
 ) -> list[NodeExecutionEntry]:
     def add_enqueued_execution(
         node_exec_id: str, node_id: str, block_id: str, data: BlockInput
@@ -358,6 +361,15 @@ def _enqueue_next_nodes(
                 for name in static_link_names:
                     next_node_input[name] = latest_execution.input_data.get(name)
 
+            # Apply node credentials overrides
+            node_credentials = None
+            if node_credentials_input_map and (
+                node_credentials := node_credentials_input_map.get(node.id)
+            ):
+                next_node_input.update(
+                    {k: v.model_dump() for k, v in node_credentials.items()}
+                )
+
             # Validate the input data for the next node.
             next_node_input, validation_msg = validate_exec(next_node, next_node_input)
             suffix = f"{next_output_name}>{next_input_name}~{next_node_exec_id}:{validation_msg}"
@@ -399,6 +411,12 @@ def _enqueue_next_nodes(
                 }
                 for input_name in static_link_names:
                     idata[input_name] = next_node_input[input_name]
+
+                # Apply node credentials overrides
+                if node_credentials:
+                    idata.update(
+                        {k: v.model_dump() for k, v in node_credentials.items()}
+                    )
 
                 idata, msg = validate_exec(next_node, idata)
                 suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"
