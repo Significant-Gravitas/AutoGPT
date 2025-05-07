@@ -74,7 +74,7 @@ export function useTurnstile({
   const reset = useCallback(() => {
     if (shouldRender && window.turnstile && widgetId) {
       window.turnstile.reset(widgetId);
-      
+
       // Always reset the state when reset is called
       setToken(null);
       setVerified(false);
