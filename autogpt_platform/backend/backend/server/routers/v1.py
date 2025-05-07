@@ -422,7 +422,11 @@ async def get_graph(
     for_export: bool = False,
 ) -> graph_db.GraphModel:
     graph = await graph_db.get_graph(
-        graph_id, version, user_id=user_id, for_export=for_export
+        graph_id,
+        version,
+        user_id=user_id,
+        for_export=for_export,
+        include_subgraphs=True,  # needed to construct full credentials input schema
     )
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
