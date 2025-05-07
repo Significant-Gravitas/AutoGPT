@@ -41,13 +41,13 @@ export function useOnboarding(step?: number, completeStep?: OnboardingStep) {
     context.updateState({
       completedSteps: [...context.state.completedSteps, completeStep],
     });
-  }, [completeStep, context.state, context.updateState]);
+  }, [completeStep, context, context.updateState]);
 
   useEffect(() => {
     if (step && context.step !== step) {
       context.setStep(step);
     }
-  }, [step, context.step, context.setStep]);
+  }, [step, context]);
 
   return context;
 }
@@ -126,7 +126,7 @@ export default function OnboardingProvider({
         completedSteps: [...state.completedSteps, step],
       });
     },
-    [api, state],
+    [state, updateState],
   );
 
   return (

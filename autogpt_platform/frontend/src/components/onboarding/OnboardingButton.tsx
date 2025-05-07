@@ -50,7 +50,7 @@ export default function OnboardingButton({
     if (onClick) {
       onClick();
     }
-  }, [setInternalLoading]);
+  }, [setInternalLoading, onClick]);
 
   if (href && !disabled) {
     return (

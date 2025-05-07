@@ -85,12 +85,14 @@ export default function Page() {
     }
     setRunningAgent(true);
     try {
-      const libraryAgent = await api.addMarketplaceAgentToLibrary(storeAgent?.store_listing_version_id || "");
+      const libraryAgent = await api.addMarketplaceAgentToLibrary(
+        storeAgent?.store_listing_version_id || "",
+      );
       const { graph_exec_id } = await api.executeGraph(
         libraryAgent.graph_id,
         libraryAgent.graph_version,
         state?.agentInput || {},
-      )
+      );
       updateState({
         onboardingAgentExecutionId: graph_exec_id,
       });
@@ -99,12 +101,13 @@ export default function Page() {
       console.error("Error running agent:", error);
       toast({
         title: "Error running agent",
-        description: "There was an error running your agent. Please try again or try choosing a different agent if it still fails.",
+        description:
+          "There was an error running your agent. Please try again or try choosing a different agent if it still fails.",
         variant: "destructive",
-      })
+      });
     }
     setRunningAgent(false);
-  }, [api, agent, router, state?.agentInput, storeAgent, updateState]);
+  }, [api, agent, router, state?.agentInput, storeAgent, updateState, toast]);
 
   const runYourAgent = (
     <div className="ml-[104px] w-[481px] pl-5">
@@ -246,7 +249,9 @@ export default function Page() {
                 disabled={
                   Object.values(state?.agentInput || {}).some(
                     (value) => String(value).trim() === "",
-                  ) || !agent || runningAgent
+                  ) ||
+                  !agent ||
+                  runningAgent
                 }
                 onClick={runAgent}
                 icon={<Play className="mr-2" size={18} />}
