@@ -1,10 +1,13 @@
-from datetime import datetime, timezone
+import enum
+import uuid
+from datetime import datetime, timedelta, timezone
+from typing import Literal, Union
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from pydantic import BaseModel
 
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, Optional
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 from backend.util.settings import AppEnvironment, Settings
 
@@ -113,77 +116,52 @@ class GoogleCalendarReadNextEventsBlock(Block):
         return result.get("items", [])
 
 
-class EventDateTime(BaseModel):
-    """Model for event date and time."""
+class ReminderPreset(enum.Enum):
+    """Common reminder times before an event."""
 
-    dateTime: str = SchemaField(
-        description="Date and time in ISO format with timezone (e.g. '2025-05-28T09:00:00-07:00')"
-    )
-    timeZone: str | None = SchemaField(
-        description="Time zone (e.g. 'America/Los_Angeles')", default=None
-    )
+    TEN_MINUTES = 10
+    THIRTY_MINUTES = 30
+    ONE_HOUR = 60
+    ONE_DAY = 1440  # 24 hours in minutes
 
 
-class EventAttendee(BaseModel):
-    """Model for event attendee."""
+class RecurrenceFrequency(enum.Enum):
+    """Frequency options for recurring events."""
 
-    email: str = SchemaField(description="Email address of attendee")
-    optional: bool | None = SchemaField(
-        description="Whether attendance is optional", default=None
-    )
-    responseStatus: str | None = SchemaField(
-        description="Attendee's response status (needsAction, declined, tentative, accepted)",
-        default=None,
-    )
+    DAILY = "DAILY"
+    WEEKLY = "WEEKLY"
+    MONTHLY = "MONTHLY"
+    YEARLY = "YEARLY"
 
 
-class EventReminder(BaseModel):
-    """Model for event reminder."""
+class ExactTiming(BaseModel):
+    """Model for specifying start and end times."""
 
-    method: str = SchemaField(description="Reminder method (email, popup)")
-    minutes: int = SchemaField(description="Minutes before event to trigger reminder")
-
-
-class EventReminders(BaseModel):
-    """Model for event reminders configuration."""
-
-    useDefault: bool = SchemaField(description="Whether to use default reminders")
-    overrides: list[EventReminder] = SchemaField(
-        description="list of custom reminders", default_factory=list
-    )
+    discriminator: Literal["exact_timing"]
+    start_datetime: datetime
+    end_datetime: datetime
 
 
-class EventConferenceData(BaseModel):
-    """Model for conference data."""
+class DurationTiming(BaseModel):
+    """Model for specifying start time and duration."""
 
-    createRequest: Optional[dict] = SchemaField(
-        description="Request to create a conference", default=None
-    )
+    discriminator: Literal["duration_timing"]
+    start_datetime: datetime
+    duration_minutes: int
 
 
-class EventData(BaseModel):
-    """Model for Google Calendar event data."""
+class OneTimeEvent(BaseModel):
+    """Model for a one-time event."""
 
-    summary: str = SchemaField(description="Title of the event")
-    location: str | None = SchemaField(
-        description="Location of the event", default=None
-    )
-    description: str | None = SchemaField(
-        description="Description of the event", default=None
-    )
-    start: EventDateTime
-    end: EventDateTime
-    recurrence: list[str] = SchemaField(
-        description="Recurrence rules (e.g. ['RRULE:FREQ=DAILY;COUNT=2'])",
-        default_factory=list,
-    )
-    attendees: list[EventAttendee] = SchemaField(
-        description="list of attendees", default_factory=list
-    )
-    reminders: EventReminders = SchemaField(description="Reminders configuration")
-    conferenceData: EventConferenceData = SchemaField(
-        description="Conference data for video meetings"
-    )
+    discriminator: Literal["one_time"]
+
+
+class RecurringEvent(BaseModel):
+    """Model for a recurring event."""
+
+    discriminator: Literal["recurring"]
+    frequency: RecurrenceFrequency
+    count: int
 
 
 class GoogleCalendarCreateEventBlock(Block):
@@ -191,39 +169,71 @@ class GoogleCalendarCreateEventBlock(Block):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/calendar"]
         )
+        # Event Details
+        event_title: str = SchemaField(description="Title of the event")
+        location: str | None = SchemaField(
+            description="Location of the event", default=None
+        )
+        description: str | None = SchemaField(
+            description="Description of the event", default=None
+        )
+
+        # Timing
+        timing: Union[ExactTiming, DurationTiming] = SchemaField(
+            discriminator="discriminator",
+            advanced=False,
+            description="Specify when the event starts and ends",
+            default=DurationTiming(
+                discriminator="duration_timing",
+                start_datetime=datetime.now().replace(microsecond=0, second=0, minute=0)
+                + timedelta(hours=1),
+                duration_minutes=60,
+            ),
+        )
+
+        # Calendar selection
         calendar_id: str = SchemaField(
-            description="Calendar ID to create the event in (use 'primary' for the user's primary calendar)",
+            description="Calendar ID (use 'primary' for your main calendar)",
             default="primary",
         )
-        event: EventData = SchemaField(
-            description="Event data for creating the calendar event"
+
+        # Guests
+        guest_emails: list[str] = SchemaField(
+            description="Email addresses of guests to invite", default_factory=list
         )
         send_notifications: bool = SchemaField(
-            description="Whether to send notifications to attendees", default=False
+            description="Send email notifications to guests", default=True
         )
-        supports_attachments: bool = SchemaField(
-            description="Whether the request supports attachments", default=False
+
+        # Extras
+        add_google_meet: bool = SchemaField(
+            description="Include a Google Meet video conference link", default=False
         )
-        conference_data_version: int = SchemaField(
-            description="Version for conference data support (0=no conference, 1=create conference)",
-            default=0,
+        recurrence: Union[OneTimeEvent, RecurringEvent] = SchemaField(
+            discriminator="discriminator",
+            description="Whether the event repeats",
+            default=OneTimeEvent(discriminator="one_time"),
+        )
+        reminder_minutes: list[ReminderPreset] = SchemaField(
+            description="When to send reminders before the event",
+            default_factory=lambda: [ReminderPreset.TEN_MINUTES],
         )
 
     class Output(BlockSchema):
-        class EventOutput(BaseModel):
-            id: str = SchemaField(description="")
-            htmlLink: str = SchemaField(description="")
-            summary: str = SchemaField(description="")
-            created: str = SchemaField(description="")
-            updated: str = SchemaField(description="")
-
-        event: EventOutput = SchemaField(
-            description="Created event data including ID and link"
+        event_id: str = SchemaField(description="ID of the created event")
+        event_link: str = SchemaField(
+            description="Link to view the event in Google Calendar"
         )
         error: str = SchemaField(description="Error message if event creation failed")
 
     def __init__(self):
         settings = Settings()
+        # Generate a start time for testing (1 hour from now)
+        test_start = datetime.now().replace(microsecond=0, second=0) + timedelta(
+            hours=1
+        )
+        test_end = test_start + timedelta(hours=1)
+
         super().__init__(
             id="ed2ec950-fbff-4204-94c0-023fb1d625e0",
             description="This block creates a new event in Google Calendar with customizable parameters.",
@@ -234,53 +244,38 @@ class GoogleCalendarCreateEventBlock(Block):
             or settings.config.app_env == AppEnvironment.PRODUCTION,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
-                "calendar_id": "primary",
-                "event": {
-                    "summary": "Test Event",
-                    "location": "123 Test St, Test City",
-                    "description": "This is a test event created by AutoGPT",
-                    "start": {
-                        "dateTime": "2025-05-28T09:00:00-07:00",
-                        "timeZone": "America/Los_Angeles",
-                    },
-                    "end": {
-                        "dateTime": "2025-05-28T10:00:00-07:00",
-                        "timeZone": "America/Los_Angeles",
-                    },
-                    "attendees": [
-                        {"email": "attendee1@example.com"},
-                        {"email": "attendee2@example.com"},
-                    ],
-                    "reminders": {
-                        "useDefault": False,
-                        "overrides": [
-                            {"method": "email", "minutes": 24 * 60},
-                            {"method": "popup", "minutes": 10},
-                        ],
-                    },
+                "event_title": "Team Meeting",
+                "location": "Conference Room A",
+                "description": "Weekly team sync-up",
+                "timing": {
+                    "discriminator": "exact_timing",
+                    "start_datetime": test_start,
+                    "end_datetime": test_end,
                 },
+                # "timezone": "America/Los_Angeles",
+                "calendar_id": "primary",
+                "guest_emails": ["colleague1@example.com", "colleague2@example.com"],
+                "add_google_meet": True,
                 "send_notifications": True,
+                "recurrence": {
+                    "discriminator": "recurring",
+                    "frequency": RecurrenceFrequency.WEEKLY,
+                    "count": 10,
+                },
+                "reminder_minutes": [
+                    ReminderPreset.TEN_MINUTES,
+                    ReminderPreset.ONE_HOUR,
+                ],
             },
             test_credentials=TEST_CREDENTIALS,
             test_output=[
-                (
-                    "event",
-                    {
-                        "id": "abc123event_id",
-                        "htmlLink": "https://calendar.google.com/calendar/event?eid=abc123",
-                        "summary": "Test Event",
-                        "created": "2025-05-01T12:00:00Z",
-                        "updated": "2025-05-01T12:00:00Z",
-                    },
-                )
+                ("event_id", "abc123event_id"),
+                ("event_link", "https://calendar.google.com/calendar/event?eid=abc123"),
             ],
             test_mock={
                 "_create_event": lambda *args, **kwargs: {
                     "id": "abc123event_id",
                     "htmlLink": "https://calendar.google.com/calendar/event?eid=abc123",
-                    "summary": "Test Event",
-                    "created": "2025-05-01T12:00:00Z",
-                    "updated": "2025-05-01T12:00:00Z",
                 }
             },
         )
@@ -291,29 +286,76 @@ class GoogleCalendarCreateEventBlock(Block):
         try:
             service = self._build_service(credentials, **kwargs)
 
-            # # Convert Pydantic model to dict for API call
-            event_data = input_data.event.dict(exclude_none=True)
+            # Get start and end times based on the timing option
+            if input_data.timing.discriminator == "exact_timing":
+                start_datetime = input_data.timing.start_datetime
+                end_datetime = input_data.timing.end_datetime
+            else:  # duration_timing
+                start_datetime = input_data.timing.start_datetime
+                end_datetime = start_datetime + timedelta(
+                    minutes=input_data.timing.duration_minutes
+                )
 
+            # Format datetimes for Google Calendar API
+            start_time_str = start_datetime.isoformat()
+            end_time_str = end_datetime.isoformat()
+
+            # Build the event body
+            event_body = {
+                "summary": input_data.event_title,
+                "start": {"dateTime": start_time_str},
+                "end": {"dateTime": end_time_str},
+            }
+
+            # Add optional fields
+            if input_data.location:
+                event_body["location"] = input_data.location
+
+            if input_data.description:
+                event_body["description"] = input_data.description
+
+            # Add guests
+            if input_data.guest_emails:
+                event_body["attendees"] = [
+                    {"email": email} for email in input_data.guest_emails
+                ]
+
+            # Add reminders
+            if input_data.reminder_minutes:
+                event_body["reminders"] = {
+                    "useDefault": False,
+                    "overrides": [
+                        {"method": "popup", "minutes": reminder.value}
+                        for reminder in input_data.reminder_minutes
+                    ],
+                }
+
+            # Add Google Meet
+            if input_data.add_google_meet:
+                event_body["conferenceData"] = {
+                    "createRequest": {
+                        "requestId": f"meet-{uuid.uuid4()}",
+                        "conferenceSolutionKey": {"type": "hangoutsMeet"},
+                    }
+                }
+
+            # Add recurrence
+            if input_data.recurrence.discriminator == "recurring":
+                rule = f"RRULE:FREQ={input_data.recurrence.frequency.value}"
+                rule += f";COUNT={input_data.recurrence.count}"
+                event_body["recurrence"] = [rule]
+
+            # Create the event
             result = self._create_event(
                 service=service,
                 calendar_id=input_data.calendar_id,
-                event_data=event_data,
+                event_body=event_body,
                 send_notifications=input_data.send_notifications,
-                supports_attachments=input_data.supports_attachments,
-                conference_data_version=input_data.conference_data_version,
+                conference_data_version=1 if input_data.add_google_meet else 0,
             )
 
-            # Extract relevant fields for output
-            output_event = {
-                "id": result.get("id", ""),
-                "htmlLink": result.get("htmlLink", ""),
-                "summary": result.get("summary", ""),
-                "created": result.get("created", ""),
-                "updated": result.get("updated", ""),
-            }
-
-            yield "event", output_event
-
+            yield "event_id", result.get("id", "")
+            yield "event_link", result.get("htmlLink", "")
         except Exception as e:
             yield "error", str(e)
 
@@ -341,9 +383,8 @@ class GoogleCalendarCreateEventBlock(Block):
         self,
         service,
         calendar_id: str,
-        event_data: dict,
+        event_body: dict,
         send_notifications: bool = False,
-        supports_attachments: bool = False,
         conference_data_version: int = 0,
     ) -> dict:
         """Create a new event in Google Calendar."""
@@ -352,9 +393,8 @@ class GoogleCalendarCreateEventBlock(Block):
         # Make the API call
         result = calendar.insert(
             calendarId=calendar_id,
-            body=event_data,
+            body=event_body,
             sendNotifications=send_notifications,
-            supportsAttachments=supports_attachments,
             conferenceDataVersion=conference_data_version,
         ).execute()
 
