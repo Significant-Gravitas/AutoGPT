@@ -39,7 +39,7 @@ export default function LoginPage() {
   const turnstile = useTurnstile({
     action: "login",
     autoVerify: false,
-    resetOnError: false,
+    resetOnError: true,
   });
 
   const form = useForm<z.infer<typeof loginFormSchema>>({
@@ -83,12 +83,8 @@ export default function LoginPage() {
       setIsLoading(false);
       if (error) {
         setFeedback(error);
-        if (error.includes("CAPTCHA")) {
-          turnstile.reset();
-        }
-        if (error.includes("Invalid login credentials")) {
-          turnstile.reset();
-        }
+        // Always reset the turnstile on any error
+        turnstile.reset();
         return;
       }
       setFeedback(null);

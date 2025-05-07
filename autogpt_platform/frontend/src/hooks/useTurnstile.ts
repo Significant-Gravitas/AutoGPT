@@ -74,15 +74,14 @@ export function useTurnstile({
   const reset = useCallback(() => {
     if (shouldRender && window.turnstile && widgetId) {
       window.turnstile.reset(widgetId);
-
-      if (resetOnError) {
-        setToken(null);
-        setVerified(false);
-      }
+      
+      // Always reset the state when reset is called
+      setToken(null);
+      setVerified(false);
       setVerifying(false);
       setError(null);
     }
-  }, [shouldRender, resetOnError, widgetId]);
+  }, [shouldRender, widgetId]);
 
   const handleVerify = useCallback(
     async (newToken: string) => {

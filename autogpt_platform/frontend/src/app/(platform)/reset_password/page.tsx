@@ -38,13 +38,13 @@ export default function ResetPasswordPage() {
   const sendEmailTurnstile = useTurnstile({
     action: "reset_password",
     autoVerify: false,
-    resetOnError: false,
+    resetOnError: true,
   });
 
   const changePasswordTurnstile = useTurnstile({
     action: "change_password",
     autoVerify: false,
-    resetOnError: false,
+    resetOnError: true,
   });
 
   const sendEmailForm = useForm<z.infer<typeof sendEmailFormSchema>>({
@@ -87,9 +87,7 @@ export default function ResetPasswordPage() {
       if (error) {
         setFeedback(error);
         setIsError(true);
-        if (error.includes("CAPTCHA")) {
-          sendEmailTurnstile.reset();
-        }
+        sendEmailTurnstile.reset();
         return;
       }
       setDisabled(true);
@@ -126,9 +124,7 @@ export default function ResetPasswordPage() {
       if (error) {
         setFeedback(error);
         setIsError(true);
-        if (error.includes("CAPTCHA")) {
-          changePasswordTurnstile.reset();
-        }
+        changePasswordTurnstile.reset();
         return;
       }
       setFeedback("Password changed successfully. Redirecting to login.");
