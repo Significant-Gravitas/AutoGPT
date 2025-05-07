@@ -121,6 +121,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=60 * 60 * 24,
         description="Time in seconds after which the execution counter is reset.",
     )
+    execution_late_notification_threshold_secs: int = Field(
+        default=5 * 60,
+        description="Time in seconds after which the execution stuck on QUEUED status is considered late.",
+    )
+    execution_late_notification_checkrange_secs: int = Field(
+        default=60 * 60,
+        description="Time in seconds for how far back to check for the late executions.",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
