@@ -22,3 +22,8 @@ def sentry_init():
             ),
         ],
     )
+
+
+def sentry_alert(error: Exception):
+    sentry_sdk.capture_exception(error)
+    sentry_sdk.flush()

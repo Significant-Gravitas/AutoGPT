@@ -113,13 +113,6 @@ def create_notification_config() -> RabbitMQConfig:
 
 
 @thread_cached
-def get_scheduler():
-    from backend.executor.scheduler import SchedulerClient
-
-    return get_service_client(SchedulerClient)
-
-
-@thread_cached
 def get_db():
     from backend.executor.database import DatabaseManagerClient
 
@@ -714,22 +707,6 @@ class NotificationManager(AppService):
         self.run_and_wait(self.rabbitmq_service.connect())
 
         logger.info(f"[{self.service_name}] Started notification service")
-
-        # Set up scheduler for batch processing of all notification types
-        # this can be changed later to spawn different cleanups on different schedules
-        try:
-            get_scheduler().add_batched_notification_schedule(
-                notification_types=list(NotificationType),
-                data={},
-                cron="0 * * * *",
-            )
-            # get_scheduler().add_weekly_notification_schedule(
-            #     # weekly on Friday at 12pm
-            #     cron="0 12 * * 5",
-            # )
-            logger.info("Scheduled notification cleanup")
-        except Exception as e:
-            logger.error(f"Error scheduling notification cleanup: {e}")
 
         # Set up queue consumers
         channel = self.run_and_wait(self.rabbit.get_channel())
