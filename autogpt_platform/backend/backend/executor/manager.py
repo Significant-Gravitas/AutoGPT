@@ -1117,14 +1117,16 @@ class ExecutionManager(AppProcess):
 def get_db_client() -> "DatabaseManagerClient":
     from backend.executor import DatabaseManagerClient
 
-    return get_service_client(DatabaseManagerClient)
+    # Disable health check for the service client to avoid breaking process initializer.
+    return get_service_client(DatabaseManagerClient, health_check=False)
 
 
 @thread_cached
 def get_notification_service() -> "NotificationManagerClient":
     from backend.notifications import NotificationManagerClient
 
-    return get_service_client(NotificationManagerClient)
+    # Disable health check for the service client to avoid breaking process initializer.
+    return get_service_client(NotificationManagerClient, health_check=False)
 
 
 def send_execution_update(entry: GraphExecution | NodeExecutionResult | None):

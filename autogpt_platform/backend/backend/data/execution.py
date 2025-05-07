@@ -284,8 +284,12 @@ class NodeExecutionResult(BaseModel):
 
 
 async def get_graph_executions(
-    graph_id: Optional[str] = None,
-    user_id: Optional[str] = None,
+    graph_id: str | None = None,
+    user_id: str | None = None,
+    statuses: list[ExecutionStatus] | None = None,
+    created_time_gte: datetime | None = None,
+    created_time_lte: datetime | None = None,
+    limit: int | None = None,
 ) -> list[GraphExecutionMeta]:
     where_filter: AgentGraphExecutionWhereInput = {
         "isDeleted": False,
@@ -294,10 +298,18 @@ async def get_graph_executions(
         where_filter["userId"] = user_id
     if graph_id:
         where_filter["agentGraphId"] = graph_id
+    if created_time_gte or created_time_lte:
+        where_filter["createdAt"] = {
+            "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
+            "lte": created_time_lte or datetime.max.replace(tzinfo=timezone.utc),
+        }
+    if statuses:
+        where_filter["OR"] = [{"executionStatus": status} for status in statuses]
 
     executions = await AgentGraphExecution.prisma().find_many(
         where=where_filter,
         order={"createdAt": "desc"},
+        take=limit,
     )
     return [GraphExecutionMeta.from_db(execution) for execution in executions]
 
@@ -639,28 +651,6 @@ async def get_node_executions(
     )
     res = [NodeExecutionResult.from_db(execution) for execution in executions]
     return res
-
-
-async def get_graph_executions_in_timerange(
-    user_id: str, start_time: str, end_time: str
-) -> list[GraphExecution]:
-    try:
-        executions = await AgentGraphExecution.prisma().find_many(
-            where={
-                "startedAt": {
-                    "gte": datetime.fromisoformat(start_time),
-                    "lte": datetime.fromisoformat(end_time),
-                },
-                "userId": user_id,
-                "isDeleted": False,
-            },
-            include=GRAPH_EXECUTION_INCLUDE,
-        )
-        return [GraphExecution.from_db(execution) for execution in executions]
-    except Exception as e:
-        raise DatabaseError(
-            f"Failed to get executions in timerange {start_time} to {end_time} for user {user_id}: {e}"
-        ) from e
 
 
 async def get_latest_node_execution(
