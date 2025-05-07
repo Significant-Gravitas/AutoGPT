@@ -1,5 +1,6 @@
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 
@@ -51,6 +52,8 @@ settings = Settings()
 NOTIFICATION_EXCHANGE = Exchange(name="notifications", type=ExchangeType.TOPIC)
 DEAD_LETTER_EXCHANGE = Exchange(name="dead_letter", type=ExchangeType.TOPIC)
 EXCHANGES = [NOTIFICATION_EXCHANGE, DEAD_LETTER_EXCHANGE]
+
+background_executor = ThreadPoolExecutor(max_workers=2)
 
 
 def create_notification_config() -> RabbitMQConfig:
@@ -224,9 +227,11 @@ class NotificationManager(AppService):
     def get_port(cls) -> int:
         return settings.config.notification_service_port
 
-    # TODO: Move this into a queue
     @expose
     def queue_weekly_summary(self):
+        background_executor.submit(self._queue_weekly_summary)
+
+    def _queue_weekly_summary(self):
         """Process weekly summary for specified notification types"""
         try:
             logger.info("Processing weekly summary queuing operation")
@@ -256,9 +261,11 @@ class NotificationManager(AppService):
         except Exception as e:
             logger.exception(f"Error processing weekly summary: {e}")
 
-    # TODO: Move this into a queue
     @expose
     def process_existing_batches(self, notification_types: list[NotificationType]):
+        background_executor.submit(self._process_existing_batches, notification_types)
+
+    def _process_existing_batches(self, notification_types: list[NotificationType]):
         """Process existing batches for specified notification types"""
         try:
             processed_count = 0
