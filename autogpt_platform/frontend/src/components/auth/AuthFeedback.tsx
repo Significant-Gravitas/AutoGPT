@@ -1,16 +1,17 @@
 import { AlertCircle, CheckCircle } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { HelpItem } from "@/components/auth/help-item";
-import Link from "next/link";
 import { BehaveAs } from "@/lib/utils";
 
 interface Props {
+  type: "login" | "signup";
   message?: string | null;
   isError?: boolean;
   behaveAs?: BehaveAs;
 }
 
 export default function AuthFeedback({
+  type,
   message = "",
   isError = false,
   behaveAs = BehaveAs.CLOUD,
@@ -39,48 +40,45 @@ export default function AuthFeedback({
       )}
 
       {/* Cloud-specific help */}
-      {isError && behaveAs === BehaveAs.CLOUD && (
-        <div className="mt-2 space-y-2 text-sm">
-          <span className="block text-center font-medium text-red-500">
-            The provided email may not be allowed to sign up.
-          </span>
-          <ul className="space-y-2 text-slate-700">
-            <li className="flex items-start">
-              <span className="mr-2">-</span>
-              <span>
-                AutoGPT Platform is currently in closed beta. You can join{" "}
-                <Link
+      {isError &&
+        behaveAs === BehaveAs.CLOUD &&
+        (type === "signup" ? (
+          <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+            <CardContent className="p-0">
+              <div className="divide-y divide-slate-100">
+                <span className="my-3 block text-center text-sm font-medium text-red-500">
+                  The provided email may not be allowed to sign up.
+                </span>
+                <HelpItem
+                  title="AutoGPT Platform is currently in closed beta. "
+                  description="You can join "
+                  linkText="the waitlist here"
                   href="https://agpt.co/waitlist"
-                  className="font-medium text-slate-950 underline hover:text-slate-700"
-                >
-                  the waitlist here
-                </Link>
-                .
-              </span>
-            </li>
-            <li className="flex items-start">
-              <span className="mr-2">-</span>
-              <span>
-                Make sure you use the same email address you used to sign up for
-                the waitlist.
-              </span>
-            </li>
-            <li className="flex items-start">
-              <span className="mr-2">-</span>
-              <span>
-                You can self host the platform, visit our{" "}
-                <Link
+                />
+                <HelpItem title="Make sure you use the same email address you used to sign up for the waitlist." />
+                <HelpItem
+                  title="You can self host the platform!"
+                  description="Visit our"
+                  linkText="GitHub repository"
                   href="https://github.com/Significant-Gravitas/AutoGPT"
-                  className="font-medium text-slate-950 underline hover:text-slate-700"
-                >
-                  GitHub repository
-                </Link>
-                .
-              </span>
-            </li>
-          </ul>
-        </div>
-      )}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+            <CardContent className="p-0">
+              <div className="divide-y divide-slate-100">
+                <HelpItem
+                  title="Having trouble logging in?"
+                  description="Make sure you've already "
+                  linkText="signed up"
+                  href="/signup"
+                />
+              </div>
+            </CardContent>
+          </Card>
+        ))}
 
       {/* Local-specific help */}
       {isError && behaveAs === BehaveAs.LOCAL && (

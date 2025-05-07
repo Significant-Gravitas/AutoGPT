@@ -149,6 +149,7 @@ export default function LoginPage() {
           </AuthButton>
         </form>
         <AuthFeedback
+          type="login"
           message={feedback}
           isError={!!feedback}
           behaveAs={getBehaveAs()}
