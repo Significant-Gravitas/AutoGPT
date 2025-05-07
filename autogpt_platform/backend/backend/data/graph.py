@@ -690,6 +690,7 @@ async def get_graph(
     version: int | None = None,
     user_id: str | None = None,
     for_export: bool = False,
+    include_subgraphs: bool = False,
 ) -> GraphModel | None:
     """
     Retrieves a graph from the DB.
@@ -726,7 +727,7 @@ async def get_graph(
     ):
         return None
 
-    if for_export:
+    if include_subgraphs or for_export:
         sub_graphs = await get_sub_graphs(graph)
         return GraphModel.from_db(
             graph=graph,

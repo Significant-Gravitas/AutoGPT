@@ -608,7 +608,10 @@ async def add_graph_execution_async(
         ValueError: If the graph is not found or if there are validation errors.
     """  # noqa
     graph: GraphModel | None = await get_graph(
-        graph_id=graph_id, user_id=user_id, version=graph_version
+        graph_id=graph_id,
+        user_id=user_id,
+        version=graph_version,
+        include_subgraphs=True,
     )
     if not graph:
         raise NotFoundError(f"Graph #{graph_id} not found.")
@@ -691,7 +694,10 @@ def add_graph_execution(
     """
     db = get_db_client()
     graph: GraphModel | None = db.get_graph(
-        graph_id=graph_id, user_id=user_id, version=graph_version
+        graph_id=graph_id,
+        user_id=user_id,
+        version=graph_version,
+        include_subgraphs=True,
     )
     if not graph:
         raise NotFoundError(f"Graph #{graph_id} not found.")
