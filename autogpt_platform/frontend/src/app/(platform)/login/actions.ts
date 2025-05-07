@@ -6,6 +6,7 @@ import * as Sentry from "@sentry/nextjs";
 import getServerSupabase from "@/lib/supabase/getServerSupabase";
 import BackendAPI from "@/lib/autogpt-server-api";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
 export async function logout() {
   return await Sentry.withServerActionInstrumentation(
@@ -39,13 +40,22 @@ async function shouldShowOnboarding() {
   );
 }
 
-export async function login(values: z.infer<typeof loginFormSchema>) {
+export async function login(
+  values: z.infer<typeof loginFormSchema>,
+  turnstileToken: string,
+) {
   return await Sentry.withServerActionInstrumentation("login", {}, async () => {
     const supabase = getServerSupabase();
     const api = new BackendAPI();
 
     if (!supabase) {
       redirect("/error");
+    }
+
+    // Verify Turnstile token if provided
+    const success = await verifyTurnstileToken(turnstileToken, "login");
+    if (!success) {
+      return "CAPTCHA verification failed. Please try again.";
     }
 
     // We are sure that the values are of the correct type because zod validates the form
