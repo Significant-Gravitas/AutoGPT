@@ -364,7 +364,7 @@ def _enqueue_next_nodes(
             # Apply node credentials overrides
             node_credentials = None
             if node_credentials_input_map and (
-                node_credentials := node_credentials_input_map.get(node.id)
+                node_credentials := node_credentials_input_map.get(next_node.id)
             ):
                 next_node_input.update(
                     {k: v.model_dump() for k, v in node_credentials.items()}
