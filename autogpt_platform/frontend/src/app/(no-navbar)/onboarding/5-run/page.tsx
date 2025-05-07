@@ -105,8 +105,8 @@ export default function Page() {
           "There was an error running your agent. Please try again or try choosing a different agent if it still fails.",
         variant: "destructive",
       });
+      setRunningAgent(false);
     }
-    setRunningAgent(false);
   }, [api, agent, router, state?.agentInput, storeAgent, updateState, toast]);
 
   const runYourAgent = (
