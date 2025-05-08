@@ -46,9 +46,12 @@ export default async function Page({
     search_query: agent.slug.replace(/-/g, " "),
   });
   const libraryAgent = user
-    ? await api.getLibraryAgentByStoreListingVersionID(
-        agent.store_listing_version_id,
-      )
+    ? await api
+        .getLibraryAgentByStoreListingVersionID(agent.store_listing_version_id)
+        .catch((error) => {
+          console.error("Failed to fetch library agent:", error);
+          return null;
+        })
     : null;
 
   const breadcrumbs = [
