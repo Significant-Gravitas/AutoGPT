@@ -6,7 +6,7 @@ import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
 import { BecomeACreator } from "@/components/agptui/BecomeACreator";
 import { Separator } from "@/components/ui/separator";
 import { Metadata } from "next";
-import getServerSupabase from "@/lib/supabase/getServerSupabase";
+import getServerUser from "@/lib/supabase/getServerUser";
 
 export async function generateMetadata({
   params,
@@ -44,9 +44,7 @@ export default async function Page({
     // We are using slug as we know its has been sanitized and is not null
     search_query: agent.slug.replace(/-/g, " "),
   });
-  const {
-    data: { user },
-  } = await getServerSupabase().auth.getUser();
+  const { user } = await getServerUser();
   const libraryAgent = user
     ? await api.getLibraryAgentByStoreListingVersionID(
         agent.store_listing_version_id,
