@@ -428,10 +428,6 @@ class GraphModel(Graph):
             if (block := get_block(node.block_id)) is not None
         }
 
-        for node in graph.nodes:
-            if (block := nodes_block.get(node.id)) is None:
-                raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
-
         input_links = defaultdict(list)
 
         for link in graph.links:
@@ -446,8 +442,8 @@ class GraphModel(Graph):
                 [sanitize(name) for name in node.input_default]
                 + [sanitize(link.sink_name) for link in input_links.get(node.id, [])]
             )
-            input_schema = block.input_schema
-            for name in (required_fields := input_schema.get_required_fields()):
+            InputSchema = block.input_schema
+            for name in (required_fields := InputSchema.get_required_fields()):
                 if (
                     name not in provided_inputs
                     # Webhook payload is passed in by ExecutionManager
@@ -457,7 +453,7 @@ class GraphModel(Graph):
                         in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
                     )
                     # Checking availability of credentials is done by ExecutionManager
-                    and name not in input_schema.get_credentials_fields()
+                    and name not in InputSchema.get_credentials_fields()
                     # Validate only I/O nodes, or validate everything when executing
                     and (
                         for_run
@@ -484,37 +480,43 @@ class GraphModel(Graph):
                     )
 
             # Get input schema properties and check dependencies
-            input_fields = input_schema.model_fields
+            input_fields = InputSchema.model_fields
 
-            def has_value(name):
+            def has_value(node: Node, name: str):
                 return (
-                    node is not None
-                    and name in node.input_default
+                    name in node.input_default
                     and node.input_default[name] is not None
                     and str(node.input_default[name]).strip() != ""
                 ) or (name in input_fields and input_fields[name].default is not None)
 
             # Validate dependencies between fields
-            for field_name, field_info in input_fields.items():
-                # Apply input dependency validation only on run & field with depends_on
-                json_schema_extra = field_info.json_schema_extra or {}
-                if not (
-                    for_run
-                    and isinstance(json_schema_extra, dict)
-                    and (
-                        dependencies := cast(
-                            list[str], json_schema_extra.get("depends_on", [])
-                        )
-                    )
-                ):
+            for field_name in input_fields.keys():
+                field_json_schema = InputSchema.get_field_schema(field_name)
+
+                dependencies: list[str] = []
+
+                # Check regular field dependencies (only pre graph execution)
+                if for_run:
+                    dependencies.extend(field_json_schema.get("depends_on", []))
+
+                # Require presence of credentials discriminator (always).
+                # The `discriminator` is either the name of a sibling field (str),
+                # or an object that discriminates between possible types for this field:
+                # {"propertyName": prop_name, "mapping": {prop_value: sub_schema}}
+                if (
+                    discriminator := field_json_schema.get("discriminator")
+                ) and isinstance(discriminator, str):
+                    dependencies.append(discriminator)
+
+                if not dependencies:
                     continue
 
                 # Check if dependent field has value in input_default
-                field_has_value = has_value(field_name)
+                field_has_value = has_value(node, field_name)
                 field_is_required = field_name in required_fields
 
                 # Check for missing dependencies when dependent field is present
-                missing_deps = [dep for dep in dependencies if not has_value(dep)]
+                missing_deps = [dep for dep in dependencies if not has_value(node, dep)]
                 if missing_deps and (field_has_value or field_is_required):
                     raise ValueError(
                         f"Node {block.name} #{node.id}: Field `{field_name}` requires [{', '.join(missing_deps)}] to be set"
