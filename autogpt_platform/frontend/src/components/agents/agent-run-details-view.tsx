@@ -239,7 +239,7 @@ export default function AgentRunDetailsView({
                         {title || key}
                       </label>
                       {values.map((value, i) => (
-                        <p className="agpt-border-input flex min-h-[80px] rounded-md border px-3 py-2 ring-offset-background placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 w-full resize-none whitespace-pre-wrap break-words border-none bg-transparent text-sm" key={i}>
+                        <p className="text-sm text-neutral-700 disabled:cursor-not-allowed resize-none whitespace-pre-wrap break-words border-none" key={i}>
                           {value}
                         </p>
                       ))}
