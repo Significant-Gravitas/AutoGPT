@@ -6,7 +6,7 @@ import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
 import { BecomeACreator } from "@/components/agptui/BecomeACreator";
 import { Separator } from "@/components/ui/separator";
 import { Metadata } from "next";
-import getServerSupabase from "@/lib/supabase/getServerSupabase";
+import getServerUser from "@/lib/supabase/getServerUser";
 
 export async function generateMetadata({
   params,
@@ -37,6 +37,7 @@ export default async function Page({
   params: { creator: string; slug: string };
 }) {
   const creator_lower = params.creator.toLowerCase();
+  const { user } = await getServerUser();
   const api = new BackendAPI();
   const agent = await api.getStoreAgent(creator_lower, params.slug);
   const otherAgents = await api.getStoreAgents({ creator: creator_lower });
@@ -44,13 +45,13 @@ export default async function Page({
     // We are using slug as we know its has been sanitized and is not null
     search_query: agent.slug.replace(/-/g, " "),
   });
-  const {
-    data: { user },
-  } = await getServerSupabase().auth.getUser();
   const libraryAgent = user
-    ? await api.getLibraryAgentByStoreListingVersionID(
-        agent.store_listing_version_id,
-      )
+    ? await api
+        .getLibraryAgentByStoreListingVersionID(agent.store_listing_version_id)
+        .catch((error) => {
+          console.error("Failed to fetch library agent:", error);
+          return null;
+        })
     : null;
 
   const breadcrumbs = [
