@@ -4,6 +4,7 @@ import AuthCard from "./AuthCard";
 import AuthFeedback from "./AuthFeedback";
 import AuthHeader from "./AuthHeader";
 import { PasswordInput } from "./PasswordInput";
+import Turnstile from "./Turnstile";
 
 export {
   AuthBottomText,
@@ -12,4 +13,5 @@ export {
   AuthFeedback,
   AuthHeader,
   PasswordInput,
+  Turnstile,
 };

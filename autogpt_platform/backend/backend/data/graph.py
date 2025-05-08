@@ -199,11 +199,6 @@ class BaseGraph(BaseDbModel):
             )
         )
 
-    @computed_field
-    @property
-    def credentials_input_schema(self) -> dict[str, Any]:
-        return self._credentials_input_schema.jsonschema()
-
     @staticmethod
     def _generate_schema(
         *props: tuple[type[AgentInputBlock.Input] | type[AgentOutputBlock.Input], dict],
@@ -235,6 +230,15 @@ class BaseGraph(BaseDbModel):
             },
             "required": [p.name for p in schema_fields if p.value is None],
         }
+
+
+class Graph(BaseGraph):
+    sub_graphs: list[BaseGraph] = []  # Flattened sub-graphs
+
+    @computed_field
+    @property
+    def credentials_input_schema(self) -> dict[str, Any]:
+        return self._credentials_input_schema.jsonschema()
 
     @property
     def _credentials_input_schema(self) -> type[BlockSchema]:
@@ -314,15 +318,12 @@ class BaseGraph(BaseDbModel):
                         ),
                         (node.id, field_name),
                     )
-                    for node in self.nodes
+                    for graph in [self] + self.sub_graphs
+                    for node in graph.nodes
                     for field_name, field_info in node.block.input_schema.get_credentials_fields_info().items()
                 )
             )
         }
-
-
-class Graph(BaseGraph):
-    sub_graphs: list[BaseGraph] = []  # Flattened sub-graphs, only used in export
 
 
 class GraphModel(Graph):
@@ -400,7 +401,7 @@ class GraphModel(Graph):
             if node.block_id != AgentExecutorBlock().id:
                 continue
             node.input_default["user_id"] = user_id
-            node.input_default.setdefault("data", {})
+            node.input_default.setdefault("inputs", {})
             if (graph_id := node.input_default.get("graph_id")) in graph_id_map:
                 node.input_default["graph_id"] = graph_id_map[graph_id]
 
@@ -689,6 +690,7 @@ async def get_graph(
     version: int | None = None,
     user_id: str | None = None,
     for_export: bool = False,
+    include_subgraphs: bool = False,
 ) -> GraphModel | None:
     """
     Retrieves a graph from the DB.
@@ -725,7 +727,7 @@ async def get_graph(
     ):
         return None
 
-    if for_export:
+    if include_subgraphs or for_export:
         sub_graphs = await get_sub_graphs(graph)
         return GraphModel.from_db(
             graph=graph,

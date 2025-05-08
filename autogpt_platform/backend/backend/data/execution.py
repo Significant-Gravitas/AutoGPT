@@ -276,7 +276,7 @@ class NodeExecutionResult(BaseModel):
             node_exec_id=self.node_exec_id,
             node_id=self.node_id,
             block_id=self.block_id,
-            data=self.input_data,
+            inputs=self.input_data,
         )
 
 
@@ -691,7 +691,7 @@ class NodeExecutionEntry(BaseModel):
     node_exec_id: str
     node_id: str
     block_id: str
-    data: BlockInput
+    inputs: BlockInput
 
 
 class ExecutionQueue(Generic[T]):
