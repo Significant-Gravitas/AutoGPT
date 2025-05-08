@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import Any, Optional
 
 from backend.data.block import (
     Block,
@@ -11,7 +11,7 @@ from backend.data.block import (
     get_block,
 )
 from backend.data.execution import ExecutionStatus
-from backend.data.model import SchemaField
+from backend.data.model import CredentialsMetaInput, SchemaField
 from backend.util import json
 
 logger = logging.getLogger(__name__)
@@ -23,9 +23,13 @@ class AgentExecutorBlock(Block):
         graph_id: str = SchemaField(description="Graph ID")
         graph_version: int = SchemaField(description="Graph Version")
 
-        data: BlockInput = SchemaField(description="Input data for the graph")
+        inputs: BlockInput = SchemaField(description="Input data for the graph")
         input_schema: dict = SchemaField(description="Input schema for the graph")
         output_schema: dict = SchemaField(description="Output schema for the graph")
+
+        node_credentials_input_map: Optional[
+            dict[str, dict[str, CredentialsMetaInput]]
+        ] = SchemaField(default=None, hidden=True)
 
         @classmethod
         def get_input_schema(cls, data: BlockInput) -> dict[str, Any]:
@@ -33,7 +37,7 @@ class AgentExecutorBlock(Block):
 
         @classmethod
         def get_input_defaults(cls, data: BlockInput) -> BlockInput:
-            return data.get("data", {})
+            return data.get("inputs", {})
 
         @classmethod
         def get_missing_input(cls, data: BlockInput) -> set[str]:
@@ -67,7 +71,8 @@ class AgentExecutorBlock(Block):
             graph_id=input_data.graph_id,
             graph_version=input_data.graph_version,
             user_id=input_data.user_id,
-            inputs=input_data.data,
+            inputs=input_data.inputs,
+            node_credentials_input_map=input_data.node_credentials_input_map,
         )
         log_id = f"Graph #{input_data.graph_id}-V{input_data.graph_version}, exec-id: {graph_exec.id}"
         logger.info(f"Starting execution of {log_id}")
