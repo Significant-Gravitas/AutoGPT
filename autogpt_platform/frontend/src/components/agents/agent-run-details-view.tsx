@@ -239,7 +239,10 @@ export default function AgentRunDetailsView({
                         {title || key}
                       </label>
                       {values.map((value, i) => (
-                        <p className="text-sm text-neutral-700" key={i}>
+                        <p
+                          className="resize-none whitespace-pre-wrap break-words border-none text-sm text-neutral-700 disabled:cursor-not-allowed"
+                          key={i}
+                        >
                           {value}
                         </p>
                       ))}
