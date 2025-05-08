@@ -1,7 +1,7 @@
 import enum
 import uuid
 from datetime import datetime, timedelta, timezone
-from typing import Literal, Union
+from typing import Literal
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -26,12 +26,14 @@ class GoogleCalendarReadNextEventsBlock(Block):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/calendar.readonly"]
         )
-        max_results: int = SchemaField(description="blah", default=10)
+        max_results: int = SchemaField(
+            description="Max event count to load", default=10
+        )
         calendar_id: str = SchemaField(
             description="The Calendar to Query", default="primary"
         )
         start_time: datetime = SchemaField(
-            description="wehn to start, defaults to timezone utc now",
+            description="Time from which to start getting events, defaults to timezone utc now",
             default=datetime.now(tz=timezone.utc),
         )
 
@@ -45,7 +47,7 @@ class GoogleCalendarReadNextEventsBlock(Block):
         settings = Settings()
         super().__init__(
             id="80bc3ed1-e9a4-449e-8163-a8fc86f74f6a",
-            description="This block reads data from a Google Sheets spreadsheet.",
+            description="This block reads events from a Google Calendar.",
             categories={BlockCategory.DATA},
             input_schema=GoogleCalendarReadNextEventsBlock.Input,
             output_schema=GoogleCalendarReadNextEventsBlock.Output,
@@ -179,7 +181,7 @@ class GoogleCalendarCreateEventBlock(Block):
         )
 
         # Timing
-        timing: Union[ExactTiming, DurationTiming] = SchemaField(
+        timing: ExactTiming | DurationTiming = SchemaField(
             discriminator="discriminator",
             advanced=False,
             description="Specify when the event starts and ends",
@@ -209,7 +211,7 @@ class GoogleCalendarCreateEventBlock(Block):
         add_google_meet: bool = SchemaField(
             description="Include a Google Meet video conference link", default=False
         )
-        recurrence: Union[OneTimeEvent, RecurringEvent] = SchemaField(
+        recurrence: OneTimeEvent | RecurringEvent = SchemaField(
             discriminator="discriminator",
             description="Whether the event repeats",
             default=OneTimeEvent(discriminator="one_time"),
@@ -399,89 +401,3 @@ class GoogleCalendarCreateEventBlock(Block):
         ).execute()
 
         return result
-
-
-# class GoogleSheetsWriteBlock(Block):
-#     class Input(BlockSchema):
-#         credentials: GoogleCredentialsInput = GoogleCredentialsField(
-#             ["https://www.googleapis.com/auth/spreadsheets"]
-#         )
-#         spreadsheet_id: str = SchemaField(
-#             description="The ID of the spreadsheet to write to",
-#         )
-#         range: str = SchemaField(
-#             description="The A1 notation of the range to write",
-#         )
-#         values: list[list[str]] = SchemaField(
-#             description="The data to write to the spreadsheet",
-#         )
-
-#     class Output(BlockSchema):
-#         result: dict = SchemaField(
-#             description="The result of the write operation",
-#         )
-#         error: str = SchemaField(
-#             description="Error message if any",
-#         )
-
-#     def __init__(self):
-#         super().__init__(
-#             id="d9291e87-301d-47a8-91fe-907fb55460e5",
-#             description="This block writes data to a Google Sheets spreadsheet.",
-#             categories={BlockCategory.DATA},
-#             input_schema=GoogleSheetsWriteBlock.Input,
-#             output_schema=GoogleSheetsWriteBlock.Output,
-#             disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
-#             test_input={
-#                 "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
-#                 "range": "Sheet1!A1:B2",
-#                 "values": [
-#                     ["Name", "Score"],
-#                     ["Bob", "90"],
-#                 ],
-#                 "credentials": TEST_CREDENTIALS_INPUT,
-#             },
-#             test_credentials=TEST_CREDENTIALS,
-#             test_output=[
-#                 (
-#                     "result",
-#                     {"updatedCells": 4, "updatedColumns": 2, "updatedRows": 2},
-#                 ),
-#             ],
-#             test_mock={
-#                 "_write_sheet": lambda *args, **kwargs: {
-#                     "updatedCells": 4,
-#                     "updatedColumns": 2,
-#                     "updatedRows": 2,
-#                 },
-#             },
-#         )
-
-#     def run(
-#         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
-#     ) -> BlockOutput:
-#         service = GoogleSheetsReadBlock._build_service(credentials, **kwargs)
-#         result = self._write_sheet(
-#             service,
-#             input_data.spreadsheet_id,
-#             input_data.range,
-#             input_data.values,
-#         )
-#         yield "result", result
-
-#     def _write_sheet(
-#         self, service, spreadsheet_id: str, range: str, values: list[list[str]]
-#     ) -> dict:
-#         body = {"values": values}
-#         result = (
-#             service.spreadsheets()
-#             .values()
-#             .update(
-#                 spreadsheetId=spreadsheet_id,
-#                 range=range,
-#                 valueInputOption="USER_ENTERED",
-#                 body=body,
-#             )
-#             .execute()
-#         )
-#         return result
