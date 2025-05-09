@@ -633,7 +633,12 @@ class Executor:
             return
 
         timing_info, (exec_stats, status, error) = cls._on_graph_execution(
-            graph_exec, cancel, log_metadata
+            graph_exec=graph_exec,
+            cancel=cancel,
+            log_metadata=log_metadata,
+            execution_stats=(
+                exec_meta.stats.to_db() if exec_meta.stats else GraphExecutionStats()
+            ),
         )
         exec_stats.walltime = timing_info.wall_time
         exec_stats.cputime = timing_info.cpu_time
@@ -704,6 +709,7 @@ class Executor:
         graph_exec: GraphExecutionEntry,
         cancel: threading.Event,
         log_metadata: LogMetadata,
+        execution_stats: GraphExecutionStats,
     ) -> tuple[GraphExecutionStats, ExecutionStatus, Exception | None]:
         """
         Returns:
@@ -711,7 +717,6 @@ class Executor:
             ExecutionStatus: The final status of the graph execution.
             Exception | None: The error that occurred during the execution, if any.
         """
-        execution_stats = GraphExecutionStats()
         execution_status = ExecutionStatus.RUNNING
         error = None
         finished = False
