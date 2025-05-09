@@ -240,7 +240,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Whether to enable the agent input subtype blocks",
     )
     platform_alert_discord_channel: str = Field(
-        default="alerts",
+        default="local-alerts",
         description="The Discord channel for the platform",
     )
 
