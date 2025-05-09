@@ -87,9 +87,7 @@ class ProxycurlProfileFetchBlock(Block):
         profile: PersonProfileResponse = SchemaField(
             description="LinkedIn profile data"
         )
-        error: Optional[str] = SchemaField(
-            description="Error message if the request failed"
-        )
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         """Initialize ProxycurlProfileFetchBlock."""
@@ -207,9 +205,7 @@ class ProxycurlPersonLookupBlock(Block):
         lookup_result: PersonLookupResponse = SchemaField(
             description="LinkedIn profile lookup result"
         )
-        error: Optional[str] = SchemaField(
-            description="Error message if the request failed"
-        )
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         """Initialize ProxycurlPersonLookupBlock."""
@@ -303,9 +299,7 @@ class ProxycurlRoleLookupBlock(Block):
         role_lookup_result: RoleLookupResponse = SchemaField(
             description="LinkedIn role lookup result"
         )
-        error: Optional[str] = SchemaField(
-            description="Error message if the request failed"
-        )
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         """Initialize ProxycurlRoleLookupBlock."""
@@ -379,9 +373,7 @@ class ProxycurlProfilePictureBlock(Block):
         profile_picture: ProfilePictureResponse = SchemaField(
             description="LinkedIn profile picture URL"
         )
-        error: Optional[str] = SchemaField(
-            description="Error message if the request failed"
-        )
+        error: str = SchemaField(description="Error message if the request failed")
 
     def __init__(self):
         """Initialize ProxycurlProfilePictureBlock."""
