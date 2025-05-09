@@ -14,6 +14,7 @@ import {
   BlockIOArraySubSchema,
   BlockIOBooleanSubSchema,
   BlockIOCredentialsSubSchema,
+  BlockIODiscriminatedOneOfSubSchema,
   BlockIOKVSubSchema,
   BlockIONumberSubSchema,
   BlockIOObjectSubSchema,
@@ -536,7 +537,7 @@ export const NodeGenericInputField: FC<{
 const NodeOneOfDiscriminatorField: FC<{
   nodeId: string;
   propKey: string;
-  propSchema: any;
+  propSchema: BlockIODiscriminatedOneOfSubSchema;
   currentValue?: any;
   defaultValue?: any;
   errors: { [key: string]: string | undefined };
@@ -564,25 +565,25 @@ const NodeOneOfDiscriminatorField: FC<{
     const oneOfVariants = propSchema.oneOf || [];
 
     return oneOfVariants
-      .map((variant: any) => {
-        const variantDiscValue =
-          variant.properties?.[discriminatorProperty]?.const;
+      .map((variant) => {
+        const variantDiscValue = variant.properties?.[discriminatorProperty]
+          ?.const as string; // NOTE: can discriminators only be strings?
 
         return {
           value: variantDiscValue,
-          schema: variant as BlockIOSubSchema,
+          schema: variant,
         };
       })
-      .filter((v: any) => v.value != null);
+      .filter((v) => v.value != null);
   }, [discriminatorProperty, propSchema.oneOf]);
 
   const initialVariant = defaultValue
     ? variantOptions.find(
-        (opt: any) => defaultValue[discriminatorProperty] === opt.value,
+        (opt) => defaultValue[discriminatorProperty] === opt.value,
       )
     : currentValue
       ? variantOptions.find(
-          (opt: any) => currentValue[discriminatorProperty] === opt.value,
+          (opt) => currentValue[discriminatorProperty] === opt.value,
         )
       : null;
 
@@ -603,9 +604,7 @@ const NodeOneOfDiscriminatorField: FC<{
 
   const handleVariantChange = (newType: string) => {
     setChosenType(newType);
-    const chosenVariant = variantOptions.find(
-      (opt: any) => opt.value === newType,
-    );
+    const chosenVariant = variantOptions.find((opt) => opt.value === newType);
     if (chosenVariant) {
       const initialValue = {
         [discriminatorProperty]: newType,
@@ -615,7 +614,7 @@ const NodeOneOfDiscriminatorField: FC<{
   };
 
   const chosenVariantSchema = variantOptions.find(
-    (opt: any) => opt.value === chosenType,
+    (opt) => opt.value === chosenType,
   )?.schema;
 
   function getEntryKey(key: string): string {
@@ -664,7 +663,7 @@ const NodeOneOfDiscriminatorField: FC<{
                 >
                   <NodeHandle
                     keyName={getEntryKey(someKey)}
-                    schema={childSchema as BlockIOSubSchema}
+                    schema={childSchema}
                     isConnected={isConnected(getEntryKey(someKey))}
                     isRequired={false}
                     side="left"
@@ -675,7 +674,7 @@ const NodeOneOfDiscriminatorField: FC<{
                       nodeId={nodeId}
                       key={propKey}
                       propKey={childKey}
-                      propSchema={childSchema as BlockIOSubSchema}
+                      propSchema={childSchema}
                       currentValue={
                         currentValue
                           ? currentValue[someKey]
