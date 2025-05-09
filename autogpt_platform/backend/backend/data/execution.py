@@ -30,7 +30,7 @@ from prisma.types import (
     AgentNodeExecutionUpdateInput,
     AgentNodeExecutionWhereInput,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from pydantic.fields import Field
 
 from backend.server.v2.store.exceptions import DatabaseError
@@ -69,10 +69,55 @@ class GraphExecutionMeta(BaseDbModel):
     ended_at: datetime
 
     class Stats(BaseModel):
-        cost: int = Field(..., description="Execution cost (cents)")
-        duration: float = Field(..., description="Seconds from start to end of run")
-        node_exec_time: float = Field(..., description="Seconds of total node runtime")
-        node_exec_count: int = Field(..., description="Number of node executions")
+        model_config = ConfigDict(
+            extra="allow",
+            arbitrary_types_allowed=True,
+        )
+
+        cost: int = Field(
+            default=0,
+            description="Execution cost (cents)",
+        )
+        duration: float = Field(
+            default=0,
+            description="Seconds from start to end of run",
+        )
+        duration_cpu_only: float = Field(
+            default=0,
+            description="CPU sec of duration",
+        )
+        node_exec_time: float = Field(
+            default=0,
+            description="Seconds of total node runtime",
+        )
+        node_exec_time_cpu_only: float = Field(
+            default=0,
+            description="CPU sec of node_exec_time",
+        )
+        node_exec_count: int = Field(
+            default=0,
+            description="Number of node executions",
+        )
+        node_error_count: int = Field(
+            default=0,
+            description="Number of node errors",
+        )
+        error: str | None = Field(
+            default=None,
+            description="Error message if any",
+        )
+
+        def to_db(self) -> GraphExecutionStats:
+            return GraphExecutionStats(
+                cost=self.cost,
+                walltime=self.duration,
+                cputime=self.duration_cpu_only,
+                nodes_walltime=self.node_exec_time,
+                nodes_cputime=self.node_exec_time_cpu_only,
+                node_count=self.node_exec_count,
+                node_error_count=self.node_error_count,
+                error=self.error,
+            )
 
     stats: Stats | None
 
@@ -106,8 +151,16 @@ class GraphExecutionMeta(BaseDbModel):
                 GraphExecutionMeta.Stats(
                     cost=stats.cost,
                     duration=stats.walltime,
+                    duration_cpu_only=stats.cputime,
                     node_exec_time=stats.nodes_walltime,
+                    node_exec_time_cpu_only=stats.nodes_cputime,
                     node_exec_count=stats.node_count,
+                    node_error_count=stats.node_error_count,
+                    error=(
+                        str(stats.error)
+                        if isinstance(stats.error, Exception)
+                        else stats.error
+                    ),
                 )
                 if stats
                 else None
