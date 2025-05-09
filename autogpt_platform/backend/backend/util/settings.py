@@ -239,6 +239,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=True,
         description="Whether to enable the agent input subtype blocks",
     )
+    platform_alert_discord_channel: str = Field(
+        default="platform-alerts",
+        description="The Discord channel for the platform",
+    )
 
     @field_validator("platform_base_url", "frontend_base_url")
     @classmethod
