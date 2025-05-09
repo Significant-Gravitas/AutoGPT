@@ -640,9 +640,9 @@ class Executor:
                 exec_meta.stats.to_db() if exec_meta.stats else GraphExecutionStats()
             ),
         )
-        exec_stats.walltime = timing_info.wall_time
-        exec_stats.cputime = timing_info.cpu_time
-        exec_stats.error = str(error)
+        exec_stats.walltime += timing_info.wall_time
+        exec_stats.cputime += timing_info.cpu_time
+        exec_stats.error = str(error) if error else exec_stats.error
 
         if graph_exec_result := cls.db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
