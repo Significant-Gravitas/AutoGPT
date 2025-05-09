@@ -30,13 +30,13 @@ class ProxycurlAPIException(Exception):
 
 
 class FallbackToCache(enum.Enum):
-    ON_ERROR = "ON_ERROR"
-    NEVER = "NEVER"
+    ON_ERROR = "on-error"
+    NEVER = "never"
 
 
 class UseCache(enum.Enum):
-    IF_PRESENT = "IF_PRESENT"
-    NEVER = "NEVER"
+    IF_PRESENT = "if-present"
+    NEVER = "never"
 
 
 class SocialMediaProfiles(BaseModel):
@@ -242,6 +242,9 @@ class ProxycurlClient:
             params["extra"] = "include"
 
         response = self._requests.get(f"{self.API_BASE_URL}/v2/linkedin", params=params)
+        logger.warning(
+            f"response {params} {response.text} {response.ok} {response.json()}"
+        )
         return PersonProfileResponse(**self._handle_response(response))
 
     def lookup_person(
