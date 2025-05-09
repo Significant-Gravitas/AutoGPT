@@ -259,7 +259,9 @@ export type GraphExecutionMeta = {
   stats?: {
     cost: number;
     duration: number;
+    duration_cpu_only: number;
     node_exec_time: number;
+    node_exec_time_cpu_only: number;
     node_exec_count: number;
   };
 };

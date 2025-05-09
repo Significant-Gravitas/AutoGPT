@@ -82,7 +82,7 @@ class GraphExecutionMeta(BaseDbModel):
             default=0,
             description="Seconds from start to end of run",
         )
-        duration_cpu: float = Field(
+        duration_cpu_only: float = Field(
             default=0,
             description="CPU sec of duration",
         )
@@ -90,7 +90,7 @@ class GraphExecutionMeta(BaseDbModel):
             default=0,
             description="Seconds of total node runtime",
         )
-        node_exec_time_cpu: float = Field(
+        node_exec_time_cpu_only: float = Field(
             default=0,
             description="CPU sec of node_exec_time",
         )
@@ -111,9 +111,9 @@ class GraphExecutionMeta(BaseDbModel):
             return GraphExecutionStats(
                 cost=self.cost,
                 walltime=self.duration,
-                cputime=self.duration_cpu,
+                cputime=self.duration_cpu_only,
                 nodes_walltime=self.node_exec_time,
-                nodes_cputime=self.node_exec_time_cpu,
+                nodes_cputime=self.node_exec_time_cpu_only,
                 node_count=self.node_exec_count,
                 node_error_count=self.node_error_count,
                 error=self.error,
@@ -151,9 +151,9 @@ class GraphExecutionMeta(BaseDbModel):
                 GraphExecutionMeta.Stats(
                     cost=stats.cost,
                     duration=stats.walltime,
-                    duration_cpu=stats.cputime,
+                    duration_cpu_only=stats.cputime,
                     node_exec_time=stats.nodes_walltime,
-                    node_exec_time_cpu=stats.nodes_cputime,
+                    node_exec_time_cpu_only=stats.nodes_cputime,
                     node_exec_count=stats.node_count,
                     node_error_count=stats.node_error_count,
                     error=(
