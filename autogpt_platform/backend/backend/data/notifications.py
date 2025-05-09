@@ -6,10 +6,14 @@ from typing import Annotated, Any, Generic, Optional, TypeVar, Union
 from prisma import Json
 from prisma.enums import NotificationType
 from prisma.models import NotificationEvent, UserNotificationBatch
-from prisma.types import UserNotificationBatchWhereInput
+from prisma.types import (
+    NotificationEventCreateInput,
+    UserNotificationBatchCreateInput,
+    UserNotificationBatchWhereInput,
+)
 
 # from backend.notifications.models import NotificationEvent
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from backend.server.v2.store.exceptions import DatabaseError
 
@@ -35,8 +39,7 @@ class QueueType(Enum):
 
 
 class BaseNotificationData(BaseModel):
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
 
 
 class AgentRunData(BaseNotificationData):
@@ -372,7 +375,7 @@ class UserNotificationBatchDTO(BaseModel):
             type=model.type,
             notifications=[
                 UserNotificationEventDTO.from_db(notification)
-                for notification in model.notifications or []
+                for notification in model.Notifications or []
             ],
             created_at=model.createdAt,
             updated_at=model.updatedAt,
@@ -398,6 +401,8 @@ async def create_or_add_to_user_notification_batch(
         logger.info(
             f"Creating or adding to notification batch for {user_id} with type {notification_type} and data {notification_data}"
         )
+        if not notification_data.data:
+            raise ValueError("Notification data must be provided")
 
         # Serialize the data
         json_data: Json = Json(notification_data.data.model_dump())
@@ -410,44 +415,44 @@ async def create_or_add_to_user_notification_batch(
                     "type": notification_type,
                 }
             },
-            include={"notifications": True},
+            include={"Notifications": True},
         )
 
         if not existing_batch:
             async with transaction() as tx:
                 notification_event = await tx.notificationevent.create(
-                    data={
-                        "type": notification_type,
-                        "data": json_data,
-                    }
+                    data=NotificationEventCreateInput(
+                        type=notification_type,
+                        data=json_data,
+                    )
                 )
 
                 # Create new batch
                 resp = await tx.usernotificationbatch.create(
-                    data={
-                        "userId": user_id,
-                        "type": notification_type,
-                        "notifications": {"connect": [{"id": notification_event.id}]},
-                    },
-                    include={"notifications": True},
+                    data=UserNotificationBatchCreateInput(
+                        userId=user_id,
+                        type=notification_type,
+                        Notifications={"connect": [{"id": notification_event.id}]},
+                    ),
+                    include={"Notifications": True},
                 )
                 return UserNotificationBatchDTO.from_db(resp)
         else:
             async with transaction() as tx:
                 notification_event = await tx.notificationevent.create(
-                    data={
-                        "type": notification_type,
-                        "data": json_data,
-                        "UserNotificationBatch": {"connect": {"id": existing_batch.id}},
-                    }
+                    data=NotificationEventCreateInput(
+                        type=notification_type,
+                        data=json_data,
+                        UserNotificationBatch={"connect": {"id": existing_batch.id}},
+                    )
                 )
                 # Add to existing batch
                 resp = await tx.usernotificationbatch.update(
                     where={"id": existing_batch.id},
                     data={
-                        "notifications": {"connect": [{"id": notification_event.id}]}
+                        "Notifications": {"connect": [{"id": notification_event.id}]}
                     },
-                    include={"notifications": True},
+                    include={"Notifications": True},
                 )
             if not resp:
                 raise DatabaseError(
@@ -467,13 +472,13 @@ async def get_user_notification_oldest_message_in_batch(
     try:
         batch = await UserNotificationBatch.prisma().find_first(
             where={"userId": user_id, "type": notification_type},
-            include={"notifications": True},
+            include={"Notifications": True},
         )
         if not batch:
             return None
-        if not batch.notifications:
+        if not batch.Notifications:
             return None
-        sorted_notifications = sorted(batch.notifications, key=lambda x: x.createdAt)
+        sorted_notifications = sorted(batch.Notifications, key=lambda x: x.createdAt)
 
         return (
             UserNotificationEventDTO.from_db(sorted_notifications[0])
@@ -518,7 +523,7 @@ async def get_user_notification_batch(
     try:
         batch = await UserNotificationBatch.prisma().find_first(
             where={"userId": user_id, "type": notification_type},
-            include={"notifications": True},
+            include={"Notifications": True},
         )
         return UserNotificationBatchDTO.from_db(batch) if batch else None
     except Exception as e:
@@ -534,11 +539,11 @@ async def get_all_batches_by_type(
         batches = await UserNotificationBatch.prisma().find_many(
             where={
                 "type": notification_type,
-                "notifications": {
+                "Notifications": {
                     "some": {}  # Only return batches with at least one notification
                 },
             },
-            include={"notifications": True},
+            include={"Notifications": True},
         )
         return [UserNotificationBatchDTO.from_db(batch) for batch in batches]
     except Exception as e:

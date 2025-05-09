@@ -64,7 +64,7 @@ export const FlowRunsTimeline = ({
               time: number;
               _duration: number;
             } = payload[0].payload;
-            const flow = flows.find((f) => f.agent_id === data.graph_id);
+            const flow = flows.find((f) => f.graph_id === data.graph_id);
             return (
               <Card className="p-2 text-xs leading-normal">
                 <p>
@@ -81,11 +81,13 @@ export const FlowRunsTimeline = ({
                   <strong>Started:</strong>{" "}
                   {moment(data.started_at).format("YYYY-MM-DD HH:mm:ss")}
                 </p>
-                <p>
-                  <strong>Duration / run time:</strong>{" "}
-                  {formatDuration(data.duration)} /{" "}
-                  {formatDuration(data.total_run_time)}
-                </p>
+                {data.stats && (
+                  <p>
+                    <strong>Duration / run time:</strong>{" "}
+                    {formatDuration(data.stats.duration)} /{" "}
+                    {formatDuration(data.stats.node_exec_time)}
+                  </p>
+                )}
               </Card>
             );
           }
@@ -96,11 +98,12 @@ export const FlowRunsTimeline = ({
         <Scatter
           key={flow.id}
           data={executions
-            .filter((e) => e.graph_id == flow.agent_id)
+            .filter((e) => e.graph_id == flow.graph_id)
             .map((e) => ({
               ...e,
-              time: e.started_at + e.total_run_time * 1000,
-              _duration: e.total_run_time,
+              time:
+                e.started_at.getTime() + (e.stats?.node_exec_time ?? 0) * 1000,
+              _duration: e.stats?.node_exec_time ?? 0,
             }))}
           name={flow.name}
           fill={`hsl(${(hashString(flow.id) * 137.5) % 360}, 70%, 50%)`}
@@ -108,15 +111,19 @@ export const FlowRunsTimeline = ({
       ))}
       {executions.map((execution) => (
         <Line
-          key={execution.execution_id}
+          key={execution.id}
           type="linear"
           dataKey="_duration"
           data={[
-            { ...execution, time: execution.started_at, _duration: 0 },
             {
               ...execution,
-              time: execution.ended_at,
-              _duration: execution.total_run_time,
+              time: execution.started_at.getTime(),
+              _duration: 0,
+            },
+            {
+              ...execution,
+              time: execution.ended_at.getTime(),
+              _duration: execution.stats?.node_exec_time ?? 0,
             },
           ]}
           stroke={`hsl(${(hashString(execution.graph_id) * 137.5) % 360}, 70%, 50%)`}

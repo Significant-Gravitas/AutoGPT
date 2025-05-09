@@ -9,6 +9,7 @@ import BackendAPI, {
   GraphExecutionID,
   GraphID,
   NodeExecutionResult,
+  SpecialBlockID,
 } from "@/lib/autogpt-server-api";
 import {
   deepEquals,
@@ -24,6 +25,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { InputItem } from "@/components/RunnerUIWrapper";
 import { GraphMeta } from "@/lib/autogpt-server-api";
 import { default as NextLink } from "next/link";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { get } from "lodash";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -77,6 +80,7 @@ export default function useAgentGraph(
     useState(false);
   const [nodes, setNodes] = useState<CustomNode[]>([]);
   const [edges, setEdges] = useState<CustomEdge[]>([]);
+  const { state, completeStep } = useOnboarding();
 
   const api = useMemo(
     () => new BackendAPI(process.env.NEXT_PUBLIC_AGPT_SERVER_URL!),
@@ -106,24 +110,24 @@ export default function useAgentGraph(
 
   // Subscribe to execution events
   useEffect(() => {
-    api.onWebSocketMessage("execution_event", (data) => {
+    api.onWebSocketMessage("node_execution_event", (data) => {
       if (data.graph_exec_id != flowExecutionID) {
         return;
       }
       setUpdateQueue((prev) => [...prev, data]);
     });
 
-    if (flowID && flowVersion) {
+    if (flowExecutionID) {
       api
-        .subscribeToExecution(flowID, flowVersion)
+        .subscribeToGraphExecution(flowExecutionID)
         .then(() =>
           console.debug(
-            `Subscribed to execution events for ${flowID} v.${flowVersion}`,
+            `Subscribed to updates for execution #${flowExecutionID}`,
           ),
         )
         .catch((error) =>
           console.error(
-            `Failed to subscribe to execution events for ${flowID} v.${flowVersion}:`,
+            `Failed to subscribe to updates for execution #${flowExecutionID}:`,
             error,
           ),
         );
@@ -153,10 +157,11 @@ export default function useAgentGraph(
       setAgentDescription(graph.description);
 
       setNodes((prevNodes) => {
-        const newNodes = graph.nodes.map((node) => {
+        const _newNodes = graph.nodes.map((node) => {
           const block = availableNodes.find(
             (block) => block.id === node.block_id,
           )!;
+          if (!block) return null;
           const prevNode = prevNodes.find((n) => n.id === node.id);
           const flow =
             block.uiType == BlockUIType.AGENT
@@ -199,11 +204,10 @@ export default function useAgentGraph(
           };
           return newNode;
         });
+        const newNodes = _newNodes.filter((n) => n !== null);
         setEdges(() =>
           graph.links.map((link) => {
-            const adjustedSourceName = link.source_name?.startsWith("tools_^_")
-              ? "tools"
-              : link.source_name;
+            const adjustedSourceName = cleanupSourceName(link.source_name);
             return {
               id: formatEdgeID(link),
               type: "custom",
@@ -235,7 +239,7 @@ export default function useAgentGraph(
         return newNodes;
       });
     },
-    [availableNodes, availableFlows, formatEdgeID, getOutputType],
+    [availableNodes, availableFlows, getOutputType],
   );
 
   const getFrontendId = useCallback(
@@ -245,6 +249,37 @@ export default function useAgentGraph(
     },
     [],
   );
+
+  /** --- Smart Decision Maker Block helper functions --- */
+
+  const isToolSourceName = (sourceName: string) =>
+    sourceName.startsWith("tools_^_");
+
+  const cleanupSourceName = (sourceName: string) =>
+    isToolSourceName(sourceName) ? "tools" : sourceName;
+
+  const getToolArgName = (sourceName: string) =>
+    isToolSourceName(sourceName) ? sourceName.split("_~_")[1] : null;
+
+  const getToolFuncName = (nodeId: string) => {
+    const sinkNode = nodes.find((node) => node.id === nodeId);
+    const sinkNodeName = sinkNode
+      ? sinkNode.data.block_id === SpecialBlockID.AGENT
+        ? sinkNode.data.hardcodedValues?.graph_id
+          ? availableFlows.find(
+              (flow) => flow.id === sinkNode.data.hardcodedValues.graph_id,
+            )?.name || "agentexecutorblock"
+          : "agentexecutorblock"
+        : sinkNode.data.title.split(" ")[0]
+      : "";
+
+    return sinkNodeName;
+  };
+
+  const normalizeToolName = (str: string) =>
+    str.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase(); // This normalization rule has to match with the one on smart_decision_maker.py
+
+  /** ------------------------------ */
 
   const updateEdgeBeads = useCallback(
     (executionData: NodeExecutionResult) => {
@@ -257,8 +292,18 @@ export default function useAgentGraph(
             for (let key in executionData.output_data) {
               if (
                 edge.source !== getFrontendId(executionData.node_id, nodes) ||
-                edge.sourceHandle !== key
+                edge.sourceHandle !== cleanupSourceName(key) ||
+                (isToolSourceName(key) &&
+                  getToolArgName(key) !== edge.targetHandle)
               ) {
+                console.log(
+                  key,
+                  cleanupSourceName(key),
+                  edge.targetHandle,
+                  " are not equal ",
+                  getToolArgName(key),
+                  edge.sourceHandle,
+                );
                 continue;
               }
               const count = executionData.output_data[key].length;
@@ -411,7 +456,10 @@ export default function useAgentGraph(
           ) {
             return;
           }
-          console.warn("Error", error);
+          console.warn(`Error in ${node.data.blockType}: ${error}`, {
+            data: inputData,
+            schema: node.data.inputSchema,
+          });
           errorMessage = error.message || "Invalid input";
           if (path && error.message) {
             const key = path.slice(1);
@@ -571,6 +619,9 @@ export default function useAgentGraph(
             path.set("flowVersion", savedAgent.version.toString());
             path.set("flowExecutionID", graphExecution.graph_exec_id);
             router.push(`${pathname}?${path.toString()}`);
+            if (state?.completedSteps.includes("BUILDER_SAVE_AGENT")) {
+              completeStep("BUILDER_RUN_AGENT");
+            }
           })
           .catch((error) => {
             const errorMessage =
@@ -631,12 +682,15 @@ export default function useAgentGraph(
           activeExecutionID: flowExecutionID,
         });
       }
-      setUpdateQueue((prev) => [...prev, ...execution.node_executions]);
+      setUpdateQueue((prev) => {
+        if (!execution.node_executions) return prev;
+        return [...prev, ...execution.node_executions];
+      });
 
       // Track execution until completed
       const pendingNodeExecutions: Set<string> = new Set();
       const cancelExecListener = api.onWebSocketMessage(
-        "execution_event",
+        "node_execution_event",
         (nodeResult) => {
           // We are racing the server here, since we need the ID to filter events
           if (nodeResult.graph_exec_id != flowExecutionID) {
@@ -812,27 +866,10 @@ export default function useAgentGraph(
 
       // Special case for SmartDecisionMakerBlock
       if (
-        sourceNode?.data.block_id === "3b191d9f-356f-482d-8238-ba04b6d18381" &&
+        sourceNode?.data.block_id === SpecialBlockID.SMART_DECISION &&
         sourceName.toLowerCase() === "tools"
       ) {
-        const sinkNode = nodes.find((node) => node.id === edge.target);
-
-        const sinkNodeName = sinkNode
-          ? sinkNode.data.block_id === "e189baac-8c20-45a1-94a7-55177ea42565" // AgentExecutorBlock ID
-            ? sinkNode.data.hardcodedValues?.graph_id
-              ? availableFlows
-                  .find(
-                    (flow) =>
-                      flow.id === sinkNode.data.hardcodedValues.graph_id,
-                  )
-                  ?.name?.toLowerCase()
-                  .replace(/ /g, "_") || "agentexecutorblock"
-              : "agentexecutorblock"
-            : sinkNode.data.title.toLowerCase().replace(/ /g, "_").split("_")[0]
-          : "";
-
-        sourceName =
-          `tools_^_${sinkNodeName}_${edge.targetHandle || ""}`.toLowerCase();
+        sourceName = `tools_^_${normalizeToolName(getToolFuncName(edge.target))}_~_${normalizeToolName(edge.targetHandle || "")}`;
       }
       return {
         source_id: edge.source,
@@ -881,7 +918,7 @@ export default function useAgentGraph(
       console.debug(
         "Saving new Graph version; old vs new:",
         comparedPayload,
-        payload,
+        comparedSavedAgent,
       );
       setNodesSyncedWithSavedAgent(false);
 
@@ -958,6 +995,7 @@ export default function useAgentGraph(
   const saveAgent = useCallback(async () => {
     try {
       await _saveAgent();
+      completeStep("BUILDER_SAVE_AGENT");
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);

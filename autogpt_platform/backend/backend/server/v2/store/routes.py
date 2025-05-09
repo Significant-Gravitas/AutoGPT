@@ -7,6 +7,7 @@ import autogpt_libs.auth.depends
 import autogpt_libs.auth.middleware
 import fastapi
 import fastapi.responses
+from autogpt_libs.auth.depends import auth_middleware, get_user_id
 
 import backend.data.block
 import backend.data.graph
@@ -34,7 +35,7 @@ router = fastapi.APIRouter()
 async def get_profile(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ]
+    ],
 ):
     """
     Get the profile details for the authenticated user.
@@ -196,6 +197,55 @@ async def get_agent(username: str, agent_name: str):
         )
 
 
+@router.get(
+    "/graph/{store_listing_version_id}",
+    tags=["store"],
+)
+async def get_graph_meta_by_store_listing_version_id(
+    store_listing_version_id: str,
+    _: typing.Annotated[str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)],
+):
+    """
+    Get Agent Graph from Store Listing Version ID.
+    """
+    try:
+        graph = await backend.server.v2.store.db.get_available_graph(
+            store_listing_version_id
+        )
+        return graph
+    except Exception:
+        logger.exception("Exception occurred whilst getting agent graph")
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={"detail": "An error occurred while retrieving the agent graph"},
+        )
+
+
+@router.get(
+    "/agents/{store_listing_version_id}",
+    tags=["store"],
+    response_model=backend.server.v2.store.model.StoreAgentDetails,
+)
+async def get_store_agent(
+    store_listing_version_id: str,
+    _: typing.Annotated[str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)],
+):
+    """
+    Get Store Agent Details from Store Listing Version ID.
+    """
+    try:
+        agent = await backend.server.v2.store.db.get_store_agent_by_version_id(
+            store_listing_version_id
+        )
+        return agent
+    except Exception:
+        logger.exception("Exception occurred whilst getting store agent")
+        return fastapi.responses.JSONResponse(
+            status_code=500,
+            content={"detail": "An error occurred while retrieving the store agent"},
+        )
+
+
 @router.post(
     "/agents/{username}/{agent_name}/review",
     tags=["store"],
@@ -338,7 +388,7 @@ async def get_creator(
 async def get_my_agents(
     user_id: typing.Annotated[
         str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ]
+    ],
 ):
     try:
         agents = await backend.server.v2.store.db.get_my_agents(user_id)
@@ -466,7 +516,7 @@ async def create_submission(
         HTTPException: If there is an error creating the submission
     """
     try:
-        submission = await backend.server.v2.store.db.create_store_submission(
+        return await backend.server.v2.store.db.create_store_submission(
             user_id=user_id,
             agent_id=submission_request.agent_id,
             agent_version=submission_request.agent_version,
@@ -477,8 +527,8 @@ async def create_submission(
             description=submission_request.description,
             sub_heading=submission_request.sub_heading,
             categories=submission_request.categories,
+            changes_summary=submission_request.changes_summary or "Initial Submission",
         )
-        return submission
     except Exception:
         logger.exception("Exception occurred whilst creating store submission")
         return fastapi.responses.JSONResponse(
@@ -590,9 +640,7 @@ async def generate_image(
     tags=["store", "public"],
 )
 async def download_agent_file(
-    user_id: typing.Annotated[
-        str, fastapi.Depends(autogpt_libs.auth.depends.get_user_id)
-    ],
+    request: fastapi.Request,
     store_listing_version_id: str = fastapi.Path(
         ..., description="The ID of the agent to download"
     ),
@@ -609,6 +657,10 @@ async def download_agent_file(
     Raises:
         HTTPException: If the agent is not found or an unexpected error occurs.
     """
+    try:
+        user_id = get_user_id(await auth_middleware(request))
+    except fastapi.HTTPException:
+        user_id = None
 
     graph_data = await backend.server.v2.store.db.get_agent(
         user_id=user_id,
@@ -625,32 +677,4 @@ async def download_agent_file(
 
         return fastapi.responses.FileResponse(
             tmp_file.name, filename=file_name, media_type="application/json"
-        )
-
-
-@router.post(
-    "/submissions/review/{store_listing_version_id}",
-    tags=["store", "private"],
-)
-async def review_submission(
-    request: backend.server.v2.store.model.ReviewSubmissionRequest,
-    user: typing.Annotated[
-        autogpt_libs.auth.models.User,
-        fastapi.Depends(autogpt_libs.auth.depends.requires_admin_user),
-    ],
-):
-    # Proceed with the review submission logic
-    try:
-        submission = await backend.server.v2.store.db.review_store_submission(
-            store_listing_version_id=request.store_listing_version_id,
-            is_approved=request.is_approved,
-            comments=request.comments,
-            reviewer_id=user.user_id,
-        )
-        return submission
-    except Exception as e:
-        logger.error(f"Could not create store submission review: {e}")
-        raise fastapi.HTTPException(
-            status_code=500,
-            detail="An error occurred while creating the store submission review",
         )

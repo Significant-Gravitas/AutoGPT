@@ -3,12 +3,14 @@ from typing import TYPE_CHECKING, AsyncGenerator, Optional
 
 from prisma import Json
 from prisma.models import IntegrationWebhook
+from prisma.types import IntegrationWebhookCreateInput
 from pydantic import Field, computed_field
 
 from backend.data.includes import INTEGRATION_WEBHOOK_INCLUDE
 from backend.data.queue import AsyncRedisEventBus
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.utils import webhook_ingress_url
+from backend.util.exceptions import NotFoundError
 
 from .db import BaseDbModel
 
@@ -65,28 +67,35 @@ class Webhook(BaseDbModel):
 
 async def create_webhook(webhook: Webhook) -> Webhook:
     created_webhook = await IntegrationWebhook.prisma().create(
-        data={
-            "id": webhook.id,
-            "userId": webhook.user_id,
-            "provider": webhook.provider.value,
-            "credentialsId": webhook.credentials_id,
-            "webhookType": webhook.webhook_type,
-            "resource": webhook.resource,
-            "events": webhook.events,
-            "config": Json(webhook.config),
-            "secret": webhook.secret,
-            "providerWebhookId": webhook.provider_webhook_id,
-        }
+        data=IntegrationWebhookCreateInput(
+            id=webhook.id,
+            userId=webhook.user_id,
+            provider=webhook.provider.value,
+            credentialsId=webhook.credentials_id,
+            webhookType=webhook.webhook_type,
+            resource=webhook.resource,
+            events=webhook.events,
+            config=Json(webhook.config),
+            secret=webhook.secret,
+            providerWebhookId=webhook.provider_webhook_id,
+        )
     )
     return Webhook.from_db(created_webhook)
 
 
 async def get_webhook(webhook_id: str) -> Webhook:
-    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
-    webhook = await IntegrationWebhook.prisma().find_unique_or_raise(
+    """
+    ⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints.
+
+    Raises:
+        NotFoundError: if no record with the given ID exists
+    """
+    webhook = await IntegrationWebhook.prisma().find_unique(
         where={"id": webhook_id},
         include=INTEGRATION_WEBHOOK_INCLUDE,
     )
+    if not webhook:
+        raise NotFoundError(f"Webhook #{webhook_id} not found")
     return Webhook.from_db(webhook)
 
 

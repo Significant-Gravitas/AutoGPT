@@ -1,16 +1,18 @@
-from backend.data.credit import get_user_credit_model
+import logging
+
+from backend.data import db
+from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
-    ExecutionResult,
-    NodeExecutionEntry,
-    RedisExecutionEventBus,
     create_graph_execution,
-    get_execution_results,
-    get_incomplete_executions,
-    get_latest_execution,
-    update_execution_status,
+    get_graph_execution,
+    get_incomplete_node_executions,
+    get_latest_node_execution,
+    get_node_execution_results,
     update_graph_execution_start_time,
     update_graph_execution_stats,
     update_node_execution_stats,
+    update_node_execution_status,
+    update_node_execution_status_batch,
     upsert_execution_input,
     upsert_execution_output,
 )
@@ -37,38 +39,52 @@ from backend.data.user import (
     update_user_integrations,
     update_user_metadata,
 )
-from backend.util.service import AppService, expose, exposed_run_and_wait
+from backend.util.service import AppService, exposed_run_and_wait
 from backend.util.settings import Config
 
 config = Config()
 _user_credit_model = get_user_credit_model()
+logger = logging.getLogger(__name__)
 
 
-async def _spend_credits(entry: NodeExecutionEntry) -> int:
-    return await _user_credit_model.spend_credits(entry, 0, 0)
+async def _spend_credits(
+    user_id: str, cost: int, metadata: UsageTransactionMetadata
+) -> int:
+    return await _user_credit_model.spend_credits(user_id, cost, metadata)
+
+
+async def _get_credits(user_id: str) -> int:
+    return await _user_credit_model.get_credits(user_id)
 
 
 class DatabaseManager(AppService):
-    def __init__(self):
-        super().__init__()
-        self.use_db = True
-        self.use_redis = True
-        self.event_queue = RedisExecutionEventBus()
+
+    def run_service(self) -> None:
+        logger.info(f"[{self.service_name}] ⏳ Connecting to Database...")
+        self.run_and_wait(db.connect())
+        super().run_service()
+
+    def cleanup(self):
+        super().cleanup()
+        logger.info(f"[{self.service_name}] ⏳ Disconnecting Database...")
+        self.run_and_wait(db.disconnect())
 
     @classmethod
     def get_port(cls) -> int:
         return config.database_api_port
 
-    @expose
-    def send_execution_update(self, execution_result: ExecutionResult):
-        self.event_queue.publish(execution_result)
-
     # Executions
+    get_graph_execution = exposed_run_and_wait(get_graph_execution)
     create_graph_execution = exposed_run_and_wait(create_graph_execution)
-    get_execution_results = exposed_run_and_wait(get_execution_results)
-    get_incomplete_executions = exposed_run_and_wait(get_incomplete_executions)
-    get_latest_execution = exposed_run_and_wait(get_latest_execution)
-    update_execution_status = exposed_run_and_wait(update_execution_status)
+    get_node_execution_results = exposed_run_and_wait(get_node_execution_results)
+    get_incomplete_node_executions = exposed_run_and_wait(
+        get_incomplete_node_executions
+    )
+    get_latest_node_execution = exposed_run_and_wait(get_latest_node_execution)
+    update_node_execution_status = exposed_run_and_wait(update_node_execution_status)
+    update_node_execution_status_batch = exposed_run_and_wait(
+        update_node_execution_status_batch
+    )
     update_graph_execution_start_time = exposed_run_and_wait(
         update_graph_execution_start_time
     )
@@ -85,6 +101,7 @@ class DatabaseManager(AppService):
 
     # Credits
     spend_credits = exposed_run_and_wait(_spend_credits)
+    get_credits = exposed_run_and_wait(_get_credits)
 
     # User + User Metadata + User Integrations
     get_user_metadata = exposed_run_and_wait(get_user_metadata)

@@ -9,6 +9,7 @@ from autogpt_libs.utils.cache import thread_cached
 from prisma.enums import NotificationType
 from pydantic import BaseModel
 
+from backend.data import rabbitmq
 from backend.data.notifications import (
     BaseSummaryData,
     BaseSummaryParams,
@@ -128,6 +129,20 @@ class NotificationManager(AppService):
         self.running = True
         self.email_sender = EmailSender()
 
+    @property
+    def rabbit(self) -> rabbitmq.AsyncRabbitMQ:
+        """Access the RabbitMQ service. Will raise if not configured."""
+        if not self.rabbitmq_service:
+            raise RuntimeError("RabbitMQ not configured for this service")
+        return self.rabbitmq_service
+
+    @property
+    def rabbit_config(self) -> rabbitmq.RabbitMQConfig:
+        """Access the RabbitMQ config. Will raise if not configured."""
+        if not self.rabbitmq_config:
+            raise RuntimeError("RabbitMQ not configured for this service")
+        return self.rabbitmq_config
+
     @classmethod
     def get_port(cls) -> int:
         return settings.config.notification_service_port
@@ -245,20 +260,26 @@ class NotificationManager(AppService):
                             continue
 
                         unsub_link = generate_unsubscribe_link(batch.user_id)
-
-                        events = [
-                            NotificationEventModel[
-                                get_notif_data_type(db_event.type)
-                            ].model_validate(
-                                {
-                                    "user_id": batch.user_id,
-                                    "type": db_event.type,
-                                    "data": db_event.data,
-                                    "created_at": db_event.created_at,
-                                }
-                            )
-                            for db_event in batch_data.notifications
-                        ]
+                        events = []
+                        for db_event in batch_data.notifications:
+                            try:
+                                events.append(
+                                    NotificationEventModel[
+                                        get_notif_data_type(db_event.type)
+                                    ].model_validate(
+                                        {
+                                            "user_id": batch.user_id,
+                                            "type": db_event.type,
+                                            "data": db_event.data,
+                                            "created_at": db_event.created_at,
+                                        }
+                                    )
+                                )
+                            except Exception as e:
+                                logger.error(
+                                    f"Error parsing notification event: {e=}, {db_event=}"
+                                )
+                                continue
                         logger.info(f"{events=}")
 
                         self.email_sender.send_templated(
@@ -668,6 +689,8 @@ class NotificationManager(AppService):
 
         except QueueEmpty:
             logger.debug(f"Queue {error_queue_name} empty")
+        except TimeoutError:
+            logger.debug(f"Queue {error_queue_name} timed out")
         except Exception as e:
             if message:
                 logger.error(
@@ -675,15 +698,19 @@ class NotificationManager(AppService):
                 )
                 self.run_and_wait(message.reject(requeue=False))
             else:
-                logger.error(
-                    f"Error in notification service loop, message unable to be rejected, and will have to be manually removed to free space in the queue: {e}"
+                logger.exception(
+                    f"Error in notification service loop, message unable to be rejected, and will have to be manually removed to free space in the queue: {e=}"
                 )
 
     def run_service(self):
+        logger.info(f"[{self.service_name}] ⏳ Configuring RabbitMQ...")
+        self.rabbitmq_service = rabbitmq.AsyncRabbitMQ(self.rabbitmq_config)
+        self.run_and_wait(self.rabbitmq_service.connect())
+
         logger.info(f"[{self.service_name}] Started notification service")
 
         # Set up scheduler for batch processing of all notification types
-        # this can be changed later to spawn differnt cleanups on different schedules
+        # this can be changed later to spawn different cleanups on different schedules
         try:
             get_scheduler().add_batched_notification_schedule(
                 notification_types=list(NotificationType),
@@ -745,3 +772,5 @@ class NotificationManager(AppService):
         """Cleanup service resources"""
         self.running = False
         super().cleanup()
+        logger.info(f"[{self.service_name}] ⏳ Disconnecting RabbitMQ...")
+        self.run_and_wait(self.rabbitmq_service.disconnect())
