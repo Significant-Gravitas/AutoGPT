@@ -1,13 +1,15 @@
 import logging
+from typing import Callable, Concatenate, ParamSpec, TypeVar, cast
 
 from backend.data import db
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     create_graph_execution,
     get_graph_execution,
-    get_incomplete_node_executions,
+    get_graph_execution_meta,
+    get_graph_executions,
     get_latest_node_execution,
-    get_node_execution_results,
+    get_node_executions,
     update_graph_execution_start_time,
     update_graph_execution_stats,
     update_node_execution_stats,
@@ -39,12 +41,14 @@ from backend.data.user import (
     update_user_integrations,
     update_user_metadata,
 )
-from backend.util.service import AppService, exposed_run_and_wait
+from backend.util.service import AppService, AppServiceClient, endpoint_to_sync, expose
 from backend.util.settings import Config
 
 config = Config()
 _user_credit_model = get_user_credit_model()
 logger = logging.getLogger(__name__)
+P = ParamSpec("P")
+R = TypeVar("R")
 
 
 async def _spend_credits(
@@ -73,59 +77,115 @@ class DatabaseManager(AppService):
     def get_port(cls) -> int:
         return config.database_api_port
 
+    @staticmethod
+    def _(
+        f: Callable[P, R], name: str | None = None
+    ) -> Callable[Concatenate[object, P], R]:
+        if name is not None:
+            f.__name__ = name
+        return cast(Callable[Concatenate[object, P], R], expose(f))
+
     # Executions
-    get_graph_execution = exposed_run_and_wait(get_graph_execution)
-    create_graph_execution = exposed_run_and_wait(create_graph_execution)
-    get_node_execution_results = exposed_run_and_wait(get_node_execution_results)
-    get_incomplete_node_executions = exposed_run_and_wait(
-        get_incomplete_node_executions
-    )
-    get_latest_node_execution = exposed_run_and_wait(get_latest_node_execution)
-    update_node_execution_status = exposed_run_and_wait(update_node_execution_status)
-    update_node_execution_status_batch = exposed_run_and_wait(
-        update_node_execution_status_batch
-    )
-    update_graph_execution_start_time = exposed_run_and_wait(
-        update_graph_execution_start_time
-    )
-    update_graph_execution_stats = exposed_run_and_wait(update_graph_execution_stats)
-    update_node_execution_stats = exposed_run_and_wait(update_node_execution_stats)
-    upsert_execution_input = exposed_run_and_wait(upsert_execution_input)
-    upsert_execution_output = exposed_run_and_wait(upsert_execution_output)
+    get_graph_execution = _(get_graph_execution)
+    get_graph_executions = _(get_graph_executions)
+    get_graph_execution_meta = _(get_graph_execution_meta)
+    create_graph_execution = _(create_graph_execution)
+    get_node_executions = _(get_node_executions)
+    get_latest_node_execution = _(get_latest_node_execution)
+    update_node_execution_status = _(update_node_execution_status)
+    update_node_execution_status_batch = _(update_node_execution_status_batch)
+    update_graph_execution_start_time = _(update_graph_execution_start_time)
+    update_graph_execution_stats = _(update_graph_execution_stats)
+    update_node_execution_stats = _(update_node_execution_stats)
+    upsert_execution_input = _(upsert_execution_input)
+    upsert_execution_output = _(upsert_execution_output)
 
     # Graphs
-    get_node = exposed_run_and_wait(get_node)
-    get_graph = exposed_run_and_wait(get_graph)
-    get_connected_output_nodes = exposed_run_and_wait(get_connected_output_nodes)
-    get_graph_metadata = exposed_run_and_wait(get_graph_metadata)
+    get_node = _(get_node)
+    get_graph = _(get_graph)
+    get_connected_output_nodes = _(get_connected_output_nodes)
+    get_graph_metadata = _(get_graph_metadata)
 
     # Credits
-    spend_credits = exposed_run_and_wait(_spend_credits)
-    get_credits = exposed_run_and_wait(_get_credits)
+    spend_credits = _(_spend_credits, name="spend_credits")
+    get_credits = _(_get_credits, name="get_credits")
 
     # User + User Metadata + User Integrations
-    get_user_metadata = exposed_run_and_wait(get_user_metadata)
-    update_user_metadata = exposed_run_and_wait(update_user_metadata)
-    get_user_integrations = exposed_run_and_wait(get_user_integrations)
-    update_user_integrations = exposed_run_and_wait(update_user_integrations)
+    get_user_metadata = _(get_user_metadata)
+    update_user_metadata = _(update_user_metadata)
+    get_user_integrations = _(get_user_integrations)
+    update_user_integrations = _(update_user_integrations)
 
     # User Comms - async
-    get_active_user_ids_in_timerange = exposed_run_and_wait(
-        get_active_user_ids_in_timerange
-    )
-    get_user_email_by_id = exposed_run_and_wait(get_user_email_by_id)
-    get_user_email_verification = exposed_run_and_wait(get_user_email_verification)
-    get_user_notification_preference = exposed_run_and_wait(
-        get_user_notification_preference
-    )
+    get_active_user_ids_in_timerange = _(get_active_user_ids_in_timerange)
+    get_user_email_by_id = _(get_user_email_by_id)
+    get_user_email_verification = _(get_user_email_verification)
+    get_user_notification_preference = _(get_user_notification_preference)
 
     # Notifications - async
-    create_or_add_to_user_notification_batch = exposed_run_and_wait(
+    create_or_add_to_user_notification_batch = _(
         create_or_add_to_user_notification_batch
     )
-    empty_user_notification_batch = exposed_run_and_wait(empty_user_notification_batch)
-    get_all_batches_by_type = exposed_run_and_wait(get_all_batches_by_type)
-    get_user_notification_batch = exposed_run_and_wait(get_user_notification_batch)
-    get_user_notification_oldest_message_in_batch = exposed_run_and_wait(
+    empty_user_notification_batch = _(empty_user_notification_batch)
+    get_all_batches_by_type = _(get_all_batches_by_type)
+    get_user_notification_batch = _(get_user_notification_batch)
+    get_user_notification_oldest_message_in_batch = _(
         get_user_notification_oldest_message_in_batch
+    )
+
+
+class DatabaseManagerClient(AppServiceClient):
+    d = DatabaseManager
+    _ = endpoint_to_sync
+
+    @classmethod
+    def get_service_type(cls):
+        return DatabaseManager
+
+    # Executions
+    get_graph_execution = _(d.get_graph_execution)
+    get_graph_executions = _(d.get_graph_executions)
+    get_graph_execution_meta = _(d.get_graph_execution_meta)
+    create_graph_execution = _(d.create_graph_execution)
+    get_node_executions = _(d.get_node_executions)
+    get_latest_node_execution = _(d.get_latest_node_execution)
+    update_node_execution_status = _(d.update_node_execution_status)
+    update_node_execution_status_batch = _(d.update_node_execution_status_batch)
+    update_graph_execution_start_time = _(d.update_graph_execution_start_time)
+    update_graph_execution_stats = _(d.update_graph_execution_stats)
+    update_node_execution_stats = _(d.update_node_execution_stats)
+    upsert_execution_input = _(d.upsert_execution_input)
+    upsert_execution_output = _(d.upsert_execution_output)
+
+    # Graphs
+    get_node = _(d.get_node)
+    get_graph = _(d.get_graph)
+    get_connected_output_nodes = _(d.get_connected_output_nodes)
+    get_graph_metadata = _(d.get_graph_metadata)
+
+    # Credits
+    spend_credits = _(d.spend_credits)
+    get_credits = _(d.get_credits)
+
+    # User + User Metadata + User Integrations
+    get_user_metadata = _(d.get_user_metadata)
+    update_user_metadata = _(d.update_user_metadata)
+    get_user_integrations = _(d.get_user_integrations)
+    update_user_integrations = _(d.update_user_integrations)
+
+    # User Comms - async
+    get_active_user_ids_in_timerange = _(d.get_active_user_ids_in_timerange)
+    get_user_email_by_id = _(d.get_user_email_by_id)
+    get_user_email_verification = _(d.get_user_email_verification)
+    get_user_notification_preference = _(d.get_user_notification_preference)
+
+    # Notifications - async
+    create_or_add_to_user_notification_batch = _(
+        d.create_or_add_to_user_notification_batch
+    )
+    empty_user_notification_batch = _(d.empty_user_notification_batch)
+    get_all_batches_by_type = _(d.get_all_batches_by_type)
+    get_user_notification_batch = _(d.get_user_notification_batch)
+    get_user_notification_oldest_message_in_batch = _(
+        d.get_user_notification_oldest_message_in_batch
     )

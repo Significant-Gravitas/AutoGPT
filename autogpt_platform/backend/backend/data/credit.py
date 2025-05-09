@@ -1,9 +1,8 @@
-import asyncio
 import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import datetime, timezone
-from typing import cast
+from typing import Any, cast
 
 import stripe
 from autogpt_libs.utils.cache import thread_cached
@@ -21,6 +20,7 @@ from prisma.types import (
     CreditTransactionCreateInput,
     CreditTransactionWhereInput,
 )
+from pydantic import BaseModel
 
 from backend.data import db
 from backend.data.block_cost_config import BLOCK_COSTS
@@ -34,8 +34,7 @@ from backend.data.model import (
 )
 from backend.data.notifications import NotificationEventDTO, RefundRequestData
 from backend.data.user import get_user_by_id, get_user_email_by_id
-from backend.executor.utils import UsageTransactionMetadata
-from backend.notifications import NotificationManager
+from backend.notifications import NotificationManagerClient
 from backend.server.model import Pagination
 from backend.server.v2.admin.model import UserHistoryResponse
 from backend.util.exceptions import InsufficientBalanceError
@@ -47,6 +46,17 @@ settings = Settings()
 stripe.api_key = settings.secrets.stripe_api_key
 logger = logging.getLogger(__name__)
 base_url = settings.config.frontend_base_url or settings.config.platform_base_url
+
+
+class UsageTransactionMetadata(BaseModel):
+    graph_exec_id: str | None = None
+    graph_id: str | None = None
+    node_id: str | None = None
+    node_exec_id: str | None = None
+    block_id: str | None = None
+    block: str | None = None
+    input: dict[str, Any] | None = None
+    reason: str | None = None
 
 
 class UserCreditBase(ABC):
@@ -365,21 +375,19 @@ class UserCreditBase(ABC):
 
 class UserCredit(UserCreditBase):
     @thread_cached
-    def notification_client(self) -> NotificationManager:
-        return get_service_client(NotificationManager)
+    def notification_client(self) -> NotificationManagerClient:
+        return get_service_client(NotificationManagerClient)
 
     async def _send_refund_notification(
         self,
         notification_request: RefundRequestData,
         notification_type: NotificationType,
     ):
-        await asyncio.to_thread(
-            lambda: self.notification_client().queue_notification(
-                NotificationEventDTO(
-                    user_id=notification_request.user_id,
-                    type=notification_type,
-                    data=notification_request.model_dump(),
-                )
+        await self.notification_client().queue_notification_async(
+            NotificationEventDTO(
+                user_id=notification_request.user_id,
+                type=notification_type,
+                data=notification_request.model_dump(),
             )
         )
 
@@ -430,22 +438,19 @@ class UserCredit(UserCreditBase):
         )
 
     async def onboarding_reward(self, user_id: str, credits: int, step: OnboardingStep):
-        key = f"REWARD-{user_id}-{step.value}"
-        if not await CreditTransaction.prisma().find_first(
-            where={
-                "userId": user_id,
-                "transactionKey": key,
-            }
-        ):
+        try:
             await self._add_transaction(
                 user_id=user_id,
                 amount=credits,
                 transaction_type=CreditTransactionType.GRANT,
-                transaction_key=key,
+                transaction_key=f"REWARD-{user_id}-{step.value}",
                 metadata=Json(
                     {"reason": f"Reward for completing {step.value} onboarding step."}
                 ),
             )
+        except UniqueViolationError:
+            # Already rewarded for this step
+            pass
 
     async def top_up_refund(
         self, user_id: str, transaction_key: str, metadata: dict[str, str]

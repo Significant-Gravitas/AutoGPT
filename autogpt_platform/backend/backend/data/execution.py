@@ -208,18 +208,6 @@ class GraphExecutionWithNodes(GraphExecution):
             graph_id=self.graph_id,
             graph_version=self.graph_version or 0,
             graph_exec_id=self.id,
-            start_node_execs=[
-                NodeExecutionEntry(
-                    user_id=self.user_id,
-                    graph_exec_id=node_exec.graph_exec_id,
-                    graph_id=node_exec.graph_id,
-                    node_exec_id=node_exec.node_exec_id,
-                    node_id=node_exec.node_id,
-                    block_id=node_exec.block_id,
-                    data=node_exec.input_data,
-                )
-                for node_exec in self.node_executions
-            ],
             node_credentials_input_map={},  # FIXME
         )
 
@@ -280,13 +268,28 @@ class NodeExecutionResult(BaseModel):
             end_time=_node_exec.endedTime,
         )
 
+    def to_node_execution_entry(self) -> "NodeExecutionEntry":
+        return NodeExecutionEntry(
+            user_id=self.user_id,
+            graph_exec_id=self.graph_exec_id,
+            graph_id=self.graph_id,
+            node_exec_id=self.node_exec_id,
+            node_id=self.node_id,
+            block_id=self.block_id,
+            inputs=self.input_data,
+        )
+
 
 # --------------------- Model functions --------------------- #
 
 
 async def get_graph_executions(
-    graph_id: Optional[str] = None,
-    user_id: Optional[str] = None,
+    graph_id: str | None = None,
+    user_id: str | None = None,
+    statuses: list[ExecutionStatus] | None = None,
+    created_time_gte: datetime | None = None,
+    created_time_lte: datetime | None = None,
+    limit: int | None = None,
 ) -> list[GraphExecutionMeta]:
     where_filter: AgentGraphExecutionWhereInput = {
         "isDeleted": False,
@@ -295,10 +298,18 @@ async def get_graph_executions(
         where_filter["userId"] = user_id
     if graph_id:
         where_filter["agentGraphId"] = graph_id
+    if created_time_gte or created_time_lte:
+        where_filter["createdAt"] = {
+            "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
+            "lte": created_time_lte or datetime.max.replace(tzinfo=timezone.utc),
+        }
+    if statuses:
+        where_filter["OR"] = [{"executionStatus": status} for status in statuses]
 
     executions = await AgentGraphExecution.prisma().find_many(
         where=where_filter,
         order={"createdAt": "desc"},
+        take=limit,
     )
     return [GraphExecutionMeta.from_db(execution) for execution in executions]
 
@@ -616,8 +627,9 @@ async def delete_graph_execution(
         )
 
 
-async def get_node_execution_results(
+async def get_node_executions(
     graph_exec_id: str,
+    node_id: str | None = None,
     block_ids: list[str] | None = None,
     statuses: list[ExecutionStatus] | None = None,
     limit: int | None = None,
@@ -625,6 +637,8 @@ async def get_node_execution_results(
     where_clause: AgentNodeExecutionWhereInput = {
         "agentGraphExecutionId": graph_exec_id,
     }
+    if node_id:
+        where_clause["agentNodeId"] = node_id
     if block_ids:
         where_clause["Node"] = {"is": {"agentBlockId": {"in": block_ids}}}
     if statuses:
@@ -637,28 +651,6 @@ async def get_node_execution_results(
     )
     res = [NodeExecutionResult.from_db(execution) for execution in executions]
     return res
-
-
-async def get_graph_executions_in_timerange(
-    user_id: str, start_time: str, end_time: str
-) -> list[GraphExecution]:
-    try:
-        executions = await AgentGraphExecution.prisma().find_many(
-            where={
-                "startedAt": {
-                    "gte": datetime.fromisoformat(start_time),
-                    "lte": datetime.fromisoformat(end_time),
-                },
-                "userId": user_id,
-                "isDeleted": False,
-            },
-            include=GRAPH_EXECUTION_INCLUDE,
-        )
-        return [GraphExecution.from_db(execution) for execution in executions]
-    except Exception as e:
-        raise DatabaseError(
-            f"Failed to get executions in timerange {start_time} to {end_time} for user {user_id}: {e}"
-        ) from e
 
 
 async def get_latest_node_execution(
@@ -681,20 +673,6 @@ async def get_latest_node_execution(
     return NodeExecutionResult.from_db(execution)
 
 
-async def get_incomplete_node_executions(
-    node_id: str, graph_eid: str
-) -> list[NodeExecutionResult]:
-    executions = await AgentNodeExecution.prisma().find_many(
-        where={
-            "agentNodeId": node_id,
-            "agentGraphExecutionId": graph_eid,
-            "executionStatus": ExecutionStatus.INCOMPLETE,
-        },
-        include=EXECUTION_RESULT_INCLUDE,
-    )
-    return [NodeExecutionResult.from_db(execution) for execution in executions]
-
-
 # ----------------- Execution Infrastructure ----------------- #
 
 
@@ -703,7 +681,6 @@ class GraphExecutionEntry(BaseModel):
     graph_exec_id: str
     graph_id: str
     graph_version: int
-    start_node_execs: list["NodeExecutionEntry"]
     node_credentials_input_map: Optional[dict[str, dict[str, CredentialsMetaInput]]]
 
 
@@ -714,7 +691,7 @@ class NodeExecutionEntry(BaseModel):
     node_exec_id: str
     node_id: str
     block_id: str
-    data: BlockInput
+    inputs: BlockInput
 
 
 class ExecutionQueue(Generic[T]):

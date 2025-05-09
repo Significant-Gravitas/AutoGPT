@@ -6,7 +6,6 @@ from typing import Protocol
 import uvicorn
 from autogpt_libs.auth import parse_jwt_token
 from autogpt_libs.logging.utils import generate_uvicorn_config
-from autogpt_libs.utils.cache import thread_cached
 from fastapi import Depends, FastAPI, WebSocket, WebSocketDisconnect
 from starlette.middleware.cors import CORSMiddleware
 
@@ -19,7 +18,7 @@ from backend.server.model import (
     WSSubscribeGraphExecutionRequest,
     WSSubscribeGraphExecutionsRequest,
 )
-from backend.util.service import AppProcess, get_service_client
+from backend.util.service import AppProcess
 from backend.util.settings import AppEnvironment, Config, Settings
 
 logger = logging.getLogger(__name__)
@@ -44,13 +43,6 @@ def get_connection_manager():
     if _connection_manager is None:
         _connection_manager = ConnectionManager()
     return _connection_manager
-
-
-@thread_cached
-def get_db_client():
-    from backend.executor import DatabaseManager
-
-    return get_service_client(DatabaseManager)
 
 
 async def event_broadcaster(manager: ConnectionManager):

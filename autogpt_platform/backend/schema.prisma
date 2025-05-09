@@ -352,6 +352,7 @@ model AgentGraphExecution {
 
   @@index([agentGraphId, agentGraphVersion])
   @@index([userId])
+  @@index([createdAt])
 }
 
 // This model describes the execution of an AgentNode.
@@ -378,6 +379,7 @@ model AgentNodeExecution {
 
   @@index([agentGraphExecutionId])
   @@index([agentNodeId])
+  @@index([addedTime])
 }
 
 // This model describes the output of an AgentNodeExecution.

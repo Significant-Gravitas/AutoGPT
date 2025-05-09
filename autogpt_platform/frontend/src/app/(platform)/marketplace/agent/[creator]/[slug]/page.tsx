@@ -6,6 +6,7 @@ import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
 import { BecomeACreator } from "@/components/agptui/BecomeACreator";
 import { Separator } from "@/components/ui/separator";
 import { Metadata } from "next";
+import getServerUser from "@/lib/supabase/getServerUser";
 
 export async function generateMetadata({
   params,
@@ -16,7 +17,7 @@ export async function generateMetadata({
   const agent = await api.getStoreAgent(params.creator, params.slug);
 
   return {
-    title: `${agent.agent_name} - AutoGPT Store`,
+    title: `${agent.agent_name} - AutoGPT Marketplace`,
     description: agent.description,
   };
 }
@@ -36,6 +37,7 @@ export default async function Page({
   params: { creator: string; slug: string };
 }) {
   const creator_lower = params.creator.toLowerCase();
+  const { user } = await getServerUser();
   const api = new BackendAPI();
   const agent = await api.getStoreAgent(creator_lower, params.slug);
   const otherAgents = await api.getStoreAgents({ creator: creator_lower });
@@ -43,9 +45,17 @@ export default async function Page({
     // We are using slug as we know its has been sanitized and is not null
     search_query: agent.slug.replace(/-/g, " "),
   });
+  const libraryAgent = user
+    ? await api
+        .getLibraryAgentByStoreListingVersionID(agent.store_listing_version_id)
+        .catch((error) => {
+          console.error("Failed to fetch library agent:", error);
+          return null;
+        })
+    : null;
 
   const breadcrumbs = [
-    { name: "Store", link: "/marketplace" },
+    { name: "Marketplace", link: "/marketplace" },
     {
       name: agent.creator,
       link: `/marketplace/creator/${encodeURIComponent(agent.creator)}`,
@@ -61,6 +71,7 @@ export default async function Page({
         <div className="mt-4 flex flex-col items-start gap-4 sm:mt-6 sm:gap-6 md:mt-8 md:flex-row md:gap-8">
           <div className="w-full md:w-auto md:shrink-0">
             <AgentInfo
+              user={user}
               name={agent.agent_name}
               creator={agent.creator}
               shortDescription={agent.sub_heading}
@@ -71,6 +82,7 @@ export default async function Page({
               lastUpdated={agent.updated_at}
               version={agent.versions[agent.versions.length - 1]}
               storeListingVersionId={agent.store_listing_version_id}
+              libraryAgent={libraryAgent}
             />
           </div>
           <AgentImages

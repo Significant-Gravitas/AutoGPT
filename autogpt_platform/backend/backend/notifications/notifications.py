@@ -31,7 +31,13 @@ from backend.data.notifications import (
 from backend.data.rabbitmq import Exchange, ExchangeType, Queue, RabbitMQConfig
 from backend.data.user import generate_unsubscribe_link
 from backend.notifications.email import EmailSender
-from backend.util.service import AppService, expose, get_service_client
+from backend.util.service import (
+    AppService,
+    AppServiceClient,
+    endpoint_to_async,
+    expose,
+    get_service_client,
+)
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -107,17 +113,10 @@ def create_notification_config() -> RabbitMQConfig:
 
 
 @thread_cached
-def get_scheduler():
-    from backend.executor import Scheduler
-
-    return get_service_client(Scheduler)
-
-
-@thread_cached
 def get_db():
-    from backend.executor.database import DatabaseManager
+    from backend.executor.database import DatabaseManagerClient
 
-    return get_service_client(DatabaseManager)
+    return get_service_client(DatabaseManagerClient)
 
 
 class NotificationManager(AppService):
@@ -709,22 +708,6 @@ class NotificationManager(AppService):
 
         logger.info(f"[{self.service_name}] Started notification service")
 
-        # Set up scheduler for batch processing of all notification types
-        # this can be changed later to spawn different cleanups on different schedules
-        try:
-            get_scheduler().add_batched_notification_schedule(
-                notification_types=list(NotificationType),
-                data={},
-                cron="0 * * * *",
-            )
-            # get_scheduler().add_weekly_notification_schedule(
-            #     # weekly on Friday at 12pm
-            #     cron="0 12 * * 5",
-            # )
-            logger.info("Scheduled notification cleanup")
-        except Exception as e:
-            logger.error(f"Error scheduling notification cleanup: {e}")
-
         # Set up queue consumers
         channel = self.run_and_wait(self.rabbit.get_channel())
 
@@ -774,3 +757,14 @@ class NotificationManager(AppService):
         super().cleanup()
         logger.info(f"[{self.service_name}] ⏳ Disconnecting RabbitMQ...")
         self.run_and_wait(self.rabbitmq_service.disconnect())
+
+
+class NotificationManagerClient(AppServiceClient):
+    @classmethod
+    def get_service_type(cls):
+        return NotificationManager
+
+    queue_notification_async = endpoint_to_async(NotificationManager.queue_notification)
+    queue_notification = NotificationManager.queue_notification
+    process_existing_batches = NotificationManager.process_existing_batches
+    queue_weekly_summary = NotificationManager.queue_weekly_summary
