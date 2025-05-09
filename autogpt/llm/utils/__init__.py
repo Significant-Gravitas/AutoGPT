@@ -6,8 +6,6 @@ from typing import List, Literal, Optional
 from unittest.mock import patch
 
 import openai
-import openai.api_resources.abstract.engine_api_resource as engine_api_resource
-import openai.util
 from colorama import Fore, Style
 from openai.error import APIError, RateLimitError
 from openai.openai_object import OpenAIObject
