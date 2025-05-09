@@ -5,9 +5,10 @@ This module provides a client for interacting with the Proxycurl API,
 which allows fetching LinkedIn profile data and related information.
 """
 
+import enum
 import logging
 from json import JSONDecodeError
-from typing import Any, Dict, List, Optional, TypeVar, Union
+from typing import Any, Dict, List, Optional, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -25,6 +26,16 @@ class ProxycurlAPIException(Exception):
     def __init__(self, message: str, status_code: int):
         super().__init__(message)
         self.status_code = status_code
+
+
+class FallbackToCache(enum.Enum):
+    ON_ERROR = "ON_ERROR"
+    NEVER = "NEVER"
+
+
+class UseCache(enum.Enum):
+    IF_PRESENT = "IF_PRESENT"
+    NEVER = "NEVER"
 
 
 class SocialMediaProfiles(BaseModel):
@@ -135,7 +146,9 @@ class ProxycurlClient:
                 "Content-Type": "application/json",
             }
             if credentials:
-                headers["Authorization"] = f"Bearer {credentials.api_key.get_secret_value()}"
+                headers["Authorization"] = (
+                    f"Bearer {credentials.api_key.get_secret_value()}"
+                )
 
             self._requests = Requests(
                 extra_headers=headers,
@@ -172,8 +185,8 @@ class ProxycurlClient:
     def fetch_profile(
         self,
         linkedin_url: str,
-        fallback_to_cache: str = "on-error",
-        use_cache: str = "if-present",
+        fallback_to_cache: FallbackToCache = FallbackToCache.ON_ERROR,
+        use_cache: UseCache = UseCache.IF_PRESENT,
         include_skills: bool = False,
         include_inferred_salary: bool = False,
         include_personal_email: bool = False,
@@ -203,8 +216,8 @@ class ProxycurlClient:
         """
         params = {
             "url": linkedin_url,
-            "fallback_to_cache": fallback_to_cache,
-            "use_cache": use_cache,
+            "fallback_to_cache": fallback_to_cache.value.lower(),
+            "use_cache": use_cache.value.lower(),
         }
 
         if include_skills:

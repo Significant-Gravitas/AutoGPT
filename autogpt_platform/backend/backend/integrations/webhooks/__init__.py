@@ -12,16 +12,17 @@ def load_webhook_managers() -> dict["ProviderName", type["BaseWebhooksManager"]]
     if _WEBHOOK_MANAGERS:
         return _WEBHOOK_MANAGERS
 
+    from .airtable import AirtableWebhookManager
     from .compass import CompassWebhookManager
     from .generic import GenericWebhooksManager
     from .github import GithubWebhooksManager
     from .slant3d import Slant3DWebhooksManager
-    from .airtable import Airtable thing
 
     _WEBHOOK_MANAGERS.update(
         {
             handler.PROVIDER_NAME: handler
             for handler in [
+                AirtableWebhookManager,
                 CompassWebhookManager,
                 GithubWebhooksManager,
                 Slant3DWebhooksManager,

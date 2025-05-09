@@ -6,24 +6,21 @@ which provides access to LinkedIn profile data and related information.
 """
 
 import logging
-import uuid
-from typing import Dict, List, Optional
-
-from pydantic import BaseModel, Field
+from typing import Optional
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import APIKeyCredentials, CredentialsField, SchemaField
 
 from ._api import (
     Experience,
-    Education,
-    PersonProfileResponse,
+    FallbackToCache,
     PersonLookupResponse,
+    PersonProfileResponse,
     ProfilePictureResponse,
     ProxycurlClient,
     RoleLookupResponse,
     SimilarProfile,
-    SocialMediaProfiles,
+    UseCache,
 )
 from ._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, ProxycurlCredentialsInput
 
@@ -40,16 +37,14 @@ class ProxycurlProfileFetchBlock(Block):
             description="LinkedIn profile URL to fetch data from",
             placeholder="https://www.linkedin.com/in/username/",
         )
-        fallback_to_cache: str = SchemaField(
+        fallback_to_cache: FallbackToCache = SchemaField(
             description="Cache usage if live fetch fails",
-            default="on-error",
-            enum=["on-error", "never"],
+            default=FallbackToCache.ON_ERROR,
             advanced=True,
         )
-        use_cache: str = SchemaField(
+        use_cache: UseCache = SchemaField(
             description="Cache utilization strategy",
-            default="if-present",
-            enum=["if-present", "never"],
+            default=UseCache.IF_PRESENT,
             advanced=True,
         )
         include_skills: bool = SchemaField(

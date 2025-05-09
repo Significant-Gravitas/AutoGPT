@@ -18,10 +18,10 @@ from backend.blocks.llm import (
     AITextGeneratorBlock,
     AITextSummarizerBlock,
     LlmModel,
-)   
+)
 from backend.blocks.proxycurl.proxycurl import (
-    ProxycurlProfileFetchBlock,
     ProxycurlPersonLookupBlock,
+    ProxycurlProfileFetchBlock,
     ProxycurlRoleLookupBlock,
 )
 from backend.blocks.replicate_flux_advanced import ReplicateFluxAdvancedModelBlock

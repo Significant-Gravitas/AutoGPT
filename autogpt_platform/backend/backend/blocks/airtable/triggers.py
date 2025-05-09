@@ -17,6 +17,7 @@ from backend.data.block import (
     BlockSchema,
 )
 from backend.data.model import SchemaField
+from backend.integrations.providers import ProviderName
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ class AirtableWebhookTriggerBlock(Block):
             input_schema=AirtableWebhookTriggerBlock.Input,
             output_schema=AirtableWebhookTriggerBlock.Output,
             webhook_config=BlockManualWebhookConfig(
-                provider="airtable",
+                provider=ProviderName.AIRTABLE,
                 webhook_type=AirtableWebhookEventType.RECORDS_UPDATED,
             ),
             test_input=[
