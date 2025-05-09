@@ -34,7 +34,7 @@ async def spend_credits(entry: NodeExecutionEntry) -> int:
     if not block:
         raise RuntimeError(f"Block {entry.block_id} not found")
 
-    cost, matching_filter = block_usage_cost(block=block, input_data=entry.data)
+    cost, matching_filter = block_usage_cost(block=block, input_data=entry.inputs)
     await user_credit.spend_credits(
         entry.user_id,
         cost,
@@ -67,7 +67,7 @@ async def test_block_credit_usage(server: SpinTestServer):
             graph_exec_id="test_graph_exec",
             node_exec_id="test_node_exec",
             block_id=AITextGeneratorBlock().id,
-            data={
+            inputs={
                 "model": "gpt-4-turbo",
                 "credentials": {
                     "id": openai_credentials.id,
@@ -87,7 +87,7 @@ async def test_block_credit_usage(server: SpinTestServer):
             graph_exec_id="test_graph_exec",
             node_exec_id="test_node_exec",
             block_id=AITextGeneratorBlock().id,
-            data={"model": "gpt-4-turbo", "api_key": "owned_api_key"},
+            inputs={"model": "gpt-4-turbo", "api_key": "owned_api_key"},
         ),
     )
     assert spending_amount_2 == 0

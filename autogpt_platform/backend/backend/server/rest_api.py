@@ -27,6 +27,7 @@ import backend.server.v2.library.routes
 import backend.server.v2.otto.routes
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
+import backend.server.v2.turnstile.routes
 import backend.util.service
 import backend.util.settings
 from backend.blocks.llm import LlmModel
@@ -118,6 +119,9 @@ app.include_router(
 )
 app.include_router(
     backend.server.v2.otto.routes.router, tags=["v2"], prefix="/api/otto"
+)
+app.include_router(
+    backend.server.v2.turnstile.routes.router, tags=["v2"], prefix="/api/turnstile"
 )
 
 app.include_router(
