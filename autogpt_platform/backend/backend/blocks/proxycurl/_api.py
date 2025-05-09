@@ -5,6 +5,7 @@ This module provides a client for interacting with the Proxycurl API,
 which allows fetching LinkedIn profile data and related information.
 """
 
+import datetime
 import enum
 import logging
 from json import JSONDecodeError
@@ -105,8 +106,13 @@ class SimilarProfile(BaseModel):
 class PersonLookupResponse(BaseModel):
     """Response model for LinkedIn person lookup."""
 
-    linkedin_profile_url: Optional[str] = None
-    similar_profiles: Optional[List[SimilarProfile]] = None
+    url: str | None = None
+    name_similarity_score: float | None
+    company_similarity_score: float | None
+    title_similarity_score: float | None
+    location_similarity_score: float | None
+    last_updated: datetime.datetime | None = None
+    profile: PersonProfileResponse | None = None
 
 
 class RoleLookupResponse(BaseModel):
@@ -241,8 +247,8 @@ class ProxycurlClient:
     def lookup_person(
         self,
         first_name: str,
-        last_name: str,
-        company_domain: Optional[str] = None,
+        company_domain: str,
+        last_name: str | None = None,
         location: Optional[str] = None,
         title: Optional[str] = None,
         include_similarity_checks: bool = False,
@@ -266,13 +272,10 @@ class ProxycurlClient:
         Raises:
             ProxycurlAPIException: If the API request fails.
         """
-        params = {
-            "first_name": first_name,
-            "last_name": last_name,
-        }
+        params = {"first_name": first_name, "company_domain": company_domain}
 
-        if company_domain:
-            params["company_domain"] = company_domain
+        if last_name:
+            params["last_name"] = last_name
         if location:
             params["location"] = location
         if title:
@@ -282,9 +285,14 @@ class ProxycurlClient:
         if enrich_profile:
             params["enrich_profile"] = "enrich"
 
+        logger.warning(
+            f"DEBUG: Sending request to {self.API_BASE_URL}/linkedin/profile/resolve with params {params}"
+        )
+
         response = self._requests.get(
             f"{self.API_BASE_URL}/linkedin/profile/resolve", params=params
         )
+        logger.warning(f"Responese: {response.json()}")
         return PersonLookupResponse(**self._handle_response(response))
 
     def lookup_role(
