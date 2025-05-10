@@ -177,6 +177,14 @@ zerobounce_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+llama_api_credentials = APIKeyCredentials(
+    id="d44045af-1c33-4833-9e19-752313214de2",
+    provider="llama_api",
+    api_key=SecretStr(settings.secrets.llama_api_key),
+    title="Use Credits for Llama API",
+    expires_at=None,
+)
+
 DEFAULT_CREDENTIALS = [
     ollama_credentials,
     revid_credentials,

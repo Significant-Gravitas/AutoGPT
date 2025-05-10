@@ -26,6 +26,7 @@ from backend.integrations.credentials_store import (
     groq_credentials,
     ideogram_credentials,
     jina_credentials,
+    llama_api_credentials,
     open_router_credentials,
     openai_credentials,
     replicate_credentials,
@@ -81,6 +82,10 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.GRYPHE_MYTHOMAX_L2_13B: 1,
     LlmModel.META_LLAMA_4_SCOUT: 1,
     LlmModel.META_LLAMA_4_MAVERICK: 1,
+    LlmModel.LLAMA_API_LLAMA_4_SCOUT: 1,
+    LlmModel.LLAMA_API_LLAMA4_MAVERICK: 1,
+    LlmModel.LLAMA_API_LLAMA3_3_8B: 1,
+    LlmModel.LLAMA_API_LLAMA3_3_70B: 1,
 }
 
 for model in LlmModel:
@@ -152,6 +157,23 @@ LLM_COST = (
         )
         for model, cost in MODEL_COST.items()
         if MODEL_METADATA[model].provider == "open_router"
+    ]
+    # Llama API Models
+    + [
+        BlockCost(
+            cost_type=BlockCostType.RUN,
+            cost_filter={
+                "model": model,
+                "credentials": {
+                    "id": llama_api_credentials.id,
+                    "provider": llama_api_credentials.provider,
+                    "type": llama_api_credentials.type,
+                },
+            },
+            cost_amount=cost,
+        )
+        for model, cost in MODEL_COST.items()
+        if MODEL_METADATA[model].provider == "llama_api"
     ]
 )
 
