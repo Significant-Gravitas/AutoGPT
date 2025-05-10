@@ -1,5 +1,5 @@
 import * as React from "react";
-import { getIconForSocial } from "@/components/ui/icons";
+import CreatorLink from "./CreatorLink";
 
 interface CreatorLinksProps {
   links: string[];
@@ -10,32 +10,16 @@ export const CreatorLinks: React.FC<CreatorLinksProps> = ({ links }) => {
     return null;
   }
 
-  const renderLinkButton = (url: string) => (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="flex min-w-[200px] flex-1 items-center justify-between rounded-[34px] border border-neutral-600 px-5 py-3 dark:border-neutral-400"
-    >
-      <div className="font-neue text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
-        {new URL(url).hostname.replace("www.", "")}
-      </div>
-      <div className="relative h-6 w-6">
-        {getIconForSocial(url, {
-          className: "h-6 w-6 text-neutral-800 dark:text-neutral-200",
-        })}
-      </div>
-    </a>
-  );
-
   return (
-    <div className="flex flex-col items-start justify-start gap-4">
-      <div className="font-neue text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+    <div className="space-y-4">
+      <div className="font-sans text-base font-medium text-zinc-800">
         Other links
       </div>
-      <div className="flex w-full flex-wrap gap-3">
+      <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2">
         {links.map((link, index) => (
-          <React.Fragment key={index}>{renderLinkButton(link)}</React.Fragment>
+          <CreatorLink href={link} key={index}>
+            {new URL(link).hostname.replace("www.", "").replace(".com", "")}
+          </CreatorLink>
         ))}
       </div>
     </div>

@@ -1,6 +1,10 @@
 import getServerSupabase from "./getServerSupabase";
+import { mockUser } from "../autogpt-server-api/mock_user";
 
 const getServerUser = async () => {
+  if (process.env.STORYBOOK) {
+    return { user: mockUser, role: mockUser.role || "admin", error: null };
+  }
   const supabase = getServerSupabase();
 
   if (!supabase) {

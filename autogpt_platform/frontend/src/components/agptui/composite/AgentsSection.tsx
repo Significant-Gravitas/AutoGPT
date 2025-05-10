@@ -26,13 +26,14 @@ interface AgentsSectionProps {
   agents: Agent[];
   hideAvatars?: boolean;
   margin?: string;
+  className?: string;
 }
 
 export const AgentsSection: React.FC<AgentsSectionProps> = ({
   sectionTitle,
   agents: allAgents,
   hideAvatars = false,
-  margin = "37px",
+  className,
 }) => {
   const router = useRouter();
 
@@ -46,64 +47,32 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
   };
 
   return (
-    <div className="flex flex-col items-center justify-center">
-      <div className="w-full max-w-[1360px]">
-        <div
-          className={`mb-[${margin}] font-poppins text-lg font-semibold text-[#282828] dark:text-neutral-200`}
-        >
-          {sectionTitle}
+    <div className={`w-full space-y-9 ${className}`}>
+      <h2 className="font-poppins text-base font-medium text-zinc-500">
+        {sectionTitle ? sectionTitle : "Top agents"}
+      </h2>
+      {!displayedAgents || displayedAgents.length === 0 ? (
+        <div className="font-poppins text-gray-500 dark:text-gray-400">
+          No agents found
         </div>
-        {!displayedAgents || displayedAgents.length === 0 ? (
-          <div className="text-center text-gray-500 dark:text-gray-400">
-            No agents found
-          </div>
-        ) : (
-          <>
-            {/* Mobile Carousel View */}
-            <Carousel
-              className="md:hidden"
-              opts={{
-                loop: true,
-              }}
-            >
-              <CarouselContent>
-                {displayedAgents.map((agent, index) => (
-                  <CarouselItem key={index} className="min-w-64 max-w-71">
-                    <StoreCard
-                      agentName={agent.agent_name}
-                      agentImage={agent.agent_image}
-                      description={agent.description}
-                      runs={agent.runs}
-                      rating={agent.rating}
-                      avatarSrc={agent.creator_avatar}
-                      creatorName={agent.creator}
-                      hideAvatar={hideAvatars}
-                      onClick={() => handleCardClick(agent.creator, agent.slug)}
-                    />
-                  </CarouselItem>
-                ))}
-              </CarouselContent>
-            </Carousel>
-
-            <div className="hidden grid-cols-1 place-items-center gap-6 md:grid md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-              {displayedAgents.map((agent, index) => (
-                <StoreCard
-                  key={index}
-                  agentName={agent.agent_name}
-                  agentImage={agent.agent_image}
-                  description={agent.description}
-                  runs={agent.runs}
-                  rating={agent.rating}
-                  avatarSrc={agent.creator_avatar}
-                  creatorName={agent.creator}
-                  hideAvatar={hideAvatars}
-                  onClick={() => handleCardClick(agent.creator, agent.slug)}
-                />
-              ))}
-            </div>
-          </>
-        )}
-      </div>
+      ) : (
+        <div className="grid grid-cols-1 place-items-center gap-5 md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
+          {displayedAgents.map((agent, index) => (
+            <StoreCard
+              key={index}
+              agentName={agent.agent_name}
+              agentImage={agent.agent_image}
+              description={agent.description}
+              runs={agent.runs}
+              rating={agent.rating}
+              avatarSrc={agent.creator_avatar}
+              creatorName={agent.creator}
+              hideAvatar={hideAvatars}
+              onClick={() => handleCardClick(agent.creator, agent.slug)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 };

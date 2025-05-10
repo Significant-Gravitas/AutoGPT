@@ -2,12 +2,16 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { PublishAgentAwaitingReview } from "./PublishAgentAwaitingReview";
 
 const meta: Meta<typeof PublishAgentAwaitingReview> = {
-  title: "AGPT UI/Publish Agent Awaiting Review",
+  title: "Agpt Custom UI/marketing/Publish Agent Awaiting Review",
   component: PublishAgentAwaitingReview,
   tags: ["autodocs"],
-  parameters: {
-    layout: "centered",
-  },
+  decorators: [
+    (Story) => (
+      <div className="backdrop-blur-4 flex h-screen items-center justify-center bg-black/40 md:p-4">
+        <Story />
+      </div>
+    ),
+  ],
 };
 
 export default meta;

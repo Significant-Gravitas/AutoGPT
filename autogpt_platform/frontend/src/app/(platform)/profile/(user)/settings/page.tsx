@@ -19,13 +19,12 @@ export default async function SettingsPage() {
   const preferences = await getUserPreferences();
 
   return (
-    <div className="container max-w-2xl space-y-6 py-10">
-      <div>
-        <h3 className="text-lg font-medium">My account</h3>
-        <p className="text-sm text-muted-foreground">
-          Manage your account settings and preferences.
-        </p>
-      </div>
+    <div className="space-y-6 pb-10">
+      {/* Title */}
+      <h1 className="font-poppins text-[1.75rem] font-medium leading-[2.5rem] text-zinc-500">
+        Settings
+      </h1>
+
       <SettingsForm user={user} preferences={preferences} />
     </div>
   );

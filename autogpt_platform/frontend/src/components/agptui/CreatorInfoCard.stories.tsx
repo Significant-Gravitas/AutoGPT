@@ -2,11 +2,15 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { CreatorInfoCard } from "./CreatorInfoCard";
 
 const meta = {
-  title: "AGPT UI/Creator Info Card",
+  title: "Agpt Custom UI/marketing/Creator Info Card",
   component: CreatorInfoCard,
-  parameters: {
-    layout: "centered",
-  },
+  decorators: [
+    (Story) => (
+      <div className="flex items-center justify-center p-4">
+        <Story />
+      </div>
+    ),
+  ],
   tags: ["autodocs"],
   argTypes: {
     username: { control: "text" },
@@ -32,24 +36,24 @@ export const Default: Story = {
   },
 };
 
-export const NewCreator: Story = {
+export const LongContent: Story = {
   args: {
-    username: "AI Enthusiast",
-    handle: "ai_newbie",
+    username: "This Is An Extremel Long Username To Test",
+    handle: "this_is_an_extremely_long_there_what",
     avatarSrc: "https://example.com/avatar2.jpg",
-    categories: ["AI", "Technology"],
-    averageRating: 0,
-    totalRuns: 0,
-  },
-};
-
-export const ExperiencedCreator: Story = {
-  args: {
-    username: "Tech Master",
-    handle: "techmaster",
-    avatarSrc: "https://example.com/avatar3.jpg",
-    categories: ["AI", "Development", "Education"],
-    averageRating: 4.9,
-    totalRuns: 50000,
+    categories: [
+      "Artificial Intelligence",
+      "Machine Learning",
+      "Neural Networks",
+      "Deep Learning",
+      "Natural Language Processing",
+      "Computer Vision",
+      "Robotics",
+      "Data Science",
+      "Cloud Computing",
+      "Internet of Things",
+    ],
+    averageRating: 4.8888888888,
+    totalRuns: 1000000000,
   },
 };

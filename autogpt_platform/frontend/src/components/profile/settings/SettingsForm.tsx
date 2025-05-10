@@ -24,6 +24,8 @@ import {
   NotificationPreference,
   NotificationPreferenceDTO,
 } from "@/lib/autogpt-server-api";
+import AutogptInput from "@/components/agptui/AutogptInput";
+import AutogptButton from "@/components/agptui/AutogptButton";
 
 const formSchema = z
   .object({
@@ -119,10 +121,10 @@ export default function SettingsForm({ user, preferences }: SettingsFormProps) {
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
-        className="flex flex-col gap-8"
+        className="flex flex-col gap-10"
       >
         {/* Account Settings Section */}
-        <div className="flex flex-col gap-4">
+        <div className="flex max-w-3xl flex-col gap-4">
           <FormField
             control={form.control}
             name="email"
@@ -130,7 +132,7 @@ export default function SettingsForm({ user, preferences }: SettingsFormProps) {
               <FormItem>
                 <FormLabel>Email</FormLabel>
                 <FormControl>
-                  <Input {...field} type="email" />
+                  <AutogptInput {...field} type="email" />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -144,7 +146,7 @@ export default function SettingsForm({ user, preferences }: SettingsFormProps) {
               <FormItem>
                 <FormLabel>New Password</FormLabel>
                 <FormControl>
-                  <Input
+                  <AutogptInput
                     {...field}
                     type="password"
                     placeholder="************"
@@ -162,7 +164,7 @@ export default function SettingsForm({ user, preferences }: SettingsFormProps) {
               <FormItem>
                 <FormLabel>Confirm New Password</FormLabel>
                 <FormControl>
-                  <Input
+                  <AutogptInput
                     {...field}
                     type="password"
                     placeholder="************"
@@ -174,11 +176,13 @@ export default function SettingsForm({ user, preferences }: SettingsFormProps) {
           />
         </div>
 
-        <Separator />
+        <Separator className="bg-neutral-300" />
 
         {/* Notifications Section */}
-        <div className="flex flex-col gap-6">
-          <h3 className="text-lg font-medium">Notifications</h3>
+        <div className="flex max-w-3xl flex-col gap-6">
+          <h3 className="font-poppins text-base font-medium text-neutral-900">
+            Notifications
+          </h3>
 
           {/* Agent Notifications */}
           <div className="flex flex-col gap-4">
@@ -379,22 +383,25 @@ export default function SettingsForm({ user, preferences }: SettingsFormProps) {
           </div>
         </div>
 
+        <Separator className="bg-neutral-300" />
+
         {/* Form Actions */}
         <div className="flex justify-end gap-4">
-          <Button
+          <AutogptButton
             variant="outline"
             type="button"
             onClick={onCancel}
             disabled={form.formState.isSubmitting}
           >
             Cancel
-          </Button>
-          <Button
+          </AutogptButton>
+          <AutogptButton
+            variant={"default"}
             type="submit"
             disabled={form.formState.isSubmitting || !form.formState.isDirty}
           >
             {form.formState.isSubmitting ? "Saving..." : "Save changes"}
-          </Button>
+          </AutogptButton>
         </div>
       </form>
     </Form>

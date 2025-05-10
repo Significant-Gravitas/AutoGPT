@@ -3,10 +3,7 @@ import { Navbar } from "./Navbar";
 import { userEvent, within } from "@storybook/test";
 import { IconType } from "../ui/icons";
 import { ProfileDetails } from "@/lib/autogpt-server-api/types";
-// You can't import this here, jest is not available in storybook and will crash it
-// import { jest } from "@jest/globals";
 
-// Mock the API responses
 const mockProfileData: ProfileDetails = {
   name: "John Doe",
   username: "johndoe",
@@ -19,22 +16,16 @@ const mockCreditData = {
   credits: 1500,
 };
 
-// Mock the API module
-// jest.mock("@/lib/autogpt-server-api", () => {
-//   return function () {
-//     return {
-//       getStoreProfile: () => Promise.resolve(mockProfileData),
-//       getUserCredit: () => Promise.resolve(mockCreditData),
-//     };
-//   };
-// });
-
 const meta = {
-  title: "AGPT UI/Navbar",
+  title: "Agpt Custom UI/general/Navbar",
   component: Navbar,
-  parameters: {
-    layout: "fullscreen",
-  },
+  decorators: [
+    (Story) => (
+      <div className="flex h-screen w-full justify-center">
+        <Story />
+      </div>
+    ),
+  ],
   tags: ["autodocs"],
   argTypes: {
     // isLoggedIn: { control: "boolean" },
@@ -84,9 +75,19 @@ const defaultMenuItemGroups = [
 ];
 
 const defaultLinks = [
-  { name: "Marketplace", href: "/marketplace" },
-  { name: "Library", href: "/library" },
-  { name: "Build", href: "/builder" },
+  {
+    name: "Home",
+    href: "/library",
+  },
+  {
+    name: "Marketplace",
+    href: "/marketplace",
+  },
+
+  {
+    name: "Build",
+    href: "/build",
+  },
 ];
 
 export const Default: Story = {
@@ -97,67 +98,5 @@ export const Default: Story = {
     // activeLink: "/marketplace",
     // avatarSrc: mockProfileData.avatar_url,
     menuItemGroups: defaultMenuItemGroups,
-  },
-};
-
-export const WithActiveLink: Story = {
-  args: {
-    ...Default.args,
-    // activeLink: "/library",
-  },
-};
-
-export const LongUserName: Story = {
-  args: {
-    ...Default.args,
-    // avatarSrc: "https://avatars.githubusercontent.com/u/987654321?v=4",
-  },
-};
-
-export const NoAvatar: Story = {
-  args: {
-    ...Default.args,
-    // avatarSrc: undefined,
-  },
-};
-
-export const WithInteraction: Story = {
-  args: {
-    ...Default.args,
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    const profileTrigger = canvas.getByRole("button");
-
-    await userEvent.click(profileTrigger);
-
-    // Wait for the popover to appear
-    await canvas.findByText("Edit profile");
-  },
-};
-
-export const NotLoggedIn: Story = {
-  args: {
-    ...Default.args,
-    // isLoggedIn: false,
-    // avatarSrc: undefined,
-  },
-};
-
-export const WithCredits: Story = {
-  args: {
-    ...Default.args,
-  },
-};
-
-export const WithLargeCredits: Story = {
-  args: {
-    ...Default.args,
-  },
-};
-
-export const WithZeroCredits: Story = {
-  args: {
-    ...Default.args,
   },
 };

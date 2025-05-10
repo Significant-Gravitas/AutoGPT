@@ -20,6 +20,7 @@ import {
 import Link from "next/link";
 import { ProfilePopoutMenuLogoutButton } from "./ProfilePopoutMenuLogoutButton";
 import { PublishAgentPopout } from "./composite/PublishAgentPopout";
+import AutogptButton from "./AutogptButton";
 
 interface ProfilePopoutMenuProps {
   userName?: string;
@@ -72,9 +73,9 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
+        <AutogptButton
           type="button"
-          className="flex cursor-pointer items-center space-x-3"
+          variant={"link"}
           aria-label="Open profile menu"
           aria-controls={popupId}
           aria-haspopup="true"
@@ -86,26 +87,26 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
               {userName?.charAt(0) || "U"}
             </AvatarFallback>
           </Avatar>
-        </button>
+        </AutogptButton>
       </PopoverTrigger>
 
       <PopoverContent
         id={popupId}
-        className="flex h-[380px] w-[300px] flex-col items-start justify-start gap-4 rounded-[26px] bg-zinc-400/70 p-6 shadow backdrop-blur-2xl dark:bg-zinc-800/70"
+        className="mr-8 flex w-[300px] flex-col items-start justify-start gap-4 rounded-[26px] bg-zinc-400/70 p-6 shadow backdrop-blur-2xl dark:bg-zinc-800/70"
       >
         {/* Header with avatar and user info */}
         <div className="inline-flex items-center justify-start gap-4 self-stretch">
-          <Avatar className="h-[60px] w-[60px]">
+          <Avatar className="h-16 w-16">
             <AvatarImage src={avatarSrc} alt="" aria-hidden="true" />
             <AvatarFallback aria-hidden="true">
               {userName?.charAt(0) || "U"}
             </AvatarFallback>
           </Avatar>
-          <div className="relative h-[47px] w-[173px]">
-            <div className="absolute left-0 top-0 font-sans text-base font-semibold leading-7 text-white dark:text-neutral-200">
+          <div>
+            <div className="font-sans text-base font-semibold leading-7 text-white dark:text-neutral-200">
               {userName}
             </div>
-            <div className="absolute left-0 top-[23px] font-sans text-base font-normal leading-normal text-white dark:text-neutral-400">
+            <div className="font-sans text-base font-normal leading-normal text-white dark:text-neutral-400">
               {userEmail}
             </div>
           </div>

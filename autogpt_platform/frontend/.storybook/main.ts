@@ -9,6 +9,10 @@ const config: StorybookConfig = {
     "@storybook/addon-essentials",
     "@storybook/addon-interactions",
   ],
+  env: {
+    NEXT_PUBLIC_SUPABASE_URL: "https://your-project.supabase.co",
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: "your-anon-key",
+  },
   features: {
     experimentalRSC: true,
   },
@@ -16,6 +20,16 @@ const config: StorybookConfig = {
     name: "@storybook/nextjs",
     options: {},
   },
-  staticDirs: ["../public"],
+  staticDirs: [
+    "../public",
+    {
+      from: "../node_modules/geist/dist/fonts/geist-sans",
+      to: "/fonts/geist-sans",
+    },
+    {
+      from: "../node_modules/geist/dist/fonts/geist-mono",
+      to: "/fonts/geist-mono",
+    },
+  ],
 };
 export default config;

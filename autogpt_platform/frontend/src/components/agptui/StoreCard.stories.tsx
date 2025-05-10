@@ -3,15 +3,16 @@ import { StoreCard } from "./StoreCard";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
-  title: "AGPT UI/StoreCard",
+  title: "Agpt Custom ui/marketing/StoreCard",
   component: StoreCard,
-  parameters: {
-    layout: {
-      center: true,
-      fullscreen: true,
-      padding: 0,
-    },
-  },
+
+  decorators: [
+    (Story) => (
+      <div className="flex items-center justify-center p-4">
+        <Story />
+      </div>
+    ),
+  ],
   tags: ["autodocs"],
   argTypes: {
     agentName: { control: "text" },
@@ -21,6 +22,8 @@ const meta = {
     rating: { control: "number", min: 0, max: 5, step: 0.1 },
     onClick: { action: "clicked" },
     avatarSrc: { control: "text" },
+    hideAvatar: { control: "boolean" },
+    creatorName: { control: "text" },
   },
 } satisfies Meta<typeof StoreCard>;
 
@@ -30,86 +33,64 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {
     agentName: "SEO Optimizer",
-    agentImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-    description: "Optimize your website's SEO with AI-powered suggestions",
+    agentImage: "/testing_agent_image.jpg",
+    description:
+      "Optimize your website's SEO with AI-powered suggestions and best practices. Get detailed reports and actionable recommendations.",
     runs: 10000,
     rating: 4.5,
     onClick: () => console.log("Default StoreCard clicked"),
-    avatarSrc: "https://github.com/shadcn.png",
-  },
-};
-
-export const LowRating: Story = {
-  args: {
-    agentName: "Data Analyzer",
-    agentImage:
-      "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
-    description: "Analyze complex datasets with machine learning algorithms",
-    runs: 5000,
-    rating: 2.7,
-    onClick: () => console.log("LowRating StoreCard clicked"),
-    avatarSrc: "https://example.com/avatar2.jpg",
-  },
-};
-
-export const HighRuns: Story = {
-  args: {
-    agentName: "Code Assistant",
-    agentImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-    description: "Get AI-powered coding help for various programming languages",
-    runs: 1000000,
-    rating: 4.8,
-    onClick: () => console.log("HighRuns StoreCard clicked"),
-    avatarSrc: "https://example.com/avatar3.jpg",
+    avatarSrc: "/testing_avatar.png",
+    creatorName: "AI Solutions Inc.",
   },
 };
 
 export const WithInteraction: Story = {
   args: {
     agentName: "Task Planner",
-    agentImage:
-      "https://upload.wikimedia.org/wikipedia/commons/c/c5/Big_buck_bunny_poster_big.jpg",
-    description: "Plan and organize your tasks efficiently with AI",
+    agentImage: Default.args.agentImage,
+    description:
+      "Plan and organize your tasks efficiently with AI assistance. Set priorities, deadlines, and track progress.",
     runs: 50000,
     rating: 4.2,
     onClick: () => console.log("WithInteraction StoreCard clicked"),
-    avatarSrc: "https://example.com/avatar4.jpg",
+    avatarSrc: Default.args.avatarSrc,
+    creatorName: "Productivity Plus",
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const storeCard = canvas.getByText("Task Planner");
+    const storeCard = canvas.getByTestId("store-card");
 
     await userEvent.hover(storeCard);
+    await new Promise((resolve) => setTimeout(resolve, 300));
     await userEvent.click(storeCard);
   },
 };
 
-export const LongDescription: Story = {
+export const LongContent: Story = {
   args: {
-    agentName: "AI Writing Assistant",
-    agentImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    agentName:
+      "AI Writing Assistant that can help you to write some long content so you do not have to hire for writing some basic arrangement of letters",
+    agentImage: Default.args.agentImage,
     description:
-      "Enhance your writing with our advanced AI-powered assistant. It offers real-time suggestions for grammar, style, and tone, helps with research and fact-checking.",
+      "Enhance your writing with our advanced AI-powered assistant. It offers real-time suggestions for grammar, style, and tone, helps with research and fact-checking, and provides vocabulary enhancements for more engaging content. Perfect for content creators, marketers, and writers of all levels.",
     runs: 75000,
     rating: 4.7,
-    onClick: () => console.log("LongDescription StoreCard clicked"),
-    avatarSrc: "https://example.com/avatar5.jpg",
+    onClick: () => console.log("LongContent StoreCard clicked"),
+    avatarSrc: Default.args.avatarSrc,
+    creatorName:
+      "The person who created the multiverst, including earth no. 631 and more..",
   },
 };
 
-export const HiddenAvatar: Story = {
+export const SmallContent: Story = {
   args: {
-    agentName: "Data Visualizer",
-    agentImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-    description: "Create stunning visualizations from complex datasets",
-    runs: 60000,
-    rating: 4.6,
-    onClick: () => console.log("HiddenAvatar StoreCard clicked"),
-    avatarSrc: "https://example.com/avatar6.jpg",
-    hideAvatar: true,
+    agentName: "Quick Notes",
+    agentImage: Default.args.agentImage,
+    description: "Simple note-taking assistant.",
+    runs: 3000,
+    rating: 4.0,
+    onClick: () => console.log("SmallContent StoreCard clicked"),
+    avatarSrc: Default.args.avatarSrc,
+    creatorName: "Note Systems",
   },
 };

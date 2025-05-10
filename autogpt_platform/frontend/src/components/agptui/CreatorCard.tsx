@@ -1,12 +1,6 @@
 import * as React from "react";
 import Image from "next/image";
-
-const BACKGROUND_COLORS = [
-  "bg-amber-100 dark:bg-amber-800", // #fef3c7 / #92400e
-  "bg-violet-100 dark:bg-violet-800", // #ede9fe / #5b21b6
-  "bg-green-100 dark:bg-green-800", // #dcfce7 / #065f46
-  "bg-blue-100 dark:bg-blue-800", // #dbeafe / #1e3a8a
-];
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 
 interface CreatorCardProps {
   creatorName: string;
@@ -14,7 +8,7 @@ interface CreatorCardProps {
   bio: string;
   agentsUploaded: number;
   onClick: () => void;
-  index: number;
+  key: number;
 }
 
 export const CreatorCard: React.FC<CreatorCardProps> = ({
@@ -23,43 +17,38 @@ export const CreatorCard: React.FC<CreatorCardProps> = ({
   bio,
   agentsUploaded,
   onClick,
-  index,
+  key,
 }) => {
-  const backgroundColor = BACKGROUND_COLORS[index % BACKGROUND_COLORS.length];
-
   return (
     <div
-      className={`h-[264px] w-full px-[18px] pb-5 pt-6 ${backgroundColor} inline-flex cursor-pointer flex-col items-start justify-start gap-3.5 rounded-[26px] transition-all duration-200 hover:brightness-95`}
+      key={key}
+      className={`aspect-square w-full space-y-4 rounded-3xl bg-amber-100 p-5 pt-6 hover:cursor-pointer hover:bg-amber-200 sm:w-80`}
       onClick={onClick}
       data-testid="creator-card"
     >
-      <div className="relative h-[64px] w-[64px]">
-        <div className="absolute inset-0 overflow-hidden rounded-full">
-          {creatorImage ? (
-            <Image
-              src={creatorImage}
-              alt={creatorName}
-              width={64}
-              height={64}
-              className="h-full w-full object-cover"
-              priority
-            />
-          ) : (
-            <div className="h-full w-full bg-neutral-300 dark:bg-neutral-600" />
-          )}
-        </div>
-      </div>
+      <Avatar className="h-[84px] w-[84px]">
+        <AvatarImage
+          width={84}
+          height={84}
+          src={creatorImage}
+          alt={`${creatorName}`}
+        />
+        <AvatarFallback size={84} className="h-[84px] w-[84px]">
+          {creatorName.charAt(0)}
+        </AvatarFallback>
+      </Avatar>
 
-      <div className="flex flex-col gap-2">
-        <h3 className="font-poppins text-2xl font-semibold leading-tight text-neutral-900 dark:text-neutral-100">
+      <div className="flex h-36 flex-col gap-2">
+        <h3 className="line-clamp-1 font-poppins text-3xl font-medium text-zinc-800 dark:text-neutral-100">
           {creatorName}
         </h3>
-        <p className="font-geist text-sm font-normal leading-normal text-neutral-600 dark:text-neutral-400">
+        <p className="line-clamp-3 font-sans text-base font-normal text-zinc-600 dark:text-neutral-400">
           {bio}
         </p>
-        <div className="font-geist text-lg font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
-          {agentsUploaded} agents
-        </div>
+      </div>
+
+      <div className="font-sans text-sm font-medium text-zinc-800 dark:text-neutral-200">
+        {agentsUploaded} agents
       </div>
     </div>
   );

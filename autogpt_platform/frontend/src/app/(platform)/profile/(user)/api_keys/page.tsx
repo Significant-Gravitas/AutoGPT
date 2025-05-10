@@ -2,9 +2,12 @@ import { APIKeysSection } from "@/components/agptui/composite/APIKeySection";
 
 const ApiKeysPage = () => {
   return (
-    <div className="w-full pr-4 pt-24 md:pt-0">
+    <main className="flex-1 space-y-7.5 pb-8">
+      <h1 className="font-poppins text-[1.75rem] font-medium leading-[2.5rem] text-zinc-500">
+        API key
+      </h1>
       <APIKeysSection />
-    </div>
+    </main>
   );
 };
 

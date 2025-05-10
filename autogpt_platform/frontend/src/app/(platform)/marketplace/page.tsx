@@ -149,27 +149,28 @@ export default async function Page({}: {}) {
   const { featuredAgents, topAgents, featuredCreators } = await getStoreData();
 
   return (
-    <div className="mx-auto w-screen max-w-[1360px]">
-      <main className="px-4">
+    <main>
+      <section className="px-4 md:px-10">
         <HeroSection />
-        <FeaturedSection featuredAgents={featuredAgents.agents} />
-        {/* 100px margin because our featured sections button are placed 40px below the container */}
-        <Separator className="mb-6 mt-24" />
+      </section>
+      <FeaturedSection featuredAgents={featuredAgents.agents} />
+      <section className="px-4 md:px-10">
+        {/* Below Separator's mt is 44px as per design; I need to add extra to counter the absolute positioning of the arrows above */}
+        <Separator className="mb-9 mt-18" />
         <AgentsSection
           sectionTitle="Top Agents"
           agents={topAgents.agents as Agent[]}
         />
-        <Separator className="mb-[25px] mt-[60px]" />
+        <Separator className="mb-9 mt-11" />
         <FeaturedCreators
           featuredCreators={featuredCreators.creators as FeaturedCreator[]}
         />
-        <Separator className="mb-[25px] mt-[60px]" />
+        <Separator className="mb-9 mt-11" />
         <BecomeACreator
           title="Become a Creator"
-          description="Join our ever-growing community of hackers and tinkerers"
-          buttonText="Become a Creator"
+          buttonText="Upload your agent"
         />
-      </main>
-    </div>
+      </section>
+    </main>
   );
 }

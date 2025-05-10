@@ -2,11 +2,15 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { CreatorLinks } from "./CreatorLinks";
 
 const meta = {
-  title: "AGPT UI/Creator Links",
+  title: "Agpt Custom UI/marketing/Creator Links",
   component: CreatorLinks,
-  parameters: {
-    layout: "centered",
-  },
+  decorators: [
+    (Story) => (
+      <div className="flex h-screen w-full items-center justify-center p-4">
+        <Story />
+      </div>
+    ),
+  ],
   tags: ["autodocs"],
   argTypes: {
     links: {
@@ -27,22 +31,6 @@ export const Default: Story = {
       "https://github.com/johndoe",
       "https://twitter.com/johndoe",
       "https://medium.com/@johndoe",
-    ],
-  },
-};
-
-export const WebsiteOnly: Story = {
-  args: {
-    links: ["https://example.com"],
-  },
-};
-
-export const SocialLinks: Story = {
-  args: {
-    links: [
-      "https://linkedin.com/in/janedoe",
-      "https://github.com/janedoe",
-      "https://twitter.com/janedoe",
     ],
   },
 };

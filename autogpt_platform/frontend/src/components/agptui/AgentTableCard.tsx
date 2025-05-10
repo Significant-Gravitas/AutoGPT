@@ -50,7 +50,10 @@ export const AgentTableCard: React.FC<AgentTableCardProps> = ({
   };
 
   return (
-    <div className="border-b border-neutral-300 p-4 dark:border-neutral-700">
+    <div
+      className="border-b border-neutral-300 p-4 dark:border-neutral-700"
+      data-testid="agent-table-card"
+    >
       <div className="flex gap-4">
         <div className="relative h-[56px] w-[100px] overflow-hidden rounded-lg bg-[#d9d9d9] dark:bg-neutral-800">
           <Image
@@ -61,10 +64,10 @@ export const AgentTableCard: React.FC<AgentTableCardProps> = ({
           />
         </div>
         <div className="flex-1">
-          <h3 className="text-[15px] font-medium text-neutral-800 dark:text-neutral-200">
+          <h3 className="font-sans text-sm font-medium text-neutral-600">
             {agentName}
           </h3>
-          <p className="line-clamp-2 text-sm text-neutral-600 dark:text-neutral-400">
+          <p className="font-sans text-sm font-normal text-neutral-600">
             {description}
           </p>
         </div>
@@ -76,16 +79,16 @@ export const AgentTableCard: React.FC<AgentTableCardProps> = ({
         </button>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-4">
+      <div className="mt-4 flex flex-wrap items-center gap-4">
         <Status status={status} />
-        <div className="text-sm text-neutral-600 dark:text-neutral-400">
+        <div className="font-sans text-sm font-normal text-neutral-600">
           {dateSubmitted}
         </div>
-        <div className="text-sm text-neutral-600 dark:text-neutral-400">
+        <div className="font-sans text-sm font-normal text-neutral-600">
           {runs.toLocaleString()} runs
         </div>
         <div className="flex items-center gap-1">
-          <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+          <span className="font-sans text-sm font-normal text-neutral-600">
             {rating.toFixed(1)}
           </span>
           <IconStarFilled className="h-4 w-4 text-neutral-800 dark:text-neutral-200" />

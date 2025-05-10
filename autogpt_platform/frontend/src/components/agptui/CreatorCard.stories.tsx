@@ -3,11 +3,15 @@ import { CreatorCard } from "./CreatorCard";
 import { userEvent, within } from "@storybook/test";
 
 const meta = {
-  title: "AGPT UI/Creator Card",
+  title: "Agpt Custom ui/marketing/Creator Card",
   component: CreatorCard,
-  parameters: {
-    layout: "centered",
-  },
+  decorators: [
+    (Story) => (
+      <div className="flex items-center justify-center p-4">
+        <Story />
+      </div>
+    ),
+  ],
   tags: ["autodocs"],
   argTypes: {
     creatorName: { control: "text" },
@@ -15,63 +19,65 @@ const meta = {
     bio: { control: "text" },
     agentsUploaded: { control: "number" },
     onClick: { action: "clicked" },
+    key: { control: "number" },
   },
 } satisfies Meta<typeof CreatorCard>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+const defaultAvatarImage = "testing_avatar.png";
 export const Default: Story = {
   args: {
-    index: 0,
+    key: 0,
     creatorName: "John Doe",
-    creatorImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    creatorImage: defaultAvatarImage,
     bio: "AI enthusiast and developer with a passion for creating innovative agents.",
     agentsUploaded: 15,
     onClick: () => console.log("Default CreatorCard clicked"),
   },
 };
 
-export const NewCreator: Story = {
+export const NoImage: Story = {
   args: {
-    index: 1,
-    creatorName: "Jane Smith",
-    creatorImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-    bio: "Excited to start my journey in AI agent development!",
-    agentsUploaded: 1,
-    onClick: () => console.log("NewCreator CreatorCard clicked"),
+    key: 0,
+    creatorName: "John Doe",
+    creatorImage: "",
+    bio: "AI enthusiast and developer with a passion for creating innovative agents.",
+    agentsUploaded: 15,
+    onClick: () => console.log("NoImage CreatorCard clicked"),
   },
 };
 
-export const ExperiencedCreator: Story = {
+export const LongContent: Story = {
   args: {
-    index: 2,
-    creatorName: "Alex Johnson",
-    creatorImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
-    bio: "Veteran AI researcher with a focus on natural language processing and machine learning.",
-    agentsUploaded: 50,
-    onClick: () => console.log("ExperiencedCreator CreatorCard clicked"),
+    key: 1,
+    creatorName: "Alexandria Rodriguez-Fitzgerald Johnson III",
+    creatorImage: defaultAvatarImage,
+    bio: "Excited to start my journey in AI agent development! I have a background in computer science and machine learning, with a special interest in creating agents that can assist with everyday tasks and solve complex problems efficiently.",
+    agentsUploaded: 500000,
+    onClick: () => console.log("LongName CreatorCard clicked"),
   },
 };
 
-export const WithInteraction: Story = {
+export const TestingInteractions: Story = {
   args: {
-    index: 3,
+    key: 3,
     creatorName: "Sam Brown",
-    creatorImage:
-      "https://framerusercontent.com/images/KCIpxr9f97EGJgpaoqnjKsrOPwI.jpg",
+    creatorImage: defaultAvatarImage,
     bio: "Exploring the frontiers of AI and its applications in everyday life.",
     agentsUploaded: 30,
     onClick: () => console.log("WithInteraction CreatorCard clicked"),
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    const creatorCard = canvas.getByText("Sam Brown");
+    const creatorCard = canvas.getByTestId("creator-card");
 
+    // Test hover state
     await userEvent.hover(creatorCard);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    // Test click interaction
     await userEvent.click(creatorCard);
   },
 };

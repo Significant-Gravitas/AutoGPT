@@ -1,12 +1,14 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { AgentInfo } from "./AgentInfo";
-import { userEvent, within } from "@storybook/test";
 
 const meta = {
-  title: "AGPT UI/Agent Info",
+  title: "Agpt Custom UI/marketing/Agent Info",
   component: AgentInfo,
   parameters: {
-    layout: "centered",
+    layout: {
+      center: true,
+      padding: 0,
+    },
   },
   tags: ["autodocs"],
   argTypes: {
@@ -19,7 +21,15 @@ const meta = {
     categories: { control: "object" },
     lastUpdated: { control: "text" },
     version: { control: "text" },
+    storeListingVersionId: { control: "text" },
   },
+  decorators: [
+    (Story) => (
+      <div className="flex items-center justify-center p-4">
+        <Story />
+      </div>
+    ),
+  ],
 } satisfies Meta<typeof AgentInfo>;
 
 export default meta;
@@ -30,10 +40,10 @@ export const Default: Story = {
     user: null,
     libraryAgent: null,
     name: "AI Video Generator",
-    storeListingVersionId: "123",
+    storeListingVersionId: "123abc456def",
     creator: "Toran Richards",
     shortDescription:
-      "Transform ideas into breathtaking images with this AI-powered Image Generator.",
+      "Transform ideas into breathtaking videos with this AI-powered Video Generator.",
     longDescription: `Create Viral-Ready Content in Seconds! Transform trending topics into engaging videos with this cutting-edge AI Video Generator. Perfect for content creators, social media managers, and marketers looking to quickly produce high-quality content.
 
 Key features include:
@@ -51,87 +61,52 @@ Key features include:
   },
 };
 
-export const LowRating: Story = {
+export const LongContent: Story = {
   args: {
     ...Default.args,
-    name: "Data Analyzer",
-    creator: "DataTech",
-    shortDescription:
-      "Analyze complex datasets with machine learning algorithms",
-    longDescription:
-      "A comprehensive data analysis tool that leverages machine learning to provide deep insights into your datasets. Currently in beta testing phase.",
-    rating: 2.7,
-    runs: 5000,
-    categories: ["Data Analysis", "Machine Learning"],
-    lastUpdated: "1 week ago",
-    version: "0.9.5",
+    name: "Super Advanced Ultra-Intelligent Universal Comprehensive AI-Powered Video Generator Pro Plus Premium Enterprise Edition With Extended Capabilities",
+    creator:
+      "Global Artificial Intelligence Research and Development Consortium for Advanced Technology Implementation and Enterprise Solutions",
+    longDescription: `Create Viral-Ready Content in Seconds! Transform trending topics into engaging videos with this cutting-edge AI Video Generator. Perfect for content creators, social media managers, and marketers looking to quickly produce high-quality content.
+
+Our advanced AI algorithms analyze current trends and viewer preferences to generate videos that are more likely to engage your target audience and achieve better conversion rates. The system adapts to your brand voice and style guidelines to maintain consistency across all your content.
+
+Key features include:
+- Customizable video output with adjustable parameters for length, style, pacing, and transition effects
+- 15+ pre-made templates for different content types including explainer videos, product demonstrations, social media stories, and advertisements
+- Auto scene detection that intelligently segments your content into engaging chapters
+- Smart text-to-speech with over 50 natural-sounding voices in multiple languages and dialects
+- Multiple export formats optimized for different platforms (YouTube, Instagram, TikTok, Facebook, Twitter)
+- SEO-optimized suggestions for titles, descriptions, and tags to maximize discoverability
+- Analytics dashboard to track performance metrics and audience engagement
+- Collaborative workspace for team projects with permission management
+- Regular updates with new features and improvements based on user feedback
+
+The AI Video Generator integrates seamlessly with your existing workflow and content management systems. You can import assets from Adobe Creative Suite, Canva, and other popular design tools. Our cloud-based processing ensures fast rendering without taxing your local system resources.
+
+With our enterprise plan, you'll get priority support, custom template development, and advanced branding options to ensure your videos stand out in today's crowded digital landscape.`,
+
+    categories: [
+      "Video",
+      "Content Creation",
+      "Social Media",
+      "Marketing",
+      "Artificial Intelligence",
+      "Machine Learning",
+      "Neural Networks",
+      "Deep Learning",
+      "Computer Vision",
+      "NLP",
+      "Automation",
+      "Productivity Tools",
+    ],
+    runs: 1000000000,
   },
 };
 
-export const HighRuns: Story = {
+export const NoCategories: Story = {
   args: {
     ...Default.args,
-    name: "Code Assistant",
-    creator: "DevAI",
-    shortDescription:
-      "Get AI-powered coding help for various programming languages",
-    longDescription:
-      "An advanced AI coding assistant that supports multiple programming languages and frameworks. Features include code completion, refactoring suggestions, and bug detection.",
-    rating: 4.8,
-    runs: 1000000,
-    categories: ["Programming", "AI", "Developer Tools"],
-    lastUpdated: "1 day ago",
-    version: "2.1.3",
-  },
-};
-
-export const WithInteraction: Story = {
-  args: {
-    ...Default.args,
-    name: "Task Planner",
-    creator: "Productivity AI",
-    shortDescription: "Plan and organize your tasks efficiently with AI",
-    longDescription:
-      "An intelligent task management system that helps you organize, prioritize, and complete your tasks more efficiently. Features smart scheduling and AI-powered suggestions.",
-    rating: 4.2,
-    runs: 50000,
-    categories: ["Productivity", "Task Management", "AI"],
-    lastUpdated: "3 days ago",
-    version: "1.5.2",
-  },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-
-    // Test run agent button
-    const runButton = canvas.getByText("Run agent");
-    await userEvent.hover(runButton);
-    await userEvent.click(runButton);
-
-    // Test rating interaction
-    const ratingStars = canvas.getAllByLabelText(/Star Icon/);
-    await userEvent.hover(ratingStars[3]);
-    await userEvent.click(ratingStars[3]);
-
-    // Test category interaction
-    const category = canvas.getByText("Productivity");
-    await userEvent.hover(category);
-    await userEvent.click(category);
-  },
-};
-
-export const LongDescription: Story = {
-  args: {
-    ...Default.args,
-    name: "AI Writing Assistant",
-    creator: "WordCraft AI",
-    shortDescription:
-      "Enhance your writing with our advanced AI-powered assistant.",
-    longDescription:
-      "It offers real-time suggestions for grammar, style, and tone, helps with research and fact-checking, and can even generate content ideas based on your input.",
-    rating: 4.7,
-    runs: 75000,
-    categories: ["Writing", "AI", "Content Creation"],
-    lastUpdated: "5 days ago",
-    version: "3.0.1",
+    categories: [],
   },
 };
