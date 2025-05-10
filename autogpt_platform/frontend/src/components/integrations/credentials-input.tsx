@@ -56,6 +56,7 @@ export const providerIcons: Record<
   CredentialsProviderName,
   React.FC<{ className?: string }>
 > = {
+  airtable: fallbackIcon,
   anthropic: fallbackIcon,
   apollo: fallbackIcon,
   e2b: fallbackIcon,
@@ -84,6 +85,7 @@ export const providerIcons: Record<
   reddit: fallbackIcon,
   fal: fallbackIcon,
   revid: fallbackIcon,
+  proxycurl: fallbackIcon,
   twitter: FaTwitter,
   unreal_speech: fallbackIcon,
   exa: fallbackIcon,
