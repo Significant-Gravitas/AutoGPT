@@ -109,29 +109,58 @@ class LogMetadata:
 
     def info(self, msg: str, **extra):
         msg = self._wrap(msg, **extra)
-        logger.info(msg, extra={"json_fields": {**self.metadata, **extra}})
+        truncated_extra = self._truncate_large_data(extra)
+        truncated_metadata = self._truncate_large_data(self.metadata)
+        logger.info(
+            msg, extra={"json_fields": {**truncated_metadata, **truncated_extra}}
+        )
 
     def warning(self, msg: str, **extra):
         msg = self._wrap(msg, **extra)
-        logger.warning(msg, extra={"json_fields": {**self.metadata, **extra}})
+        truncated_extra = self._truncate_large_data(extra)
+        truncated_metadata = self._truncate_large_data(self.metadata)
+        logger.warning(
+            msg, extra={"json_fields": {**truncated_metadata, **truncated_extra}}
+        )
 
     def error(self, msg: str, **extra):
         msg = self._wrap(msg, **extra)
-        logger.error(msg, extra={"json_fields": {**self.metadata, **extra}})
+        truncated_extra = self._truncate_large_data(extra)
+        truncated_metadata = self._truncate_large_data(self.metadata)
+        logger.error(
+            msg, extra={"json_fields": {**truncated_metadata, **truncated_extra}}
+        )
 
     def debug(self, msg: str, **extra):
         msg = self._wrap(msg, **extra)
-        logger.debug(msg, extra={"json_fields": {**self.metadata, **extra}})
+        truncated_extra = self._truncate_large_data(extra)
+        truncated_metadata = self._truncate_large_data(self.metadata)
+        logger.debug(
+            msg, extra={"json_fields": {**truncated_metadata, **truncated_extra}}
+        )
 
     def exception(self, msg: str, **extra):
         msg = self._wrap(msg, **extra)
-        logger.exception(msg, extra={"json_fields": {**self.metadata, **extra}})
+        truncated_extra = self._truncate_large_data(extra)
+        truncated_metadata = self._truncate_large_data(self.metadata)
+        logger.exception(
+            msg, extra={"json_fields": {**truncated_metadata, **truncated_extra}}
+        )
 
     def _wrap(self, msg: str, **extra):
         extra_msg = str(extra or "")
         if len(extra_msg) > 1000:
             extra_msg = extra_msg[:1000] + "..."
         return f"{self.prefix} {msg} {extra_msg}"
+
+    def _truncate_large_data(self, data, max_size=10000):
+        if isinstance(data, dict):
+            return {k: self._truncate_large_data(v, max_size) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self._truncate_large_data(v, max_size) for v in data[:100]]
+        elif isinstance(data, str) and len(data) > max_size:
+            return data[:max_size] + "... [truncated]"
+        return data
 
 
 T = TypeVar("T")
