@@ -12,7 +12,7 @@ export default function Home() {
 
   useEffect(() => {
     completeStep("BUILDER_OPEN");
-  }, []);
+  }, [completeStep]);
 
   return (
     <FlowEditor

@@ -11,7 +11,7 @@ import { PopoverClose } from "@radix-ui/react-popover";
 import { TaskGroups } from "../onboarding/WalletTaskGroups";
 import { ScrollArea } from "../ui/scroll-area";
 import { useOnboarding } from "../onboarding/onboarding-provider";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import * as party from "party-js";
 import WalletRefill from "./WalletRefill";
@@ -36,11 +36,15 @@ export default function Wallet() {
     fetchCredits();
   }, [state?.notificationDot, updateState, fetchCredits]);
 
-  const fadeOut = new party.ModuleBuilder()
-    .drive("opacity")
-    .by((t) => 1 - t)
-    .through("lifetime")
-    .build();
+  const fadeOut = useMemo(
+    () =>
+      new party.ModuleBuilder()
+        .drive("opacity")
+        .by((t) => 1 - t)
+        .through("lifetime")
+        .build(),
+    [],
+  );
 
   // Confetti effect on the wallet button
   useEffect(() => {
@@ -74,7 +78,14 @@ export default function Wallet() {
         });
       }, 800);
     }
-  }, [state?.completedSteps, state?.notified]);
+  }, [
+    state?.completedSteps,
+    state?.notified,
+    fadeOut,
+    fetchCredits,
+    stepsLength,
+    walletRef,
+  ]);
 
   // Wallet flash on credits change
   useEffect(() => {
@@ -89,7 +100,7 @@ export default function Wallet() {
     setTimeout(() => {
       setFlash(false);
     }, 300);
-  }, [credits]);
+  }, [credits, prevCredits]);
 
   return (
     <Popover>

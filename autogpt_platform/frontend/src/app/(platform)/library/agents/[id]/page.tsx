@@ -102,7 +102,7 @@ export default function AgentRunsPage(): React.ReactElement {
         completedSteps: [...state.completedSteps, "GET_RESULTS"],
       });
     }
-  }, [selectedRun, state]);
+  }, [selectedRun, state, updateState]);
 
   const fetchAgents = useCallback(() => {
     api.getLibraryAgent(agentID).then((agent) => {

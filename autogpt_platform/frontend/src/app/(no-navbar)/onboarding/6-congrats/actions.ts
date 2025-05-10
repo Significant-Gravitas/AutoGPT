@@ -6,9 +6,10 @@ import { redirect } from "next/navigation";
 export async function finishOnboarding() {
   const api = new BackendAPI();
   const onboarding = await api.getUserOnboarding();
-  const listingId = onboarding?.selectedStoreListingVersionId;
-  if (listingId) {
-    const libraryAgent = await api.addMarketplaceAgentToLibrary(listingId);
+  const libraryAgent = await api.getLibraryAgentByStoreListingVersionID(
+    onboarding?.selectedStoreListingVersionId || "",
+  );
+  if (libraryAgent) {
     revalidatePath(`/library/agents/${libraryAgent.id}`, "layout");
     redirect(`/library/agents/${libraryAgent.id}`);
   } else {
