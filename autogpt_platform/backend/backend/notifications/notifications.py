@@ -37,6 +37,7 @@ from backend.data.rabbitmq import (
 )
 from backend.data.user import generate_unsubscribe_link
 from backend.notifications.email import EmailSender
+from backend.util.metrics import discord_send_alert
 from backend.util.service import (
     AppService,
     AppServiceClient,
@@ -383,6 +384,10 @@ class NotificationManager(AppService):
                 "notification_types": [nt.value for nt in notification_types],
                 "timestamp": datetime.now(tz=timezone.utc).isoformat(),
             }
+
+    @expose
+    def discord_system_alert(self, content: str):
+        discord_send_alert(content)
 
     def _queue_scheduled_notification(self, event: SummaryParamsEventModel):
         """Queue a scheduled notification - exposed method for other services to call"""
@@ -785,3 +790,4 @@ class NotificationManagerClient(AppServiceClient):
 
     process_existing_batches = NotificationManager.process_existing_batches
     queue_weekly_summary = NotificationManager.queue_weekly_summary
+    discord_system_alert = NotificationManager.discord_system_alert

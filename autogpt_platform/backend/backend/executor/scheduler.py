@@ -20,7 +20,7 @@ from backend.data.block import BlockInput
 from backend.data.execution import ExecutionStatus
 from backend.executor import utils as execution_utils
 from backend.notifications.notifications import NotificationManagerClient
-from backend.util.metrics import discord_send_alert, sentry_capture_error
+from backend.util.metrics import sentry_capture_error
 from backend.util.service import (
     AppService,
     AppServiceClient,
@@ -112,7 +112,7 @@ def report_late_executions() -> str:
     )
     msg = str(error)
     sentry_capture_error(error)
-    discord_send_alert(msg)
+    get_notification_client().discord_system_alert(msg)
     return msg
 
 
