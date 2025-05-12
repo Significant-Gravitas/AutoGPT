@@ -378,7 +378,7 @@ class AIAdMakerVideoCreatorBlock(Block, _RevidMixin):
 
     def __init__(self):
         super().__init__(
-            id="58bd2a19-115d-4fd1-8ca4-13b9e37fa6a0",
+            id="3e3fd845-000e-457f-9f50-9f2f9e278bbd",
             description="Creates an AI‑generated 30‑second advert (text + images)",
             categories={BlockCategory.MARKETING, BlockCategory.AI},
             input_schema=AIAdMakerVideoCreatorBlock.Input,
@@ -502,7 +502,7 @@ class AIPromptToVideoCreatorBlock(Block, _RevidMixin):
 
     def __init__(self):
         super().__init__(
-            id="bda7ca70-d146-4fe0-a851-68264fc7b734",
+            id="46f4099c-ad01-4d79-874c-37a24c937ba3",
             description="Creates an AI video from a single prompt (no line‑breaking script).",
             categories={BlockCategory.AI, BlockCategory.SOCIAL},
             input_schema=AIPromptToVideoCreatorBlock.Input,
@@ -617,7 +617,7 @@ class AIScreenshotToVideoAdBlock(Block, _RevidMixin):
 
     def __init__(self):
         super().__init__(
-            id="0f3e4635-e810-43d9-9e81-49e6f4e83b7c",
+            id="9f68982c-3af6-4923-9a97-b50a8c8d2234",
             description="Turns a screenshot into an engaging, avatar‑narrated video advert.",
             categories={BlockCategory.AI, BlockCategory.MARKETING},
             input_schema=AIScreenshotToVideoAdBlock.Input,
