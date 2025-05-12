@@ -19,7 +19,6 @@ from ._api import (
     ProfilePictureResponse,
     ProxycurlClient,
     RoleLookupResponse,
-    SimilarProfile,
     UseCache,
 )
 from ._auth import TEST_CREDENTIALS, TEST_CREDENTIALS_INPUT, ProxycurlCredentialsInput
@@ -121,7 +120,48 @@ class ProxycurlProfileFetchBlock(Block):
                 )
             ],
             test_credentials=TEST_CREDENTIALS,
+            test_mock={
+                "_fetch_profile": lambda *args, **kwargs: PersonProfileResponse(
+                    public_identifier="williamhgates",
+                    full_name="Bill Gates",
+                    occupation="Co-chair at Bill & Melinda Gates Foundation",
+                    experiences=[
+                        Experience(
+                            company="Bill & Melinda Gates Foundation",
+                            title="Co-chair",
+                            starts_at={"year": 2000},
+                        )
+                    ],
+                ),
+            },
         )
+
+    @staticmethod
+    def _fetch_profile(
+        credentials: APIKeyCredentials,
+        linkedin_url: str,
+        fallback_to_cache: FallbackToCache = FallbackToCache.ON_ERROR,
+        use_cache: UseCache = UseCache.IF_PRESENT,
+        include_skills: bool = False,
+        include_inferred_salary: bool = False,
+        include_personal_email: bool = False,
+        include_personal_contact_number: bool = False,
+        include_social_media: bool = False,
+        include_extra: bool = False,
+    ):
+        client = ProxycurlClient(credentials)
+        profile = client.fetch_profile(
+            linkedin_url=linkedin_url,
+            fallback_to_cache=fallback_to_cache,
+            use_cache=use_cache,
+            include_skills=include_skills,
+            include_inferred_salary=include_inferred_salary,
+            include_personal_email=include_personal_email,
+            include_personal_contact_number=include_personal_contact_number,
+            include_social_media=include_social_media,
+            include_extra=include_extra,
+        )
+        return profile
 
     def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
@@ -138,8 +178,8 @@ class ProxycurlProfileFetchBlock(Block):
             Tuples of (output_name, output_value)
         """
         try:
-            client = ProxycurlClient(credentials=credentials)
-            profile = client.fetch_profile(
+            profile = self._fetch_profile(
+                credentials=credentials,
                 linkedin_url=input_data.linkedin_url,
                 fallback_to_cache=input_data.fallback_to_cache,
                 use_cache=input_data.use_cache,
@@ -167,11 +207,11 @@ class ProxycurlPersonLookupBlock(Block):
             placeholder="John",
             advanced=False,
         )
-        last_name: str | None= SchemaField(
+        last_name: str | None = SchemaField(
             description="Person's last name",
             placeholder="Doe",
             default=None,
-            advanced=False
+            advanced=False,
         )
         company_domain: str = SchemaField(
             description="Domain of the company they work for (optional)",
@@ -226,21 +266,51 @@ class ProxycurlPersonLookupBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
-                # (
-                #     "lookup_result",
-                #     # PersonLookupResponse(
-                #     #     url="https://www.linkedin.com/in/williamhgates/",
-                #     #     similar_profiles=[
-                #     #         SimilarProfile(
-                #     #             similarity=0.95,
-                #     #             linkedin_profile_url="https://www.linkedin.com/in/billgates/",
-                #     #         )
-                #     #     ],
-                #     # ),
-                # )
+                (
+                    "lookup_result",
+                    PersonLookupResponse(
+                        url="https://www.linkedin.com/in/williamhgates/",
+                        name_similarity_score=0.93,
+                        company_similarity_score=0.83,
+                        title_similarity_score=0.3,
+                        location_similarity_score=0.20,
+                    ),
+                )
             ],
             test_credentials=TEST_CREDENTIALS,
+            test_mock={
+                "_lookup_person": lambda *args, **kwargs: PersonLookupResponse(
+                    url="https://www.linkedin.com/in/williamhgates/",
+                    name_similarity_score=0.93,
+                    company_similarity_score=0.83,
+                    title_similarity_score=0.3,
+                    location_similarity_score=0.20,
+                )
+            },
         )
+
+    @staticmethod
+    def _lookup_person(
+        credentials: APIKeyCredentials,
+        first_name: str,
+        company_domain: str,
+        last_name: str | None = None,
+        location: Optional[str] = None,
+        title: Optional[str] = None,
+        include_similarity_checks: bool = False,
+        enrich_profile: bool = False,
+    ):
+        client = ProxycurlClient(credentials=credentials)
+        lookup_result = client.lookup_person(
+            first_name=first_name,
+            last_name=last_name,
+            company_domain=company_domain,
+            location=location,
+            title=title,
+            include_similarity_checks=include_similarity_checks,
+            enrich_profile=enrich_profile,
+        )
+        return lookup_result
 
     def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
@@ -257,8 +327,8 @@ class ProxycurlPersonLookupBlock(Block):
             Tuples of (output_name, output_value)
         """
         try:
-            client = ProxycurlClient(credentials=credentials)
-            lookup_result = client.lookup_person(
+            lookup_result = self._lookup_person(
+                credentials=credentials,
                 first_name=input_data.first_name,
                 last_name=input_data.last_name,
                 company_domain=input_data.company_domain,
@@ -327,7 +397,27 @@ class ProxycurlRoleLookupBlock(Block):
                 )
             ],
             test_credentials=TEST_CREDENTIALS,
+            test_mock={
+                "_lookup_role": lambda *args, **kwargs: RoleLookupResponse(
+                    linkedin_profile_url="https://www.linkedin.com/in/williamhgates/",
+                ),
+            },
         )
+
+    @staticmethod
+    def _lookup_role(
+        credentials: APIKeyCredentials,
+        role: str,
+        company_name: str,
+        enrich_profile: bool = False,
+    ):
+        client = ProxycurlClient(credentials=credentials)
+        role_lookup_result = client.lookup_role(
+            role=role,
+            company_name=company_name,
+            enrich_profile=enrich_profile,
+        )
+        return role_lookup_result
 
     def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
@@ -344,8 +434,8 @@ class ProxycurlRoleLookupBlock(Block):
             Tuples of (output_name, output_value)
         """
         try:
-            client = ProxycurlClient(credentials=credentials)
-            role_lookup_result = client.lookup_role(
+            role_lookup_result = self._lookup_role(
+                credentials=credentials,
                 role=input_data.role,
                 company_name=input_data.company_name,
                 enrich_profile=input_data.enrich_profile,
@@ -399,7 +489,20 @@ class ProxycurlProfilePictureBlock(Block):
                 )
             ],
             test_credentials=TEST_CREDENTIALS,
+            test_mock={
+                "_get_profile_picture": lambda *args, **kwargs: ProfilePictureResponse(
+                    profile_picture_url="https://media.licdn.com/dms/image/C4D03AQFj-xjuXrLFSQ/profile-displayphoto-shrink_800_800/0/1576881858598?e=1686787200&v=beta&t=zrQC76QwsfQQIWthfOnrKRBMZ5D-qIAvzLXLmWgYvTk"
+                ),
+            },
         )
+
+    @staticmethod
+    def _get_profile_picture(credentials: APIKeyCredentials, linkedin_profile_url: str):
+        client = ProxycurlClient(credentials=credentials)
+        profile_picture = client.get_profile_picture(
+            linkedin_profile_url=linkedin_profile_url,
+        )
+        return profile_picture
 
     def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
@@ -416,8 +519,8 @@ class ProxycurlProfilePictureBlock(Block):
             Tuples of (output_name, output_value)
         """
         try:
-            client = ProxycurlClient(credentials=credentials)
-            profile_picture = client.get_profile_picture(
+            profile_picture = self._get_profile_picture(
+                credentials=credentials,
                 linkedin_profile_url=input_data.linkedin_profile_url,
             )
             yield "profile_picture", profile_picture
