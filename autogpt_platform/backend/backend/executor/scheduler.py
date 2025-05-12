@@ -20,7 +20,7 @@ from backend.data.block import BlockInput
 from backend.data.execution import ExecutionStatus
 from backend.executor import utils as execution_utils
 from backend.notifications.notifications import NotificationManagerClient
-from backend.util.metrics import sentry_alert
+from backend.util.metrics import sentry_capture_error
 from backend.util.service import (
     AppService,
     AppServiceClient,
@@ -110,9 +110,10 @@ def report_late_executions() -> str:
         f"Graph has been queued for more than {config.execution_late_notification_threshold_secs} seconds. "
         "Please check the executor status."
     )
-    logger.error(error)
-    sentry_alert(error)
-    return str(error)
+    msg = str(error)
+    sentry_capture_error(error)
+    get_notification_client().discord_system_alert(msg)
+    return msg
 
 
 def process_existing_batches(**kwargs):
