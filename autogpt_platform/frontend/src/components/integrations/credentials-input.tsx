@@ -97,14 +97,14 @@ export const providerIcons: Record<
 
 export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
   | {
-    success: true;
-    code: string;
-    state: string;
-  }
+      success: true;
+      code: string;
+      state: string;
+    }
   | {
-    success: false;
-    message: string;
-  }
+      success: false;
+      message: string;
+    }
 );
 
 export const CredentialsInput: FC<{
@@ -120,312 +120,313 @@ export const CredentialsInput: FC<{
   onSelectCredentials,
   siblingInputs,
 }) => {
-    const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
-      useState(false);
-    const [
-      isUserPasswordCredentialsModalOpen,
-      setUserPasswordCredentialsModalOpen,
-    ] = useState(false);
-    const [isOAuth2FlowInProgress, setOAuth2FlowInProgress] = useState(false);
-    const [oAuthPopupController, setOAuthPopupController] =
-      useState<AbortController | null>(null);
-    const [oAuthError, setOAuthError] = useState<string | null>(null);
+  const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
+    useState(false);
+  const [
+    isUserPasswordCredentialsModalOpen,
+    setUserPasswordCredentialsModalOpen,
+  ] = useState(false);
+  const [isOAuth2FlowInProgress, setOAuth2FlowInProgress] = useState(false);
+  const [oAuthPopupController, setOAuthPopupController] =
+    useState<AbortController | null>(null);
+  const [oAuthError, setOAuthError] = useState<string | null>(null);
 
-    const api = useBackendAPI();
-    const credentials = useCredentials(schema, siblingInputs);
+  const api = useBackendAPI();
+  const credentials = useCredentials(schema, siblingInputs);
 
-    // Deselect credentials if they do not exist (e.g. provider was changed)
-    useEffect(() => {
-      if (!credentials || !("savedCredentials" in credentials)) return;
-      if (
-        selectedCredentials &&
-        !credentials.savedCredentials.some((c) => c.id === selectedCredentials.id)
-      ) {
-        onSelectCredentials(undefined);
-      }
-    }, [credentials, selectedCredentials, onSelectCredentials]);
-
-    const singleCredential = useMemo(() => {
-      if (!credentials || !("savedCredentials" in credentials)) return null;
-
-      if (credentials.savedCredentials.length === 1)
-        return credentials.savedCredentials[0];
-
-      return null;
-    }, [credentials]);
-
-    // If only 1 credential is available, auto-select it and hide this input
-    useEffect(() => {
-      if (singleCredential && !selectedCredentials) {
-        onSelectCredentials(singleCredential);
-      }
-    }, [singleCredential, selectedCredentials, onSelectCredentials]);
-
-    if (!credentials || credentials.isLoading || singleCredential) {
-      return null;
+  // Deselect credentials if they do not exist (e.g. provider was changed)
+  useEffect(() => {
+    if (!credentials || !("savedCredentials" in credentials)) return;
+    if (
+      selectedCredentials &&
+      !credentials.savedCredentials.some((c) => c.id === selectedCredentials.id)
+    ) {
+      onSelectCredentials(undefined);
     }
+  }, [credentials, selectedCredentials, onSelectCredentials]);
 
-    const {
+  const singleCredential = useMemo(() => {
+    if (!credentials || !("savedCredentials" in credentials)) return null;
+
+    if (credentials.savedCredentials.length === 1)
+      return credentials.savedCredentials[0];
+
+    return null;
+  }, [credentials]);
+
+  // If only 1 credential is available, auto-select it and hide this input
+  useEffect(() => {
+    if (singleCredential && !selectedCredentials) {
+      onSelectCredentials(singleCredential);
+    }
+  }, [singleCredential, selectedCredentials, onSelectCredentials]);
+
+  if (!credentials || credentials.isLoading || singleCredential) {
+    return null;
+  }
+
+  const {
+    provider,
+    providerName,
+    supportsApiKey,
+    supportsOAuth2,
+    supportsUserPassword,
+    savedCredentials,
+    oAuthCallback,
+  } = credentials;
+
+  async function handleOAuthLogin() {
+    setOAuthError(null);
+    const { login_url, state_token } = await api.oAuthLogin(
       provider,
-      providerName,
-      supportsApiKey,
-      supportsOAuth2,
-      supportsUserPassword,
-      savedCredentials,
-      oAuthCallback,
-    } = credentials;
+      schema.credentials_scopes,
+    );
+    setOAuth2FlowInProgress(true);
+    const popup = window.open(login_url, "_blank", "popup=true");
 
-    async function handleOAuthLogin() {
-      setOAuthError(null);
-      const { login_url, state_token } = await api.oAuthLogin(
-        provider,
-        schema.credentials_scopes,
+    if (!popup) {
+      throw new Error(
+        "Failed to open popup window. Please allow popups for this site.",
       );
-      setOAuth2FlowInProgress(true);
-      const popup = window.open(login_url, "_blank", "popup=true");
+    }
 
-      if (!popup) {
-        throw new Error(
-          "Failed to open popup window. Please allow popups for this site.",
-        );
+    const controller = new AbortController();
+    setOAuthPopupController(controller);
+    controller.signal.onabort = () => {
+      console.debug("OAuth flow aborted");
+      setOAuth2FlowInProgress(false);
+      popup.close();
+    };
+
+    const handleMessage = async (e: MessageEvent<OAuthPopupResultMessage>) => {
+      console.debug("Message received:", e.data);
+      if (
+        typeof e.data != "object" ||
+        !("message_type" in e.data) ||
+        e.data.message_type !== "oauth_popup_result"
+      ) {
+        console.debug("Ignoring irrelevant message");
+        return;
       }
 
-      const controller = new AbortController();
-      setOAuthPopupController(controller);
-      controller.signal.onabort = () => {
-        console.debug("OAuth flow aborted");
+      if (!e.data.success) {
+        console.error("OAuth flow failed:", e.data.message);
+        setOAuthError(`OAuth flow failed: ${e.data.message}`);
         setOAuth2FlowInProgress(false);
-        popup.close();
-      };
-
-      const handleMessage = async (e: MessageEvent<OAuthPopupResultMessage>) => {
-        console.debug("Message received:", e.data);
-        if (
-          typeof e.data != "object" ||
-          !("message_type" in e.data) ||
-          e.data.message_type !== "oauth_popup_result"
-        ) {
-          console.debug("Ignoring irrelevant message");
-          return;
-        }
-
-        if (!e.data.success) {
-          console.error("OAuth flow failed:", e.data.message);
-          setOAuthError(`OAuth flow failed: ${e.data.message}`);
-          setOAuth2FlowInProgress(false);
-          return;
-        }
-
-        if (e.data.state !== state_token) {
-          console.error("Invalid state token received");
-          setOAuthError("Invalid state token received");
-          setOAuth2FlowInProgress(false);
-          return;
-        }
-
-        try {
-          console.debug("Processing OAuth callback");
-          const credentials = await oAuthCallback(e.data.code, e.data.state);
-          console.debug("OAuth callback processed successfully");
-          onSelectCredentials({
-            id: credentials.id,
-            type: "oauth2",
-            title: credentials.title,
-            provider,
-          });
-        } catch (error) {
-          console.error("Error in OAuth callback:", error);
-          setOAuthError(
-            // type of error is unkown so we need to use String(error)
-            `Error in OAuth callback: ${error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        } finally {
-          console.debug("Finalizing OAuth flow");
-          setOAuth2FlowInProgress(false);
-          controller.abort("success");
-        }
-      };
-
-      console.debug("Adding message event listener");
-      window.addEventListener("message", handleMessage, {
-        signal: controller.signal,
-      });
-
-      setTimeout(
-        () => {
-          console.debug("OAuth flow timed out");
-          controller.abort("timeout");
-          setOAuth2FlowInProgress(false);
-          setOAuthError("OAuth flow timed out");
-        },
-        5 * 60 * 1000,
-      );
-    }
-
-    const ProviderIcon = providerIcons[provider];
-    const modals = (
-      <>
-        {supportsApiKey && (
-          <APIKeyCredentialsModal
-            schema={schema}
-            open={isAPICredentialsModalOpen}
-            onClose={() => setAPICredentialsModalOpen(false)}
-            onCredentialsCreate={(credsMeta) => {
-              onSelectCredentials(credsMeta);
-              setAPICredentialsModalOpen(false);
-            }}
-            siblingInputs={siblingInputs}
-          />
-        )}
-        {supportsOAuth2 && (
-          <OAuth2FlowWaitingModal
-            open={isOAuth2FlowInProgress}
-            onClose={() => oAuthPopupController?.abort("canceled")}
-            providerName={providerName}
-          />
-        )}
-        {supportsUserPassword && (
-          <UserPasswordCredentialsModal
-            schema={schema}
-            open={isUserPasswordCredentialsModalOpen}
-            onClose={() => setUserPasswordCredentialsModalOpen(false)}
-            onCredentialsCreate={(creds) => {
-              onSelectCredentials(creds);
-              setUserPasswordCredentialsModalOpen(false);
-            }}
-            siblingInputs={siblingInputs}
-          />
-        )}
-      </>
-    );
-
-    const fieldHeader = (
-      <div className="mb-2 flex gap-1">
-        <span className="text-m green text-gray-900">
-          {providerName} Credentials
-        </span>
-        <SchemaTooltip description={schema.description} />
-      </div>
-    );
-
-    // No saved credentials yet
-    if (savedCredentials.length === 0) {
-      return (
-        <div>
-          {fieldHeader}
-
-          <div className={cn("flex flex-row space-x-2", className)}>
-            {supportsOAuth2 && (
-              <Button onClick={handleOAuthLogin}>
-                <ProviderIcon className="mr-2 h-4 w-4" />
-                {"Sign in with " + providerName}
-              </Button>
-            )}
-            {supportsApiKey && (
-              <Button onClick={() => setAPICredentialsModalOpen(true)}>
-                <ProviderIcon className="mr-2 h-4 w-4" />
-                Enter API key
-              </Button>
-            )}
-            {supportsUserPassword && (
-              <Button onClick={() => setUserPasswordCredentialsModalOpen(true)}>
-                <ProviderIcon className="mr-2 h-4 w-4" />
-                Enter username and password
-              </Button>
-            )}
-          </div>
-          {modals}
-          {oAuthError && (
-            <div className="mt-2 text-red-500">Error: {oAuthError}</div>
-          )}
-        </div>
-      );
-    }
-
-    function handleValueChange(newValue: string) {
-      if (newValue === "sign-in") {
-        // Trigger OAuth2 sign in flow
-        handleOAuthLogin();
-      } else if (newValue === "add-api-key") {
-        // Open API key dialog
-        setAPICredentialsModalOpen(true);
-      } else {
-        const selectedCreds = savedCredentials.find((c) => c.id == newValue)!;
-
-        onSelectCredentials({
-          id: selectedCreds.id,
-          type: selectedCreds.type,
-          provider: provider,
-          // title: customTitle, // TODO: add input for title
-        });
+        return;
       }
-    }
 
-    // Saved credentials exist
+      if (e.data.state !== state_token) {
+        console.error("Invalid state token received");
+        setOAuthError("Invalid state token received");
+        setOAuth2FlowInProgress(false);
+        return;
+      }
+
+      try {
+        console.debug("Processing OAuth callback");
+        const credentials = await oAuthCallback(e.data.code, e.data.state);
+        console.debug("OAuth callback processed successfully");
+        onSelectCredentials({
+          id: credentials.id,
+          type: "oauth2",
+          title: credentials.title,
+          provider,
+        });
+      } catch (error) {
+        console.error("Error in OAuth callback:", error);
+        setOAuthError(
+          // type of error is unkown so we need to use String(error)
+          `Error in OAuth callback: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      } finally {
+        console.debug("Finalizing OAuth flow");
+        setOAuth2FlowInProgress(false);
+        controller.abort("success");
+      }
+    };
+
+    console.debug("Adding message event listener");
+    window.addEventListener("message", handleMessage, {
+      signal: controller.signal,
+    });
+
+    setTimeout(
+      () => {
+        console.debug("OAuth flow timed out");
+        controller.abort("timeout");
+        setOAuth2FlowInProgress(false);
+        setOAuthError("OAuth flow timed out");
+      },
+      5 * 60 * 1000,
+    );
+  }
+
+  const ProviderIcon = providerIcons[provider];
+  const modals = (
+    <>
+      {supportsApiKey && (
+        <APIKeyCredentialsModal
+          schema={schema}
+          open={isAPICredentialsModalOpen}
+          onClose={() => setAPICredentialsModalOpen(false)}
+          onCredentialsCreate={(credsMeta) => {
+            onSelectCredentials(credsMeta);
+            setAPICredentialsModalOpen(false);
+          }}
+          siblingInputs={siblingInputs}
+        />
+      )}
+      {supportsOAuth2 && (
+        <OAuth2FlowWaitingModal
+          open={isOAuth2FlowInProgress}
+          onClose={() => oAuthPopupController?.abort("canceled")}
+          providerName={providerName}
+        />
+      )}
+      {supportsUserPassword && (
+        <UserPasswordCredentialsModal
+          schema={schema}
+          open={isUserPasswordCredentialsModalOpen}
+          onClose={() => setUserPasswordCredentialsModalOpen(false)}
+          onCredentialsCreate={(creds) => {
+            onSelectCredentials(creds);
+            setUserPasswordCredentialsModalOpen(false);
+          }}
+          siblingInputs={siblingInputs}
+        />
+      )}
+    </>
+  );
+
+  const fieldHeader = (
+    <div className="mb-2 flex gap-1">
+      <span className="text-m green text-gray-900">
+        {providerName} Credentials
+      </span>
+      <SchemaTooltip description={schema.description} />
+    </div>
+  );
+
+  // No saved credentials yet
+  if (savedCredentials.length === 0) {
     return (
       <div>
         {fieldHeader}
 
-        <Select value={selectedCredentials?.id} onValueChange={handleValueChange}>
-          <SelectTrigger>
-            <SelectValue placeholder={schema.placeholder} />
-          </SelectTrigger>
-          <SelectContent className="nodrag">
-            {savedCredentials
-              .filter((c) => c.type == "oauth2")
-              .map((credentials, index) => (
-                <SelectItem key={index} value={credentials.id}>
-                  <ProviderIcon className="mr-2 inline h-4 w-4" />
-                  {credentials.username}
-                </SelectItem>
-              ))}
-            {savedCredentials
-              .filter((c) => c.type == "api_key")
-              .map((credentials, index) => (
-                <SelectItem key={index} value={credentials.id}>
-                  <ProviderIcon className="mr-2 inline h-4 w-4" />
-                  <IconKey className="mr-1.5 inline" />
-                  {credentials.title}
-                </SelectItem>
-              ))}
-            {savedCredentials
-              .filter((c) => c.type == "user_password")
-              .map((credentials, index) => (
-                <SelectItem key={index} value={credentials.id}>
-                  <ProviderIcon className="mr-2 inline h-4 w-4" />
-                  <IconUserPlus className="mr-1.5 inline" />
-                  {credentials.title}
-                </SelectItem>
-              ))}
-            <SelectSeparator />
-            {supportsOAuth2 && (
-              <SelectItem value="sign-in">
-                <IconUserPlus className="mr-1.5 inline" />
-                Sign in with {providerName}
-              </SelectItem>
-            )}
-            {supportsApiKey && (
-              <SelectItem value="add-api-key">
-                <IconKeyPlus className="mr-1.5 inline" />
-                Add new API key
-              </SelectItem>
-            )}
-            {supportsUserPassword && (
-              <SelectItem value="add-user-password">
-                <IconUserPlus className="mr-1.5 inline" />
-                Add new user password
-              </SelectItem>
-            )}
-          </SelectContent>
-        </Select>
+        <div className={cn("flex flex-row space-x-2", className)}>
+          {supportsOAuth2 && (
+            <Button onClick={handleOAuthLogin}>
+              <ProviderIcon className="mr-2 h-4 w-4" />
+              {"Sign in with " + providerName}
+            </Button>
+          )}
+          {supportsApiKey && (
+            <Button onClick={() => setAPICredentialsModalOpen(true)}>
+              <ProviderIcon className="mr-2 h-4 w-4" />
+              Enter API key
+            </Button>
+          )}
+          {supportsUserPassword && (
+            <Button onClick={() => setUserPasswordCredentialsModalOpen(true)}>
+              <ProviderIcon className="mr-2 h-4 w-4" />
+              Enter username and password
+            </Button>
+          )}
+        </div>
         {modals}
         {oAuthError && (
           <div className="mt-2 text-red-500">Error: {oAuthError}</div>
         )}
       </div>
     );
-  };
+  }
+
+  function handleValueChange(newValue: string) {
+    if (newValue === "sign-in") {
+      // Trigger OAuth2 sign in flow
+      handleOAuthLogin();
+    } else if (newValue === "add-api-key") {
+      // Open API key dialog
+      setAPICredentialsModalOpen(true);
+    } else {
+      const selectedCreds = savedCredentials.find((c) => c.id == newValue)!;
+
+      onSelectCredentials({
+        id: selectedCreds.id,
+        type: selectedCreds.type,
+        provider: provider,
+        // title: customTitle, // TODO: add input for title
+      });
+    }
+  }
+
+  // Saved credentials exist
+  return (
+    <div>
+      {fieldHeader}
+
+      <Select value={selectedCredentials?.id} onValueChange={handleValueChange}>
+        <SelectTrigger>
+          <SelectValue placeholder={schema.placeholder} />
+        </SelectTrigger>
+        <SelectContent className="nodrag">
+          {savedCredentials
+            .filter((c) => c.type == "oauth2")
+            .map((credentials, index) => (
+              <SelectItem key={index} value={credentials.id}>
+                <ProviderIcon className="mr-2 inline h-4 w-4" />
+                {credentials.username}
+              </SelectItem>
+            ))}
+          {savedCredentials
+            .filter((c) => c.type == "api_key")
+            .map((credentials, index) => (
+              <SelectItem key={index} value={credentials.id}>
+                <ProviderIcon className="mr-2 inline h-4 w-4" />
+                <IconKey className="mr-1.5 inline" />
+                {credentials.title}
+              </SelectItem>
+            ))}
+          {savedCredentials
+            .filter((c) => c.type == "user_password")
+            .map((credentials, index) => (
+              <SelectItem key={index} value={credentials.id}>
+                <ProviderIcon className="mr-2 inline h-4 w-4" />
+                <IconUserPlus className="mr-1.5 inline" />
+                {credentials.title}
+              </SelectItem>
+            ))}
+          <SelectSeparator />
+          {supportsOAuth2 && (
+            <SelectItem value="sign-in">
+              <IconUserPlus className="mr-1.5 inline" />
+              Sign in with {providerName}
+            </SelectItem>
+          )}
+          {supportsApiKey && (
+            <SelectItem value="add-api-key">
+              <IconKeyPlus className="mr-1.5 inline" />
+              Add new API key
+            </SelectItem>
+          )}
+          {supportsUserPassword && (
+            <SelectItem value="add-user-password">
+              <IconUserPlus className="mr-1.5 inline" />
+              Add new user password
+            </SelectItem>
+          )}
+        </SelectContent>
+      </Select>
+      {modals}
+      {oAuthError && (
+        <div className="mt-2 text-red-500">Error: {oAuthError}</div>
+      )}
+    </div>
+  );
+};
 
 export const APIKeyCredentialsModal: FC<{
   schema: BlockIOCredentialsSubSchema;
