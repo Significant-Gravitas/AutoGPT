@@ -1124,7 +1124,7 @@ class ExecutionManager(AppProcess):
 
         if hasattr(self, "executor"):
             log(f"{prefix} ⏳ Shutting down GraphExec pool...")
-            self.executor.shutdown(cancel_futures=False, wait=True)
+            self.executor.shutdown(cancel_futures=True, wait=False)
 
         log(f"{prefix} ⏳ Disconnecting Redis...")
         redis.disconnect()
