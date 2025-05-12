@@ -17,6 +17,7 @@ from backend.blocks.llm import (
 from backend.blocks.proxycurl.proxycurl import (
     ProxycurlPersonLookupBlock,
     ProxycurlProfileFetchBlock,
+    ProxycurlProfilePictureBlock,
     ProxycurlRoleLookupBlock,
 )
 from backend.blocks.replicate_flux_advanced import ReplicateFluxAdvancedModelBlock
@@ -303,6 +304,18 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
         )
     ],
     ProxycurlRoleLookupBlock: [
+        BlockCost(
+            cost_amount=3,
+            cost_filter={
+                "credentials": {
+                    "id": proxycurl_credentials.id,
+                    "provider": proxycurl_credentials.provider,
+                    "type": proxycurl_credentials.type,
+                }
+            },
+        )
+    ],
+    ProxycurlProfilePictureBlock: [
         BlockCost(
             cost_amount=3,
             cost_filter={
