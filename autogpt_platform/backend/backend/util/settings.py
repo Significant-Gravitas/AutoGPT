@@ -436,8 +436,6 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     proxycurl_api_key: str = Field(default="", description="Proxycurl API Key")
 
     # Add more secret fields as needed
-    airtable_api_key: str = Field(default="", description="Airtable API Key")
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

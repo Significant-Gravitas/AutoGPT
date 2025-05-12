@@ -17,7 +17,6 @@ const CREDENTIALS_PROVIDER_NAMES = Object.values(
 
 // --8<-- [start:CredentialsProviderNames]
 const providerDisplayNames: Record<CredentialsProviderName, string> = {
-  airtable: "Airtable",
   anthropic: "Anthropic",
   apollo: "Apollo",
   discord: "Discord",

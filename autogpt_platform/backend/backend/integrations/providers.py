@@ -6,7 +6,6 @@ class ProviderName(str, Enum):
     ANTHROPIC = "anthropic"
     APOLLO = "apollo"
     COMPASS = "compass"
-    AIRTABLE = "airtable"
     DISCORD = "discord"
     D_ID = "d_id"
     E2B = "e2b"

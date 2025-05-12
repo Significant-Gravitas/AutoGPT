@@ -2,12 +2,6 @@ from typing import Type
 
 from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
 from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
-
-# from backend.blocks.airtable.airtable import (
-#     AirtableFieldsBlock,
-#     AirtableRecordsBlock,
-#     AirtableTablesBlock,
-# )
 from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
 from backend.blocks.jina.search import ExtractWebsiteContentBlock, SearchTheWebBlock
@@ -284,42 +278,6 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
             },
         )
     ],
-    # AirtableTablesBlock: [
-    #     BlockCost(
-    #         cost_amount=1,
-    #         cost_filter={
-    #             "credentials": {
-    #                 "id": airtable_credentials.id,
-    #                 "provider": airtable_credentials.provider,
-    #                 "type": airtable_credentials.type,
-    #             }
-    #         },
-    #     )
-    # ],
-    # AirtableFieldsBlock: [
-    #     BlockCost(
-    #         cost_amount=1,
-    #         cost_filter={
-    #             "credentials": {
-    #                 "id": airtable_credentials.id,
-    #                 "provider": airtable_credentials.provider,
-    #                 "type": airtable_credentials.type,
-    #             }
-    #         },
-    #     )
-    # ],
-    # AirtableRecordsBlock: [
-    #     BlockCost(
-    #         cost_amount=1,
-    #         cost_filter={
-    #             "credentials": {
-    #                 "id": airtable_credentials.id,
-    #                 "provider": airtable_credentials.provider,
-    #                 "type": airtable_credentials.type,
-    #             }
-    #         },
-    #     ),
-    # ],
     ProxycurlProfileFetchBlock: [
         BlockCost(
             cost_amount=1,
