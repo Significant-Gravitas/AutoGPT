@@ -53,7 +53,7 @@ class GoogleCalendarReadEventsBlock(Block):
         )
         start_time: datetime = SchemaField(
             description="Retrieve events starting from this time",
-            default=datetime.now(tz=timezone.utc),
+            default_factory=lambda: datetime.now(tz=timezone.utc),
         )
         time_range_days: int = SchemaField(
             description="Number of days to look ahead for events", default=30
@@ -66,7 +66,7 @@ class GoogleCalendarReadEventsBlock(Block):
             description="Page token from previous request to get the next batch of events. You can use this if you have lots of events you want to process in a loop",
             default=None,
         )
-        include_declined: bool = SchemaField(
+        include_declined_events: bool = SchemaField(
             description="Include events you've declined", default=False
         )
 
@@ -124,7 +124,7 @@ class GoogleCalendarReadEventsBlock(Block):
                 "start_time": test_now.isoformat(),
                 "time_range_days": 7,
                 "search_term": None,
-                "include_declined": False,
+                "include_declined_events": False,
                 "page_token": None,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -189,7 +189,7 @@ class GoogleCalendarReadEventsBlock(Block):
                 single_events=True,
                 search_term=input_data.search_term,
                 show_deleted=False,
-                show_hidden=False,
+                show_hidden=input_data.include_declined_events,
                 page_token=input_data.page_token,
             )
 
@@ -396,7 +396,7 @@ class GoogleCalendarCreateEventBlock(Block):
             discriminator="discriminator",
             advanced=False,
             description="Specify when the event starts and ends",
-            default=DurationTiming(
+            default_factory=lambda: DurationTiming(
                 discriminator="duration_timing",
                 start_datetime=datetime.now().replace(microsecond=0, second=0, minute=0)
                 + timedelta(hours=1),
@@ -425,7 +425,7 @@ class GoogleCalendarCreateEventBlock(Block):
         recurrence: OneTimeEvent | RecurringEvent = SchemaField(
             discriminator="discriminator",
             description="Whether the event repeats",
-            default=OneTimeEvent(discriminator="one_time"),
+            default_factory=lambda: OneTimeEvent(discriminator="one_time"),
         )
         reminder_minutes: list[ReminderPreset] = SchemaField(
             description="When to send reminders before the event",
