@@ -63,8 +63,7 @@ function Calendar({
         range_end: "range-end",
         selected:
           "bg-neutral-900 text-neutral-100 hover:bg-neutral-900 hover:text-neutral-50 focus:bg-neutral-700 focus:text-neutral-50 dark:bg-neutral-50 dark:text-neutral-900 dark:hover:bg-neutral-50 dark:hover:text-neutral-900 dark:focus:bg-neutral-50 dark:focus:text-neutral-900",
-        today:
-          "bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50",
+        today: "bg-neutral-100  dark:bg-neutral-800 dark:text-neutral-50",
         outside:
           "day-outside text-neutral-500 opacity-50  aria-selected:bg-neutral-100/50 aria-selected:text-neutral-500 aria-selected:opacity-30 dark:text-neutral-400 dark:aria-selected:bg-neutral-800/50 dark:aria-selected:text-neutral-400",
         disabled: "text-neutral-500 opacity-50 dark:text-neutral-400",

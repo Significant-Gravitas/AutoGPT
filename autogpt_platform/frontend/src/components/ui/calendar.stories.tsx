@@ -26,10 +26,6 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Default: Story = {
-  args: {},
-};
-
 export const SingleSelection: Story = {
   args: {
     mode: "single",
@@ -54,17 +50,5 @@ export const RangeSelection: Story = {
       from: new Date(),
       to: new Date(new Date().setDate(new Date().getDate() + 7)),
     },
-  },
-};
-
-export const HideOutsideDays: Story = {
-  args: {
-    showOutsideDays: false,
-  },
-};
-
-export const CustomClassName: Story = {
-  args: {
-    className: "border rounded-lg shadow-lg",
   },
 };
