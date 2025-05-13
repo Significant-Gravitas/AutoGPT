@@ -160,7 +160,7 @@ export default function AgentRunsPage(): React.ReactElement {
 
   // Subscribe to WebSocket updates for agent runs
   useEffect(() => {
-    if (!agent) return;
+    if (!agent?.graph_id) return;
 
     return api.onWebSocketConnect(() => {
       refreshPageData(); // Sync up on (re)connect
@@ -168,7 +168,7 @@ export default function AgentRunsPage(): React.ReactElement {
       // Subscribe to all executions for this agent
       api.subscribeToGraphExecutions(agent.graph_id);
     });
-  }, [api, agent, refreshPageData]);
+  }, [api, agent?.graph_id, refreshPageData]);
 
   // Handle execution updates
   useEffect(() => {

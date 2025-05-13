@@ -932,6 +932,7 @@ export default class BackendAPI {
   onWebSocketConnect(handler: () => void): () => void {
     this.wsOnConnectHandlers.add(handler);
 
+    this.connectWebSocket();
     if (this.webSocket?.readyState == WebSocket.OPEN) handler();
 
     // Return detacher
@@ -968,7 +969,7 @@ export default class BackendAPI {
           reject(error);
         };
 
-        this.webSocket.addEventListener("message", this._handleWSMessage);
+        this.webSocket.onmessage = (event) => this._handleWSMessage(event);
       } catch (error) {
         console.error("Error connecting to WebSocket:", error);
         reject(error);
