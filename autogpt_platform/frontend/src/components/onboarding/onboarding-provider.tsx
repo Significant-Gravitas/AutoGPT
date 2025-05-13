@@ -20,6 +20,7 @@ const OnboardingContext = createContext<
       step: number;
       setStep: (step: number) => void;
       completeStep: (step: OnboardingStep) => void;
+      incrementRuns: () => void;
     }
   | undefined
 >(undefined);
@@ -104,6 +105,7 @@ export default function OnboardingProvider({
             selectedStoreListingVersionId: null,
             agentInput: null,
             onboardingAgentExecutionId: null,
+            agentRuns: 0,
             ...newState,
           };
         }
@@ -124,9 +126,22 @@ export default function OnboardingProvider({
     [api, state],
   );
 
+  const incrementRuns = useCallback(() => {
+    if (!state || state.completedSteps.includes("RUN_AGENTS")) return;
+    console.log("Incrementing runs", state.agentRuns + 1);
+
+    const finished = state.agentRuns + 1 >= 10;
+    updateState({
+      agentRuns: state.agentRuns + 1,
+      completedSteps: finished
+        ? [...state.completedSteps, "RUN_AGENTS"]
+        : undefined,
+    });
+  }, [api, state]);
+
   return (
     <OnboardingContext.Provider
-      value={{ state, updateState, step, setStep, completeStep }}
+      value={{ state, updateState, step, setStep, completeStep, incrementRuns }}
     >
       {children}
     </OnboardingContext.Provider>

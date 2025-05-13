@@ -60,7 +60,7 @@ export default function AgentRunsPage(): React.ReactElement {
     useState<boolean>(false);
   const [confirmingDeleteAgentRun, setConfirmingDeleteAgentRun] =
     useState<GraphExecutionMeta | null>(null);
-  const { state, updateState } = useOnboarding();
+  const { state, updateState, incrementRuns } = useOnboarding();
   const [copyAgentDialogOpen, setCopyAgentDialogOpen] = useState(false);
   const { toast } = useToast();
 
@@ -290,6 +290,14 @@ export default function AgentRunsPage(): React.ReactElement {
     [agent, downloadGraph],
   );
 
+  const onRun = useCallback(
+    (runID: GraphExecutionID) => {
+      selectRun(runID);
+      incrementRuns();
+    },
+    [selectRun, incrementRuns],
+  );
+
   if (!agent || !graph) {
     /* TODO: implement loading indicators / skeleton page */
     return <span>Loading...</span>;
@@ -331,14 +339,14 @@ export default function AgentRunsPage(): React.ReactElement {
               graph={graphVersions[selectedRun.graph_version] ?? graph}
               run={selectedRun}
               agentActions={agentActions}
-              onRun={(runID) => selectRun(runID)}
+              onRun={onRun}
               deleteRun={() => setConfirmingDeleteAgentRun(selectedRun)}
             />
           )
         ) : selectedView.type == "run" ? (
           <AgentRunDraftView
             graph={graph}
-            onRun={(runID) => selectRun(runID)}
+            onRun={onRun}
             agentActions={agentActions}
           />
         ) : selectedView.type == "schedule" ? (
@@ -346,7 +354,7 @@ export default function AgentRunsPage(): React.ReactElement {
             <AgentScheduleDetailsView
               graph={graph}
               schedule={selectedSchedule}
-              onForcedRun={(runID) => selectRun(runID)}
+              onForcedRun={onRun}
               agentActions={agentActions}
             />
           )

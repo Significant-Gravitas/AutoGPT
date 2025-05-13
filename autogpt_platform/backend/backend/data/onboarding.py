@@ -57,7 +57,7 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         update["completedSteps"] = list(set(data.completedSteps))
         for step in (
             OnboardingStep.AGENT_NEW_RUN,
-            OnboardingStep.GET_RESULTS,
+            OnboardingStep.RUN_AGENTS,
             OnboardingStep.MARKETPLACE_ADD_AGENT,
             OnboardingStep.MARKETPLACE_RUN_AGENT,
             OnboardingStep.BUILDER_SAVE_AGENT,
@@ -97,9 +97,10 @@ async def reward_user(user_id: str, step: OnboardingStep):
         match step:
             # Reward user when they clicked New Run during onboarding
             # This is because they need credits before scheduling a run (next step)
+            # This is seen as a reward for the GET_RESULTS step in the wallet
             case OnboardingStep.AGENT_NEW_RUN:
                 reward = 300
-            case OnboardingStep.GET_RESULTS:
+            case OnboardingStep.RUN_AGENTS:
                 reward = 300
             case OnboardingStep.MARKETPLACE_ADD_AGENT:
                 reward = 100
