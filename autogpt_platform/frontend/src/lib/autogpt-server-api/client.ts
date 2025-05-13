@@ -916,6 +916,24 @@ export default class BackendAPI {
     return () => this.wsMessageHandlers[method].delete(handler);
   }
 
+  /**
+   * All handlers are invoked when the WebSocket (re)connects. If it's already connected
+   * when this function is called, the passed handler is invoked immediately.
+   *
+   * Use this hook to subscribe to topics and refresh state,
+   * to ensure re-subscription and re-sync on re-connect.
+   *
+   * @returns a detacher for the passed handler.
+   */
+  onWebSocketConnect(handler: () => void): () => void {
+    this.wsOnConnectHandlers.add(handler);
+
+    if (this.webSocket?.readyState == WebSocket.OPEN) handler();
+
+    // Return detacher
+    return () => this.wsOnConnectHandlers.delete(handler);
+  }
+
   async connectWebSocket(): Promise<void> {
     this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
@@ -977,16 +995,6 @@ export default class BackendAPI {
     if (this.webSocket && this.webSocket.readyState === WebSocket.OPEN) {
       this.webSocket.close();
     }
-  }
-
-  /** Use this hook to subscribe to topics, to ensure re-subscription on re-connect */
-  onWebSocketConnect(handler: () => void): () => void {
-    this.wsOnConnectHandlers.add(handler);
-
-    if (this.webSocket?.readyState == WebSocket.OPEN) handler();
-
-    // Return detacher
-    return () => this.wsOnConnectHandlers.delete(handler);
   }
 
   _startWSHeartbeat() {
