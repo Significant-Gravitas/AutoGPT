@@ -1,5 +1,8 @@
-import { SupabaseClient } from "@supabase/supabase-js";
-import {
+import getServerSupabase from "@/lib/supabase/getServerSupabase";
+import { createBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type {
+  AddUserCreditsResponse,
   AnalyticsDetails,
   AnalyticsMetrics,
   APIKey,
@@ -13,6 +16,7 @@ import {
   Credentials,
   CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
+  CredentialsMetaInput,
   CredentialsMetaResponse,
   Graph,
   GraphCreatable,
@@ -32,8 +36,11 @@ import {
   NodeExecutionResult,
   NotificationPreference,
   NotificationPreferenceDTO,
+  OttoQuery,
+  OttoResponse,
   ProfileDetails,
   RefundRequest,
+  ReviewSubmissionRequest,
   Schedule,
   ScheduleCreatable,
   ScheduleID,
@@ -45,20 +52,13 @@ import {
   StoreSubmission,
   StoreSubmissionRequest,
   StoreSubmissionsResponse,
+  SubmissionStatus,
   TransactionHistory,
   User,
-  UserPasswordCredentials,
-  OttoQuery,
-  OttoResponse,
   UserOnboarding,
-  ReviewSubmissionRequest,
-  SubmissionStatus,
-  AddUserCreditsResponse,
+  UserPasswordCredentials,
   UsersBalanceHistoryResponse,
-  CredentialsMetaInput,
 } from "./types";
-import { createBrowserClient } from "@supabase/ssr";
-import getServerSupabase from "../supabase/getServerSupabase";
 
 const isClient = typeof window !== "undefined";
 
@@ -701,16 +701,20 @@ export default class BackendAPI {
     );
   }
 
+  //////////////////////////////////
+  ////////////// OTTO //////////////
+  //////////////////////////////////
+
+  async askOtto(query: OttoQuery): Promise<OttoResponse> {
+    return this._request("POST", "/otto/ask", query);
+  }
+
   ////////////////////////////////////////
   ////////// INTERNAL FUNCTIONS //////////
   ////////////////////////////////////////
 
   private _get(path: string, query?: Record<string, any>) {
     return this._request("GET", path, query);
-  }
-
-  async askOtto(query: OttoQuery): Promise<OttoResponse> {
-    return this._request("POST", "/otto/ask", query);
   }
 
   private async _uploadFile(path: string, file: File): Promise<string> {
@@ -964,24 +968,7 @@ export default class BackendAPI {
           reject(error);
         };
 
-        this.webSocket.onmessage = (event) => {
-          const message: WebsocketMessage = JSON.parse(event.data);
-
-          // Handle heartbeat response
-          if (message.method === "heartbeat" && message.data === "pong") {
-            this._handleWSHeartbeatResponse();
-            return;
-          }
-
-          if (message.method === "node_execution_event") {
-            message.data = parseNodeExecutionResultTimestamps(message.data);
-          } else if (message.method == "graph_execution_event") {
-            message.data = parseGraphExecutionTimestamps(message.data);
-          }
-          this.wsMessageHandlers[message.method]?.forEach((handler) =>
-            handler(message.data),
-          );
-        };
+        this.webSocket.addEventListener("message", this._handleWSMessage);
       } catch (error) {
         console.error("Error connecting to WebSocket:", error);
         reject(error);
@@ -997,7 +984,26 @@ export default class BackendAPI {
     }
   }
 
-  _startWSHeartbeat() {
+  private _handleWSMessage(event: MessageEvent): void {
+    const message: WebsocketMessage = JSON.parse(event.data);
+
+    // Handle heartbeat response
+    if (message.method === "heartbeat" && message.data === "pong") {
+      this._handleWSHeartbeatResponse();
+      return;
+    }
+
+    if (message.method === "node_execution_event") {
+      message.data = parseNodeExecutionResultTimestamps(message.data);
+    } else if (message.method == "graph_execution_event") {
+      message.data = parseGraphExecutionTimestamps(message.data);
+    }
+    this.wsMessageHandlers[message.method]?.forEach((handler) =>
+      handler(message.data),
+    );
+  }
+
+  private _startWSHeartbeat() {
     this._stopWSHeartbeat();
     this.heartbeatIntervalID = window.setInterval(() => {
       if (this.webSocket?.readyState === WebSocket.OPEN) {
@@ -1018,7 +1024,7 @@ export default class BackendAPI {
     }, this.HEARTBEAT_INTERVAL);
   }
 
-  _stopWSHeartbeat() {
+  private _stopWSHeartbeat() {
     if (this.heartbeatIntervalID) {
       clearInterval(this.heartbeatIntervalID);
       this.heartbeatIntervalID = null;
@@ -1029,7 +1035,7 @@ export default class BackendAPI {
     }
   }
 
-  _handleWSHeartbeatResponse() {
+  private _handleWSHeartbeatResponse() {
     if (this.heartbeatTimeoutID) {
       clearTimeout(this.heartbeatTimeoutID);
       this.heartbeatTimeoutID = null;
