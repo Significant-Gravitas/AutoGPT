@@ -67,11 +67,13 @@ export default class BackendAPI {
   private wsUrl: string;
   private webSocket: WebSocket | null = null;
   private wsConnecting: Promise<void> | null = null;
+  private wsOnConnectHandlers: Set<() => void> = new Set();
   private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
-  heartbeatInterval: number | null = null;
-  readonly HEARTBEAT_INTERVAL = 10_0000; // 100 seconds
+
+  readonly HEARTBEAT_INTERVAL = 100_000; // 100 seconds
   readonly HEARTBEAT_TIMEOUT = 10_000; // 10 seconds
-  heartbeatTimeoutId: number | null = null;
+  heartbeatIntervalID: number | null = null;
+  heartbeatTimeoutID: number | null = null;
 
   constructor(
     baseUrl: string = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
@@ -925,6 +927,7 @@ export default class BackendAPI {
 
         this.webSocket.onopen = () => {
           this._startWSHeartbeat(); // Start heartbeat when connection opens
+          this.wsOnConnectHandlers.forEach((handler) => handler());
           resolve();
         };
 
@@ -976,9 +979,19 @@ export default class BackendAPI {
     }
   }
 
+  /** Use this hook to subscribe to topics, to ensure re-subscription on re-connect */
+  onWebSocketConnect(handler: () => void): () => void {
+    this.wsOnConnectHandlers.add(handler);
+
+    if (this.webSocket?.readyState == WebSocket.OPEN) handler();
+
+    // Return detacher
+    return () => this.wsOnConnectHandlers.delete(handler);
+  }
+
   _startWSHeartbeat() {
     this._stopWSHeartbeat();
-    this.heartbeatInterval = window.setInterval(() => {
+    this.heartbeatIntervalID = window.setInterval(() => {
       if (this.webSocket?.readyState === WebSocket.OPEN) {
         this.webSocket.send(
           JSON.stringify({
@@ -988,7 +1001,7 @@ export default class BackendAPI {
           }),
         );
 
-        this.heartbeatTimeoutId = window.setTimeout(() => {
+        this.heartbeatTimeoutID = window.setTimeout(() => {
           console.warn("Heartbeat timeout - reconnecting");
           this.webSocket?.close();
           this.connectWebSocket();
@@ -998,20 +1011,20 @@ export default class BackendAPI {
   }
 
   _stopWSHeartbeat() {
-    if (this.heartbeatInterval) {
-      clearInterval(this.heartbeatInterval);
-      this.heartbeatInterval = null;
+    if (this.heartbeatIntervalID) {
+      clearInterval(this.heartbeatIntervalID);
+      this.heartbeatIntervalID = null;
     }
-    if (this.heartbeatTimeoutId) {
-      clearTimeout(this.heartbeatTimeoutId);
-      this.heartbeatTimeoutId = null;
+    if (this.heartbeatTimeoutID) {
+      clearTimeout(this.heartbeatTimeoutID);
+      this.heartbeatTimeoutID = null;
     }
   }
 
   _handleWSHeartbeatResponse() {
-    if (this.heartbeatTimeoutId) {
-      clearTimeout(this.heartbeatTimeoutId);
-      this.heartbeatTimeoutId = null;
+    if (this.heartbeatTimeoutID) {
+      clearTimeout(this.heartbeatTimeoutID);
+      this.heartbeatTimeoutID = null;
     }
   }
 }
