@@ -143,11 +143,6 @@ class VisualMediaType(str, Enum):
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Base mixin providing shared helper methods for the Revid.ai workflow
-# ---------------------------------------------------------------------------
-
-
 class _RevidMixin:
     """Utility mix‑in that bundles the shared webhook / polling helpers."""
 
@@ -280,8 +275,6 @@ class AIShortformVideoCreatorBlock(Block, _RevidMixin):
             test_credentials=TEST_CREDENTIALS,
         )
 
-    # create_webhook, create_video, check_video_status & wait_for_video live in _RevidMixin
-
     def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
@@ -335,11 +328,6 @@ class AIShortformVideoCreatorBlock(Block, _RevidMixin):
         video_url = self.wait_for_video(credentials.api_key, pid, webhook_token)
         logger.debug(f"Video ready: {video_url}")
         yield "video_url", video_url
-
-
-# ---------------------------------------------------------------------------
-# 2. Ad‑Maker (text & image → 30s vertical AI video)
-# ---------------------------------------------------------------------------
 
 
 class AIAdMakerVideoCreatorBlock(Block, _RevidMixin):
@@ -473,11 +461,6 @@ class AIAdMakerVideoCreatorBlock(Block, _RevidMixin):
         yield "video_url", video_url
 
 
-# ---------------------------------------------------------------------------
-# 3. Prompt‑to‑Video (single prompt → fully‑AI video)
-# ---------------------------------------------------------------------------
-
-
 class AIPromptToVideoCreatorBlock(Block, _RevidMixin):
     """Turns a single creative prompt into a fully AI‑generated video."""
 
@@ -585,11 +568,6 @@ class AIPromptToVideoCreatorBlock(Block, _RevidMixin):
 
         video_url = self.wait_for_video(credentials.api_key, pid, webhook_token)
         yield "video_url", video_url
-
-
-# ---------------------------------------------------------------------------
-# 4. Screenshot‑to‑Video Advert (image + voice + avatar)
-# ---------------------------------------------------------------------------
 
 
 class AIScreenshotToVideoAdBlock(Block, _RevidMixin):
