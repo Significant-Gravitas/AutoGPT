@@ -242,9 +242,6 @@ class ProxycurlClient:
             params["extra"] = "include"
 
         response = self._requests.get(f"{self.API_BASE_URL}/v2/linkedin", params=params)
-        logger.warning(
-            f"response {params} {response.text} {response.ok} {response.json()}"
-        )
         return PersonProfileResponse(**self._handle_response(response))
 
     def lookup_person(
@@ -288,14 +285,9 @@ class ProxycurlClient:
         if enrich_profile:
             params["enrich_profile"] = "enrich"
 
-        logger.warning(
-            f"DEBUG: Sending request to {self.API_BASE_URL}/linkedin/profile/resolve with params {params}"
-        )
-
         response = self._requests.get(
             f"{self.API_BASE_URL}/linkedin/profile/resolve", params=params
         )
-        logger.warning(f"Responese: {response.json()}")
         return PersonLookupResponse(**self._handle_response(response))
 
     def lookup_role(
