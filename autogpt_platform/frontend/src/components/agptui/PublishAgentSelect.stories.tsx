@@ -3,7 +3,7 @@ import { Agent, PublishAgentSelect } from "./PublishAgentSelect";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta: Meta<typeof PublishAgentSelect> = {
-  title: "Agpt Custom UI/marketing/Publish Agent Select",
+  title: "Agpt UI/marketing/Publish Agent Select",
   decorators: [
     (Story) => (
       <div className="backdrop-blur-4 flex h-screen items-center justify-center bg-black/40">

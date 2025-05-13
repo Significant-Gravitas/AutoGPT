@@ -4,7 +4,7 @@ import { within, expect, fn } from "@storybook/test";
 import { StatusType } from "./Status";
 
 const meta = {
-  title: "Agpt Custom UI/marketing/Agent Table",
+  title: "Agpt UI/marketing/Agent Table",
   component: AgentTable,
   parameters: {
     layout: "fullscreen",

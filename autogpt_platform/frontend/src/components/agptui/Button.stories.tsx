@@ -8,7 +8,7 @@ import { Button } from "./Button";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
-  title: "Agpt Custom UI/general/Button",
+  title: "Agpt UI/Deprecated/general/Button",
   component: Button,
   parameters: {
     layout: "centered",

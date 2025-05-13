@@ -4,7 +4,7 @@ import { userEvent, within, expect } from "@storybook/test";
 import { StoreAgent } from "@/lib/autogpt-server-api";
 
 const meta = {
-  title: "Agpt Custom UI/marketing/Featured Agents",
+  title: "Agpt UI/marketing/Featured Section",
   component: FeaturedSection,
   decorators: [
     (Story) => (

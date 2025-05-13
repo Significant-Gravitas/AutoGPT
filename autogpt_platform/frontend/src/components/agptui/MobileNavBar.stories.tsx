@@ -3,7 +3,7 @@ import { MobileNavBar } from "./MobileNavBar";
 import { IconType } from "../ui/icons";
 
 const meta = {
-  title: "Agpt Custom UI/general/Mobile Nav Bar",
+  title: "Agpt UI/general/Mobile Nav Bar",
   component: MobileNavBar,
   parameters: {
     viewport: {

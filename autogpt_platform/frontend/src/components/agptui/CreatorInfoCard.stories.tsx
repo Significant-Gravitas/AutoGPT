@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { CreatorInfoCard } from "./CreatorInfoCard";
 
 const meta = {
-  title: "Agpt Custom UI/marketing/Creator Info Card",
+  title: "Agpt UI/marketing/Creator Info Card",
   component: CreatorInfoCard,
   decorators: [
     (Story) => (

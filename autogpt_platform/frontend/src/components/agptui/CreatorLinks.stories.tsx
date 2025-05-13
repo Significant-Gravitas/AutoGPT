@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { CreatorLinks } from "./CreatorLinks";
 
 const meta = {
-  title: "Agpt Custom UI/marketing/Creator Links",
+  title: "Agpt UI/marketing/Creator Links",
   component: CreatorLinks,
   decorators: [
     (Story) => (

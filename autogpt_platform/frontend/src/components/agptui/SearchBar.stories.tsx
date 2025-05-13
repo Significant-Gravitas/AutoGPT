@@ -3,7 +3,7 @@ import { SearchBar } from "./SearchBar";
 import { userEvent, within, expect } from "@storybook/test";
 
 const meta = {
-  title: "Agpt Custom ui/marketing/Search Bar",
+  title: "Agpt UI/marketing/Search Bar",
   component: SearchBar,
 
   tags: ["autodocs"],

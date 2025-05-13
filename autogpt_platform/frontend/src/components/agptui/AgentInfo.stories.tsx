@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { AgentInfo } from "./AgentInfo";
 
 const meta = {
-  title: "Agpt Custom UI/marketing/Agent Info",
+  title: "Agpt UI/marketing/Agent Info",
   component: AgentInfo,
   parameters: {
     layout: {
