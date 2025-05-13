@@ -140,6 +140,7 @@ export default function AgentRunsPage(): React.ReactElement {
     }
   }, [api, agentID, getGraphVersion, graph, selectedView, isFirstLoad, agent]);
 
+  // Initial load
   useEffect(() => {
     fetchAgents();
   }, []);
@@ -148,9 +149,13 @@ export default function AgentRunsPage(): React.ReactElement {
   useEffect(() => {
     if (!agent) return;
 
-    // Subscribe to all executions for this agent
-    api.subscribeToGraphExecutions(agent.graph_id);
-  }, [api, agent]);
+    return api.onWebSocketConnect(() => {
+      fetchAgents(); // Sync up on (re)connect
+
+      // Subscribe to all executions for this agent
+      api.subscribeToGraphExecutions(agent.graph_id);
+    });
+  }, [api, agent, fetchAgents]);
 
   // Handle execution updates
   useEffect(() => {
