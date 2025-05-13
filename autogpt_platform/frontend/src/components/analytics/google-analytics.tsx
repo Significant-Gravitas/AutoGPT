@@ -1,16 +1,16 @@
-"use client"
+"use client";
 
-import { useEffect } from "react"
-import Script from "next/script"
-import type { GAParams } from "../../types/google"
+import { useEffect } from "react";
+import Script from "next/script";
+import type { GAParams } from "../../types/google";
 
-let currDataLayerName: string | undefined = undefined
+let currDataLayerName: string | undefined = undefined;
 
 export function GoogleAnalytics(props: GAParams) {
-  const { gaId, debugMode, dataLayerName = "dataLayer", nonce } = props
+  const { gaId, debugMode, dataLayerName = "dataLayer", nonce } = props;
 
   if (currDataLayerName === undefined) {
-    currDataLayerName = dataLayerName
+    currDataLayerName = dataLayerName;
   }
 
   useEffect(() => {
@@ -19,8 +19,8 @@ export function GoogleAnalytics(props: GAParams) {
       detail: {
         feature: "custom-ga",
       },
-    })
-  }, [])
+    });
+  }, []);
 
   return (
     <>
@@ -37,20 +37,25 @@ export function GoogleAnalytics(props: GAParams) {
         }}
         nonce={nonce}
       />
-      <Script id="_custom-ga" strategy="beforeInteractive" src="/gtag.js" nonce={nonce} />
+      <Script
+        id="_custom-ga"
+        strategy="beforeInteractive"
+        src="/gtag.js"
+        nonce={nonce}
+      />
     </>
-  )
+  );
 }
 
 export function sendGAEvent(..._args: any[]) {
   if (currDataLayerName === undefined) {
-    console.warn(`Custom GA: GA has not been initialized`)
-    return
+    console.warn(`Custom GA: GA has not been initialized`);
+    return;
   }
 
   if (window[currDataLayerName]) {
-    window[currDataLayerName].push(arguments)
+    window[currDataLayerName].push(arguments);
   } else {
-    console.warn(`Custom GA: dataLayer ${currDataLayerName} does not exist`)
+    console.warn(`Custom GA: dataLayer ${currDataLayerName} does not exist`);
   }
 }

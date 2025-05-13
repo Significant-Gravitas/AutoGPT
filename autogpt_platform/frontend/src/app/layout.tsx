@@ -64,8 +64,6 @@ export default async function RootLayout({
           <Toaster />
         </Providers>
       </body>
-
-
     </html>
   );
 }
