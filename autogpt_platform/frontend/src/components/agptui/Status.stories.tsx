@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { Status, StatusType } from "./Status";
 
 const meta = {
-  title: "Agpt Custom UI/general/Status",
+  title: "Agpt UI/general/Status",
   component: Status,
   parameters: {
     layout: "centered",
