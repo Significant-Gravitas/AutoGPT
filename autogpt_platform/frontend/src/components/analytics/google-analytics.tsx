@@ -53,7 +53,8 @@ export function sendGAEvent(..._args: any[]) {
     return;
   }
   //@ts-ignore
-  if (window[currDataLayerName]) { //@ts-ignore
+  if (window[currDataLayerName]) {
+    //@ts-ignore
     window[currDataLayerName].push(arguments);
   } else {
     console.warn(`Custom GA: dataLayer ${currDataLayerName} does not exist`);
