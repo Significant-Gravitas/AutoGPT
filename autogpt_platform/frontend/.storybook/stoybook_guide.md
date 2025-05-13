@@ -5,7 +5,7 @@ When communicating with the server in client components, use the `useBackendAPI`
 To provide custom mock data instead of the default values, add the `mockBackend` parameter in your stories:
 
 ```tsx
-export const MyStory = {
+export const MyStory =  {
   parameters: {
     mockBackend: {
       credits: 100,
