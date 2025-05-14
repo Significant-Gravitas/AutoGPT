@@ -94,7 +94,7 @@ export default function SignupPage() {
   }
 
   if (isUserLoading || user) {
-    return <Spinner />;
+    return <Spinner className="h-[80vh]" />;
   }
 
   if (!supabase) {
