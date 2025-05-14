@@ -187,7 +187,15 @@ export function TaskGroups() {
         }
       });
     });
-  }, [state?.completedSteps, delayConfetti]);
+  }, [
+    state?.completedSteps,
+    delayConfetti,
+    groups,
+    updateState,
+    state?.notified,
+    isGroupCompleted,
+    isTaskCompleted,
+  ]);
 
   return (
     <div className="space-y-2">
