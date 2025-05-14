@@ -23,10 +23,11 @@ from backend.data.model import (
 )
 from backend.integrations.providers import ProviderName
 from backend.util import json
+from backend.util.logging import TruncatedLogger
 from backend.util.settings import BehaveAs, Settings
 from backend.util.text import TextFormatter
 
-logger = logging.getLogger(__name__)
+logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
 fmt = TextFormatter()
 
 LLMProviderName = Literal[
@@ -439,7 +440,7 @@ def llm_call(
 
             if not tool_calls and resp.stop_reason == "tool_use":
                 logger.warning(
-                    "Tool use stop reason but no tool calls found in content. %s", resp
+                    f"Tool use stop reason but no tool calls found in content. {resp}"
                 )
 
             return LLMResponse(

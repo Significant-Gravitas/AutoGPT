@@ -37,6 +37,7 @@ from backend.data.rabbitmq import (
 )
 from backend.data.user import generate_unsubscribe_link
 from backend.notifications.email import EmailSender
+from backend.util.logging import TruncatedLogger
 from backend.util.metrics import discord_send_alert
 from backend.util.service import (
     AppService,
@@ -46,7 +47,7 @@ from backend.util.service import (
 )
 from backend.util.settings import Settings
 
-logger = logging.getLogger(__name__)
+logger = TruncatedLogger(logging.getLogger(__name__), "[NotificationManager]")
 settings = Settings()
 
 

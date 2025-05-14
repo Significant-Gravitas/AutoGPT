@@ -65,7 +65,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.util import json
 from backend.util.decorator import error_logged, time_measured
 from backend.util.file import clean_exec_files
-from backend.util.logging import configure_logging
+from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import AppProcess, set_service_name
 from backend.util.retry import func_retry
 from backend.util.service import get_service_client
@@ -86,7 +86,7 @@ utilization_gauge = Gauge(
 )
 
 
-class LogMetadata:
+class LogMetadata(TruncatedLogger):
     def __init__(
         self,
         user_id: str,
@@ -95,8 +95,9 @@ class LogMetadata:
         node_eid: str,
         node_id: str,
         block_name: str,
+        max_length: int = 1000,
     ):
-        self.metadata = {
+        metadata = {
             "component": "ExecutionManager",
             "user_id": user_id,
             "graph_eid": graph_eid,
@@ -105,33 +106,13 @@ class LogMetadata:
             "node_id": node_id,
             "block_name": block_name,
         }
-        self.prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"
-
-    def info(self, msg: str, **extra):
-        msg = self._wrap(msg, **extra)
-        logger.info(msg, extra={"json_fields": {**self.metadata, **extra}})
-
-    def warning(self, msg: str, **extra):
-        msg = self._wrap(msg, **extra)
-        logger.warning(msg, extra={"json_fields": {**self.metadata, **extra}})
-
-    def error(self, msg: str, **extra):
-        msg = self._wrap(msg, **extra)
-        logger.error(msg, extra={"json_fields": {**self.metadata, **extra}})
-
-    def debug(self, msg: str, **extra):
-        msg = self._wrap(msg, **extra)
-        logger.debug(msg, extra={"json_fields": {**self.metadata, **extra}})
-
-    def exception(self, msg: str, **extra):
-        msg = self._wrap(msg, **extra)
-        logger.exception(msg, extra={"json_fields": {**self.metadata, **extra}})
-
-    def _wrap(self, msg: str, **extra):
-        extra_msg = str(extra or "")
-        if len(extra_msg) > 1000:
-            extra_msg = extra_msg[:1000] + "..."
-        return f"{self.prefix} {msg} {extra_msg}"
+        prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"
+        super().__init__(
+            logger,
+            max_length=max_length,
+            prefix=prefix,
+            metadata=metadata,
+        )
 
 
 T = TypeVar("T")
