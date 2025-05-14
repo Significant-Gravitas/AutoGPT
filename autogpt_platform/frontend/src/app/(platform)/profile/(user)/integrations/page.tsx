@@ -122,7 +122,7 @@ export default function PrivatePage() {
   );
 
   if (isUserLoading) {
-    return <Spinner />;
+    return <Spinner className="h-[80vh]" />;
   }
 
   if (!user || !supabase) {
