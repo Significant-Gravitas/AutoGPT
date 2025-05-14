@@ -23,16 +23,16 @@ from backend.data.model import (
 from backend.data.notifications import (
     AgentRunData,
     LowBalanceData,
-    NotificationEventDTO,
+    NotificationEventModel,
     NotificationType,
 )
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.utils import create_execution_queue_config
+from backend.notifications.notifications import queue_notification
 from backend.util.exceptions import InsufficientBalanceError
 
 if TYPE_CHECKING:
     from backend.executor import DatabaseManagerClient
-    from backend.notifications.notifications import NotificationManagerClient
 
 from autogpt_libs.utils.cache import thread_cached
 from prometheus_client import Gauge, start_http_server
@@ -580,7 +580,6 @@ class Executor:
         cls.db_client = get_db_client()
         cls.pool_size = settings.config.num_node_workers
         cls.pid = os.getpid()
-        cls.notification_service = get_notification_service()
         cls._init_node_executor_pool()
         logger.info(f"GraphExec {cls.pid} started with {cls.pool_size} node workers")
 
@@ -634,11 +633,16 @@ class Executor:
             return
 
         timing_info, (exec_stats, status, error) = cls._on_graph_execution(
-            graph_exec, cancel, log_metadata
+            graph_exec=graph_exec,
+            cancel=cancel,
+            log_metadata=log_metadata,
+            execution_stats=(
+                exec_meta.stats.to_db() if exec_meta.stats else GraphExecutionStats()
+            ),
         )
-        exec_stats.walltime = timing_info.wall_time
-        exec_stats.cputime = timing_info.cpu_time
-        exec_stats.error = str(error)
+        exec_stats.walltime += timing_info.wall_time
+        exec_stats.cputime += timing_info.cpu_time
+        exec_stats.error = str(error) if error else exec_stats.error
 
         if graph_exec_result := cls.db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
@@ -705,6 +709,7 @@ class Executor:
         graph_exec: GraphExecutionEntry,
         cancel: threading.Event,
         log_metadata: LogMetadata,
+        execution_stats: GraphExecutionStats,
     ) -> tuple[GraphExecutionStats, ExecutionStatus, Exception | None]:
         """
         Returns:
@@ -712,7 +717,6 @@ class Executor:
             ExecutionStatus: The final status of the graph execution.
             Exception | None: The error that occurred during the execution, if any.
         """
-        execution_stats = GraphExecutionStats()
         execution_status = ExecutionStatus.RUNNING
         error = None
         finished = False
@@ -905,20 +909,20 @@ class Executor:
             for output in outputs
         ]
 
-        event = NotificationEventDTO(
-            user_id=graph_exec.user_id,
-            type=NotificationType.AGENT_RUN,
-            data=AgentRunData(
-                outputs=named_outputs,
-                agent_name=metadata.name if metadata else "Unknown Agent",
-                credits_used=exec_stats.cost,
-                execution_time=exec_stats.walltime,
-                graph_id=graph_exec.graph_id,
-                node_count=exec_stats.node_count,
-            ).model_dump(),
+        queue_notification(
+            NotificationEventModel(
+                user_id=graph_exec.user_id,
+                type=NotificationType.AGENT_RUN,
+                data=AgentRunData(
+                    outputs=named_outputs,
+                    agent_name=metadata.name if metadata else "Unknown Agent",
+                    credits_used=exec_stats.cost,
+                    execution_time=exec_stats.walltime,
+                    graph_id=graph_exec.graph_id,
+                    node_count=exec_stats.node_count,
+                ),
+            )
         )
-
-        cls.notification_service.queue_notification(event)
 
     @classmethod
     def _handle_low_balance_notif(
@@ -933,8 +937,8 @@ class Executor:
         base_url = (
             settings.config.frontend_base_url or settings.config.platform_base_url
         )
-        cls.notification_service.queue_notification(
-            NotificationEventDTO(
+        queue_notification(
+            NotificationEventModel(
                 user_id=user_id,
                 type=NotificationType.LOW_BALANCE,
                 data=LowBalanceData(
@@ -942,7 +946,7 @@ class Executor:
                     billing_page_link=f"{base_url}/profile/credits",
                     shortfall=shortfall,
                     agent_name=metadata.name if metadata else "Unknown Agent",
-                ).model_dump(),
+                ),
             )
         )
 
@@ -1120,7 +1124,7 @@ class ExecutionManager(AppProcess):
 
         if hasattr(self, "executor"):
             log(f"{prefix} ⏳ Shutting down GraphExec pool...")
-            self.executor.shutdown(cancel_futures=False, wait=True)
+            self.executor.shutdown(cancel_futures=True, wait=False)
 
         log(f"{prefix} ⏳ Disconnecting Redis...")
         redis.disconnect()
@@ -1137,14 +1141,6 @@ def get_db_client() -> "DatabaseManagerClient":
 
     # Disable health check for the service client to avoid breaking process initializer.
     return get_service_client(DatabaseManagerClient, health_check=False)
-
-
-@thread_cached
-def get_notification_service() -> "NotificationManagerClient":
-    from backend.notifications import NotificationManagerClient
-
-    # Disable health check for the service client to avoid breaking process initializer.
-    return get_service_client(NotificationManagerClient, health_check=False)
 
 
 def send_execution_update(entry: GraphExecution | NodeExecutionResult | None):

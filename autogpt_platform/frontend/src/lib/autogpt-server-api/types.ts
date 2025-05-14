@@ -94,6 +94,7 @@ export type BlockIOSubSchemaMeta = {
 export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
   type: "object";
   properties: { [key: string]: BlockIOSubSchema };
+  const?: { [key: keyof BlockIOObjectSubSchema["properties"]]: any };
   default?: { [key: keyof BlockIOObjectSubSchema["properties"]]: any };
   required?: (keyof BlockIOObjectSubSchema["properties"])[];
   secret?: boolean;
@@ -102,6 +103,7 @@ export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
 export type BlockIOKVSubSchema = BlockIOSubSchemaMeta & {
   type: "object";
   additionalProperties?: { type: "string" | "number" | "integer" };
+  const?: { [key: string]: string | number };
   default?: { [key: string]: string | number };
   secret?: boolean;
 };
@@ -109,6 +111,7 @@ export type BlockIOKVSubSchema = BlockIOSubSchemaMeta & {
 export type BlockIOArraySubSchema = BlockIOSubSchemaMeta & {
   type: "array";
   items?: BlockIOSimpleTypeSubSchema;
+  const?: Array<string>;
   default?: Array<string>;
   secret?: boolean;
 };
@@ -117,6 +120,7 @@ export type BlockIOStringSubSchema = BlockIOSubSchemaMeta & {
   type: "string";
   enum?: string[];
   secret?: true;
+  const?: string;
   default?: string;
   format?: string;
   maxLength?: number;
@@ -124,12 +128,14 @@ export type BlockIOStringSubSchema = BlockIOSubSchemaMeta & {
 
 export type BlockIONumberSubSchema = BlockIOSubSchemaMeta & {
   type: "integer" | "number";
+  const?: number;
   default?: number;
   secret?: boolean;
 };
 
 export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
   type: "boolean";
+  const?: boolean;
   default?: boolean;
   secret?: boolean;
 };
@@ -196,12 +202,16 @@ export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
 
 export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
   type: "null";
+  const?: null;
   secret?: boolean;
 };
 
 // At the time of writing, combined schemas only occur on the first nested level in a
 // block schema. It is typed this way to make the use of these objects less tedious.
-type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta & { type: never } & (
+type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta & {
+  type: never;
+  const: never;
+} & (
     | {
         allOf: [BlockIOSimpleTypeSubSchema];
         secret?: boolean;
@@ -211,12 +221,25 @@ type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta & { type: never } & (
         default?: string | number | boolean | null;
         secret?: boolean;
       }
-    | {
-        oneOf: BlockIOSimpleTypeSubSchema[];
-        default?: string | number | boolean | null;
-        secret?: boolean;
-      }
+    | BlockIOOneOfSubSchema
+    | BlockIODiscriminatedOneOfSubSchema
   );
+
+export type BlockIOOneOfSubSchema = {
+  oneOf: BlockIOSimpleTypeSubSchema[];
+  default?: string | number | boolean | null;
+  secret?: boolean;
+};
+
+export type BlockIODiscriminatedOneOfSubSchema = {
+  oneOf: BlockIOObjectSubSchema[];
+  discriminator: {
+    propertyName: string;
+    mapping: Record<string, BlockIOObjectSubSchema>;
+  };
+  default?: Record<string, any>;
+  secret?: boolean;
+};
 
 /* Mirror of backend/data/graph.py:Node */
 export type Node = {
@@ -259,7 +282,9 @@ export type GraphExecutionMeta = {
   stats?: {
     cost: number;
     duration: number;
+    duration_cpu_only: number;
     node_exec_time: number;
+    node_exec_time_cpu_only: number;
     node_exec_count: number;
   };
 };

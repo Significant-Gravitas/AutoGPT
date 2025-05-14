@@ -967,7 +967,7 @@ async def get_my_agents(
 
         library_agents = await prisma.models.LibraryAgent.prisma().find_many(
             where=search_filter,
-            order=[{"agentGraphVersion": "desc"}],
+            order=[{"updatedAt": "desc"}],
             skip=(page - 1) * page_size,
             take=page_size,
             include={"AgentGraph": True},
