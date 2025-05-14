@@ -46,6 +46,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   smartlead: "SmartLead",
   smtp: "SMTP",
   reddit: "Reddit",
+  proxycurl: "Proxycurl",
   replicate: "Replicate",
   revid: "Rev.ID",
   twitter: "Twitter",
