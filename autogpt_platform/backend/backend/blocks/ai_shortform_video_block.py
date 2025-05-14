@@ -1,7 +1,7 @@
 import logging
 import time
 from enum import Enum
-from typing import List, Literal, Optional
+from typing import List, Literal
 
 from pydantic import SecretStr
 
@@ -142,6 +142,7 @@ class VisualMediaType(str, Enum):
 
 
 logger = logging.getLogger(__name__)
+
 
 class _RevidMixin:
     """Utility mix‑in that bundles the shared webhook / polling helpers."""
@@ -304,7 +305,8 @@ class AIShortformVideoCreatorBlock(Block, _RevidMixin):
                 "ratio": input_data.ratio,
                 "sourceType": "contentScraping",
                 "selectedStoryStyle": {"value": "custom", "label": "Custom"},
-                "hasToGenerateVideos": input_data.video_style != VisualMediaType.STOCK_VIDEOS,
+                "hasToGenerateVideos": input_data.video_style
+                != VisualMediaType.STOCK_VIDEOS,
                 "audioUrl": input_data.background_music.audio_url,
             },
         }
@@ -346,7 +348,8 @@ class AIAdMakerVideoCreatorBlock(Block, _RevidMixin):
             description="Narration voice", default=Voice.EVA, placeholder=Voice.EVA
         )
         background_music: AudioTrack = SchemaField(
-            description="Background track", default=AudioTrack.DONT_STOP_ME_ABSTRACT_FUTURE_BASS
+            description="Background track",
+            default=AudioTrack.DONT_STOP_ME_ABSTRACT_FUTURE_BASS,
         )
         input_media_urls: List[str] = SchemaField(
             description="List of image URLs to feature in the advert.", default=[]
@@ -576,7 +579,9 @@ class AIScreenshotToVideoAdBlock(Block, _RevidMixin):
             description="Narration that will accompany the screenshot.",
             placeholder="Check out these amazing stats!",
         )
-        screenshot_url: str = SchemaField(description="Screenshot or image URL to showcase.")
+        screenshot_url: str = SchemaField(
+            description="Screenshot or image URL to showcase."
+        )
         ratio: str = SchemaField(default="9 / 16")
         target_duration: int = SchemaField(default=30)
         voice: Voice = SchemaField(default=Voice.EVA)
