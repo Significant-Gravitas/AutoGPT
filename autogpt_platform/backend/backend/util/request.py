@@ -237,7 +237,10 @@ class Requests:
             headers.update(self.extra_headers)
 
         # Force the Host header to the original hostname
-        headers["Host"] = original_hostname
+        if urlparse(pinned_url).hostname not in self.trusted_origins:
+            headers["Host"] = original_hostname
+        else:
+            headers["Host"] = urlparse(pinned_url).hostname
 
         # Create a fresh session & mount our HostSSLAdapter if pinned to IP
         session = req.Session()
