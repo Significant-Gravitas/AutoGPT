@@ -30,7 +30,7 @@ from prisma.types import (
     AgentNodeExecutionUpdateInput,
     AgentNodeExecutionWhereInput,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from pydantic.fields import Field
 
 from backend.server.v2.store.exceptions import DatabaseError
@@ -69,10 +69,55 @@ class GraphExecutionMeta(BaseDbModel):
     ended_at: datetime
 
     class Stats(BaseModel):
-        cost: int = Field(..., description="Execution cost (cents)")
-        duration: float = Field(..., description="Seconds from start to end of run")
-        node_exec_time: float = Field(..., description="Seconds of total node runtime")
-        node_exec_count: int = Field(..., description="Number of node executions")
+        model_config = ConfigDict(
+            extra="allow",
+            arbitrary_types_allowed=True,
+        )
+
+        cost: int = Field(
+            default=0,
+            description="Execution cost (cents)",
+        )
+        duration: float = Field(
+            default=0,
+            description="Seconds from start to end of run",
+        )
+        duration_cpu_only: float = Field(
+            default=0,
+            description="CPU sec of duration",
+        )
+        node_exec_time: float = Field(
+            default=0,
+            description="Seconds of total node runtime",
+        )
+        node_exec_time_cpu_only: float = Field(
+            default=0,
+            description="CPU sec of node_exec_time",
+        )
+        node_exec_count: int = Field(
+            default=0,
+            description="Number of node executions",
+        )
+        node_error_count: int = Field(
+            default=0,
+            description="Number of node errors",
+        )
+        error: str | None = Field(
+            default=None,
+            description="Error message if any",
+        )
+
+        def to_db(self) -> GraphExecutionStats:
+            return GraphExecutionStats(
+                cost=self.cost,
+                walltime=self.duration,
+                cputime=self.duration_cpu_only,
+                nodes_walltime=self.node_exec_time,
+                nodes_cputime=self.node_exec_time_cpu_only,
+                node_count=self.node_exec_count,
+                node_error_count=self.node_error_count,
+                error=self.error,
+            )
 
     stats: Stats | None
 
@@ -106,8 +151,16 @@ class GraphExecutionMeta(BaseDbModel):
                 GraphExecutionMeta.Stats(
                     cost=stats.cost,
                     duration=stats.walltime,
+                    duration_cpu_only=stats.cputime,
                     node_exec_time=stats.nodes_walltime,
+                    node_exec_time_cpu_only=stats.nodes_cputime,
                     node_exec_count=stats.node_count,
+                    node_error_count=stats.node_error_count,
+                    error=(
+                        str(stats.error)
+                        if isinstance(stats.error, Exception)
+                        else stats.error
+                    ),
                 )
                 if stats
                 else None
@@ -276,7 +329,7 @@ class NodeExecutionResult(BaseModel):
             node_exec_id=self.node_exec_id,
             node_id=self.node_id,
             block_id=self.block_id,
-            data=self.input_data,
+            inputs=self.input_data,
         )
 
 
@@ -284,8 +337,12 @@ class NodeExecutionResult(BaseModel):
 
 
 async def get_graph_executions(
-    graph_id: Optional[str] = None,
-    user_id: Optional[str] = None,
+    graph_id: str | None = None,
+    user_id: str | None = None,
+    statuses: list[ExecutionStatus] | None = None,
+    created_time_gte: datetime | None = None,
+    created_time_lte: datetime | None = None,
+    limit: int | None = None,
 ) -> list[GraphExecutionMeta]:
     where_filter: AgentGraphExecutionWhereInput = {
         "isDeleted": False,
@@ -294,10 +351,18 @@ async def get_graph_executions(
         where_filter["userId"] = user_id
     if graph_id:
         where_filter["agentGraphId"] = graph_id
+    if created_time_gte or created_time_lte:
+        where_filter["createdAt"] = {
+            "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
+            "lte": created_time_lte or datetime.max.replace(tzinfo=timezone.utc),
+        }
+    if statuses:
+        where_filter["OR"] = [{"executionStatus": status} for status in statuses]
 
     executions = await AgentGraphExecution.prisma().find_many(
         where=where_filter,
         order={"createdAt": "desc"},
+        take=limit,
     )
     return [GraphExecutionMeta.from_db(execution) for execution in executions]
 
@@ -641,28 +706,6 @@ async def get_node_executions(
     return res
 
 
-async def get_graph_executions_in_timerange(
-    user_id: str, start_time: str, end_time: str
-) -> list[GraphExecution]:
-    try:
-        executions = await AgentGraphExecution.prisma().find_many(
-            where={
-                "startedAt": {
-                    "gte": datetime.fromisoformat(start_time),
-                    "lte": datetime.fromisoformat(end_time),
-                },
-                "userId": user_id,
-                "isDeleted": False,
-            },
-            include=GRAPH_EXECUTION_INCLUDE,
-        )
-        return [GraphExecution.from_db(execution) for execution in executions]
-    except Exception as e:
-        raise DatabaseError(
-            f"Failed to get executions in timerange {start_time} to {end_time} for user {user_id}: {e}"
-        ) from e
-
-
 async def get_latest_node_execution(
     node_id: str, graph_eid: str
 ) -> NodeExecutionResult | None:
@@ -701,7 +744,7 @@ class NodeExecutionEntry(BaseModel):
     node_exec_id: str
     node_id: str
     block_id: str
-    data: BlockInput
+    inputs: BlockInput
 
 
 class ExecutionQueue(Generic[T]):

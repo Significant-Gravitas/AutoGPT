@@ -189,26 +189,14 @@ NotificationData = Annotated[
 ]
 
 
-class NotificationEventDTO(BaseModel):
-    user_id: str
+class BaseEventModel(BaseModel):
     type: NotificationType
-    data: dict
-    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
-    retry_count: int = 0
-
-
-class SummaryParamsEventDTO(BaseModel):
     user_id: str
-    type: NotificationType
-    data: dict
     created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
-class NotificationEventModel(BaseModel, Generic[NotificationDataType_co]):
-    user_id: str
-    type: NotificationType
+class NotificationEventModel(BaseEventModel, Generic[NotificationDataType_co]):
     data: NotificationDataType_co
-    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
     @property
     def strategy(self) -> QueueType:
@@ -225,11 +213,8 @@ class NotificationEventModel(BaseModel, Generic[NotificationDataType_co]):
         return NotificationTypeOverride(self.type).template
 
 
-class SummaryParamsEventModel(BaseModel, Generic[SummaryParamsType_co]):
-    user_id: str
-    type: NotificationType
+class SummaryParamsEventModel(BaseEventModel, Generic[SummaryParamsType_co]):
     data: SummaryParamsType_co
-    created_at: datetime = Field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
 
 def get_notif_data_type(
@@ -384,7 +369,7 @@ class UserNotificationBatchDTO(BaseModel):
 
 def get_batch_delay(notification_type: NotificationType) -> timedelta:
     return {
-        NotificationType.AGENT_RUN: timedelta(minutes=60),
+        NotificationType.AGENT_RUN: timedelta(days=1),
         NotificationType.ZERO_BALANCE: timedelta(minutes=60),
         NotificationType.LOW_BALANCE: timedelta(minutes=60),
         NotificationType.BLOCK_EXECUTION_FAILED: timedelta(minutes=60),

@@ -422,7 +422,11 @@ async def get_graph(
     for_export: bool = False,
 ) -> graph_db.GraphModel:
     graph = await graph_db.get_graph(
-        graph_id, version, user_id=user_id, for_export=for_export
+        graph_id,
+        version,
+        user_id=user_id,
+        for_export=for_export,
+        include_subgraphs=True,  # needed to construct full credentials input schema
     )
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
@@ -769,7 +773,7 @@ class ScheduleCreationRequest(pydantic.BaseModel):
 async def create_schedule(
     user_id: Annotated[str, Depends(get_user_id)],
     schedule: ScheduleCreationRequest,
-) -> scheduler.ExecutionJobInfo:
+) -> scheduler.GraphExecutionJobInfo:
     graph = await graph_db.get_graph(
         schedule.graph_id, schedule.graph_version, user_id=user_id
     )
@@ -809,7 +813,7 @@ async def delete_schedule(
 async def get_execution_schedules(
     user_id: Annotated[str, Depends(get_user_id)],
     graph_id: str | None = None,
-) -> list[scheduler.ExecutionJobInfo]:
+) -> list[scheduler.GraphExecutionJobInfo]:
     return await execution_scheduler_client().get_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,
