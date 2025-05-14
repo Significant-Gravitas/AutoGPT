@@ -110,28 +110,50 @@ export default function useAgentGraph(
 
   // Subscribe to execution events
   useEffect(() => {
-    api.onWebSocketMessage("node_execution_event", (data) => {
-      if (data.graph_exec_id != flowExecutionID) {
-        return;
-      }
-      setUpdateQueue((prev) => [...prev, data]);
-    });
+    const deregisterMessageHandler = api.onWebSocketMessage(
+      "node_execution_event",
+      (data) => {
+        if (data.graph_exec_id != flowExecutionID) {
+          return;
+        }
+        setUpdateQueue((prev) => [...prev, data]);
+      },
+    );
 
-    if (flowExecutionID) {
-      api
-        .subscribeToGraphExecution(flowExecutionID)
-        .then(() =>
-          console.debug(
-            `Subscribed to updates for execution #${flowExecutionID}`,
-          ),
-        )
-        .catch((error) =>
-          console.error(
-            `Failed to subscribe to updates for execution #${flowExecutionID}:`,
-            error,
-          ),
-        );
-    }
+    const deregisterConnectHandler =
+      flowID && flowExecutionID
+        ? api.onWebSocketConnect(() => {
+            // Subscribe to execution updates
+            api
+              .subscribeToGraphExecution(flowExecutionID)
+              .then(() =>
+                console.debug(
+                  `Subscribed to updates for execution #${flowExecutionID}`,
+                ),
+              )
+              .catch((error) =>
+                console.error(
+                  `Failed to subscribe to updates for execution #${flowExecutionID}:`,
+                  error,
+                ),
+              );
+
+            // Sync execution info to ensure it's up-to-date after (re)connect
+            api
+              .getGraphExecutionInfo(flowID, flowExecutionID)
+              .then((execution) =>
+                setUpdateQueue((prev) => {
+                  if (!execution.node_executions) return prev;
+                  return [...prev, ...execution.node_executions];
+                }),
+              );
+          })
+        : () => {};
+
+    return () => {
+      deregisterMessageHandler();
+      deregisterConnectHandler();
+    };
   }, [api, flowID, flowVersion, flowExecutionID]);
 
   const getOutputType = useCallback(
