@@ -228,8 +228,8 @@ class Requests:
         if self.extra_url_validator is not None:
             url = self.extra_url_validator(url)
 
-        # Validate URL and get pinned URL + original hostname
-        pinned_url, original_hostname = validate_url(url, self.trusted_origins)
+        # Validate URL and get pinned URL + hostname
+        pinned_url, hostname = validate_url(url, self.trusted_origins)
 
         # Merge any extra headers
         headers = dict(headers) if headers else {}
@@ -239,16 +239,16 @@ class Requests:
         session = req.Session()
 
         # If untrusted, the hostname in the URL is replaced with the corresponding
-        # IP address, and we need to override the Host header with the original hostname
-        if (pinned := urlparse(pinned_url)).hostname != original_hostname:
-            headers["Host"] = original_hostname
+        # IP address, and we need to override the Host header with the actual hostname.
+        if (pinned := urlparse(pinned_url)).hostname != hostname:
+            headers["Host"] = hostname
 
             # If hostname was untrusted and we replaced it by (pinned it to) its IP,
             # we also need to attach a custom SNI adapter to make SSL work:
             mount_prefix = f"{pinned.scheme}://{pinned.hostname}"
             if pinned.port:
                 mount_prefix += f":{pinned.port}"
-            adapter = HostSSLAdapter(ssl_hostname=original_hostname)
+            adapter = HostSSLAdapter(ssl_hostname=hostname)
             session.mount("https://", adapter)
 
         # Perform the request with redirects disabled for manual handling
