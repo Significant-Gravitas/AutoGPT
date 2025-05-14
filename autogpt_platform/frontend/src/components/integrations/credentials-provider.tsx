@@ -40,6 +40,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   openai: "OpenAI",
   openweathermap: "OpenWeatherMap",
   open_router: "Open Router",
+  llama_api: "Llama API",
   pinecone: "Pinecone",
   screenshotone: "ScreenshotOne",
   slant3d: "Slant3D",

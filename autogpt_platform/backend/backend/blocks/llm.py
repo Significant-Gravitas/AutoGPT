@@ -36,6 +36,7 @@ LLMProviderName = Literal[
     ProviderName.OLLAMA,
     ProviderName.OPENAI,
     ProviderName.OPEN_ROUTER,
+    ProviderName.LLAMA_API,
 ]
 AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
 
@@ -141,6 +142,11 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GRYPHE_MYTHOMAX_L2_13B = "gryphe/mythomax-l2-13b"
     META_LLAMA_4_SCOUT = "meta-llama/llama-4-scout"
     META_LLAMA_4_MAVERICK = "meta-llama/llama-4-maverick"
+    # Llama API models
+    LLAMA_API_LLAMA_4_SCOUT = "Llama-4-Scout-17B-16E-Instruct-FP8"
+    LLAMA_API_LLAMA4_MAVERICK = "Llama-4-Maverick-17B-128E-Instruct-FP8"
+    LLAMA_API_LLAMA3_3_8B = "Llama-3.3-8B-Instruct"
+    LLAMA_API_LLAMA3_3_70B = "Llama-3.3-70B-Instruct"
 
     @property
     def metadata(self) -> ModelMetadata:
@@ -230,6 +236,11 @@ MODEL_METADATA = {
     LlmModel.GRYPHE_MYTHOMAX_L2_13B: ModelMetadata("open_router", 4096, 4096),
     LlmModel.META_LLAMA_4_SCOUT: ModelMetadata("open_router", 131072, 131072),
     LlmModel.META_LLAMA_4_MAVERICK: ModelMetadata("open_router", 1048576, 1000000),
+    # Llama API models
+    LlmModel.LLAMA_API_LLAMA_4_SCOUT: ModelMetadata("llama_api", 128000, 4028),
+    LlmModel.LLAMA_API_LLAMA4_MAVERICK: ModelMetadata("llama_api", 128000, 4028),
+    LlmModel.LLAMA_API_LLAMA3_3_8B: ModelMetadata("llama_api", 128000, 4028),
+    LlmModel.LLAMA_API_LLAMA3_3_70B: ModelMetadata("llama_api", 128000, 4028),
 }
 
 for model in LlmModel:
@@ -516,9 +527,6 @@ def llm_call(
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
-            parallel_tool_calls=(
-                openai.NOT_GIVEN if parallel_tool_calls is None else parallel_tool_calls
-            ),
         )
 
         # If there's no response, raise an error
@@ -527,6 +535,56 @@ def llm_call(
                 raise ValueError(f"OpenRouter error: {response}")
             else:
                 raise ValueError("No response from OpenRouter.")
+
+        if response.choices[0].message.tool_calls:
+            tool_calls = [
+                ToolContentBlock(
+                    id=tool.id,
+                    type=tool.type,
+                    function=ToolCall(
+                        name=tool.function.name, arguments=tool.function.arguments
+                    ),
+                )
+                for tool in response.choices[0].message.tool_calls
+            ]
+        else:
+            tool_calls = None
+
+        return LLMResponse(
+            raw_response=response.choices[0].message,
+            prompt=prompt,
+            response=response.choices[0].message.content or "",
+            tool_calls=tool_calls,
+            prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
+            completion_tokens=response.usage.completion_tokens if response.usage else 0,
+        )
+    elif provider == "llama_api":
+        tools_param = tools if tools else openai.NOT_GIVEN
+        client = openai.OpenAI(
+            base_url="https://api.llama.com/compat/v1/",
+            api_key=credentials.api_key.get_secret_value(),
+        )
+
+        response = client.chat.completions.create(
+            extra_headers={
+                "HTTP-Referer": "https://agpt.co",
+                "X-Title": "AutoGPT",
+            },
+            model=llm_model.value,
+            messages=prompt,  # type: ignore
+            max_tokens=max_tokens,
+            tools=tools_param,  # type: ignore
+            parallel_tool_calls=(
+                openai.NOT_GIVEN if parallel_tool_calls is None else parallel_tool_calls
+            ),
+        )
+
+        # If there's no response, raise an error
+        if not response.choices:
+            if response:
+                raise ValueError(f"Llama API error: {response}")
+            else:
+                raise ValueError("No response from Llama API.")
 
         if response.choices[0].message.tool_calls:
             tool_calls = [
