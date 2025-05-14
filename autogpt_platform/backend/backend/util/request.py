@@ -236,20 +236,15 @@ class Requests:
         if self.extra_headers is not None:
             headers.update(self.extra_headers)
 
-        # If untrusted, the hostname in the URL is replaced with the corresponding
-        # IP address, and we need to override the Host header with the original hostname
-        pinned = urlparse(pinned_url)
-        if pinned.hostname in self.trusted_origins:
-            headers["Host"] = pinned.hostname
-        else:
-            headers["Host"] = original_hostname
-
         session = req.Session()
 
-        # If hostname was untrusted and replaced by (pinned to) its IP,
-        # then we attach the custom SNI adapter:
-        if pinned.hostname and pinned.hostname != original_hostname:
-            # That means we definitely pinned to an IP
+        # If untrusted, the hostname in the URL is replaced with the corresponding
+        # IP address, and we need to override the Host header with the original hostname
+        if (pinned := urlparse(pinned_url)).hostname != original_hostname:
+            headers["Host"] = original_hostname
+
+            # If hostname was untrusted and we replaced it by (pinned it to) its IP,
+            # we also need to attach a custom SNI adapter to make SSL work:
             mount_prefix = f"{pinned.scheme}://{pinned.hostname}"
             if pinned.port:
                 mount_prefix += f":{pinned.port}"
