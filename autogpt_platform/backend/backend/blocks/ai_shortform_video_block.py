@@ -190,8 +190,6 @@ class _RevidMixin:
                 logger.error(f"Video creation failed: {status.get('message')}")
                 raise ValueError(f"Video creation failed: {status.get('message')}")
 
-            time.sleep(10)
-
         logger.error("Video creation timed out")
         raise TimeoutError("Video creation timed out")
 
