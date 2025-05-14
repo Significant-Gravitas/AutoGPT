@@ -1,6 +1,6 @@
 /**
- * Derived from @next/third-parties/google, with modified gtag.js source URL.
- * Original source: https://github.com/vercel/next.js/blob/b304b45e3a6e3e79338568d76e28805e77c03ec9/packages/third-parties/src/google/ga.tsx
+ * Modified copy of ga.tsx from @next/third-parties/google, with modified gtag.js source URL.
+ * Original source file: https://github.com/vercel/next.js/blob/b304b45e3a6e3e79338568d76e28805e77c03ec9/packages/third-parties/src/google/ga.tsx
  */
 
 "use client";

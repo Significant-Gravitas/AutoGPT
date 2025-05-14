@@ -1,6 +1,6 @@
 /**
- * Derived from @next/third-parties/google.
- * Original source: https://github.com/vercel/next.js/blob/cb49b483f1e2f63dcf6880765585830b48154e29/packages/third-parties/src/types/google.ts
+ * Partial copy of types/google.ts from @next/third-parties.
+ * Original source file: https://github.com/vercel/next.js/blob/cb49b483f1e2f63dcf6880765585830b48154e29/packages/third-parties/src/types/google.ts
  */
 
 type JSONValue =
