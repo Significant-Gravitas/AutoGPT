@@ -1,8 +1,13 @@
+/**
+ * Derived from @next/third-parties/google, with modified gtag.js source URL.
+ * Original source: https://github.com/vercel/next.js/blob/b304b45e3a6e3e79338568d76e28805e77c03ec9/packages/third-parties/src/google/ga.tsx
+ */
+
 "use client";
 
 import { useEffect } from "react";
 import Script from "next/script";
-import type { GAParams } from "../../types/google";
+import type { GAParams } from "@/types/google";
 
 let currDataLayerName: string | undefined = undefined;
 
