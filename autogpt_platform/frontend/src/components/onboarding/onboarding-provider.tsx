@@ -128,14 +128,13 @@ export default function OnboardingProvider({
 
   const incrementRuns = useCallback(() => {
     if (!state || state.completedSteps.includes("RUN_AGENTS")) return;
-    console.log("Incrementing runs", state.agentRuns + 1);
 
     const finished = state.agentRuns + 1 >= 10;
     updateState({
       agentRuns: state.agentRuns + 1,
-      completedSteps: finished
-        ? [...state.completedSteps, "RUN_AGENTS"]
-        : undefined,
+      ...(finished && {
+        completedSteps: [...state.completedSteps, "RUN_AGENTS"],
+      }),
     });
   }, [api, state]);
 

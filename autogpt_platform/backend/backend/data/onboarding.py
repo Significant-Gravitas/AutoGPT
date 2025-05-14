@@ -39,6 +39,7 @@ class UserOnboardingUpdate(pydantic.BaseModel):
     selectedStoreListingVersionId: Optional[str] = None
     agentInput: Optional[dict[str, Any]] = None
     onboardingAgentExecutionId: Optional[str] = None
+    agentRuns: Optional[int] = None
 
 
 async def get_user_onboarding(user_id: str):
@@ -81,6 +82,8 @@ async def update_user_onboarding(user_id: str, data: UserOnboardingUpdate):
         update["agentInput"] = Json(data.agentInput)
     if data.onboardingAgentExecutionId is not None:
         update["onboardingAgentExecutionId"] = data.onboardingAgentExecutionId
+    if data.agentRuns is not None:
+        update["agentRuns"] = data.agentRuns
 
     return await UserOnboarding.prisma().upsert(
         where={"userId": user_id},
