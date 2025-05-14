@@ -278,11 +278,9 @@ class AIShortformVideoCreatorBlock(Block, _RevidMixin):
     def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        # 1. Create a new Webhook.site URL so Revid can ping us when done
         webhook_token, webhook_url = self.create_webhook()
         logger.debug(f"Webhook URL: {webhook_url}")
 
-        # 2. Build the payload
         payload = {
             "frameRate": input_data.frame_rate,
             "resolution": input_data.resolution,
@@ -313,7 +311,6 @@ class AIShortformVideoCreatorBlock(Block, _RevidMixin):
             },
         }
 
-        # 3. Kick off render & poll until ready
         logger.debug("Creating video...")
         response = self.create_video(credentials.api_key, payload)
         pid = response.get("pid")
@@ -439,7 +436,7 @@ class AIAdMakerVideoCreatorBlock(Block, _RevidMixin):
                 "disableVoice": False,
                 "useOnlyProvidedMedia": input_data.use_only_provided_media,
                 "imageGenerationModel": "ultra",
-                "videoGenerationModel": "pro",
+                "videoGenerationModel": "base",
                 "hasEnhancedGeneration": True,
                 "hasEnhancedGenerationPro": True,
                 "inputMedias": [
@@ -551,7 +548,7 @@ class AIPromptToVideoCreatorBlock(Block, _RevidMixin):
                 "disableAudio": False,
                 "disableVoice": False,
                 "imageGenerationModel": "good",
-                "videoGenerationModel": "ultra",
+                "videoGenerationModel": "base",
                 "hasEnhancedGeneration": True,
                 "hasEnhancedGenerationPro": True,
                 "inputMedias": [],
@@ -667,7 +664,7 @@ class AIScreenshotToVideoAdBlock(Block, _RevidMixin):
                 "disableVoice": False,
                 "useOnlyProvidedMedia": True,
                 "imageGenerationModel": "ultra",
-                "videoGenerationModel": "ultra",
+                "videoGenerationModel": "base",
                 "hasEnhancedGeneration": True,
                 "hasEnhancedGenerationPro": True,
                 "inputMedias": [
