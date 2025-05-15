@@ -53,6 +53,7 @@ class BlockType(Enum):
     WEBHOOK_MANUAL = "Webhook (manual)"
     AGENT = "Agent"
     AI = "AI"
+    AYRSHARE = "Ayrshare"
 
 
 class BlockCategory(Enum):
