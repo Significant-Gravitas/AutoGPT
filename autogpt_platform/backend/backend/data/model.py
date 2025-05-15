@@ -274,10 +274,16 @@ class UserMetadataRaw(TypedDict, total=False):
 
 class UserIntegrations(BaseModel):
 
-    class ManagedCredentials(TypedDict, total=False):
+    class ManagedCredentials(BaseModel):
         """Integration credentials managed by us, rather than by the user"""
 
-        ayrshare: APIKeyCredentials
+        ayrshare_profile_key: Optional[SecretStr] = None
+
+        @field_serializer("*")
+        def dump_secret_strings(value: Any, _info):
+            if isinstance(value, SecretStr):
+                return value.get_secret_value()
+            return value
 
     managed_credentials: ManagedCredentials = Field(default_factory=ManagedCredentials)
     credentials: list[Credentials] = Field(default_factory=list)

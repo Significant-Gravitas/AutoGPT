@@ -224,6 +224,8 @@ class IntegrationCredentialsStore:
 
         return get_service_client(DatabaseManagerClient)
 
+    # =============== USER-MANAGED CREDENTIALS =============== #
+
     def add_creds(self, user_id: str, credentials: Credentials) -> None:
         with self.locked_user_integrations(user_id):
             if self.get_creds_by_id(user_id, credentials.id):
@@ -337,17 +339,22 @@ class IntegrationCredentialsStore:
             ]
             self._set_user_integration_creds(user_id, filtered_credentials)
 
-    def get_managed_creds(self, user_id: str, provider: str) -> Optional[Credentials]:
-        user_integrations = self._get_user_integrations(user_id)
-        return user_integrations.managed_credentials.get(provider)
+    # ============== SYSTEM-MANAGED CREDENTIALS ============== #
 
-    def set_managed_creds(self, user_id: str, credentials: Credentials) -> None:
+    def get_ayrshare_profile_key(self, user_id: str) -> SecretStr | None:
+        managed_user_creds = self._get_user_integrations(user_id).managed_credentials
+        return managed_user_creds.ayrshare_profile_key
+
+    def set_ayrshare_profile_key(self, user_id: str, profile_key: str) -> None:
+        _profile_key = SecretStr(profile_key)
         with self.locked_user_integrations(user_id):
             user_integrations = self._get_user_integrations(user_id)
-            user_integrations.managed_credentials[credentials.provider] = credentials
+            user_integrations.managed_credentials.ayrshare_profile_key = _profile_key
             self.db_manager.update_user_integrations(
                 user_id=user_id, data=user_integrations
             )
+
+    # ===================== OAUTH STATES ===================== #
 
     def store_state_token(
         self, user_id: str, provider: str, scopes: list[str], use_pkce: bool = False
@@ -415,6 +422,8 @@ class IntegrationCredentialsStore:
                 return valid_state
 
         return None
+
+    # =================== GET/SET HELPERS =================== #
 
     def _set_user_integration_creds(
         self, user_id: str, credentials: list[Credentials]
