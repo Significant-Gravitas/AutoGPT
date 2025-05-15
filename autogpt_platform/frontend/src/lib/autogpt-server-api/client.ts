@@ -940,42 +940,55 @@ export default class BackendAPI {
   }
 
   async connectWebSocket(): Promise<void> {
-    this.wsConnecting ??= new Promise(async (resolve, reject) => {
+    return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
         const token =
           (await this.supabaseClient?.auth.getSession())?.data.session
             ?.access_token || "";
         const wsUrlWithToken = `${this.wsUrl}?token=${token}`;
         this.webSocket = new WebSocket(wsUrlWithToken);
+        this.webSocket.state = "connecting";
 
         this.webSocket.onopen = () => {
+          this.webSocket!.state = "connected";
+          console.info("[BackendAPI] WebSocket connected to", this.wsUrl);
           this._startWSHeartbeat(); // Start heartbeat when connection opens
           this.wsOnConnectHandlers.forEach((handler) => handler());
           resolve();
         };
 
         this.webSocket.onclose = (event) => {
-          console.warn("WebSocket connection closed", event);
+          if (this.webSocket?.state == "connecting") {
+            console.error(
+              `[BackendAPI] WebSocket failed to connect: ${event.reason}`,
+              event,
+            );
+          } else if (this.webSocket?.state == "connected") {
+            console.warn(
+              `[BackendAPI] WebSocket connection closed: ${event.reason}`,
+              event,
+            );
+          }
+          this.webSocket!.state = "closed";
+
           this._stopWSHeartbeat(); // Stop heartbeat when connection closes
           this.wsConnecting = null;
           // Attempt to reconnect after a delay
-          setTimeout(() => this.connectWebSocket(), 1000);
+          setTimeout(() => this.connectWebSocket().then(resolve), 1000);
         };
 
         this.webSocket.onerror = (error) => {
-          console.error("WebSocket error:", error);
-          this._stopWSHeartbeat(); // Stop heartbeat on error
-          this.wsConnecting = null;
-          reject(error);
+          if (this.webSocket?.state == "connected") {
+            console.error("[BackendAPI] WebSocket error:", error);
+          }
         };
 
         this.webSocket.onmessage = (event) => this._handleWSMessage(event);
       } catch (error) {
-        console.error("Error connecting to WebSocket:", error);
+        console.error("[BackendAPI] Error connecting to WebSocket:", error);
         reject(error);
       }
-    });
-    return this.wsConnecting;
+    }));
   }
 
   disconnectWebSocket() {
@@ -1041,6 +1054,12 @@ export default class BackendAPI {
       clearTimeout(this.heartbeatTimeoutID);
       this.heartbeatTimeoutID = null;
     }
+  }
+}
+
+declare global {
+  interface WebSocket {
+    state: "connecting" | "connected" | "closed";
   }
 }
 
