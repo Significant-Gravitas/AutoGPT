@@ -337,6 +337,18 @@ class IntegrationCredentialsStore:
             ]
             self._set_user_integration_creds(user_id, filtered_credentials)
 
+    def get_managed_creds(self, user_id: str, provider: str) -> Optional[Credentials]:
+        user_integrations = self._get_user_integrations(user_id)
+        return user_integrations.managed_credentials.get(provider)
+
+    def set_managed_creds(self, user_id: str, credentials: Credentials) -> None:
+        with self.locked_user_integrations(user_id):
+            user_integrations = self._get_user_integrations(user_id)
+            user_integrations.managed_credentials[credentials.provider] = credentials
+            self.db_manager.update_user_integrations(
+                user_id=user_id, data=user_integrations
+            )
+
     def store_state_token(
         self, user_id: str, provider: str, scopes: list[str], use_pkce: bool = False
     ) -> tuple[str, str]:
