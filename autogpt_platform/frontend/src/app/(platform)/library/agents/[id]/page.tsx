@@ -121,7 +121,11 @@ export default function AgentRunsPage(): React.ReactElement {
     }
   }, [selectedRun, onboardingState, updateOnboardingState]);
 
+  const lastRefresh = useRef<number>(0);
   const refreshPageData = useCallback(() => {
+    if (Date.now() - lastRefresh.current < 2e3) return; // 2 second debounce
+    lastRefresh.current = Date.now();
+
     api.getLibraryAgent(agentID).then((agent) => {
       setAgent(agent);
 
