@@ -224,33 +224,31 @@ class Requests:
         *args,
         **kwargs,
     ) -> req.Response:
-        # Validate URL and get pinned URL + original hostname
-        pinned_url, original_hostname = validate_url(url, self.trusted_origins)
-
         # Apply any extra user-defined validation/transformation
         if self.extra_url_validator is not None:
-            pinned_url = self.extra_url_validator(pinned_url)
+            url = self.extra_url_validator(url)
+
+        # Validate URL and get pinned URL + hostname
+        pinned_url, hostname = validate_url(url, self.trusted_origins)
 
         # Merge any extra headers
         headers = dict(headers) if headers else {}
         if self.extra_headers is not None:
             headers.update(self.extra_headers)
 
-        # Force the Host header to the original hostname
-        headers["Host"] = original_hostname
-
-        # Create a fresh session & mount our HostSSLAdapter if pinned to IP
         session = req.Session()
-        pinned_parsed = urlparse(pinned_url)
 
-        # If pinned_url netloc is an IP (not in trusted_origins),
-        # then we attach the custom SNI adapter:
-        if pinned_parsed.hostname and pinned_parsed.hostname != original_hostname:
-            # That means we definitely pinned to an IP
-            mount_prefix = f"{pinned_parsed.scheme}://{pinned_parsed.hostname}"
-            if pinned_parsed.port:
-                mount_prefix += f":{pinned_parsed.port}"
-            adapter = HostSSLAdapter(ssl_hostname=original_hostname)
+        # If untrusted, the hostname in the URL is replaced with the corresponding
+        # IP address, and we need to override the Host header with the actual hostname.
+        if (pinned := urlparse(pinned_url)).hostname != hostname:
+            headers["Host"] = hostname
+
+            # If hostname was untrusted and we replaced it by (pinned it to) its IP,
+            # we also need to attach a custom SNI adapter to make SSL work:
+            mount_prefix = f"{pinned.scheme}://{pinned.hostname}"
+            if pinned.port:
+                mount_prefix += f":{pinned.port}"
+            adapter = HostSSLAdapter(ssl_hostname=hostname)
             session.mount("https://", adapter)
 
         # Perform the request with redirects disabled for manual handling
