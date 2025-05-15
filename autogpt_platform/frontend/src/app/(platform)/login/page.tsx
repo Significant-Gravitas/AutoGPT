@@ -35,6 +35,7 @@ export default function LoginPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [captchaKey, setCaptchaKey] = useState(0);
 
   const turnstile = useTurnstile({
     action: "login",
@@ -64,6 +65,11 @@ export default function LoginPage() {
   //   setFeedback(null);
   // }, [supabase]);
 
+  const resetCaptcha = useCallback(() => {
+    setCaptchaKey((k) => k + 1);
+    turnstile.reset();
+  }, [turnstile]);
+
   const onLogin = useCallback(
     async (data: z.infer<typeof loginFormSchema>) => {
       setIsLoading(true);
@@ -76,6 +82,7 @@ export default function LoginPage() {
       if (!turnstile.verified) {
         setFeedback("Please complete the CAPTCHA challenge.");
         setIsLoading(false);
+        resetCaptcha();
         return;
       }
 
@@ -83,8 +90,7 @@ export default function LoginPage() {
       setIsLoading(false);
       if (error) {
         setFeedback(error);
-        // Always reset the turnstile on any error
-        turnstile.reset();
+        resetCaptcha();
         return;
       }
       setFeedback(null);
@@ -159,6 +165,7 @@ export default function LoginPage() {
 
           {/* Turnstile CAPTCHA Component */}
           <Turnstile
+            key={captchaKey}
             siteKey={turnstile.siteKey}
             onVerify={turnstile.handleVerify}
             onExpire={turnstile.handleExpire}
