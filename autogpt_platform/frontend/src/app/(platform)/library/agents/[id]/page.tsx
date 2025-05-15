@@ -42,6 +42,7 @@ import { useToast } from "@/components/ui/use-toast";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
+  const { toast } = useToast();
   const router = useRouter();
   const api = useBackendAPI();
 
@@ -69,7 +70,6 @@ export default function AgentRunsPage(): React.ReactElement {
   const { state: onboardingState, updateState: updateOnboardingState } =
     useOnboarding();
   const [copyAgentDialogOpen, setCopyAgentDialogOpen] = useState(false);
-  const { toast } = useToast();
 
   const openRunDraftView = useCallback(() => {
     selectView({ type: "run" });
@@ -156,6 +156,31 @@ export default function AgentRunsPage(): React.ReactElement {
   // Initial load
   useEffect(() => {
     refreshPageData();
+
+    // Show a toast when the WebSocket connection disconnects
+    let connectionToast: ReturnType<typeof toast> | null = null;
+    const cancelDisconnectHandler = api.onWebSocketDisconnect(() => {
+      connectionToast ??= toast({
+        title: "Connection to server was lost",
+        variant: "destructive",
+        description: "Trying to reconnect...",
+        duration: Infinity, // show until connection is re-established
+      });
+    });
+    const cancelConnectHandler = api.onWebSocketConnect(() => {
+      if (connectionToast)
+        connectionToast.update({
+          id: connectionToast.id,
+          title: "✅ Connection re-established",
+          variant: "default",
+          description: null,
+          duration: 2000,
+        });
+    });
+    return () => {
+      cancelDisconnectHandler();
+      cancelConnectHandler();
+    };
   }, []);
 
   // Subscribe to WebSocket updates for agent runs
