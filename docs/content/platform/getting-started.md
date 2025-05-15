@@ -57,6 +57,28 @@ docker compose -v
 
 Once you have Docker and Docker Compose installed, you can proceed to the next step.
 
+<details>
+ <summary>
+ Raspberry Pi 5 Specific Notes
+ </summary>
+    On Raspberry Pi 5 with Raspberry Pi OS, the default 16K page size will cause issues with the <code>supabase-vector</code> container (expected: 4K).
+    </br>
+    To fix this, edit <code>/boot/firmware/config.txt</code> and add:
+    </br>
+    ```ini
+    kernel=kernel8.img
+    ```
+    Then reboot. You can check your page size with:
+    </br>
+    ```bash
+    getconf PAGESIZE
+    ```
+    <code>16384</code> means 16K (incorrect), and <code>4096</code> means 4K (correct).
+    After adjusting, <code>docker compose up -d --build</code> should work normally.
+    </br>
+    See <a href="https://github.com/supabase/supabase/issues/33816">supabase/supabase #33816</a> for additional context.
+</details>
+
 ## Setup
 
 ### Cloning the Repository
@@ -360,7 +382,7 @@ Currently, there are only 3 active services:
 
 - AgentServer (the API, defined in `server.py`)
 - ExecutionManager (the executor, defined in `manager.py`)
-- ExecutionScheduler (the scheduler, defined in `scheduler.py`)
+- Scheduler (the scheduler, defined in `scheduler.py`)
 
 The services run in independent Python processes and communicate through an IPC.
 A communication layer (`service.py`) is created to decouple the communication library from the implementation.

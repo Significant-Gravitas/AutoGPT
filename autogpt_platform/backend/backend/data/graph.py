@@ -172,6 +172,8 @@ class BaseGraph(BaseDbModel):
     description: str
     nodes: list[Node] = []
     links: list[Link] = []
+    forked_from_id: str | None = None
+    forked_from_version: int | None = None
 
     @computed_field
     @property
@@ -196,11 +198,6 @@ class BaseGraph(BaseDbModel):
                 and issubclass(block.input_schema, AgentOutputBlock.Input)
             )
         )
-
-    @computed_field
-    @property
-    def credentials_input_schema(self) -> dict[str, Any]:
-        return self._credentials_input_schema.jsonschema()
 
     @staticmethod
     def _generate_schema(
@@ -233,6 +230,15 @@ class BaseGraph(BaseDbModel):
             },
             "required": [p.name for p in schema_fields if p.value is None],
         }
+
+
+class Graph(BaseGraph):
+    sub_graphs: list[BaseGraph] = []  # Flattened sub-graphs
+
+    @computed_field
+    @property
+    def credentials_input_schema(self) -> dict[str, Any]:
+        return self._credentials_input_schema.jsonschema()
 
     @property
     def _credentials_input_schema(self) -> type[BlockSchema]:
@@ -312,15 +318,12 @@ class BaseGraph(BaseDbModel):
                         ),
                         (node.id, field_name),
                     )
-                    for node in self.nodes
+                    for graph in [self] + self.sub_graphs
+                    for node in graph.nodes
                     for field_name, field_info in node.block.input_schema.get_credentials_fields_info().items()
                 )
             )
         }
-
-
-class Graph(BaseGraph):
-    sub_graphs: list[BaseGraph] = []  # Flattened sub-graphs, only used in export
 
 
 class GraphModel(Graph):
@@ -398,7 +401,7 @@ class GraphModel(Graph):
             if node.block_id != AgentExecutorBlock().id:
                 continue
             node.input_default["user_id"] = user_id
-            node.input_default.setdefault("data", {})
+            node.input_default.setdefault("inputs", {})
             if (graph_id := node.input_default.get("graph_id")) in graph_id_map:
                 node.input_default["graph_id"] = graph_id_map[graph_id]
 
@@ -409,10 +412,13 @@ class GraphModel(Graph):
 
     @staticmethod
     def _validate_graph(graph: BaseGraph, for_run: bool = False):
+        def is_tool_pin(name: str) -> bool:
+            return name.startswith("tools_^_")
+
         def sanitize(name):
             sanitized_name = name.split("_#_")[0].split("_@_")[0].split("_$_")[0]
-            if sanitized_name.startswith("tools_^_"):
-                return sanitized_name.split("_^_")[0]
+            if is_tool_pin(sanitized_name):
+                return "tools"
             return sanitized_name
 
         # Validate smart decision maker nodes
@@ -421,10 +427,6 @@ class GraphModel(Graph):
             for node in graph.nodes
             if (block := get_block(node.block_id)) is not None
         }
-
-        for node in graph.nodes:
-            if (block := nodes_block.get(node.id)) is None:
-                raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
 
         input_links = defaultdict(list)
 
@@ -440,8 +442,8 @@ class GraphModel(Graph):
                 [sanitize(name) for name in node.input_default]
                 + [sanitize(link.sink_name) for link in input_links.get(node.id, [])]
             )
-            input_schema = block.input_schema
-            for name in (required_fields := input_schema.get_required_fields()):
+            InputSchema = block.input_schema
+            for name in (required_fields := InputSchema.get_required_fields()):
                 if (
                     name not in provided_inputs
                     # Webhook payload is passed in by ExecutionManager
@@ -451,7 +453,7 @@ class GraphModel(Graph):
                         in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
                     )
                     # Checking availability of credentials is done by ExecutionManager
-                    and name not in input_schema.get_credentials_fields()
+                    and name not in InputSchema.get_credentials_fields()
                     # Validate only I/O nodes, or validate everything when executing
                     and (
                         for_run
@@ -478,37 +480,43 @@ class GraphModel(Graph):
                     )
 
             # Get input schema properties and check dependencies
-            input_fields = input_schema.model_fields
+            input_fields = InputSchema.model_fields
 
-            def has_value(name):
+            def has_value(node: Node, name: str):
                 return (
-                    node is not None
-                    and name in node.input_default
+                    name in node.input_default
                     and node.input_default[name] is not None
                     and str(node.input_default[name]).strip() != ""
                 ) or (name in input_fields and input_fields[name].default is not None)
 
             # Validate dependencies between fields
-            for field_name, field_info in input_fields.items():
-                # Apply input dependency validation only on run & field with depends_on
-                json_schema_extra = field_info.json_schema_extra or {}
-                if not (
-                    for_run
-                    and isinstance(json_schema_extra, dict)
-                    and (
-                        dependencies := cast(
-                            list[str], json_schema_extra.get("depends_on", [])
-                        )
-                    )
-                ):
+            for field_name in input_fields.keys():
+                field_json_schema = InputSchema.get_field_schema(field_name)
+
+                dependencies: list[str] = []
+
+                # Check regular field dependencies (only pre graph execution)
+                if for_run:
+                    dependencies.extend(field_json_schema.get("depends_on", []))
+
+                # Require presence of credentials discriminator (always).
+                # The `discriminator` is either the name of a sibling field (str),
+                # or an object that discriminates between possible types for this field:
+                # {"propertyName": prop_name, "mapping": {prop_value: sub_schema}}
+                if (
+                    discriminator := field_json_schema.get("discriminator")
+                ) and isinstance(discriminator, str):
+                    dependencies.append(discriminator)
+
+                if not dependencies:
                     continue
 
                 # Check if dependent field has value in input_default
-                field_has_value = has_value(field_name)
+                field_has_value = has_value(node, field_name)
                 field_is_required = field_name in required_fields
 
                 # Check for missing dependencies when dependent field is present
-                missing_deps = [dep for dep in dependencies if not has_value(dep)]
+                missing_deps = [dep for dep in dependencies if not has_value(node, dep)]
                 if missing_deps and (field_has_value or field_is_required):
                     raise ValueError(
                         f"Node {block.name} #{node.id}: Field `{field_name}` requires [{', '.join(missing_deps)}] to be set"
@@ -553,7 +561,7 @@ class GraphModel(Graph):
                         if block.block_type not in [BlockType.AGENT]
                         else vals.get("input_schema", {}).get("properties", {}).keys()
                     )
-                if sanitized_name not in fields and not name.startswith("tools_^_"):
+                if sanitized_name not in fields and not is_tool_pin(name):
                     fields_msg = f"Allowed fields: {fields}"
                     raise ValueError(f"{prefix}, `{name}` invalid, {fields_msg}")
 
@@ -570,6 +578,8 @@ class GraphModel(Graph):
             id=graph.id,
             user_id=graph.userId if not for_export else "",
             version=graph.version,
+            forked_from_id=graph.forkedFromId,
+            forked_from_version=graph.forkedFromVersion,
             is_active=graph.isActive,
             name=graph.name or "",
             description=graph.description or "",
@@ -682,6 +692,7 @@ async def get_graph(
     version: int | None = None,
     user_id: str | None = None,
     for_export: bool = False,
+    include_subgraphs: bool = False,
 ) -> GraphModel | None:
     """
     Retrieves a graph from the DB.
@@ -712,6 +723,58 @@ async def get_graph(
                     "agentGraphVersion": version or graph.version,
                     "isDeleted": False,
                     "submissionStatus": SubmissionStatus.APPROVED,
+                }
+            )
+        )
+    ):
+        return None
+
+    if include_subgraphs or for_export:
+        sub_graphs = await get_sub_graphs(graph)
+        return GraphModel.from_db(
+            graph=graph,
+            sub_graphs=sub_graphs,
+            for_export=for_export,
+        )
+
+    return GraphModel.from_db(graph, for_export)
+
+
+async def get_graph_as_admin(
+    graph_id: str,
+    version: int | None = None,
+    user_id: str | None = None,
+    for_export: bool = False,
+) -> GraphModel | None:
+    """
+    Intentionally parallels the get_graph but should only be used for admin tasks, because can return any graph that's been submitted
+    Retrieves a graph from the DB.
+    Defaults to the version with `is_active` if `version` is not passed.
+
+    Returns `None` if the record is not found.
+    """
+    logger.warning(f"Getting {graph_id=} {version=} as ADMIN {user_id=} {for_export=}")
+    where_clause: AgentGraphWhereInput = {
+        "id": graph_id,
+    }
+
+    if version is not None:
+        where_clause["version"] = version
+
+    graph = await AgentGraph.prisma().find_first(
+        where=where_clause,
+        include=AGENT_GRAPH_INCLUDE,
+        order={"version": "desc"},
+    )
+
+    # For access, the graph must be owned by the user or listed in the store
+    if graph is None or (
+        graph.userId != user_id
+        and not (
+            await StoreListingVersion.prisma().find_first(
+                where={
+                    "agentGraphId": graph_id,
+                    "agentGraphVersion": version or graph.version,
                 }
             )
         )
@@ -847,6 +910,27 @@ async def create_graph(graph: Graph, user_id: str) -> GraphModel:
     raise ValueError(f"Created graph {graph.id} v{graph.version} is not in DB")
 
 
+async def fork_graph(graph_id: str, graph_version: int, user_id: str) -> GraphModel:
+    """
+    Forks a graph by copying it and all its nodes and links to a new graph.
+    """
+    async with transaction() as tx:
+        graph = await get_graph(graph_id, graph_version, user_id, True)
+        if not graph:
+            raise ValueError(f"Graph {graph_id} v{graph_version} not found")
+
+        # Set forked from ID and version as itself as it's about ot be copied
+        graph.forked_from_id = graph.id
+        graph.forked_from_version = graph.version
+        graph.name = f"{graph.name} (copy)"
+        graph.reassign_ids(user_id=user_id, reassign_graph_id=True)
+        graph.validate_graph(for_run=False)
+
+        await __create_graph(tx, graph, user_id)
+
+    return graph
+
+
 async def __create_graph(tx, graph: Graph, user_id: str):
     graphs = [graph] + graph.sub_graphs
 
@@ -859,6 +943,8 @@ async def __create_graph(tx, graph: Graph, user_id: str):
                 description=graph.description,
                 isActive=graph.is_active,
                 userId=user_id,
+                forkedFromId=graph.forked_from_id,
+                forkedFromVersion=graph.forked_from_version,
             )
             for graph in graphs
         ]

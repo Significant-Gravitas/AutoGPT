@@ -25,7 +25,7 @@ class SpinTestServer:
         self.db_api = DatabaseManager()
         self.exec_manager = ExecutionManager()
         self.agent_server = AgentServer()
-        self.scheduler = Scheduler()
+        self.scheduler = Scheduler(register_system_tasks=False)
         self.notif_manager = NotificationManager()
 
     @staticmethod

@@ -19,6 +19,7 @@ import backend.data.graph
 import backend.data.user
 import backend.server.routers.postmark.postmark
 import backend.server.routers.v1
+import backend.server.v2.admin.credit_admin_routes
 import backend.server.v2.admin.store_admin_routes
 import backend.server.v2.library.db
 import backend.server.v2.library.model
@@ -26,6 +27,7 @@ import backend.server.v2.library.routes
 import backend.server.v2.otto.routes
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
+import backend.server.v2.turnstile.routes
 import backend.util.service
 import backend.util.settings
 from backend.blocks.llm import LlmModel
@@ -108,10 +110,18 @@ app.include_router(
     prefix="/api/store",
 )
 app.include_router(
+    backend.server.v2.admin.credit_admin_routes.router,
+    tags=["v2", "admin"],
+    prefix="/api/credits",
+)
+app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
 )
 app.include_router(
     backend.server.v2.otto.routes.router, tags=["v2"], prefix="/api/otto"
+)
+app.include_router(
+    backend.server.v2.turnstile.routes.router, tags=["v2"], prefix="/api/turnstile"
 )
 
 app.include_router(

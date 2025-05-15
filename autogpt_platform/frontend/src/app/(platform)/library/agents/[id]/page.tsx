@@ -1,5 +1,11 @@
 "use client";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useParams, useRouter } from "next/navigation";
 
 import { exportAsJSONFile } from "@/lib/utils";
@@ -23,6 +29,16 @@ import AgentRunDetailsView from "@/components/agents/agent-run-details-view";
 import AgentRunsSelectorList from "@/components/agents/agent-runs-selector-list";
 import AgentScheduleDetailsView from "@/components/agents/agent-schedule-details-view";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
@@ -31,7 +47,7 @@ export default function AgentRunsPage(): React.ReactElement {
 
   // ============================ STATE =============================
 
-  const [graph, setGraph] = useState<Graph | null>(null);
+  const [graph, setGraph] = useState<Graph | null>(null); // Graph version corresponding to LibraryAgent
   const [agent, setAgent] = useState<LibraryAgent | null>(null);
   const [agentRuns, setAgentRuns] = useState<GraphExecutionMeta[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
@@ -50,7 +66,10 @@ export default function AgentRunsPage(): React.ReactElement {
     useState<boolean>(false);
   const [confirmingDeleteAgentRun, setConfirmingDeleteAgentRun] =
     useState<GraphExecutionMeta | null>(null);
-  const { state, updateState } = useOnboarding();
+  const { state: onboardingState, updateState: updateOnboardingState } =
+    useOnboarding();
+  const [copyAgentDialogOpen, setCopyAgentDialogOpen] = useState(false);
+  const { toast } = useToast();
 
   const openRunDraftView = useCallback(() => {
     selectView({ type: "run" });
@@ -65,34 +84,43 @@ export default function AgentRunsPage(): React.ReactElement {
     setSelectedSchedule(schedule);
   }, []);
 
-  const [graphVersions, setGraphVersions] = useState<Record<number, Graph>>({});
+  const graphVersions = useRef<Record<number, Graph>>({});
+  const loadingGraphVersions = useRef<Record<number, Promise<Graph>>>({});
   const getGraphVersion = useCallback(
     async (graphID: GraphID, version: number) => {
-      if (graphVersions[version]) return graphVersions[version];
+      if (version in graphVersions.current)
+        return graphVersions.current[version];
+      if (version in loadingGraphVersions.current)
+        return loadingGraphVersions.current[version];
 
-      const graphVersion = await api.getGraph(graphID, version);
-      setGraphVersions((prev) => ({
-        ...prev,
-        [version]: graphVersion,
-      }));
-      return graphVersion;
+      const pendingGraph = api.getGraph(graphID, version).then((graph) => {
+        graphVersions.current[version] = graph;
+        return graph;
+      });
+      // Cache promise as well to avoid duplicate requests
+      loadingGraphVersions.current[version] = pendingGraph;
+      return pendingGraph;
     },
-    [api, graphVersions],
+    [api, graphVersions, loadingGraphVersions],
   );
 
   // Reward user for viewing results of their onboarding agent
   useEffect(() => {
-    if (!state || !selectedRun || state.completedSteps.includes("GET_RESULTS"))
+    if (
+      !onboardingState ||
+      !selectedRun ||
+      onboardingState.completedSteps.includes("GET_RESULTS")
+    )
       return;
 
-    if (selectedRun.id === state.onboardingAgentExecutionId) {
-      updateState({
-        completedSteps: [...state.completedSteps, "GET_RESULTS"],
+    if (selectedRun.id === onboardingState.onboardingAgentExecutionId) {
+      updateOnboardingState({
+        completedSteps: [...onboardingState.completedSteps, "GET_RESULTS"],
       });
     }
-  }, [selectedRun, state]);
+  }, [selectedRun, onboardingState, updateOnboardingState]);
 
-  const fetchAgents = useCallback(() => {
+  const refreshPageData = useCallback(() => {
     api.getLibraryAgent(agentID).then((agent) => {
       setAgent(agent);
 
@@ -107,38 +135,40 @@ export default function AgentRunsPage(): React.ReactElement {
         new Set(agentRuns.map((run) => run.graph_version)).forEach((version) =>
           getGraphVersion(agent.graph_id, version),
         );
-
-        if (!selectedView.id && isFirstLoad && agentRuns.length > 0) {
-          // only for first load or first execution
-          setIsFirstLoad(false);
-
-          const latestRun = agentRuns.reduce((latest, current) => {
-            if (latest.started_at && !current.started_at) return current;
-            else if (!latest.started_at) return latest;
-            return latest.started_at > current.started_at ? latest : current;
-          }, agentRuns[0]);
-          selectView({ type: "run", id: latestRun.id });
-        }
       });
     });
-    if (selectedView.type == "run" && selectedView.id && agent) {
-      api
-        .getGraphExecutionInfo(agent.graph_id, selectedView.id)
-        .then(setSelectedRun);
-    }
-  }, [api, agentID, getGraphVersion, graph, selectedView, isFirstLoad, agent]);
+  }, [api, agentID, getGraphVersion, graph]);
 
+  // On first load: select the latest run
   useEffect(() => {
-    fetchAgents();
+    // Only for first load or first execution
+    if (selectedView.id || !isFirstLoad || agentRuns.length == 0) return;
+    setIsFirstLoad(false);
+
+    const latestRun = agentRuns.reduce((latest, current) => {
+      if (latest.started_at && !current.started_at) return current;
+      else if (!latest.started_at) return latest;
+      return latest.started_at > current.started_at ? latest : current;
+    }, agentRuns[0]);
+    selectView({ type: "run", id: latestRun.id });
+  }, [agentRuns, isFirstLoad, selectedView.id, selectView]);
+
+  // Initial load
+  useEffect(() => {
+    refreshPageData();
   }, []);
 
-  // Subscribe to websocket updates for agent runs
+  // Subscribe to WebSocket updates for agent runs
   useEffect(() => {
-    if (!agent) return;
+    if (!agent?.graph_id) return;
 
-    // Subscribe to all executions for this agent
-    api.subscribeToGraphExecutions(agent.graph_id);
-  }, [api, agent]);
+    return api.onWebSocketConnect(() => {
+      refreshPageData(); // Sync up on (re)connect
+
+      // Subscribe to all executions for this agent
+      api.subscribeToGraphExecutions(agent.graph_id);
+    });
+  }, [api, agent?.graph_id, refreshPageData]);
 
   // Handle execution updates
   useEffect(() => {
@@ -167,24 +197,29 @@ export default function AgentRunsPage(): React.ReactElement {
     };
   }, [api, agent?.graph_id, selectedView.id]);
 
-  // load selectedRun based on selectedView
+  // Pre-load selectedRun based on selectedView
   useEffect(() => {
-    if (selectedView.type != "run" || !selectedView.id || !agent) return;
+    if (selectedView.type != "run" || !selectedView.id) return;
 
     const newSelectedRun = agentRuns.find((run) => run.id == selectedView.id);
     if (selectedView.id !== selectedRun?.id) {
       // Pull partial data from "cache" while waiting for the rest to load
       setSelectedRun(newSelectedRun ?? null);
-
-      // Ensure corresponding graph version is available before rendering I/O
-      api
-        .getGraphExecutionInfo(agent.graph_id, selectedView.id)
-        .then(async (run) => {
-          await getGraphVersion(run.graph_id, run.graph_version);
-          setSelectedRun(run);
-        });
     }
-  }, [api, selectedView, agent, agentRuns, selectedRun?.id, getGraphVersion]);
+  }, [api, selectedView, agentRuns, selectedRun?.id]);
+
+  // Load selectedRun based on selectedView; refresh on agent refresh
+  useEffect(() => {
+    if (selectedView.type != "run" || !selectedView.id || !agent) return;
+
+    api
+      .getGraphExecutionInfo(agent.graph_id, selectedView.id)
+      .then(async (run) => {
+        // Ensure corresponding graph version is available before rendering I/O
+        await getGraphVersion(run.graph_id, run.graph_version);
+        setSelectedRun(run);
+      });
+  }, [api, selectedView, agent, getGraphVersion]);
 
   const fetchSchedules = useCallback(async () => {
     if (!agent) return;
@@ -237,20 +272,41 @@ export default function AgentRunsPage(): React.ReactElement {
     [api, agent],
   );
 
+  const copyAgent = useCallback(async () => {
+    setCopyAgentDialogOpen(false);
+    api
+      .forkLibraryAgent(agentID)
+      .then((newAgent) => {
+        router.push(`/library/agents/${newAgent.id}`);
+      })
+      .catch((error) => {
+        console.error("Error copying agent:", error);
+        toast({
+          title: "Error copying agent",
+          description: `An error occurred while copying the agent: ${error.message}`,
+          variant: "destructive",
+        });
+      });
+  }, [agentID, api, router, toast]);
+
   const agentActions: ButtonAction[] = useMemo(
     () => [
-      ...(agent?.can_access_graph
+      {
+        label: "Customize agent",
+        href: `/build?flowID=${agent?.graph_id}&flowVersion=${agent?.graph_version}`,
+        disabled: !agent?.can_access_graph,
+      },
+      { label: "Export agent to file", callback: downloadGraph },
+      ...(!agent?.can_access_graph
         ? [
             {
-              label: "Open graph in builder",
-              href: `/build?flowID=${agent.graph_id}&flowVersion=${agent.graph_version}`,
+              label: "Edit a copy",
+              callback: () => setCopyAgentDialogOpen(true),
             },
-            { label: "Export agent to file", callback: downloadGraph },
           ]
         : []),
       {
         label: "Delete agent",
-        variant: "destructive",
         callback: () => setAgentDeleteDialogOpen(true),
       },
     ],
@@ -295,7 +351,7 @@ export default function AgentRunsPage(): React.ReactElement {
           selectedRun && (
             <AgentRunDetailsView
               agent={agent}
-              graph={graphVersions[selectedRun.graph_version] ?? graph}
+              graph={graphVersions.current[selectedRun.graph_version] ?? graph}
               run={selectedRun}
               agentActions={agentActions}
               onRun={(runID) => selectRun(runID)}
@@ -339,6 +395,36 @@ export default function AgentRunsPage(): React.ReactElement {
             confirmingDeleteAgentRun && deleteRun(confirmingDeleteAgentRun)
           }
         />
+        {/* Copy agent confirmation dialog */}
+        <Dialog
+          onOpenChange={setCopyAgentDialogOpen}
+          open={copyAgentDialogOpen}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>You&apos;re making an editable copy</DialogTitle>
+              <DialogDescription className="pt-2">
+                The original Marketplace agent stays the same and cannot be
+                edited. We&apos;ll save a new version of this agent to your
+                Library. From there, you can customize it however you&apos;d
+                like by clicking &quot;Customize agent&quot; — this will open
+                the builder where you can see and modify the inner workings.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCopyAgentDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="button" onClick={copyAgent}>
+                Continue
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

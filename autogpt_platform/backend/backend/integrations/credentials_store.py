@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Optional
 from pydantic import SecretStr
 
 if TYPE_CHECKING:
-    from backend.executor.database import DatabaseManager
+    from backend.executor.database import DatabaseManagerClient
 
 from autogpt_libs.utils.cache import thread_cached
 from autogpt_libs.utils.synchronize import RedisKeyedMutex
@@ -177,6 +177,14 @@ zerobounce_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+llama_api_credentials = APIKeyCredentials(
+    id="d44045af-1c33-4833-9e19-752313214de2",
+    provider="llama_api",
+    api_key=SecretStr(settings.secrets.llama_api_key),
+    title="Use Credits for Llama API",
+    expires_at=None,
+)
+
 DEFAULT_CREDENTIALS = [
     ollama_credentials,
     revid_credentials,
@@ -210,11 +218,11 @@ class IntegrationCredentialsStore:
 
     @property
     @thread_cached
-    def db_manager(self) -> "DatabaseManager":
-        from backend.executor.database import DatabaseManager
+    def db_manager(self) -> "DatabaseManagerClient":
+        from backend.executor.database import DatabaseManagerClient
         from backend.util.service import get_service_client
 
-        return get_service_client(DatabaseManager)
+        return get_service_client(DatabaseManagerClient)
 
     def add_creds(self, user_id: str, credentials: Credentials) -> None:
         with self.locked_user_integrations(user_id):

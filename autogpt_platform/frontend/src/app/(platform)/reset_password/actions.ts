@@ -3,8 +3,9 @@ import getServerSupabase from "@/lib/supabase/getServerSupabase";
 import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 import { headers } from "next/headers";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
-export async function sendResetEmail(email: string) {
+export async function sendResetEmail(email: string, turnstileToken: string) {
   return await Sentry.withServerActionInstrumentation(
     "sendResetEmail",
     {},
@@ -18,6 +19,15 @@ export async function sendResetEmail(email: string) {
 
       if (!supabase) {
         redirect("/error");
+      }
+
+      // Verify Turnstile token if provided
+      const success = await verifyTurnstileToken(
+        turnstileToken,
+        "reset_password",
+      );
+      if (!success) {
+        return "CAPTCHA verification failed. Please try again.";
       }
 
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -34,7 +44,7 @@ export async function sendResetEmail(email: string) {
   );
 }
 
-export async function changePassword(password: string) {
+export async function changePassword(password: string, turnstileToken: string) {
   return await Sentry.withServerActionInstrumentation(
     "changePassword",
     {},
@@ -43,6 +53,15 @@ export async function changePassword(password: string) {
 
       if (!supabase) {
         redirect("/error");
+      }
+
+      // Verify Turnstile token if provided
+      const success = await verifyTurnstileToken(
+        turnstileToken,
+        "change_password",
+      );
+      if (!success) {
+        return "CAPTCHA verification failed. Please try again.";
       }
 
       const { error } = await supabase.auth.updateUser({ password });

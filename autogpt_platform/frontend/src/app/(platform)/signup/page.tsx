@@ -25,10 +25,12 @@ import {
   AuthButton,
   AuthBottomText,
   PasswordInput,
+  Turnstile,
 } from "@/components/auth";
 import AuthFeedback from "@/components/auth/AuthFeedback";
 import { signupFormSchema } from "@/types/auth";
 import { getBehaveAs } from "@/lib/utils";
+import { useTurnstile } from "@/hooks/useTurnstile";
 
 export default function SignupPage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -36,6 +38,12 @@ export default function SignupPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   //TODO: Remove after closed beta
+
+  const turnstile = useTurnstile({
+    action: "signup",
+    autoVerify: false,
+    resetOnError: true,
+  });
 
   const form = useForm<z.infer<typeof signupFormSchema>>({
     resolver: zodResolver(signupFormSchema),
@@ -56,20 +64,28 @@ export default function SignupPage() {
         return;
       }
 
-      const error = await signup(data);
+      if (!turnstile.verified) {
+        setFeedback("Please complete the CAPTCHA challenge.");
+        setIsLoading(false);
+        return;
+      }
+
+      const error = await signup(data, turnstile.token as string);
       setIsLoading(false);
       if (error) {
         if (error === "user_already_exists") {
           setFeedback("User with this email already exists");
+          turnstile.reset();
           return;
         } else {
           setFeedback(error);
+          turnstile.reset();
         }
         return;
       }
       setFeedback(null);
     },
-    [form],
+    [form, turnstile],
   );
 
   if (user) {
@@ -78,7 +94,7 @@ export default function SignupPage() {
   }
 
   if (isUserLoading || user) {
-    return <Spinner />;
+    return <Spinner className="h-[80vh]" />;
   }
 
   if (!supabase) {
@@ -90,7 +106,7 @@ export default function SignupPage() {
   }
 
   return (
-    <AuthCard className="mx-auto">
+    <AuthCard className="mx-auto mt-12">
       <AuthHeader>Create a new account</AuthHeader>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSignup)}>
@@ -141,6 +157,17 @@ export default function SignupPage() {
               </FormItem>
             )}
           />
+
+          {/* Turnstile CAPTCHA Component */}
+          <Turnstile
+            siteKey={turnstile.siteKey}
+            onVerify={turnstile.handleVerify}
+            onExpire={turnstile.handleExpire}
+            onError={turnstile.handleError}
+            action="signup"
+            shouldRender={turnstile.shouldRender}
+          />
+
           <AuthButton
             onClick={() => onSignup(form.getValues())}
             isLoading={isLoading}
@@ -188,6 +215,7 @@ export default function SignupPage() {
         </form>
       </Form>
       <AuthFeedback
+        type="signup"
         message={feedback}
         isError={!!feedback}
         behaveAs={getBehaveAs()}

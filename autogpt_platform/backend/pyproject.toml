@@ -64,6 +64,7 @@ websockets = "^14.2"
 youtube-transcript-api = "^0.6.2"
 zerobouncesdk = "^1.1.1"
 # NOTE: please insert new dependencies in their alphabetical location
+prometheus-client = "^0.21.1"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"
@@ -87,6 +88,7 @@ build-backend = "poetry.core.masonry.api"
 app = "backend.app:main"
 rest = "backend.rest:main"
 ws = "backend.ws:main"
+scheduler = "backend.scheduler:main"
 executor = "backend.exec:main"
 cli = "backend.cli:main"
 format = "linter:format"
