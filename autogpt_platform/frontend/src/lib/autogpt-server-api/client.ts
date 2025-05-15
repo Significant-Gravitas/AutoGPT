@@ -68,6 +68,7 @@ export default class BackendAPI {
   private webSocket: WebSocket | null = null;
   private wsConnecting: Promise<void> | null = null;
   private wsOnConnectHandlers: Set<() => void> = new Set();
+  private wsOnDisconnectHandlers: Set<() => void> = new Set();
   private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
 
   readonly HEARTBEAT_INTERVAL = 100_000; // 100 seconds
@@ -939,6 +940,18 @@ export default class BackendAPI {
     return () => this.wsOnConnectHandlers.delete(handler);
   }
 
+  /**
+   * All handlers are invoked when the WebSocket disconnects.
+   *
+   * @returns a detacher for the passed handler.
+   */
+  onWebSocketDisconnect(handler: () => void): () => void {
+    this.wsOnDisconnectHandlers.add(handler);
+
+    // Return detacher
+    return () => this.wsOnDisconnectHandlers.delete(handler);
+  }
+
   async connectWebSocket(): Promise<void> {
     return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
@@ -973,6 +986,7 @@ export default class BackendAPI {
 
           this._stopWSHeartbeat(); // Stop heartbeat when connection closes
           this.wsConnecting = null;
+          this.wsOnDisconnectHandlers.forEach((handler) => handler());
           // Attempt to reconnect after a delay
           setTimeout(() => this.connectWebSocket().then(resolve), 1000);
         };
