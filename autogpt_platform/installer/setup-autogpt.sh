@@ -11,6 +11,14 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 # Globals
+REPO_DIR=""
+CLONE_NEEDED=false
+DOCKER_CMD="docker"
+DOCKER_COMPOSE_CMD="docker compose"
+LOG_DIR=""
+
+# ------------------ Helper Functions ------------------
+
 print_color() {
     printf "${!1}%s${NC}\n" "$2"
 }
@@ -45,109 +53,107 @@ check_prerequisites() {
     print_color "BLUE" "This script will automatically install and set up AutoGPT for you."
     echo ""
     print_color "YELLOW" "Checking prerequisites:"
-    
-    # Check if git is installed
-    if ! command -v git &> /dev/null; then
-        handle_error "Git is not installed. Please install Git and try again. Visit https://git-scm.com/downloads for installation instructions."
-    else
-        print_color "GREEN" "✓ Git is installed"
-    fi
-    
-    # Check if docker is installed
-    if ! command -v docker &> /dev/null; then
-        handle_error "Docker is not installed. Please install Docker and try again. Visit https://docs.docker.com/get-docker/ for installation instructions."
-    else
-        print_color "GREEN" "✓ Docker is installed"
-    fi
-    
-    # Check if user is in docker group or has sudo access
-    if ! docker info &> /dev/null; then
-        print_color "YELLOW" "Docker requires elevated privileges. Using sudo for Docker commands..."
-        DOCKER_CMD="sudo docker"
-        DOCKER_COMPOSE_CMD="sudo docker compose"
-    else
-        DOCKER_CMD="docker"
-        DOCKER_COMPOSE_CMD="docker compose"
-    fi
-    
-    # Check if npm is installed
-    if ! command -v npm &> /dev/null; then
-        handle_error "npm is not installed. Please install Node.js and npm and try again. Visit https://nodejs.org/en/download/ for installation instructions."
-    else
-        print_color "GREEN" "✓ npm is installed"
-    fi
-    
+
+    check_command git "Git" "https://git-scm.com/downloads"
+    check_command docker "Docker" "https://docs.docker.com/get-docker/"
+    check_docker_permissions
+    check_command npm "npm (Node.js)" "https://nodejs.org/en/download/"
+    check_command_optional curl "curl"
+
     print_color "GREEN" "All prerequisites are installed! Starting installation..."
     echo ""
 }
 
-# Function to run backend setup
-setup_backend() {
-    print_color "BLUE" "Setting up backend services..."
-    cd AutoGPT/autogpt_platform || handle_error "Failed to navigate to AutoGPT/autogpt_platform directory."
-    
-    # Copy the example environment file
-    cp .env.example .env || handle_error "Failed to copy environment file. Please check permissions and try again."
-    
-    # Run docker compose
-    print_color "BLUE" "Starting backend services with Docker..."
-    $DOCKER_COMPOSE_CMD up -d --build || handle_error "Failed to start the backend services. Please check Docker and try again."
-    
-    print_color "GREEN" "✓ Backend services started successfully"
-    cd ..
+check_command() {
+    local cmd=$1
+    local name=$2
+    local url=$3
+
+    if ! command -v "$cmd" &> /dev/null; then
+        handle_error "$name is not installed. Please install it and try again. Visit $url"
+    else
+        print_color "GREEN" "✓ $name is installed"
+    fi
 }
 
-# Function to run frontend setup
+check_command_optional() {
+    local cmd=$1
+    if command -v "$cmd" &> /dev/null; then
+        print_color "GREEN" "✓ $cmd is installed"
+    else
+        print_color "YELLOW" "$cmd is not installed. Some features will be skipped."
+    fi
+}
+
+check_docker_permissions() {
+    if ! docker info &> /dev/null; then
+        print_color "YELLOW" "Docker requires elevated privileges. Using sudo for Docker commands..."
+        DOCKER_CMD="sudo docker"
+        DOCKER_COMPOSE_CMD="sudo docker compose"
+    fi
+}
+
+# ------------------ Setup ------------------
+
+detect_installation_mode() {
+    if [[ "$PWD" == */autogpt_platform/installer ]]; then
+        if [[ -d "../../.git" ]]; then
+            REPO_DIR="$(cd ../..; pwd)"
+            CLONE_NEEDED=false
+            cd ../.. || handle_error "Failed to navigate to repository root."
+        else
+            CLONE_NEEDED=true
+            REPO_DIR="$(pwd)/AutoGPT"
+            cd "$(dirname "$(dirname "$(dirname "$PWD")")")" || handle_error "Failed to navigate to parent directory."
+        fi
+    elif [[ -d ".git" && -d "autogpt_platform/installer" ]]; then
+        REPO_DIR="$PWD"
+        CLONE_NEEDED=false
+    else
+        CLONE_NEEDED=true
+        REPO_DIR="$(pwd)/AutoGPT"
+    fi
+}
+
+clone_repository() {
+    if [ "$CLONE_NEEDED" = true ]; then
+        print_color "BLUE" "Cloning AutoGPT repository..."
+        if git clone https://github.com/Significant-Gravitas/AutoGPT.git "$REPO_DIR"; then
+            print_color "GREEN" "✓ Repo cloned successfully!"
+        else
+            handle_error "Failed to clone the repository."
+        fi
+    else
+        print_color "GREEN" "Using existing AutoGPT repository"
+    fi
+}
+
+
+setup_backend() {
+    print_color "BLUE" "Setting up backend services..."
+    cd "$REPO_DIR/autogpt_platform" || handle_error "Failed to navigate to backend directory."
+    cp .env.example .env || handle_error "Failed to copy environment file."
+    $DOCKER_COMPOSE_CMD up -d --build || handle_error "Failed to start backend services."
+    print_color "GREEN" "✓ Backend services started successfully"
+}
+
 setup_frontend() {
     print_color "BLUE" "Setting up frontend application..."
-    cd AutoGPT/autogpt_platform/frontend || handle_error "Failed to navigate to frontend directory."
-    
-    # Copy the frontend example environment file
-    cp .env.example .env || handle_error "Failed to copy frontend environment file. Please check permissions and try again."
-    
-    # Install dependencies
-    print_color "BLUE" "Installing frontend dependencies..."
-    npm install || handle_error "Failed to install frontend dependencies. Please check npm and try again."
-    
+    cd "$REPO_DIR/autogpt_platform/frontend" || handle_error "Failed to navigate to frontend directory."
+    cp .env.example .env || handle_error "Failed to copy frontend environment file."
+    npm install || handle_error "Failed to install frontend dependencies."
     print_color "GREEN" "✓ Frontend dependencies installed successfully"
 }
 
-# Main execution
-print_banner
-check_prerequisites
+# ------------------ Health Check ------------------
 
-# Clone the repository
-print_color "BLUE" "Cloning the AutoGPT repository..."
-git clone https://github.com/Significant-Gravitas/AutoGPT.git || handle_error "Failed to clone the repository. Please check your internet connection and try again."
+check_health() {
+    local url=$1
+    local expected=$2
+    local name=$3
+    local max_attempts=$4
+    local timeout=$5
 
-# Run backend and frontend setup concurrently
-print_color "YELLOW" "Running backend and frontend setup!"
-
-# Create a temporary file to capture output
-backend_log=$(mktemp)
-frontend_log=$(mktemp)
-
-# Run backend setup in background
-setup_backend > "$backend_log" 2>&1 &
-backend_pid=$!
-
-# Run frontend setup in background
-setup_frontend > "$frontend_log" 2>&1 &
-frontend_pid=$!
-
-# Show a spinner while waiting for both processes
-print_color "BLUE" "Setting up components (this may take a few minutes)..."
-spin='-\|/'
-i=0
-messages=("Working..." "Still working..." "Setting up dependencies..." "This may take a few minutes..." "Almost there...")
-msg_index=0
-msg_counter=0
-clear_line="                                                                               "
-while kill -0 $backend_pid 2>/dev/null || kill -0 $frontend_pid 2>/dev/null; do
-    i=$(( (i+1) % 4 ))
-    msg_counter=$(( (msg_counter+1) % 300 ))
-    if [ $msg_counter -eq 0 ]; then
-        msg_index=$(( (msg_index+1) % ${#messages[@]} ))
     if ! command -v curl &> /dev/null; then
         echo "curl not found. Skipping health check for $name."
         return 0
