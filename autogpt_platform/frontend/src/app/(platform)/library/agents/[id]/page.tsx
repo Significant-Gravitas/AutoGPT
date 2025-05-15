@@ -186,6 +186,7 @@ export default function AgentRunsPage(): React.ReactElement {
           description: null,
           duration: 2000,
         });
+      connectionToast = null;
     });
     return () => {
       cancelDisconnectHandler();
