@@ -10,7 +10,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Function to print colored text
+# Globals
 print_color() {
     printf "${!1}%s${NC}\n" "$2"
 }
@@ -148,46 +148,126 @@ while kill -0 $backend_pid 2>/dev/null || kill -0 $frontend_pid 2>/dev/null; do
     msg_counter=$(( (msg_counter+1) % 300 ))
     if [ $msg_counter -eq 0 ]; then
         msg_index=$(( (msg_index+1) % ${#messages[@]} ))
+    if ! command -v curl &> /dev/null; then
+        echo "curl not found. Skipping health check for $name."
+        return 0
     fi
-    printf "\r${clear_line}\r${YELLOW}[%c]${NC} %s" "${spin:$i:1}" "${messages[$msg_index]}"
-    sleep .1
-done
-printf "\r${clear_line}\r${GREEN}[✓]${NC} Setup completed!\n"
 
-# Check if any process failed
-wait $backend_pid
-backend_status=$?
-wait $frontend_pid
-frontend_status=$?
+    echo "Checking $name health..."
+    for ((attempt=1; attempt<=max_attempts; attempt++)); do
+        echo "Attempt $attempt/$max_attempts"
+        response=$(curl -s --max-time "$timeout" "$url")
+        if [[ "$response" == *"$expected"* ]]; then
+            echo "✓ $name is healthy"
+            return 0
+        fi
+        echo "Waiting 5s before next attempt..."
+        sleep 5
+    done
+    echo "✗ $name health check failed after $max_attempts attempts"
+    return 1
+}
 
-if [ $backend_status -ne 0 ]; then
-    print_color "RED" "Backend setup failed. See log for details:"
-    cat "$backend_log"
-    handle_error "Backend setup failed"
-fi
+# ------------------ Logging ------------------
 
-if [ $frontend_status -ne 0 ]; then
-    print_color "RED" "Frontend setup failed. See log for details:"
-    cat "$frontend_log"
-    handle_error "Frontend setup failed"
-fi
+setup_logs() {
+    LOG_DIR="$REPO_DIR/autogpt_platform/logs"
+    mkdir -p "$LOG_DIR"
+}
 
-# Clean up temp files
-rm -f "$backend_log" "$frontend_log"
+save_logs() {
+    cp "$1" "$LOG_DIR/backend_setup.log"
+    cp "$2" "$LOG_DIR/frontend_setup.log"
+}
 
-# Start the frontend development server
-print_color "BLUE" "Starting frontend development server..."
-cd AutoGPT/autogpt_platform/frontend || handle_error "Failed to navigate to frontend directory."
-npm run dev
+run_concurrent_setup() {
+    backend_log=$(mktemp)
+    frontend_log=$(mktemp)
 
-print_color "GREEN" "AutoGPT setup completed successfully!"
-print_color "GREEN" "-------------------------------------"
-print_color "BLUE" "Your backend services are running in Docker."
-print_color "BLUE" "Your frontend application is running at http://localhost:3000"
-echo ""
-print_color "YELLOW" "Visit http://localhost:3000 in your browser to access AutoGPT."
-echo ""
-print_color "YELLOW" "To stop the services, press Ctrl+C in this terminal, then run 'docker compose down' in the AutoGPT/autogpt_platform directory."
-echo ""
-print_color "GREEN" "Press Enter to exit the script (this will NOT stop the services)..."
-read -r
+    setup_backend > "$backend_log" 2>&1 &
+    backend_pid=$!
+    echo "Backend setup started."
+
+    setup_frontend > "$frontend_log" 2>&1 &
+    frontend_pid=$!
+    echo "Frontend setup started."
+
+    show_spinner "$backend_pid" "$frontend_pid"
+
+    wait $backend_pid; backend_status=$?
+    wait $frontend_pid; frontend_status=$?
+
+    save_logs "$backend_log" "$frontend_log"
+
+    if [ $backend_status -ne 0 ]; then
+        cat "$backend_log"
+        handle_error "Backend setup failed. Logs saved to $LOG_DIR/backend_setup.log"
+    fi
+
+    if [ $frontend_status -ne 0 ]; then
+        cat "$frontend_log"
+        handle_error "Frontend setup failed. Logs saved to $LOG_DIR/frontend_setup.log"
+    fi
+
+    rm -f "$backend_log" "$frontend_log"
+}
+
+show_spinner() {
+    local backend_pid=$1
+    local frontend_pid=$2
+    spin='-\|/'
+    i=0
+    messages=("Working..." "Still working..." "Setting up dependencies..." "Almost there...")
+    msg_index=0
+    msg_counter=0
+    clear_line="                                                                               "
+
+    while kill -0 $backend_pid 2>/dev/null || kill -0 $frontend_pid 2>/dev/null; do
+        i=$(( (i+1) % 4 ))
+        msg_counter=$(( (msg_counter+1) % 300 ))
+        if [ $msg_counter -eq 0 ]; then
+            msg_index=$(( (msg_index+1) % ${#messages[@]} ))
+        fi
+        printf "\r${clear_line}\r${YELLOW}[%c]${NC} %s" "${spin:$i:1}" "${messages[$msg_index]}"
+        sleep .1
+    done
+    printf "\r${clear_line}\r${GREEN}[✓]${NC} Setup completed!\n"
+}
+
+# ------------------ Main Script ------------------
+
+main() {
+    print_banner
+    check_prerequisites
+    detect_installation_mode
+    clone_repository
+    setup_logs
+    run_concurrent_setup
+
+    print_color "BLUE" "Starting frontend development server in a new terminal..."
+    cd "$REPO_DIR/autogpt_platform/frontend" || handle_error "Failed to navigate to frontend directory."
+
+    if command -v gnome-terminal &> /dev/null; then
+        gnome-terminal -- bash -c "npm run dev; exec bash"
+    else
+        print_color "YELLOW" "gnome-terminal not found. Running frontend in background..."
+        npm run dev &
+    fi
+
+
+    print_color "YELLOW" "Waiting for services to start..."
+    sleep 20
+
+    print_color "YELLOW" "Verifying service health..."
+    check_health "http://localhost:8006/health" "\"status\":\"healthy\"" "Backend" 6 15 
+    check_health "http://localhost:3000/health" "Yay im healthy" "Frontend" 6 15
+
+    print_color "GREEN" "Setup complete!"
+    print_color "BLUE" "Access AutoGPT at: http://localhost:3000"
+    print_color "YELLOW" "To stop services, press Ctrl+C and run 'docker compose down' in $REPO_DIR/autogpt_platform"
+    echo ""
+    print_color "GREEN" "Press Enter to exit (services will keep running)..."
+    read -r
+}
+
+main

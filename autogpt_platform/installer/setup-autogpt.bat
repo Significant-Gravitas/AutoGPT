@@ -3,6 +3,14 @@ setlocal enabledelayedexpansion
 
 :: AutoGPT Setup Script for Windows
 
+:: Set logs folder inside the current working directory
+set "LOGS_DIR=%CD%\logs"
+if exist "%LOGS_DIR%" rmdir /s /q "%LOGS_DIR%"
+mkdir "%LOGS_DIR%"
+
+set "DOCKER_LOG=%LOGS_DIR%\backend_docker.log"
+set "NPM_LOG=%LOGS_DIR%\frontend_npm.log"
+
 call :print_banner
 
 echo AutoGPT's Automated Setup Script
@@ -91,8 +99,8 @@ echo Cloning the AutoGPT repository...
 git clone https://github.com/Significant-Gravitas/AutoGPT.git
 if %ERRORLEVEL% neq 0 (
     echo.
-    echo Error: Failed to clone the repository. Please check your internet connection and try again.
-    echo Press Enter to exit...
+    echo Error: Failed to clone the repository.
+    echo Check the logs in: %LOGS_DIR%
     pause >nul
     exit /b 1
 )
@@ -108,28 +116,25 @@ cd autogpt_platform
 if %ERRORLEVEL% neq 0 (
     echo.
     echo Error: Failed to navigate to AutoGPT\autogpt_platform directory.
-    echo Press Enter to exit...
     pause >nul
     exit /b 1
 )
 
-:: Copy the example environment file
-copy .env.example .env
+copy .env.example .env >> "%DOCKER_LOG%" 2>&1
 if %ERRORLEVEL% neq 0 (
     echo.
-    echo Error: Failed to copy environment file. Please check permissions and try again.
-    echo Press Enter to exit...
+    echo Error: Failed to copy environment file.
+    echo Check the logs in: %DOCKER_LOG%
     pause >nul
     exit /b 1
 )
 
-:: Run docker compose
-echo Starting backend services with Docker...
-%DOCKER_COMPOSE_CMD% up -d --build
+echo Starting backend services with Docker (logs in %DOCKER_LOG%)...
+%DOCKER_COMPOSE_CMD% up -d --build >> "%DOCKER_LOG%" 2>&1
 if %ERRORLEVEL% neq 0 (
     echo.
-    echo Error: Failed to start the backend services. Please check Docker and try again.
-    echo Press Enter to exit...
+    echo Error: Failed to start backend services.
+    echo Check the logs in: %DOCKER_LOG%
     pause >nul
     exit /b 1
 )
@@ -143,28 +148,27 @@ cd autogpt_platform\frontend
 if %ERRORLEVEL% neq 0 (
     echo.
     echo Error: Failed to navigate to frontend directory.
-    echo Press Enter to exit...
     pause >nul
     exit /b 1
 )
 
-:: Copy the frontend example environment file
-copy .env.example .env
+copy .env.example .env >> "%NPM_LOG%" 2>&1
 if %ERRORLEVEL% neq 0 (
     echo.
-    echo Error: Failed to copy frontend environment file. Please check permissions and try again.
-    echo Press Enter to exit...
+    echo Error: Failed to copy frontend environment file.
+    echo Please check the logs in: %NPM_LOG%
+    echo and send the logs to the AutoGPT discord server for help.
     pause >nul
     exit /b 1
 )
 
-:: Install dependencies
-echo Installing frontend dependencies...
-call npm install
+echo Installing frontend dependencies (logs in %NPM_LOG%)...
+call npm install >> "%NPM_LOG%" 2>&1
 if %ERRORLEVEL% neq 0 (
     echo.
-    echo Error: Failed to install frontend dependencies. Please check npm and try again.
-    echo Press Enter to exit...
+    echo Error: Failed to install frontend dependencies.
+    echo Please check the logs in: %NPM_LOG%
+    echo and send the logs to the AutoGPT discord server for help.
     pause >nul
     exit /b 1
 )
@@ -176,6 +180,9 @@ echo Starting frontend development server...
 start cmd /k "cd %CD% && npm run dev"
 
 echo AutoGPT setup completed successfully!
+echo Cleaning up logs.
+rmdir /s /q "%LOGS_DIR%"
+
 echo -------------------------------------
 echo Your backend services are running in Docker.
 echo Your frontend application is running at http://localhost:3000
@@ -190,13 +197,13 @@ exit /b 0
 
 :print_banner
 echo.
-echo        d8888          888             d8888b.  8888888b. 88888888888 
-echo       d88888          888            d88P  Y88b 888   Y88b    888     
-echo      d88P888          888            888    888 888    888    888     
-echo     d88P 888 888  888 888888 d88b.   888        888   d88P    888     
-echo    d88P  888 888  888 888   d88""88b 888  88888 8888888P"     888     
-echo   d88P   888 888  888 888   888  888 888    888 888           888     
-echo  d8888888888 Y88b 888 Y88b. Y88..88P Y88b  d88P 888           888     
-echo d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888     
+echo        d8888          888             d8888b.  8888888b. 88888888888
+echo       d88888          888            d88P  Y88b 888   Y88b    888
+echo      d88P888          888            888    888 888    888    888
+echo     d88P 888 888  888 888888 d88b.   888        888   d88P    888
+echo    d88P  888 888  888 888   d88""88b 888  88888 8888888P"     888
+echo   d88P   888 888  888 888   888  888 888    888 888           888
+echo  d8888888888 Y88b 888 Y88b. Y88..88P Y88b  d88P 888           888
+echo d88P     888  "Y88888  "Y888 "Y88P"   "Y8888P88 888           888
 echo.
-exit /b 0 
+exit /b 0
