@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import secrets
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional
 
@@ -347,12 +348,8 @@ class IntegrationCredentialsStore:
 
     def set_ayrshare_profile_key(self, user_id: str, profile_key: str) -> None:
         _profile_key = SecretStr(profile_key)
-        with self.locked_user_integrations(user_id):
-            user_integrations = self._get_user_integrations(user_id)
+        with self.edit_user_integrations(user_id) as user_integrations:
             user_integrations.managed_credentials.ayrshare_profile_key = _profile_key
-            self.db_manager.update_user_integrations(
-                user_id=user_id, data=user_integrations
-            )
 
     # ===================== OAUTH STATES ===================== #
 
@@ -372,16 +369,8 @@ class IntegrationCredentialsStore:
             scopes=scopes,
         )
 
-        with self.locked_user_integrations(user_id):
-
-            user_integrations = self._get_user_integrations(user_id)
-            oauth_states = user_integrations.oauth_states
-            oauth_states.append(state)
-            user_integrations.oauth_states = oauth_states
-
-            self.db_manager.update_user_integrations(
-                user_id=user_id, data=user_integrations
-            )
+        with self.edit_user_integrations(user_id) as user_integrations:
+            user_integrations.oauth_states.append(state)
 
         return token, code_challenge
 
@@ -424,6 +413,15 @@ class IntegrationCredentialsStore:
         return None
 
     # =================== GET/SET HELPERS =================== #
+
+    @contextmanager
+    def edit_user_integrations(self, user_id: str):
+        with self.locked_user_integrations(user_id):
+            user_integrations = self._get_user_integrations(user_id)
+            yield user_integrations  # yield to allow edits
+            self.db_manager.update_user_integrations(
+                user_id=user_id, data=user_integrations
+            )
 
     def _set_user_integration_creds(
         self, user_id: str, credentials: list[Credentials]
