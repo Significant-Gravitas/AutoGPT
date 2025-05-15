@@ -39,6 +39,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
+import { LoadingSpinner } from "@/components/ui/loading";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
@@ -163,7 +164,12 @@ export default function AgentRunsPage(): React.ReactElement {
       connectionToast ??= toast({
         title: "Connection to server was lost",
         variant: "destructive",
-        description: "Trying to reconnect...",
+        description: (
+          <div className="flex items-center">
+            Trying to reconnect...
+            <LoadingSpinner className="ml-1.5 size-3.5" />
+          </div>
+        ),
         duration: Infinity, // show until connection is re-established
       });
     });
