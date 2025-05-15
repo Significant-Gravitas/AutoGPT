@@ -178,6 +178,14 @@ zerobounce_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+ayrshare_credentials = APIKeyCredentials(
+    id="0883fd5f-6f4e-4013-82b1-39e31baa5345",
+    provider="ayrshare",
+    api_key=SecretStr(settings.secrets.ayrshare_api_key),
+    title="Use Credits for Ayrshare",
+    expires_at=None,
+)
+
 llama_api_credentials = APIKeyCredentials(
     id="d44045af-1c33-4833-9e19-752313214de2",
     provider="llama_api",
@@ -207,6 +215,7 @@ DEFAULT_CREDENTIALS = [
     apollo_credentials,
     smartlead_credentials,
     zerobounce_credentials,
+    ayrshare_credentials,
     google_maps_credentials,
 ]
 

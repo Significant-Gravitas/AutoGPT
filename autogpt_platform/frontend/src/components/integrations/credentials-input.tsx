@@ -92,6 +92,7 @@ export const providerIcons: Record<
   smartlead: fallbackIcon,
   todoist: fallbackIcon,
   zerobounce: fallbackIcon,
+  ayrshare: fallbackIcon,
 };
 // --8<-- [end:ProviderIconsEmbed]
 

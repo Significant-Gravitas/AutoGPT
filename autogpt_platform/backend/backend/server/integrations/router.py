@@ -2,10 +2,12 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Annotated, Awaitable, Literal
 
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 from starlette.status import HTTP_404_NOT_FOUND
 
+from backend.blocks.aryshare._api import AyrshareClient, SocialPlatform
 from backend.data.graph import set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
@@ -16,6 +18,7 @@ from backend.data.integrations import (
 )
 from backend.data.model import Credentials, CredentialsType, OAuth2Credentials
 from backend.executor.utils import add_graph_execution_async
+from backend.integrations.credentials_store import IntegrationCredentialsStore
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
@@ -33,6 +36,7 @@ settings = Settings()
 router = APIRouter()
 
 creds_manager = IntegrationCredentialsManager()
+creds_store = IntegrationCredentialsStore()
 
 
 class LoginResponse(BaseModel):
@@ -416,3 +420,60 @@ def _get_provider_oauth_handler(
         client_secret=client_secret,
         redirect_uri=f"{frontend_base_url}/auth/integrations/oauth_callback",
     )
+
+
+@router.get("/ayrshare/sso_url")
+async def get_ayrshare_sso_url(
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> dict[str, str]:
+    """
+    Generate an SSO URL for Ayrshare social media integration.
+    
+    Returns:
+        dict: Contains the SSO URL for Ayrshare integration
+    """
+    
+    # Get or create profile key
+    profile_key = creds_store.get_ayrshare_profile_key(user_id)
+    if not profile_key:
+        # Create new profile if none exists
+        client = AyrshareClient(api_key=settings.secrets.ayrshare_api_key)
+        profile = client.create_profile(
+            title=f"User {user_id}",
+            messaging_active=True
+        )
+        profile_key = profile.profileKey
+        creds_store.set_ayrshare_profile_key(user_id, profile_key)
+    
+    # Convert SecretStr to string if needed
+    profile_key_str = profile_key.get_secret_value() if isinstance(profile_key, SecretStr) else str(profile_key)
+    
+    # Generate JWT and get SSO URL
+    client = AyrshareClient(
+        api_key=settings.secrets.ayrshare_api_key,
+    )
+    
+    jwt_response = client.generate_jwt(
+        private_key=settings.secrets.ayrshare_jwt_secret,
+        profile_key=profile_key_str,
+        allowed_social=[
+            SocialPlatform.FACEBOOK,
+            SocialPlatform.TWITTER,
+            SocialPlatform.LINKEDIN,
+            SocialPlatform.INSTAGRAM,
+            SocialPlatform.YOUTUBE,
+            SocialPlatform.REDDIT,
+            SocialPlatform.TELEGRAM,
+            SocialPlatform.GMB,
+            SocialPlatform.PINTEREST,
+            SocialPlatform.TIKTOK,
+            SocialPlatform.BLUESKY
+        ],
+        expires_in=2880,
+        verify=True
+    )
+    
+    expire_at = datetime.now(timezone.utc) + timedelta(minutes=2880)
+    return {"sso_url": jwt_response.url, "expire_at": expire_at.isoformat()}
+
+

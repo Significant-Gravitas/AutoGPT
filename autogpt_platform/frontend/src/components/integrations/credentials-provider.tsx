@@ -53,6 +53,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   todoist: "Todoist",
   unreal_speech: "Unreal Speech",
   zerobounce: "ZeroBounce",
+  ayrshare: "Ayrshare",
 } as const;
 // --8<-- [end:CredentialsProviderNames]
 
