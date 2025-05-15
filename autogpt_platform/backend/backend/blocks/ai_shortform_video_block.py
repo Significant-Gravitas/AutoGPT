@@ -1,7 +1,7 @@
 import logging
 import time
 from enum import Enum
-from typing import List, Literal
+from typing import Literal
 
 from pydantic import SecretStr
 
@@ -147,13 +147,6 @@ logger = logging.getLogger(__name__)
 class _RevidMixin:
     """Utility mix‑in that bundles the shared webhook / polling helpers."""
 
-    def create_webhook(self):
-        url = "https://webhook.site/token"
-        headers = {"Accept": "application/json", "Content-Type": "application/json"}
-        response = requests.post(url, headers=headers)
-        webhook_data = response.json()
-        return webhook_data["uuid"], f"https://webhook.site/{webhook_data['uuid']}"
-
     def create_video(self, api_key: SecretStr, payload: dict) -> dict:
         url = "https://www.revid.ai/api/public/v2/render"
         headers = {"key": api_key.get_secret_value()}
@@ -173,8 +166,7 @@ class _RevidMixin:
         self,
         api_key: SecretStr,
         pid: str,
-        webhook_token: str,
-        max_wait_time: int = 1000,
+        max_wait_time: int = 3600,
     ) -> str:
         start_time = time.time()
         while time.time() - start_time < max_wait_time:
@@ -190,6 +182,8 @@ class _RevidMixin:
             elif status.get("status") in ["FAILED", "CANCELED"]:
                 logger.error(f"Video creation failed: {status.get('message')}")
                 raise ValueError(f"Video creation failed: {status.get('message')}")
+
+            time.sleep(10)
 
         logger.error("Video creation timed out")
         raise TimeoutError("Video creation timed out")
@@ -264,12 +258,8 @@ class AIShortformVideoCreatorBlock(Block, _RevidMixin):
                 "https://example.com/video.mp4",
             ),
             test_mock={
-                "create_webhook": lambda: (
-                    "test_uuid",
-                    "https://webhook.site/test_uuid",
-                ),
                 "create_video": lambda api_key, payload: {"pid": "test_pid"},
-                "wait_for_video": lambda api_key, pid, webhook_token, max_wait_time=1000: "https://example.com/video.mp4",
+                "wait_for_video": lambda api_key, pid, max_wait_time=3600: "https://example.com/video.mp4",
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -277,14 +267,12 @@ class AIShortformVideoCreatorBlock(Block, _RevidMixin):
     def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        webhook_token, webhook_url = self.create_webhook()
-        logger.debug(f"Webhook URL: {webhook_url}")
 
         payload = {
             "frameRate": input_data.frame_rate,
             "resolution": input_data.resolution,
             "frameDurationMultiplier": 18,
-            "webhook": webhook_url,
+            "webhook": None,
             "creationParams": {
                 "mediaType": input_data.video_style,
                 "captionPresetName": "Wrap 1",
@@ -322,7 +310,7 @@ class AIShortformVideoCreatorBlock(Block, _RevidMixin):
             raise RuntimeError("Failed to create video: No project ID returned")
 
         logger.debug(f"Video created with project ID: {pid}. Waiting for completion...")
-        video_url = self.wait_for_video(credentials.api_key, pid, webhook_token)
+        video_url = self.wait_for_video(credentials.api_key, pid)
         logger.debug(f"Video ready: {video_url}")
         yield "video_url", video_url
 
@@ -351,7 +339,7 @@ class AIAdMakerVideoCreatorBlock(Block, _RevidMixin):
             description="Background track",
             default=AudioTrack.DONT_STOP_ME_ABSTRACT_FUTURE_BASS,
         )
-        input_media_urls: List[str] = SchemaField(
+        input_media_urls: list[str] = SchemaField(
             description="List of image URLs to feature in the advert.", default=[]
         )
         use_only_provided_media: bool = SchemaField(
@@ -378,21 +366,16 @@ class AIAdMakerVideoCreatorBlock(Block, _RevidMixin):
             },
             test_output=("video_url", "https://example.com/ad.mp4"),
             test_mock={
-                "create_webhook": lambda: (
-                    "test_uuid",
-                    "https://webhook.site/test_uuid",
-                ),
                 "create_video": lambda api_key, payload: {"pid": "test_pid"},
-                "wait_for_video": lambda api_key, pid, webhook_token, max_wait_time=1000: "https://example.com/ad.mp4",
+                "wait_for_video": lambda api_key, pid, max_wait_time=3600: "https://example.com/ad.mp4",
             },
             test_credentials=TEST_CREDENTIALS,
         )
 
     def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
-        webhook_token, webhook_url = self.create_webhook()
 
         payload = {
-            "webhook": webhook_url,
+            "webhook": None,
             "creationParams": {
                 "targetDuration": input_data.target_duration,
                 "ratio": input_data.ratio,
@@ -455,7 +438,7 @@ class AIAdMakerVideoCreatorBlock(Block, _RevidMixin):
         if not pid:
             raise RuntimeError("Failed to create video: No project ID returned")
 
-        video_url = self.wait_for_video(credentials.api_key, pid, webhook_token)
+        video_url = self.wait_for_video(credentials.api_key, pid)
         yield "video_url", video_url
 
 
@@ -494,21 +477,16 @@ class AIPromptToVideoCreatorBlock(Block, _RevidMixin):
             },
             test_output=("video_url", "https://example.com/prompt.mp4"),
             test_mock={
-                "create_webhook": lambda: (
-                    "test_uuid",
-                    "https://webhook.site/test_uuid",
-                ),
                 "create_video": lambda api_key, payload: {"pid": "test_pid"},
-                "wait_for_video": lambda api_key, pid, webhook_token, max_wait_time=1000: "https://example.com/prompt.mp4",
+                "wait_for_video": lambda api_key, pid, max_wait_time=3600: "https://example.com/prompt.mp4",
             },
             test_credentials=TEST_CREDENTIALS,
         )
 
     def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
-        webhook_token, webhook_url = self.create_webhook()
 
         payload = {
-            "webhook": webhook_url,
+            "webhook": None,
             "creationParams": {
                 "mediaType": "aiVideo",
                 "flowType": "prompt-to-video",
@@ -564,7 +542,7 @@ class AIPromptToVideoCreatorBlock(Block, _RevidMixin):
         if not pid:
             raise RuntimeError("Failed to create video: No project ID returned")
 
-        video_url = self.wait_for_video(credentials.api_key, pid, webhook_token)
+        video_url = self.wait_for_video(credentials.api_key, pid)
         yield "video_url", video_url
 
 
@@ -607,21 +585,16 @@ class AIScreenshotToVideoAdBlock(Block, _RevidMixin):
             },
             test_output=("video_url", "https://example.com/screenshot.mp4"),
             test_mock={
-                "create_webhook": lambda: (
-                    "test_uuid",
-                    "https://webhook.site/test_uuid",
-                ),
                 "create_video": lambda api_key, payload: {"pid": "test_pid"},
-                "wait_for_video": lambda api_key, pid, webhook_token, max_wait_time=1000: "https://example.com/screenshot.mp4",
+                "wait_for_video": lambda api_key, pid, max_wait_time=3600: "https://example.com/screenshot.mp4",
             },
             test_credentials=TEST_CREDENTIALS,
         )
 
     def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
-        webhook_token, webhook_url = self.create_webhook()
 
         payload = {
-            "webhook": webhook_url,
+            "webhook": None,
             "creationParams": {
                 "targetDuration": input_data.target_duration,
                 "ratio": input_data.ratio,
@@ -684,5 +657,5 @@ class AIScreenshotToVideoAdBlock(Block, _RevidMixin):
         if not pid:
             raise RuntimeError("Failed to create video: No project ID returned")
 
-        video_url = self.wait_for_video(credentials.api_key, pid, webhook_token)
+        video_url = self.wait_for_video(credentials.api_key, pid)
         yield "video_url", video_url
