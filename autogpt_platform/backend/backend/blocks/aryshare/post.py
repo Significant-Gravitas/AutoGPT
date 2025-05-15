@@ -1,3 +1,4 @@
+import logging
 from typing import List, Optional, Union
 
 from pydantic import BaseModel, Field
@@ -12,8 +13,9 @@ from backend.blocks.aryshare._api import (
 )
 from backend.blocks.aryshare._auth import AYRSHARE_CREDENTIALS
 from backend.data.model import APIKeyCredentials
-from backend.integrations.providers import ProviderName
 from backend.integrations.credentials_store import IntegrationCredentialsStore
+
+logger = logging.getLogger(__name__)
 
 creads_store = IntegrationCredentialsStore()
 
@@ -122,9 +124,13 @@ class PostToFacebook(BaseAyrsharePost):
     def run(self, input_data: AyrsharePostInput, *, user_id: str) -> AyrsharePostOutput:
         creds_store = IntegrationCredentialsStore()
         profile_key = creds_store.get_ayrshare_profile_key(user_id)
+        if profile_key:
+            logger.info(f"Profile key: {profile_key}")
         """Post to Facebook."""
         return self._create_post(
-            input_data, [SocialPlatform.FACEBOOK], profile_key=profile_key
+            input_data,
+            [SocialPlatform.FACEBOOK],
+            profile_key=profile_key.get_secret_value() if profile_key else None,
         )
 
 

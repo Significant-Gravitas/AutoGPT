@@ -1,8 +1,8 @@
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, Awaitable, Literal
 
-from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, SecretStr
 from starlette.status import HTTP_404_NOT_FOUND
@@ -428,31 +428,32 @@ async def get_ayrshare_sso_url(
 ) -> dict[str, str]:
     """
     Generate an SSO URL for Ayrshare social media integration.
-    
+
     Returns:
         dict: Contains the SSO URL for Ayrshare integration
     """
-    
+
     # Get or create profile key
     profile_key = creds_store.get_ayrshare_profile_key(user_id)
     if not profile_key:
         # Create new profile if none exists
         client = AyrshareClient(api_key=settings.secrets.ayrshare_api_key)
-        profile = client.create_profile(
-            title=f"User {user_id}",
-            messaging_active=True
-        )
+        profile = client.create_profile(title=f"User {user_id}", messaging_active=True)
         profile_key = profile.profileKey
         creds_store.set_ayrshare_profile_key(user_id, profile_key)
-    
+
     # Convert SecretStr to string if needed
-    profile_key_str = profile_key.get_secret_value() if isinstance(profile_key, SecretStr) else str(profile_key)
-    
+    profile_key_str = (
+        profile_key.get_secret_value()
+        if isinstance(profile_key, SecretStr)
+        else str(profile_key)
+    )
+
     # Generate JWT and get SSO URL
     client = AyrshareClient(
         api_key=settings.secrets.ayrshare_api_key,
     )
-    
+
     jwt_response = client.generate_jwt(
         private_key=settings.secrets.ayrshare_jwt_secret,
         profile_key=profile_key_str,
@@ -467,13 +468,11 @@ async def get_ayrshare_sso_url(
             SocialPlatform.GMB,
             SocialPlatform.PINTEREST,
             SocialPlatform.TIKTOK,
-            SocialPlatform.BLUESKY
+            SocialPlatform.BLUESKY,
         ],
         expires_in=2880,
-        verify=True
+        verify=True,
     )
-    
+
     expire_at = datetime.now(timezone.utc) + timedelta(minutes=2880)
     return {"sso_url": jwt_response.url, "expire_at": expire_at.isoformat()}
-
-

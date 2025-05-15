@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from enum import Enum, auto
+from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 from backend.util.request import Requests
@@ -350,7 +350,6 @@ class AyrshareClient:
             AyrshareAPIException: If the API request fails
         """
 
-        
         payload: Dict[str, Any] = {
             "post": post,
             "platforms": [p.value for p in platforms],
@@ -366,7 +365,9 @@ class AyrshareClient:
         if first_comment:
             first_comment_dict = first_comment.__dict__.copy()
             if first_comment.platforms:
-                first_comment_dict["platforms"] = [p.value for p in first_comment.platforms]
+                first_comment_dict["platforms"] = [
+                    p.value for p in first_comment.platforms
+                ]
             payload["firstComment"] = first_comment_dict
         if disable_comments is not None:
             payload["disableComments"] = disable_comments
@@ -375,7 +376,9 @@ class AyrshareClient:
         if auto_schedule:
             auto_schedule_dict = auto_schedule.__dict__.copy()
             if auto_schedule.platforms:
-                auto_schedule_dict["platforms"] = [p.value for p in auto_schedule.platforms]
+                auto_schedule_dict["platforms"] = [
+                    p.value for p in auto_schedule.platforms
+                ]
             payload["autoSchedule"] = auto_schedule_dict
         if auto_repost:
             auto_repost_dict = auto_repost.__dict__.copy()
@@ -384,7 +387,9 @@ class AyrshareClient:
             payload["autoRepost"] = auto_repost_dict
         if auto_hashtag:
             payload["autoHashtag"] = (
-                auto_hashtag.__dict__ if isinstance(auto_hashtag, AutoHashtag) else auto_hashtag
+                auto_hashtag.__dict__
+                if isinstance(auto_hashtag, AutoHashtag)
+                else auto_hashtag
             )
         if unsplash:
             payload["unsplash"] = unsplash
@@ -423,13 +428,13 @@ class AyrshareClient:
         if notes:
             payload["notes"] = notes
 
-
         headers = self.headers
         if profile_key:
             headers["Profile-Key"] = profile_key
 
-
-        response = self._requests.post(self.POST_ENDPOINT, json=payload, headers=headers)
+        response = self._requests.post(
+            self.POST_ENDPOINT, json=payload, headers=headers
+        )
 
         if not response.ok:
             try:
