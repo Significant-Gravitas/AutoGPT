@@ -294,6 +294,10 @@ class IntegrationCredentialsStore:
             all_credentials.append(zerobounce_credentials)
         if settings.secrets.google_maps_api_key:
             all_credentials.append(google_maps_credentials)
+        if settings.secrets.ayrshare_api_key:
+            all_credentials.append(ayrshare_credentials)
+        if settings.secrets.llama_api_key:
+            all_credentials.append(llama_api_credentials)
         return all_credentials
 
     def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:
