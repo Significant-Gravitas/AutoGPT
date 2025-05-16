@@ -2,14 +2,14 @@ from typing import Literal
 
 from pydantic import SecretStr
 
-from backend.data.model import APIKeyCredentials, CredentialsMetaInput
+from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput
 from backend.integrations.providers import ProviderName
 
 # Define the type of credentials input expected for Example API
-ExampleCredentialsInput = CredentialsMetaInput[
+AyrshareCredentials = APIKeyCredentials
+AyrshareCredentialsInput = CredentialsMetaInput[
     Literal[ProviderName.AYRSHARE], Literal["api_key"]
 ]
-
 
 # Mock credentials for testing Example API integration
 AYRSHARE_CREDENTIALS = APIKeyCredentials(
@@ -27,3 +27,8 @@ AYRSHARE_CREDENTIALS_INPUT = {
     "type": AYRSHARE_CREDENTIALS.type,
     "title": AYRSHARE_CREDENTIALS.title,
 }
+
+
+def AyrshareCredentialsField() -> AyrshareCredentialsInput:
+    """Creates an Ayrshare credentials input on a block."""
+    return CredentialsField(description="The Ayrshare integration requires an API Key.")

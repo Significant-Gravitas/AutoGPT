@@ -18,7 +18,6 @@ from backend.data.integrations import (
 )
 from backend.data.model import Credentials, CredentialsType, OAuth2Credentials
 from backend.executor.utils import add_graph_execution_async
-from backend.integrations.credentials_store import IntegrationCredentialsStore
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
@@ -36,7 +35,6 @@ settings = Settings()
 router = APIRouter()
 
 creds_manager = IntegrationCredentialsManager()
-creds_store = IntegrationCredentialsStore()
 
 
 class LoginResponse(BaseModel):
@@ -434,13 +432,13 @@ async def get_ayrshare_sso_url(
     """
 
     # Get or create profile key
-    profile_key = creds_store.get_ayrshare_profile_key(user_id)
+    profile_key = creds_manager.store.get_ayrshare_profile_key(user_id)
     if not profile_key:
         # Create new profile if none exists
         client = AyrshareClient(api_key=settings.secrets.ayrshare_api_key)
         profile = client.create_profile(title=f"User {user_id}", messaging_active=True)
         profile_key = profile.profileKey
-        creds_store.set_ayrshare_profile_key(user_id, profile_key)
+        creds_manager.store.set_ayrshare_profile_key(user_id, profile_key)
 
     # Convert SecretStr to string if needed
     profile_key_str = (
