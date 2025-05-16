@@ -602,3 +602,10 @@ flake8 autogpt/ tests/
 # Or, if you want to run flake8 with the same configuration as the CI:
 flake8 autogpt/ tests/ --select E303,W293,W291,W292,E305,E231,E302
 ```
+
+## �� Documentation
+
+- [Architecture Overview](docs/architecture.md) - Understand Auto-GPT's components and design
+- [Plugin Development](docs/plugin_development.md) - Learn how to create and use plugins
+- [Configuration](https://github.com/Significant-Gravitas/Auto-GPT/wiki/Configuration) - Configure Auto-GPT's settings
+- [Usage Guide](https://github.com/Significant-Gravitas/Auto-GPT/wiki/Usage-Guide) - Learn how to use Auto-GPT effectively
