@@ -430,15 +430,19 @@ async def get_ayrshare_sso_url(
     Returns:
         dict: Contains the SSO URL for Ayrshare integration
     """
+    # Generate JWT and get SSO URL
+    client = AyrshareClient()
 
     # Get or create profile key
     profile_key = creds_manager.store.get_ayrshare_profile_key(user_id)
     if not profile_key:
+        logger.info(f"Creating new Ayrshare profile for user {user_id}")
         # Create new profile if none exists
-        client = AyrshareClient()
         profile = client.create_profile(title=f"User {user_id}", messaging_active=True)
         profile_key = profile.profileKey
         creds_manager.store.set_ayrshare_profile_key(user_id, profile_key)
+    else:
+        logger.info(f"Using existing Ayrshare profile for user {user_id}")
 
     # Convert SecretStr to string if needed
     profile_key_str = (
@@ -447,28 +451,32 @@ async def get_ayrshare_sso_url(
         else str(profile_key)
     )
 
-    # Generate JWT and get SSO URL
-    client = AyrshareClient()
+    private_key = settings.secrets.ayrshare_jwt_key
 
-    jwt_response = client.generate_jwt(
-        private_key=settings.secrets.ayrshare_jwt_secret,
-        profile_key=profile_key_str,
-        allowed_social=[
-            SocialPlatform.FACEBOOK,
-            SocialPlatform.TWITTER,
-            SocialPlatform.LINKEDIN,
-            SocialPlatform.INSTAGRAM,
-            SocialPlatform.YOUTUBE,
-            SocialPlatform.REDDIT,
-            SocialPlatform.TELEGRAM,
-            SocialPlatform.GMB,
-            SocialPlatform.PINTEREST,
-            SocialPlatform.TIKTOK,
-            SocialPlatform.BLUESKY,
-        ],
-        expires_in=2880,
-        verify=True,
-    )
+    try:
+        logger.info(f"Generating JWT for user {user_id}")
+        jwt_response = client.generate_jwt(
+            private_key=private_key,
+            profile_key=profile_key_str,
+            allowed_social=[
+                SocialPlatform.FACEBOOK,
+                SocialPlatform.TWITTER,
+                SocialPlatform.LINKEDIN,
+                SocialPlatform.INSTAGRAM,
+                SocialPlatform.YOUTUBE,
+                SocialPlatform.REDDIT,
+                SocialPlatform.TELEGRAM,
+                SocialPlatform.GMB,
+                SocialPlatform.PINTEREST,
+                SocialPlatform.TIKTOK,
+                SocialPlatform.BLUESKY,
+            ],
+            expires_in=2880,
+            verify=True,
+            )
+    except Exception as e:
+        logger.error(f"Error generating JWT for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate JWT")
 
     expire_at = datetime.now(timezone.utc) + timedelta(minutes=2880)
     return {"sso_url": jwt_response.url, "expire_at": expire_at.isoformat()}

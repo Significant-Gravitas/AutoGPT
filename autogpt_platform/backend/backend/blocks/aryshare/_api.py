@@ -168,6 +168,8 @@ class AyrshareClient:
             "profileKey": profile_key,
         }
 
+        headers = self.headers
+        headers["Profile-Key"] = profile_key
         if logout is not None:
             payload["logout"] = logout
         if redirect is not None:
@@ -183,7 +185,7 @@ class AyrshareClient:
         if email is not None:
             payload["email"] = email.__dict__
 
-        response = self._requests.post(self.JWT_ENDPOINT, json=payload)
+        response = self._requests.post(self.JWT_ENDPOINT, json=payload, headers=headers)
 
         if not response.ok:
             try:
@@ -280,7 +282,6 @@ class AyrshareClient:
                 response.status_code,
             )
 
-        logger.info(f"Profile created: {response_data}")
         return ProfileResponse(**response_data)
 
     def create_post(

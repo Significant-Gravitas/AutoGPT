@@ -439,8 +439,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     smartlead_api_key: str = Field(default="", description="SmartLead API Key")
     zerobounce_api_key: str = Field(default="", description="ZeroBounce API Key")
     ayrshare_api_key: str = Field(default="", description="Ayrshare API Key")
-    ayrshare_jwt_secret: str = Field(default="", description="Aryshare private Key")
-
+    ayrshare_jwt_key: str = Field(default="", description="Ayrshare private Key")
     # Add more secret fields as needed
 
     model_config = SettingsConfigDict(
