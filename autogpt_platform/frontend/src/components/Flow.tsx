@@ -678,7 +678,7 @@ const FlowEditor: React.FC<{
           <Controls />
           <Background className="dark:bg-slate-800" />
           <ControlPanel
-            className="absolute z-10"
+            className="absolute z-20"
             controls={editorControls}
             topChildren={
               <BlocksControl
@@ -703,6 +703,7 @@ const FlowEditor: React.FC<{
             }
           ></ControlPanel>
           <PrimaryActionBar
+            className="absolute bottom-0 left-1/2 z-20"
             onClickAgentOutputs={() => runnerUIRef.current?.openRunnerOutput()}
             onClickRunAgent={() => {
               if (!savedAgent) {
@@ -745,7 +746,7 @@ const FlowEditor: React.FC<{
       <Suspense fallback={null}>
         <OttoChatWidget
           graphID={flowID}
-          className="z-100 fixed bottom-4 right-4"
+          className="fixed bottom-4 right-4 z-20"
         />
       </Suspense>
     </FlowContext.Provider>

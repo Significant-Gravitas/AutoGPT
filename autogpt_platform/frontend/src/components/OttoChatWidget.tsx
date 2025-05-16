@@ -162,6 +162,7 @@ export default function OttoChatWidget({
       className={cn(
         "flex h-[600px] w-[600px] flex-col rounded-lg border bg-background shadow-xl",
         className,
+        "z-40",
       )}
     >
       {/* Header */}
