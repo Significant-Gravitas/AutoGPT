@@ -7,6 +7,9 @@ from typing import Any, Dict, List, Optional, Union
 
 from backend.util.request import Requests
 from backend.util.settings import Settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 settings = Settings()
 
@@ -56,6 +59,7 @@ class ProfileResponse:
     title: str
     refId: str
     profileKey: str
+    messagingActive: Optional[bool] = None
 
 
 @dataclass
@@ -276,6 +280,7 @@ class AyrshareClient:
                 response.status_code,
             )
 
+        logger.info(f"Profile created: {response_data}")
         return ProfileResponse(**response_data)
 
     def create_post(
