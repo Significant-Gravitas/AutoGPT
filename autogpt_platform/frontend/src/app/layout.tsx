@@ -10,7 +10,6 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Providers } from "@/app/providers";
 import TallyPopupSimple from "@/components/TallyPopup";
-import OttoChatWidget from "@/components/OttoChatWidget";
 import { GoogleAnalytics } from "@/components/analytics/google-analytics";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });

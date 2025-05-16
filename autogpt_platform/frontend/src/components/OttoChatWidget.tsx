@@ -4,8 +4,6 @@ import React, { useEffect, useState, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 
 import type { GraphID } from "@/lib/autogpt-server-api/types";
-import type { CustomNode } from "@/components/CustomNode";
-import type { CustomEdge } from "@/components/CustomEdge";
 import { askOtto } from "@/app/(platform)/build/actions";
 
 interface Message {
@@ -14,9 +12,9 @@ interface Message {
 }
 
 export default function OttoChatWidget({
-  graph,
+  graphID,
 }: {
-  graph?: { id: GraphID; nodes: CustomNode[]; edges: CustomEdge[] };
+  graphID?: GraphID;
 }): React.ReactNode {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -81,7 +79,7 @@ export default function OttoChatWidget({
         userMessage,
         conversationHistory,
         includeGraphData,
-        graph?.id || undefined,
+        graphID,
       );
 
       // Check if the response contains an error
@@ -266,7 +264,7 @@ export default function OttoChatWidget({
               Send
             </button>
           </div>
-          {graph && (
+          {graphID && (
             <button
               type="button"
               onClick={() => {
