@@ -185,7 +185,6 @@ export const PROVIDER_NAMES = {
   UNREAL_SPEECH: "unreal_speech",
   TODOIST: "todoist",
   ZEROBOUNCE: "zerobounce",
-  AYRSHARE: "ayrshare",
 } as const;
 // --8<-- [end:BlockIOCredentialsSubSchema]
 

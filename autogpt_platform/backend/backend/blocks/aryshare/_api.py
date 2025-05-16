@@ -6,6 +6,9 @@ from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 from backend.util.request import Requests
+from backend.util.settings import Settings
+
+settings = Settings()
 
 
 class AyrshareAPIException(Exception):
@@ -105,12 +108,11 @@ class AyrshareClient:
 
     def __init__(
         self,
-        api_key: str,
         custom_requests: Optional[Requests] = None,
     ):
         headers: Dict[str, str] = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
+            "Authorization": f"Bearer {settings.secrets.ayrshare_api_key}",
         }
         self.headers = headers
 

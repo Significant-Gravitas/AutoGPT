@@ -53,7 +53,6 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   todoist: "Todoist",
   unreal_speech: "Unreal Speech",
   zerobounce: "ZeroBounce",
-  ayrshare: "Ayrshare",
 } as const;
 // --8<-- [end:CredentialsProviderNames]
 
@@ -102,7 +101,7 @@ export default function CredentialsProvider({
   children: React.ReactNode;
 }) {
   const [providers, setProviders] =
-    useState<CredentialsProvidersContextType | null>(null);
+    useState<CredentialsProvidersContextType>({});
   const api = useBackendAPI();
 
   const addCredentials = useCallback(
