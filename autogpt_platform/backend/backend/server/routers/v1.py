@@ -660,11 +660,15 @@ async def _cancel_execution(graph_exec_id: str):
         exchange=execution_utils.GRAPH_EXECUTION_CANCEL_EXCHANGE,
     )
 
-    # Update the status of the graph & node executions
-    await execution_db.update_graph_execution_stats(
+    # Update the status of the graph execution
+    graph_execution = await execution_db.update_graph_execution_stats(
         graph_exec_id,
         execution_db.ExecutionStatus.TERMINATED,
     )
+    if graph_execution:
+        await execution_event_bus().publish(graph_execution)
+
+    # Update the status of the node executions
     node_execs = [
         node_exec.model_copy(update={"status": execution_db.ExecutionStatus.TERMINATED})
         for node_exec in await execution_db.get_node_executions(
@@ -676,7 +680,6 @@ async def _cancel_execution(graph_exec_id: str):
             ],
         )
     ]
-
     await execution_db.update_node_execution_status_batch(
         [node_exec.node_exec_id for node_exec in node_execs],
         execution_db.ExecutionStatus.TERMINATED,

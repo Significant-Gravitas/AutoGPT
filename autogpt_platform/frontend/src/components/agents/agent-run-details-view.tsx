@@ -133,7 +133,8 @@ export default function AgentRunDetailsView({
     | null
     | undefined = useMemo(() => {
     if (!("outputs" in run)) return undefined;
-    if (!["running", "success", "failed"].includes(runStatus)) return null;
+    if (!["running", "success", "failed", "stopped"].includes(runStatus))
+      return null;
 
     // Add type info from agent input schema
     return Object.fromEntries(
