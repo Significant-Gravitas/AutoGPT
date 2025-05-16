@@ -11,7 +11,7 @@ from backend.blocks.aryshare._api import (
     FirstComment,
     SocialPlatform,
 )
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
+from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
 from backend.data.model import SchemaField
 from backend.integrations.credentials_store import IntegrationCredentialsStore
 
@@ -117,6 +117,8 @@ class BaseAyrsharePostBlock(Block):
             # The set of categories that the block belongs to.
             # Each category is an instance of BlockCategory Enum.
             categories={BlockCategory.SOCIAL},
+            # The type of block, this is used to determine the block type in the UI.
+            block_type=BlockType.AYRSHARE,
             # The schema, defined as a Pydantic model, for the input data.
             input_schema=BaseAyrsharePostBlock.Input,
             # The schema, defined as a Pydantic model, for the output data.

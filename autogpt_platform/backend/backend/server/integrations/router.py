@@ -435,7 +435,7 @@ async def get_ayrshare_sso_url(
     profile_key = creds_manager.store.get_ayrshare_profile_key(user_id)
     if not profile_key:
         # Create new profile if none exists
-        client = AyrshareClient(api_key=settings.secrets.ayrshare_api_key)
+        client = AyrshareClient()
         profile = client.create_profile(title=f"User {user_id}", messaging_active=True)
         profile_key = profile.profileKey
         creds_manager.store.set_ayrshare_profile_key(user_id, profile_key)
@@ -448,9 +448,7 @@ async def get_ayrshare_sso_url(
     )
 
     # Generate JWT and get SSO URL
-    client = AyrshareClient(
-        api_key=settings.secrets.ayrshare_api_key,
-    )
+    client = AyrshareClient()
 
     jwt_response = client.generate_jwt(
         private_key=settings.secrets.ayrshare_jwt_secret,
