@@ -1,8 +1,8 @@
 from enum import Enum
 from typing import Literal
 
-import replicate
 from pydantic import SecretStr
+from replicate.client import Client as ReplicateClient
 from replicate.helpers import FileOutput
 
 from backend.data.block import Block, BlockCategory, BlockSchema
@@ -170,7 +170,7 @@ class AIImageGeneratorBlock(Block):
     ):
         try:
             # Initialize Replicate client
-            client = replicate.Client(api_token=credentials.api_key.get_secret_value())
+            client = ReplicateClient(api_token=credentials.api_key.get_secret_value())
 
             # Run the model with input parameters
             output = client.run(model_name, input=input_params, wait=False)

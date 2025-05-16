@@ -6,6 +6,7 @@ from tweepy.client import Response
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TWITTER_OAUTH_IS_CONFIGURED,
     TwitterCredentials,
     TwitterCredentialsField,
     TwitterCredentialsInput,
@@ -60,6 +61,7 @@ class TwitterLikeTweetBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterLikeTweetBlock.Input,
             output_schema=TwitterLikeTweetBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "tweet_id": "1234567890",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -159,6 +161,7 @@ class TwitterGetLikingUsersBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetLikingUsersBlock.Input,
             output_schema=TwitterGetLikingUsersBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "tweet_id": "1234567890",
                 "max_results": 1,
@@ -337,6 +340,7 @@ class TwitterGetLikedTweetsBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetLikedTweetsBlock.Input,
             output_schema=TwitterGetLikedTweetsBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "user_id": "1234567890",
                 "max_results": 2,
@@ -531,6 +535,7 @@ class TwitterUnlikeTweetBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterUnlikeTweetBlock.Input,
             output_schema=TwitterUnlikeTweetBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "tweet_id": "1234567890",
                 "credentials": TEST_CREDENTIALS_INPUT,
