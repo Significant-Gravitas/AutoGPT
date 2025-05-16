@@ -124,7 +124,7 @@ async def get_user_integrations(user_id: str) -> UserIntegrations:
 
 
 async def update_user_integrations(user_id: str, data: UserIntegrations):
-    encrypted_data = JSONCryptor().encrypt(data.model_dump())
+    encrypted_data = JSONCryptor().encrypt(data.model_dump(exclude_none=True))
     await User.prisma().update(
         where={"id": user_id},
         data={"integrations": encrypted_data},
