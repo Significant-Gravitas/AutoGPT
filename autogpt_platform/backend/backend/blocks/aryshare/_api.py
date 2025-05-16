@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
 from backend.util.request import Requests
 from backend.util.settings import Settings
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +100,13 @@ class AutoRepost:
     platforms: Optional[List[SocialPlatform]] = None
     startDate: Optional[str] = None
     endDate: Optional[str] = None
+
+
+@dataclass
+class PostError:
+    code: int
+    message: str
+    details: str
 
 
 class AyrshareClient:
@@ -219,7 +226,7 @@ class AyrshareClient:
         email: Optional[str] = None,
         sub_header: Optional[str] = None,
         tags: Optional[List[str]] = None,
-    ) -> ProfileResponse:
+    ) -> ProfileResponse | PostError:
         """
         Create a new User Profile under your Primary Profile.
 
@@ -316,7 +323,7 @@ class AyrshareClient:
         idempotency_key: Optional[str] = None,
         notes: Optional[str] = None,
         profile_key: Optional[str] = None,
-    ) -> PostResponse:
+    ) -> PostResponse | PostError:
         """
         Create a post across multiple social media platforms.
 
@@ -448,6 +455,14 @@ class AyrshareClient:
             try:
                 error_data = response.json()
                 error_message = error_data.get("message", response.text)
+                error_code = error_data.get("code", response.status_code)
+                error_details = error_data.get("details", {})
+                logger.error(error_data)
+                return PostError(
+                    code=error_code,
+                    message=error_message,
+                    details=error_details,
+                )
             except json.JSONDecodeError:
                 error_message = response.text
 

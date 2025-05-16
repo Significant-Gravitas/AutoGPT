@@ -7,7 +7,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Reques
 from pydantic import BaseModel, Field, SecretStr
 from starlette.status import HTTP_404_NOT_FOUND
 
-from backend.blocks.aryshare._api import AyrshareClient, SocialPlatform
+from backend.blocks.aryshare._api import AyrshareClient, PostError, SocialPlatform
 from backend.data.graph import set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
@@ -439,6 +439,13 @@ async def get_ayrshare_sso_url(
         logger.info(f"Creating new Ayrshare profile for user {user_id}")
         # Create new profile if none exists
         profile = client.create_profile(title=f"User {user_id}", messaging_active=True)
+        if isinstance(profile, PostError):
+            logger.error(
+                f"Error creating Ayrshare profile for user {user_id}: {profile}"
+            )
+            raise HTTPException(
+                status_code=500, detail="Failed to create Ayrshare profile"
+            )
         profile_key = profile.profileKey
         creds_manager.store.set_ayrshare_profile_key(user_id, profile_key)
     else:
@@ -473,7 +480,7 @@ async def get_ayrshare_sso_url(
             ],
             expires_in=2880,
             verify=True,
-            )
+        )
     except Exception as e:
         logger.error(f"Error generating JWT for user {user_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate JWT")

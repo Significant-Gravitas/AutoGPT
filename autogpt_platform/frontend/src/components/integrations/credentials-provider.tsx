@@ -100,8 +100,9 @@ export default function CredentialsProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [providers, setProviders] =
-    useState<CredentialsProvidersContextType>({});
+  const [providers, setProviders] = useState<CredentialsProvidersContextType>(
+    {},
+  );
   const api = useBackendAPI();
 
   const addCredentials = useCallback(

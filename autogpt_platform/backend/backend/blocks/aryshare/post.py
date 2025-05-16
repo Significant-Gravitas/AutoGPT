@@ -1,14 +1,13 @@
 import logging
-from typing import List, Optional, Union
-
-from pydantic import BaseModel, Field
 from datetime import datetime
+from typing import List, Optional
+
+from pydantic import BaseModel, Field, SecretStr
+
 from backend.blocks.aryshare._api import (
-    AutoHashtag,
-    AutoRepost,
-    AutoSchedule,
     AyrshareClient,
-    FirstComment,
+    PostError,
+    PostResponse,
     SocialPlatform,
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema, BlockType
@@ -35,7 +34,7 @@ class RequestOutput(BaseModel):
     errors: Optional[List[str]] = Field(description="Any errors that occurred")
 
 
-class BaseAyrsharePostBlock(Block):
+class AyrsharePostBlockBase(Block):
     """Base class for Ayrshare social media posting blocks."""
 
     class Input(BlockSchema):
@@ -72,7 +71,7 @@ class BaseAyrsharePostBlock(Block):
             default=False,
             advanced=True,
         )
-        random_post: bool= SchemaField(
+        random_post: bool = SchemaField(
             description="Whether to generate random post text",
             default=False,
             advanced=True,
@@ -91,21 +90,6 @@ class BaseAyrsharePostBlock(Block):
         self,
         id="b3a7b3b9-5169-410a-9d5c-fd625460fb14",
         description="Ayrshare Post",
-        test_output=[
-            (
-                "post_result",
-                RequestOutput(
-                    status="success",
-                    id="12345",
-                    refId="abc123",
-                    profileTitle="Test Profile",
-                    post="Hello, world! This is a test post.",
-                    postIds=[{"platform": "facebook", "id": "fb_123456"}],
-                    scheduleDate=None,
-                    errors=None,
-                ),
-            ),
-        ],
     ):
         super().__init__(
             # The unique identifier for the block, this value will be persisted in the DB.
@@ -120,33 +104,9 @@ class BaseAyrsharePostBlock(Block):
             # The type of block, this is used to determine the block type in the UI.
             block_type=BlockType.AYRSHARE,
             # The schema, defined as a Pydantic model, for the input data.
-            input_schema=BaseAyrsharePostBlock.Input,
+            input_schema=AyrsharePostBlockBase.Input,
             # The schema, defined as a Pydantic model, for the output data.
-            output_schema=BaseAyrsharePostBlock.Output,
-            # This is an instance of the Input schema with sample values.
-            test_input={
-                "post": "Hello, world! This is a test post.",
-                "media_urls": ["https://example.com/image.jpg"],
-                "is_video": False,
-            },
-            # The list or single expected output if the test_input is run.
-            # Each output is a tuple of (output_name, output_data).
-            test_output=test_output,
-            # Function names on the block implementation to mock on test run.
-            # Each mock is a dictionary with function names as keys and mock implementations as values.
-            test_mock={
-                "_create_post": lambda *args, **kwargs: RequestOutput(
-                    status="success",
-                    id="12345",
-                    refId="abc123",
-                    profileTitle="Test Profile",
-                    post="Hello, world! This is a test post.",
-                    postIds=[{"platform": "facebook", "id": "fb_123456"}],
-                    scheduleDate=None,
-                    errors=None,
-                ),
-                "_get_profile_key": lambda user_id: ("profile_key", "mock_profile_key"),
-            },
+            output_schema=AyrsharePostBlockBase.Output,
         )
 
     @staticmethod
@@ -155,13 +115,15 @@ class BaseAyrsharePostBlock(Block):
 
     def _create_post(
         self,
-        input_data: "BaseAyrsharePostBlock.Input",
+        input_data: "AyrsharePostBlockBase.Input",
         platforms: List[SocialPlatform],
         profile_key: Optional[str] = None,
-    ) -> RequestOutput:
+    ) -> PostResponse | PostError:
         client = self.create_client()
         """Create a post on the specified platforms."""
-        iso_date = input_data.schedule_date.isoformat() if input_data.schedule_date else None
+        iso_date = (
+            input_data.schedule_date.isoformat() if input_data.schedule_date else None
+        )
         response = client.create_post(
             post=input_data.post,
             platforms=platforms,
@@ -177,31 +139,32 @@ class BaseAyrsharePostBlock(Block):
             notes=input_data.notes,
             profile_key=profile_key,
         )
-        return RequestOutput(**response.__dict__)
-
-    def _get_profile_key(self, user_id: str) -> tuple[str, str]:
-        creds_store = IntegrationCredentialsStore()
-        profile_key = creds_store.get_ayrshare_profile_key(user_id)
-        if profile_key:
-            return "profile_key", profile_key.get_secret_value()
-        else:
-            return (
-                "error",
-                "You need to connect your social media profile to Ayrshare first.",
-            )
+        return response
 
     def run(
         self,
-        input_data: "BaseAyrsharePostBlock.Input",
+        input_data: "AyrsharePostBlockBase.Input",
+        *,
+        profile_key: SecretStr,
         **kwargs,
     ) -> BlockOutput:
         """Run the block."""
         platforms = [SocialPlatform.FACEBOOK]
 
-        yield "post_result", self._create_post(input_data, platforms=platforms)
+        if not profile_key:
+            yield "error", "Please Link a social account via Ayrshare"
+            return
+
+        post_result = self._create_post(
+            input_data, platforms=platforms, profile_key=profile_key.get_secret_value()
+        )
+        if isinstance(post_result, PostError):
+            yield "error", post_result.message
+            return
+        yield "post_result", post_result
 
 
-class PostToFacebookBlock(BaseAyrsharePostBlock):
+class PostToFacebookBlock(AyrsharePostBlockBase):
     """Block for posting to Facebook."""
 
     def __init__(self):
@@ -212,26 +175,28 @@ class PostToFacebookBlock(BaseAyrsharePostBlock):
 
     def run(
         self,
-        input_data: BaseAyrsharePostBlock.Input,
+        input_data: AyrsharePostBlockBase.Input,
         *,
-        user_id: str,
+        profile_key: SecretStr,
         **kwargs,
     ) -> BlockOutput:
         """Post to Facebook."""
-        profile_key, profile_key_value = self._get_profile_key(user_id)
-        if profile_key == "error":
-            yield "error", profile_key_value
+        if not profile_key:
+            yield "error", "Please Link a social account via Ayrshare"
             return
 
         post_result = self._create_post(
             input_data,
             [SocialPlatform.FACEBOOK],
-            profile_key=profile_key_value,
+            profile_key=profile_key.get_secret_value(),
         )
+        if isinstance(post_result, PostError):
+            yield "error", post_result.message
+            return
         yield "post_result", post_result
 
 
-class PostToXBlock(BaseAyrsharePostBlock):
+class PostToXBlock(AyrsharePostBlockBase):
     """Block for posting to X / Twitter."""
 
     def __init__(self):
@@ -242,26 +207,28 @@ class PostToXBlock(BaseAyrsharePostBlock):
 
     def run(
         self,
-        input_data: BaseAyrsharePostBlock.Input,
+        input_data: AyrsharePostBlockBase.Input,
         *,
-        user_id: str,
+        profile_key: SecretStr,
         **kwargs,
     ) -> BlockOutput:
         """Post to Twitter."""
-        profile_key, profile_key_value = self._get_profile_key(user_id)
-        if profile_key == "error":
-            yield "error", profile_key_value
+        if not profile_key:
+            yield "error", "Please Link a social account via Ayrshare"
             return
 
         post_result = self._create_post(
             input_data,
             [SocialPlatform.TWITTER],
-            profile_key=profile_key_value,
+            profile_key=profile_key.get_secret_value(),
         )
+        if isinstance(post_result, PostError):
+            yield "error", post_result.message
+            return
         yield "post_result", post_result
 
 
-class PostToLinkedInBlock(BaseAyrsharePostBlock):
+class PostToLinkedInBlock(AyrsharePostBlockBase):
     """Block for posting to LinkedIn."""
 
     def __init__(self):
@@ -272,26 +239,28 @@ class PostToLinkedInBlock(BaseAyrsharePostBlock):
 
     def run(
         self,
-        input_data: BaseAyrsharePostBlock.Input,
+        input_data: AyrsharePostBlockBase.Input,
         *,
-        user_id: str,
+        profile_key: SecretStr,
         **kwargs,
     ) -> BlockOutput:
         """Post to LinkedIn."""
-        profile_key, profile_key_value = self._get_profile_key(user_id)
-        if profile_key == "error":
-            yield "error", profile_key_value
+        if not profile_key:
+            yield "error", "Please Link a social account via Ayrshare"
             return
 
         post_result = self._create_post(
             input_data,
             [SocialPlatform.LINKEDIN],
-            profile_key=profile_key_value,
+            profile_key=profile_key.get_secret_value(),
         )
+        if isinstance(post_result, PostError):
+            yield "error", post_result.message
+            return
         yield "post_result", post_result
 
 
-class PostToInstagramBlock(BaseAyrsharePostBlock):
+class PostToInstagramBlock(AyrsharePostBlockBase):
     """Block for posting to Instagram."""
 
     def __init__(self):
@@ -302,26 +271,28 @@ class PostToInstagramBlock(BaseAyrsharePostBlock):
 
     def run(
         self,
-        input_data: BaseAyrsharePostBlock.Input,
+        input_data: AyrsharePostBlockBase.Input,
         *,
-        user_id: str,
+        profile_key: SecretStr,
         **kwargs,
     ) -> BlockOutput:
         """Post to Instagram."""
-        profile_key, profile_key_value = self._get_profile_key(user_id)
-        if profile_key == "error":
-            yield "error", profile_key_value
+        if not profile_key:
+            yield "error", "Please Link a social account via Ayrshare"
             return
 
         post_result = self._create_post(
             input_data,
             [SocialPlatform.INSTAGRAM],
-            profile_key=profile_key_value,
+            profile_key=profile_key.get_secret_value(),
         )
+        if isinstance(post_result, PostError):
+            yield "error", post_result.message
+            return
         yield "post_result", post_result
 
 
-class PostToYouTubeBlock(BaseAyrsharePostBlock):
+class PostToYouTubeBlock(AyrsharePostBlockBase):
     """Block for posting to YouTube."""
 
     def __init__(self):
@@ -332,26 +303,28 @@ class PostToYouTubeBlock(BaseAyrsharePostBlock):
 
     def run(
         self,
-        input_data: BaseAyrsharePostBlock.Input,
+        input_data: AyrsharePostBlockBase.Input,
         *,
-        user_id: str,
+        profile_key: SecretStr,
         **kwargs,
     ) -> BlockOutput:
         """Post to YouTube."""
-        profile_key, profile_key_value = self._get_profile_key(user_id)
-        if profile_key == "error":
-            yield "error", profile_key_value
+        if not profile_key:
+            yield "error", "Please Link a social account via Ayrshare"
             return
 
         post_result = self._create_post(
             input_data,
             [SocialPlatform.YOUTUBE],
-            profile_key=profile_key_value,
+            profile_key=profile_key.get_secret_value(),
         )
+        if isinstance(post_result, PostError):
+            yield "error", post_result.message
+            return
         yield "post_result", post_result
 
 
-class PostToRedditBlock(BaseAyrsharePostBlock):
+class PostToRedditBlock(AyrsharePostBlockBase):
     """Block for posting to Reddit."""
 
     def __init__(self):
@@ -362,26 +335,28 @@ class PostToRedditBlock(BaseAyrsharePostBlock):
 
     def run(
         self,
-        input_data: BaseAyrsharePostBlock.Input,
+        input_data: AyrsharePostBlockBase.Input,
         *,
-        user_id: str,
+        profile_key: SecretStr,
         **kwargs,
     ) -> BlockOutput:
         """Post to Reddit."""
-        profile_key, profile_key_value = self._get_profile_key(user_id)
-        if profile_key == "error":
-            yield "error", profile_key_value
+        if not profile_key:
+            yield "error", "Please Link a social account via Ayrshare"
             return
 
         post_result = self._create_post(
             input_data,
             [SocialPlatform.REDDIT],
-            profile_key=profile_key_value,
+            profile_key=profile_key.get_secret_value(),
         )
+        if isinstance(post_result, PostError):
+            yield "error", post_result.message
+            return
         yield "post_result", post_result
 
 
-class PostToTelegramBlock(BaseAyrsharePostBlock):
+class PostToTelegramBlock(AyrsharePostBlockBase):
     """Block for posting to Telegram."""
 
     def __init__(self):
@@ -392,26 +367,28 @@ class PostToTelegramBlock(BaseAyrsharePostBlock):
 
     def run(
         self,
-        input_data: BaseAyrsharePostBlock.Input,
+        input_data: AyrsharePostBlockBase.Input,
         *,
-        user_id: str,
+        profile_key: SecretStr,
         **kwargs,
     ) -> BlockOutput:
         """Post to Telegram."""
-        profile_key, profile_key_value = self._get_profile_key(user_id)
-        if profile_key == "error":
-            yield "error", profile_key_value
+        if not profile_key:
+            yield "error", "Please Link a social account via Ayrshare"
             return
 
         post_result = self._create_post(
             input_data,
             [SocialPlatform.TELEGRAM],
-            profile_key=profile_key_value,
+            profile_key=profile_key.get_secret_value(),
         )
+        if isinstance(post_result, PostError):
+            yield "error", post_result.message
+            return
         yield "post_result", post_result
 
 
-class PostToGMBBlock(BaseAyrsharePostBlock):
+class PostToGMBBlock(AyrsharePostBlockBase):
     """Block for posting to Google My Business."""
 
     def __init__(self):
@@ -422,26 +399,28 @@ class PostToGMBBlock(BaseAyrsharePostBlock):
 
     def run(
         self,
-        input_data: BaseAyrsharePostBlock.Input,
+        input_data: AyrsharePostBlockBase.Input,
         *,
-        user_id: str,
+        profile_key: SecretStr,
         **kwargs,
     ) -> BlockOutput:
         """Post to Google My Business."""
-        profile_key, profile_key_value = self._get_profile_key(user_id)
-        if profile_key == "error":
-            yield "error", profile_key_value
+        if not profile_key:
+            yield "error", "Please Link a social account via Ayrshare"
             return
 
         post_result = self._create_post(
             input_data,
             [SocialPlatform.GMB],
-            profile_key=profile_key_value,
+            profile_key=profile_key.get_secret_value(),
         )
+        if isinstance(post_result, PostError):
+            yield "error", post_result.message
+            return
         yield "post_result", post_result
 
 
-class PostToPinterestBlock(BaseAyrsharePostBlock):
+class PostToPinterestBlock(AyrsharePostBlockBase):
     """Block for posting to Pinterest."""
 
     def __init__(self):
@@ -452,26 +431,28 @@ class PostToPinterestBlock(BaseAyrsharePostBlock):
 
     def run(
         self,
-        input_data: BaseAyrsharePostBlock.Input,
+        input_data: AyrsharePostBlockBase.Input,
         *,
-        user_id: str,
+        profile_key: SecretStr,
         **kwargs,
     ) -> BlockOutput:
         """Post to Pinterest."""
-        profile_key, profile_key_value = self._get_profile_key(user_id)
-        if profile_key == "error":
-            yield "error", profile_key_value
+        if not profile_key:
+            yield "error", "Please Link a social account via Ayrshare"
             return
 
         post_result = self._create_post(
             input_data,
             [SocialPlatform.PINTEREST],
-            profile_key=profile_key_value,
+            profile_key=profile_key.get_secret_value(),
         )
+        if isinstance(post_result, PostError):
+            yield "error", post_result.message
+            return
         yield "post_result", post_result
 
 
-class PostToTikTokBlock(BaseAyrsharePostBlock):
+class PostToTikTokBlock(AyrsharePostBlockBase):
     """Block for posting to TikTok."""
 
     def __init__(self):
@@ -482,26 +463,28 @@ class PostToTikTokBlock(BaseAyrsharePostBlock):
 
     def run(
         self,
-        input_data: BaseAyrsharePostBlock.Input,
+        input_data: AyrsharePostBlockBase.Input,
         *,
-        user_id: str,
+        profile_key: SecretStr,
         **kwargs,
     ) -> BlockOutput:
         """Post to TikTok."""
-        profile_key, profile_key_value = self._get_profile_key(user_id)
-        if profile_key == "error":
-            yield "error", profile_key_value
+        if not profile_key:
+            yield "error", "Please Link a social account via Ayrshare"
             return
 
         post_result = self._create_post(
             input_data,
             [SocialPlatform.TIKTOK],
-            profile_key=profile_key_value,
+            profile_key=profile_key.get_secret_value(),
         )
+        if isinstance(post_result, PostError):
+            yield "error", post_result.message
+            return
         yield "post_result", post_result
 
 
-class PostToBlueskyBlock(BaseAyrsharePostBlock):
+class PostToBlueskyBlock(AyrsharePostBlockBase):
     """Block for posting to Bluesky."""
 
     def __init__(self):
@@ -512,20 +495,37 @@ class PostToBlueskyBlock(BaseAyrsharePostBlock):
 
     def run(
         self,
-        input_data: BaseAyrsharePostBlock.Input,
+        input_data: AyrsharePostBlockBase.Input,
         *,
-        user_id: str,
+        profile_key: SecretStr,
         **kwargs,
     ) -> BlockOutput:
         """Post to Bluesky."""
-        profile_key, profile_key_value = self._get_profile_key(user_id)
-        if profile_key == "error":
-            yield "error", profile_key_value
+        if not profile_key:
+            yield "error", "Please Link a social account via Ayrshare"
             return
 
         post_result = self._create_post(
             input_data,
             [SocialPlatform.BLUESKY],
-            profile_key=profile_key_value,
+            profile_key=profile_key.get_secret_value(),
         )
+        if isinstance(post_result, PostError):
+            yield "error", post_result.message
+            return
         yield "post_result", post_result
+
+
+ARYSHARE_NODE_IDS = [
+    PostToBlueskyBlock().id,
+    PostToFacebookBlock().id,
+    PostToXBlock().id,
+    PostToLinkedInBlock().id,
+    PostToInstagramBlock().id,
+    PostToYouTubeBlock().id,
+    PostToRedditBlock().id,
+    PostToTelegramBlock().id,
+    PostToGMBBlock().id,
+    PostToPinterestBlock().id,
+    PostToTikTokBlock().id,
+]

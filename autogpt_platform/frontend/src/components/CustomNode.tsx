@@ -52,12 +52,8 @@ import {
   TrashIcon,
   CopyIcon,
   ExitIcon,
-
 } from "@radix-ui/react-icons";
-import {
-
-  FaKey,
-} from "react-icons/fa";
+import { FaKey } from "react-icons/fa";
 import useCredits from "@/hooks/useCredits";
 
 export type ConnectionData = Array<{
@@ -255,14 +251,18 @@ export const CustomNode = React.memo(
       return renderHandles(schema.properties);
     };
 
-    const generateAryshareSSOHandles = (api: ReturnType<typeof useBackendAPI>) => {
+    const generateAryshareSSOHandles = (
+      api: ReturnType<typeof useBackendAPI>,
+    ) => {
       const handleSSOLogin = async () => {
         setIsLoading(true);
         try {
           const { sso_url } = await api.getAyrshareSSOUrl();
           const popup = window.open(sso_url, "_blank", "popup=true");
           if (!popup) {
-            throw new Error("Failed to open popup window. Please allow popups for this site.");
+            throw new Error(
+              "Failed to open popup window. Please allow popups for this site.",
+            );
           }
         } catch (error) {
           console.error("Error getting SSO URL:", error);
@@ -289,12 +289,12 @@ export const CustomNode = React.memo(
               </>
             )}
           </Button>
-          <NodeHandle 
-            title="SSO Token" 
-            keyName="sso_token" 
-            isConnected={false} 
-            schema={{type: "string"}} 
-            side="right" 
+          <NodeHandle
+            title="SSO Token"
+            keyName="sso_token"
+            isConnected={false}
+            schema={{ type: "string" }}
+            side="right"
           />
         </div>
       );
@@ -880,7 +880,10 @@ export const CustomNode = React.memo(
                 {data.uiType === BlockUIType.AYRSHARE ? (
                   <>
                     {generateAryshareSSOHandles(api)}
-                    {generateInputHandles(data.inputSchema, BlockUIType.STANDARD)}
+                    {generateInputHandles(
+                      data.inputSchema,
+                      BlockUIType.STANDARD,
+                    )}
                   </>
                 ) : (
                   data.inputSchema &&
