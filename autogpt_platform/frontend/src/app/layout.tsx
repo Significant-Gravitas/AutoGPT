@@ -57,9 +57,6 @@ export default async function RootLayout({
           <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
             {children}
             <TallyPopupSimple />
-            <Suspense fallback={null}>
-              <OttoChatWidget />
-            </Suspense>
           </div>
           <Toaster />
         </Providers>

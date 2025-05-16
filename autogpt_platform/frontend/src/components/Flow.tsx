@@ -1,11 +1,12 @@
 "use client";
 import React, {
+  createContext,
   useState,
   useCallback,
   useEffect,
   useRef,
   MouseEvent,
-  createContext,
+  Suspense,
 } from "react";
 import {
   ReactFlow,
@@ -48,6 +49,7 @@ import RunnerUIWrapper, {
   RunnerUIWrapperRef,
 } from "@/components/RunnerUIWrapper";
 import PrimaryActionBar from "@/components/PrimaryActionButton";
+import OttoChatWidget from "@/components/OttoChatWidget";
 import { useToast } from "@/components/ui/use-toast";
 import { useCopyPaste } from "../hooks/useCopyPaste";
 import { CronScheduler } from "./cronScheduler";
@@ -740,6 +742,9 @@ const FlowEditor: React.FC<{
         scheduleRunner={scheduleRunner}
         requestSaveAndRun={requestSaveAndRun}
       />
+      <Suspense fallback={null}>
+        <OttoChatWidget graph={flowID && { id: flowID, nodes, edges }} />
+      </Suspense>
     </FlowContext.Provider>
   );
 };

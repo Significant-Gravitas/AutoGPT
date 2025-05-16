@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
-import { useSearchParams, usePathname } from "next/navigation";
-import { useToast } from "@/components/ui/use-toast";
-import useAgentGraph from "../hooks/useAgentGraph";
 import ReactMarkdown from "react-markdown";
-import { GraphID } from "@/lib/autogpt-server-api/types";
+
+import type { GraphID } from "@/lib/autogpt-server-api/types";
+import type { CustomNode } from "@/components/CustomNode";
+import type { CustomEdge } from "@/components/CustomEdge";
 import { askOtto } from "@/app/(platform)/build/actions";
 
 interface Message {
@@ -13,20 +13,17 @@ interface Message {
   content: string;
 }
 
-const OttoChatWidget = () => {
+export default function OttoChatWidget({
+  graph,
+}: {
+  graph?: { id: GraphID; nodes: CustomNode[]; edges: CustomEdge[] };
+}): React.ReactNode {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [includeGraphData, setIncludeGraphData] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const searchParams = useSearchParams();
-  const pathname = usePathname();
-  const flowID = searchParams.get("flowID");
-  const { nodes, edges } = useAgentGraph(
-    flowID ? (flowID as GraphID) : undefined,
-  );
-  const { toast } = useToast();
 
   useEffect(() => {
     // Add welcome message when component mounts
@@ -84,7 +81,7 @@ const OttoChatWidget = () => {
         userMessage,
         conversationHistory,
         includeGraphData,
-        flowID || undefined,
+        graph?.id || undefined,
       );
 
       // Check if the response contains an error
@@ -131,7 +128,7 @@ const OttoChatWidget = () => {
   };
 
   // Don't render the chat widget if we're not on the build page or in local mode
-  if (process.env.NEXT_PUBLIC_BEHAVE_AS !== "CLOUD" || pathname !== "/build") {
+  if (process.env.NEXT_PUBLIC_BEHAVE_AS !== "CLOUD") {
     return null;
   }
 
@@ -269,7 +266,7 @@ const OttoChatWidget = () => {
               Send
             </button>
           </div>
-          {nodes && edges && (
+          {graph && (
             <button
               type="button"
               onClick={() => {
@@ -303,6 +300,4 @@ const OttoChatWidget = () => {
       </form>
     </div>
   );
-};
-
-export default OttoChatWidget;
+}
