@@ -1,32 +1,30 @@
 "use client";
 
 import React, { useEffect, useState, useRef } from "react";
-import { useSearchParams, usePathname } from "next/navigation";
-import { useToast } from "@/components/ui/use-toast";
-import useAgentGraph from "../hooks/useAgentGraph";
 import ReactMarkdown from "react-markdown";
-import { GraphID } from "@/lib/autogpt-server-api/types";
+
+import type { GraphID } from "@/lib/autogpt-server-api/types";
 import { askOtto } from "@/app/(platform)/build/actions";
+import { cn } from "@/lib/utils";
 
 interface Message {
   type: "user" | "assistant";
   content: string;
 }
 
-const OttoChatWidget = () => {
+export default function OttoChatWidget({
+  graphID,
+  className,
+}: {
+  graphID?: GraphID;
+  className?: string;
+}): React.ReactNode {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [includeGraphData, setIncludeGraphData] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const searchParams = useSearchParams();
-  const pathname = usePathname();
-  const flowID = searchParams.get("flowID");
-  const { nodes, edges } = useAgentGraph(
-    flowID ? (flowID as GraphID) : undefined,
-  );
-  const { toast } = useToast();
 
   useEffect(() => {
     // Add welcome message when component mounts
@@ -34,7 +32,7 @@ const OttoChatWidget = () => {
       setMessages([
         {
           type: "assistant",
-          content: "Hello im Otto! Ask me anything about AutoGPT!",
+          content: "Hello, I am Otto! Ask me anything about AutoGPT!",
         },
       ]);
     }
@@ -84,7 +82,7 @@ const OttoChatWidget = () => {
         userMessage,
         conversationHistory,
         includeGraphData,
-        flowID || undefined,
+        graphID,
       );
 
       // Check if the response contains an error
@@ -131,13 +129,13 @@ const OttoChatWidget = () => {
   };
 
   // Don't render the chat widget if we're not on the build page or in local mode
-  if (process.env.NEXT_PUBLIC_BEHAVE_AS !== "CLOUD" || pathname !== "/build") {
+  if (process.env.NEXT_PUBLIC_BEHAVE_AS !== "CLOUD") {
     return null;
   }
 
   if (!isOpen) {
     return (
-      <div className="fixed bottom-4 right-4 z-50">
+      <div className={className}>
         <button
           onClick={() => setIsOpen(true)}
           className="inline-flex h-14 w-14 items-center justify-center whitespace-nowrap rounded-2xl bg-[rgba(65,65,64,1)] text-neutral-50 shadow transition-colors hover:bg-neutral-900/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50 dark:bg-neutral-50 dark:text-neutral-900 dark:hover:bg-neutral-50/90 dark:focus-visible:ring-neutral-300"
@@ -160,7 +158,13 @@ const OttoChatWidget = () => {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex h-[600px] w-[600px] flex-col rounded-lg border bg-background shadow-xl">
+    <div
+      className={cn(
+        "flex h-[600px] w-[600px] flex-col rounded-lg border bg-background shadow-xl",
+        className,
+        "z-40",
+      )}
+    >
       {/* Header */}
       <div className="flex items-center justify-between border-b p-4">
         <h2 className="font-semibold">Otto Assistant</h2>
@@ -269,7 +273,7 @@ const OttoChatWidget = () => {
               Send
             </button>
           </div>
-          {nodes && edges && (
+          {graphID && (
             <button
               type="button"
               onClick={() => {
@@ -303,6 +307,4 @@ const OttoChatWidget = () => {
       </form>
     </div>
   );
-};
-
-export default OttoChatWidget;
+}

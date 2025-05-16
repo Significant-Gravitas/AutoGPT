@@ -1,13 +1,14 @@
-import React, { useState } from "react";
-import { Button } from "./ui/button";
-import { Clock, LogOut, ChevronLeft } from "lucide-react";
+import React from "react";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { FaSpinner } from "react-icons/fa";
+import { Clock, LogOut } from "lucide-react";
 import { IconPlay, IconSquare } from "@/components/ui/icons";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { FaSpinner } from "react-icons/fa";
 
 interface PrimaryActionBarProps {
   onClickAgentOutputs: () => void;
@@ -18,6 +19,7 @@ interface PrimaryActionBarProps {
   isScheduling: boolean;
   requestStopRun: () => void;
   runAgentTooltip: string;
+  className?: string;
 }
 
 const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
@@ -29,6 +31,7 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
   isScheduling,
   requestStopRun,
   runAgentTooltip,
+  className,
 }) => {
   const runButtonLabel = !isRunning ? "Run" : "Stop";
 
@@ -37,8 +40,13 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
   const runButtonOnClick = !isRunning ? onClickRunAgent : requestStopRun;
 
   return (
-    <div className="absolute bottom-0 left-1/2 z-50 flex w-fit -translate-x-1/2 transform select-none items-center justify-center p-4">
-      <div className={`flex gap-1 md:gap-4`}>
+    <div
+      className={cn(
+        "flex w-fit select-none items-center justify-center p-4",
+        className,
+      )}
+    >
+      <div className="flex gap-1 md:gap-4">
         <Tooltip key="ViewOutputs" delayDuration={500}>
           <TooltipTrigger asChild>
             <Button
