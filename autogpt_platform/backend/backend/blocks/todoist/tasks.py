@@ -87,7 +87,7 @@ class TodoistCreateTaskBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistCreateTaskBlock.Input,
             output_schema=TodoistCreateTaskBlock.Output,
-            disabled= not TODOIST_OAUTH_IS_CONFIGURED,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "content": "Buy groceries",
@@ -219,7 +219,7 @@ class TodoistGetTasksBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetTasksBlock.Input,
             output_schema=TodoistGetTasksBlock.Output,
-            disabled= not TODOIST_OAUTH_IS_CONFIGURED,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "project_id": "2203306141",
@@ -312,7 +312,7 @@ class TodoistGetTaskBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetTaskBlock.Input,
             output_schema=TodoistGetTaskBlock.Output,
-            disabled= not TODOIST_OAUTH_IS_CONFIGURED,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={"credentials": TEST_CREDENTIALS_INPUT, "task_id": "2995104339"},
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -432,7 +432,7 @@ class TodoistUpdateTaskBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistUpdateTaskBlock.Input,
             output_schema=TodoistUpdateTaskBlock.Output,
-            disabled= not TODOIST_OAUTH_IS_CONFIGURED,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "task_id": "2995104339",
@@ -523,7 +523,7 @@ class TodoistCloseTaskBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistCloseTaskBlock.Input,
             output_schema=TodoistCloseTaskBlock.Output,
-            disabled= not TODOIST_OAUTH_IS_CONFIGURED,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={"credentials": TEST_CREDENTIALS_INPUT, "task_id": "2995104339"},
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
@@ -574,7 +574,7 @@ class TodoistReopenTaskBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistReopenTaskBlock.Input,
             output_schema=TodoistReopenTaskBlock.Output,
-            disabled= not TODOIST_OAUTH_IS_CONFIGURED,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={"credentials": TEST_CREDENTIALS_INPUT, "task_id": "2995104339"},
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -627,7 +627,7 @@ class TodoistDeleteTaskBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistDeleteTaskBlock.Input,
             output_schema=TodoistDeleteTaskBlock.Output,
-            disabled= not TODOIST_OAUTH_IS_CONFIGURED,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={"credentials": TEST_CREDENTIALS_INPUT, "task_id": "2995104339"},
             test_credentials=TEST_CREDENTIALS,
             test_output=[

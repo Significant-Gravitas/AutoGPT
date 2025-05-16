@@ -87,7 +87,7 @@ class TwitterGetQuoteTweetsBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetQuoteTweetsBlock.Input,
             output_schema=TwitterGetQuoteTweetsBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "tweet_id": "1234567890",
                 "max_results": 2,

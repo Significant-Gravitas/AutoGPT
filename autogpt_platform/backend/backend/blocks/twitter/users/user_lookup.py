@@ -76,7 +76,7 @@ class TwitterGetUserBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetUserBlock.Input,
             output_schema=TwitterGetUserBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "identifier": {"discriminator": "username", "username": "twitter"},
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -253,7 +253,7 @@ class TwitterGetUsersBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetUsersBlock.Input,
             output_schema=TwitterGetUsersBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "identifier": {
                     "discriminator": "username_list",

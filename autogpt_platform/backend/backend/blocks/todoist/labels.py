@@ -43,7 +43,7 @@ class TodoistCreateLabelBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistCreateLabelBlock.Input,
             output_schema=TodoistCreateLabelBlock.Output,
-            disabled= not TODOIST_OAUTH_IS_CONFIGURED,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "name": "Test Label",
@@ -132,7 +132,7 @@ class TodoistListLabelsBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistListLabelsBlock.Input,
             output_schema=TodoistListLabelsBlock.Output,
-            disabled= not TODOIST_OAUTH_IS_CONFIGURED,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={"credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -214,7 +214,7 @@ class TodoistGetLabelBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetLabelBlock.Input,
             output_schema=TodoistGetLabelBlock.Output,
-            disabled= not TODOIST_OAUTH_IS_CONFIGURED,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "label_id": "2156154810",
@@ -297,7 +297,7 @@ class TodoistUpdateLabelBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistUpdateLabelBlock.Input,
             output_schema=TodoistUpdateLabelBlock.Output,
-            disabled= not TODOIST_OAUTH_IS_CONFIGURED,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "label_id": "2156154810",
@@ -369,7 +369,7 @@ class TodoistDeleteLabelBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistDeleteLabelBlock.Input,
             output_schema=TodoistDeleteLabelBlock.Output,
-            disabled= not TODOIST_OAUTH_IS_CONFIGURED,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "label_id": "2156154810",
@@ -421,7 +421,7 @@ class TodoistGetSharedLabelsBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetSharedLabelsBlock.Input,
             output_schema=TodoistGetSharedLabelsBlock.Output,
-            disabled= not TODOIST_OAUTH_IS_CONFIGURED,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={"credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[("labels", ["Label1", "Label2", "Label3"])],
@@ -478,7 +478,7 @@ class TodoistRenameSharedLabelsBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistRenameSharedLabelsBlock.Input,
             output_schema=TodoistRenameSharedLabelsBlock.Output,
-            disabled= not TODOIST_OAUTH_IS_CONFIGURED,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "name": "OldLabel",
@@ -534,7 +534,7 @@ class TodoistRemoveSharedLabelsBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistRemoveSharedLabelsBlock.Input,
             output_schema=TodoistRemoveSharedLabelsBlock.Output,
-            disabled= not TODOIST_OAUTH_IS_CONFIGURED,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={"credentials": TEST_CREDENTIALS_INPUT, "name": "LabelToRemove"},
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],

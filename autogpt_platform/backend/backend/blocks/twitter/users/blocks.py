@@ -65,7 +65,7 @@ class TwitterGetBlockedUsersBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetBlockedUsersBlock.Input,
             output_schema=TwitterGetBlockedUsersBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "max_results": 10,
                 "pagination_token": "",

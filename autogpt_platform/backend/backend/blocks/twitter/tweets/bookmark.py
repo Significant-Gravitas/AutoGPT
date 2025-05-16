@@ -56,7 +56,7 @@ class TwitterBookmarkTweetBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterBookmarkTweetBlock.Input,
             output_schema=TwitterBookmarkTweetBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "tweet_id": "1234567890",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -149,7 +149,7 @@ class TwitterGetBookmarkedTweetsBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetBookmarkedTweetsBlock.Input,
             output_schema=TwitterGetBookmarkedTweetsBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "max_results": 2,
                 "pagination_token": None,
@@ -333,7 +333,7 @@ class TwitterRemoveBookmarkTweetBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterRemoveBookmarkTweetBlock.Input,
             output_schema=TwitterRemoveBookmarkTweetBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "tweet_id": "1234567890",
                 "credentials": TEST_CREDENTIALS_INPUT,

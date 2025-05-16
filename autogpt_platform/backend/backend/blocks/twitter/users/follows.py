@@ -56,7 +56,7 @@ class TwitterUnfollowUserBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterUnfollowUserBlock.Input,
             output_schema=TwitterUnfollowUserBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "target_user_id": "12345",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -128,7 +128,7 @@ class TwitterFollowUserBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterFollowUserBlock.Input,
             output_schema=TwitterFollowUserBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "target_user_id": "12345",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -216,7 +216,7 @@ class TwitterGetFollowersBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetFollowersBlock.Input,
             output_schema=TwitterGetFollowersBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "target_user_id": "12345",
                 "max_results": 1,
@@ -390,7 +390,7 @@ class TwitterGetFollowingBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetFollowingBlock.Input,
             output_schema=TwitterGetFollowingBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "target_user_id": "12345",
                 "max_results": 1,

@@ -45,7 +45,7 @@ class TwitterUnfollowListBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterUnfollowListBlock.Input,
             output_schema=TwitterUnfollowListBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={"list_id": "123456789", "credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -108,7 +108,7 @@ class TwitterFollowListBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterFollowListBlock.Input,
             output_schema=TwitterFollowListBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={"list_id": "123456789", "credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[

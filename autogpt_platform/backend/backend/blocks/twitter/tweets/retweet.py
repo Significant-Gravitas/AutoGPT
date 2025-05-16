@@ -53,7 +53,7 @@ class TwitterRetweetBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterRetweetBlock.Input,
             output_schema=TwitterRetweetBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "tweet_id": "1234567890",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -130,7 +130,7 @@ class TwitterRemoveRetweetBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterRemoveRetweetBlock.Input,
             output_schema=TwitterRemoveRetweetBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "tweet_id": "1234567890",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -234,7 +234,7 @@ class TwitterGetRetweetersBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetRetweetersBlock.Input,
             output_schema=TwitterGetRetweetersBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "tweet_id": "1234567890",
                 "credentials": TEST_CREDENTIALS_INPUT,

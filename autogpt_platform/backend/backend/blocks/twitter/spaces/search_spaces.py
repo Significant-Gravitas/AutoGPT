@@ -79,7 +79,7 @@ class TwitterSearchSpacesBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterSearchSpacesBlock.Input,
             output_schema=TwitterSearchSpacesBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "query": "tech",
                 "max_results": 1,

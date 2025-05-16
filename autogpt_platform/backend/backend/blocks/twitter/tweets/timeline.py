@@ -92,7 +92,7 @@ class TwitterGetUserMentionsBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetUserMentionsBlock.Input,
             output_schema=TwitterGetUserMentionsBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "user_id": "12345",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -334,7 +334,7 @@ class TwitterGetHomeTimelineBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetHomeTimelineBlock.Input,
             output_schema=TwitterGetHomeTimelineBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "max_results": 2,
@@ -571,7 +571,7 @@ class TwitterGetUserTweetsBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetUserTweetsBlock.Input,
             output_schema=TwitterGetUserTweetsBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "user_id": "12345",
                 "credentials": TEST_CREDENTIALS_INPUT,

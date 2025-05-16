@@ -39,7 +39,7 @@ class TwitterHideReplyBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterHideReplyBlock.Input,
             output_schema=TwitterHideReplyBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "tweet_id": "1234567890",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -111,7 +111,7 @@ class TwitterUnhideReplyBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterUnhideReplyBlock.Input,
             output_schema=TwitterUnhideReplyBlock.Output,
-            disabled= not TWITTER_OAUTH_IS_CONFIGURED,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "tweet_id": "1234567890",
                 "credentials": TEST_CREDENTIALS_INPUT,
