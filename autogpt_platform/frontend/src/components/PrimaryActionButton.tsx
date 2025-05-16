@@ -42,7 +42,7 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
   return (
     <div
       className={cn(
-        "flex w-fit -translate-x-1/2 transform select-none items-center justify-center p-4",
+        "flex w-fit select-none items-center justify-center p-4",
         className,
       )}
     >

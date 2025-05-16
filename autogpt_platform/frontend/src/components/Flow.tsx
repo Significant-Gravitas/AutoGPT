@@ -703,7 +703,7 @@ const FlowEditor: React.FC<{
             }
           ></ControlPanel>
           <PrimaryActionBar
-            className="absolute bottom-0 left-1/2 z-20"
+            className="absolute bottom-0 left-1/2 z-20 -translate-x-1/2"
             onClickAgentOutputs={() => runnerUIRef.current?.openRunnerOutput()}
             onClickRunAgent={() => {
               if (!savedAgent) {
