@@ -251,7 +251,7 @@ export const CustomNode = React.memo(
       return renderHandles(schema.properties);
     };
 
-    const generateAryshareSSOHandles = (
+    const generateAyrshareSSOHandles = (
       api: ReturnType<typeof useBackendAPI>,
     ) => {
       const handleSSOLogin = async () => {
@@ -879,7 +879,7 @@ export const CustomNode = React.memo(
                   ))}
                 {data.uiType === BlockUIType.AYRSHARE ? (
                   <>
-                    {generateAryshareSSOHandles(api)}
+                    {generateAyrshareSSOHandles(api)}
                     {generateInputHandles(
                       data.inputSchema,
                       BlockUIType.STANDARD,

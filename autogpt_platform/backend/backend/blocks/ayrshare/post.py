@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field, SecretStr
 
-from backend.blocks.aryshare._api import (
+from backend.blocks.ayrshare._api import (
     AyrshareClient,
     PostError,
     PostResponse,
@@ -516,7 +516,7 @@ class PostToBlueskyBlock(AyrsharePostBlockBase):
         yield "post_result", post_result
 
 
-ARYSHARE_NODE_IDS = [
+AYRSHARE_NODE_IDS = [
     PostToBlueskyBlock().id,
     PostToFacebookBlock().id,
     PostToXBlock().id,

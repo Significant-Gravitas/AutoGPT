@@ -7,7 +7,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Reques
 from pydantic import BaseModel, Field, SecretStr
 from starlette.status import HTTP_404_NOT_FOUND
 
-from backend.blocks.aryshare._api import AyrshareClient, PostError, SocialPlatform
+from backend.blocks.ayrshare._api import AyrshareClient, PostError, SocialPlatform
 from backend.data.graph import set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
