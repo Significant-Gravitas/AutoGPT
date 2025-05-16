@@ -134,7 +134,7 @@ export default function ResetPasswordPage() {
   );
 
   if (isUserLoading) {
-    return <Spinner />;
+    return <Spinner className="h-[80vh]" />;
   }
 
   if (!supabase) {
@@ -200,6 +200,7 @@ export default function ResetPasswordPage() {
                 Update password
               </AuthButton>
               <AuthFeedback
+                type="login"
                 message={feedback}
                 isError={isError}
                 behaveAs={getBehaveAs()}
@@ -242,6 +243,7 @@ export default function ResetPasswordPage() {
                 Send reset email
               </AuthButton>
               <AuthFeedback
+                type="login"
                 message={feedback}
                 isError={isError}
                 behaveAs={getBehaveAs()}

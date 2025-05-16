@@ -94,7 +94,7 @@ export default function SignupPage() {
   }
 
   if (isUserLoading || user) {
-    return <Spinner />;
+    return <Spinner className="h-[80vh]" />;
   }
 
   if (!supabase) {
@@ -106,7 +106,7 @@ export default function SignupPage() {
   }
 
   return (
-    <AuthCard className="mx-auto">
+    <AuthCard className="mx-auto mt-12">
       <AuthHeader>Create a new account</AuthHeader>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSignup)}>
@@ -215,6 +215,7 @@ export default function SignupPage() {
         </form>
       </Form>
       <AuthFeedback
+        type="signup"
         message={feedback}
         isError={!!feedback}
         behaveAs={getBehaveAs()}

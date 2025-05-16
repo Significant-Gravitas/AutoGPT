@@ -98,7 +98,7 @@ export default function LoginPage() {
   }
 
   if (isUserLoading || user) {
-    return <Spinner />;
+    return <Spinner className="h-[80vh]" />;
   }
 
   if (!supabase) {
@@ -176,6 +176,7 @@ export default function LoginPage() {
           </AuthButton>
         </form>
         <AuthFeedback
+          type="login"
           message={feedback}
           isError={!!feedback}
           behaveAs={getBehaveAs()}

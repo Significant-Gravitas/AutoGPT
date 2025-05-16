@@ -117,12 +117,13 @@ export default function PrivatePage() {
       "3bcdbda3-84a3-46af-8fdb-bfd2472298b8", // SmartLead
       "63a6e279-2dc2-448e-bf57-85776f7176dc", // ZeroBounce
       "9aa1bde0-4947-4a70-a20c-84daa3850d52", // Google Maps
+      "d44045af-1c33-4833-9e19-752313214de2", // Llama API
     ],
     [],
   );
 
   if (isUserLoading) {
-    return <Spinner />;
+    return <Spinner className="h-[80vh]" />;
   }
 
   if (!user || !supabase) {

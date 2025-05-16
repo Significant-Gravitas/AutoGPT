@@ -298,13 +298,13 @@ develop = true
 [package.dependencies]
 colorama = "^0.4.6"
 expiringdict = "^1.2.2"
-google-cloud-logging = "^3.11.4"
-pydantic = "^2.11.1"
-pydantic-settings = "^2.8.1"
+google-cloud-logging = "^3.12.1"
+pydantic = "^2.11.4"
+pydantic-settings = "^2.9.1"
 pyjwt = "^2.10.1"
 pytest-asyncio = "^0.26.0"
 pytest-mock = "^3.14.0"
-supabase = "^2.15.0"
+supabase = "^2.15.1"
 
 [package.source]
 type = "directory"
@@ -1391,19 +1391,19 @@ protobuf = ">=3.20.2,<4.21.0 || >4.21.0,<4.21.1 || >4.21.1,<4.21.2 || >4.21.2,<4
 
 [[package]]
 name = "google-cloud-audit-log"
-version = "0.3.0"
+version = "0.3.2"
 description = "Google Cloud Audit Protos"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
 files = [
-    {file = "google_cloud_audit_log-0.3.0-py2.py3-none-any.whl", hash = "sha256:8340793120a1d5aa143605def8704ecdcead15106f754ef1381ae3bab533722f"},
-    {file = "google_cloud_audit_log-0.3.0.tar.gz", hash = "sha256:901428b257020d8c1d1133e0fa004164a555e5a395c7ca3cdbb8486513df3a65"},
+    {file = "google_cloud_audit_log-0.3.2-py3-none-any.whl", hash = "sha256:daaedfb947a0d77f524e1bd2b560242ab4836fe1afd6b06b92f152b9658554ed"},
+    {file = "google_cloud_audit_log-0.3.2.tar.gz", hash = "sha256:2598f1533a7d7cdd6c7bf448c12e5519c1d53162d78784e10bcdd1df67791bc3"},
 ]
 
 [package.dependencies]
-googleapis-common-protos = ">=1.56.2,<2.0dev"
-protobuf = ">=3.20.2,<4.21.1 || >4.21.1,<4.21.2 || >4.21.2,<4.21.3 || >4.21.3,<4.21.4 || >4.21.4,<4.21.5 || >4.21.5,<6.0.0dev"
+googleapis-common-protos = ">=1.56.2,<2.0.0"
+protobuf = ">=3.20.2,<4.21.1 || >4.21.1,<4.21.2 || >4.21.2,<4.21.3 || >4.21.3,<4.21.4 || >4.21.4,<4.21.5 || >4.21.5,<7.0.0"
 
 [[package]]
 name = "google-cloud-core"
@@ -1426,29 +1426,29 @@ grpc = ["grpcio (>=1.38.0,<2.0dev)", "grpcio-status (>=1.38.0,<2.0.dev0)"]
 
 [[package]]
 name = "google-cloud-logging"
-version = "3.11.4"
+version = "3.12.1"
 description = "Stackdriver Logging API client library"
 optional = false
 python-versions = ">=3.7"
 groups = ["main"]
 files = [
-    {file = "google_cloud_logging-3.11.4-py2.py3-none-any.whl", hash = "sha256:1d465ac62df29fb94bba4d6b4891035e57d573d84541dd8a40eebbc74422b2f0"},
-    {file = "google_cloud_logging-3.11.4.tar.gz", hash = "sha256:32305d989323f3c58603044e2ac5d9cf23e9465ede511bbe90b4309270d3195c"},
+    {file = "google_cloud_logging-3.12.1-py2.py3-none-any.whl", hash = "sha256:6817878af76ec4e7568976772839ab2c43ddfd18fbbf2ce32b13ef549cd5a862"},
+    {file = "google_cloud_logging-3.12.1.tar.gz", hash = "sha256:36efc823985055b203904e83e1c8f9f999b3c64270bcda39d57386ca4effd678"},
 ]
 
 [package.dependencies]
-google-api-core = {version = ">=1.34.1,<2.0.dev0 || >=2.11.dev0,<3.0.0dev", extras = ["grpc"]}
-google-auth = ">=2.14.1,<2.24.0 || >2.24.0,<2.25.0 || >2.25.0,<3.0.0dev"
-google-cloud-appengine-logging = ">=0.1.3,<2.0.0dev"
-google-cloud-audit-log = ">=0.2.4,<1.0.0dev"
-google-cloud-core = ">=2.0.0,<3.0.0dev"
-grpc-google-iam-v1 = ">=0.12.4,<1.0.0dev"
+google-api-core = {version = ">=1.34.1,<2.0.dev0 || >=2.11.dev0,<3.0.0", extras = ["grpc"]}
+google-auth = ">=2.14.1,<2.24.0 || >2.24.0,<2.25.0 || >2.25.0,<3.0.0"
+google-cloud-appengine-logging = ">=0.1.3,<2.0.0"
+google-cloud-audit-log = ">=0.3.1,<1.0.0"
+google-cloud-core = ">=2.0.0,<3.0.0"
+grpc-google-iam-v1 = ">=0.12.4,<1.0.0"
 opentelemetry-api = ">=1.9.0"
 proto-plus = [
-    {version = ">=1.22.2,<2.0.0dev", markers = "python_version >= \"3.11\""},
-    {version = ">=1.22.0,<2.0.0dev", markers = "python_version < \"3.11\""},
+    {version = ">=1.22.2,<2.0.0", markers = "python_version >= \"3.11\""},
+    {version = ">=1.22.0,<2.0.0", markers = "python_version < \"3.11\""},
 ]
-protobuf = ">=3.20.2,<4.21.0 || >4.21.0,<4.21.1 || >4.21.1,<4.21.2 || >4.21.2,<4.21.3 || >4.21.3,<4.21.4 || >4.21.4,<4.21.5 || >4.21.5,<6.0.0dev"
+protobuf = ">=3.20.2,<4.21.0 || >4.21.0,<4.21.1 || >4.21.1,<4.21.2 || >4.21.2,<4.21.3 || >4.21.3,<4.21.4 || >4.21.4,<4.21.5 || >4.21.5,<7.0.0"
 
 [[package]]
 name = "google-cloud-storage"
