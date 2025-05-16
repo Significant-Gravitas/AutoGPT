@@ -32,7 +32,7 @@ export default function OttoChatWidget({
       setMessages([
         {
           type: "assistant",
-          content: "Hello im Otto! Ask me anything about AutoGPT!",
+          content: "Hello, I am Otto! Ask me anything about AutoGPT!",
         },
       ]);
     }
