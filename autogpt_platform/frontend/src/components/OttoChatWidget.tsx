@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 
 import type { GraphID } from "@/lib/autogpt-server-api/types";
 import { askOtto } from "@/app/(platform)/build/actions";
+import { cn } from "@/lib/utils";
 
 interface Message {
   type: "user" | "assistant";
@@ -13,8 +14,10 @@ interface Message {
 
 export default function OttoChatWidget({
   graphID,
+  className,
 }: {
   graphID?: GraphID;
+  className?: string;
 }): React.ReactNode {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -132,7 +135,7 @@ export default function OttoChatWidget({
 
   if (!isOpen) {
     return (
-      <div className="fixed bottom-4 right-4 z-50">
+      <div className={className}>
         <button
           onClick={() => setIsOpen(true)}
           className="inline-flex h-14 w-14 items-center justify-center whitespace-nowrap rounded-2xl bg-[rgba(65,65,64,1)] text-neutral-50 shadow transition-colors hover:bg-neutral-900/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50 dark:bg-neutral-50 dark:text-neutral-900 dark:hover:bg-neutral-50/90 dark:focus-visible:ring-neutral-300"
@@ -155,7 +158,12 @@ export default function OttoChatWidget({
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex h-[600px] w-[600px] flex-col rounded-lg border bg-background shadow-xl">
+    <div
+      className={cn(
+        "flex h-[600px] w-[600px] flex-col rounded-lg border bg-background shadow-xl",
+        className,
+      )}
+    >
       {/* Header */}
       <div className="flex items-center justify-between border-b p-4">
         <h2 className="font-semibold">Otto Assistant</h2>

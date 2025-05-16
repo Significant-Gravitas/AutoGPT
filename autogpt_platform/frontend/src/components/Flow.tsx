@@ -743,7 +743,10 @@ const FlowEditor: React.FC<{
         requestSaveAndRun={requestSaveAndRun}
       />
       <Suspense fallback={null}>
-        <OttoChatWidget graphID={flowID} />
+        <OttoChatWidget
+          graphID={flowID}
+          className="z-100 fixed bottom-4 right-4"
+        />
       </Suspense>
     </FlowContext.Provider>
   );
