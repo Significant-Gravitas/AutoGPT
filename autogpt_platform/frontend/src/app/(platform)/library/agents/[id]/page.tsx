@@ -183,7 +183,12 @@ export default function AgentRunsPage(): React.ReactElement {
           id: connectionToast.id,
           title: "✅ Connection re-established",
           variant: "default",
-          description: null,
+          description: (
+            <div className="flex items-center">
+              Refreshing data...
+              <LoadingSpinner className="ml-1.5 size-3.5" />
+            </div>
+          ),
           duration: 2000,
         });
       connectionToast = null;
