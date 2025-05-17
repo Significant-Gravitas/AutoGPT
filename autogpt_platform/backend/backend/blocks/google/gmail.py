@@ -1,5 +1,6 @@
 import base64
 from email.utils import parseaddr
+from pathlib import Path
 from typing import List
 
 from google.oauth2.credentials import Credentials
@@ -8,6 +9,7 @@ from pydantic import BaseModel
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
+from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
 from backend.util.settings import Settings
 
 from ._auth import (
@@ -28,6 +30,7 @@ class Attachment(BaseModel):
 
 
 class Email(BaseModel):
+    threadId: str
     id: str
     subject: str
     snippet: str
@@ -82,6 +85,7 @@ class GmailReadBlock(Block):
                 (
                     "email",
                     {
+                        "threadId": "t1",
                         "id": "1",
                         "subject": "Test Email",
                         "snippet": "This is a test email",
@@ -97,6 +101,7 @@ class GmailReadBlock(Block):
                     "emails",
                     [
                         {
+                            "threadId": "t1",
                             "id": "1",
                             "subject": "Test Email",
                             "snippet": "This is a test email",
@@ -113,6 +118,7 @@ class GmailReadBlock(Block):
             test_mock={
                 "_read_emails": lambda *args, **kwargs: [
                     {
+                        "threadId": "t1",
                         "id": "1",
                         "subject": "Test Email",
                         "snippet": "This is a test email",
@@ -185,6 +191,7 @@ class GmailReadBlock(Block):
             attachments = self._get_attachments(service, msg)
 
             email = Email(
+                threadId=msg["threadId"],
                 id=msg["id"],
                 subject=headers.get("subject", "No Subject"),
                 snippet=msg["snippet"],
@@ -305,7 +312,6 @@ class GmailSendBlock(Block):
         return {"id": sent_message["id"], "status": "sent"}
 
     def _create_message(self, to: str, subject: str, body: str) -> dict:
-        import base64
         from email.mime.text import MIMEText
 
         message = MIMEText(body)
@@ -528,3 +534,187 @@ class GmailRemoveLabelBlock(Block):
             if label["name"] == label_name:
                 return label["id"]
         return None
+
+
+class GmailGetThreadBlock(Block):
+    class Input(BlockSchema):
+        credentials: GoogleCredentialsInput = GoogleCredentialsField(
+            ["https://www.googleapis.com/auth/gmail.readonly"]
+        )
+        threadId: str = SchemaField(description="Gmail thread ID")
+        includeSpamTrash: bool = SchemaField(
+            description="Include messages from Spam and Trash", default=False
+        )
+
+    class Output(BlockSchema):
+        thread: dict = SchemaField(description="Raw Gmail thread resource")
+        error: str = SchemaField(description="Error message if any")
+
+    def __init__(self):
+        super().__init__(
+            id="21a79166-9df7-4b5f-9f36-96f639d86112",
+            description="Get a full Gmail thread by ID",
+            categories={BlockCategory.COMMUNICATION},
+            input_schema=GmailGetThreadBlock.Input,
+            output_schema=GmailGetThreadBlock.Output,
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
+            test_input={"threadId": "t1", "credentials": TEST_CREDENTIALS_INPUT},
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[("thread", {"id": "t1"})],
+            test_mock={"_get_thread": lambda *args, **kwargs: {"id": "t1"}},
+        )
+
+    def run(
+        self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
+    ) -> BlockOutput:
+        service = GmailReadBlock._build_service(credentials, **kwargs)
+        thread = self._get_thread(
+            service, input_data.threadId, input_data.includeSpamTrash
+        )
+        yield "thread", thread
+
+    def _get_thread(self, service, thread_id: str, include_spam_trash: bool) -> dict:
+        return (
+            service.users()
+            .threads()
+            .get(
+                userId="me",
+                id=thread_id,
+                format="full",
+                includeSpamTrash=include_spam_trash,
+            )
+            .execute()
+        )
+
+
+class GmailReplyBlock(Block):
+    class Input(BlockSchema):
+        credentials: GoogleCredentialsInput = GoogleCredentialsField(
+            [
+                "https://www.googleapis.com/auth/gmail.send",
+                "https://www.googleapis.com/auth/gmail.metadata",
+            ]
+        )
+        threadId: str = SchemaField(description="Thread ID to reply in")
+        parentMessageId: str = SchemaField(
+            description="ID of the message being replied to"
+        )
+        to: list[str] = SchemaField(description="To recipients", default_factory=list)
+        cc: list[str] = SchemaField(description="CC recipients", default_factory=list)
+        bcc: list[str] = SchemaField(description="BCC recipients", default_factory=list)
+        subject: str = SchemaField(description="Email subject", default="")
+        body: str = SchemaField(description="Email body")
+        attachments: list[MediaFileType] = SchemaField(
+            description="Files to attach", default_factory=list, advanced=True
+        )
+
+    class Output(BlockSchema):
+        messageId: str = SchemaField(description="Sent message ID")
+        threadId: str = SchemaField(description="Thread ID")
+        error: str = SchemaField(description="Error message if any")
+
+    def __init__(self):
+        super().__init__(
+            id="12bf5a24-9b90-4f40-9090-4e86e6995e60",
+            description="Reply to a Gmail thread",
+            categories={BlockCategory.COMMUNICATION},
+            input_schema=GmailReplyBlock.Input,
+            output_schema=GmailReplyBlock.Output,
+            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
+            test_input={
+                "threadId": "t1",
+                "parentMessageId": "m1",
+                "body": "Thanks",
+                "credentials": TEST_CREDENTIALS_INPUT,
+            },
+            test_credentials=TEST_CREDENTIALS,
+            test_output=[
+                ("messageId", "m2"),
+                ("threadId", "t1"),
+            ],
+            test_mock={
+                "_reply": lambda *args, **kwargs: {
+                    "id": "m2",
+                    "threadId": "t1",
+                }
+            },
+        )
+
+    def run(
+        self,
+        input_data: Input,
+        *,
+        credentials: GoogleCredentials,
+        graph_exec_id: str,
+        **kwargs,
+    ) -> BlockOutput:
+        service = GmailReadBlock._build_service(credentials, **kwargs)
+        message = self._reply(
+            service,
+            input_data,
+            graph_exec_id,
+        )
+        yield "messageId", message["id"]
+        yield "threadId", message.get("threadId", input_data.threadId)
+
+    def _reply(self, service, input_data: Input, graph_exec_id: str) -> dict:
+        parent = (
+            service.users()
+            .messages()
+            .get(
+                userId="me",
+                id=input_data.parentMessageId,
+                format="metadata",
+                metadataHeaders=["Subject", "References", "Message-ID"],
+            )
+            .execute()
+        )
+        headers = {
+            h["name"].lower(): h["value"]
+            for h in parent.get("payload", {}).get("headers", [])
+        }
+        subject = input_data.subject or (f"Re: {headers.get('subject', '')}".strip())
+        references = headers.get("references", "").split()
+        if headers.get("message-id"):
+            references.append(headers["message-id"])
+
+        from email import encoders
+        from email.mime.base import MIMEBase
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+
+        msg = MIMEMultipart()
+        if input_data.to:
+            msg["To"] = ", ".join(input_data.to)
+        if input_data.cc:
+            msg["Cc"] = ", ".join(input_data.cc)
+        if input_data.bcc:
+            msg["Bcc"] = ", ".join(input_data.bcc)
+        msg["Subject"] = subject
+        if headers.get("message-id"):
+            msg["In-Reply-To"] = headers["message-id"]
+        if references:
+            msg["References"] = " ".join(references)
+        msg.attach(
+            MIMEText(input_data.body, "html" if "<" in input_data.body else "plain")
+        )
+
+        for attach in input_data.attachments:
+            local_path = store_media_file(graph_exec_id, attach, return_content=False)
+            abs_path = get_exec_file_path(graph_exec_id, local_path)
+            part = MIMEBase("application", "octet-stream")
+            with open(abs_path, "rb") as f:
+                part.set_payload(f.read())
+            encoders.encode_base64(part)
+            part.add_header(
+                "Content-Disposition", f"attachment; filename={Path(abs_path).name}"
+            )
+            msg.attach(part)
+
+        raw = base64.urlsafe_b64encode(msg.as_bytes()).decode("utf-8")
+        return (
+            service.users()
+            .messages()
+            .send(userId="me", body={"threadId": input_data.threadId, "raw": raw})
+            .execute()
+        )
