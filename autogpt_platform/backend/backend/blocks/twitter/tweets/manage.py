@@ -8,6 +8,7 @@ from tweepy.client import Response
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TWITTER_OAUTH_IS_CONFIGURED,
     TwitterCredentials,
     TwitterCredentialsField,
     TwitterCredentialsInput,
@@ -131,6 +132,7 @@ class TwitterPostTweetBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterPostTweetBlock.Input,
             output_schema=TwitterPostTweetBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "tweet_text": "This is a test tweet.",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -263,6 +265,7 @@ class TwitterDeleteTweetBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterDeleteTweetBlock.Input,
             output_schema=TwitterDeleteTweetBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "tweet_id": "1234567890",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -357,6 +360,7 @@ class TwitterSearchRecentTweetsBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterSearchRecentTweetsBlock.Input,
             output_schema=TwitterSearchRecentTweetsBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "query": "from:twitterapi #twitterapi",
                 "credentials": TEST_CREDENTIALS_INPUT,
