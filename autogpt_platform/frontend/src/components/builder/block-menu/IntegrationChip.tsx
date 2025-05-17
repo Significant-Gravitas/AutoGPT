@@ -22,15 +22,16 @@ const IntegrationChip: React.FC<Props> = ({
       )}
       {...rest}
     >
-      {icon_url && (
-        <Image
-          src={icon_url}
-          alt="integration-icon"
-          className="h-9 w-9"
-          width={36}
-          height={36}
-        />
-      )}
+      <div className="relative h-9 w-9 rounded-[0.5rem] bg-transparent">
+        {icon_url && (
+          <Image
+            src={icon_url}
+            alt="integration-icon"
+            fill
+            className="w-full object-contain"
+          />
+        )}
+      </div>
       <span className="font-sans text-sm font-normal leading-[1.375rem] text-zinc-800">
         {name}
       </span>

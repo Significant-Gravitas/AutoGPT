@@ -20,7 +20,7 @@ const MenuItem: React.FC<Props> = ({
   return (
     <Button
       className={cn(
-        "flex h-[2.375rem] w-full justify-between whitespace-normal rounded-[0.5rem] bg-transparent p-2 pl-3 shadow-none hover:bg-transparent focus:ring-0",
+        "flex h-[2.375rem] w-full min-w-52 justify-between whitespace-normal rounded-[0.5rem] bg-transparent p-2 pl-3 shadow-none hover:cursor-pointer hover:bg-transparent focus:ring-0",
         selected && "bg-zinc-100 hover:bg-zinc-100",
         className,
       )}
@@ -31,7 +31,7 @@ const MenuItem: React.FC<Props> = ({
       </span>
       {number && (
         <span className="font-sans text-sm font-normal leading-[1.375rem] text-zinc-600">
-          {number}+
+          {number > 100 ? "100+" : number}
         </span>
       )}
     </Button>

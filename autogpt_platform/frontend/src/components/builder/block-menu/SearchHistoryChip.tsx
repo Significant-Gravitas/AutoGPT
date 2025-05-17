@@ -15,7 +15,7 @@ const SearchHistoryChip: React.FC<Props> = ({
   return (
     <Button
       className={cn(
-        "h-[2.375rem] space-x-1 whitespace-normal rounded-[1.5rem] bg-zinc-50 py-[0.44rem] pl-[0.38rem] pr-[0.62rem] shadow-none hover:bg-zinc-100 focus:ring-0 active:border active:border-zinc-300 active:bg-zinc-100",
+        "h-[2.25rem] space-x-1 rounded-[1.5rem] bg-zinc-50 p-[0.375rem] pr-[0.625rem] shadow-none hover:bg-zinc-100 focus:ring-0 active:border active:border-zinc-300 active:bg-zinc-100",
         className,
       )}
       {...rest}

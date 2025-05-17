@@ -51,6 +51,7 @@ import PrimaryActionBar from "@/components/PrimaryActionButton";
 import { useToast } from "@/components/ui/use-toast";
 import { useCopyPaste } from "../hooks/useCopyPaste";
 import { CronScheduler } from "./cronScheduler";
+import { BlockMenu } from "./builder/block-menu/BlockMenu";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -135,6 +136,10 @@ const FlowEditor: React.FC<{
   const [pinBlocksPopover, setPinBlocksPopover] = useState(false);
   // State to control if save popover should be pinned open
   const [pinSavePopover, setPinSavePopover] = useState(false);
+
+  const [blockMenuSelected, setBlockMenuSelected] = useState<
+    "save" | "block" | ""
+  >("");
 
   const runnerUIRef = useRef<RunnerUIWrapperRef>(null);
 
@@ -623,12 +628,12 @@ const FlowEditor: React.FC<{
   const editorControls: Control[] = [
     {
       label: "Undo",
-      icon: <IconUndo2 />,
+      icon: <IconUndo2 className="h-5 w-5" strokeWidth={2} />,
       onClick: handleUndo,
     },
     {
       label: "Redo",
-      icon: <IconRedo2 />,
+      icon: <IconRedo2 className="h-5 w-5" strokeWidth={2} />,
       onClick: handleRedo,
     },
   ];
@@ -676,15 +681,13 @@ const FlowEditor: React.FC<{
           <Controls />
           <Background className="dark:bg-slate-800" />
           <ControlPanel
-            className="absolute z-10"
             controls={editorControls}
             topChildren={
-              <BlocksControl
-                pinBlocksPopover={pinBlocksPopover} // Pass the state to BlocksControl
-                blocks={availableNodes}
+              <BlockMenu
+                pinBlocksPopover={pinBlocksPopover}
                 addBlock={addNode}
-                flows={availableFlows}
-                nodes={nodes}
+                blockMenuSelected={blockMenuSelected}
+                setBlockMenuSelected={setBlockMenuSelected}
               />
             }
             botChildren={
@@ -697,6 +700,8 @@ const FlowEditor: React.FC<{
                 agentName={agentName}
                 onNameChange={setAgentName}
                 pinSavePopover={pinSavePopover}
+                blockMenuSelected={blockMenuSelected}
+                setBlockMenuSelected={setBlockMenuSelected}
               />
             }
           ></ControlPanel>
