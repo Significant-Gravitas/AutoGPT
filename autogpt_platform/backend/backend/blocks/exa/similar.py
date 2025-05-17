@@ -89,7 +89,7 @@ class ExaFindSimilarBlock(Block):
         payload = {
             "url": input_data.url,
             "numResults": input_data.number_of_results,
-            "contents": input_data.contents.dict(),
+            "contents": input_data.contents.dict(by_alias=True),
         }
 
         optional_field_mapping = {

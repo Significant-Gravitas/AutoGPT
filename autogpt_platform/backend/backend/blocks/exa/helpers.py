@@ -10,12 +10,17 @@ class TextSettings(BaseModel):
         default=1000,
         description="Maximum number of characters to return",
         placeholder="1000",
+        alias="maxCharacters",
     )
     include_html_tags: bool = SchemaField(
         default=False,
         description="Whether to include HTML tags in the text",
         placeholder="False",
+        alias="includeHtmlTags",
     )
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class HighlightSettings(BaseModel):
@@ -23,12 +28,17 @@ class HighlightSettings(BaseModel):
         default=3,
         description="Number of sentences per highlight",
         placeholder="3",
+        alias="numSentences",
     )
     highlights_per_url: int = SchemaField(
         default=3,
         description="Number of highlights per URL",
         placeholder="3",
+        alias="highlightsPerUrl",
     )
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class SummarySettings(BaseModel):
@@ -37,6 +47,9 @@ class SummarySettings(BaseModel):
         description="Query string for summarization",
         placeholder="Enter query",
     )
+
+    class Config:
+        allow_population_by_field_name = True
 
 
 class ContentSettings(BaseModel):
@@ -52,3 +65,6 @@ class ContentSettings(BaseModel):
         default=SummarySettings(),
         description="Summary settings",
     )
+
+    class Config:
+        allow_population_by_field_name = True

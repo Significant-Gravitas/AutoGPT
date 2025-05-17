@@ -101,7 +101,7 @@ class ExaSearchBlock(Block):
             "query": input_data.query,
             "useAutoprompt": input_data.use_auto_prompt,
             "numResults": input_data.number_of_results,
-            "contents": input_data.contents.dict(),
+            "contents": input_data.contents.dict(by_alias=True),
         }
 
         date_field_mapping = {
