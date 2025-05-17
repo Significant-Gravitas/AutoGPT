@@ -10,6 +10,17 @@ import {
   useEffect,
   useState,
 } from "react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { set } from "lodash";
 
 const OnboardingContext = createContext<
   | {
@@ -60,6 +71,7 @@ export default function OnboardingProvider({
   const [state, setState] = useState<UserOnboarding | null>(null);
   // Step is used to control the progress bar, it's frontend only
   const [step, setStep] = useState(1);
+  const [npsDialogOpen, setNpsDialogOpen] = useState(false);
   const api = useBackendAPI();
   const pathname = usePathname();
   const router = useRouter();
@@ -130,6 +142,7 @@ export default function OnboardingProvider({
     if (!state || state.completedSteps.includes("RUN_AGENTS")) return;
 
     const finished = state.agentRuns + 1 >= 10;
+    setNpsDialogOpen(finished);
     updateState({
       agentRuns: state.agentRuns + 1,
       ...(finished && {
@@ -142,6 +155,33 @@ export default function OnboardingProvider({
     <OnboardingContext.Provider
       value={{ state, updateState, step, setStep, completeStep, incrementRuns }}
     >
+      <Dialog onOpenChange={setNpsDialogOpen} open={npsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>We&apos;d love your feedback</DialogTitle>
+            <DialogDescription>
+              You&apos;ve run 10 agents — amazing! We&apos;re constantly
+              improving the platform, and your thoughts help shape what we build
+              next. This 1-minute form is just a few quick questions to share
+              how things are going.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setNpsDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Link href="https://tally.so/r/w4El0b" target="_blank">
+              <Button type="button" onClick={() => setNpsDialogOpen(false)}>
+                Give Feedback
+              </Button>
+            </Link>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {children}
     </OnboardingContext.Provider>
   );
