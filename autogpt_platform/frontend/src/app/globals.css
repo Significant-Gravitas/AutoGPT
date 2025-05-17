@@ -154,3 +154,11 @@ input[type="number"]::-webkit-inner-spin-button {
 input[type="number"] {
   -moz-appearance: textfield;
 }
+
+.scroll-container {
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none; /* IE and Edge: hide scrollbar */
+  transition: scrollbar-width 0.3s ease;
+}

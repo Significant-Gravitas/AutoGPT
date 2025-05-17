@@ -16,6 +16,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/use-toast";
+import ControlPanelButton from "@/components/builder/block-menu/ControlPanelButton";
 
 interface SaveControlProps {
   agentMeta: GraphMeta | null;
@@ -26,6 +27,11 @@ interface SaveControlProps {
   onNameChange: (name: string) => void;
   onDescriptionChange: (description: string) => void;
   pinSavePopover: boolean;
+
+  blockMenuSelected: "save" | "block" | "";
+  setBlockMenuSelected: React.Dispatch<
+    React.SetStateAction<"" | "save" | "block">
+  >;
 }
 
 /**
@@ -48,6 +54,8 @@ export const SaveControl = ({
   onNameChange,
   agentDescription,
   onDescriptionChange,
+  blockMenuSelected,
+  setBlockMenuSelected,
   pinSavePopover,
 }: SaveControlProps) => {
   /**
@@ -82,27 +90,29 @@ export const SaveControl = ({
   }, [handleSave, toast]);
 
   return (
-    <Popover open={pinSavePopover ? true : undefined}>
-      <Tooltip delayDuration={500}>
-        <TooltipTrigger asChild>
-          <PopoverTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              data-id="save-control-popover-trigger"
-              data-testid="blocks-control-save-button"
-              name="Save"
-            >
-              <IconSave className="dark:text-gray-300" />
-            </Button>
-          </PopoverTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="right">Save</TooltipContent>
-      </Tooltip>
+    <Popover
+      open={pinSavePopover ? true : undefined}
+      onOpenChange={(open) => open || setBlockMenuSelected("")}
+    >
+      <PopoverTrigger>
+        <ControlPanelButton
+          data-id="save-control-popover-trigger"
+          data-testid="blocks-control-save-button"
+          selected={blockMenuSelected === "save"}
+          onClick={() => {
+            setBlockMenuSelected("save");
+          }}
+          className="rounded-none"
+        >
+          <IconSave className="h-5 w-5" strokeWidth={2} />
+        </ControlPanelButton>
+      </PopoverTrigger>
+
       <PopoverContent
         side="right"
-        sideOffset={15}
+        sideOffset={16}
         align="start"
+        className="w-[17rem] rounded-xl border-none p-0 shadow-none md:w-[30rem]"
         data-id="save-control-popover-content"
       >
         <Card className="border-none shadow-none dark:bg-slate-900">
