@@ -1,6 +1,6 @@
 from typing import List
 
-from pydantic import BaseModel
+
 
 from backend.blocks.exa._auth import (
     ExaCredentials,
@@ -9,29 +9,14 @@ from backend.blocks.exa._auth import (
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
+from .helpers import ContentSettings
 from backend.util.request import requests
 
 
-class ContentRetrievalSettings(BaseModel):
-    text: dict = SchemaField(
-        description="Text content settings",
-        default={"maxCharacters": 1000, "includeHtmlTags": False},
-        advanced=True,
-    )
-    highlights: dict = SchemaField(
-        description="Highlight settings",
-        default={
-            "numSentences": 3,
-            "highlightsPerUrl": 3,
-            "query": "",
-        },
-        advanced=True,
-    )
-    summary: dict = SchemaField(
-        description="Summary settings",
-        default={"query": ""},
-        advanced=True,
-    )
+# Use the fully-typed ``ContentSettings`` model from ``helpers`` instead of
+# anonymous ``dict`` fields so that the generated JSON schema contains proper
+# object properties. Without this, the frontend crashes when rendering the
+# advanced settings for this block.
 
 
 class ExaContentsBlock(Block):
@@ -40,9 +25,9 @@ class ExaContentsBlock(Block):
         ids: List[str] = SchemaField(
             description="Array of document IDs obtained from searches",
         )
-        contents: ContentRetrievalSettings = SchemaField(
+        contents: ContentSettings = SchemaField(
             description="Content retrieval settings",
-            default=ContentRetrievalSettings(),
+            default=ContentSettings(),
             advanced=True,
         )
 
