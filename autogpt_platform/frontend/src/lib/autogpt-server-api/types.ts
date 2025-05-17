@@ -172,6 +172,7 @@ export const PROVIDER_NAMES = {
   OPENAI: "openai",
   OPENWEATHERMAP: "openweathermap",
   OPEN_ROUTER: "open_router",
+  LLAMA_API: "llama_api",
   PINECONE: "pinecone",
   SCREENSHOTONE: "screenshotone",
   SLANT3D: "slant3d",
