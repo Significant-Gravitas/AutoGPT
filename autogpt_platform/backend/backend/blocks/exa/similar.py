@@ -10,7 +10,7 @@ from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 from backend.util.request import requests
 
-from .helpers import ContentSettings
+from .helpers import ContentSettings, to_camel_case_dict
 
 
 class ExaFindSimilarBlock(Block):
@@ -89,7 +89,7 @@ class ExaFindSimilarBlock(Block):
         payload = {
             "url": input_data.url,
             "numResults": input_data.number_of_results,
-            "contents": input_data.contents.dict(),
+            "contents": to_camel_case_dict(input_data.contents.dict()),
         }
 
         optional_field_mapping = {
