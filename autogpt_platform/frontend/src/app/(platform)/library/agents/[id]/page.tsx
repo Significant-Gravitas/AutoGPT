@@ -180,6 +180,10 @@ export default function AgentRunsPage(): React.ReactElement {
       (data) => {
         if (data.graph_id != agent?.graph_id) return;
 
+        if (data.status == "COMPLETED") {
+          incrementRuns();
+        }
+
         setAgentRuns((prev) => {
           const index = prev.findIndex((run) => run.id === data.id);
           if (index === -1) {
@@ -198,7 +202,7 @@ export default function AgentRunsPage(): React.ReactElement {
     return () => {
       detachExecUpdateHandler();
     };
-  }, [api, agent?.graph_id, selectedView.id]);
+  }, [api, agent?.graph_id, selectedView.id, incrementRuns]);
 
   // Pre-load selectedRun based on selectedView
   useEffect(() => {
@@ -319,9 +323,8 @@ export default function AgentRunsPage(): React.ReactElement {
   const onRun = useCallback(
     (runID: GraphExecutionID) => {
       selectRun(runID);
-      incrementRuns();
     },
-    [selectRun, incrementRuns],
+    [selectRun],
   );
 
   if (!agent || !graph) {
