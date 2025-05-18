@@ -1,5 +1,5 @@
 import base64
-from email.utils import parseaddr
+from email.utils import getaddresses, parseaddr
 from pathlib import Path
 from typing import List
 
@@ -653,6 +653,9 @@ class GmailReplyBlock(Block):
         to: list[str] = SchemaField(description="To recipients", default_factory=list)
         cc: list[str] = SchemaField(description="CC recipients", default_factory=list)
         bcc: list[str] = SchemaField(description="BCC recipients", default_factory=list)
+        replyAll: bool = SchemaField(
+            description="Reply to all original recipients", default=False
+        )
         subject: str = SchemaField(description="Email subject", default="")
         body: str = SchemaField(description="Email body")
         attachments: list[MediaFileType] = SchemaField(
@@ -677,6 +680,7 @@ class GmailReplyBlock(Block):
                 "threadId": "t1",
                 "parentMessageId": "m1",
                 "body": "Thanks",
+                "replyAll": False,
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_credentials=TEST_CREDENTIALS,
@@ -718,7 +722,15 @@ class GmailReplyBlock(Block):
                 userId="me",
                 id=input_data.parentMessageId,
                 format="metadata",
-                metadataHeaders=["Subject", "References", "Message-ID"],
+                metadataHeaders=[
+                    "Subject",
+                    "References",
+                    "Message-ID",
+                    "From",
+                    "To",
+                    "Cc",
+                    "Reply-To",
+                ],
             )
             .execute()
         )
@@ -726,6 +738,19 @@ class GmailReplyBlock(Block):
             h["name"].lower(): h["value"]
             for h in parent.get("payload", {}).get("headers", [])
         }
+        if not (input_data.to or input_data.cc or input_data.bcc):
+            if input_data.replyAll:
+                recipients = [parseaddr(headers.get("from", ""))[1]]
+                recipients += [addr for _, addr in getaddresses([headers.get("to", "")])]
+                recipients += [addr for _, addr in getaddresses([headers.get("cc", "")])]
+                dedup: list[str] = []
+                for r in recipients:
+                    if r and r not in dedup:
+                        dedup.append(r)
+                input_data.to = dedup
+            else:
+                sender = parseaddr(headers.get("reply-to", headers.get("from", "")))[1]
+                input_data.to = [sender] if sender else []
         subject = input_data.subject or (f"Re: {headers.get('subject', '')}".strip())
         references = headers.get("references", "").split()
         if headers.get("message-id"):
