@@ -542,9 +542,6 @@ class GmailGetThreadBlock(Block):
             ["https://www.googleapis.com/auth/gmail.readonly"]
         )
         threadId: str = SchemaField(description="Gmail thread ID")
-        includeSpamTrash: bool = SchemaField(
-            description="Include messages from Spam and Trash", default=False
-        )
 
     class Output(BlockSchema):
         thread: dict = SchemaField(
@@ -570,12 +567,10 @@ class GmailGetThreadBlock(Block):
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = GmailReadBlock._build_service(credentials, **kwargs)
-        thread = self._get_thread(
-            service, input_data.threadId, input_data.includeSpamTrash
-        )
+        thread = self._get_thread(service, input_data.threadId)
         yield "thread", thread
 
-    def _get_thread(self, service, thread_id: str, include_spam_trash: bool) -> dict:
+    def _get_thread(self, service, thread_id: str) -> dict:
         thread = (
             service.users()
             .threads()
@@ -583,7 +578,6 @@ class GmailGetThreadBlock(Block):
                 userId="me",
                 id=thread_id,
                 format="full",
-                includeSpamTrash=include_spam_trash,
             )
             .execute()
         )

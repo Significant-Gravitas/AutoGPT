@@ -151,14 +151,13 @@ Automatically removing the "Unread" label from emails after they have been proce
 A block that retrieves an entire Gmail thread.
 
 ### What it does
-Given a `threadId`, this block fetches all messages in that thread and decodes the text bodies. You can optionally include messages in Spam and Trash.
+Given a `threadId`, this block fetches all messages in that thread and decodes the text bodies.
 
 ### Inputs
 | Input | Description |
 |-------|-------------|
 | Credentials | The user's Gmail account credentials for authentication |
 | threadId | The ID of the thread to fetch |
-| includeSpamTrash | Whether to include messages from Spam and Trash |
 
 ### Outputs
 | Output | Description |
