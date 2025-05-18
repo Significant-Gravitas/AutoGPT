@@ -13,7 +13,7 @@ const IntegrationsContent: React.FC<IntegrationsContentProps> = ({
 }) => {
   // I am currently comparing the integration with names, in future maybe using ids
   return (
-    <div className="scrollbar-thin scrollbar-thumb-rounded scrollbar-thumb-zinc-200 scrollbar-track-transparent h-full overflow-y-scroll pt-4">
+    <div className="scrollbar-thumb-rounded h-full overflow-y-scroll pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
       <div className="w-full px-4 pb-4">
         {integration == "" ? (
           <IntegrationList setIntegration={setIntegration} />
