@@ -138,7 +138,9 @@ class GmailReadBlock(Block):
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = self._build_service(credentials, **kwargs)
-        messages = self._read_emails(service, input_data.query, input_data.max_results)
+        messages = self._read_emails(
+            service, input_data.query, input_data.max_results, credentials.scopes
+        )
         for email in messages:
             yield "email", email
         yield "emails", messages
@@ -164,22 +166,31 @@ class GmailReadBlock(Block):
         return build("gmail", "v1", credentials=creds)
 
     def _read_emails(
-        self, service, query: str | None, max_results: int | None
+        self,
+        service,
+        query: str | None,
+        max_results: int | None,
+        scopes: list[str] | None,
     ) -> list[Email]:
-        results = (
-            service.users()
-            .messages()
-            .list(userId="me", q=query or "", maxResults=max_results or 10)
-            .execute()
-        )
+        scopes = [s.lower() for s in (scopes or [])]
+        list_kwargs = {"userId": "me", "maxResults": max_results or 10}
+        if query and "https://www.googleapis.com/auth/gmail.metadata" not in scopes:
+            list_kwargs["q"] = query
+
+        results = service.users().messages().list(**list_kwargs).execute()
         messages = results.get("messages", [])
 
         email_data = []
         for message in messages:
+            format_type = (
+                "metadata"
+                if "https://www.googleapis.com/auth/gmail.metadata" in scopes
+                else "full"
+            )
             msg = (
                 service.users()
                 .messages()
-                .get(userId="me", id=message["id"], format="full")
+                .get(userId="me", id=message["id"], format=format_type)
                 .execute()
             )
 
@@ -207,16 +218,22 @@ class GmailReadBlock(Block):
         return email_data
 
     def _get_email_body(self, msg):
-        if "parts" in msg["payload"]:
-            for part in msg["payload"]["parts"]:
-                if part["mimeType"] == "text/plain":
+        payload = msg.get("payload")
+        if not payload:
+            return "This email does not contain a text body."
+
+        if "parts" in payload:
+            for part in payload["parts"]:
+                if part.get("mimeType") == "text/plain" and "data" in part.get(
+                    "body", {}
+                ):
                     return base64.urlsafe_b64decode(part["body"]["data"]).decode(
                         "utf-8"
                     )
-        elif msg["payload"]["mimeType"] == "text/plain":
-            return base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode(
-                "utf-8"
-            )
+        elif payload.get("mimeType") == "text/plain" and "data" in payload.get(
+            "body", {}
+        ):
+            return base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8")
 
         return "This email does not contain a text body."
 
@@ -567,18 +584,20 @@ class GmailGetThreadBlock(Block):
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = GmailReadBlock._build_service(credentials, **kwargs)
-        thread = self._get_thread(service, input_data.threadId)
+        thread = self._get_thread(service, input_data.threadId, credentials.scopes)
         yield "thread", thread
 
-    def _get_thread(self, service, thread_id: str) -> dict:
+    def _get_thread(self, service, thread_id: str, scopes: list[str] | None) -> dict:
+        scopes = [s.lower() for s in (scopes or [])]
+        format_type = (
+            "metadata"
+            if "https://www.googleapis.com/auth/gmail.metadata" in scopes
+            else "full"
+        )
         thread = (
             service.users()
             .threads()
-            .get(
-                userId="me",
-                id=thread_id,
-                format="full",
-            )
+            .get(userId="me", id=thread_id, format=format_type)
             .execute()
         )
 
@@ -608,16 +627,22 @@ class GmailGetThreadBlock(Block):
         return thread
 
     def _get_email_body(self, msg):
-        if "parts" in msg["payload"]:
-            for part in msg["payload"]["parts"]:
-                if part["mimeType"] == "text/plain":
+        payload = msg.get("payload")
+        if not payload:
+            return "This email does not contain a text body."
+
+        if "parts" in payload:
+            for part in payload["parts"]:
+                if part.get("mimeType") == "text/plain" and "data" in part.get(
+                    "body", {}
+                ):
                     return base64.urlsafe_b64decode(part["body"]["data"]).decode(
                         "utf-8"
                     )
-        elif msg["payload"].get("mimeType") == "text/plain":
-            return base64.urlsafe_b64decode(msg["payload"]["body"]["data"]).decode(
-                "utf-8"
-            )
+        elif payload.get("mimeType") == "text/plain" and "data" in payload.get(
+            "body", {}
+        ):
+            return base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8")
         return "This email does not contain a text body."
 
     def _get_attachments(self, service, message):
@@ -735,8 +760,12 @@ class GmailReplyBlock(Block):
         if not (input_data.to or input_data.cc or input_data.bcc):
             if input_data.replyAll:
                 recipients = [parseaddr(headers.get("from", ""))[1]]
-                recipients += [addr for _, addr in getaddresses([headers.get("to", "")])]
-                recipients += [addr for _, addr in getaddresses([headers.get("cc", "")])]
+                recipients += [
+                    addr for _, addr in getaddresses([headers.get("to", "")])
+                ]
+                recipients += [
+                    addr for _, addr in getaddresses([headers.get("cc", "")])
+                ]
                 dedup: list[str] = []
                 for r in recipients:
                     if r and r not in dedup:
