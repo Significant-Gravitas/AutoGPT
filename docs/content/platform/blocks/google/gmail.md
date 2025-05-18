@@ -15,7 +15,7 @@ The block connects to the user's Gmail account using their credentials, performs
 | Input | Description |
 |-------|-------------|
 | Credentials | The user's Gmail account credentials for authentication |
-| Query | A search query to filter emails (e.g., "is:unread" for unread emails) |
+| Query | A search query to filter emails (e.g., "is:unread" for unread emails). Ignored if using only the `gmail.metadata` scope. |
 | Max Results | The maximum number of emails to retrieve |
 
 ### Outputs
