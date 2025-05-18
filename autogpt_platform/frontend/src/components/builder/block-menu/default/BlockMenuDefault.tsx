@@ -18,17 +18,26 @@ export type DefaultStateType =
 const BlockMenuDefault: React.FC = () => {
   const [defaultState, setDefaultState] =
     useState<DefaultStateType>("suggestion");
+  const [integration, setIntegration] = useState("");
+
   return (
     <div className="flex flex-1 overflow-y-auto">
       {/* Left sidebar */}
       <BlockMenuSidebar
         defaultState={defaultState}
         setDefaultState={setDefaultState}
+        setIntegration={setIntegration}
+        integration={integration}
       />
 
       <Separator className="h-full w-[1px] text-zinc-300" />
 
-      <BlockMenuDefaultContent defaultState={defaultState} />
+      <BlockMenuDefaultContent
+        defaultState={defaultState}
+        setDefaultState={setDefaultState}
+        setIntegration={setIntegration}
+        integration={integration}
+      />
     </div>
   );
 };

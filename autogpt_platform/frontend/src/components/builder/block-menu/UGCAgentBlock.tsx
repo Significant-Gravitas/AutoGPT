@@ -44,7 +44,7 @@ const UGCAgentBlock: React.FC<Props> = ({
         >
           {title}
         </span>
-        <div className="flex items-center space-x-2.5">
+        <div className="flex items-center space-x-1.5">
           <span
             className={cn(
               "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
