@@ -51,7 +51,7 @@ const AllBlocksContent: React.FC = () => {
   }
 
   return (
-    <div className="scrollbar-thumb-rounded scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200 h-full overflow-y-scroll pt-4">
+    <div className="scrollbar-thumb-rounded h-full overflow-y-scroll pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
       <div className="w-full space-y-3 px-4 pb-4">
         {categories.map((category, index) => (
           <Fragment key={category.name}>
