@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import React, { ButtonHTMLAttributes } from "react";
@@ -8,7 +9,11 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   description?: string;
 }
 
-const Block: React.FC<Props> = ({ title, description, className, ...rest }) => {
+interface BlockComponent extends React.FC<Props> {
+  Skeleton: React.FC<{ className?: string }>;
+}
+
+const Block: BlockComponent = ({ title, description, className, ...rest }) => {
   return (
     <Button
       className={cn(
@@ -42,5 +47,19 @@ const Block: React.FC<Props> = ({ title, description, className, ...rest }) => {
     </Button>
   );
 };
+
+const BlockSkeleton = () => {
+  return (
+    <Skeleton className="flex h-16 w-full min-w-[7.5rem] animate-pulse items-center justify-start space-x-3 rounded-[0.75rem] bg-zinc-100 px-[0.875rem] py-[0.625rem]">
+      <div className="flex flex-1 flex-col items-start gap-0.5">
+        <Skeleton className="h-[1.375rem] w-24 rounded bg-zinc-200" />
+        <Skeleton className="h-5 w-32 rounded bg-zinc-200" />
+      </div>
+      <Skeleton className="h-7 w-7 rounded-[0.5rem] bg-zinc-200" />
+    </Skeleton>
+  );
+};
+
+Block.Skeleton = BlockSkeleton;
 
 export default Block;

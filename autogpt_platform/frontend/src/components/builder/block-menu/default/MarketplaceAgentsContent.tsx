@@ -1,64 +1,57 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import MarketplaceAgentBlock from "../MarketplaceAgentBlock";
+import { marketplaceAgentData } from "../../testing_data";
+
+export interface MarketplaceAgent {
+  id: number;
+  title: string;
+  image_url: string;
+  creator_name: string;
+  number_of_runs: number;
+}
 
 const MarketplaceAgentsContent: React.FC = () => {
+  const [agents, setAgents] = useState<MarketplaceAgent[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    const fetchAgents = async () => {
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        setAgents(marketplaceAgentData);
+        setLoading(false);
+      } catch (err) {
+        setLoading(false);
+      }
+    };
+
+    fetchAgents();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="w-full space-y-3 p-4">
+        {Array(5)
+          .fill(null)
+          .map((_, index) => (
+            <MarketplaceAgentBlock.Skeleton key={index} />
+          ))}
+      </div>
+    );
+  }
+
   return (
     <div className="scrollbar-thin scrollbar-thumb-rounded scrollbar-thumb-zinc-200 scrollbar-track-transparent h-full overflow-y-scroll pt-4">
       <div className="w-full space-y-3 px-4 pb-4">
-        <MarketplaceAgentBlock
-          title="turtle test"
-          image_url="/placeholder.png"
-          creator_name="Autogpt"
-          number_of_runs={1000}
-        />
-        <MarketplaceAgentBlock
-          title="turtle test 1"
-          image_url="/placeholder.png"
-          creator_name="Autogpt"
-          number_of_runs={1324}
-        />
-        <MarketplaceAgentBlock
-          title="turtle test 2"
-          image_url="/placeholder.png"
-          creator_name="Autogpt"
-          number_of_runs={10030}
-        />
-        <MarketplaceAgentBlock
-          title="turtle test 3"
-          image_url="/placeholder.png"
-          creator_name="Autogpt"
-          number_of_runs={324}
-        />
-        <MarketplaceAgentBlock
-          title="turtle test"
-          image_url="/placeholder.png"
-          creator_name="Autogpt"
-          number_of_runs={4345}
-        />
-        <MarketplaceAgentBlock
-          title="turtle test"
-          image_url="/placeholder.png"
-          creator_name="Autogpt"
-          number_of_runs={324}
-        />
-        <MarketplaceAgentBlock
-          title="turtle test 3"
-          image_url="/placeholder.png"
-          creator_name="Autogpt"
-          number_of_runs={324}
-        />
-        <MarketplaceAgentBlock
-          title="turtle test"
-          image_url="/placeholder.png"
-          creator_name="Autogpt"
-          number_of_runs={4345}
-        />
-        <MarketplaceAgentBlock
-          title="turtle test"
-          image_url="/placeholder.png"
-          creator_name="Autogpt"
-          number_of_runs={324}
-        />
+        {agents.map((agent) => (
+          <MarketplaceAgentBlock
+            key={agent.id}
+            title={agent.title}
+            image_url={agent.image_url}
+            creator_name={agent.creator_name}
+            number_of_runs={agent.number_of_runs}
+          />
+        ))}
       </div>
     </div>
   );

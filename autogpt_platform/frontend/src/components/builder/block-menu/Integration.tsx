@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { Plus } from "lucide-react";
 import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
 
@@ -11,7 +11,11 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   number_of_blocks?: number;
 }
 
-const Integration: React.FC<Props> = ({
+interface IntegrationComponent extends React.FC<Props> {
+  Skeleton: React.FC<{ className?: string }>;
+}
+
+const Integration: IntegrationComponent = ({
   title,
   icon_url,
   description,
@@ -23,6 +27,7 @@ const Integration: React.FC<Props> = ({
     <Button
       className={cn(
         "group flex h-16 w-full min-w-[7.5rem] items-center justify-start space-x-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 px-[0.875rem] py-[0.625rem] text-start shadow-none hover:bg-zinc-100 focus:ring-0 active:border active:border-zinc-300 active:bg-zinc-50 disabled:pointer-events-none",
+        className,
       )}
       {...rest}
     >
@@ -53,5 +58,29 @@ const Integration: React.FC<Props> = ({
     </Button>
   );
 };
+
+const IntegrationSkeleton: React.FC<{ className?: string }> = ({
+  className,
+}) => {
+  return (
+    <Skeleton
+      className={cn(
+        "flex h-16 w-full min-w-[7.5rem] animate-pulse items-center justify-start space-x-3 rounded-[0.75rem] bg-zinc-100 px-[0.875rem] py-[0.625rem]",
+        className,
+      )}
+    >
+      <Skeleton className="h-[2.625rem] w-[2.625rem] rounded-[0.5rem] bg-zinc-200" />
+      <div className="flex flex-1 flex-col items-start gap-0.5">
+        <div className="flex w-full items-center justify-between">
+          <Skeleton className="h-[1.375rem] w-24 rounded bg-zinc-200" />
+          <Skeleton className="h-[1.375rem] w-[1.6875rem] rounded-[1.25rem] bg-zinc-200" />
+        </div>
+        <Skeleton className="h-5 w-[80%] rounded bg-zinc-200" />
+      </div>
+    </Skeleton>
+  );
+};
+
+Integration.Skeleton = IntegrationSkeleton;
 
 export default Integration;

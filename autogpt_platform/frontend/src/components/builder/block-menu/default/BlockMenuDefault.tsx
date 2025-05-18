@@ -27,7 +27,6 @@ const BlockMenuDefault: React.FC = () => {
         defaultState={defaultState}
         setDefaultState={setDefaultState}
         setIntegration={setIntegration}
-        integration={integration}
       />
 
       <Separator className="h-full w-[1px] text-zinc-300" />

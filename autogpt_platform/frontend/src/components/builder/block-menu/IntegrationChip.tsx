@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
@@ -8,7 +9,12 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon_url?: string;
 }
 
-const IntegrationChip: React.FC<Props> = ({
+// Define the component type with Skeleton property
+interface IntegrationChipComponent extends React.FC<Props> {
+  Skeleton: React.FC;
+}
+
+const IntegrationChip: IntegrationChipComponent = ({
   icon_url,
   name,
   className,
@@ -38,5 +44,17 @@ const IntegrationChip: React.FC<Props> = ({
     </Button>
   );
 };
+
+// Skeleton subcomponent
+const IntegrationChipSkeleton: React.FC = () => {
+  return (
+    <Skeleton className="flex h-[3.25rem] w-full min-w-[7.5rem] gap-2 rounded-[0.5rem] bg-zinc-100 p-2 pr-3">
+      <Skeleton className="h-9 w-12 rounded-[0.5rem] bg-zinc-200" />
+      <Skeleton className="h-5 w-24 self-center rounded-sm bg-zinc-200" />
+    </Skeleton>
+  );
+};
+
+IntegrationChip.Skeleton = IntegrationChipSkeleton;
 
 export default IntegrationChip;

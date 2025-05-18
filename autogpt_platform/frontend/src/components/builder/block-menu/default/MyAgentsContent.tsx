@@ -1,46 +1,57 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import UGCAgentBlock from "../UGCAgentBlock";
+import { myAgentData } from "../../testing_data";
+
+export interface UserAgent {
+  id: number;
+  title: string;
+  edited_time: string;
+  version: number;
+  image_url: string;
+}
 
 const MyAgentsContent: React.FC = () => {
+  const [agents, setAgents] = useState<UserAgent[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    const fetchAgents = async () => {
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        setAgents(myAgentData);
+        setLoading(false);
+      } catch (err) {
+        setLoading(false);
+      }
+    };
+
+    fetchAgents();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="w-full space-y-3 p-4">
+        {Array(5)
+          .fill(null)
+          .map((_, index) => (
+            <UGCAgentBlock.Skeleton key={index} />
+          ))}
+      </div>
+    );
+  }
+
   return (
     <div className="scrollbar-thin scrollbar-thumb-rounded scrollbar-thumb-zinc-200 scrollbar-track-transparent h-full overflow-y-scroll pt-4">
       <div className="w-full space-y-3 px-4 pb-4">
-        <UGCAgentBlock
-          title="My Agent 1"
-          edited_time="23rd April"
-          version={3}
-          image_url="/placeholder.png"
-        />
-        <UGCAgentBlock
-          title="My Agent 2"
-          edited_time="21st April"
-          version={4}
-          image_url="/placeholder.png"
-        />
-        <UGCAgentBlock
-          title="My Agent 3"
-          edited_time="23rd May"
-          version={7}
-          image_url="/placeholder.png"
-        />
-        <UGCAgentBlock
-          title="My Agent 4"
-          edited_time="23rd April"
-          version={3}
-          image_url="/placeholder.png"
-        />
-        <UGCAgentBlock
-          title="My Agent 5"
-          edited_time="23rd April"
-          version={3}
-          image_url="/placeholder.png"
-        />
-        <UGCAgentBlock
-          title="My Agent 6"
-          edited_time="23rd April"
-          version={3}
-          image_url="/placeholder.png"
-        />
+        {agents.map((agent) => (
+          <UGCAgentBlock
+            key={agent.id}
+            title={agent.title}
+            edited_time={agent.edited_time}
+            version={agent.version}
+            image_url={agent.image_url}
+          />
+        ))}
       </div>
     </div>
   );

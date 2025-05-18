@@ -1,20 +1,76 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import SearchHistoryChip from "../SearchHistoryChip";
 import IntegrationChip from "../IntegrationChip";
 import Block from "../Block";
 import { DefaultStateType } from "./BlockMenuDefault";
+import {
+  integrationsData,
+  topBlocksData,
+  recentSearchesData,
+} from "../../testing_data";
 
 interface SuggestionContentProps {
-  integration: string;
   setIntegration: React.Dispatch<React.SetStateAction<string>>;
   setDefaultState: React.Dispatch<React.SetStateAction<DefaultStateType>>;
 }
 
 const SuggestionContent: React.FC<SuggestionContentProps> = ({
-  integration,
   setIntegration,
   setDefaultState,
 }) => {
+  const [recentSearches, setRecentSearches] = useState<string[] | null>(null);
+  const [integrations, setIntegrations] = useState<
+    { icon_url: string; name: string }[] | null
+  >(null);
+  const [topBlocks, setTopBlocks] = useState<
+    { title: string; description: string }[] | null
+  >(null);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        // Create fetch functions that return their respective data
+        const fetchRecentSearches = async (): Promise<string[]> => {
+          await new Promise((resolve) => setTimeout(resolve, 300));
+          return recentSearchesData;
+        };
+
+        const fetchIntegrations = async (): Promise<
+          { icon_url: string; name: string }[]
+        > => {
+          await new Promise((resolve) => setTimeout(resolve, 400));
+          return integrationsData;
+        };
+
+        const fetchTopBlocks = async (): Promise<
+          { title: string; description: string }[]
+        > => {
+          await new Promise((resolve) => setTimeout(resolve, 600));
+          return topBlocksData;
+        };
+
+        // Fetch all data simultaneously using Promise.all
+        const [
+          recentSearchesDataFetched,
+          integrationsDataFetched,
+          topBlocksDataFetched,
+        ] = await Promise.all([
+          fetchRecentSearches(),
+          fetchIntegrations(),
+          fetchTopBlocks(),
+        ]);
+
+        setRecentSearches(recentSearchesDataFetched);
+        setIntegrations(integrationsDataFetched);
+        setTopBlocks(topBlocksDataFetched);
+      } catch (error) {
+        console.error("Error fetching data:", error);
+      }
+    };
+
+    fetchData();
+  }, []);
+
   return (
     <div className="scrollbar-thin scrollbar-thumb-rounded scrollbar-thumb-zinc-200 scrollbar-track-transparent h-full overflow-y-scroll pt-4">
       <div className="w-full space-y-6 pb-4">
@@ -24,15 +80,22 @@ const SuggestionContent: React.FC<SuggestionContentProps> = ({
             Recent searches
           </p>
           <div className="scrollbar-hide flex flex-nowrap gap-2 overflow-x-auto">
-            <SearchHistoryChip content="image generator" className="ml-4" />
-            <SearchHistoryChip content="deepfake" />
-            <SearchHistoryChip content="competitor analysis" />
-            <SearchHistoryChip content="image generator" />
-            <SearchHistoryChip content="deepfake" />
-            <SearchHistoryChip content="competitor analysis" />
-            <SearchHistoryChip content="image generator" />
-            <SearchHistoryChip content="deepfake" />
-            <SearchHistoryChip content="competitor analysis" />
+            {recentSearches
+              ? recentSearches.map((search, index) => (
+                  <SearchHistoryChip
+                    key={`search-${index}`}
+                    content={search}
+                    className={index === 0 ? "ml-4" : ""}
+                  />
+                ))
+              : Array(3)
+                  .fill(0)
+                  .map((_, index) => (
+                    <SearchHistoryChip.Skeleton
+                      key={`search-${index}`}
+                      className={index === 0 ? "ml-4" : ""}
+                    />
+                  ))}
           </div>
         </div>
 
@@ -42,34 +105,25 @@ const SuggestionContent: React.FC<SuggestionContentProps> = ({
             Integrations
           </p>
           <div className="grid grid-cols-3 grid-rows-2 gap-2">
-            <IntegrationChip
-              icon_url="/integrations/x.png"
-              name="Twitter"
-              onClick={() => {
-                setDefaultState("integrations");
-                setIntegration("Twitter Blocks");
-              }}
-            />
-            <IntegrationChip
-              icon_url="/integrations/github.png"
-              name="Github"
-            />
-            <IntegrationChip
-              icon_url="/integrations/hubspot.png"
-              name="Hubspot"
-            />
-            <IntegrationChip
-              icon_url="/integrations/discord.png"
-              name="Discord"
-            />
-            <IntegrationChip
-              icon_url="/integrations/medium.png"
-              name="Medium"
-            />
-            <IntegrationChip
-              icon_url="/integrations/todoist.png"
-              name="Todoist"
-            />
+            {integrations
+              ? integrations.map((integration, index) => (
+                  <IntegrationChip
+                    key={`integration-${index}`}
+                    icon_url={integration.icon_url}
+                    name={integration.name}
+                    onClick={() => {
+                      setDefaultState("integrations");
+                      setIntegration(integration.name);
+                    }}
+                  />
+                ))
+              : Array(6)
+                  .fill(0)
+                  .map((_, index) => (
+                    <IntegrationChip.Skeleton
+                      key={`integration-skeleton-${index}`}
+                    />
+                  ))}
           </div>
         </div>
 
@@ -79,26 +133,19 @@ const SuggestionContent: React.FC<SuggestionContentProps> = ({
             Top blocks
           </p>
           <div className="space-y-2">
-            <Block
-              title="Find in Dictionary"
-              description="Enables your agent to chat with users in natural language."
-            />
-            <Block
-              title="Find in Dictionary"
-              description="Enables your agent to chat with users in natural language."
-            />
-            <Block
-              title="Find in Dictionary"
-              description="Enables your agent to chat with users in natural language."
-            />
-            <Block
-              title="Find in Dictionary"
-              description="Enables your agent to chat with users in natural language."
-            />
-            <Block
-              title="Find in Dictionary"
-              description="Enables your agent to chat with users in natural language."
-            />
+            {topBlocks
+              ? topBlocks.map((block, index) => (
+                  <Block
+                    key={`block-${index}`}
+                    title={block.title}
+                    description={block.description}
+                  />
+                ))
+              : Array(3)
+                  .fill(0)
+                  .map((_, index) => (
+                    <Block.Skeleton key={`block-skeleton-${index}`} />
+                  ))}
           </div>
         </div>
       </div>

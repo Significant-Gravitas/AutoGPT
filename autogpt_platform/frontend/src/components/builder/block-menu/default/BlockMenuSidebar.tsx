@@ -5,14 +5,12 @@ import { DefaultStateType } from "./BlockMenuDefault";
 interface BlockMenuSidebarProps {
   defaultState: DefaultStateType;
   setDefaultState: React.Dispatch<React.SetStateAction<DefaultStateType>>;
-  integration: string;
   setIntegration: React.Dispatch<React.SetStateAction<string>>;
 }
 
 const BlockMenuSidebar: React.FC<BlockMenuSidebarProps> = ({
   defaultState,
   setDefaultState,
-  integration,
   setIntegration,
 }) => {
   // BLOCK MENU TODO: We need to fetch the number of Blocks/Integrations/Agents when opening the menu.

@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { ArrowUpRight } from "lucide-react";
 import React, { ButtonHTMLAttributes } from "react";
@@ -7,7 +8,11 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   content?: string;
 }
 
-const SearchHistoryChip: React.FC<Props> = ({
+interface SearchHistoryChipComponent extends React.FC<Props> {
+  Skeleton: React.FC<{ className?: string }>;
+}
+
+const SearchHistoryChip: SearchHistoryChipComponent = ({
   content,
   className,
   ...rest
@@ -27,5 +32,17 @@ const SearchHistoryChip: React.FC<Props> = ({
     </Button>
   );
 };
+
+const SearchHistoryChipSkeleton: React.FC<{ className?: string }> = ({
+  className,
+}) => {
+  return (
+    <Skeleton
+      className={cn("h-[2.25rem] w-32 rounded-[1.5rem] bg-zinc-100", className)}
+    />
+  );
+};
+
+SearchHistoryChip.Skeleton = SearchHistoryChipSkeleton;
 
 export default SearchHistoryChip;

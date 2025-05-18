@@ -1,43 +1,67 @@
-import React from "react";
-import IntegrationBlock from "../IntegrationBlock";
+import React, { useState, useEffect } from "react";
 import Integration from "../Integration";
+import { integrationsListData } from "../../testing_data";
+
 interface IntegrationListProps {
   setIntegration: React.Dispatch<React.SetStateAction<string>>;
+}
+
+export interface IntegrationData {
+  title: string;
+  icon_url: string;
+  description: string;
+  number_of_blocks: number;
 }
 
 const IntegrationList: React.FC<IntegrationListProps> = ({
   setIntegration,
 }) => {
+  const [integrations, setIntegrations] = useState<IntegrationData[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  useEffect(() => {
+    // Mock API call to fetch integrations
+    const fetchIntegrations = async () => {
+      setIsLoading(true);
+      try {
+        // Simulate network delay
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+
+        setIntegrations(integrationsListData);
+      } catch (error) {
+        console.error("Failed to fetch integrations:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchIntegrations();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {Array(5)
+          .fill(null)
+          .map((_, index) => (
+            <Integration.Skeleton key={index} />
+          ))}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
-      <Integration
-        title="Twitter Blocks"
-        icon_url="/integrations/x.png"
-        description="All twitter blocks, It has everthing to interact with twitter"
-        number_of_blocks={10}
-        onClick={() => setIntegration("Twitter Blocks")}
-      />
-      <Integration
-        title="Discord Blocks"
-        icon_url="/integrations/discord.png"
-        description="All Discord blocks, It has everthing to interact with discord"
-        number_of_blocks={14}
-        onClick={() => setIntegration("Discord Blocks")}
-      />
-      <Integration
-        title="Github Blocks"
-        icon_url="/integrations/github.png"
-        description="All Github blocks, It has everthing to interact with github"
-        number_of_blocks={4}
-        onClick={() => setIntegration("Github Blocks")}
-      />
-      <Integration
-        title="Hubspot Blocks"
-        icon_url="/integrations/hubspot.png"
-        description="All Hubspot blocks, It has everthing to interact with Hubspot"
-        number_of_blocks={2}
-        onClick={() => setIntegration("Hubspot Blocks")}
-      />
+      {integrations.map((integration, index) => (
+        <Integration
+          key={index}
+          title={integration.title}
+          icon_url={integration.icon_url}
+          description={integration.description}
+          number_of_blocks={integration.number_of_blocks}
+          onClick={() => setIntegration(integration.title)}
+        />
+      ))}
     </div>
   );
 };

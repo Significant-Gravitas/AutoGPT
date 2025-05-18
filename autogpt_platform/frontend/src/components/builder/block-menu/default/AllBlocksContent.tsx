@@ -1,119 +1,98 @@
 // BLOCK MENU TODO: Currently I have hide the scrollbar, but need to add better designed custom scroller
 
-import React from "react";
+import React, { useState, useEffect, Fragment } from "react";
 import Block from "../Block";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { allBlocksDataWithCategories } from "../../testing_data";
+import { Skeleton } from "@/components/ui/skeleton";
+
+// These are Temporary type, need to change it in future
+type BlockItem = {
+  title: string;
+  description: string;
+};
+
+export type BlockCategory = {
+  name: string;
+  count: number;
+  items: BlockItem[];
+};
 
 const AllBlocksContent: React.FC = () => {
+  const [categories, setCategories] = useState<BlockCategory[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchBlocks = async () => {
+      setLoading(true);
+      setTimeout(() => {
+        setCategories(allBlocksDataWithCategories);
+        setLoading(false);
+      }, 800);
+    };
+
+    fetchBlocks();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="w-full space-y-3 p-4">
+        {[0, 1, 3].map((categoryIndex) => (
+          <Fragment key={categoryIndex}>
+            {categoryIndex > 0 && (
+              <Skeleton className="h-[1px] w-full text-zinc-100" />
+            )}
+            {[0, 1, 2].map((blockIndex) => (
+              <Block.Skeleton key={`${categoryIndex}-${blockIndex}`} />
+            ))}
+          </Fragment>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="scrollbar-thin scrollbar-thumb-rounded scrollbar-thumb-zinc-200 scrollbar-track-transparent h-full overflow-y-scroll pt-4">
       <div className="w-full space-y-3 px-4 pb-4">
-        {/* AI Category */}
-        <div className="space-y-2.5">
-          <div className="flex items-center justify-between">
-            <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
-              AI
-            </p>
-            <span className="rounded-full bg-zinc-100 px-[0.375rem] font-sans text-sm leading-[1.375rem] text-zinc-600">
-              10
-            </span>
-          </div>
+        {categories.map((category, index) => (
+          <Fragment key={category.name}>
+            {index > 0 && (
+              <Separator className="h-[1px] w-full text-zinc-300" />
+            )}
 
-          <div className="space-y-2">
-            <Block
-              title="Add to list"
-              description="Enables your agent to chat with users in natural language."
-            />
-            <Block
-              title="Add to list"
-              description="Enables your agent to chat with users in natural language."
-            />
-            <Block
-              title="Add to list"
-              description="Enables your agent to chat with users in natural language."
-            />
+            {/* Category Section */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
+                  {category.name}
+                </p>
+                <span className="rounded-full bg-zinc-100 px-[0.375rem] font-sans text-sm leading-[1.375rem] text-zinc-600">
+                  {category.count}
+                </span>
+              </div>
 
-            <Button
-              variant={"link"}
-              className="px-0 font-sans text-sm leading-[1.375rem] text-zinc-600 underline hover:text-zinc-800"
-            >
-              see all
-            </Button>
-          </div>
-        </div>
+              <div className="space-y-2">
+                {category.items.slice(0, 3).map((item, idx) => (
+                  <Block
+                    key={`${category.name}-${idx}`}
+                    title={item.title}
+                    description={item.description}
+                  />
+                ))}
 
-        <Separator className="h-[1px] w-full text-zinc-300" />
-
-        {/* Basic Category */}
-        <div className="space-y-2.5">
-          <div className="flex items-center justify-between">
-            <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
-              Basic
-            </p>
-            <span className="rounded-full bg-zinc-100 px-[0.375rem] font-sans text-sm leading-[1.375rem] text-zinc-600">
-              6
-            </span>
-          </div>
-
-          <div className="space-y-2">
-            <Block
-              title="Add to list"
-              description="Enables your agent to chat with users in natural language."
-            />
-            <Block
-              title="Add to list"
-              description="Enables your agent to chat with users in natural language."
-            />
-            <Block
-              title="Add to list"
-              description="Enables your agent to chat with users in natural language."
-            />
-
-            <Button
-              variant={"link"}
-              className="px-0 font-sans text-sm leading-[1.375rem] text-zinc-600 underline hover:text-zinc-800"
-            >
-              see all
-            </Button>
-          </div>
-        </div>
-
-        <Separator className="h-[1px] w-full text-zinc-300" />
-
-        {/* Communincation Category */}
-        <div className="space-y-2.5">
-          <div className="flex items-center justify-between">
-            <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
-              Communincation
-            </p>
-            <span className="rounded-full bg-zinc-100 px-[0.375rem] font-sans text-sm leading-[1.375rem] text-zinc-600">
-              6
-            </span>
-          </div>
-
-          <div className="space-y-2">
-            <Block
-              title="Add to list"
-              description="Enables your agent to chat with users in natural language."
-            />
-            <Block
-              title="Add to list"
-              description="Enables your agent to chat with users in natural language."
-            />
-            <Block
-              title="Add to list"
-              description="Enables your agent to chat with users in natural language."
-            />
-
-            <Button
-              variant={"link"}
-              className="px-0 font-sans text-sm leading-[1.375rem] text-zinc-600 underline hover:text-zinc-800"
-            >
-              see all
-            </Button>
-          </div>
-        </div>
+                {category.items.length > 3 && (
+                  <Button
+                    variant={"link"}
+                    className="px-0 font-sans text-sm leading-[1.375rem] text-zinc-600 underline hover:text-zinc-800"
+                  >
+                    see all
+                  </Button>
+                )}
+              </div>
+            </div>
+          </Fragment>
+        ))}
       </div>
     </div>
   );
