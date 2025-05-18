@@ -2,9 +2,11 @@
 
 import { BlockCategory } from "./block-menu/default/AllBlocksContent";
 import { BlockListType } from "./block-menu/default/BlockMenuDefaultContent";
+import { IntegrationBlockData } from "./block-menu/default/IntegrationBlocks";
 import { IntegrationData } from "./block-menu/default/IntegrationList";
 import { MarketplaceAgent } from "./block-menu/default/MarketplaceAgentsContent";
 import { UserAgent } from "./block-menu/default/MyAgentsContent";
+import { SearchItem } from "./block-menu/search-and-filter/SearchList.";
 
 // Suggestion
 
@@ -207,44 +209,44 @@ export const outputBlocksListData: BlockListType[] = [
 
 export const integrationsListData: IntegrationData[] = [
   {
-    title: "Twitter Blocks",
+    title: "Twitter",
     icon_url: "/integrations/x.png",
     description:
       "All twitter blocks, It has everthing to interact with twitter",
-    number_of_blocks: 10,
+    number_of_blocks: 4,
   },
   {
-    title: "Discord Blocks",
+    title: "Discord",
     icon_url: "/integrations/discord.png",
     description:
       "All Discord blocks, It has everthing to interact with discord",
-    number_of_blocks: 14,
+    number_of_blocks: 4,
   },
   {
-    title: "Github Blocks",
+    title: "Github",
     icon_url: "/integrations/github.png",
     description: "All Github blocks, It has everthing to interact with github",
     number_of_blocks: 4,
   },
   {
-    title: "Hubspot Blocks",
+    title: "Hubspot",
     icon_url: "/integrations/hubspot.png",
     description:
       "All Hubspot blocks, It has everthing to interact with Hubspot",
     number_of_blocks: 2,
   },
   {
-    title: "Medium Blocks",
+    title: "Medium",
     icon_url: "/integrations/medium.png",
     description: "All Medium blocks, It has everything to interact with Medium",
-    number_of_blocks: 6,
+    number_of_blocks: 4,
   },
   {
-    title: "Todoist Blocks",
+    title: "Todoist",
     icon_url: "/integrations/todoist.png",
     description:
       "All Todoist blocks, It has everything to interact with Todoist",
-    number_of_blocks: 8,
+    number_of_blocks: 4,
   },
 ];
 
@@ -356,5 +358,185 @@ export const myAgentData: UserAgent[] = [
     edited_time: "23rd April",
     version: 3,
     image_url: "/placeholder.png",
+  },
+];
+
+export const integrationBlocksData: Record<string, IntegrationBlockData[]> = {
+  Twitter: [
+    {
+      title: "Twitter Blocks: Post tweet",
+      description: "Post tweet on twitter",
+      icon_url: "/integrations/x.png",
+    },
+    {
+      title: "Twitter Blocks: Delete tweet",
+      description: "Delete tweet on twitter",
+      icon_url: "/integrations/x.png",
+    },
+    {
+      title: "Twitter Blocks: Update tweet",
+      description: "Update tweet on twitter",
+      icon_url: "/integrations/x.png",
+    },
+    {
+      title: "Twitter Blocks: Retweet tweet",
+      description: "Retweet tweet on twitter",
+      icon_url: "/integrations/x.png",
+    },
+  ],
+  Discord: [
+    {
+      title: "Discord Blocks: Create",
+      description: "Create message on discord",
+      icon_url: "/integrations/discord.png",
+    },
+    {
+      title: "Discord Blocks: Delete",
+      description: "Delete message on discord",
+      icon_url: "/integrations/discord.png",
+    },
+    {
+      title: "Discord Blocks: Update",
+      description: "Update message on discord",
+      icon_url: "/integrations/discord.png",
+    },
+    {
+      title: "Discord Blocks: Read",
+      description: "Read message on discord",
+      icon_url: "/integrations/discord.png",
+    },
+  ],
+  Github: [
+    {
+      title: "Github Blocks: Create PR",
+      description: "Create pull request on github",
+      icon_url: "/integrations/github.png",
+    },
+    {
+      title: "Github Blocks: Merge PR",
+      description: "Merge pull request on github",
+      icon_url: "/integrations/github.png",
+    },
+  ],
+  Hubspot: [
+    {
+      title: "Hubspot Blocks: Create Contact",
+      description: "Create contact on hubspot",
+      icon_url: "/integrations/hubspot.png",
+    },
+    {
+      title: "Hubspot Blocks: Update Contact",
+      description: "Update contact on hubspot",
+      icon_url: "/integrations/hubspot.png",
+    },
+  ],
+  Medium: [
+    {
+      title: "Medium Blocks: Post Article",
+      description: "Post article on medium",
+      icon_url: "/integrations/medium.png",
+    },
+    {
+      title: "Medium Blocks: Delete Article",
+      description: "Delete article on medium",
+      icon_url: "/integrations/medium.png",
+    },
+  ],
+  Todoist: [
+    {
+      title: "Todoist Blocks: Create Task",
+      description: "Create task on todoist",
+      icon_url: "/integrations/todoist.png",
+    },
+    {
+      title: "Todoist Blocks: Complete Task",
+      description: "Complete task on todoist",
+      icon_url: "/integrations/todoist.png",
+    },
+  ],
+};
+
+export const searchingData: SearchItem[] = [
+  {
+    type: "marketing_agent" as const,
+    title: marketplaceAgentData[0].title,
+    image_url: marketplaceAgentData[0].image_url,
+    creator_name: marketplaceAgentData[0].creator_name,
+    number_of_runs: marketplaceAgentData[0].number_of_runs,
+  },
+
+  {
+    type: "ai",
+    title: "Natural Language Processing",
+    description: "Enables your agent to chat with users in natural language.",
+    ai_name: "Claude 3.5 Sonnet",
+  },
+
+  {
+    type: "integration_block" as const,
+    title: integrationsListData[0].title,
+    description: integrationsListData[0].description,
+    icon_url: integrationsListData[0].icon_url,
+    number_of_blocks: integrationsListData[0].number_of_blocks,
+  },
+
+  {
+    type: "marketing_agent" as const,
+    title: marketplaceAgentData[1].title,
+    image_url: marketplaceAgentData[1].image_url,
+    creator_name: marketplaceAgentData[1].creator_name,
+    number_of_runs: marketplaceAgentData[1].number_of_runs,
+  },
+
+  {
+    type: "block" as const,
+    title: topBlocksData[0].title,
+    description: topBlocksData[0].description,
+  },
+
+  {
+    type: "my_agent" as const,
+    title: myAgentData[0].title,
+    image_url: myAgentData[0].image_url,
+    edited_time: myAgentData[0].edited_time,
+    version: myAgentData[0].version,
+  },
+
+  {
+    type: "ai",
+    title: "Sentiment Analysis",
+    description:
+      "Analyzes the sentiment of user messages to respond appropriately.",
+    ai_name: "Claude 3.5 Sonnet",
+  },
+
+  {
+    type: "block" as const,
+    title: topBlocksData[1].title,
+    description: topBlocksData[1].description,
+  },
+
+  {
+    type: "marketing_agent" as const,
+    title: marketplaceAgentData[2].title,
+    image_url: marketplaceAgentData[2].image_url,
+    creator_name: marketplaceAgentData[2].creator_name,
+    number_of_runs: marketplaceAgentData[2].number_of_runs,
+  },
+
+  {
+    type: "integration_block" as const,
+    title: integrationsListData[1].title,
+    description: integrationsListData[1].description,
+    icon_url: integrationsListData[1].icon_url,
+    number_of_blocks: integrationsListData[1].number_of_blocks,
+  },
+
+  {
+    type: "my_agent" as const,
+    title: myAgentData[1].title,
+    image_url: myAgentData[1].image_url,
+    edited_time: myAgentData[1].edited_time,
+    version: myAgentData[1].version,
   },
 ];

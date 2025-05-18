@@ -13,10 +13,7 @@ const BlockMenuSidebar: React.FC<BlockMenuSidebarProps> = ({
   setDefaultState,
   setIntegration,
 }) => {
-  // BLOCK MENU TODO: We need to fetch the number of Blocks/Integrations/Agents when opening the menu.
-  // Alternatively, this might depend on the strategy we plan in the future.
-  // We'll add a loading state based on the future plan.
-
+  // Update Block Menu fetching
   return (
     <div className="space-y-2 p-4">
       <MenuItem

@@ -18,8 +18,11 @@ const BlockMenuContent: React.FC = () => {
       <Separator className="h-[1px] w-full text-zinc-300" />
 
       {/* Content */}
-      {/* BLOCK MENU TODO : search after 3 characters */}
-      {searchQuery ? <BlockMenuSearch /> : <BlockMenuDefault />}
+      {searchQuery ? (
+        <BlockMenuSearch searchQuery={searchQuery} />
+      ) : (
+        <BlockMenuDefault />
+      )}
     </div>
   );
 };

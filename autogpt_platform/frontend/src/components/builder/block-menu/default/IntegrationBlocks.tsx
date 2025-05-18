@@ -1,6 +1,16 @@
 import { Button } from "@/components/ui/button";
-import React from "react";
+import React, { useState, useEffect } from "react";
 import IntegrationBlock from "../IntegrationBlock";
+import {
+  integrationBlocksData,
+  integrationsListData,
+} from "../../testing_data";
+
+export interface IntegrationBlockData {
+  title: string;
+  description: string;
+  icon_url: string;
+}
 
 interface IntegrationBlocksProps {
   integration: string;
@@ -11,6 +21,28 @@ const IntegrationBlocks: React.FC<IntegrationBlocksProps> = ({
   integration,
   setIntegration,
 }) => {
+  const [blocks, setBlocks] = useState<IntegrationBlockData[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  // Update Block Menu fetching
+  useEffect(() => {
+    if (integration) {
+      setIsLoading(true);
+      setTimeout(() => {
+        const foundBlocks = integrationBlocksData[integration] || [];
+        setBlocks(foundBlocks);
+        setIsLoading(false);
+      }, 800);
+    }
+  }, [integration]);
+
+  const getBlockCount = (): number => {
+    const integrationData = integrationsListData.find(
+      (item) => item.title === integration,
+    );
+    return integrationData?.number_of_blocks || 0;
+  };
+
   return (
     <div className="space-y-2.5">
       <div className="flex items-center justify-between">
@@ -32,56 +64,28 @@ const IntegrationBlocks: React.FC<IntegrationBlocksProps> = ({
           </p>
         </div>
         <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 font-sans text-sm leading-[1.375rem] text-zinc-500 group-disabled:text-zinc-400">
-          {13}
+          {getBlockCount()}
         </span>
       </div>
-      {integration == "Twitter Blocks" && (
-        <div className="space-y-3">
-          <IntegrationBlock
-            title={`${integration}: Post tweet`}
-            description="Post tweet on twitter"
-            icon_url="/integrations/x.png"
-          />
-          <IntegrationBlock
-            title={`${integration}: Delete tweet`}
-            description="Delete tweet on twitter"
-            icon_url="/integrations/x.png"
-          />
-          <IntegrationBlock
-            title={`${integration}: Update tweet`}
-            description="Update tweet on twitter"
-            icon_url="/integrations/x.png"
-          />
-          <IntegrationBlock
-            title={`${integration}: Retweet tweet`}
-            description="Retweet tweet on twitter"
-            icon_url="/integrations/x.png"
-          />
-        </div>
-      )}
 
-      {integration == "Discord Blocks" && (
+      {isLoading ? (
         <div className="space-y-3">
-          <IntegrationBlock
-            title={`${integration}: Create`}
-            description="Create message on discord"
-            icon_url="/integrations/discord.png"
-          />
-          <IntegrationBlock
-            title={`${integration}: Delete`}
-            description="Delete message on discord"
-            icon_url="/integrations/discord.png"
-          />
-          <IntegrationBlock
-            title={`${integration}: Update`}
-            description="Update message on discord"
-            icon_url="/integrations/discord.png"
-          />
-          <IntegrationBlock
-            title={`${integration}: Read`}
-            description="Read message on discord"
-            icon_url="/integrations/discord.png"
-          />
+          {Array(5)
+            .fill(0)
+            .map((_, index) => (
+              <IntegrationBlock.Skeleton key={index} />
+            ))}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {blocks.map((block, index) => (
+            <IntegrationBlock
+              key={index}
+              title={block.title}
+              description={block.description}
+              icon_url={block.icon_url}
+            />
+          ))}
         </div>
       )}
     </div>

@@ -1,5 +1,3 @@
-// BLOCK MENU TODO: Fix scrollbar in all states
-
 import React, { useState } from "react";
 import BlockMenuSidebar from "./BlockMenuSidebar";
 import { Separator } from "@/components/ui/separator";

@@ -16,7 +16,12 @@ const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
 }) => {
   const inputRef = useRef(null);
   return (
-    <div className="flex min-h-[3.5625rem] items-center gap-2.5 px-4">
+    <div
+      className={cn(
+        "flex min-h-[3.5625rem] items-center gap-2.5 px-4",
+        className,
+      )}
+    >
       <Search className="h-6 w-6 text-zinc-700" strokeWidth={2} />
       <Input
         ref={inputRef}

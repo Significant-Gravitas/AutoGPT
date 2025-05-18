@@ -7,11 +7,11 @@ const OutputBlocksContent: React.FC = () => {
   const [blocks, setBlocks] = useState<BlockListType[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Update Block Menu fetching
   useEffect(() => {
     const fetchBlocks = async () => {
       setLoading(true);
       try {
-        // Simulate API call
         await new Promise((resolve) => setTimeout(resolve, 1000));
         setBlocks(outputBlocksListData);
       } catch (error) {

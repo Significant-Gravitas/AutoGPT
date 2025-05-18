@@ -8,10 +8,10 @@ const InputBlocksContent: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Update Block Menu fetching
     const fetchBlocks = async () => {
       setLoading(true);
       try {
-        // Simulate API call
         await new Promise((resolve) => setTimeout(resolve, 1000));
         setBlocks(inputBlocksListData);
       } catch (error) {

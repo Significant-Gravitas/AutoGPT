@@ -19,12 +19,11 @@ const IntegrationList: React.FC<IntegrationListProps> = ({
   const [integrations, setIntegrations] = useState<IntegrationData[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
+  // Update Block Menu fetching
   useEffect(() => {
-    // Mock API call to fetch integrations
     const fetchIntegrations = async () => {
       setIsLoading(true);
       try {
-        // Simulate network delay
         await new Promise((resolve) => setTimeout(resolve, 1000));
 
         setIntegrations(integrationsListData);

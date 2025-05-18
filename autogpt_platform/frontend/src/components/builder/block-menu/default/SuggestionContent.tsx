@@ -26,10 +26,10 @@ const SuggestionContent: React.FC<SuggestionContentProps> = ({
     { title: string; description: string }[] | null
   >(null);
 
+  // Update Block Menu fetching
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Create fetch functions that return their respective data
         const fetchRecentSearches = async (): Promise<string[]> => {
           await new Promise((resolve) => setTimeout(resolve, 300));
           return recentSearchesData;
@@ -49,7 +49,6 @@ const SuggestionContent: React.FC<SuggestionContentProps> = ({
           return topBlocksData;
         };
 
-        // Fetch all data simultaneously using Promise.all
         const [
           recentSearchesDataFetched,
           integrationsDataFetched,
@@ -72,14 +71,14 @@ const SuggestionContent: React.FC<SuggestionContentProps> = ({
   }, []);
 
   return (
-    <div className="scrollbar-thumb-rounded h-full overflow-y-scroll pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
+    <div className="scrollbar-thumb-rounded scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200 h-full overflow-y-scroll pt-4">
       <div className="w-full space-y-6 pb-4">
         {/* Recent Searches */}
         <div className="space-y-2.5">
           <p className="px-4 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
             Recent searches
           </p>
-          <div className="flex flex-nowrap gap-2 overflow-x-auto scrollbar-hide">
+          <div className="scrollbar-hide flex flex-nowrap gap-2 overflow-x-auto">
             {recentSearches
               ? recentSearches.map((search, index) => (
                   <SearchHistoryChip

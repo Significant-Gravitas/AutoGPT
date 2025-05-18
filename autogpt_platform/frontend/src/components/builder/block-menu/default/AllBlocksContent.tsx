@@ -1,5 +1,3 @@
-// BLOCK MENU TODO: Currently I have hide the scrollbar, but need to add better designed custom scroller
-
 import React, { useState, useEffect, Fragment } from "react";
 import Block from "../Block";
 import { Button } from "@/components/ui/button";
@@ -7,7 +5,6 @@ import { Separator } from "@/components/ui/separator";
 import { allBlocksDataWithCategories } from "../../testing_data";
 import { Skeleton } from "@/components/ui/skeleton";
 
-// These are Temporary type, need to change it in future
 type BlockItem = {
   title: string;
   description: string;
@@ -23,6 +20,7 @@ const AllBlocksContent: React.FC = () => {
   const [categories, setCategories] = useState<BlockCategory[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Update Block Menu fetching
   useEffect(() => {
     const fetchBlocks = async () => {
       setLoading(true);
@@ -41,7 +39,7 @@ const AllBlocksContent: React.FC = () => {
         {[0, 1, 3].map((categoryIndex) => (
           <Fragment key={categoryIndex}>
             {categoryIndex > 0 && (
-              <Skeleton className="h-[1px] w-full text-zinc-100" />
+              <Skeleton className="my-4 h-[1px] w-full text-zinc-100" />
             )}
             {[0, 1, 2].map((blockIndex) => (
               <Block.Skeleton key={`${categoryIndex}-${blockIndex}`} />
@@ -53,7 +51,7 @@ const AllBlocksContent: React.FC = () => {
   }
 
   return (
-    <div className="scrollbar-thumb-rounded h-full overflow-y-scroll pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
+    <div className="scrollbar-thumb-rounded scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200 h-full overflow-y-scroll pt-4">
       <div className="w-full space-y-3 px-4 pb-4">
         {categories.map((category, index) => (
           <Fragment key={category.name}>

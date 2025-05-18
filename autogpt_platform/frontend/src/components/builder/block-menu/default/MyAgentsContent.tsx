@@ -14,6 +14,7 @@ const MyAgentsContent: React.FC = () => {
   const [agents, setAgents] = useState<UserAgent[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
+  // Update Block Menu fetching
   useEffect(() => {
     const fetchAgents = async () => {
       try {
@@ -41,7 +42,7 @@ const MyAgentsContent: React.FC = () => {
   }
 
   return (
-    <div className="scrollbar-thumb-rounded h-full overflow-y-scroll pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
+    <div className="scrollbar-thumb-rounded scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200 h-full overflow-y-scroll pt-4">
       <div className="w-full space-y-3 px-4 pb-4">
         {agents.map((agent) => (
           <UGCAgentBlock
