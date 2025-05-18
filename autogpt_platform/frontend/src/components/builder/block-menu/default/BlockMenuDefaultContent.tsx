@@ -17,7 +17,7 @@ const BlockMenuDefaultContent: React.FC<BlockMenuDefaultContentProps> = ({
   defaultState,
 }) => {
   return (
-    <div className="scrollbar-hide h-full flex-1 overflow-y-auto pt-4">
+    <div className="scrollbar-thin scrollbar-thumb-rounded scrollbar-thumb-zinc-200 scrollbar-track-transparent h-full flex-1 overflow-y-scroll pt-4">
       {defaultState == "suggestion" && <SuggestionContent />}
       {defaultState == "all_blocks" && <AllBlocksContent />}
       {defaultState == "input_blocks" && <InputBlocksContent />}

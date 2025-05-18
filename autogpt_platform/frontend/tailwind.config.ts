@@ -145,7 +145,11 @@ const config = {
       },
     },
   },
-  plugins: [require("tailwindcss-animate"), scrollbarHide],
+  plugins: [
+    require("tailwindcss-animate"),
+    scrollbarHide,
+    require("tailwind-scrollbar"),
+  ],
 } satisfies Config;
 
 export default config;
