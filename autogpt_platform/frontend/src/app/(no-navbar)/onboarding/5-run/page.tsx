@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { TypeBasedInput } from "@/components/type-based-input";
 import SmartImage from "@/components/agptui/SmartImage";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function Page() {
   const { state, updateState, setStep } = useOnboarding(
@@ -26,6 +27,8 @@ export default function Page() {
   const [showInput, setShowInput] = useState(false);
   const [agent, setAgent] = useState<GraphMeta | null>(null);
   const [storeAgent, setStoreAgent] = useState<StoreAgentDetails | null>(null);
+  const [runningAgent, setRunningAgent] = useState(false);
+  const { toast } = useToast();
   const router = useRouter();
   const api = useBackendAPI();
 
@@ -76,27 +79,35 @@ export default function Page() {
     [state?.agentInput, updateState],
   );
 
-  const runAgent = useCallback(() => {
+  const runAgent = useCallback(async () => {
     if (!agent) {
       return;
     }
-    api
-      .addMarketplaceAgentToLibrary(storeAgent?.store_listing_version_id || "")
-      .then((libraryAgent) => {
-        api
-          .executeGraph(
-            libraryAgent.graph_id,
-            libraryAgent.graph_version,
-            state?.agentInput || {},
-          )
-          .then(({ graph_exec_id }) => {
-            updateState({
-              onboardingAgentExecutionId: graph_exec_id,
-            });
-            router.push("/onboarding/6-congrats");
-          });
+    setRunningAgent(true);
+    try {
+      const libraryAgent = await api.addMarketplaceAgentToLibrary(
+        storeAgent?.store_listing_version_id || "",
+      );
+      const { graph_exec_id } = await api.executeGraph(
+        libraryAgent.graph_id,
+        libraryAgent.graph_version,
+        state?.agentInput || {},
+      );
+      updateState({
+        onboardingAgentExecutionId: graph_exec_id,
       });
-  }, [api, agent, router, state?.agentInput, storeAgent, updateState]);
+      router.push("/onboarding/6-congrats");
+    } catch (error) {
+      console.error("Error running agent:", error);
+      toast({
+        title: "Error running agent",
+        description:
+          "There was an error running your agent. Please try again or try choosing a different agent if it still fails.",
+        variant: "destructive",
+      });
+      setRunningAgent(false);
+    }
+  }, [api, agent, router, state?.agentInput, storeAgent, updateState, toast]);
 
   const runYourAgent = (
     <div className="ml-[104px] w-[481px] pl-5">
@@ -234,14 +245,17 @@ export default function Page() {
               <OnboardingButton
                 variant="violet"
                 className="mt-8 w-[136px]"
+                loading={runningAgent}
                 disabled={
                   Object.values(state?.agentInput || {}).some(
                     (value) => String(value).trim() === "",
-                  ) || !agent
+                  ) ||
+                  !agent ||
+                  runningAgent
                 }
                 onClick={runAgent}
+                icon={<Play className="mr-2" size={18} />}
               >
-                <Play className="" size={18} />
                 Run agent
               </OnboardingButton>
             </div>

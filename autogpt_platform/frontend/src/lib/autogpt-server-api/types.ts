@@ -173,6 +173,7 @@ export const PROVIDER_NAMES = {
   OPENWEATHERMAP: "openweathermap",
   PROXYCURL: "proxycurl",
   OPEN_ROUTER: "open_router",
+  LLAMA_API: "llama_api",
   PINECONE: "pinecone",
   SCREENSHOTONE: "screenshotone",
   SLANT3D: "slant3d",

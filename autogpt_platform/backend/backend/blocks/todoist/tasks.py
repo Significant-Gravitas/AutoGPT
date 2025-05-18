@@ -7,6 +7,7 @@ from typing_extensions import Optional
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TODOIST_OAUTH_IS_CONFIGURED,
     TodoistCredentials,
     TodoistCredentialsField,
     TodoistCredentialsInput,
@@ -86,6 +87,7 @@ class TodoistCreateTaskBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistCreateTaskBlock.Input,
             output_schema=TodoistCreateTaskBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "content": "Buy groceries",
@@ -217,6 +219,7 @@ class TodoistGetTasksBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetTasksBlock.Input,
             output_schema=TodoistGetTasksBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "project_id": "2203306141",
@@ -309,6 +312,7 @@ class TodoistGetTaskBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetTaskBlock.Input,
             output_schema=TodoistGetTaskBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={"credentials": TEST_CREDENTIALS_INPUT, "task_id": "2995104339"},
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -428,6 +432,7 @@ class TodoistUpdateTaskBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistUpdateTaskBlock.Input,
             output_schema=TodoistUpdateTaskBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "task_id": "2995104339",
@@ -467,32 +472,24 @@ class TodoistUpdateTaskBlock(Block):
             )
 
             task_updates = {}
-            if input_data.content is not None:
-                task_updates["content"] = input_data.content
-            if input_data.description is not None:
-                task_updates["description"] = input_data.description
-            if input_data.project_id is not None:
-                task_updates["project_id"] = input_data.project_id
-            if input_data.section_id is not None:
-                task_updates["section_id"] = input_data.section_id
-            if input_data.parent_id is not None:
-                task_updates["parent_id"] = input_data.parent_id
-            if input_data.order is not None:
-                task_updates["order"] = input_data.order
-            if input_data.labels is not None:
-                task_updates["labels"] = input_data.labels
-            if input_data.priority is not None:
-                task_updates["priority"] = input_data.priority
-            if due_date is not None:
-                task_updates["due_date"] = due_date
-            if deadline_date is not None:
-                task_updates["deadline_date"] = deadline_date
-            if input_data.assignee_id is not None:
-                task_updates["assignee_id"] = input_data.assignee_id
-            if input_data.duration is not None:
-                task_updates["duration"] = input_data.duration
-            if input_data.duration_unit is not None:
-                task_updates["duration_unit"] = input_data.duration_unit
+            update_fields = {
+                "content": input_data.content,
+                "description": input_data.description,
+                "project_id": input_data.project_id,
+                "section_id": input_data.section_id,
+                "parent_id": input_data.parent_id,
+                "order": input_data.order,
+                "labels": input_data.labels,
+                "priority": input_data.priority,
+                "due_date": due_date,
+                "deadline_date": deadline_date,
+                "assignee_id": input_data.assignee_id,
+                "duration": input_data.duration,
+                "duration_unit": input_data.duration_unit,
+            }
+
+            # Filter out None values
+            task_updates = {k: v for k, v in update_fields.items() if v is not None}
 
             self.update_task(
                 credentials,
@@ -526,6 +523,7 @@ class TodoistCloseTaskBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistCloseTaskBlock.Input,
             output_schema=TodoistCloseTaskBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={"credentials": TEST_CREDENTIALS_INPUT, "task_id": "2995104339"},
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
@@ -576,6 +574,7 @@ class TodoistReopenTaskBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistReopenTaskBlock.Input,
             output_schema=TodoistReopenTaskBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={"credentials": TEST_CREDENTIALS_INPUT, "task_id": "2995104339"},
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -628,6 +627,7 @@ class TodoistDeleteTaskBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistDeleteTaskBlock.Input,
             output_schema=TodoistDeleteTaskBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={"credentials": TEST_CREDENTIALS_INPUT, "task_id": "2995104339"},
             test_credentials=TEST_CREDENTIALS,
             test_output=[

@@ -1,7 +1,6 @@
 import React, { Suspense } from "react";
 import type { Metadata } from "next";
 import { Inter, Poppins } from "next/font/google";
-import { GoogleAnalytics } from "@next/third-parties/google";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 
@@ -12,6 +11,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Providers } from "@/app/providers";
 import TallyPopupSimple from "@/components/TallyPopup";
 import OttoChatWidget from "@/components/OttoChatWidget";
+import { GoogleAnalytics } from "@/components/analytics/google-analytics";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -36,6 +36,11 @@ export default async function RootLayout({
       lang="en"
       className={`${poppins.variable} ${GeistSans.variable} ${GeistMono.variable} ${inter.variable}`}
     >
+      <head>
+        <GoogleAnalytics
+          gaId={process.env.GA_MEASUREMENT_ID || "G-FH2XK2W4GN"} // This is the measurement Id for the Google Analytics dev project
+        />
+      </head>
       <body
         className={cn(
           "bg-neutral-50 antialiased transition-colors",
@@ -59,10 +64,6 @@ export default async function RootLayout({
           <Toaster />
         </Providers>
       </body>
-
-      <GoogleAnalytics
-        gaId={process.env.GA_MEASUREMENT_ID || "G-FH2XK2W4GN"} // This is the measurement Id for the Google Analytics dev project
-      />
     </html>
   );
 }
