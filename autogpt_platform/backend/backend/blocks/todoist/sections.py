@@ -4,6 +4,7 @@ from typing_extensions import Optional
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TODOIST_OAUTH_IS_CONFIGURED,
     TodoistCredentials,
     TodoistCredentialsField,
     TodoistCredentialsInput,
@@ -36,6 +37,7 @@ class TodoistListSectionsBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistListSectionsBlock.Input,
             output_schema=TodoistListSectionsBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "project_id": "2203306141",
@@ -207,6 +209,7 @@ class TodoistGetSectionBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetSectionBlock.Input,
             output_schema=TodoistGetSectionBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={"credentials": TEST_CREDENTIALS_INPUT, "section_id": "7025"},
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -275,6 +278,7 @@ class TodoistDeleteSectionBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistDeleteSectionBlock.Input,
             output_schema=TodoistDeleteSectionBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={"credentials": TEST_CREDENTIALS_INPUT, "section_id": "7025"},
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
