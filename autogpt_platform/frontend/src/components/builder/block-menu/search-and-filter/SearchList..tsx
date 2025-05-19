@@ -1,4 +1,4 @@
-import { marketplaceAgentData, searchingData } from "../../testing_data";
+import { searchingData } from "../../testing_data";
 import { useEffect, useState } from "react";
 import MarketplaceAgentBlock from "../MarketplaceAgentBlock";
 import Block from "../Block";
