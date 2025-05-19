@@ -175,6 +175,7 @@ export default function AgentRunsPage(): React.ReactElement {
           </div>
         ),
         duration: Infinity, // show until connection is re-established
+        dismissable: false,
       });
     });
     const cancelConnectHandler = api.onWebSocketConnect(() => {
@@ -190,6 +191,7 @@ export default function AgentRunsPage(): React.ReactElement {
             </div>
           ),
           duration: 2000,
+          dismissable: true,
         });
       connectionToast = null;
     });

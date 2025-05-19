@@ -13,14 +13,18 @@ import { useToast } from "@/components/ui/use-toast";
 export function Toaster() {
   const { toasts } = useToast();
 
-  const swipeThreshold = toasts.some((toast) => toast.dismissable === false)
-    ? Infinity
-    : undefined;
+  // This neat little feature makes the toaster buggy due to the following issue:
+  // https://github.com/radix-ui/primitives/issues/2233
+  // TODO: Re-enable when the above issue is fixed:
+  // const swipeThreshold = toasts.some((toast) => toast.dismissable === false)
+  //   ? Infinity
+  //   : undefined;
+  const swipeThreshold = undefined;
 
   return (
     <ToastProvider swipeThreshold={swipeThreshold}>
-      {toasts.map(function ({ id, title, description, action, dismissable, ...props }) {
-        return (
+      {toasts.map(
+        ({ id, title, description, action, dismissable, ...props }) => (
           <Toast key={id} {...props}>
             <div className="grid gap-1">
               {title && <ToastTitle>{title}</ToastTitle>}
@@ -31,8 +35,8 @@ export function Toaster() {
             {action}
             {dismissable !== false && <ToastClose />}
           </Toast>
-        );
-      })}
+        ),
+      )}
       <ToastViewport />
     </ToastProvider>
   );
