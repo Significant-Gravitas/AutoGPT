@@ -8,7 +8,7 @@ const InputBlocksContent: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Update Block Menu fetching
+    // TEMPORARY FETCHING
     const fetchBlocks = async () => {
       setLoading(true);
       try {

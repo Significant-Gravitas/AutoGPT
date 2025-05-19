@@ -19,7 +19,7 @@ const IntegrationList: React.FC<IntegrationListProps> = ({
   const [integrations, setIntegrations] = useState<IntegrationData[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Update Block Menu fetching
+  // TEMPORARY FETCHING
   useEffect(() => {
     const fetchIntegrations = async () => {
       setIsLoading(true);

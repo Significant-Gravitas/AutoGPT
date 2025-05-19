@@ -14,7 +14,7 @@ const MarketplaceAgentsContent: React.FC = () => {
   const [agents, setAgents] = useState<MarketplaceAgent[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Update Block Menu fetching
+  // TEMPORARY FETCHING
   useEffect(() => {
     const fetchAgents = async () => {
       try {

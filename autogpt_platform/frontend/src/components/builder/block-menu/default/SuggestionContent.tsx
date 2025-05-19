@@ -28,7 +28,7 @@ const SuggestionContent: React.FC<SuggestionContentProps> = ({
     { title: string; description: string }[] | null
   >(null);
 
-  // Update Block Menu fetching
+  // TEMPORARY FETCHING
   useEffect(() => {
     const fetchData = async () => {
       try {

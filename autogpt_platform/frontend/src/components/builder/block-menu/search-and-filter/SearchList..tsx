@@ -59,6 +59,7 @@ const SearchList = ({ searchQuery }: { searchQuery: string }) => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
+    // TEMPORARY FETCHING
     const fetchData = async () => {
       setIsLoading(true);
       try {

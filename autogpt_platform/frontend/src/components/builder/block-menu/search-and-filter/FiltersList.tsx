@@ -42,6 +42,7 @@ const FiltersList = () => {
     { key: "templates", name: "Templates" },
   ];
 
+  // TEMPORARY FETCHING
   useEffect(() => {
     const mockCreators = ["Abhi", "Abhi 1", "Abhi 2", "Abhi 3", "Abhi 4"];
 

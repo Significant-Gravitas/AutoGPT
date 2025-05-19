@@ -7,7 +7,7 @@ const ActionBlocksContent: React.FC = () => {
   const [blocks, setBlocks] = useState<BlockListType[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Update Block Menu fetching
+  // TEMPORARY FETCHING
   useEffect(() => {
     const fetchBlocks = async () => {
       setLoading(true);

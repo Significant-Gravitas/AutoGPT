@@ -13,61 +13,93 @@ const BlockMenuSidebar: React.FC<BlockMenuSidebarProps> = ({
   setDefaultState,
   setIntegration,
 }) => {
-  // Update Block Menu fetching
+  // TEMPORARY FETCHING
+  const topLevelMenuItems = [
+    {
+      name: "Suggestion",
+      type: "suggestion",
+    },
+    {
+      name: "All blocks",
+      type: "all_blocks",
+      number: 103,
+    },
+  ];
+
+  const subMenuItems = [
+    {
+      name: "Input blocks",
+      type: "input_blocks",
+      number: 12,
+    },
+    {
+      name: "Action blocks",
+      type: "action_blocks",
+      number: 40,
+    },
+    {
+      name: "Output blocks",
+      type: "output_blocks",
+      number: 6,
+    },
+  ];
+
+  const bottomMenuItems = [
+    {
+      name: "Integrations",
+      type: "integrations",
+      number: 24,
+      onClick: () => {
+        setIntegration("");
+        setDefaultState("integrations");
+      },
+    },
+    {
+      name: "Marketplace Agents",
+      type: "marketplace_agents",
+      number: 103,
+    },
+    {
+      name: "My Agents",
+      type: "my_agents",
+      number: 6,
+    },
+  ];
+
   return (
     <div className="space-y-2 p-4">
-      <MenuItem
-        name={"Suggestion"}
-        selected={defaultState == "suggestion"}
-        onClick={() => setDefaultState("suggestion")}
-      />
-      <MenuItem
-        name={"All blocks"}
-        number={103}
-        selected={defaultState == "all_blocks"}
-        onClick={() => setDefaultState("all_blocks")}
-      />
+      {topLevelMenuItems.map((item) => (
+        <MenuItem
+          key={item.type}
+          name={item.name}
+          number={item.number}
+          selected={defaultState === item.type}
+          onClick={() => setDefaultState(item.type as DefaultStateType)}
+        />
+      ))}
       <div className="ml-[0.5365rem] border-l border-black/10 pl-[0.75rem]">
-        <MenuItem
-          name={"Input blocks"}
-          number={12}
-          selected={defaultState == "input_blocks"}
-          onClick={() => setDefaultState("input_blocks")}
-        />
-        <MenuItem
-          name={"Action blocks"}
-          number={40}
-          selected={defaultState == "action_blocks"}
-          onClick={() => setDefaultState("action_blocks")}
-        />
-        <MenuItem
-          name={"Output blocks"}
-          number={6}
-          selected={defaultState == "output_blocks"}
-          onClick={() => setDefaultState("output_blocks")}
-        />
+        {subMenuItems.map((item) => (
+          <MenuItem
+            key={item.type}
+            name={item.name}
+            number={item.number}
+            selected={defaultState === item.type}
+            onClick={() => setDefaultState(item.type as DefaultStateType)}
+          />
+        ))}
       </div>
-      <MenuItem
-        name={"Integrations"}
-        number={24}
-        selected={defaultState == "integrations"}
-        onClick={() => {
-          setIntegration("");
-          setDefaultState("integrations");
-        }}
-      />
-      <MenuItem
-        name={"Marketplace Agents"}
-        number={103}
-        selected={defaultState == "marketplace_agents"}
-        onClick={() => setDefaultState("marketplace_agents")}
-      />
-      <MenuItem
-        name={"My Agents"}
-        number={6}
-        selected={defaultState == "my_agents"}
-        onClick={() => setDefaultState("my_agents")}
-      />
+      {bottomMenuItems.map((item) => (
+        <MenuItem
+          key={item.type}
+          name={item.name}
+          number={item.number}
+          selected={defaultState === item.type}
+          onClick={
+            item.onClick ||
+            (() => setDefaultState(item.type as DefaultStateType))
+          }
+        />
+      ))}
     </div>
   );
 };

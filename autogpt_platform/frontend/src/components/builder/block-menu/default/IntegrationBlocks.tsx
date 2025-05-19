@@ -24,7 +24,7 @@ const IntegrationBlocks: React.FC<IntegrationBlocksProps> = ({
   const [blocks, setBlocks] = useState<IntegrationBlockData[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Update Block Menu fetching
+  // TEMPORARY FETCHING
   useEffect(() => {
     if (integration) {
       setIsLoading(true);

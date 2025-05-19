@@ -14,7 +14,7 @@ const MyAgentsContent: React.FC = () => {
   const [agents, setAgents] = useState<UserAgent[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
-  // Update Block Menu fetching
+  // TEMPORARY FETCHING
   useEffect(() => {
     const fetchAgents = async () => {
       try {

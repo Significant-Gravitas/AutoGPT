@@ -20,7 +20,7 @@ const AllBlocksContent: React.FC = () => {
   const [categories, setCategories] = useState<BlockCategory[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Update Block Menu fetching
+  // TEMPORARY FETCHING
   useEffect(() => {
     const fetchBlocks = async () => {
       setLoading(true);

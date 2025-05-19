@@ -9,7 +9,6 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon_url?: string;
 }
 
-// Define the component type with Skeleton property
 interface IntegrationChipComponent extends React.FC<Props> {
   Skeleton: React.FC;
 }
@@ -45,7 +44,6 @@ const IntegrationChip: IntegrationChipComponent = ({
   );
 };
 
-// Skeleton subcomponent
 const IntegrationChipSkeleton: React.FC = () => {
   return (
     <Skeleton className="flex h-[3.25rem] w-full min-w-[7.5rem] gap-2 rounded-[0.5rem] bg-zinc-100 p-2 pr-3">
