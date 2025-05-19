@@ -12,11 +12,13 @@ import {
 interface SuggestionContentProps {
   setIntegration: React.Dispatch<React.SetStateAction<string>>;
   setDefaultState: React.Dispatch<React.SetStateAction<DefaultStateType>>;
+  setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
 }
 
 const SuggestionContent: React.FC<SuggestionContentProps> = ({
   setIntegration,
   setDefaultState,
+  setSearchQuery,
 }) => {
   const [recentSearches, setRecentSearches] = useState<string[] | null>(null);
   const [integrations, setIntegrations] = useState<
@@ -85,6 +87,7 @@ const SuggestionContent: React.FC<SuggestionContentProps> = ({
                     key={`search-${index}`}
                     content={search}
                     className={index === 0 ? "ml-4" : ""}
+                    onClick={() => setSearchQuery(search)}
                   />
                 ))
               : Array(3)

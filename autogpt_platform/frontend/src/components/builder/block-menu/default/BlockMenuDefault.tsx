@@ -13,7 +13,13 @@ export type DefaultStateType =
   | "marketplace_agents"
   | "my_agents";
 
-const BlockMenuDefault: React.FC = () => {
+interface BlockMenuDefaultProps {
+  setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
+}
+
+const BlockMenuDefault: React.FC<BlockMenuDefaultProps> = ({
+  setSearchQuery,
+}) => {
   const [defaultState, setDefaultState] =
     useState<DefaultStateType>("suggestion");
   const [integration, setIntegration] = useState("");
@@ -31,6 +37,7 @@ const BlockMenuDefault: React.FC = () => {
 
       <BlockMenuDefaultContent
         defaultState={defaultState}
+        setSearchQuery={setSearchQuery}
         setDefaultState={setDefaultState}
         setIntegration={setIntegration}
         integration={integration}

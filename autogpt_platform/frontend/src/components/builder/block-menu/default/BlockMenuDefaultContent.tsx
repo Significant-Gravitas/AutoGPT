@@ -14,6 +14,7 @@ interface BlockMenuDefaultContentProps {
   setDefaultState: React.Dispatch<React.SetStateAction<DefaultStateType>>;
   integration: string;
   setIntegration: React.Dispatch<React.SetStateAction<string>>;
+  setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
 }
 
 export interface ActionBlock {
@@ -32,6 +33,7 @@ const BlockMenuDefaultContent: React.FC<BlockMenuDefaultContentProps> = ({
   defaultState,
   setDefaultState,
   integration,
+  setSearchQuery,
   setIntegration,
 }) => {
   return (
@@ -39,6 +41,7 @@ const BlockMenuDefaultContent: React.FC<BlockMenuDefaultContentProps> = ({
       {defaultState == "suggestion" && (
         <SuggestionContent
           setIntegration={setIntegration}
+          setSearchQuery={setSearchQuery}
           setDefaultState={setDefaultState}
         />
       )}

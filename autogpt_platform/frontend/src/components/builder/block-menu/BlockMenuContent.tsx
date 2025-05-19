@@ -21,7 +21,7 @@ const BlockMenuContent: React.FC = () => {
       {searchQuery ? (
         <BlockMenuSearch searchQuery={searchQuery} />
       ) : (
-        <BlockMenuDefault />
+        <BlockMenuDefault setSearchQuery={setSearchQuery} />
       )}
     </div>
   );
