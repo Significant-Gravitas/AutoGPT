@@ -27,7 +27,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import useSupabase from "@/hooks/useSupabase";
-import Spinner from "@/components/Spinner";
+import LoadingBox from "@/components/ui/loading";
 
 export default function PrivatePage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -123,7 +123,7 @@ export default function PrivatePage() {
   );
 
   if (isUserLoading) {
-    return <Spinner className="h-[80vh]" />;
+    return <LoadingBox className="h-[80vh]" />;
   }
 
   if (!user || !supabase) {
