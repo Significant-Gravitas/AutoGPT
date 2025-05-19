@@ -24,28 +24,28 @@ from prisma.models import (
 )
 from prisma.types import (
     AgentGraphExecutionCreateInput,
+    AgentGraphExecutionUpdateManyMutationInput,
     AgentGraphExecutionWhereInput,
     AgentNodeExecutionCreateInput,
     AgentNodeExecutionInputOutputCreateInput,
     AgentNodeExecutionUpdateInput,
     AgentNodeExecutionWhereInput,
 )
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from pydantic.fields import Field
 
 from backend.server.v2.store.exceptions import DatabaseError
-from backend.util import mock
 from backend.util import type as type_utils
 from backend.util.settings import Config
 
-from .block import BlockData, BlockInput, BlockType, CompletedBlockOutput, get_block
+from .block import BlockInput, BlockType, CompletedBlockOutput, get_block
 from .db import BaseDbModel
 from .includes import (
     EXECUTION_RESULT_INCLUDE,
     GRAPH_EXECUTION_INCLUDE,
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
 )
-from .model import GraphExecutionStats, NodeExecutionStats
+from .model import CredentialsMetaInput, GraphExecutionStats, NodeExecutionStats
 from .queue import AsyncRedisEventBus, RedisEventBus
 
 T = TypeVar("T")
@@ -70,10 +70,55 @@ class GraphExecutionMeta(BaseDbModel):
     ended_at: datetime
 
     class Stats(BaseModel):
-        cost: int = Field(..., description="Execution cost (cents)")
-        duration: float = Field(..., description="Seconds from start to end of run")
-        node_exec_time: float = Field(..., description="Seconds of total node runtime")
-        node_exec_count: int = Field(..., description="Number of node executions")
+        model_config = ConfigDict(
+            extra="allow",
+            arbitrary_types_allowed=True,
+        )
+
+        cost: int = Field(
+            default=0,
+            description="Execution cost (cents)",
+        )
+        duration: float = Field(
+            default=0,
+            description="Seconds from start to end of run",
+        )
+        duration_cpu_only: float = Field(
+            default=0,
+            description="CPU sec of duration",
+        )
+        node_exec_time: float = Field(
+            default=0,
+            description="Seconds of total node runtime",
+        )
+        node_exec_time_cpu_only: float = Field(
+            default=0,
+            description="CPU sec of node_exec_time",
+        )
+        node_exec_count: int = Field(
+            default=0,
+            description="Number of node executions",
+        )
+        node_error_count: int = Field(
+            default=0,
+            description="Number of node errors",
+        )
+        error: str | None = Field(
+            default=None,
+            description="Error message if any",
+        )
+
+        def to_db(self) -> GraphExecutionStats:
+            return GraphExecutionStats(
+                cost=self.cost,
+                walltime=self.duration,
+                cputime=self.duration_cpu_only,
+                nodes_walltime=self.node_exec_time,
+                nodes_cputime=self.node_exec_time_cpu_only,
+                node_count=self.node_exec_count,
+                node_error_count=self.node_error_count,
+                error=self.error,
+            )
 
     stats: Stats | None
 
@@ -107,8 +152,16 @@ class GraphExecutionMeta(BaseDbModel):
                 GraphExecutionMeta.Stats(
                     cost=stats.cost,
                     duration=stats.walltime,
+                    duration_cpu_only=stats.cputime,
                     node_exec_time=stats.nodes_walltime,
+                    node_exec_time_cpu_only=stats.nodes_cputime,
                     node_exec_count=stats.node_count,
+                    node_error_count=stats.node_error_count,
+                    error=(
+                        str(stats.error)
+                        if isinstance(stats.error, Exception)
+                        else stats.error
+                    ),
                 )
                 if stats
                 else None
@@ -203,6 +256,15 @@ class GraphExecutionWithNodes(GraphExecution):
             node_executions=node_executions,
         )
 
+    def to_graph_execution_entry(self):
+        return GraphExecutionEntry(
+            user_id=self.user_id,
+            graph_id=self.graph_id,
+            graph_version=self.graph_version or 0,
+            graph_exec_id=self.id,
+            node_credentials_input_map={},  # FIXME
+        )
+
 
 class NodeExecutionResult(BaseModel):
     user_id: str
@@ -260,13 +322,28 @@ class NodeExecutionResult(BaseModel):
             end_time=_node_exec.endedTime,
         )
 
+    def to_node_execution_entry(self) -> "NodeExecutionEntry":
+        return NodeExecutionEntry(
+            user_id=self.user_id,
+            graph_exec_id=self.graph_exec_id,
+            graph_id=self.graph_id,
+            node_exec_id=self.node_exec_id,
+            node_id=self.node_id,
+            block_id=self.block_id,
+            inputs=self.input_data,
+        )
+
 
 # --------------------- Model functions --------------------- #
 
 
 async def get_graph_executions(
-    graph_id: Optional[str] = None,
-    user_id: Optional[str] = None,
+    graph_id: str | None = None,
+    user_id: str | None = None,
+    statuses: list[ExecutionStatus] | None = None,
+    created_time_gte: datetime | None = None,
+    created_time_lte: datetime | None = None,
+    limit: int | None = None,
 ) -> list[GraphExecutionMeta]:
     where_filter: AgentGraphExecutionWhereInput = {
         "isDeleted": False,
@@ -275,10 +352,18 @@ async def get_graph_executions(
         where_filter["userId"] = user_id
     if graph_id:
         where_filter["agentGraphId"] = graph_id
+    if created_time_gte or created_time_lte:
+        where_filter["createdAt"] = {
+            "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
+            "lte": created_time_lte or datetime.max.replace(tzinfo=timezone.utc),
+        }
+    if statuses:
+        where_filter["OR"] = [{"executionStatus": status} for status in statuses]
 
     executions = await AgentGraphExecution.prisma().find_many(
         where=where_filter,
         order={"createdAt": "desc"},
+        take=limit,
     )
     return [GraphExecutionMeta.from_db(execution) for execution in executions]
 
@@ -342,7 +427,7 @@ async def get_graph_execution(
 async def create_graph_execution(
     graph_id: str,
     graph_version: int,
-    nodes_input: list[tuple[str, BlockInput]],
+    starting_nodes_input: list[tuple[str, BlockInput]],
     user_id: str,
     preset_id: str | None = None,
 ) -> GraphExecutionWithNodes:
@@ -369,7 +454,7 @@ async def create_graph_execution(
                             ]
                         },
                     )
-                    for node_id, node_input in nodes_input
+                    for node_id, node_input in starting_nodes_input
                 ]
             },
             userId=user_id,
@@ -469,7 +554,9 @@ async def upsert_execution_output(
     )
 
 
-async def update_graph_execution_start_time(graph_exec_id: str) -> GraphExecution:
+async def update_graph_execution_start_time(
+    graph_exec_id: str,
+) -> GraphExecution | None:
     res = await AgentGraphExecution.prisma().update(
         where={"id": graph_exec_id},
         data={
@@ -478,10 +565,7 @@ async def update_graph_execution_start_time(graph_exec_id: str) -> GraphExecutio
         },
         include=GRAPH_EXECUTION_INCLUDE,
     )
-    if not res:
-        raise ValueError(f"Graph execution #{graph_exec_id} not found")
-
-    return GraphExecution.from_db(res)
+    return GraphExecution.from_db(res) if res else None
 
 
 async def update_graph_execution_stats(
@@ -489,9 +573,15 @@ async def update_graph_execution_stats(
     status: ExecutionStatus,
     stats: GraphExecutionStats | None = None,
 ) -> GraphExecution | None:
-    data = stats.model_dump() if stats else {}
-    if isinstance(data.get("error"), Exception):
-        data["error"] = str(data["error"])
+    update_data: AgentGraphExecutionUpdateManyMutationInput = {
+        "executionStatus": status
+    }
+
+    if stats:
+        stats_dict = stats.model_dump()
+        if isinstance(stats_dict.get("error"), Exception):
+            stats_dict["error"] = str(stats_dict["error"])
+        update_data["stats"] = Json(stats_dict)
 
     updated_count = await AgentGraphExecution.prisma().update_many(
         where={
@@ -501,10 +591,7 @@ async def update_graph_execution_stats(
                 {"executionStatus": ExecutionStatus.QUEUED},
             ],
         },
-        data={
-            "executionStatus": status,
-            "stats": Json(data),
-        },
+        data=update_data,
     )
     if updated_count == 0:
         return None
@@ -597,8 +684,9 @@ async def delete_graph_execution(
         )
 
 
-async def get_node_execution_results(
+async def get_node_executions(
     graph_exec_id: str,
+    node_id: str | None = None,
     block_ids: list[str] | None = None,
     statuses: list[ExecutionStatus] | None = None,
     limit: int | None = None,
@@ -606,6 +694,8 @@ async def get_node_execution_results(
     where_clause: AgentNodeExecutionWhereInput = {
         "agentGraphExecutionId": graph_exec_id,
     }
+    if node_id:
+        where_clause["agentNodeId"] = node_id
     if block_ids:
         where_clause["Node"] = {"is": {"agentBlockId": {"in": block_ids}}}
     if statuses:
@@ -618,28 +708,6 @@ async def get_node_execution_results(
     )
     res = [NodeExecutionResult.from_db(execution) for execution in executions]
     return res
-
-
-async def get_graph_executions_in_timerange(
-    user_id: str, start_time: str, end_time: str
-) -> list[GraphExecution]:
-    try:
-        executions = await AgentGraphExecution.prisma().find_many(
-            where={
-                "startedAt": {
-                    "gte": datetime.fromisoformat(start_time),
-                    "lte": datetime.fromisoformat(end_time),
-                },
-                "userId": user_id,
-                "isDeleted": False,
-            },
-            include=GRAPH_EXECUTION_INCLUDE,
-        )
-        return [GraphExecution.from_db(execution) for execution in executions]
-    except Exception as e:
-        raise DatabaseError(
-            f"Failed to get executions in timerange {start_time} to {end_time} for user {user_id}: {e}"
-        ) from e
 
 
 async def get_latest_node_execution(
@@ -662,20 +730,6 @@ async def get_latest_node_execution(
     return NodeExecutionResult.from_db(execution)
 
 
-async def get_incomplete_node_executions(
-    node_id: str, graph_eid: str
-) -> list[NodeExecutionResult]:
-    executions = await AgentNodeExecution.prisma().find_many(
-        where={
-            "agentNodeId": node_id,
-            "agentGraphExecutionId": graph_eid,
-            "executionStatus": ExecutionStatus.INCOMPLETE,
-        },
-        include=EXECUTION_RESULT_INCLUDE,
-    )
-    return [NodeExecutionResult.from_db(execution) for execution in executions]
-
-
 # ----------------- Execution Infrastructure ----------------- #
 
 
@@ -684,7 +738,7 @@ class GraphExecutionEntry(BaseModel):
     graph_exec_id: str
     graph_id: str
     graph_version: int
-    start_node_execs: list["NodeExecutionEntry"]
+    node_credentials_input_map: Optional[dict[str, dict[str, CredentialsMetaInput]]]
 
 
 class NodeExecutionEntry(BaseModel):
@@ -694,7 +748,7 @@ class NodeExecutionEntry(BaseModel):
     node_exec_id: str
     node_id: str
     block_id: str
-    data: BlockInput
+    inputs: BlockInput
 
 
 class ExecutionQueue(Generic[T]):
@@ -715,144 +769,6 @@ class ExecutionQueue(Generic[T]):
 
     def empty(self) -> bool:
         return self.queue.empty()
-
-
-# ------------------- Execution Utilities -------------------- #
-
-
-LIST_SPLIT = "_$_"
-DICT_SPLIT = "_#_"
-OBJC_SPLIT = "_@_"
-
-
-def parse_execution_output(output: BlockData, name: str) -> Any | None:
-    """
-    Extracts partial output data by name from a given BlockData.
-
-    The function supports extracting data from lists, dictionaries, and objects
-    using specific naming conventions:
-    - For lists: <output_name>_$_<index>
-    - For dictionaries: <output_name>_#_<key>
-    - For objects: <output_name>_@_<attribute>
-
-    Args:
-        output (BlockData): A tuple containing the output name and data.
-        name (str): The name used to extract specific data from the output.
-
-    Returns:
-        Any | None: The extracted data if found, otherwise None.
-
-    Examples:
-        >>> output = ("result", [10, 20, 30])
-        >>> parse_execution_output(output, "result_$_1")
-        20
-
-        >>> output = ("config", {"key1": "value1", "key2": "value2"})
-        >>> parse_execution_output(output, "config_#_key1")
-        'value1'
-
-        >>> class Sample:
-        ...     attr1 = "value1"
-        ...     attr2 = "value2"
-        >>> output = ("object", Sample())
-        >>> parse_execution_output(output, "object_@_attr1")
-        'value1'
-    """
-    output_name, output_data = output
-
-    if name == output_name:
-        return output_data
-
-    if name.startswith(f"{output_name}{LIST_SPLIT}"):
-        index = int(name.split(LIST_SPLIT)[1])
-        if not isinstance(output_data, list) or len(output_data) <= index:
-            return None
-        return output_data[int(name.split(LIST_SPLIT)[1])]
-
-    if name.startswith(f"{output_name}{DICT_SPLIT}"):
-        index = name.split(DICT_SPLIT)[1]
-        if not isinstance(output_data, dict) or index not in output_data:
-            return None
-        return output_data[index]
-
-    if name.startswith(f"{output_name}{OBJC_SPLIT}"):
-        index = name.split(OBJC_SPLIT)[1]
-        if isinstance(output_data, object) and hasattr(output_data, index):
-            return getattr(output_data, index)
-        return None
-
-    return None
-
-
-def merge_execution_input(data: BlockInput) -> BlockInput:
-    """
-    Merges dynamic input pins into a single list, dictionary, or object based on naming patterns.
-
-    This function processes input keys that follow specific patterns to merge them into a unified structure:
-    - `<input_name>_$_<index>` for list inputs.
-    - `<input_name>_#_<index>` for dictionary inputs.
-    - `<input_name>_@_<index>` for object inputs.
-
-    Args:
-        data (BlockInput): A dictionary containing input keys and their corresponding values.
-
-    Returns:
-        BlockInput: A dictionary with merged inputs.
-
-    Raises:
-        ValueError: If a list index is not an integer.
-
-    Examples:
-        >>> data = {
-        ...     "list_$_0": "a",
-        ...     "list_$_1": "b",
-        ...     "dict_#_key1": "value1",
-        ...     "dict_#_key2": "value2",
-        ...     "object_@_attr1": "value1",
-        ...     "object_@_attr2": "value2"
-        ... }
-        >>> merge_execution_input(data)
-        {
-            "list": ["a", "b"],
-            "dict": {"key1": "value1", "key2": "value2"},
-            "object": <MockObject attr1="value1" attr2="value2">
-        }
-    """
-
-    # Merge all input with <input_name>_$_<index> into a single list.
-    items = list(data.items())
-
-    for key, value in items:
-        if LIST_SPLIT not in key:
-            continue
-        name, index = key.split(LIST_SPLIT)
-        if not index.isdigit():
-            raise ValueError(f"Invalid key: {key}, #{index} index must be an integer.")
-
-        data[name] = data.get(name, [])
-        if int(index) >= len(data[name]):
-            # Pad list with empty string on missing indices.
-            data[name].extend([""] * (int(index) - len(data[name]) + 1))
-        data[name][int(index)] = value
-
-    # Merge all input with <input_name>_#_<index> into a single dict.
-    for key, value in items:
-        if DICT_SPLIT not in key:
-            continue
-        name, index = key.split(DICT_SPLIT)
-        data[name] = data.get(name, {})
-        data[name][index] = value
-
-    # Merge all input with <input_name>_@_<index> into a single object.
-    for key, value in items:
-        if OBJC_SPLIT not in key:
-            continue
-        name, index = key.split(OBJC_SPLIT)
-        if name not in data or not isinstance(data[name], object):
-            data[name] = mock.MockObject()
-        setattr(data[name], index, value)
-
-    return data
 
 
 # --------------------- Event Bus --------------------- #

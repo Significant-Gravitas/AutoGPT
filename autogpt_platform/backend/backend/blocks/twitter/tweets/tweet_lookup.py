@@ -6,6 +6,7 @@ from tweepy.client import Response
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TWITTER_OAUTH_IS_CONFIGURED,
     TwitterCredentials,
     TwitterCredentialsField,
     TwitterCredentialsInput,
@@ -67,6 +68,7 @@ class TwitterGetTweetBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetTweetBlock.Input,
             output_schema=TwitterGetTweetBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "tweet_id": "1460323737035677698",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -229,6 +231,7 @@ class TwitterGetTweetsBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetTweetsBlock.Input,
             output_schema=TwitterGetTweetsBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "tweet_ids": ["1460323737035677698"],
                 "credentials": TEST_CREDENTIALS_INPUT,

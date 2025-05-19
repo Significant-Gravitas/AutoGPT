@@ -57,6 +57,28 @@ docker compose -v
 
 Once you have Docker and Docker Compose installed, you can proceed to the next step.
 
+<details>
+ <summary>
+ Raspberry Pi 5 Specific Notes
+ </summary>
+    On Raspberry Pi 5 with Raspberry Pi OS, the default 16K page size will cause issues with the <code>supabase-vector</code> container (expected: 4K).
+    </br>
+    To fix this, edit <code>/boot/firmware/config.txt</code> and add:
+    </br>
+    ```ini
+    kernel=kernel8.img
+    ```
+    Then reboot. You can check your page size with:
+    </br>
+    ```bash
+    getconf PAGESIZE
+    ```
+    <code>16384</code> means 16K (incorrect), and <code>4096</code> means 4K (correct).
+    After adjusting, <code>docker compose up -d --build</code> should work normally.
+    </br>
+    See <a href="https://github.com/supabase/supabase/issues/33816">supabase/supabase #33816</a> for additional context.
+</details>
+
 ## Setup
 
 ### Cloning the Repository
@@ -67,18 +89,16 @@ git clone https://github.com/Significant-Gravitas/AutoGPT.git
 ```
 If you get stuck, follow [this guide](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository).
 
-Once that's complete you can close this terminal window.
+Once that's complete you can continue the setup process.
 
 ### Running the backend services
 
 To run the backend services, follow these steps:
 
-* Within the repository, clone the submodules and navigate to the `autogpt_platform` directory:
+* Navigate to the `autogpt_platform` directory inside the AutoGPT folder:
   ```bash
-   git submodule update --init --recursive --progress
-   cd autogpt_platform
+   cd AutoGPT/autogpt_platform
   ```
-  This command will initialize and update the submodules in the repository. The `supabase` folder will be cloned to the root directory.
 
 * Copy the `.env.example` file to `.env` in `autogpt_platform`:
   ```
@@ -95,7 +115,7 @@ To run the backend services, follow these steps:
 
 ### Running the frontend application
 
-To run the frontend application, follow these steps:
+To run the frontend application open a new terminal and follow these steps:
 
 * Navigate to `frontend` folder within the `autogpt_platform` directory:
   ```
@@ -362,7 +382,7 @@ Currently, there are only 3 active services:
 
 - AgentServer (the API, defined in `server.py`)
 - ExecutionManager (the executor, defined in `manager.py`)
-- ExecutionScheduler (the scheduler, defined in `scheduler.py`)
+- Scheduler (the scheduler, defined in `scheduler.py`)
 
 The services run in independent Python processes and communicate through an IPC.
 A communication layer (`service.py`) is created to decouple the communication library from the implementation.

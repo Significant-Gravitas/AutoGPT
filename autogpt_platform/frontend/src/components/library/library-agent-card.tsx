@@ -48,7 +48,7 @@ export default function LibraryAgentCard({
           />
         )}
         <div className="absolute bottom-4 left-4">
-          <Avatar className="h-16 w-16 border-2 border-white dark:border-gray-800">
+          <Avatar className="h-16 w-16">
             <AvatarImage
               src={
                 creator_image_url
@@ -57,7 +57,7 @@ export default function LibraryAgentCard({
               }
               alt={`${name} creator avatar`}
             />
-            <AvatarFallback>{name.charAt(0)}</AvatarFallback>
+            <AvatarFallback size={64}>{name.charAt(0)}</AvatarFallback>
           </Avatar>
         </div>
       </Link>

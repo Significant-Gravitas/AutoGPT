@@ -31,7 +31,7 @@ class RedisKeyedMutex:
         try:
             yield
         finally:
-            if lock.locked():
+            if lock.locked() and lock.owned():
                 lock.release()
 
     def acquire(self, key: Any) -> "RedisLock":
