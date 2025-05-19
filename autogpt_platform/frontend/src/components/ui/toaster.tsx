@@ -13,9 +13,13 @@ import { useToast } from "@/components/ui/use-toast";
 export function Toaster() {
   const { toasts } = useToast();
 
+  const swipeThreshold = toasts.some((toast) => toast.dismissable === false)
+    ? Infinity
+    : undefined;
+
   return (
-    <ToastProvider>
-      {toasts.map(function ({ id, title, description, action, ...props }) {
+    <ToastProvider swipeThreshold={swipeThreshold}>
+      {toasts.map(function ({ id, title, description, action, dismissable, ...props }) {
         return (
           <Toast key={id} {...props}>
             <div className="grid gap-1">
@@ -25,7 +29,7 @@ export function Toaster() {
               )}
             </div>
             {action}
-            <ToastClose />
+            {dismissable !== false && <ToastClose />}
           </Toast>
         );
       })}
