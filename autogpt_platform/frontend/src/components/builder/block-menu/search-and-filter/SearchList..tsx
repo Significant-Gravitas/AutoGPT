@@ -82,8 +82,8 @@ const SearchList = ({ searchQuery }: { searchQuery: string }) => {
         </p>
         {Array(6)
           .fill(0)
-          .map(() => (
-            <Block.Skeleton />
+          .map((_, i) => (
+            <Block.Skeleton key={i} />
           ))}
       </div>
     );
