@@ -578,10 +578,10 @@ async def update_graph_execution_stats(
     }
 
     if stats:
-        _stats = stats.model_dump()
-        if isinstance(_stats.get("error"), Exception):
-            _stats["error"] = str(_stats["error"])
-        update_data["stats"] = Json(_stats)
+        stats_dict = stats.model_dump()
+        if isinstance(stats_dict.get("error"), Exception):
+            stats_dict["error"] = str(stats_dict["error"])
+        update_data["stats"] = Json(stats_dict)
 
     updated_count = await AgentGraphExecution.prisma().update_many(
         where={
