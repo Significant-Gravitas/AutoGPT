@@ -1111,6 +1111,7 @@ class ExecutionManager(AppProcess):
         redis.disconnect()
 
         log(f"{prefix} ✅ Finished GraphExec cleanup")
+        exit(0)
 
 
 # ------- UTILITIES ------- #
