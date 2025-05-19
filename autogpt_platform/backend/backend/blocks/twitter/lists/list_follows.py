@@ -4,6 +4,7 @@ import tweepy
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TWITTER_OAUTH_IS_CONFIGURED,
     TwitterCredentials,
     TwitterCredentialsField,
     TwitterCredentialsInput,
@@ -44,6 +45,7 @@ class TwitterUnfollowListBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterUnfollowListBlock.Input,
             output_schema=TwitterUnfollowListBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={"list_id": "123456789", "credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -106,6 +108,7 @@ class TwitterFollowListBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterFollowListBlock.Input,
             output_schema=TwitterFollowListBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={"list_id": "123456789", "credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[

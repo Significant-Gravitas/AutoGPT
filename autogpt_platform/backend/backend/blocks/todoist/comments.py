@@ -7,6 +7,7 @@ from typing_extensions import Optional
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TODOIST_OAUTH_IS_CONFIGURED,
     TodoistCredentials,
     TodoistCredentialsField,
     TodoistCredentialsInput,
@@ -61,6 +62,7 @@ class TodoistCreateCommentBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistCreateCommentBlock.Input,
             output_schema=TodoistCreateCommentBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "content": "Test comment",
@@ -164,6 +166,7 @@ class TodoistGetCommentsBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetCommentsBlock.Input,
             output_schema=TodoistGetCommentsBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "id_type": {"discriminator": "task", "task_id": "2995104339"},
@@ -268,6 +271,7 @@ class TodoistGetCommentBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetCommentBlock.Input,
             output_schema=TodoistGetCommentBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "comment_id": "2992679862",
@@ -346,6 +350,7 @@ class TodoistUpdateCommentBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistUpdateCommentBlock.Input,
             output_schema=TodoistUpdateCommentBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "comment_id": "2992679862",
@@ -404,6 +409,7 @@ class TodoistDeleteCommentBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistDeleteCommentBlock.Input,
             output_schema=TodoistDeleteCommentBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "comment_id": "2992679862",
