@@ -39,9 +39,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
+import { LoadingSpinner } from "@/components/ui/loading";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
+  const { toast } = useToast();
   const router = useRouter();
   const api = useBackendAPI();
 
@@ -69,7 +71,6 @@ export default function AgentRunsPage(): React.ReactElement {
   const { state: onboardingState, updateState: updateOnboardingState } =
     useOnboarding();
   const [copyAgentDialogOpen, setCopyAgentDialogOpen] = useState(false);
-  const { toast } = useToast();
 
   const openRunDraftView = useCallback(() => {
     selectView({ type: "run" });
@@ -120,7 +121,11 @@ export default function AgentRunsPage(): React.ReactElement {
     }
   }, [selectedRun, onboardingState, updateOnboardingState]);
 
+  const lastRefresh = useRef<number>(0);
   const refreshPageData = useCallback(() => {
+    if (Date.now() - lastRefresh.current < 2e3) return; // 2 second debounce
+    lastRefresh.current = Date.now();
+
     api.getLibraryAgent(agentID).then((agent) => {
       setAgent(agent);
 
@@ -156,6 +161,44 @@ export default function AgentRunsPage(): React.ReactElement {
   // Initial load
   useEffect(() => {
     refreshPageData();
+
+    // Show a toast when the WebSocket connection disconnects
+    let connectionToast: ReturnType<typeof toast> | null = null;
+    const cancelDisconnectHandler = api.onWebSocketDisconnect(() => {
+      connectionToast ??= toast({
+        title: "Connection to server was lost",
+        variant: "destructive",
+        description: (
+          <div className="flex items-center">
+            Trying to reconnect...
+            <LoadingSpinner className="ml-1.5 size-3.5" />
+          </div>
+        ),
+        duration: Infinity, // show until connection is re-established
+        dismissable: false,
+      });
+    });
+    const cancelConnectHandler = api.onWebSocketConnect(() => {
+      if (connectionToast)
+        connectionToast.update({
+          id: connectionToast.id,
+          title: "✅ Connection re-established",
+          variant: "default",
+          description: (
+            <div className="flex items-center">
+              Refreshing data...
+              <LoadingSpinner className="ml-1.5 size-3.5" />
+            </div>
+          ),
+          duration: 2000,
+          dismissable: true,
+        });
+      connectionToast = null;
+    });
+    return () => {
+      cancelDisconnectHandler();
+      cancelConnectHandler();
+    };
   }, []);
 
   // Subscribe to WebSocket updates for agent runs
