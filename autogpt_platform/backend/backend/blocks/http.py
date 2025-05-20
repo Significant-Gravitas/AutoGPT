@@ -1,12 +1,14 @@
 import json
 import logging
 from enum import Enum
+from io import BufferedReader
 from typing import Any
 
 from requests.exceptions import HTTPError, RequestException
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
+from backend.util.file import MediaFileType, get_exec_file_path, store_media_file
 from backend.util.request import requests
 
 logger = logging.getLogger(name=__name__)
@@ -45,6 +47,10 @@ class SendWebRequestBlock(Block):
             description="The body of the request",
             default=None,
         )
+        files: dict[str, MediaFileType] = SchemaField(
+            description="File fields mapping to MediaFileType for multipart upload",
+            default_factory=dict,
+        )
 
     class Output(BlockSchema):
         response: object = SchemaField(description="The response from the server")
@@ -61,7 +67,7 @@ class SendWebRequestBlock(Block):
             output_schema=SendWebRequestBlock.Output,
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    def run(self, input_data: Input, *, graph_exec_id: str, **kwargs) -> BlockOutput:
         body = input_data.body
 
         if input_data.json_format:
@@ -74,11 +80,31 @@ class SendWebRequestBlock(Block):
                     # we should send it as plain text instead
                     input_data.json_format = False
 
+        # Prepare files for multipart upload using store_media_file
+        files: dict[str, BufferedReader] = {}
+        if input_data.files:
+            for field_name, media in input_data.files.items():
+                try:
+                    rel_path = store_media_file(
+                        graph_exec_id, media, return_content=False
+                    )
+                    abs_path = get_exec_file_path(graph_exec_id, rel_path)
+                    files[field_name] = open(abs_path, "rb")
+                except Exception as e:
+                    yield "error", f"Failed to prepare file '{field_name}': {e}"
+                    for f in files.values():
+                        try:
+                            f.close()
+                        except Exception:
+                            pass
+                    return
+
         try:
             response = requests.request(
                 input_data.method.value,
                 input_data.url,
                 headers=input_data.headers,
+                files=files if files else None,
                 json=body if input_data.json_format else None,
                 data=body if not input_data.json_format else None,
             )
@@ -119,3 +145,11 @@ class SendWebRequestBlock(Block):
         except Exception as e:
             # Catch any other unexpected exceptions
             yield "error", str(e)
+
+        finally:
+            # ensure cleanup of file handles
+            for f in files.values():
+                try:
+                    f.close()
+                except Exception:
+                    pass
