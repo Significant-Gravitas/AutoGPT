@@ -155,13 +155,13 @@ export async function AdminUserGrantHistory({
                       currentBalance={transaction.current_balance}
                       defaultAmount={
                         transaction.transaction_type ===
-                          CreditTransactionType.USAGE
+                        CreditTransactionType.USAGE
                           ? -transaction.amount
                           : undefined
                       }
                       defaultComments={
                         transaction.transaction_type ===
-                          CreditTransactionType.USAGE
+                        CreditTransactionType.USAGE
                           ? "Refund for usage"
                           : undefined
                       }
