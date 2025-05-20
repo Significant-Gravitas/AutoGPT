@@ -125,20 +125,7 @@ def validate_url(url: str, trusted_origins: list[str]) -> tuple[URL, bool, list[
     ip_addresses: list[str] = []
     if not is_trusted:
         # Resolve all IP addresses for the hostname
-        try:
-            ip_list = [
-                str(res[4][0]) for res in socket.getaddrinfo(ascii_hostname, None)
-            ]
-            ipv4 = [ip for ip in ip_list if ":" not in ip]
-            ipv6 = [ip for ip in ip_list if ":" in ip]
-            ip_addresses = ipv4 + ipv6  # Prefer IPv4 over IPv6
-        except socket.gaierror:
-            raise ValueError(
-                f"Unable to resolve IP address for hostname {ascii_hostname}"
-            )
-
-        if not ip_addresses:
-            raise ValueError(f"No IP addresses found for {ascii_hostname}")
+        ip_addresses = _resolve_host(ascii_hostname)
 
         # Block any IP address that belongs to a blocked range
         for ip_str in ip_addresses:
@@ -173,12 +160,12 @@ def pin_url(url: URL, ip_addresses: Optional[list[str]] = None) -> URL:
     Returns:
         pinned_url: The URL with hostname replaced with IP address
     """
+    if not url.hostname:
+        raise ValueError(f"URL has no hostname: {url}")
+
     if not ip_addresses:
-        # Resolve the hostname to get IP addresses
-        ip_list = [str(res[4][0]) for res in socket.getaddrinfo(url.hostname, None)]
-        ipv4 = [ip for ip in ip_list if ":" not in ip]
-        ipv6 = [ip for ip in ip_list if ":" in ip]
-        ip_addresses = ipv4 + ipv6  # Prefer IPv4 over IPv6
+        # Resolve all IP addresses for the hostname
+        ip_addresses = _resolve_host(url.hostname)
 
     # Pin to the first valid IP (for SSRF defense)
     pinned_ip = ip_addresses[0]
@@ -200,6 +187,20 @@ def pin_url(url: URL, ip_addresses: Optional[list[str]] = None) -> URL:
         url.query,
         url.fragment,
     )
+
+
+def _resolve_host(hostname: str) -> list[str]:
+    try:
+        ip_list = [str(res[4][0]) for res in socket.getaddrinfo(hostname, None)]
+        ipv4 = [ip for ip in ip_list if ":" not in ip]
+        ipv6 = [ip for ip in ip_list if ":" in ip]
+        ip_addresses = ipv4 + ipv6  # Prefer IPv4 over IPv6
+    except socket.gaierror:
+        raise ValueError(f"Unable to resolve IP address for hostname {hostname}")
+
+    if not ip_addresses:
+        raise ValueError(f"No IP addresses found for {hostname}")
+    return ip_addresses
 
 
 class Requests:
