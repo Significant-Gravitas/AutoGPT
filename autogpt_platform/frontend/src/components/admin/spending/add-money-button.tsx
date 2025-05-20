@@ -99,7 +99,6 @@ export function AdminAddMoneyButton({
                     id="dollarAmount"
                     type="number"
                     step="0.01"
-                    min="0"
                     className="rounded-l-none"
                     value={dollarAmount}
                     onChange={(e) => setDollarAmount(e.target.value)}
