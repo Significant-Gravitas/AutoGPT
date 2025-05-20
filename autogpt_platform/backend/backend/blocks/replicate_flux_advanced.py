@@ -2,8 +2,8 @@ import os
 from enum import Enum
 from typing import Literal
 
-import replicate
 from pydantic import SecretStr
+from replicate.client import Client as ReplicateClient
 from replicate.helpers import FileOutput
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -198,7 +198,7 @@ class ReplicateFluxAdvancedModelBlock(Block):
         safety_tolerance,
     ):
         # Initialize Replicate client with the API key
-        client = replicate.Client(api_token=api_key.get_secret_value())
+        client = ReplicateClient(api_token=api_key.get_secret_value())
 
         # Run the model with additional parameters
         output: FileOutput | list[FileOutput] = client.run(  # type: ignore This is because they changed the return type, and didn't update the type hint! It should be overloaded depending on the value of `use_file_output` to `FileOutput | list[FileOutput]` but it's `Any | Iterator[Any]`

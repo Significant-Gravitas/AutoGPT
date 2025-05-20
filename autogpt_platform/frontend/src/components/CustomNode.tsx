@@ -53,7 +53,7 @@ import {
   CopyIcon,
   ExitIcon,
 } from "@radix-ui/react-icons";
-
+import { FaKey } from "react-icons/fa";
 import useCredits from "@/hooks/useCredits";
 
 export type ConnectionData = Array<{
@@ -116,6 +116,8 @@ export const CustomNode = React.memo(
     const flowContext = useContext(FlowContext);
     const api = useBackendAPI();
     const { formatCredits } = useCredits();
+    const [isLoading, setIsLoading] = useState(false);
+
     let nodeFlowId = "";
 
     if (data.uiType === BlockUIType.AGENT) {
@@ -247,6 +249,55 @@ export const CustomNode = React.memo(
       };
 
       return renderHandles(schema.properties);
+    };
+
+    const generateAyrshareSSOHandles = (
+      api: ReturnType<typeof useBackendAPI>,
+    ) => {
+      const handleSSOLogin = async () => {
+        setIsLoading(true);
+        try {
+          const { sso_url } = await api.getAyrshareSSOUrl();
+          const popup = window.open(sso_url, "_blank", "popup=true");
+          if (!popup) {
+            throw new Error(
+              "Failed to open popup window. Please allow popups for this site.",
+            );
+          }
+        } catch (error) {
+          console.error("Error getting SSO URL:", error);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      return (
+        <div className="flex flex-col gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full"
+            onClick={handleSSOLogin}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              "Loading..."
+            ) : (
+              <>
+                <FaKey className="mr-2 h-4 w-4" />
+                Connect Social Media Accounts
+              </>
+            )}
+          </Button>
+          <NodeHandle
+            title="SSO Token"
+            keyName="sso_token"
+            isConnected={false}
+            schema={{ type: "string" }}
+            side="right"
+          />
+        </div>
+      );
     };
 
     const generateInputHandles = (
@@ -826,8 +877,18 @@ export const CustomNode = React.memo(
                       (A Webhook URL will be generated when you save the agent)
                     </p>
                   ))}
-                {data.inputSchema &&
-                  generateInputHandles(data.inputSchema, data.uiType)}
+                {data.uiType === BlockUIType.AYRSHARE ? (
+                  <>
+                    {generateAyrshareSSOHandles(api)}
+                    {generateInputHandles(
+                      data.inputSchema,
+                      BlockUIType.STANDARD,
+                    )}
+                  </>
+                ) : (
+                  data.inputSchema &&
+                  generateInputHandles(data.inputSchema, data.uiType)
+                )}
               </div>
             </div>
           ) : (

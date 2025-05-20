@@ -6,6 +6,7 @@ from tweepy.client import Response
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TWITTER_OAUTH_IS_CONFIGURED,
     TwitterCredentials,
     TwitterCredentialsField,
     TwitterCredentialsInput,
@@ -64,6 +65,7 @@ class TwitterGetBlockedUsersBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetBlockedUsersBlock.Input,
             output_schema=TwitterGetBlockedUsersBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "max_results": 10,
                 "pagination_token": "",

@@ -1,11 +1,13 @@
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, Awaitable, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 from starlette.status import HTTP_404_NOT_FOUND
 
+from backend.blocks.ayrshare._api import AyrshareClient, PostError, SocialPlatform
 from backend.data.graph import set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
@@ -416,3 +418,72 @@ def _get_provider_oauth_handler(
         client_secret=client_secret,
         redirect_uri=f"{frontend_base_url}/auth/integrations/oauth_callback",
     )
+
+
+@router.get("/ayrshare/sso_url")
+async def get_ayrshare_sso_url(
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> dict[str, str]:
+    """
+    Generate an SSO URL for Ayrshare social media integration.
+
+    Returns:
+        dict: Contains the SSO URL for Ayrshare integration
+    """
+    # Generate JWT and get SSO URL
+    client = AyrshareClient()
+
+    # Get or create profile key
+    profile_key = creds_manager.store.get_ayrshare_profile_key(user_id)
+    if not profile_key:
+        logger.info(f"Creating new Ayrshare profile for user {user_id}")
+        # Create new profile if none exists
+        profile = client.create_profile(title=f"User {user_id}", messaging_active=True)
+        if isinstance(profile, PostError):
+            logger.error(
+                f"Error creating Ayrshare profile for user {user_id}: {profile}"
+            )
+            raise HTTPException(
+                status_code=500, detail="Failed to create Ayrshare profile"
+            )
+        profile_key = profile.profileKey
+        creds_manager.store.set_ayrshare_profile_key(user_id, profile_key)
+    else:
+        logger.info(f"Using existing Ayrshare profile for user {user_id}")
+
+    # Convert SecretStr to string if needed
+    profile_key_str = (
+        profile_key.get_secret_value()
+        if isinstance(profile_key, SecretStr)
+        else str(profile_key)
+    )
+
+    private_key = settings.secrets.ayrshare_jwt_key
+
+    try:
+        logger.info(f"Generating JWT for user {user_id}")
+        jwt_response = client.generate_jwt(
+            private_key=private_key,
+            profile_key=profile_key_str,
+            allowed_social=[
+                SocialPlatform.FACEBOOK,
+                SocialPlatform.TWITTER,
+                SocialPlatform.LINKEDIN,
+                SocialPlatform.INSTAGRAM,
+                SocialPlatform.YOUTUBE,
+                SocialPlatform.REDDIT,
+                SocialPlatform.TELEGRAM,
+                SocialPlatform.GMB,
+                SocialPlatform.PINTEREST,
+                SocialPlatform.TIKTOK,
+                SocialPlatform.BLUESKY,
+            ],
+            expires_in=2880,
+            verify=True,
+        )
+    except Exception as e:
+        logger.error(f"Error generating JWT for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate JWT")
+
+    expire_at = datetime.now(timezone.utc) + timedelta(minutes=2880)
+    return {"sso_url": jwt_response.url, "expire_at": expire_at.isoformat()}

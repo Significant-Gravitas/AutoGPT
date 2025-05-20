@@ -3,9 +3,9 @@ import io
 import logging
 from enum import Enum
 
-import replicate
-import replicate.exceptions
 from prisma.models import AgentGraph
+from replicate.client import Client as ReplicateClient
+from replicate.exceptions import ReplicateError
 from replicate.helpers import FileOutput
 
 from backend.blocks.ideogram import (
@@ -117,7 +117,7 @@ async def generate_agent_image_v1(agent: Graph | AgentGraph) -> io.BytesIO:
         prompt = f"Create a visually engaging app store thumbnail for the AI agent that highlights what it does in a clear and captivating way:\n- **Name**: {agent.name}\n- **Description**: {agent.description}\nFocus on showcasing its core functionality with an appealing design."
 
         # Set up Replicate client
-        client = replicate.Client(api_token=settings.secrets.replicate_api_key)
+        client = ReplicateClient(api_token=settings.secrets.replicate_api_key)
 
         # Model parameters
         input_data = {
@@ -158,7 +158,7 @@ async def generate_agent_image_v1(agent: Graph | AgentGraph) -> io.BytesIO:
 
             return io.BytesIO(image_bytes)
 
-        except replicate.exceptions.ReplicateError as e:
+        except ReplicateError as e:
             if e.status == 401:
                 raise RuntimeError("Invalid Replicate API token") from e
             raise RuntimeError(f"Replicate API error: {str(e)}") from e
