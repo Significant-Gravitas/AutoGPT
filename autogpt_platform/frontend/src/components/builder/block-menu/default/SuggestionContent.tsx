@@ -2,24 +2,18 @@ import React, { useEffect, useState } from "react";
 import SearchHistoryChip from "../SearchHistoryChip";
 import IntegrationChip from "../IntegrationChip";
 import Block from "../Block";
-import { DefaultStateType } from "./BlockMenuDefault";
+
 import {
   integrationsData,
   topBlocksData,
   recentSearchesData,
 } from "../../testing_data";
+import { useBlockMenuContext } from "../block-menu-provider";
 
-interface SuggestionContentProps {
-  setIntegration: React.Dispatch<React.SetStateAction<string>>;
-  setDefaultState: React.Dispatch<React.SetStateAction<DefaultStateType>>;
-  setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
-}
+const SuggestionContent: React.FC = () => {
+  const { setIntegration, setDefaultState, setSearchQuery } =
+    useBlockMenuContext();
 
-const SuggestionContent: React.FC<SuggestionContentProps> = ({
-  setIntegration,
-  setDefaultState,
-  setSearchQuery,
-}) => {
   const [recentSearches, setRecentSearches] = useState<string[] | null>(null);
   const [integrations, setIntegrations] = useState<
     { icon_url: string; name: string }[] | null
@@ -73,7 +67,7 @@ const SuggestionContent: React.FC<SuggestionContentProps> = ({
   }, []);
 
   return (
-    <div className="scrollbar-thumb-rounded h-full overflow-y-scroll pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
+    <div className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
       <div className="w-full space-y-6 pb-4">
         {/* Recent Searches */}
         <div className="space-y-2.5">

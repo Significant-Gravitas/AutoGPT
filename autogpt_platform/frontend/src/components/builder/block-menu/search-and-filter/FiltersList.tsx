@@ -1,39 +1,10 @@
 import { useState, useEffect } from "react";
 import FilterChip from "../FilterChip";
 import FilterSheet from "./FilterSheet";
-
-export type CategoryKey =
-  | "blocks"
-  | "integrations"
-  | "marketplace_agents"
-  | "my_agents"
-  | "templates";
-
-export interface Filters {
-  categories: {
-    blocks: boolean;
-    integrations: boolean;
-    marketplace_agents: boolean;
-    my_agents: boolean;
-    templates: boolean;
-  };
-  createdBy: string[];
-}
+import { CategoryKey, useBlockMenuContext } from "../block-menu-provider";
 
 const FiltersList = () => {
-  const [filters, setFilters] = useState<Filters>({
-    categories: {
-      blocks: false,
-      integrations: false,
-      marketplace_agents: false,
-      my_agents: false,
-      templates: false,
-    },
-    createdBy: [],
-  });
-
-  const [creators, setCreators] = useState<string[]>([]);
-
+  const { setCreators, filters, setFilters } = useBlockMenuContext();
   const categories: Array<{ key: CategoryKey; name: string }> = [
     { key: "blocks", name: "Blocks" },
     { key: "integrations", name: "Integrations" },
@@ -45,9 +16,8 @@ const FiltersList = () => {
   // TEMPORARY FETCHING
   useEffect(() => {
     const mockCreators = ["Abhi", "Abhi 1", "Abhi 2", "Abhi 3", "Abhi 4"];
-
     setCreators(mockCreators);
-  }, []);
+  }, [setCreators]);
 
   const handleCategoryFilter = (category: CategoryKey) => {
     setFilters({
@@ -72,12 +42,7 @@ const FiltersList = () => {
 
   return (
     <div className="flex flex-wrap gap-3">
-      <FilterSheet
-        filters={filters}
-        creators={creators}
-        categories={categories}
-        setFilters={setFilters}
-      />
+      <FilterSheet categories={categories} />
 
       {filters.createdBy.map((creator) => (
         <FilterChip

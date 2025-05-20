@@ -9,6 +9,7 @@ import {
 import ControlPanelButton from "@/components/builder/block-menu/ControlPanelButton";
 import { ToyBrick } from "lucide-react";
 import BlockMenuContent from "./BlockMenuContent";
+import { BlockMenuStateProvider } from "./block-menu-provider";
 
 interface BlockMenuProps {
   addBlock: (
@@ -61,7 +62,9 @@ export const BlockMenu: React.FC<BlockMenuProps> = ({
         className="absolute h-[75vh] w-[46.625rem] overflow-hidden rounded-[1rem] border-none p-0 shadow-[0_2px_6px_0_rgba(0,0,0,0.05)]"
         data-id="blocks-control-popover-content"
       >
-        <BlockMenuContent />
+        <BlockMenuStateProvider>
+          <BlockMenuContent />
+        </BlockMenuStateProvider>
       </PopoverContent>
     </Popover>
   );

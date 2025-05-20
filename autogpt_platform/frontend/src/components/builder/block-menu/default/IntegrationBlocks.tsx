@@ -5,6 +5,7 @@ import {
   integrationBlocksData,
   integrationsListData,
 } from "../../testing_data";
+import { useBlockMenuContext } from "../block-menu-provider";
 
 export interface IntegrationBlockData {
   title: string;
@@ -12,15 +13,8 @@ export interface IntegrationBlockData {
   icon_url: string;
 }
 
-interface IntegrationBlocksProps {
-  integration: string;
-  setIntegration: React.Dispatch<React.SetStateAction<string>>;
-}
-
-const IntegrationBlocks: React.FC<IntegrationBlocksProps> = ({
-  integration,
-  setIntegration,
-}) => {
+const IntegrationBlocks: React.FC = ({}) => {
+  const { integration, setIntegration } = useBlockMenuContext();
   const [blocks, setBlocks] = useState<IntegrationBlockData[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 

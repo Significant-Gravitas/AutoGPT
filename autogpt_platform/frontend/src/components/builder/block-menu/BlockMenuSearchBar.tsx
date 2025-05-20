@@ -2,19 +2,17 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Search } from "lucide-react";
 import React, { useRef } from "react";
+import { useBlockMenuContext } from "./block-menu-provider";
 
 interface BlockMenuSearchBarProps {
-  setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
-  searchQuery: string;
   className?: string;
 }
 
 const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
-  searchQuery,
-  setSearchQuery,
   className = "",
 }) => {
   const inputRef = useRef(null);
+  const { searchQuery, setSearchQuery } = useBlockMenuContext();
   return (
     <div
       className={cn(

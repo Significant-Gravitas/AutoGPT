@@ -9,7 +9,7 @@ interface BlocksListProps {
 
 const BlocksList: React.FC<BlocksListProps> = ({ blocks, loading = false }) => {
   return (
-    <div className="scrollbar-thumb-rounded h-full overflow-y-scroll pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
+    <div className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
       <div className="w-full space-y-3 px-4 pb-4">
         {loading
           ? Array.from({ length: 7 }).map((_, index) => (

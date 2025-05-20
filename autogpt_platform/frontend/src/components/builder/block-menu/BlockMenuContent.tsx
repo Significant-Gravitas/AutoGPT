@@ -4,25 +4,19 @@ import BlockMenuSearchBar from "./BlockMenuSearchBar";
 import BlockMenuSearch from "./search-and-filter//BlockMenuSearch";
 import BlockMenuDefault from "./default/BlockMenuDefault";
 import { Separator } from "@/components/ui/separator";
+import { useBlockMenuContext } from "./block-menu-provider";
 
 const BlockMenuContent: React.FC = () => {
-  const [searchQuery, setSearchQuery] = useState("");
+  const { searchQuery } = useBlockMenuContext();
   return (
     <div className="flex h-full w-full flex-col">
       {/* Search Bar */}
-      <BlockMenuSearchBar
-        searchQuery={searchQuery}
-        setSearchQuery={setSearchQuery}
-      />
+      <BlockMenuSearchBar />
 
       <Separator className="h-[1px] w-full text-zinc-300" />
 
       {/* Content */}
-      {searchQuery ? (
-        <BlockMenuSearch searchQuery={searchQuery} />
-      ) : (
-        <BlockMenuDefault setSearchQuery={setSearchQuery} />
-      )}
+      {searchQuery ? <BlockMenuSearch /> : <BlockMenuDefault />}
     </div>
   );
 };

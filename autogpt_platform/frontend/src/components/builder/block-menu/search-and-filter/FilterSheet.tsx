@@ -6,20 +6,19 @@ import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
-import { CategoryKey, Filters } from "./FiltersList";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  CategoryKey,
+  Filters,
+  useBlockMenuContext,
+} from "../block-menu-provider";
 
 export default function FilterSheet({
-  filters,
-  creators,
-  setFilters,
   categories,
 }: {
-  filters: Filters;
-  creators: string[];
-  setFilters: Dispatch<SetStateAction<Filters>>;
   categories: Array<{ key: CategoryKey; name: string }>;
 }) {
+  const { filters, creators, setFilters } = useBlockMenuContext();
   const [isOpen, setIsOpen] = useState(false);
   const [isSheetVisible, setIsSheetVisible] = useState(false);
   const [localFilters, setLocalFilters] = useState<Filters>(filters);

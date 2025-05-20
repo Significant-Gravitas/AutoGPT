@@ -42,7 +42,7 @@ const MyAgentsContent: React.FC = () => {
   }
 
   return (
-    <div className="scrollbar-thumb-rounded h-full overflow-y-scroll pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
+    <div className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
       <div className="w-full space-y-3 px-4 pb-4">
         {agents.map((agent) => (
           <UGCAgentBlock

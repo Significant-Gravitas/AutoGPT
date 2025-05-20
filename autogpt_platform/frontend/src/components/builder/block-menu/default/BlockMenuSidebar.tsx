@@ -1,18 +1,11 @@
 import React from "react";
 import MenuItem from "../MenuItem";
-import { DefaultStateType } from "./BlockMenuDefault";
+import { DefaultStateType, useBlockMenuContext } from "../block-menu-provider";
 
-interface BlockMenuSidebarProps {
-  defaultState: DefaultStateType;
-  setDefaultState: React.Dispatch<React.SetStateAction<DefaultStateType>>;
-  setIntegration: React.Dispatch<React.SetStateAction<string>>;
-}
+const BlockMenuSidebar: React.FC = ({}) => {
+  const { defaultState, setDefaultState, setIntegration } =
+    useBlockMenuContext();
 
-const BlockMenuSidebar: React.FC<BlockMenuSidebarProps> = ({
-  defaultState,
-  setDefaultState,
-  setIntegration,
-}) => {
   // TEMPORARY FETCHING
   const topLevelMenuItems = [
     {

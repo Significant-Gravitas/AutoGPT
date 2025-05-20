@@ -1,10 +1,7 @@
 import React, { useState, useEffect } from "react";
 import Integration from "../Integration";
 import { integrationsListData } from "../../testing_data";
-
-interface IntegrationListProps {
-  setIntegration: React.Dispatch<React.SetStateAction<string>>;
-}
+import { useBlockMenuContext } from "../block-menu-provider";
 
 export interface IntegrationData {
   title: string;
@@ -13,9 +10,8 @@ export interface IntegrationData {
   number_of_blocks: number;
 }
 
-const IntegrationList: React.FC<IntegrationListProps> = ({
-  setIntegration,
-}) => {
+const IntegrationList: React.FC = ({}) => {
+  const { setIntegration } = useBlockMenuContext();
   const [integrations, setIntegrations] = useState<IntegrationData[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 

@@ -5,6 +5,7 @@ import Block from "../Block";
 import UGCAgentBlock from "../UGCAgentBlock";
 import AiBlock from "./AiBlock";
 import IntegrationBlock from "../IntegrationBlock";
+import { useBlockMenuContext } from "../block-menu-provider";
 
 interface BaseSearchItem {
   type: "marketing_agent" | "integration_block" | "block" | "my_agent" | "ai";
@@ -54,7 +55,8 @@ export type SearchItem =
   | IntegrationItem
   | MyAgentItem;
 
-const SearchList = ({ searchQuery }: { searchQuery: string }) => {
+const SearchList = () => {
+  const { searchQuery } = useBlockMenuContext();
   const [searchData, setSearchData] = useState<SearchItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
