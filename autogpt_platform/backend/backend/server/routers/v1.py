@@ -84,7 +84,7 @@ if TYPE_CHECKING:
 
 @thread_cached
 def execution_scheduler_client() -> scheduler.SchedulerClient:
-    return get_service_client(scheduler.SchedulerClient)
+    return get_service_client(scheduler.SchedulerClient, health_check=False)
 
 
 @thread_cached
