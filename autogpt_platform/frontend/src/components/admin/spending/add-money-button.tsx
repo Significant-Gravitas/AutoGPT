@@ -14,7 +14,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
-import { addDollars } from "@/app/admin/spending/actions";
+import { addDollars } from "@/app/(platform)/admin/spending/actions";
 import useCredits from "@/hooks/useCredits";
 
 export function AdminAddMoneyButton({

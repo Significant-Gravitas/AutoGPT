@@ -9,7 +9,7 @@ import {
 
 import { PaginationControls } from "../../ui/pagination-controls";
 import { SearchAndFilterAdminSpending } from "./search-filter-form";
-import { getUsersTransactionHistory } from "@/app/admin/spending/actions";
+import { getUsersTransactionHistory } from "@/app/(platform)/admin/spending/actions";
 import { AdminAddMoneyButton } from "./add-money-button";
 import { CreditTransactionType } from "@/lib/autogpt-server-api";
 
@@ -155,13 +155,13 @@ export async function AdminUserGrantHistory({
                       currentBalance={transaction.current_balance}
                       defaultAmount={
                         transaction.transaction_type ===
-                        CreditTransactionType.USAGE
+                          CreditTransactionType.USAGE
                           ? -transaction.amount
                           : undefined
                       }
                       defaultComments={
                         transaction.transaction_type ===
-                        CreditTransactionType.USAGE
+                          CreditTransactionType.USAGE
                           ? "Refund for usage"
                           : undefined
                       }
