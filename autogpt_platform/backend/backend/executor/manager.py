@@ -938,7 +938,6 @@ class ExecutionManager(AppProcess):
         self.pool_size = settings.config.num_graph_workers
         self.running = True
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
-        atexit.register(self._on_cleanup)
         signal.signal(signal.SIGTERM, lambda sig, frame: self._on_sigterm())
         signal.signal(signal.SIGINT, lambda sig, frame: self._on_sigterm())
 
