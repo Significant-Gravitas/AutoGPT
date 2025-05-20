@@ -189,7 +189,7 @@ def SchemaField(
 class _BaseCredentials(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
     provider: str
-    title: Optional[str]
+    title: Optional[str] = None
 
     @field_serializer("*")
     def dump_secret_strings(value: Any, _info):
@@ -200,13 +200,13 @@ class _BaseCredentials(BaseModel):
 
 class OAuth2Credentials(_BaseCredentials):
     type: Literal["oauth2"] = "oauth2"
-    username: Optional[str]
+    username: Optional[str] = None
     """Username of the third-party service user that these credentials belong to"""
     access_token: SecretStr
-    access_token_expires_at: Optional[int]
+    access_token_expires_at: Optional[int] = None
     """Unix timestamp (seconds) indicating when the access token expires (if at all)"""
-    refresh_token: Optional[SecretStr]
-    refresh_token_expires_at: Optional[int]
+    refresh_token: Optional[SecretStr] = None
+    refresh_token_expires_at: Optional[int] = None
     """Unix timestamp (seconds) indicating when the refresh token expires (if at all)"""
     scopes: list[str]
     metadata: dict[str, Any] = Field(default_factory=dict)
