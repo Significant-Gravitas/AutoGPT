@@ -94,7 +94,7 @@ export default function FilterSheet({
                       id={category.key}
                       checked={filters.categories[category.key]}
                       onCheckedChange={() => onCategoryChange(category.key)}
-                      className="border border-[#D4D4D4] shadow-none data-[state=checked]:bg-white data-[state=checked]:text-zinc-500"
+                      className="border border-[#D4D4D4] shadow-none data-[state=checked]:border-none data-[state=checked]:bg-zinc-500 data-[state=checked]:text-white"
                     />
                     <label
                       htmlFor={category.key}
