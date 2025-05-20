@@ -60,7 +60,7 @@ const BlockMenuSidebar: React.FC = ({}) => {
   ];
 
   return (
-    <div className="space-y-2 px-4 pt-4">
+    <div className="w-fit space-y-2 px-4 pt-4">
       {topLevelMenuItems.map((item) => (
         <MenuItem
           key={item.type}
@@ -76,6 +76,7 @@ const BlockMenuSidebar: React.FC = ({}) => {
             key={item.type}
             name={item.name}
             number={item.number}
+            className="max-w-[11.5339rem]"
             selected={defaultState === item.type}
             onClick={() => setDefaultState(item.type as DefaultStateType)}
           />
