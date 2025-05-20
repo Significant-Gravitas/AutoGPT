@@ -1,7 +1,7 @@
 // Used v0 for this component, so review it very carefully
 
 import FilterChip from "../FilterChip";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Dispatch, SetStateAction } from "react";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -12,30 +12,72 @@ import { Checkbox } from "@/components/ui/checkbox";
 export default function FilterSheet({
   filters,
   creators,
-  onCategoryChange,
-  onCreatorChange,
+  setFilters,
   categories,
 }: {
   filters: Filters;
   creators: string[];
-  onCategoryChange: (category: CategoryKey) => void;
-  onCreatorChange: (creator: string) => void;
+  setFilters: Dispatch<SetStateAction<Filters>>;
   categories: Array<{ key: CategoryKey; name: string }>;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSheetVisible, setIsSheetVisible] = useState(false);
+  const [localFilters, setLocalFilters] = useState<Filters>(filters);
 
   // Animation
   useEffect(() => {
     if (isOpen) {
       setIsSheetVisible(true);
+      // Reset local filters to current filters when opening
+      setLocalFilters(filters);
     } else {
       const timer = setTimeout(() => {
         setIsSheetVisible(false);
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [isOpen]);
+  }, [isOpen, filters]);
+
+  const onCategoryChange = (category: CategoryKey) => {
+    setLocalFilters({
+      ...localFilters,
+      categories: {
+        ...localFilters.categories,
+        [category]: !localFilters.categories[category],
+      },
+    });
+  };
+
+  const onCreatorChange = (creator: string) => {
+    const updatedCreators = localFilters.createdBy.includes(creator)
+      ? localFilters.createdBy.filter((c) => c !== creator)
+      : [...localFilters.createdBy, creator];
+
+    setLocalFilters({
+      ...localFilters,
+      createdBy: updatedCreators,
+    });
+  };
+
+  const handleApplyFilters = () => {
+    setFilters(localFilters);
+    setIsOpen(false);
+  };
+
+  const handleClearFilters = () => {
+    const clearedFilters: Filters = {
+      categories: {
+        blocks: false,
+        integrations: false,
+        marketplace_agents: false,
+        my_agents: false,
+        templates: false,
+      },
+      createdBy: [],
+    };
+    setFilters(clearedFilters);
+    setIsOpen(false);
+  };
 
   return (
     <div className="m-0 inline w-fit p-0">
@@ -80,11 +122,11 @@ export default function FilterSheet({
 
             {/* Categories */}
 
-            <div className="px-5">
+            <div className="space-y-4 px-5">
               <p className="font-sans text-base font-medium text-zinc-800">
                 Categories
               </p>
-              <div className="mt-2 space-y-2">
+              <div className="space-y-2">
                 {categories.map((category) => (
                   <div
                     key={category.key}
@@ -92,7 +134,7 @@ export default function FilterSheet({
                   >
                     <Checkbox
                       id={category.key}
-                      checked={filters.categories[category.key]}
+                      checked={localFilters.categories[category.key]}
                       onCheckedChange={() => onCategoryChange(category.key)}
                       className="border border-[#D4D4D4] shadow-none data-[state=checked]:border-none data-[state=checked]:bg-zinc-500 data-[state=checked]:text-white"
                     />
@@ -111,18 +153,18 @@ export default function FilterSheet({
 
             {/* Created By */}
 
-            <div className="px-5">
+            <div className="space-y-4 px-5">
               <p className="font-sans text-base font-medium text-zinc-800">
                 Created by
               </p>
-              <div className="mt-2 space-y-2">
+              <div className="space-y-2">
                 {creators.map((creator) => (
                   <div key={creator} className="flex items-center space-x-2">
                     <Checkbox
                       id={`creator-${creator}`}
-                      checked={filters.createdBy.includes(creator)}
+                      checked={localFilters.createdBy.includes(creator)}
                       onCheckedChange={() => onCreatorChange(creator)}
-                      className="border border-[#D4D4D4] shadow-none data-[state=checked]:bg-white data-[state=checked]:text-zinc-500"
+                      className="border border-[#D4D4D4] shadow-none data-[state=checked]:border-none data-[state=checked]:bg-zinc-500 data-[state=checked]:text-white"
                     />
                     <label
                       htmlFor={`creator-${creator}`}
@@ -133,6 +175,30 @@ export default function FilterSheet({
                   </div>
                 ))}
               </div>
+              <Button
+                variant={"link"}
+                className="m-0 p-0 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 underline hover:text-zinc-600"
+              >
+                More
+              </Button>
+            </div>
+
+            {/* Footer buttons */}
+            <div className="absolute bottom-0 flex w-full justify-between gap-3 border-t border-zinc-300 px-5 py-3">
+              <Button
+                className="min-w-[5rem] rounded-[0.5rem] border-none px-1.5 py-2 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 shadow-none ring-1 ring-zinc-400"
+                variant={"outline"}
+                onClick={handleClearFilters}
+              >
+                Clear
+              </Button>
+
+              <Button
+                className="min-w-[6.25rem] rounded-[0.5rem] border-none bg-zinc-700 px-1.5 py-2 font-sans text-sm font-medium leading-[1.375rem] text-white shadow-none ring-1 ring-zinc-700"
+                onClick={handleApplyFilters}
+              >
+                Apply filters
+              </Button>
             </div>
           </div>
         </>

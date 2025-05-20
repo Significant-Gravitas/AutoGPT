@@ -76,16 +76,14 @@ const FiltersList = () => {
         filters={filters}
         creators={creators}
         categories={categories}
-        onCategoryChange={handleCategoryFilter}
-        onCreatorChange={handleCreatorFilter}
+        setFilters={setFilters}
       />
 
       {filters.createdBy.map((creator) => (
         <FilterChip
           key={creator}
-          name={creator}
+          name={"Created by " + creator}
           selected={true}
-          number={4}
           onClick={() => handleCreatorFilter(creator)}
         />
       ))}
@@ -94,6 +92,11 @@ const FiltersList = () => {
         <FilterChip
           key={category.key}
           name={category.name}
+          needHover={
+            Object.values(filters.categories).filter(Boolean).length === 1 &&
+            filters.categories[category.key]
+          }
+          number={103}
           selected={filters.categories[category.key]}
           onClick={() => handleCategoryFilter(category.key)}
         />
