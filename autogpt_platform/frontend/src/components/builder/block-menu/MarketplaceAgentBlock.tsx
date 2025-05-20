@@ -4,12 +4,14 @@ import { cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
+import { highlightText } from "./IntegrationBlock";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
   creator_name?: string;
   number_of_runs?: number;
   image_url?: string;
+  highlightedText?: string;
 }
 
 interface MarketplaceAgentBlockComponent extends React.FC<Props> {
@@ -22,6 +24,7 @@ const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
   creator_name,
   number_of_runs,
   className,
+  highlightedText,
   ...rest
 }) => {
   return (
@@ -48,7 +51,7 @@ const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
           )}
         >
-          {title}
+          {highlightText(title, highlightedText)}
         </span>
         <div className="flex items-center space-x-2.5">
           <span

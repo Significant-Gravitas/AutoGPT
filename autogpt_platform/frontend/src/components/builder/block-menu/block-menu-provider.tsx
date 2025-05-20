@@ -2,6 +2,54 @@
 
 import { createContext, ReactNode, useContext, useState } from "react";
 
+interface BaseSearchItem {
+  type: "marketing_agent" | "integration_block" | "block" | "my_agent" | "ai";
+}
+
+interface MarketingAgentItem extends BaseSearchItem {
+  type: "marketing_agent";
+  title: string;
+  image_url: string;
+  creator_name: string;
+  number_of_runs: number;
+}
+
+interface AIItem extends BaseSearchItem {
+  type: "ai";
+  title: string;
+  description: string;
+  ai_name: string;
+}
+
+interface BlockItem extends BaseSearchItem {
+  type: "block";
+  title: string;
+  description: string;
+}
+
+interface IntegrationItem extends BaseSearchItem {
+  type: "integration_block";
+  title: string;
+  description: string;
+  icon_url: string;
+  number_of_blocks: number;
+}
+
+interface MyAgentItem extends BaseSearchItem {
+  type: "my_agent";
+  title: string;
+  image_url: string;
+  edited_time: string;
+  version: number;
+}
+
+export type SearchItem =
+  | MarketingAgentItem
+  | AIItem
+  | BlockItem
+  | IntegrationItem
+  | MyAgentItem;
+
 export type DefaultStateType =
   | "suggestion"
   | "all_blocks"
@@ -41,6 +89,8 @@ interface BlockMenuContextType {
   setFilters: React.Dispatch<React.SetStateAction<Filters>>;
   creators: string[];
   setCreators: React.Dispatch<React.SetStateAction<string[]>>;
+  searchData: SearchItem[];
+  setSearchData: React.Dispatch<React.SetStateAction<SearchItem[]>>;
 }
 
 export const BlockMenuContext = createContext<BlockMenuContextType>(
@@ -62,6 +112,7 @@ export function BlockMenuStateProvider({ children }: { children: ReactNode }) {
     },
     createdBy: [],
   });
+  const [searchData, setSearchData] = useState<SearchItem[]>([]);
 
   const [creators, setCreators] = useState<string[]>([]);
 
@@ -78,6 +129,8 @@ export function BlockMenuStateProvider({ children }: { children: ReactNode }) {
         setCreators,
         filters,
         setFilters,
+        searchData,
+        setSearchData,
       }}
     >
       {children}

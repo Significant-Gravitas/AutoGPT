@@ -9,17 +9,36 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
   description?: string;
   icon_url?: string;
+  highlightedText?: string;
 }
 
 interface IntegrationBlockComponent extends React.FC<Props> {
   Skeleton: React.FC<{ className?: string }>;
 }
 
+export const highlightText = (
+  text: string | undefined,
+  highlight: string | undefined,
+) => {
+  if (!text || !highlight) return text;
+  const parts = text.split(new RegExp(`(${highlight})`, "gi"));
+  return parts.map((part, i) =>
+    part.toLowerCase() === highlight?.toLowerCase() ? (
+      <mark key={i} className="bg-transparent font-bold">
+        {part}
+      </mark>
+    ) : (
+      part
+    ),
+  );
+};
+
 const IntegrationBlock: IntegrationBlockComponent = ({
   title,
   icon_url,
   description,
   className,
+  highlightedText,
   ...rest
 }) => {
   return (
@@ -45,7 +64,7 @@ const IntegrationBlock: IntegrationBlockComponent = ({
             "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
           )}
         >
-          {title}
+          {highlightText(title, highlightedText)}
         </span>
         <span
           className={cn(

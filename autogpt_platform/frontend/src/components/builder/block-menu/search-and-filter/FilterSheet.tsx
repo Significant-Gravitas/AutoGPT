@@ -1,7 +1,7 @@
 // Used v0 for this component, so review it very carefully
 
 import FilterChip from "../FilterChip";
-import { useState, useEffect, Dispatch, SetStateAction } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -78,8 +78,20 @@ export default function FilterSheet({
     setIsOpen(false);
   };
 
+  // Check if any filters are active
+  const hasActiveFilters = () => {
+    // Check if any category is selected
+    const hasCategoryFilter = Object.values(localFilters.categories).some(
+      (value) => value,
+    );
+    // Check if any creator is selected
+    const hasCreatorFilter = localFilters.createdBy.length > 0;
+
+    return hasCategoryFilter || hasCreatorFilter;
+  };
+
   return (
-    <div className="m-0 inline w-fit p-0">
+    <div className="m-0 ml-4 inline w-fit p-0">
       <Button
         onClick={() => {
           setIsSheetVisible(true);
@@ -193,8 +205,11 @@ export default function FilterSheet({
               </Button>
 
               <Button
-                className="min-w-[6.25rem] rounded-[0.5rem] border-none bg-zinc-700 px-1.5 py-2 font-sans text-sm font-medium leading-[1.375rem] text-white shadow-none ring-1 ring-zinc-700"
+                className={cn(
+                  "min-w-[6.25rem] rounded-[0.5rem] border-none px-1.5 py-2 font-sans text-sm font-medium leading-[1.375rem] text-white shadow-none ring-1 disabled:ring-0",
+                )}
                 onClick={handleApplyFilters}
+                disabled={!hasActiveFilters()}
               >
                 Apply filters
               </Button>

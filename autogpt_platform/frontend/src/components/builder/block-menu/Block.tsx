@@ -3,17 +3,25 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import React, { ButtonHTMLAttributes } from "react";
+import { highlightText } from "./IntegrationBlock";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
   description?: string;
+  highlightedText?: string;
 }
 
 interface BlockComponent extends React.FC<Props> {
   Skeleton: React.FC<{ className?: string }>;
 }
 
-const Block: BlockComponent = ({ title, description, className, ...rest }) => {
+const Block: BlockComponent = ({
+  title,
+  description,
+  highlightedText,
+  className,
+  ...rest
+}) => {
   return (
     <Button
       className={cn(
@@ -27,7 +35,7 @@ const Block: BlockComponent = ({ title, description, className, ...rest }) => {
             "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
           )}
         >
-          {title}
+          {highlightText(title, highlightedText)}
         </span>
         <span
           className={cn(

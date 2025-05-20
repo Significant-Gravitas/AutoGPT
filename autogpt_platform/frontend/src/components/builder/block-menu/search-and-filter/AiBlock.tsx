@@ -24,20 +24,23 @@ const AiBlock: React.FC<Props> = ({
       {...rest}
     >
       <div className="flex flex-1 flex-col items-start gap-1.5">
-        <span
-          className={cn(
-            "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-700 group-disabled:text-zinc-400",
-          )}
-        >
-          {title}
-        </span>
-        <span
-          className={cn(
-            "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
-          )}
-        >
-          {description}
-        </span>
+        <div className="space-y-0.5">
+          <span
+            className={cn(
+              "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-700 group-disabled:text-zinc-400",
+            )}
+          >
+            {title}
+          </span>
+          <span
+            className={cn(
+              "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
+            )}
+          >
+            {description}
+          </span>
+        </div>
+
         <span
           className={cn(
             "rounded-[0.75rem] bg-zinc-200 px-[0.5rem] font-sans text-xs leading-[1.25rem] text-zinc-500",

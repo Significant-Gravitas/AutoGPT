@@ -5,59 +5,11 @@ import Block from "../Block";
 import UGCAgentBlock from "../UGCAgentBlock";
 import AiBlock from "./AiBlock";
 import IntegrationBlock from "../IntegrationBlock";
-import { useBlockMenuContext } from "../block-menu-provider";
-
-interface BaseSearchItem {
-  type: "marketing_agent" | "integration_block" | "block" | "my_agent" | "ai";
-}
-
-interface MarketingAgentItem extends BaseSearchItem {
-  type: "marketing_agent";
-  title: string;
-  image_url: string;
-  creator_name: string;
-  number_of_runs: number;
-}
-
-interface AIItem extends BaseSearchItem {
-  type: "ai";
-  title: string;
-  description: string;
-  ai_name: string;
-}
-
-interface BlockItem extends BaseSearchItem {
-  type: "block";
-  title: string;
-  description: string;
-}
-
-interface IntegrationItem extends BaseSearchItem {
-  type: "integration_block";
-  title: string;
-  description: string;
-  icon_url: string;
-  number_of_blocks: number;
-}
-
-interface MyAgentItem extends BaseSearchItem {
-  type: "my_agent";
-  title: string;
-  image_url: string;
-  edited_time: string;
-  version: number;
-}
-
-export type SearchItem =
-  | MarketingAgentItem
-  | AIItem
-  | BlockItem
-  | IntegrationItem
-  | MyAgentItem;
+import { SearchItem, useBlockMenuContext } from "../block-menu-provider";
+import NoSearchResult from "./NoSearchResult";
 
 const SearchList = () => {
-  const { searchQuery } = useBlockMenuContext();
-  const [searchData, setSearchData] = useState<SearchItem[]>([]);
+  const { searchQuery, searchData, setSearchData } = useBlockMenuContext();
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
@@ -75,11 +27,11 @@ const SearchList = () => {
     };
 
     fetchData();
-  }, [searchQuery]);
+  }, [searchQuery, setSearchData]);
 
   if (isLoading) {
     return (
-      <div className="space-y-2.5">
+      <div className="space-y-2.5 px-4">
         <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
           Search results
         </p>
@@ -92,8 +44,12 @@ const SearchList = () => {
     );
   }
 
+  if (searchData.length === 0) {
+    return <NoSearchResult />;
+  }
+
   return (
-    <div className="space-y-2.5">
+    <div className="space-y-2.5 px-4">
       <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
         Search results
       </p>
@@ -103,6 +59,7 @@ const SearchList = () => {
             return (
               <MarketplaceAgentBlock
                 key={index}
+                highlightedText={searchQuery}
                 title={item.title}
                 image_url={item.image_url}
                 creator_name={item.creator_name}
@@ -114,6 +71,7 @@ const SearchList = () => {
               <Block
                 key={index}
                 title={item.title}
+                highlightedText={searchQuery}
                 description={item.description}
               />
             );
@@ -122,6 +80,7 @@ const SearchList = () => {
               <IntegrationBlock
                 key={index}
                 title={item.title}
+                highlightedText={searchQuery}
                 description={item.description}
                 icon_url={item.icon_url}
               />
@@ -131,6 +90,7 @@ const SearchList = () => {
               <UGCAgentBlock
                 key={index}
                 title={item.title}
+                highlightedText={searchQuery}
                 image_url={item.image_url}
                 version={item.version}
                 edited_time={item.edited_time}

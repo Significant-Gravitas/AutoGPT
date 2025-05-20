@@ -1,13 +1,12 @@
 // Default state data
 
+import { SearchItem } from "./block-menu/block-menu-provider";
 import { BlockCategory } from "./block-menu/default/AllBlocksContent";
 import { BlockListType } from "./block-menu/default/BlockMenuDefaultContent";
 import { IntegrationBlockData } from "./block-menu/default/IntegrationBlocks";
 import { IntegrationData } from "./block-menu/default/IntegrationList";
 import { MarketplaceAgent } from "./block-menu/default/MarketplaceAgentsContent";
 import { UserAgent } from "./block-menu/default/MyAgentsContent";
-import { SearchItem } from "./block-menu/search-and-filter/SearchList.";
-
 // Suggestion
 
 export const recentSearchesData = [

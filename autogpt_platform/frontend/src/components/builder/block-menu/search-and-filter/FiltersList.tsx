@@ -41,7 +41,7 @@ const FiltersList = () => {
   };
 
   return (
-    <div className="flex flex-wrap gap-3">
+    <div className="flex flex-nowrap gap-3 overflow-x-auto scrollbar-hide">
       <FilterSheet categories={categories} />
 
       {filters.createdBy.map((creator) => (
