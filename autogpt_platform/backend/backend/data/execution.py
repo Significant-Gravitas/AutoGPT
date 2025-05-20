@@ -24,6 +24,7 @@ from prisma.models import (
 )
 from prisma.types import (
     AgentGraphExecutionCreateInput,
+    AgentGraphExecutionUpdateManyMutationInput,
     AgentGraphExecutionWhereInput,
     AgentNodeExecutionCreateInput,
     AgentNodeExecutionInputOutputCreateInput,
@@ -572,9 +573,15 @@ async def update_graph_execution_stats(
     status: ExecutionStatus,
     stats: GraphExecutionStats | None = None,
 ) -> GraphExecution | None:
-    data = stats.model_dump() if stats else {}
-    if isinstance(data.get("error"), Exception):
-        data["error"] = str(data["error"])
+    update_data: AgentGraphExecutionUpdateManyMutationInput = {
+        "executionStatus": status
+    }
+
+    if stats:
+        stats_dict = stats.model_dump()
+        if isinstance(stats_dict.get("error"), Exception):
+            stats_dict["error"] = str(stats_dict["error"])
+        update_data["stats"] = Json(stats_dict)
 
     updated_count = await AgentGraphExecution.prisma().update_many(
         where={
@@ -584,10 +591,7 @@ async def update_graph_execution_stats(
                 {"executionStatus": ExecutionStatus.QUEUED},
             ],
         },
-        data={
-            "executionStatus": status,
-            "stats": Json(data),
-        },
+        data=update_data,
     )
     if updated_count == 0:
         return None
