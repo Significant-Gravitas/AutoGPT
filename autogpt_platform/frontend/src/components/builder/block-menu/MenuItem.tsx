@@ -20,7 +20,7 @@ const MenuItem: React.FC<Props> = ({
   return (
     <Button
       className={cn(
-        "flex h-[2.375rem] w-full min-w-52 justify-between whitespace-normal rounded-[0.5rem] bg-transparent p-2 pl-3 shadow-none hover:cursor-pointer hover:bg-transparent focus:ring-0",
+        "flex h-[2.375rem] w-full min-w-[12.875rem] justify-between whitespace-normal rounded-[0.5rem] bg-transparent p-2 pl-3 shadow-none hover:cursor-pointer hover:bg-transparent focus:ring-0",
         selected && "bg-zinc-100 hover:bg-zinc-100",
         className,
       )}

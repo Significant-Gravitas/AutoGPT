@@ -67,7 +67,7 @@ const BlockMenuSidebar: React.FC<BlockMenuSidebarProps> = ({
   ];
 
   return (
-    <div className="space-y-2 p-4">
+    <div className="space-y-2 px-4 pt-4">
       {topLevelMenuItems.map((item) => (
         <MenuItem
           key={item.type}
