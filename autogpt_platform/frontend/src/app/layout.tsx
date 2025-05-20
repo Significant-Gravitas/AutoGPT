@@ -10,7 +10,6 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { Providers } from "@/app/providers";
 import TallyPopupSimple from "@/components/TallyPopup";
-import OttoChatWidget from "@/components/OttoChatWidget";
 import { GoogleAnalytics } from "@/components/analytics/google-analytics";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -57,9 +56,6 @@ export default async function RootLayout({
           <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
             {children}
             <TallyPopupSimple />
-            <Suspense fallback={null}>
-              <OttoChatWidget />
-            </Suspense>
           </div>
           <Toaster />
         </Providers>
