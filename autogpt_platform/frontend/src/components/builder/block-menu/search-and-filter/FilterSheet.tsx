@@ -1,7 +1,5 @@
-// Used v0 for this component, so review it very carefully
-
 import FilterChip from "../FilterChip";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,7 +25,6 @@ export default function FilterSheet({
   useEffect(() => {
     if (isOpen) {
       setIsSheetVisible(true);
-      // Reset local filters to current filters when opening
       setLocalFilters(filters);
     } else {
       const timer = setTimeout(() => {
@@ -37,33 +34,35 @@ export default function FilterSheet({
     }
   }, [isOpen, filters]);
 
-  const onCategoryChange = (category: CategoryKey) => {
-    setLocalFilters({
-      ...localFilters,
+  const onCategoryChange = useCallback((category: CategoryKey) => {
+    setLocalFilters((prev) => ({
+      ...prev,
       categories: {
-        ...localFilters.categories,
-        [category]: !localFilters.categories[category],
+        ...prev.categories,
+        [category]: !prev.categories[category],
       },
+    }));
+  }, []);
+
+  const onCreatorChange = useCallback((creator: string) => {
+    setLocalFilters((prev) => {
+      const updatedCreators = prev.createdBy.includes(creator)
+        ? prev.createdBy.filter((c) => c !== creator)
+        : [...prev.createdBy, creator];
+
+      return {
+        ...prev,
+        createdBy: updatedCreators,
+      };
     });
-  };
+  }, []);
 
-  const onCreatorChange = (creator: string) => {
-    const updatedCreators = localFilters.createdBy.includes(creator)
-      ? localFilters.createdBy.filter((c) => c !== creator)
-      : [...localFilters.createdBy, creator];
-
-    setLocalFilters({
-      ...localFilters,
-      createdBy: updatedCreators,
-    });
-  };
-
-  const handleApplyFilters = () => {
+  const handleApplyFilters = useCallback(() => {
     setFilters(localFilters);
     setIsOpen(false);
-  };
+  }, [localFilters, setFilters]);
 
-  const handleClearFilters = () => {
+  const handleClearFilters = useCallback(() => {
     const clearedFilters: Filters = {
       categories: {
         blocks: false,
@@ -76,19 +75,16 @@ export default function FilterSheet({
     };
     setFilters(clearedFilters);
     setIsOpen(false);
-  };
+  }, [setFilters]);
 
-  // Check if any filters are active
-  const hasActiveFilters = () => {
-    // Check if any category is selected
+  const hasActiveFilters = useCallback(() => {
     const hasCategoryFilter = Object.values(localFilters.categories).some(
       (value) => value,
     );
-    // Check if any creator is selected
     const hasCreatorFilter = localFilters.createdBy.length > 0;
 
     return hasCategoryFilter || hasCreatorFilter;
-  };
+  }, [localFilters]);
 
   return (
     <div className="m-0 ml-4 inline w-fit p-0">

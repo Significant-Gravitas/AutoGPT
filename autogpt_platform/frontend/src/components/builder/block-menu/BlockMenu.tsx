@@ -1,6 +1,6 @@
 // BLOCK MENU TODO: Currently when i click on the control panel button, if it is already open, then it needs to close, currently its not happening
 
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   Popover,
   PopoverContent,
@@ -31,19 +31,18 @@ export const BlockMenu: React.FC<BlockMenuProps> = ({
   setBlockMenuSelected,
 }) => {
   const [open, setOpen] = useState(false);
-
-  const handlingOnOpen = (newOpen: boolean) => {
-    if (!pinBlocksPopover) {
-      setOpen(newOpen);
-      setBlockMenuSelected(newOpen ? "block" : "");
-    }
-  };
+  const onOpen = useCallback(
+    (newOpen: boolean) => {
+      if (!pinBlocksPopover) {
+        setOpen(newOpen);
+        setBlockMenuSelected(newOpen ? "block" : "");
+      }
+    },
+    [pinBlocksPopover, setOpen, setBlockMenuSelected],
+  );
 
   return (
-    <Popover
-      open={pinBlocksPopover ? true : open}
-      onOpenChange={handlingOnOpen}
-    >
+    <Popover open={pinBlocksPopover ? true : open} onOpenChange={onOpen}>
       <PopoverTrigger className="hover:cursor-pointer">
         <ControlPanelButton
           data-id="blocks-control-popover-trigger"
