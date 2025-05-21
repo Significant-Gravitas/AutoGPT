@@ -1,6 +1,6 @@
-import { sendGAEvent } from "@next/third-parties/google";
 import Shepherd from "shepherd.js";
 import "shepherd.js/dist/css/shepherd.css";
+import { sendGAEvent } from "@/components/analytics/google-analytics";
 
 export const startTutorial = (
   emptyNodeList: (forceEmpty: boolean) => boolean,

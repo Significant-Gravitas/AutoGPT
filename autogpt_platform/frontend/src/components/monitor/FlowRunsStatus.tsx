@@ -105,16 +105,16 @@ export const FlowRunsStatus: React.FC<{
         <p>
           <strong>Total run time:</strong>{" "}
           {filteredFlowRuns.reduce(
-            (total, run) => total + run.total_run_time,
+            (total, run) => total + (run.stats?.node_exec_time ?? 0),
             0,
           )}{" "}
           seconds
         </p>
-        {filteredFlowRuns.some((r) => r.cost) && (
+        {filteredFlowRuns.some((r) => r.stats) && (
           <p>
             <strong>Total cost:</strong>{" "}
             {filteredFlowRuns.reduce(
-              (total, run) => total + (run.cost ?? 0),
+              (total, run) => total + (run.stats?.cost ?? 0),
               0,
             )}{" "}
             seconds

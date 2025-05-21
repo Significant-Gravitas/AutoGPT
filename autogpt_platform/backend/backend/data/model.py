@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import base64
+import enum
 import logging
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import (
     TYPE_CHECKING,
@@ -12,6 +14,7 @@ from typing import (
     Generic,
     Literal,
     Optional,
+    Sequence,
     TypedDict,
     TypeVar,
     get_args,
@@ -142,8 +145,12 @@ def SchemaField(
     exclude: bool = False,
     hidden: Optional[bool] = None,
     depends_on: Optional[list[str]] = None,
+    ge: Optional[float] = None,
+    le: Optional[float] = None,
+    min_length: Optional[int] = None,
+    max_length: Optional[int] = None,
+    discriminator: Optional[str] = None,
     json_schema_extra: Optional[dict[str, Any]] = None,
-    **kwargs,
 ) -> T:
     if default is PydanticUndefined and default_factory is None:
         advanced = False
@@ -170,8 +177,12 @@ def SchemaField(
         title=title,
         description=description,
         exclude=exclude,
+        ge=ge,
+        le=le,
+        min_length=min_length,
+        max_length=max_length,
+        discriminator=discriminator,
         json_schema_extra=json_schema_extra,
-        **kwargs,
     )  # type: ignore
 
 
@@ -292,9 +303,7 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
         )
         field_schema = model.jsonschema()["properties"][field_name]
         try:
-            schema_extra = _CredentialsFieldSchemaExtra[CP, CT].model_validate(
-                field_schema
-            )
+            schema_extra = CredentialsFieldInfo[CP, CT].model_validate(field_schema)
         except ValidationError as e:
             if "Field required [type=missing" not in str(e):
                 raise
@@ -320,13 +329,89 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     )
 
 
-class _CredentialsFieldSchemaExtra(BaseModel, Generic[CP, CT]):
+class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
     # TODO: move discrimination mechanism out of CredentialsField (frontend + backend)
-    credentials_provider: list[CP]
-    credentials_scopes: Optional[list[str]] = None
-    credentials_types: list[CT]
+    provider: frozenset[CP] = Field(..., alias="credentials_provider")
+    supported_types: frozenset[CT] = Field(..., alias="credentials_types")
+    required_scopes: Optional[frozenset[str]] = Field(None, alias="credentials_scopes")
     discriminator: Optional[str] = None
     discriminator_mapping: Optional[dict[str, CP]] = None
+
+    @classmethod
+    def combine(
+        cls, *fields: tuple[CredentialsFieldInfo[CP, CT], T]
+    ) -> Sequence[tuple[CredentialsFieldInfo[CP, CT], set[T]]]:
+        """
+        Combines multiple CredentialsFieldInfo objects into as few as possible.
+
+        Rules:
+        - Items can only be combined if they have the same supported credentials types
+          and the same supported providers.
+        - When combining items, the `required_scopes` of the result is a join
+          of the `required_scopes` of the original items.
+
+        Params:
+            *fields: (CredentialsFieldInfo, key) objects to group and combine
+
+        Returns:
+            A sequence of tuples containing combined CredentialsFieldInfo objects and
+            the set of keys of the respective original items that were grouped together.
+        """
+        if not fields:
+            return []
+
+        # Group fields by their provider and supported_types
+        grouped_fields: defaultdict[
+            tuple[frozenset[CP], frozenset[CT]],
+            list[tuple[T, CredentialsFieldInfo[CP, CT]]],
+        ] = defaultdict(list)
+
+        for field, key in fields:
+            group_key = (frozenset(field.provider), frozenset(field.supported_types))
+            grouped_fields[group_key].append((key, field))
+
+        # Combine fields within each group
+        result: list[tuple[CredentialsFieldInfo[CP, CT], set[T]]] = []
+
+        for group in grouped_fields.values():
+            # Start with the first field in the group
+            _, combined = group[0]
+
+            # Track the keys that were combined
+            combined_keys = {key for key, _ in group}
+
+            # Combine required_scopes from all fields in the group
+            all_scopes = set()
+            for _, field in group:
+                if field.required_scopes:
+                    all_scopes.update(field.required_scopes)
+
+            # Create a new combined field
+            result.append(
+                (
+                    CredentialsFieldInfo[CP, CT](
+                        credentials_provider=combined.provider,
+                        credentials_types=combined.supported_types,
+                        credentials_scopes=frozenset(all_scopes) or None,
+                        discriminator=combined.discriminator,
+                        discriminator_mapping=combined.discriminator_mapping,
+                    ),
+                    combined_keys,
+                )
+            )
+
+        return result
+
+    def discriminate(self, discriminator_value: Any) -> CredentialsFieldInfo:
+        if not (self.discriminator and self.discriminator_mapping):
+            return self
+
+        discriminator_value = self.discriminator_mapping[discriminator_value]
+        return CredentialsFieldInfo(
+            credentials_provider=frozenset([discriminator_value]),
+            credentials_types=self.supported_types,
+            credentials_scopes=self.required_scopes,
+        )
 
 
 def CredentialsField(
@@ -365,6 +450,12 @@ class ContributorDetails(BaseModel):
     name: str = Field(title="Name", description="The name of the contributor.")
 
 
+class TopUpType(enum.Enum):
+    AUTO = "AUTO"
+    MANUAL = "MANUAL"
+    UNCATEGORIZED = "UNCATEGORIZED"
+
+
 class AutoTopUpConfig(BaseModel):
     amount: int
     """Amount of credits to top up."""
@@ -377,12 +468,18 @@ class UserTransaction(BaseModel):
     transaction_time: datetime = datetime.min.replace(tzinfo=timezone.utc)
     transaction_type: CreditTransactionType = CreditTransactionType.USAGE
     amount: int = 0
-    balance: int = 0
+    running_balance: int = 0
+    current_balance: int = 0
     description: str | None = None
     usage_graph_id: str | None = None
     usage_execution_id: str | None = None
     usage_node_count: int = 0
     usage_start_time: datetime = datetime.max.replace(tzinfo=timezone.utc)
+    user_id: str
+    user_email: str | None = None
+    reason: str | None = None
+    admin_email: str | None = None
+    extra_data: str | None = None
 
 
 class TransactionHistory(BaseModel):
@@ -405,9 +502,10 @@ class RefundRequest(BaseModel):
 class NodeExecutionStats(BaseModel):
     """Execution statistics for a node execution."""
 
-    class Config:
-        arbitrary_types_allowed = True
-        extra = "allow"
+    model_config = ConfigDict(
+        extra="allow",
+        arbitrary_types_allowed=True,
+    )
 
     error: Optional[Exception | str] = None
     walltime: float = 0
@@ -423,9 +521,10 @@ class NodeExecutionStats(BaseModel):
 class GraphExecutionStats(BaseModel):
     """Execution statistics for a graph execution."""
 
-    class Config:
-        arbitrary_types_allowed = True
-        extra = "allow"
+    model_config = ConfigDict(
+        extra="allow",
+        arbitrary_types_allowed=True,
+    )
 
     error: Optional[Exception | str] = None
     walltime: float = Field(

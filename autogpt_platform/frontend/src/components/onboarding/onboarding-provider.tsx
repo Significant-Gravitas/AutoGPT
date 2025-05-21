@@ -1,4 +1,5 @@
 "use client";
+import useSupabase from "@/hooks/useSupabase";
 import { OnboardingStep, UserOnboarding } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { usePathname, useRouter } from "next/navigation";
@@ -14,9 +15,12 @@ import {
 const OnboardingContext = createContext<
   | {
       state: UserOnboarding | null;
-      updateState: (state: Partial<UserOnboarding>) => void;
+      updateState: (
+        state: Omit<Partial<UserOnboarding>, "rewardedFor">,
+      ) => void;
       step: number;
       setStep: (step: number) => void;
+      completeStep: (step: OnboardingStep) => void;
     }
   | undefined
 >(undefined);
@@ -37,13 +41,13 @@ export function useOnboarding(step?: number, completeStep?: OnboardingStep) {
     context.updateState({
       completedSteps: [...context.state.completedSteps, completeStep],
     });
-  }, [completeStep, context.state, context.updateState]);
+  }, [completeStep, context, context.updateState]);
 
   useEffect(() => {
     if (step && context.step !== step) {
       context.setStep(step);
     }
-  }, [step, context.step, context.setStep]);
+  }, [step, context]);
 
   return context;
 }
@@ -59,6 +63,7 @@ export default function OnboardingProvider({
   const api = useBackendAPI();
   const pathname = usePathname();
   const router = useRouter();
+  const { user, isUserLoading } = useSupabase();
 
   useEffect(() => {
     const fetchOnboarding = async () => {
@@ -80,23 +85,30 @@ export default function OnboardingProvider({
         router.push("/marketplace");
       }
     };
+    if (isUserLoading || !user) {
+      return;
+    }
     fetchOnboarding();
-  }, [api, pathname, router]);
+  }, [api, pathname, router, user, isUserLoading]);
 
   const updateState = useCallback(
-    (newState: Partial<UserOnboarding>) => {
+    (newState: Omit<Partial<UserOnboarding>, "rewardedFor">) => {
       setState((prev) => {
-        api.updateUserOnboarding({ ...prev, ...newState });
+        api.updateUserOnboarding(newState);
 
         if (!prev) {
           // Handle initial state
           return {
             completedSteps: [],
+            notificationDot: false,
+            notified: [],
+            rewardedFor: [],
             usageReason: null,
             integrations: [],
             otherIntegrations: null,
             selectedStoreListingVersionId: null,
             agentInput: null,
+            onboardingAgentExecutionId: null,
             ...newState,
           };
         }
@@ -106,8 +118,21 @@ export default function OnboardingProvider({
     [api, setState],
   );
 
+  const completeStep = useCallback(
+    (step: OnboardingStep) => {
+      if (!state || state.completedSteps.includes(step)) return;
+
+      updateState({
+        completedSteps: [...state.completedSteps, step],
+      });
+    },
+    [state, updateState],
+  );
+
   return (
-    <OnboardingContext.Provider value={{ state, updateState, step, setStep }}>
+    <OnboardingContext.Provider
+      value={{ state, updateState, step, setStep, completeStep }}
+    >
       {children}
     </OnboardingContext.Provider>
   );

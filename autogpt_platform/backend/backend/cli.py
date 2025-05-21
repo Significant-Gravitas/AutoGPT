@@ -8,7 +8,6 @@ import pathlib
 import click
 import psutil
 
-from backend import app
 from backend.util.process import AppProcess
 
 
@@ -42,7 +41,12 @@ def write_pid(pid: int):
 
 class MainApp(AppProcess):
     def run(self):
+        from backend import app
+
         app.main(silent=True)
+
+    def cleanup(self):
+        pass
 
 
 @click.group()

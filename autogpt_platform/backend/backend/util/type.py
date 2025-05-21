@@ -182,6 +182,7 @@ def _try_convert(value: Any, target_type: Type, raise_on_mismatch: bool) -> Any:
 
 
 T = TypeVar("T")
+TT = TypeVar("TT")
 
 
 def type_match(value: Any, target_type: Type[T]) -> T:

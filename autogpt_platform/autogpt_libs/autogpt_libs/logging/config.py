@@ -8,7 +8,7 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from .filters import BelowLevelFilter
-from .formatters import AGPTFormatter, StructuredLoggingFormatter
+from .formatters import AGPTFormatter
 
 LOG_DIR = Path(__file__).parent.parent.parent.parent / "logs"
 LOG_FILE = "activity.log"
@@ -81,8 +81,25 @@ def configure_logging(force_cloud_logging: bool = False) -> None:
     """
 
     config = LoggingConfig()
-
     log_handlers: list[logging.Handler] = []
+
+    # Console output handlers
+    stdout = logging.StreamHandler(stream=sys.stdout)
+    stdout.setLevel(config.level)
+    stdout.addFilter(BelowLevelFilter(logging.WARNING))
+    if config.level == logging.DEBUG:
+        stdout.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT))
+    else:
+        stdout.setFormatter(AGPTFormatter(SIMPLE_LOG_FORMAT))
+
+    stderr = logging.StreamHandler()
+    stderr.setLevel(logging.WARNING)
+    if config.level == logging.DEBUG:
+        stderr.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT))
+    else:
+        stderr.setFormatter(AGPTFormatter(SIMPLE_LOG_FORMAT))
+
+    log_handlers += [stdout, stderr]
 
     # Cloud logging setup
     if config.enable_cloud_logging or force_cloud_logging:
@@ -97,26 +114,7 @@ def configure_logging(force_cloud_logging: bool = False) -> None:
             transport=SyncTransport,
         )
         cloud_handler.setLevel(config.level)
-        cloud_handler.setFormatter(StructuredLoggingFormatter())
         log_handlers.append(cloud_handler)
-    else:
-        # Console output handlers
-        stdout = logging.StreamHandler(stream=sys.stdout)
-        stdout.setLevel(config.level)
-        stdout.addFilter(BelowLevelFilter(logging.WARNING))
-        if config.level == logging.DEBUG:
-            stdout.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT))
-        else:
-            stdout.setFormatter(AGPTFormatter(SIMPLE_LOG_FORMAT))
-
-        stderr = logging.StreamHandler()
-        stderr.setLevel(logging.WARNING)
-        if config.level == logging.DEBUG:
-            stderr.setFormatter(AGPTFormatter(DEBUG_LOG_FORMAT))
-        else:
-            stderr.setFormatter(AGPTFormatter(SIMPLE_LOG_FORMAT))
-
-        log_handlers += [stdout, stderr]
 
     # File logging setup
     if config.enable_file_logging:

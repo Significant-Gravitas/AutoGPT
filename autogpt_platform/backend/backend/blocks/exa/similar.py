@@ -26,12 +26,12 @@ class ExaFindSimilarBlock(Block):
         )
         include_domains: List[str] = SchemaField(
             description="Domains to include in search",
-            default=[],
+            default_factory=list,
             advanced=True,
         )
         exclude_domains: List[str] = SchemaField(
             description="Domains to exclude from search",
-            default=[],
+            default_factory=list,
             advanced=True,
         )
         start_crawl_date: datetime = SchemaField(
@@ -48,12 +48,12 @@ class ExaFindSimilarBlock(Block):
         )
         include_text: List[str] = SchemaField(
             description="Text patterns to include (max 1 string, up to 5 words)",
-            default=[],
+            default_factory=list,
             advanced=True,
         )
         exclude_text: List[str] = SchemaField(
             description="Text patterns to exclude (max 1 string, up to 5 words)",
-            default=[],
+            default_factory=list,
             advanced=True,
         )
         contents: ContentSettings = SchemaField(
@@ -65,7 +65,7 @@ class ExaFindSimilarBlock(Block):
     class Output(BlockSchema):
         results: List[Any] = SchemaField(
             description="List of similar documents with title, URL, published date, author, and score",
-            default=[],
+            default_factory=list,
         )
 
     def __init__(self):

@@ -89,11 +89,14 @@ async def test_send_graph_execution_result(
         graph_id="test_graph",
         graph_version=1,
         status=ExecutionStatus.COMPLETED,
-        cost=0,
-        duration=1.2,
-        total_run_time=0.5,
         started_at=datetime.now(tz=timezone.utc),
         ended_at=datetime.now(tz=timezone.utc),
+        stats=GraphExecutionEvent.Stats(
+            cost=0,
+            duration=1.2,
+            node_exec_time=0.5,
+            node_exec_count=2,
+        ),
         inputs={
             "input_1": "some input value :)",
             "input_2": "some *other* input value",

@@ -1,7 +1,5 @@
 import logging
-from typing import Any
-
-from autogpt_libs.utils.cache import thread_cached
+from typing import Any, Optional
 
 from backend.data.block import (
     Block,
@@ -13,25 +11,10 @@ from backend.data.block import (
     get_block,
 )
 from backend.data.execution import ExecutionStatus
-from backend.data.model import SchemaField
+from backend.data.model import CredentialsMetaInput, SchemaField
 from backend.util import json
 
 logger = logging.getLogger(__name__)
-
-
-@thread_cached
-def get_executor_manager_client():
-    from backend.executor import ExecutionManager
-    from backend.util.service import get_service_client
-
-    return get_service_client(ExecutionManager)
-
-
-@thread_cached
-def get_event_bus():
-    from backend.data.execution import RedisExecutionEventBus
-
-    return RedisExecutionEventBus()
 
 
 class AgentExecutorBlock(Block):
@@ -40,9 +23,13 @@ class AgentExecutorBlock(Block):
         graph_id: str = SchemaField(description="Graph ID")
         graph_version: int = SchemaField(description="Graph Version")
 
-        data: BlockInput = SchemaField(description="Input data for the graph")
+        inputs: BlockInput = SchemaField(description="Input data for the graph")
         input_schema: dict = SchemaField(description="Input schema for the graph")
         output_schema: dict = SchemaField(description="Output schema for the graph")
+
+        node_credentials_input_map: Optional[
+            dict[str, dict[str, CredentialsMetaInput]]
+        ] = SchemaField(default=None, hidden=True)
 
         @classmethod
         def get_input_schema(cls, data: BlockInput) -> dict[str, Any]:
@@ -50,7 +37,7 @@ class AgentExecutorBlock(Block):
 
         @classmethod
         def get_input_defaults(cls, data: BlockInput) -> BlockInput:
-            return data.get("data", {})
+            return data.get("inputs", {})
 
         @classmethod
         def get_missing_input(cls, data: BlockInput) -> set[str]:
@@ -76,23 +63,24 @@ class AgentExecutorBlock(Block):
 
     def run(self, input_data: Input, **kwargs) -> BlockOutput:
         from backend.data.execution import ExecutionEventType
+        from backend.executor import utils as execution_utils
 
-        executor_manager = get_executor_manager_client()
-        event_bus = get_event_bus()
+        event_bus = execution_utils.get_execution_event_bus()
 
-        graph_exec = executor_manager.add_execution(
+        graph_exec = execution_utils.add_graph_execution(
             graph_id=input_data.graph_id,
             graph_version=input_data.graph_version,
             user_id=input_data.user_id,
-            data=input_data.data,
+            inputs=input_data.inputs,
+            node_credentials_input_map=input_data.node_credentials_input_map,
         )
-        log_id = f"Graph #{input_data.graph_id}-V{input_data.graph_version}, exec-id: {graph_exec.graph_exec_id}"
+        log_id = f"Graph #{input_data.graph_id}-V{input_data.graph_version}, exec-id: {graph_exec.id}"
         logger.info(f"Starting execution of {log_id}")
 
         for event in event_bus.listen(
             user_id=graph_exec.user_id,
             graph_id=graph_exec.graph_id,
-            graph_exec_id=graph_exec.graph_exec_id,
+            graph_exec_id=graph_exec.id,
         ):
             if event.event_type == ExecutionEventType.GRAPH_EXEC_UPDATE:
                 if event.status in [
@@ -105,7 +93,7 @@ class AgentExecutorBlock(Block):
                 else:
                     continue
 
-            logger.info(
+            logger.debug(
                 f"Execution {log_id} produced input {event.input_data} output {event.output_data}"
             )
 
@@ -123,5 +111,7 @@ class AgentExecutorBlock(Block):
                 continue
 
             for output_data in event.output_data.get("output", []):
-                logger.info(f"Execution {log_id} produced {output_name}: {output_data}")
+                logger.debug(
+                    f"Execution {log_id} produced {output_name}: {output_data}"
+                )
                 yield output_name, output_data

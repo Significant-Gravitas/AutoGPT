@@ -31,12 +31,12 @@ class UpdateTrackingModel(BaseModel, Generic[T]):
     _updated_fields: Set[str] = PrivateAttr(default_factory=set)
 
     def __setattr__(self, name: str, value) -> None:
-        if name in self.model_fields:
+        if name in UpdateTrackingModel.model_fields:
             self._updated_fields.add(name)
         super().__setattr__(name, value)
 
     def mark_updated(self, field_name: str) -> None:
-        if field_name in self.model_fields:
+        if field_name in UpdateTrackingModel.model_fields:
             self._updated_fields.add(field_name)
 
     def clear_updates(self) -> None:
@@ -64,10 +64,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         ge=1,
         le=1000,
         description="Maximum number of workers to use for node execution within a single graph.",
-    )
-    use_http_based_rpc: bool = Field(
-        default=True,
-        description="Whether to use HTTP-based RPC for communication between services.",
     )
     pyro_host: str = Field(
         default="localhost",
@@ -120,6 +116,18 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     execution_cost_per_threshold: int = Field(
         default=1,
         description="Cost per execution in cents after each threshold.",
+    )
+    execution_counter_expiration_time: int = Field(
+        default=60 * 60 * 24,
+        description="Time in seconds after which the execution counter is reset.",
+    )
+    execution_late_notification_threshold_secs: int = Field(
+        default=5 * 60,
+        description="Time in seconds after which the execution stuck on QUEUED status is considered late.",
+    )
+    execution_late_notification_checkrange_secs: int = Field(
+        default=60 * 60,
+        description="Time in seconds for how far back to check for the late executions.",
     )
 
     model_config = SettingsConfigDict(
@@ -230,6 +238,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     enable_agent_input_subtype_blocks: bool = Field(
         default=True,
         description="Whether to enable the agent input subtype blocks",
+    )
+    platform_alert_discord_channel: str = Field(
+        default="local-alerts",
+        description="The Discord channel for the platform",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")
@@ -342,6 +354,16 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="The secret key to use for the unsubscribe user by token",
     )
 
+    # Cloudflare Turnstile credentials
+    turnstile_secret_key: str = Field(
+        default="",
+        description="Cloudflare Turnstile backend secret key",
+    )
+    turnstile_verify_url: str = Field(
+        default="https://challenges.cloudflare.com/turnstile/v0/siteverify",
+        description="Cloudflare Turnstile verify URL",
+    )
+
     # OAuth server credentials for integrations
     # --8<-- [start:OAuthServerCredentialsExample]
     github_client_id: str = Field(default="", description="GitHub OAuth client ID")
@@ -367,6 +389,7 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
     groq_api_key: str = Field(default="", description="Groq API key")
     open_router_api_key: str = Field(default="", description="Open Router API Key")
+    llama_api_key: str = Field(default="", description="Llama API Key")
 
     reddit_client_id: str = Field(default="", description="Reddit client ID")
     reddit_client_secret: str = Field(default="", description="Reddit client secret")

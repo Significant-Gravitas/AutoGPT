@@ -1,9 +1,5 @@
 # Getting Started with AutoGPT: Self-Hosting Guide
 
-This tutorial will walk you through the process of setting up AutoGPT locally on your machine.
-
-<center><iframe width="560" height="315" src="https://www.youtube.com/embed/4Bycr6_YAMI?si=dXGhFeWrCK2UkKgj" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></center>
-
 ## Introduction
 
 This guide will help you setup the server and builder for the project.
@@ -61,6 +57,28 @@ docker compose -v
 
 Once you have Docker and Docker Compose installed, you can proceed to the next step.
 
+<details>
+ <summary>
+ Raspberry Pi 5 Specific Notes
+ </summary>
+    On Raspberry Pi 5 with Raspberry Pi OS, the default 16K page size will cause issues with the <code>supabase-vector</code> container (expected: 4K).
+    </br>
+    To fix this, edit <code>/boot/firmware/config.txt</code> and add:
+    </br>
+    ```ini
+    kernel=kernel8.img
+    ```
+    Then reboot. You can check your page size with:
+    </br>
+    ```bash
+    getconf PAGESIZE
+    ```
+    <code>16384</code> means 16K (incorrect), and <code>4096</code> means 4K (correct).
+    After adjusting, <code>docker compose up -d --build</code> should work normally.
+    </br>
+    See <a href="https://github.com/supabase/supabase/issues/33816">supabase/supabase #33816</a> for additional context.
+</details>
+
 ## Setup
 
 ### Cloning the Repository
@@ -71,18 +89,16 @@ git clone https://github.com/Significant-Gravitas/AutoGPT.git
 ```
 If you get stuck, follow [this guide](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository).
 
-Once that's complete you can close this terminal window.
+Once that's complete you can continue the setup process.
 
 ### Running the backend services
 
 To run the backend services, follow these steps:
 
-* Within the repository, clone the submodules and navigate to the `autogpt_platform` directory:
+* Navigate to the `autogpt_platform` directory inside the AutoGPT folder:
   ```bash
-   git submodule update --init --recursive --progress
-   cd autogpt_platform
+   cd AutoGPT/autogpt_platform
   ```
-  This command will initialize and update the submodules in the repository. The `supabase` folder will be cloned to the root directory.
 
 * Copy the `.env.example` file to `.env` in `autogpt_platform`:
   ```
@@ -99,7 +115,7 @@ To run the backend services, follow these steps:
 
 ### Running the frontend application
 
-To run the frontend application, follow these steps:
+To run the frontend application open a new terminal and follow these steps:
 
 * Navigate to `frontend` folder within the `autogpt_platform` directory:
   ```
@@ -270,6 +286,30 @@ If you run into issues with dangling orphans, try:
 docker compose down --volumes --remove-orphans && docker-compose up --force-recreate --renew-anon-volumes --remove-orphans  
 ```
 
+### 📌 Windows Installation Note
+
+When installing Docker on Windows, it is **highly recommended** to select **WSL 2** instead of Hyper-V. Using Hyper-V can cause compatibility issues with Supabase, leading to the `supabase-db` container being marked as **unhealthy**.
+
+#### **Steps to enable WSL 2 for Docker:**
+1. Install [WSL 2](https://learn.microsoft.com/en-us/windows/wsl/install).
+2. Ensure that your Docker settings use WSL 2 as the default backend:
+  - Open **Docker Desktop**.
+  - Navigate to **Settings > General**.
+  - Check **Use the WSL 2 based engine**.
+3. Restart **Docker Desktop**.
+
+#### **Already Installed Docker with Hyper-V?**
+If you initially installed Docker with Hyper-V, you **don’t need to reinstall** it. You can switch to WSL 2 by following these steps:
+1. Open **Docker Desktop**.
+2. Go to **Settings > General**.
+3. Enable **Use the WSL 2 based engine**.
+4. Restart Docker.
+
+🚨 **Warning:** Enabling WSL 2 may **erase your existing containers and build history**. If you have important containers, consider backing them up before switching.
+
+For more details, refer to [Docker's official documentation](https://docs.docker.com/desktop/windows/wsl/).
+
+
 ## Development
 
 ### Formatting & Linting
@@ -342,7 +382,7 @@ Currently, there are only 3 active services:
 
 - AgentServer (the API, defined in `server.py`)
 - ExecutionManager (the executor, defined in `manager.py`)
-- ExecutionScheduler (the scheduler, defined in `scheduler.py`)
+- Scheduler (the scheduler, defined in `scheduler.py`)
 
 The services run in independent Python processes and communicate through an IPC.
 A communication layer (`service.py`) is created to decouple the communication library from the implementation.
