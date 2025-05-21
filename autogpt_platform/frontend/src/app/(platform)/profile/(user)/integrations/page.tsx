@@ -1,5 +1,6 @@
 "use client";
 import { Button } from "@/components/ui/button";
+import { Metadata } from "next/types";
 import { useRouter } from "next/navigation";
 import { useCallback, useContext, useMemo, useState } from "react";
 import { useToast } from "@/components/ui/use-toast";
@@ -28,6 +29,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import useSupabase from "@/hooks/useSupabase";
 import LoadingBox from "@/components/ui/loading";
+
+export const metadata: Metadata = { title: "Integrations - AutoGPT Platform" };
 
 export default function PrivatePage() {
   const { supabase, user, isUserLoading } = useSupabase();

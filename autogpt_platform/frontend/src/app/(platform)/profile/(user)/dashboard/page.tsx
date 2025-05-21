@@ -3,6 +3,7 @@
 import * as React from "react";
 import { AgentTable } from "@/components/agptui/AgentTable";
 import { Button } from "@/components/agptui/Button";
+import { Metadata } from "next/types";
 import { Separator } from "@/components/ui/separator";
 import { StatusType } from "@/components/agptui/Status";
 import { PublishAgentPopout } from "@/components/agptui/composite/PublishAgentPopout";
@@ -13,6 +14,10 @@ import {
 } from "@/lib/autogpt-server-api/types";
 import useSupabase from "@/hooks/useSupabase";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+
+export const metadata: Metadata = {
+  title: "Creator Dashboard - AutoGPT Platform",
+};
 
 export default function Page({}: {}) {
   const { supabase } = useSupabase();
