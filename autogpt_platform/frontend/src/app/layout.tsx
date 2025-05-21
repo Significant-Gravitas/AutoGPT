@@ -21,7 +21,7 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "NextGen AutoGPT",
+  title: "AutoGPT Platform",
   description: "Your one stop shop to creating AI Agents",
 };
 

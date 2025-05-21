@@ -5,8 +5,14 @@ import { GraphID } from "@/lib/autogpt-server-api/types";
 import FlowEditor from "@/components/Flow";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import { useEffect } from "react";
+import { Metadata } from "next/types";
 
-export default function Home() {
+export const metadata: Metadata = {
+  title: "Builder - AutoGPT Platform",
+  description: "Build and customize your own AI-powered Agents",
+};
+
+export default function BuilderPage() {
   const query = useSearchParams();
   const { completeStep } = useOnboarding();
 
