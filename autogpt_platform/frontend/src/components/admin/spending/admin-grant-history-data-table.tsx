@@ -9,7 +9,7 @@ import {
 
 import { PaginationControls } from "../../ui/pagination-controls";
 import { SearchAndFilterAdminSpending } from "./search-filter-form";
-import { getUsersTransactionHistory } from "@/app/admin/spending/actions";
+import { getUsersTransactionHistory } from "@/app/(platform)/admin/spending/actions";
 import { AdminAddMoneyButton } from "./add-money-button";
 import { CreditTransactionType } from "@/lib/autogpt-server-api";
 

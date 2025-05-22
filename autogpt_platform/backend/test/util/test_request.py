@@ -1,10 +1,10 @@
 import pytest
 
-from backend.util.request import validate_url
+from backend.util.request import pin_url, validate_url
 
 
 @pytest.mark.parametrize(
-    "url, trusted_origins, expected_value, should_raise",
+    "raw_url, trusted_origins, expected_value, should_raise",
     [
         # Rejected IP ranges
         ("localhost", [], None, True),
@@ -55,14 +55,14 @@ from backend.util.request import validate_url
     ],
 )
 def test_validate_url_no_dns_rebinding(
-    url, trusted_origins, expected_value, should_raise
+    raw_url: str, trusted_origins: list[str], expected_value: str, should_raise: bool
 ):
     if should_raise:
         with pytest.raises(ValueError):
-            validate_url(url, trusted_origins, enable_dns_rebinding=False)
+            validate_url(raw_url, trusted_origins)
     else:
-        url, host = validate_url(url, trusted_origins, enable_dns_rebinding=False)
-        assert url == expected_value
+        validated_url, _, _ = validate_url(raw_url, trusted_origins)
+        assert validated_url.geturl() == expected_value
 
 
 @pytest.mark.parametrize(
@@ -79,7 +79,11 @@ def test_validate_url_no_dns_rebinding(
     ],
 )
 def test_dns_rebinding_fix(
-    monkeypatch, hostname, resolved_ips, expect_error, expected_ip
+    monkeypatch,
+    hostname: str,
+    resolved_ips: list[str],
+    expect_error: bool,
+    expected_ip: str,
 ):
     """
     Tests that validate_url pins the first valid public IP address, and rejects
@@ -96,11 +100,13 @@ def test_dns_rebinding_fix(
     if expect_error:
         # If any IP is blocked, we expect a ValueError
         with pytest.raises(ValueError):
-            validate_url(hostname, [])
+            url, _, ip_addresses = validate_url(hostname, [])
+            pin_url(url, ip_addresses)
     else:
-        pinned_url, ascii_hostname = validate_url(hostname, [])
+        url, _, ip_addresses = validate_url(hostname, [])
+        pinned_url = pin_url(url, ip_addresses).geturl()
         # The pinned_url should contain the first valid IP
         assert pinned_url.startswith("http://") or pinned_url.startswith("https://")
         assert expected_ip in pinned_url
-        # The ascii_hostname should match our original hostname after IDNA encoding
-        assert ascii_hostname == hostname
+        # The unpinned URL's hostname should match our original IDNA encoded hostname
+        assert url.hostname == hostname
