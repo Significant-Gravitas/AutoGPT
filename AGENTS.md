@@ -20,7 +20,6 @@ See `docs/content/platform/getting-started.md` for setup instructions.
 
 Always run the relevant linters and tests before committing.
 Use conventional commit messages for all commits (e.g. `feat(backend): add API`).
-- Use conventional commit messages.
   Types:
     - feat
     - fix
