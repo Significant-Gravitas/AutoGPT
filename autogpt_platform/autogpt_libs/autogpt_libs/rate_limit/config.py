@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class RateLimitSettings(BaseSettings):
     redis_host: str = Field(
-        default="redis://localhost:6379",
+        default="localhost",
         description="Redis host",
         validation_alias="REDIS_HOST",
     )
