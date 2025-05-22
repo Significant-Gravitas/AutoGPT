@@ -39,7 +39,6 @@ Use conventional commit messages for all commits (e.g. `feat(backend): add API`)
 
 ## Pull requests
 - Use the template in `.github/PULL_REQUEST_TEMPLATE.md`.
-- - Use .github/PULL_REQUEST_TEMPLATE.md
 - Rely on the pre-commit checks for linting and formatting
 - Fill out the **Changes** section and the checklist.
 - Use conventional commit titles with a scope (e.g. `feat(frontend): add feature`).
