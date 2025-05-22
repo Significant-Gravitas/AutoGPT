@@ -32,7 +32,7 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
   sectionTitle,
   agents: allAgents,
   hideAvatars = false,
-  margin = "37px",
+  margin = "24px",
 }) => {
   const router = useRouter();
 
@@ -48,11 +48,12 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
   return (
     <div className="flex flex-col items-center justify-center">
       <div className="w-full max-w-[1360px]">
-        <div
-          className={`mb-[${margin}] font-poppins text-lg font-semibold text-[#282828] dark:text-neutral-200`}
+        <h2
+          style={{ marginBottom: margin }}
+          className="font-poppins text-lg font-semibold text-[#282828] dark:text-neutral-200"
         >
           {sectionTitle}
-        </div>
+        </h2>
         {!displayedAgents || displayedAgents.length === 0 ? (
           <div className="text-center text-gray-500 dark:text-gray-400">
             No agents found
