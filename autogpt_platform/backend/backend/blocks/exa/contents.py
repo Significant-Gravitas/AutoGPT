@@ -82,7 +82,10 @@ class ExaContentsBlock(Block):
             response = requests.post(url, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
-            yield "results", data.get("results", [])
+            results = data.get("results", [])
+            if not results:
+                yield "error", "results are empty"
+            else:
+                yield "results", results
         except Exception as e:
             yield "error", str(e)
-            yield "results", []
