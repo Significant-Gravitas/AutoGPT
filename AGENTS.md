@@ -20,9 +20,28 @@ See `docs/content/platform/getting-started.md` for setup instructions.
 
 Always run the relevant linters and tests before committing.
 Use conventional commit messages for all commits (e.g. `feat(backend): add API`).
+- Use conventional commit messages.
+  Types:
+    - feat
+    - fix
+    - refactor
+    - ci
+    - dx (developer experience)
+  Scopes:
+    - platform
+      - platform/library
+      - platform/marketplace
+      - backend
+        - backend/executor
+      - frontend
+        - frontend/library
+        - frontend/marketplace
+      - blocks
 
 ## Pull requests
 - Use the template in `.github/PULL_REQUEST_TEMPLATE.md`.
+- - Use .github/PULL_REQUEST_TEMPLATE.md
+- Rely on the pre-commit checks for linting and formatting
 - Fill out the **Changes** section and the checklist.
 - Use conventional commit titles with a scope (e.g. `feat(frontend): add feature`).
 - Keep out-of-scope changes under 20% of the PR.
