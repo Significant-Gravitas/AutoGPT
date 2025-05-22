@@ -982,6 +982,7 @@ class ExecutionManager(AppProcess):
             auto_ack=True,
         )
         cancel_channel.start_consuming()
+        raise RuntimeError(f"❌ cancel message consumer is stopped: {cancel_channel}")
 
     @continuous_retry()
     def _consume_execution_run(self):
@@ -996,6 +997,7 @@ class ExecutionManager(AppProcess):
         )
         logger.info(f"[{self.service_name}] ⏳ Starting to consume run messages...")
         run_channel.start_consuming()
+        raise RuntimeError(f"❌ run message consumer is stopped: {run_channel}")
 
     def _handle_cancel_message(
         self,
