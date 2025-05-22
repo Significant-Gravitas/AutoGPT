@@ -247,6 +247,7 @@ class Requests:
 
         # Pin the URL if untrusted
         hostname = url.hostname
+        original_url = url.geturl()
         if not is_trusted:
             url = pin_url(url, ip_addresses)
 
@@ -276,6 +277,12 @@ class Requests:
             *args,
             **kwargs,
         )
+
+        # Replace response URLs with the original host for clearer error messages
+        if url.hostname != hostname:
+            response.url = original_url
+            if response.request is not None:
+                response.request.url = original_url
 
         if self.raise_for_status:
             response.raise_for_status()
