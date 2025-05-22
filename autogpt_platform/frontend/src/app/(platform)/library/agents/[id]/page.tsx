@@ -39,7 +39,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
-import { LoadingSpinner } from "@/components/ui/loading";
+import LoadingBox, { LoadingSpinner } from "@/components/ui/loading";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
@@ -357,8 +357,7 @@ export default function AgentRunsPage(): React.ReactElement {
   );
 
   if (!agent || !graph) {
-    /* TODO: implement loading indicators / skeleton page */
-    return <span>Loading...</span>;
+    return <LoadingBox className="h-[90vh]" />;
   }
 
   return (
@@ -416,7 +415,7 @@ export default function AgentRunsPage(): React.ReactElement {
               agentActions={agentActions}
             />
           )
-        ) : null) || <p>Loading...</p>}
+        ) : null) || <LoadingBox className="h-[70vh]" />}
 
         <DeleteConfirmDialog
           entityType="agent"
