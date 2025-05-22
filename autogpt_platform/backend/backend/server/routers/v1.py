@@ -580,10 +580,10 @@ async def set_graph_active_version(
         )
 
 
-def _cached_credentials_getter(user_id: str) -> Callable[[str], Credentials | None]:
+def _cached_credentials_getter(user_id: str) -> Callable[[str], "Credentials | None"]:
     all_credentials = None
 
-    def get_credentials(creds_id: str) -> Credentials | None:
+    def get_credentials(creds_id: str) -> "Credentials | None":
         nonlocal all_credentials
         if not all_credentials:
             # Fetch credentials on first necessity
