@@ -68,6 +68,9 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     number | null
   >(null);
   const [open, setOpen] = React.useState(false);
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const [totalPages, setTotalPages] = React.useState(1);
+  const [loading, setLoading] = React.useState(false);
 
   const popupId = React.useId();
   const router = useRouter();
@@ -83,18 +86,32 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
 
   React.useEffect(() => {
     if (open) {
+      setCurrentPage(1);
+    }
+  }, [open]);
+
+  React.useEffect(() => {
+    if (open) {
       const loadMyAgents = async () => {
         try {
-          const response = await api.getMyAgents();
+          setLoading(true);
+          const response = await api.getMyAgents({
+            page: currentPage,
+            page_size: 20,
+          });
           setMyAgents(response);
+          setCurrentPage(response.pagination.current_page);
+          setTotalPages(response.pagination.total_pages);
         } catch (error) {
           console.error("Failed to load my agents:", error);
+        } finally {
+          setLoading(false);
         }
       };
 
       loadMyAgents();
     }
-  }, [open, api]);
+  }, [open, currentPage, api]);
 
   const handleClose = () => {
     setStep("select");
@@ -212,29 +229,61 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
           <div className="flex min-h-screen items-center justify-center">
             <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
               <div className="h-full overflow-y-auto">
-                <PublishAgentSelect
-                  agents={
-                    myAgents?.agents
-                      .map((agent) => ({
-                        name: agent.agent_name,
-                        id: agent.agent_id,
-                        version: agent.agent_version,
-                        lastEdited: agent.last_edited,
-                        imageSrc:
-                          agent.agent_image || "https://picsum.photos/300/200",
-                      }))
-                      .sort(
-                        (a, b) =>
-                          new Date(b.lastEdited).getTime() -
-                          new Date(a.lastEdited).getTime(),
-                      ) || []
-                  }
-                  onSelect={handleAgentSelect}
-                  onCancel={handleClose}
-                  onNext={handleNextFromSelect}
-                  onClose={handleClose}
-                  onOpenBuilder={() => router.push("/build")}
-                />
+                {loading ? (
+                  <div className="flex items-center justify-center p-8 text-gray-600">
+                    Loading agents...
+                  </div>
+                ) : (
+                  <>
+                    <PublishAgentSelect
+                      agents={
+                        myAgents?.agents
+                          .map((agent) => ({
+                            name: agent.agent_name,
+                            id: agent.agent_id,
+                            version: agent.agent_version,
+                            lastEdited: agent.last_edited,
+                            imageSrc:
+                              agent.agent_image ||
+                              "https://picsum.photos/300/200",
+                          }))
+                          .sort(
+                            (a, b) =>
+                              new Date(b.lastEdited).getTime() -
+                              new Date(a.lastEdited).getTime(),
+                          ) || []
+                      }
+                      onSelect={handleAgentSelect}
+                      onCancel={handleClose}
+                      onNext={handleNextFromSelect}
+                      onClose={handleClose}
+                      onOpenBuilder={() => router.push("/build")}
+                    />
+                    <div className="flex items-center justify-between p-4">
+                      <button
+                        onClick={() =>
+                          setCurrentPage((p) => Math.max(1, p - 1))
+                        }
+                        disabled={currentPage === 1}
+                        className="text-sm font-medium text-blue-600 disabled:text-gray-400"
+                      >
+                        ← Previous
+                      </button>
+                      <span className="text-sm text-gray-700">
+                        Page {currentPage} of {totalPages}
+                      </span>
+                      <button
+                        onClick={() =>
+                          setCurrentPage((p) => Math.min(totalPages, p + 1))
+                        }
+                        disabled={currentPage === totalPages}
+                        className="text-sm font-medium text-blue-600 disabled:text-gray-400"
+                      >
+                        Next →
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>
