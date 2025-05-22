@@ -1,3 +1,5 @@
+import { createContext, useCallback, useEffect, useState } from "react";
+import useSupabase from "@/hooks/useSupabase";
 import {
   APIKeyCredentials,
   CredentialsDeleteNeedConfirmationResponse,
@@ -8,8 +10,6 @@ import {
   UserPasswordCredentials,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import useSupabase from "@/hooks/useSupabase";
-import { createContext, useCallback, useEffect, useState } from "react";
 
 // Get keys from CredentialsProviderName type
 const CREDENTIALS_PROVIDER_NAMES = Object.values(
@@ -103,8 +103,8 @@ export default function CredentialsProvider({
 }) {
   const [providers, setProviders] =
     useState<CredentialsProvidersContextType | null>(null);
-  const api = useBackendAPI();
   const { user } = useSupabase();
+  const api = useBackendAPI();
 
   const addCredentials = useCallback(
     (
