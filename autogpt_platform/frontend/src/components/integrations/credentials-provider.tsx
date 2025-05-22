@@ -8,6 +8,7 @@ import {
   UserPasswordCredentials,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import useSupabase from "@/hooks/useSupabase";
 import { createContext, useCallback, useEffect, useState } from "react";
 
 // Get keys from CredentialsProviderName type
@@ -103,6 +104,7 @@ export default function CredentialsProvider({
   const [providers, setProviders] =
     useState<CredentialsProvidersContextType | null>(null);
   const api = useBackendAPI();
+  const { user } = useSupabase();
 
   const addCredentials = useCallback(
     (
@@ -202,6 +204,11 @@ export default function CredentialsProvider({
   );
 
   useEffect(() => {
+    if (!user) {
+      setProviders(null);
+      return;
+    }
+
     api.isAuthenticated().then((isAuthenticated) => {
       if (!isAuthenticated) return;
 
@@ -248,6 +255,7 @@ export default function CredentialsProvider({
     createUserPasswordCredentials,
     deleteCredentials,
     oAuthCallback,
+    user?.id,
   ]);
 
   return (
