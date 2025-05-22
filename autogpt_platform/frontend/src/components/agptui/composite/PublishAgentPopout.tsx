@@ -69,12 +69,43 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   >(null);
   const [open, setOpen] = React.useState(false);
   const [currentPage, setCurrentPage] = React.useState(1);
-  const [totalPages, setTotalPages] = React.useState(1);
   const [loading, setLoading] = React.useState(false);
+  const [loadingMore, setLoadingMore] = React.useState(false);
+  const [hasMore, setHasMore] = React.useState(true);
+
+  const api = useBackendAPI();
+
+  const fetchMyAgents = React.useCallback(
+    async (page: number, append = false) => {
+      try {
+        append ? setLoadingMore(true) : setLoading(true);
+        const response = await api.getMyAgents({
+          page,
+          page_size: 20,
+        });
+        setCurrentPage(response.pagination.current_page);
+        setHasMore(
+          response.pagination.current_page < response.pagination.total_pages,
+        );
+        setMyAgents((prev) =>
+          append && prev
+            ? {
+                agents: [...prev.agents, ...response.agents],
+                pagination: response.pagination,
+              }
+            : response,
+        );
+      } catch (error) {
+        console.error("Failed to load my agents:", error);
+      } finally {
+        append ? setLoadingMore(false) : setLoading(false);
+      }
+    },
+    [api],
+  );
 
   const popupId = React.useId();
   const router = useRouter();
-  const api = useBackendAPI();
 
   const { toast } = useToast();
 
@@ -87,31 +118,15 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   React.useEffect(() => {
     if (open) {
       setCurrentPage(1);
+      setHasMore(true);
     }
   }, [open]);
 
   React.useEffect(() => {
     if (open) {
-      const loadMyAgents = async () => {
-        try {
-          setLoading(true);
-          const response = await api.getMyAgents({
-            page: currentPage,
-            page_size: 20,
-          });
-          setMyAgents(response);
-          setCurrentPage(response.pagination.current_page);
-          setTotalPages(response.pagination.total_pages);
-        } catch (error) {
-          console.error("Failed to load my agents:", error);
-        } finally {
-          setLoading(false);
-        }
-      };
-
-      loadMyAgents();
+      fetchMyAgents(1);
     }
-  }, [open, currentPage, api]);
+  }, [open, fetchMyAgents]);
 
   const handleClose = () => {
     setStep("select");
@@ -222,13 +237,27 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     }
   };
 
+  const handleScroll = React.useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+      if (
+        hasMore &&
+        !loadingMore &&
+        scrollTop + clientHeight >= scrollHeight - 20
+      ) {
+        fetchMyAgents(currentPage + 1, true);
+      }
+    },
+    [hasMore, loadingMore, currentPage, fetchMyAgents],
+  );
+
   const renderContent = () => {
     switch (step) {
       case "select":
         return (
           <div className="flex min-h-screen items-center justify-center">
             <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
-              <div className="h-full overflow-y-auto">
+              <div className="h-full overflow-y-auto" onScroll={handleScroll}>
                 {loading ? (
                   <div className="flex items-center justify-center p-8 text-gray-600">
                     Loading agents...
@@ -259,29 +288,11 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
                       onClose={handleClose}
                       onOpenBuilder={() => router.push("/build")}
                     />
-                    <div className="flex items-center justify-between p-4">
-                      <button
-                        onClick={() =>
-                          setCurrentPage((p) => Math.max(1, p - 1))
-                        }
-                        disabled={currentPage === 1}
-                        className="text-sm font-medium text-blue-600 disabled:text-gray-400"
-                      >
-                        ← Previous
-                      </button>
-                      <span className="text-sm text-gray-700">
-                        Page {currentPage} of {totalPages}
-                      </span>
-                      <button
-                        onClick={() =>
-                          setCurrentPage((p) => Math.min(totalPages, p + 1))
-                        }
-                        disabled={currentPage === totalPages}
-                        className="text-sm font-medium text-blue-600 disabled:text-gray-400"
-                      >
-                        Next →
-                      </button>
-                    </div>
+                    {loadingMore && (
+                      <div className="flex items-center justify-center p-4 text-gray-600">
+                        Loading more...
+                      </div>
+                    )}
                   </>
                 )}
               </div>
