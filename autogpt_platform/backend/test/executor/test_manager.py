@@ -357,7 +357,7 @@ async def test_execute_preset(server: SpinTestServer):
     test_graph = await create_graph(server, test_graph, test_user)
 
     # Create preset with initial values
-    preset = backend.server.v2.library.model.CreateLibraryAgentPresetRequest(
+    preset = backend.server.v2.library.model.LibraryAgentPresetCreatable(
         name="Test Preset With Clash",
         description="Test preset with clashing input values",
         graph_id=test_graph.id,
@@ -446,7 +446,7 @@ async def test_execute_preset_with_clash(server: SpinTestServer):
     test_graph = await create_graph(server, test_graph, test_user)
 
     # Create preset with initial values
-    preset = backend.server.v2.library.model.CreateLibraryAgentPresetRequest(
+    preset = backend.server.v2.library.model.LibraryAgentPresetCreatable(
         name="Test Preset With Clash",
         description="Test preset with clashing input values",
         graph_id=test_graph.id,
