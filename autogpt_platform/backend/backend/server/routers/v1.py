@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated, Any, Sequence
+from typing import TYPE_CHECKING, Annotated, Any, Callable, Sequence
 
 import pydantic
 import stripe
@@ -468,7 +468,7 @@ async def create_new_graph(
 
     graph = await on_graph_activate(
         graph,
-        get_credentials=lambda id: integration_creds_manager.get(user_id, id),
+        get_credentials=_cached_credentials_getter(user_id),
     )
     return graph
 
@@ -480,11 +480,7 @@ async def delete_graph(
     graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> DeleteGraphResponse:
     if active_version := await graph_db.get_graph(graph_id, user_id=user_id):
-
-        def get_credentials(credentials_id: str) -> "Credentials | None":
-            return integration_creds_manager.get(user_id, credentials_id)
-
-        await on_graph_deactivate(active_version, get_credentials)
+        await on_graph_deactivate(active_version, _cached_credentials_getter(user_id))
 
     return {"version_counts": await graph_db.delete_graph(graph_id, user_id=user_id)}
 
@@ -521,13 +517,10 @@ async def update_graph(
             user_id, graph.id, graph.version
         )
 
-        def get_credentials(credentials_id: str) -> "Credentials | None":
-            return integration_creds_manager.get(user_id, credentials_id)
-
         # Handle activation of the new graph first to ensure continuity
         new_graph_version = await on_graph_activate(
             new_graph_version,
-            get_credentials=get_credentials,
+            get_credentials=_cached_credentials_getter(user_id),
         )
         # Ensure new version is the only active version
         await graph_db.set_graph_active_version(
@@ -537,7 +530,7 @@ async def update_graph(
             # Handle deactivation of the previously active version
             await on_graph_deactivate(
                 current_active_version,
-                get_credentials=get_credentials,
+                get_credentials=_cached_credentials_getter(user_id),
             )
 
     return new_graph_version
@@ -562,13 +555,10 @@ async def set_graph_active_version(
 
     current_active_graph = await graph_db.get_graph(graph_id, user_id=user_id)
 
-    def get_credentials(credentials_id: str) -> "Credentials | None":
-        return integration_creds_manager.get(user_id, credentials_id)
-
     # Handle activation of the new graph first to ensure continuity
     await on_graph_activate(
         new_active_graph,
-        get_credentials=get_credentials,
+        get_credentials=_cached_credentials_getter(user_id),
     )
     # Ensure new version is the only active version
     await graph_db.set_graph_active_version(
@@ -586,8 +576,30 @@ async def set_graph_active_version(
         # Handle deactivation of the previously active version
         await on_graph_deactivate(
             current_active_graph,
-            get_credentials=get_credentials,
+            get_credentials=_cached_credentials_getter(user_id),
         )
+
+
+def _cached_credentials_getter(user_id: str) -> Callable[[str], Credentials | None]:
+    all_credentials = None
+
+    def get_credentials(creds_id: str) -> Credentials | None:
+        nonlocal all_credentials
+        if not all_credentials:
+            # Fetch credentials on first necessity
+            all_credentials = integration_creds_manager.store.get_all_creds(user_id)
+
+        credential = next((c for c in all_credentials if c.id == creds_id), None)
+        if not credential:
+            return None
+        if credential.type != "oauth2" or not credential.access_token_expires_at:
+            # Credential doesn't expire
+            return credential
+
+        # Credential is OAuth2 credential and has expiration timestamp
+        return integration_creds_manager.refresh_if_needed(user_id, credential)
+
+    return get_credentials
 
 
 @v1_router.post(

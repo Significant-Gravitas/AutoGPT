@@ -7,7 +7,7 @@ from autogpt_libs.utils.synchronize import RedisKeyedMutex
 from redis.lock import Lock as RedisLock
 
 from backend.data import redis
-from backend.data.model import Credentials
+from backend.data.model import Credentials, OAuth2Credentials
 from backend.integrations.credentials_store import IntegrationCredentialsStore
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
@@ -78,25 +78,7 @@ class IntegrationCredentialsManager:
                 f"{datetime.fromtimestamp(credentials.access_token_expires_at)}; "
                 f"current time is {datetime.now()}"
             )
-
-            with self._locked(user_id, credentials_id, "refresh"):
-                oauth_handler = _get_provider_oauth_handler(credentials.provider)
-                if oauth_handler.needs_refresh(credentials):
-                    logger.debug(
-                        f"Refreshing '{credentials.provider}' "
-                        f"credentials #{credentials.id}"
-                    )
-                    _lock = None
-                    if lock:
-                        # Wait until the credentials are no longer in use anywhere
-                        _lock = self._acquire_lock(user_id, credentials_id)
-
-                    fresh_credentials = oauth_handler.refresh_tokens(credentials)
-                    self.store.update_creds(user_id, fresh_credentials)
-                    if _lock and _lock.locked() and _lock.owned():
-                        _lock.release()
-
-                    credentials = fresh_credentials
+            credentials = self.refresh_if_needed(user_id, credentials, lock)
         else:
             logger.debug(f"Credentials #{credentials.id} never expire")
 
@@ -120,6 +102,29 @@ class IntegrationCredentialsManager:
                 f"Credentials #{credentials_id} for user #{user_id} not found"
             )
         return credentials, lock
+
+    def refresh_if_needed(
+        self, user_id: str, credentials: OAuth2Credentials, lock: bool = True
+    ) -> OAuth2Credentials:
+        with self._locked(user_id, credentials.id, "refresh"):
+            oauth_handler = _get_provider_oauth_handler(credentials.provider)
+            if oauth_handler.needs_refresh(credentials):
+                logger.debug(
+                    f"Refreshing '{credentials.provider}' "
+                    f"credentials #{credentials.id}"
+                )
+                _lock = None
+                if lock:
+                    # Wait until the credentials are no longer in use anywhere
+                    _lock = self._acquire_lock(user_id, credentials.id)
+
+                fresh_credentials = oauth_handler.refresh_tokens(credentials)
+                self.store.update_creds(user_id, fresh_credentials)
+                if _lock and _lock.locked() and _lock.owned():
+                    _lock.release()
+
+                credentials = fresh_credentials
+        return credentials
 
     def update(self, user_id: str, updated: Credentials) -> None:
         with self._locked(user_id, updated.id):
