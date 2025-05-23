@@ -19,6 +19,7 @@ import type {
   CredentialsDeleteResponse,
   CredentialsMetaInput,
   CredentialsMetaResponse,
+  CredentialsProviderName,
   Graph,
   GraphCreatable,
   GraphExecution,
@@ -208,7 +209,8 @@ export default class BackendAPI {
 
   getBuilderBlocks(options: {
     search_query?: string;
-    filter?: Omit<DefaultStateType, "suggestions">[];
+    filter?: Omit<DefaultStateType | "providers", "suggestions">[];
+    providers?: CredentialsProviderName[];
     by_creator?: string[];
     search_id?: string;
     page?: number;

@@ -85,12 +85,12 @@ async def get_blocks(
         providers=[],
         pagination=server_model.Pagination.empty(),
     )
-    if "providers" in options.filter:
-        providers = builder_db.get_providers(
-            query=options.search_query or "",
-            page=options.page,
-            page_size=options.page_size,
-        )
+    # if "providers" in options.filter:
+    #     providers = builder_db.get_providers(
+    #         query=options.search_query or "",
+    #         page=options.page,
+    #         page_size=options.page_size,
+    #     )
 
     # Library Agents
     my_agents = library_model.LibraryAgentResponse(
