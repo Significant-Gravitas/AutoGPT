@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import FilterChip from "../FilterChip";
 import FilterSheet from "./FilterSheet";
 import { CategoryKey, useBlockMenuContext } from "../block-menu-provider";
@@ -29,16 +29,19 @@ const FiltersList = () => {
     });
   };
 
-  const handleCreatorFilter = (creator: string) => {
-    const updatedCreators = filters.createdBy.includes(creator)
-      ? filters.createdBy.filter((c) => c !== creator)
-      : [...filters.createdBy, creator];
+  const handleCreatorFilter = useCallback(
+    (creator: string) => {
+      const updatedCreators = filters.createdBy.includes(creator)
+        ? filters.createdBy.filter((c) => c !== creator)
+        : [...filters.createdBy, creator];
 
-    setFilters({
-      ...filters,
-      createdBy: updatedCreators,
-    });
-  };
+      setFilters({
+        ...filters,
+        createdBy: updatedCreators,
+      });
+    },
+    [filters, setFilters],
+  );
 
   return (
     <div className="flex flex-nowrap gap-3 overflow-x-auto scrollbar-hide">

@@ -1,6 +1,5 @@
 // BLOCK MENU TODO: We need a disable state in this, currently it's not in design.
 
-// Using div instead of button, because it's only for design purposes. We will use this to give design to PopoverTrigger.
 import { cn } from "@/lib/utils";
 import React from "react";
 
@@ -18,6 +17,7 @@ const ControlPanelButton: React.FC<Props> = ({
   ...rest
 }) => {
   return (
+    // Using div instead of button, because it's only for design purposes. We will use this to give design to PopoverTrigger.
     <div
       className={cn(
         "flex h-[4.25rem] w-[4.25rem] items-center justify-center whitespace-normal bg-white p-[1.38rem] text-zinc-800 shadow-none hover:cursor-pointer hover:bg-zinc-100 hover:text-zinc-950 focus:ring-0",

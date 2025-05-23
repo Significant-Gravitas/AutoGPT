@@ -1,6 +1,6 @@
 import React from "react";
 import FiltersList from "./FiltersList";
-import SearchList from "./SearchList.";
+import SearchList from "./SearchList";
 import { useBlockMenuContext } from "../block-menu-provider";
 
 const BlockMenuSearch: React.FC = ({}) => {
