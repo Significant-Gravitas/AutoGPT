@@ -1,0 +1,154 @@
+[
+  {
+    "id": "anthropic",
+    "display_name": "Anthropic"
+  },
+  {
+    "id": "apollo",
+    "display_name": "Apollo"
+  },
+  {
+    "id": "discord",
+    "display_name": "Discord",
+    "icon": "FaDiscord"
+  },
+  {
+    "id": "d_id",
+    "display_name": "D-ID"
+  },
+  {
+    "id": "e2b",
+    "display_name": "E2B"
+  },
+  {
+    "id": "exa",
+    "display_name": "Exa"
+  },
+  {
+    "id": "fal",
+    "display_name": "FAL"
+  },
+  {
+    "id": "github",
+    "display_name": "GitHub",
+    "icon": "FaGithub"
+  },
+  {
+    "id": "google",
+    "display_name": "Google",
+    "icon": "FaGoogle"
+  },
+  {
+    "id": "google_maps",
+    "display_name": "Google Maps",
+    "icon": "FaGoogle"
+  },
+  {
+    "id": "groq",
+    "display_name": "Groq"
+  },
+  {
+    "id": "hubspot",
+    "display_name": "Hubspot",
+    "icon": "FaHubspot"
+  },
+  {
+    "id": "ideogram",
+    "display_name": "Ideogram"
+  },
+  {
+    "id": "jina",
+    "display_name": "Jina"
+  },
+  {
+    "id": "linear",
+    "display_name": "Linear"
+  },
+  {
+    "id": "medium",
+    "display_name": "Medium",
+    "icon": "FaMedium"
+  },
+  {
+    "id": "mem0",
+    "display_name": "Mem0"
+  },
+  {
+    "id": "notion",
+    "display_name": "Notion",
+    "icon": "NotionLogoIcon"
+  },
+  {
+    "id": "nvidia",
+    "display_name": "Nvidia"
+  },
+  {
+    "id": "ollama",
+    "display_name": "Ollama"
+  },
+  {
+    "id": "openai",
+    "display_name": "OpenAI"
+  },
+  {
+    "id": "openweathermap",
+    "display_name": "OpenWeatherMap"
+  },
+  {
+    "id": "open_router",
+    "display_name": "Open Router"
+  },
+  {
+    "id": "llama_api",
+    "display_name": "Llama API"
+  },
+  {
+    "id": "pinecone",
+    "display_name": "Pinecone"
+  },
+  {
+    "id": "screenshotone",
+    "display_name": "ScreenshotOne"
+  },
+  {
+    "id": "slant3d",
+    "display_name": "Slant3D"
+  },
+  {
+    "id": "smartlead",
+    "display_name": "SmartLead"
+  },
+  {
+    "id": "smtp",
+    "display_name": "SMTP"
+  },
+  {
+    "id": "reddit",
+    "display_name": "Reddit"
+  },
+  {
+    "id": "replicate",
+    "display_name": "Replicate"
+  },
+  {
+    "id": "revid",
+    "display_name": "Rev.ID"
+  },
+  {
+    "id": "twitter",
+    "display_name": "Twitter",
+    "icon": "FaTwitter"
+  },
+  {
+    "id": "todoist",
+    "display_name": "Todoist"
+  },
+  {
+    "id": "unreal_speech",
+    "display_name": "Unreal Speech"
+  },
+  {
+    "id": "zerobounce",
+    "display_name": "ZeroBounce"
+  }
+]
