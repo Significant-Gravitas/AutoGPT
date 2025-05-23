@@ -26,7 +26,6 @@ import { InputItem } from "@/components/RunnerUIWrapper";
 import { GraphMeta } from "@/lib/autogpt-server-api";
 import { default as NextLink } from "next/link";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
-import { get } from "lodash";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 

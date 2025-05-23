@@ -37,7 +37,7 @@ def sanitize_query(query: str | None) -> str | None:
 
 async def get_store_agents(
     featured: bool = False,
-    creator: str | None = None,
+    creators: list[str] | None = None,
     sorted_by: str | None = None,
     search_query: str | None = None,
     category: str | None = None,
@@ -48,15 +48,15 @@ async def get_store_agents(
     Get PUBLIC store agents from the StoreAgent view
     """
     logger.debug(
-        f"Getting store agents. featured={featured}, creator={creator}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
+        f"Getting store agents. featured={featured}, creator={creators}, sorted_by={sorted_by}, search={search_query}, category={category}, page={page}"
     )
     sanitized_query = sanitize_query(search_query)
 
     where_clause = {}
     if featured:
         where_clause["featured"] = featured
-    if creator:
-        where_clause["creator_username"] = creator
+    if creators:
+        where_clause["creator_username"] = {"in": creators}
     if category:
         where_clause["categories"] = {"has": category}
 

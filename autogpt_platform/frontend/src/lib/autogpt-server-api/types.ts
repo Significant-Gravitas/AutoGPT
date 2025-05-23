@@ -27,6 +27,28 @@ export type BlockCost = {
   cost_filter: { [key: string]: any };
 };
 
+/* Mirror of backend/server/v2/builder/model.py:Provider */
+export type Provider = {
+  name: string;
+  description: string;
+  integration_count: number;
+};
+
+/* Mirror of backend/server/v2/builder/model.py:BlockSearchResponse */
+export type BlockSearchResponse = {
+  items: (Block | Provider | LibraryAgent | StoreAgent)[];
+  total_items: Record<
+    | "blocks"
+    | "integrations"
+    | "providers"
+    | "marketplace_agents"
+    | "my_agents",
+    number
+  >;
+  page: number;
+  more_pages: boolean;
+};
+
 /* Mirror of backend/data/block.py:Block */
 export type Block = {
   id: string;
