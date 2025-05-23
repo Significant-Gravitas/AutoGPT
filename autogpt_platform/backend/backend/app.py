@@ -4,7 +4,9 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from backend.util.process import AppProcess
 
-logger = logging.getLogger(__name__)
+from backend.util.logging import TruncatedLogger, configure_logging
+
+logger = TruncatedLogger(logging.getLogger(__name__), "[App]")
 
 
 def run_processes(*processes: "AppProcess", **kwargs):
@@ -31,6 +33,7 @@ def main(**kwargs):
     """
     Run all the processes required for the AutoGPT-server (REST and WebSocket APIs).
     """
+    configure_logging()
 
     from backend.executor import DatabaseManager, ExecutionManager, Scheduler
     from backend.notifications import NotificationManager

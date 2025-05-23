@@ -139,6 +139,15 @@ repos:
         types: [file, python]
         language: system
 
+  - repo: local
+    hooks:
+      - id: check-loggers
+        name: Check for plain loggers
+        entry: poetry -C autogpt_platform/backend run python check_logging.py
+        files: ^autogpt_platform/backend/backend/
+        language: system
+        pass_filenames: false
+
   - repo: https://github.com/psf/black
     rev: 24.10.0
     # Black has sensible defaults, doesn't need package context, and ignores

@@ -115,6 +115,17 @@ Here are some common scenarios where you might use multiple Docker Compose comma
 
 These scenarios demonstrate how to use Docker Compose commands in combination to manage your AutoGPT Platform effectively.
 
+### Logging
+The backend configures logging by calling `configure_logging()` at startup.
+Logs use the format:
+
+```
+YYYY-MM-DD HH:MM:SS LEVEL [PREFIX] message {"json_fields": {...}}
+```
+
+When creating loggers for user-facing modules, wrap them with
+`TruncatedLogger(logging.getLogger(__name__), "[Component]")` to truncate long
+messages and include optional metadata.
 
 ### Persisting Data
 

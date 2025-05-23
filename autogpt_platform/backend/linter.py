@@ -30,6 +30,7 @@ def lint():
         ["ruff", "format", "--diff", "--check", LIBS_DIR],
         ["isort", "--diff", "--check", "--profile", "black", BACKEND_DIR],
         ["black", "--diff", "--check", BACKEND_DIR],
+        ["python", "check_logging.py"],
         ["pyright", *TARGET_DIRS],
     ]
     lint_error = None
