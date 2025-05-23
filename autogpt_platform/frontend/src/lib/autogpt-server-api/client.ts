@@ -9,6 +9,7 @@ import type {
   APIKeyCredentials,
   APIKeyPermission,
   Block,
+  BlockSearchResponse,
   CreateAPIKeyResponse,
   CreateLibraryAgentPresetRequest,
   CreatorDetails,
@@ -59,6 +60,7 @@ import type {
   UserPasswordCredentials,
   UsersBalanceHistoryResponse,
 } from "./types";
+import { DefaultStateType } from "@/components/builder/block-menu/block-menu-provider";
 
 const isClient = typeof window !== "undefined";
 
@@ -203,6 +205,17 @@ export default class BackendAPI {
   ////////////////////////////////////////
   //////////////// GRAPHS ////////////////
   ////////////////////////////////////////
+
+  getBuilderBlocks(options: {
+    search_query?: string;
+    filter?: Omit<DefaultStateType, "suggestions">[];
+    by_creator?: string[];
+    search_id?: string;
+    page?: number;
+    page_size?: number;
+  }): Promise<BlockSearchResponse> {
+    return this._request("POST", "/builder/blocks", options);
+  }
 
   getBlocks(): Promise<Block[]> {
     return this._get("/blocks");
