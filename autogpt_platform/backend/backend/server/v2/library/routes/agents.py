@@ -70,10 +70,10 @@ async def list_library_agents(
             page_size=page_size,
         )
     except Exception as e:
-        logger.error(f"Could not fetch library agents: {e}")
+        logger.exception("Listing library agents failed for user %s: %s", user_id, e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get library agents",
+            detail={"message": str(e), "hint": "Inspect database connectivity."},
         ) from e
 
 
@@ -102,10 +102,17 @@ async def get_library_agent_by_store_listing_version_id(
             store_listing_version_id, user_id
         )
     except Exception as e:
-        logger.error(f"Could not fetch library agent from store version ID: {e}")
+        logger.exception(
+            "Retrieving library agent by store version failed for user %s: %s",
+            user_id,
+            e,
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to add agent to library",
+            detail={
+                "message": str(e),
+                "hint": "Check if the store listing ID is valid.",
+            },
         ) from e
 
 
@@ -143,22 +150,31 @@ async def add_marketplace_agent_to_library(
         )
 
     except store_exceptions.AgentNotFoundError:
-        logger.warning(f"Agent not found: {store_listing_version_id}")
+        logger.warning(
+            "Store listing version %s not found when adding to library",
+            store_listing_version_id,
+        )
         raise HTTPException(
             status_code=404,
-            detail=f"Store listing version {store_listing_version_id} not found",
+            detail={
+                "message": f"Store listing version {store_listing_version_id} not found",
+                "hint": "Confirm the ID provided.",
+            },
         )
     except store_exceptions.DatabaseError as e:
-        logger.error(f"Database error occurred whilst adding agent to library: {e}")
+        logger.exception("Database error whilst adding agent to library: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to add agent to library",
+            detail={"message": str(e), "hint": "Inspect DB logs for details."},
         ) from e
     except Exception as e:
-        logger.error(f"Unexpected error while adding agent: {e}")
+        logger.exception("Unexpected error while adding agent to library: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to add agent to library",
+            detail={
+                "message": str(e),
+                "hint": "Check server logs for more information.",
+            },
         ) from e
 
 
@@ -203,16 +219,16 @@ async def update_library_agent(
             content={"message": "Agent updated successfully"},
         )
     except store_exceptions.DatabaseError as e:
-        logger.exception(f"Database error while updating library agent: {e}")
+        logger.exception("Database error while updating library agent: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update library agent",
+            detail={"message": str(e), "hint": "Verify DB connection."},
         ) from e
     except Exception as e:
-        logger.exception(f"Unexpected error while updating library agent: {e}")
+        logger.exception("Unexpected error while updating library agent: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update library agent",
+            detail={"message": str(e), "hint": "Check server logs."},
         ) from e
 
 
