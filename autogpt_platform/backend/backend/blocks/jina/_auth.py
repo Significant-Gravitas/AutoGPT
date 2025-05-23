@@ -4,12 +4,32 @@ from pydantic import SecretStr
 
 from backend.data.model import APIKeyCredentials, CredentialsField, CredentialsMetaInput
 from backend.integrations.providers import ProviderName
+from backend.util.settings import Settings
 
 JinaCredentials = APIKeyCredentials
 JinaCredentialsInput = CredentialsMetaInput[
     Literal[ProviderName.JINA],
     Literal["api_key"],
 ]
+
+DEFAULT_CREDENTIAL_ID = "7f26de70-ba0d-494e-ba76-238e65e7b45f"
+ENV_VAR = "jina_api_key"
+DEFAULT_TITLE = "Use Credits for Jina"
+
+
+def default_credentials(settings: Settings = Settings()) -> APIKeyCredentials | None:
+    key = getattr(settings.secrets, ENV_VAR, "")
+    if not key and ENV_VAR:
+        return None
+    if not key:
+        key = "FAKE_API_KEY"
+    return APIKeyCredentials(
+        id=DEFAULT_CREDENTIAL_ID,
+        provider=ProviderName.JINA.value,
+        api_key=SecretStr(key),
+        title=DEFAULT_TITLE,
+        expires_at=None,
+    )
 
 
 def JinaCredentialsField() -> JinaCredentialsInput:

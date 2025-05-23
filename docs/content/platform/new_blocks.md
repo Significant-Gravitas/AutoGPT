@@ -379,6 +379,28 @@ You can see that google has defined a `DEFAULT_SCOPES` variable, this is used to
 
 You can also see that `GOOGLE_OAUTH_IS_CONFIGURED` is used to disable the blocks that require OAuth if the oauth is not configured. This is in the `__init__` method of each block. This is because there is no api key fallback for google blocks so we need to make sure that the oauth is configured before we allow the user to use the blocks.
 
+When adding a provider that uses an API key, expose a `default_credentials` helper in one of the provider's modules (commonly `_auth.py`) so default credentials can be discovered automatically:
+
+```python
+DEFAULT_CREDENTIAL_ID = "<existing uuid>"
+ENV_VAR = "<matching Settings.secrets field>"
+DEFAULT_TITLE = "Use Credits for <Provider>"
+
+def default_credentials(settings=Settings()) -> APIKeyCredentials | None:
+    key = getattr(settings.secrets, ENV_VAR, "")
+    if not key and ENV_VAR:
+        return None
+    if not key:
+        key = "FAKE_API_KEY"
+    return APIKeyCredentials(
+        id=DEFAULT_CREDENTIAL_ID,
+        provider=ProviderName.<NAME>.value,
+        api_key=SecretStr(key),
+        title=DEFAULT_TITLE,
+        expires_at=None,
+    )
+```
+
 ### Webhook-triggered Blocks
 
 Webhook-triggered blocks allow your agent to respond to external events in real-time.

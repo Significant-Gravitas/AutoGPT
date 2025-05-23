@@ -1,5 +1,7 @@
 from typing import Type
 
+from pydantic import SecretStr
+
 from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
 from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
 from backend.blocks.ideogram import IdeogramModelBlock
@@ -20,19 +22,49 @@ from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
 from backend.blocks.text_to_speech_block import UnrealTextToSpeechBlock
 from backend.data.block import Block
 from backend.data.cost import BlockCost, BlockCostType
-from backend.integrations.credentials_store import (
-    anthropic_credentials,
-    did_credentials,
-    groq_credentials,
-    ideogram_credentials,
-    jina_credentials,
-    llama_api_credentials,
-    open_router_credentials,
-    openai_credentials,
-    replicate_credentials,
-    revid_credentials,
-    unreal_credentials,
+from backend.data.model import APIKeyCredentials
+from backend.integrations.credentials_store import discover_default_credentials
+
+_DEFAULTS = {c.provider: c for c in discover_default_credentials()}
+
+
+def _fallback(provider: str) -> APIKeyCredentials:
+    return APIKeyCredentials(
+        id="", provider=provider, api_key=SecretStr(""), title="", expires_at=None
+    )
+
+
+anthropic_credentials: APIKeyCredentials = _DEFAULTS.get("anthropic") or _fallback(
+    "anthropic"
 )
+did_credentials: APIKeyCredentials = _DEFAULTS.get("d_id") or _fallback("d_id")
+groq_credentials: APIKeyCredentials = _DEFAULTS.get("groq") or _fallback("groq")
+ideogram_credentials: APIKeyCredentials = _DEFAULTS.get("ideogram") or _fallback(
+    "ideogram"
+)
+jina_credentials: APIKeyCredentials = _DEFAULTS.get("jina") or _fallback("jina")
+llama_api_credentials: APIKeyCredentials = _DEFAULTS.get("llama_api") or _fallback(
+    "llama_api"
+)
+open_router_credentials: APIKeyCredentials = _DEFAULTS.get("open_router") or _fallback(
+    "open_router"
+)
+openai_credentials: APIKeyCredentials = _DEFAULTS.get("openai") or _fallback("openai")
+replicate_credentials: APIKeyCredentials = _DEFAULTS.get("replicate") or _fallback(
+    "replicate"
+)
+revid_credentials: APIKeyCredentials = _DEFAULTS.get("revid") or _fallback("revid")
+unreal_credentials: APIKeyCredentials = _DEFAULTS.get("unreal") or _fallback("unreal")
+
+for name in list(locals().keys()):
+    if name.endswith("_credentials") and locals()[name] is None:
+        locals()[name] = APIKeyCredentials(
+            id="",
+            provider=name.removesuffix("_credentials"),
+            api_key=SecretStr(""),
+            title="",
+            expires_at=None,
+        )
 
 # =============== Configure the cost for each LLM Model call =============== #
 
@@ -111,7 +143,7 @@ LLM_COST = (
             cost_amount=cost,
         )
         for model, cost in MODEL_COST.items()
-        if MODEL_METADATA[model].provider == "anthropic"
+        if MODEL_METADATA[model].provider == "anthropic" and anthropic_credentials
     ]
     # OpenAI Models
     + [
@@ -128,7 +160,7 @@ LLM_COST = (
             cost_amount=cost,
         )
         for model, cost in MODEL_COST.items()
-        if MODEL_METADATA[model].provider == "openai"
+        if MODEL_METADATA[model].provider == "openai" and openai_credentials
     ]
     # Groq Models
     + [
@@ -141,7 +173,7 @@ LLM_COST = (
             cost_amount=cost,
         )
         for model, cost in MODEL_COST.items()
-        if MODEL_METADATA[model].provider == "groq"
+        if MODEL_METADATA[model].provider == "groq" and groq_credentials
     ]
     # Open Router Models
     + [
@@ -158,7 +190,7 @@ LLM_COST = (
             cost_amount=cost,
         )
         for model, cost in MODEL_COST.items()
-        if MODEL_METADATA[model].provider == "open_router"
+        if MODEL_METADATA[model].provider == "open_router" and open_router_credentials
     ]
     # Llama API Models
     + [
@@ -175,7 +207,7 @@ LLM_COST = (
             cost_amount=cost,
         )
         for model, cost in MODEL_COST.items()
-        if MODEL_METADATA[model].provider == "llama_api"
+        if MODEL_METADATA[model].provider == "llama_api" and llama_api_credentials
     ]
 )
 

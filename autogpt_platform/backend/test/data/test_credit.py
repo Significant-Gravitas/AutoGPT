@@ -10,8 +10,12 @@ from backend.data.credit import BetaUserCredit, UsageTransactionMetadata
 from backend.data.execution import NodeExecutionEntry
 from backend.data.user import DEFAULT_USER_ID
 from backend.executor.utils import block_usage_cost
-from backend.integrations.credentials_store import openai_credentials
+from backend.integrations.credentials_store import discover_default_credentials
 from backend.util.test import SpinTestServer
+
+openai_credentials = next(
+    c for c in discover_default_credentials() if c.provider == "openai"
+)
 
 REFILL_VALUE = 1000
 user_credit = BetaUserCredit(REFILL_VALUE)
