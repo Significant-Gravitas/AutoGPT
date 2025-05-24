@@ -15,13 +15,13 @@ The block connects to the user's Gmail account using their credentials, performs
 | Input | Description |
 |-------|-------------|
 | Credentials | The user's Gmail account credentials for authentication |
-| Query | A search query to filter emails (e.g., "is:unread" for unread emails) |
+| Query | A search query to filter emails (e.g., "is:unread" for unread emails). Ignored if using only the `gmail.metadata` scope. |
 | Max Results | The maximum number of emails to retrieve |
 
 ### Outputs
 | Output | Description |
 |--------|-------------|
-| Email | Detailed information about a single email |
+| Email | Detailed information about a single email (now includes `threadId`) |
 | Emails | A list of email data for multiple emails |
 | Error | An error message if something goes wrong during the process |
 
@@ -142,3 +142,62 @@ The block first finds the ID of the specified label in the user's Gmail account.
 
 ### Possible use case
 Automatically removing the "Unread" label from emails after they have been processed by a customer service representative.
+
+---
+
+## Gmail Get Thread
+
+### What it is
+A block that retrieves an entire Gmail thread.
+
+### What it does
+Given a `threadId`, this block fetches all messages in that thread and decodes the text bodies.
+
+### Inputs
+| Input | Description |
+|-------|-------------|
+| Credentials | The user's Gmail account credentials for authentication |
+| threadId | The ID of the thread to fetch |
+
+### Outputs
+| Output | Description |
+|--------|-------------|
+| Thread | Gmail thread with decoded messages |
+| Error | An error message if something goes wrong |
+
+### Possible use case
+Checking if a recipient replied in an existing conversation.
+
+---
+
+## Gmail Reply
+
+### What it is
+A block that sends a reply within an existing Gmail thread.
+
+### What it does
+This block builds a properly formatted reply email and sends it so Gmail keeps it in the same conversation.
+
+### Inputs
+| Input | Description |
+|-------|-------------|
+| Credentials | The user's Gmail account credentials for authentication |
+| threadId | The thread to reply in |
+| parentMessageId | The ID of the message you are replying to |
+| To | List of recipients |
+| Cc | List of CC recipients |
+| Bcc | List of BCC recipients |
+| Subject | Optional subject (defaults to `Re:` prefix) |
+| Body | The email body |
+| Attachments | Optional files to include |
+
+### Outputs
+| Output | Description |
+|--------|-------------|
+| MessageId | The ID of the sent message |
+| ThreadId | The thread the reply belongs to |
+| Message | Full Gmail message object |
+| Error | Error message if something goes wrong |
+
+### Possible use case
+Automatically respond "Thanks, see you then" to a scheduling email while keeping the conversation tidy.
