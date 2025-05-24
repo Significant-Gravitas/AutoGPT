@@ -37,6 +37,7 @@ export default function SignupPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [captchaKey, setCaptchaKey] = useState(0);
   //TODO: Remove after closed beta
 
   const turnstile = useTurnstile({
@@ -55,6 +56,11 @@ export default function SignupPage() {
     },
   });
 
+  const resetCaptcha = useCallback(() => {
+    setCaptchaKey((k) => k + 1);
+    turnstile.reset();
+  }, [turnstile]);
+
   const onSignup = useCallback(
     async (data: z.infer<typeof signupFormSchema>) => {
       setIsLoading(true);
@@ -67,6 +73,7 @@ export default function SignupPage() {
       if (!turnstile.verified) {
         setFeedback("Please complete the CAPTCHA challenge.");
         setIsLoading(false);
+        resetCaptcha();
         return;
       }
 
@@ -75,11 +82,11 @@ export default function SignupPage() {
       if (error) {
         if (error === "user_already_exists") {
           setFeedback("User with this email already exists");
-          turnstile.reset();
+          resetCaptcha();
           return;
         } else {
           setFeedback(error);
-          turnstile.reset();
+          resetCaptcha();
         }
         return;
       }
@@ -160,6 +167,7 @@ export default function SignupPage() {
 
           {/* Turnstile CAPTCHA Component */}
           <Turnstile
+            key={captchaKey}
             siteKey={turnstile.siteKey}
             onVerify={turnstile.handleVerify}
             onExpire={turnstile.handleExpire}
