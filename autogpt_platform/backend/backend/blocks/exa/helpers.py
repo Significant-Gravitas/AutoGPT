@@ -1,8 +1,28 @@
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel
 
 from backend.data.model import SchemaField
+
+
+def _to_camel_case(value: str) -> str:
+    parts = value.split("_")
+    return parts[0] + "".join(part.capitalize() for part in parts[1:])
+
+
+def to_camel_case_dict(data: dict[str, Any]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, val in data.items():
+        camel_key = _to_camel_case(key)
+        if isinstance(val, dict):
+            result[camel_key] = to_camel_case_dict(val)
+        elif isinstance(val, list):
+            result[camel_key] = [
+                to_camel_case_dict(v) if isinstance(v, dict) else v for v in val
+            ]
+        else:
+            result[camel_key] = val
+    return result
 
 
 class TextSettings(BaseModel):
