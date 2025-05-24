@@ -16,6 +16,7 @@ def load_webhook_managers() -> dict["ProviderName", type["BaseWebhooksManager"]]
     from .generic import GenericWebhooksManager
     from .github import GithubWebhooksManager
     from .slant3d import Slant3DWebhooksManager
+    from .exa import ExaWebhooksManager
 
     _WEBHOOK_MANAGERS.update(
         {
@@ -25,6 +26,7 @@ def load_webhook_managers() -> dict["ProviderName", type["BaseWebhooksManager"]]
                 GithubWebhooksManager,
                 Slant3DWebhooksManager,
                 GenericWebhooksManager,
+                ExaWebhooksManager,
             ]
         }
     )
