@@ -35,7 +35,9 @@ async def verify_token(request: TurnstileVerifyRequest) -> TurnstileVerifyRespon
     turnstile_verify_url = settings.secrets.turnstile_verify_url
 
     if not turnstile_secret_key:
-        logger.error("Turnstile secret key is not configured")
+        logger.error(
+            "Turnstile secret key missing. Set TURNSTILE_SECRET_KEY to enable verification."
+        )
         return TurnstileVerifyResponse(
             success=False,
             error="CONFIGURATION_ERROR",
