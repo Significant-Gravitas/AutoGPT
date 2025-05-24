@@ -287,6 +287,9 @@ async def get_store_creators(
     # Build where clause with sanitized inputs
     where = {}
 
+    # Only return creators with approved agents
+    where["num_agents"] = {"gt": 0}
+
     if featured:
         where["is_featured"] = featured
 
