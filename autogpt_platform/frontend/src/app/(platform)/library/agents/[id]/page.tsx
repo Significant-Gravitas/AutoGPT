@@ -68,8 +68,11 @@ export default function AgentRunsPage(): React.ReactElement {
     useState<boolean>(false);
   const [confirmingDeleteAgentRun, setConfirmingDeleteAgentRun] =
     useState<GraphExecutionMeta | null>(null);
-  const { state: onboardingState, updateState: updateOnboardingState } =
-    useOnboarding();
+  const {
+    state: onboardingState,
+    updateState: updateOnboardingState,
+    incrementRuns,
+  } = useOnboarding();
   const [copyAgentDialogOpen, setCopyAgentDialogOpen] = useState(false);
 
   const openRunDraftView = useCallback(() => {
@@ -220,6 +223,10 @@ export default function AgentRunsPage(): React.ReactElement {
       (data) => {
         if (data.graph_id != agent?.graph_id) return;
 
+        if (data.status == "COMPLETED") {
+          incrementRuns();
+        }
+
         setAgentRuns((prev) => {
           const index = prev.findIndex((run) => run.id === data.id);
           if (index === -1) {
@@ -238,7 +245,7 @@ export default function AgentRunsPage(): React.ReactElement {
     return () => {
       detachExecUpdateHandler();
     };
-  }, [api, agent?.graph_id, selectedView.id]);
+  }, [api, agent?.graph_id, selectedView.id, incrementRuns]);
 
   // Pre-load selectedRun based on selectedView
   useEffect(() => {
@@ -356,6 +363,13 @@ export default function AgentRunsPage(): React.ReactElement {
     [agent, downloadGraph],
   );
 
+  const onRun = useCallback(
+    (runID: GraphExecutionID) => {
+      selectRun(runID);
+    },
+    [selectRun],
+  );
+
   if (!agent || !graph) {
     return <LoadingBox className="h-[90vh]" />;
   }
@@ -396,14 +410,14 @@ export default function AgentRunsPage(): React.ReactElement {
               graph={graphVersions.current[selectedRun.graph_version] ?? graph}
               run={selectedRun}
               agentActions={agentActions}
-              onRun={(runID) => selectRun(runID)}
+              onRun={onRun}
               deleteRun={() => setConfirmingDeleteAgentRun(selectedRun)}
             />
           )
         ) : selectedView.type == "run" ? (
           <AgentRunDraftView
             graph={graph}
-            onRun={(runID) => selectRun(runID)}
+            onRun={onRun}
             agentActions={agentActions}
           />
         ) : selectedView.type == "schedule" ? (
@@ -411,7 +425,7 @@ export default function AgentRunsPage(): React.ReactElement {
             <AgentScheduleDetailsView
               graph={graph}
               schedule={selectedSchedule}
-              onForcedRun={(runID) => selectRun(runID)}
+              onForcedRun={onRun}
               agentActions={agentActions}
             />
           )

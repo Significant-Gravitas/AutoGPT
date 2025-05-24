@@ -1,5 +1,6 @@
 import BackendAPI from "@/lib/autogpt-server-api";
 import { redirect } from "next/navigation";
+import { finishOnboarding } from "./6-congrats/actions";
 
 export default async function OnboardingPage() {
   const api = new BackendAPI();
@@ -11,7 +12,9 @@ export default async function OnboardingPage() {
   const onboarding = await api.getUserOnboarding();
 
   // CONGRATS is the last step in intro onboarding
-  if (onboarding.completedSteps.includes("CONGRATS")) redirect("/marketplace");
+  if (onboarding.completedSteps.includes("GET_RESULTS"))
+    redirect("/marketplace");
+  else if (onboarding.completedSteps.includes("CONGRATS")) finishOnboarding();
   else if (onboarding.completedSteps.includes("AGENT_INPUT"))
     redirect("/onboarding/5-run");
   else if (onboarding.completedSteps.includes("AGENT_NEW_RUN"))

@@ -95,6 +95,7 @@ export default function Page() {
       );
       updateState({
         onboardingAgentExecutionId: graph_exec_id,
+        agentRuns: (state?.agentRuns || 0) + 1,
       });
       router.push("/onboarding/6-congrats");
     } catch (error) {

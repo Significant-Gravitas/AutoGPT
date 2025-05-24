@@ -26,7 +26,6 @@ import { InputItem } from "@/components/RunnerUIWrapper";
 import { GraphMeta } from "@/lib/autogpt-server-api";
 import { default as NextLink } from "next/link";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
-import { get } from "lodash";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -80,7 +79,7 @@ export default function useAgentGraph(
     useState(false);
   const [nodes, setNodes] = useState<CustomNode[]>([]);
   const [edges, setEdges] = useState<CustomEdge[]>([]);
-  const { state, completeStep } = useOnboarding();
+  const { state, completeStep, incrementRuns } = useOnboarding();
 
   const api = useMemo(
     () => new BackendAPI(process.env.NEXT_PUBLIC_AGPT_SERVER_URL!),
@@ -656,7 +655,7 @@ export default function useAgentGraph(
             setSaveRunRequest({ request: "run", state: "error" });
           });
 
-        processedUpdates.current = processedUpdates.current = [];
+        processedUpdates.current = [];
       }
     }
     // Handle stop request
@@ -758,13 +757,14 @@ export default function useAgentGraph(
             // an empty set means the graph has finished running.
             cancelExecListener();
             setSaveRunRequest({ request: "none", state: "none" });
+            incrementRuns();
           }
         },
       );
     };
 
     fetchExecutions();
-  }, [flowID, flowExecutionID]);
+  }, [flowID, flowExecutionID, incrementRuns]);
 
   // Check if node ids are synced with saved agent
   useEffect(() => {
