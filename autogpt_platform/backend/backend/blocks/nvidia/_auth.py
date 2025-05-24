@@ -17,12 +17,11 @@ ENV_VAR = "nvidia_api_key"
 DEFAULT_TITLE = "Use Credits for Nvidia"
 
 
-def default_credentials(settings: Settings = Settings()) -> APIKeyCredentials | None:
+def default_credentials() -> APIKeyCredentials | None:
+    settings = Settings()
     key = getattr(settings.secrets, ENV_VAR, "")
-    if not key and ENV_VAR:
-        return None
     if not key:
-        key = "FAKE_API_KEY"
+        return None
     return APIKeyCredentials(
         id=DEFAULT_CREDENTIAL_ID,
         provider=ProviderName.NVIDIA.value,

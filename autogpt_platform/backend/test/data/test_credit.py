@@ -4,18 +4,15 @@ import pytest
 from prisma.enums import CreditTransactionType
 from prisma.models import CreditTransaction
 
-from backend.blocks.llm import AITextGeneratorBlock
+from backend.blocks.llm import TEST_CREDENTIALS, AITextGeneratorBlock
 from backend.data.block import get_block
 from backend.data.credit import BetaUserCredit, UsageTransactionMetadata
 from backend.data.execution import NodeExecutionEntry
 from backend.data.user import DEFAULT_USER_ID
 from backend.executor.utils import block_usage_cost
-from backend.integrations.credentials_store import discover_default_credentials
 from backend.util.test import SpinTestServer
 
-openai_credentials = next(
-    c for c in discover_default_credentials() if c.provider == "openai"
-)
+openai_credentials = TEST_CREDENTIALS
 
 REFILL_VALUE = 1000
 user_credit = BetaUserCredit(REFILL_VALUE)
@@ -63,6 +60,7 @@ async def test_block_credit_usage(server: SpinTestServer):
     await top_up(100)
     current_credit = await user_credit.get_credits(DEFAULT_USER_ID)
 
+    # Test that using api_key does not charge credits
     spending_amount_1 = await spend_credits(
         NodeExecutionEntry(
             user_id=DEFAULT_USER_ID,
@@ -71,18 +69,12 @@ async def test_block_credit_usage(server: SpinTestServer):
             graph_exec_id="test_graph_exec",
             node_exec_id="test_node_exec",
             block_id=AITextGeneratorBlock().id,
-            inputs={
-                "model": "gpt-4-turbo",
-                "credentials": {
-                    "id": openai_credentials.id,
-                    "provider": openai_credentials.provider,
-                    "type": openai_credentials.type,
-                },
-            },
+            inputs={"model": "gpt-4-turbo", "api_key": "owned_api_key"},
         ),
     )
-    assert spending_amount_1 > 0
+    assert spending_amount_1 == 0
 
+    # Test another api_key usage
     spending_amount_2 = await spend_credits(
         NodeExecutionEntry(
             user_id=DEFAULT_USER_ID,
@@ -91,7 +83,7 @@ async def test_block_credit_usage(server: SpinTestServer):
             graph_exec_id="test_graph_exec",
             node_exec_id="test_node_exec",
             block_id=AITextGeneratorBlock().id,
-            inputs={"model": "gpt-4-turbo", "api_key": "owned_api_key"},
+            inputs={"model": "gpt-3.5-turbo", "api_key": "another_api_key"},
         ),
     )
     assert spending_amount_2 == 0
