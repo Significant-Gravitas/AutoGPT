@@ -155,7 +155,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     if (!subHeading) missingFields.push("Sub-heading");
     if (!description) missingFields.push("Description");
     if (!imageUrls.length) missingFields.push("Image");
-    if (!categories.length) missingFields.push("Categories");
+    if (!categories.filter(Boolean).length) missingFields.push("Categories");
 
     if (missingFields.length > 0) {
       toast({
@@ -166,6 +166,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
       return;
     }
 
+    const filteredCategories = categories.filter(Boolean);
     setPublishData({
       name,
       sub_heading: subHeading,
@@ -175,7 +176,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
       agent_id: selectedAgentId || "",
       agent_version: selectedAgentVersion || 0,
       slug,
-      categories,
+      categories: filteredCategories,
     });
 
     // Create store submission
@@ -189,7 +190,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
         agent_id: selectedAgentId || "",
         agent_version: selectedAgentVersion || 0,
         slug: slug.replace(/\s+/g, "-"),
-        categories: categories,
+        categories: filteredCategories,
       });
     } catch (error) {
       console.error("Error creating store submission:", error);
