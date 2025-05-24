@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AgentRunStatus } from "@/components/agents/agent-run-status-chip";
 import { useToastOnFail } from "@/components/ui/use-toast";
 import ActionButtonGroup from "@/components/agptui/action-button-group";
+import LoadingBox from "@/components/ui/loading";
 import { Input } from "@/components/ui/input";
 
 export default function AgentScheduleDetailsView({
@@ -113,7 +114,7 @@ export default function AgentScheduleDetailsView({
                 </div>
               ))
             ) : (
-              <p>Loading...</p>
+              <LoadingBox spinnerSize={12} className="h-24" />
             )}
           </CardContent>
         </Card>
