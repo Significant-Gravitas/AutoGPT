@@ -11,6 +11,8 @@ services:
 
   studio:
     container_name: supabase-studio
+    env_file:
+      - .env
     image: supabase/studio:20250224-d10db0f
     restart: unless-stopped
     healthcheck:
@@ -51,6 +53,8 @@ services:
 
   kong:
     container_name: supabase-kong
+    env_file:
+      - .env
     image: kong:2.8.1
     restart: unless-stopped
     ports:
@@ -79,6 +83,8 @@ services:
 
   auth:
     container_name: supabase-auth
+    env_file:
+      - .env
     image: supabase/gotrue:v2.170.0
     restart: unless-stopped
     healthcheck:
@@ -162,6 +168,8 @@ services:
 
   rest:
     container_name: supabase-rest
+    env_file:
+      - .env
     image: postgrest/postgrest:v12.2.8
     restart: unless-stopped
     depends_on:
@@ -186,6 +194,8 @@ services:
   realtime:
     # This container name looks inconsistent but is correct because realtime constructs tenant id by parsing the subdomain
     container_name: realtime-dev.supabase-realtime
+    env_file:
+      - .env
     image: supabase/realtime:v2.34.40
     restart: unless-stopped
     depends_on:
@@ -231,6 +241,8 @@ services:
   # To use S3 backed storage: docker compose -f docker-compose.yml -f docker-compose.s3.yml up
   storage:
     container_name: supabase-storage
+    env_file:
+      - .env
     image: supabase/storage-api:v1.19.3
     restart: unless-stopped
     volumes:
@@ -274,6 +286,8 @@ services:
 
   imgproxy:
     container_name: supabase-imgproxy
+    env_file:
+      - .env
     image: darthsim/imgproxy:v3.8.0
     restart: unless-stopped
     volumes:
@@ -296,6 +310,8 @@ services:
 
   meta:
     container_name: supabase-meta
+    env_file:
+      - .env
     image: supabase/postgres-meta:v0.86.1
     restart: unless-stopped
     depends_on:
@@ -314,6 +330,8 @@ services:
 
   functions:
     container_name: supabase-edge-functions
+    env_file:
+      - .env
     image: supabase/edge-runtime:v1.67.2
     restart: unless-stopped
     volumes:
@@ -338,6 +356,8 @@ services:
 
   analytics:
     container_name: supabase-analytics
+    env_file:
+      - .env
     image: supabase/logflare:1.12.5
     restart: unless-stopped
     ports:
@@ -386,6 +406,8 @@ services:
   # Comment out everything below this point if you are using an external Postgres database
   db:
     container_name: supabase-db
+    env_file:
+      - .env
     image: supabase/postgres:15.8.1.049
     restart: unless-stopped
     volumes:
@@ -443,6 +465,8 @@ services:
 
   vector:
     container_name: supabase-vector
+    env_file:
+      - .env
     image: timberio/vector:0.28.1-alpine
     restart: unless-stopped
     volumes:
@@ -472,6 +496,8 @@ services:
   # Update the DATABASE_URL if you are using an external Postgres database
   supavisor:
     container_name: supabase-pooler
+    env_file:
+      - .env
     image: supabase/supavisor:2.4.12
     restart: unless-stopped
     ports:
