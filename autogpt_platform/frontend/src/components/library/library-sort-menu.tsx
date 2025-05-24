@@ -34,7 +34,7 @@ export default function LibrarySortMenu(): React.ReactNode {
       <Select onValueChange={handleSortChange}>
         <SelectTrigger className="ml-1 w-fit space-x-1 border-none px-0 text-base underline underline-offset-4 shadow-none">
           <ArrowDownNarrowWideIcon className="h-4 w-4 sm:hidden" />
-          <SelectValue placeholder="Last Modified" />
+          <SelectValue placeholder="Last Ran" />
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
@@ -43,6 +43,9 @@ export default function LibrarySortMenu(): React.ReactNode {
             </SelectItem>
             <SelectItem value={LibraryAgentSortEnum.UPDATED_AT}>
               Last Modified
+            </SelectItem>
+            <SelectItem value={LibraryAgentSortEnum.LAST_EXECUTED_AT}>
+              Last Ran
             </SelectItem>
           </SelectGroup>
         </SelectContent>
