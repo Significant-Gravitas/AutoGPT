@@ -103,7 +103,7 @@ export default function CredentialsProvider({
 }) {
   const [providers, setProviders] =
     useState<CredentialsProvidersContextType | null>(null);
-  const { user } = useSupabase();
+  const { isLoggedIn } = useSupabase();
   const api = useBackendAPI();
 
   const addCredentials = useCallback(
@@ -204,58 +204,54 @@ export default function CredentialsProvider({
   );
 
   useEffect(() => {
-    if (!user) {
+    if (!isLoggedIn) {
       setProviders(null);
       return;
     }
 
-    api.isAuthenticated().then((isAuthenticated) => {
-      if (!isAuthenticated) return;
+    api.listCredentials().then((response) => {
+      const credentialsByProvider = response.reduce(
+        (acc, cred) => {
+          if (!acc[cred.provider]) {
+            acc[cred.provider] = [];
+          }
+          acc[cred.provider].push(cred);
+          return acc;
+        },
+        {} as Record<CredentialsProviderName, CredentialsMetaResponse[]>,
+      );
 
-      api.listCredentials().then((response) => {
-        const credentialsByProvider = response.reduce(
-          (acc, cred) => {
-            if (!acc[cred.provider]) {
-              acc[cred.provider] = [];
-            }
-            acc[cred.provider].push(cred);
-            return acc;
-          },
-          {} as Record<CredentialsProviderName, CredentialsMetaResponse[]>,
-        );
-
-        setProviders((prev) => ({
-          ...prev,
-          ...Object.fromEntries(
-            CREDENTIALS_PROVIDER_NAMES.map((provider) => [
+      setProviders((prev) => ({
+        ...prev,
+        ...Object.fromEntries(
+          CREDENTIALS_PROVIDER_NAMES.map((provider) => [
+            provider,
+            {
               provider,
-              {
-                provider,
-                providerName: providerDisplayNames[provider],
-                savedCredentials: credentialsByProvider[provider] ?? [],
-                oAuthCallback: (code: string, state_token: string) =>
-                  oAuthCallback(provider, code, state_token),
-                createAPIKeyCredentials: (
-                  credentials: APIKeyCredentialsCreatable,
-                ) => createAPIKeyCredentials(provider, credentials),
-                createUserPasswordCredentials: (
-                  credentials: UserPasswordCredentialsCreatable,
-                ) => createUserPasswordCredentials(provider, credentials),
-                deleteCredentials: (id: string, force: boolean = false) =>
-                  deleteCredentials(provider, id, force),
-              } satisfies CredentialsProviderData,
-            ]),
-          ),
-        }));
-      });
+              providerName: providerDisplayNames[provider],
+              savedCredentials: credentialsByProvider[provider] ?? [],
+              oAuthCallback: (code: string, state_token: string) =>
+                oAuthCallback(provider, code, state_token),
+              createAPIKeyCredentials: (
+                credentials: APIKeyCredentialsCreatable,
+              ) => createAPIKeyCredentials(provider, credentials),
+              createUserPasswordCredentials: (
+                credentials: UserPasswordCredentialsCreatable,
+              ) => createUserPasswordCredentials(provider, credentials),
+              deleteCredentials: (id: string, force: boolean = false) =>
+                deleteCredentials(provider, id, force),
+            } satisfies CredentialsProviderData,
+          ]),
+        ),
+      }));
     });
   }, [
     api,
+    isLoggedIn,
     createAPIKeyCredentials,
     createUserPasswordCredentials,
     deleteCredentials,
     oAuthCallback,
-    user,
   ]);
 
   return (
