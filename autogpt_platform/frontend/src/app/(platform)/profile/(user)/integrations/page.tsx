@@ -5,7 +5,7 @@ import { useCallback, useContext, useMemo, useState } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { IconKey, IconUser } from "@/components/ui/icons";
 import { Trash2Icon } from "lucide-react";
-import { providerIcons } from "@/components/integrations/credentials-input";
+import { providerIcons } from "@/lib/provider-meta";
 import { CredentialsProvidersContext } from "@/components/integrations/credentials-provider";
 import {
   Table,
@@ -133,19 +133,21 @@ export default function PrivatePage() {
 
   const allCredentials = providers
     ? Object.values(providers).flatMap((provider) =>
-        provider.savedCredentials
-          .filter((cred) => !hiddenCredentials.includes(cred.id))
-          .map((credentials) => ({
-            ...credentials,
-            provider: provider.provider,
-            providerName: provider.providerName,
-            ProviderIcon: providerIcons[provider.provider],
-            TypeIcon: {
-              oauth2: IconUser,
-              api_key: IconKey,
-              user_password: IconKey,
-            }[credentials.type],
-          })),
+        provider
+          ? provider.savedCredentials
+              .filter((cred) => !hiddenCredentials.includes(cred.id))
+              .map((credentials) => ({
+                ...credentials,
+                provider: provider.provider,
+                providerName: provider.providerName,
+                ProviderIcon: providerIcons[provider.provider],
+                TypeIcon: {
+                  oauth2: IconUser,
+                  api_key: IconKey,
+                  user_password: IconKey,
+                }[credentials.type],
+              }))
+          : [],
       )
     : [];
 

@@ -7,20 +7,10 @@ import { Button } from "@/components/ui/button";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import useCredentials from "@/hooks/useCredentials";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { NotionLogoIcon } from "@radix-ui/react-icons";
-import {
-  FaDiscord,
-  FaGithub,
-  FaTwitter,
-  FaGoogle,
-  FaMedium,
-  FaKey,
-  FaHubspot,
-} from "react-icons/fa";
+
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
-  CredentialsProviderName,
 } from "@/lib/autogpt-server-api/types";
 import { IconKey, IconKeyPlus, IconUserPlus } from "@/components/ui/icons";
 import {
@@ -48,52 +38,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-
-const fallbackIcon = FaKey;
-
-// --8<-- [start:ProviderIconsEmbed]
-export const providerIcons: Record<
-  CredentialsProviderName,
-  React.FC<{ className?: string }>
-> = {
-  anthropic: fallbackIcon,
-  apollo: fallbackIcon,
-  e2b: fallbackIcon,
-  github: FaGithub,
-  google: FaGoogle,
-  groq: fallbackIcon,
-  notion: NotionLogoIcon,
-  nvidia: fallbackIcon,
-  discord: FaDiscord,
-  d_id: fallbackIcon,
-  google_maps: FaGoogle,
-  jina: fallbackIcon,
-  ideogram: fallbackIcon,
-  linear: fallbackIcon,
-  medium: FaMedium,
-  mem0: fallbackIcon,
-  ollama: fallbackIcon,
-  openai: fallbackIcon,
-  openweathermap: fallbackIcon,
-  open_router: fallbackIcon,
-  llama_api: fallbackIcon,
-  pinecone: fallbackIcon,
-  slant3d: fallbackIcon,
-  screenshotone: fallbackIcon,
-  smtp: fallbackIcon,
-  replicate: fallbackIcon,
-  reddit: fallbackIcon,
-  fal: fallbackIcon,
-  revid: fallbackIcon,
-  twitter: FaTwitter,
-  unreal_speech: fallbackIcon,
-  exa: fallbackIcon,
-  hubspot: FaHubspot,
-  smartlead: fallbackIcon,
-  todoist: fallbackIcon,
-  zerobounce: fallbackIcon,
-};
-// --8<-- [end:ProviderIconsEmbed]
+import { providerIcons, CredentialsProviderName } from "@/lib/provider-meta";
 
 export type OAuthPopupResultMessage = { message_type: "oauth_popup_result" } & (
   | {

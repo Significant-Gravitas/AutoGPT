@@ -3,10 +3,13 @@ import {
   CredentialsDeleteNeedConfirmationResponse,
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
-  CredentialsProviderName,
-  PROVIDER_NAMES,
   UserPasswordCredentials,
 } from "@/lib/autogpt-server-api";
+import {
+  CredentialsProviderName,
+  providerDisplayNames,
+  PROVIDER_NAMES,
+} from "@/lib/provider-meta";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { createContext, useCallback, useEffect, useState } from "react";
 
@@ -16,44 +19,7 @@ const CREDENTIALS_PROVIDER_NAMES = Object.values(
 ) as CredentialsProviderName[];
 
 // --8<-- [start:CredentialsProviderNames]
-const providerDisplayNames: Record<CredentialsProviderName, string> = {
-  anthropic: "Anthropic",
-  apollo: "Apollo",
-  discord: "Discord",
-  d_id: "D-ID",
-  e2b: "E2B",
-  exa: "Exa",
-  fal: "FAL",
-  github: "GitHub",
-  google: "Google",
-  google_maps: "Google Maps",
-  groq: "Groq",
-  hubspot: "Hubspot",
-  ideogram: "Ideogram",
-  jina: "Jina",
-  linear: "Linear",
-  medium: "Medium",
-  mem0: "Mem0",
-  notion: "Notion",
-  nvidia: "Nvidia",
-  ollama: "Ollama",
-  openai: "OpenAI",
-  openweathermap: "OpenWeatherMap",
-  open_router: "Open Router",
-  llama_api: "Llama API",
-  pinecone: "Pinecone",
-  screenshotone: "ScreenshotOne",
-  slant3d: "Slant3D",
-  smartlead: "SmartLead",
-  smtp: "SMTP",
-  reddit: "Reddit",
-  replicate: "Replicate",
-  revid: "Rev.ID",
-  twitter: "Twitter",
-  todoist: "Todoist",
-  unreal_speech: "Unreal Speech",
-  zerobounce: "ZeroBounce",
-} as const;
+// Re-exported from the shared provider metadata
 // --8<-- [end:CredentialsProviderNames]
 
 type APIKeyCredentialsCreatable = Omit<
