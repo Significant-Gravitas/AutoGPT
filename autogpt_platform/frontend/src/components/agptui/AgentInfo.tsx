@@ -1,17 +1,19 @@
 "use client";
 
-import * as React from "react";
-import { IconPlay, StarRatingIcons } from "@/components/ui/icons";
+import { StarRatingIcons } from "@/components/ui/icons";
 import { Separator } from "@/components/ui/separator";
-import BackendAPI from "@/lib/autogpt-server-api";
+import BackendAPI, { LibraryAgent } from "@/lib/autogpt-server-api";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useToast } from "@/components/ui/use-toast";
 
-import useSupabase from "@/hooks/useSupabase";
-import { DownloadIcon, LoaderIcon } from "lucide-react";
 import { useOnboarding } from "../onboarding/onboarding-provider";
+import { User } from "@supabase/supabase-js";
+import { cn } from "@/lib/utils";
+import { FC, useCallback, useMemo, useState } from "react";
+
 interface AgentInfoProps {
+  user: User | null;
   name: string;
   creator: string;
   shortDescription: string;
@@ -22,9 +24,11 @@ interface AgentInfoProps {
   lastUpdated: string;
   version: string;
   storeListingVersionId: string;
+  libraryAgent: LibraryAgent | null;
 }
 
-export const AgentInfo: React.FC<AgentInfoProps> = ({
+export const AgentInfo: FC<AgentInfoProps> = ({
+  user,
   name,
   creator,
   shortDescription,
@@ -35,28 +39,48 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
   lastUpdated,
   version,
   storeListingVersionId,
+  libraryAgent,
 }) => {
   const router = useRouter();
-  const api = React.useMemo(() => new BackendAPI(), []);
-  const { user } = useSupabase();
+  const api = useMemo(() => new BackendAPI(), []);
   const { toast } = useToast();
   const { completeStep } = useOnboarding();
+  const [adding, setAdding] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
-  const [downloading, setDownloading] = React.useState(false);
-
-  const handleAddToLibrary = async () => {
+  const libraryAction = useCallback(async () => {
+    setAdding(true);
+    if (libraryAgent) {
+      toast({
+        description: "Redirecting to your library...",
+        duration: 2000,
+      });
+      // Redirect to the library agent page
+      router.push(`/library/agents/${libraryAgent.id}`);
+      return;
+    }
     try {
       const newLibraryAgent = await api.addMarketplaceAgentToLibrary(
         storeListingVersionId,
       );
       completeStep("MARKETPLACE_ADD_AGENT");
       router.push(`/library/agents/${newLibraryAgent.id}`);
+      toast({
+        title: "Agent Added",
+        description: "Redirecting to your library...",
+        duration: 2000,
+      });
     } catch (error) {
       console.error("Failed to add agent to library:", error);
+      toast({
+        title: "Error",
+        description: "Failed to add agent to library. Please try again.",
+        variant: "destructive",
+      });
     }
-  };
+  }, [toast, api, storeListingVersionId, completeStep, router]);
 
-  const handleDownloadToLibrary = async () => {
+  const handleDownload = useCallback(async () => {
     const downloadAgent = async (): Promise<void> => {
       setDownloading(true);
       try {
@@ -89,12 +113,16 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
         });
       } catch (error) {
         console.error(`Error downloading agent:`, error);
-        throw error;
+        toast({
+          title: "Error",
+          description: "Failed to download agent. Please try again.",
+          variant: "destructive",
+        });
       }
     };
     await downloadAgent();
     setDownloading(false);
-  };
+  }, [setDownloading, api, storeListingVersionId, toast]);
 
   return (
     <div className="w-full max-w-[396px] px-4 sm:px-6 lg:w-[396px] lg:px-0">
@@ -121,38 +149,34 @@ export const AgentInfo: React.FC<AgentInfoProps> = ({
         {shortDescription}
       </div>
 
-      {/* Run Agent Button */}
-      <div className="mb-4 w-full lg:mb-[60px]">
-        {user ? (
+      {/* Buttons */}
+      <div className="mb-4 flex w-full gap-3 lg:mb-[60px]">
+        {user && (
           <button
-            onClick={handleAddToLibrary}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-[38px] bg-violet-600 px-4 py-3 transition-colors hover:bg-violet-700 sm:w-auto sm:gap-2.5 sm:px-5 sm:py-3.5 lg:px-6 lg:py-4"
-          >
-            <IconPlay className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
-            <span className="font-poppins text-base font-medium text-neutral-50 sm:text-lg">
-              Add To Library
-            </span>
-          </button>
-        ) : (
-          <button
-            onClick={handleDownloadToLibrary}
-            className={`inline-flex w-full items-center justify-center gap-2 rounded-[38px] px-4 py-3 transition-colors sm:w-auto sm:gap-2.5 sm:px-5 sm:py-3.5 lg:px-6 lg:py-4 ${
-              downloading
-                ? "bg-neutral-400"
-                : "bg-violet-600 hover:bg-violet-700"
-            }`}
-            disabled={downloading}
-          >
-            {downloading ? (
-              <LoaderIcon className="h-5 w-5 animate-spin text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
-            ) : (
-              <DownloadIcon className="h-5 w-5 text-white sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
+            className={cn(
+              "inline-flex min-w-24 items-center justify-center rounded-full bg-violet-600 px-4 py-3",
+              "transition-colors duration-200 hover:bg-violet-500 disabled:bg-zinc-400",
             )}
-            <span className="font-poppins text-base font-medium text-neutral-50 sm:text-lg">
-              {downloading ? "Downloading..." : "Download Agent as File"}
+            onClick={libraryAction}
+            disabled={adding}
+          >
+            <span className="justify-start font-sans text-sm font-medium leading-snug text-primary-foreground">
+              {libraryAgent ? "See runs" : "Add to library"}
             </span>
           </button>
         )}
+        <button
+          className={cn(
+            "inline-flex min-w-24 items-center justify-center rounded-full bg-zinc-200 px-4 py-3",
+            "transition-colors duration-200 hover:bg-zinc-200/70 disabled:bg-zinc-200/40",
+          )}
+          onClick={handleDownload}
+          disabled={downloading}
+        >
+          <div className="justify-start text-center font-sans text-sm font-medium leading-snug text-zinc-800">
+            Download agent
+          </div>
+        </button>
       </div>
 
       {/* Rating and Runs */}

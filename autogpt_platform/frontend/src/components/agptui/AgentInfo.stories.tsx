@@ -27,6 +27,8 @@ type Story = StoryObj<typeof meta>;
 
 export const Default: Story = {
   args: {
+    user: null,
+    libraryAgent: null,
     name: "AI Video Generator",
     storeListingVersionId: "123",
     creator: "Toran Richards",

@@ -41,6 +41,7 @@ from backend.data.credit import (
     set_auto_top_up,
 )
 from backend.data.execution import AsyncRedisExecutionEventBus
+from backend.data.model import CredentialsMetaInput
 from backend.data.notifications import NotificationPreference, NotificationPreferenceDTO
 from backend.data.onboarding import (
     UserOnboardingUpdate,
@@ -56,7 +57,7 @@ from backend.data.user import (
     update_user_email,
     update_user_notification_preference,
 )
-from backend.executor import Scheduler, scheduler
+from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.executor.utils import create_execution_queue_config
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -82,8 +83,8 @@ if TYPE_CHECKING:
 
 
 @thread_cached
-def execution_scheduler_client() -> Scheduler:
-    return get_service_client(Scheduler)
+def execution_scheduler_client() -> scheduler.SchedulerClient:
+    return get_service_client(scheduler.SchedulerClient, health_check=False)
 
 
 @thread_cached
@@ -421,7 +422,11 @@ async def get_graph(
     for_export: bool = False,
 ) -> graph_db.GraphModel:
     graph = await graph_db.get_graph(
-        graph_id, version, user_id=user_id, for_export=for_export
+        graph_id,
+        version,
+        user_id=user_id,
+        for_export=for_export,
+        include_subgraphs=True,  # needed to construct full credentials input schema
     )
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
@@ -592,35 +597,21 @@ async def set_graph_active_version(
 )
 async def execute_graph(
     graph_id: str,
-    node_input: Annotated[dict[str, Any], Body(..., default_factory=dict)],
     user_id: Annotated[str, Depends(get_user_id)],
+    inputs: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
+    credentials_inputs: Annotated[
+        dict[str, CredentialsMetaInput], Body(..., embed=True, default_factory=dict)
+    ],
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
 ) -> ExecuteGraphResponse:
-    graph: graph_db.GraphModel | None = await graph_db.get_graph(
-        graph_id=graph_id, user_id=user_id, version=graph_version
-    )
-    if not graph:
-        raise ValueError(f"Graph #{graph_id} not found.")
-
-    graph_exec = await execution_db.create_graph_execution(
+    graph_exec = await execution_utils.add_graph_execution_async(
         graph_id=graph_id,
-        graph_version=graph.version,
-        nodes_input=execution_utils.construct_node_execution_input(
-            graph, user_id, node_input
-        ),
         user_id=user_id,
+        inputs=inputs,
         preset_id=preset_id,
-    )
-
-    bus = execution_event_bus()
-    await bus.publish(graph_exec)
-
-    queue = await execution_queue_client()
-    await queue.publish_message(
-        routing_key=execution_utils.GRAPH_EXECUTION_ROUTING_KEY,
-        message=graph_exec.to_graph_execution_entry().model_dump_json(),
-        exchange=execution_utils.GRAPH_EXECUTION_EXCHANGE,
+        graph_version=graph_version,
+        graph_credentials_inputs=credentials_inputs,
     )
     return ExecuteGraphResponse(graph_exec_id=graph_exec.id)
 
@@ -669,14 +660,18 @@ async def _cancel_execution(graph_exec_id: str):
         exchange=execution_utils.GRAPH_EXECUTION_CANCEL_EXCHANGE,
     )
 
-    # Update the status of the graph & node executions
-    await execution_db.update_graph_execution_stats(
+    # Update the status of the graph execution
+    graph_execution = await execution_db.update_graph_execution_stats(
         graph_exec_id,
         execution_db.ExecutionStatus.TERMINATED,
     )
+    if graph_execution:
+        await execution_event_bus().publish(graph_execution)
+
+    # Update the status of the node executions
     node_execs = [
         node_exec.model_copy(update={"status": execution_db.ExecutionStatus.TERMINATED})
-        for node_exec in await execution_db.get_node_execution_results(
+        for node_exec in await execution_db.get_node_executions(
             graph_exec_id=graph_exec_id,
             statuses=[
                 execution_db.ExecutionStatus.QUEUED,
@@ -685,7 +680,6 @@ async def _cancel_execution(graph_exec_id: str):
             ],
         )
     ]
-
     await execution_db.update_node_execution_status_batch(
         [node_exec.node_exec_id for node_exec in node_execs],
         execution_db.ExecutionStatus.TERMINATED,
@@ -782,7 +776,7 @@ class ScheduleCreationRequest(pydantic.BaseModel):
 async def create_schedule(
     user_id: Annotated[str, Depends(get_user_id)],
     schedule: ScheduleCreationRequest,
-) -> scheduler.ExecutionJobInfo:
+) -> scheduler.GraphExecutionJobInfo:
     graph = await graph_db.get_graph(
         schedule.graph_id, schedule.graph_version, user_id=user_id
     )
@@ -792,14 +786,12 @@ async def create_schedule(
             detail=f"Graph #{schedule.graph_id} v.{schedule.graph_version} not found.",
         )
 
-    return await asyncio.to_thread(
-        lambda: execution_scheduler_client().add_execution_schedule(
-            graph_id=schedule.graph_id,
-            graph_version=graph.version,
-            cron=schedule.cron,
-            input_data=schedule.input_data,
-            user_id=user_id,
-        )
+    return await execution_scheduler_client().add_execution_schedule(
+        graph_id=schedule.graph_id,
+        graph_version=graph.version,
+        cron=schedule.cron,
+        input_data=schedule.input_data,
+        user_id=user_id,
     )
 
 
@@ -808,11 +800,11 @@ async def create_schedule(
     tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
-def delete_schedule(
+async def delete_schedule(
     schedule_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[Any, Any]:
-    execution_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
+    await execution_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
     return {"id": schedule_id}
 
 
@@ -821,11 +813,11 @@ def delete_schedule(
     tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
-def get_execution_schedules(
+async def get_execution_schedules(
     user_id: Annotated[str, Depends(get_user_id)],
     graph_id: str | None = None,
-) -> list[scheduler.ExecutionJobInfo]:
-    return execution_scheduler_client().get_execution_schedules(
+) -> list[scheduler.GraphExecutionJobInfo]:
+    return await execution_scheduler_client().get_execution_schedules(
         user_id=user_id,
         graph_id=graph_id,
     )

@@ -1,3 +1,4 @@
+import functools
 import importlib
 import os
 import re
@@ -10,17 +11,11 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 
-_AVAILABLE_BLOCKS: dict[str, type["Block"]] = {}
-
-
+@functools.cache
 def load_all_blocks() -> dict[str, type["Block"]]:
     from backend.data.block import Block
 
-    if _AVAILABLE_BLOCKS:
-        return _AVAILABLE_BLOCKS
-
     # Dynamically load all modules under backend.blocks
-    AVAILABLE_MODULES = []
     current_dir = Path(__file__).parent
     modules = [
         str(f.relative_to(current_dir))[:-3].replace(os.path.sep, ".")
@@ -35,9 +30,9 @@ def load_all_blocks() -> dict[str, type["Block"]]:
             )
 
         importlib.import_module(f".{module}", package=__name__)
-        AVAILABLE_MODULES.append(module)
 
     # Load all Block instances from the available modules
+    available_blocks: dict[str, type["Block"]] = {}
     for block_cls in all_subclasses(Block):
         class_name = block_cls.__name__
 
@@ -58,7 +53,7 @@ def load_all_blocks() -> dict[str, type["Block"]]:
                 f"Block ID {block.name} error: {block.id} is not a valid UUID"
             )
 
-        if block.id in _AVAILABLE_BLOCKS:
+        if block.id in available_blocks:
             raise ValueError(
                 f"Block ID {block.name} error: {block.id} is already in use"
             )
@@ -89,9 +84,9 @@ def load_all_blocks() -> dict[str, type["Block"]]:
                     f"{block.name} has a boolean field with no default value"
                 )
 
-        _AVAILABLE_BLOCKS[block.id] = block_cls
+        available_blocks[block.id] = block_cls
 
-    return _AVAILABLE_BLOCKS
+    return available_blocks
 
 
 __all__ = ["load_all_blocks"]

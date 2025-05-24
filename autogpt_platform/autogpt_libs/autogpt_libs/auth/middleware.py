@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 async def auth_middleware(request: Request):
     if not settings.ENABLE_AUTH:
         # If authentication is disabled, allow the request to proceed
-        logger.warn("Auth disabled")
+        logger.warning("Auth disabled")
         return {}
 
     security = HTTPBearer()

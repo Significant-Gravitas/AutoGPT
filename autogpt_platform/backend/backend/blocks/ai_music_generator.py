@@ -3,8 +3,8 @@ import time
 from enum import Enum
 from typing import Literal
 
-import replicate
 from pydantic import SecretStr
+from replicate.client import Client as ReplicateClient
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import (
@@ -196,7 +196,7 @@ class AIMusicGeneratorBlock(Block):
         normalization_strategy: NormalizationStrategy,
     ):
         # Initialize Replicate client with the API key
-        client = replicate.Client(api_token=api_key.get_secret_value())
+        client = ReplicateClient(api_token=api_key.get_secret_value())
 
         # Run the model with parameters
         output = client.run(

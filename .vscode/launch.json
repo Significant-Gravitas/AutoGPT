@@ -32,9 +32,9 @@
       "type": "debugpy",
       "request": "launch",
       "module": "backend.app",
-      // "env": {
-      //   "ENV": "dev"
-      // },
+      "env": {
+        "OBJC_DISABLE_INITIALIZE_FORK_SAFETY": "YES"
+      },
       "envFile": "${workspaceFolder}/backend/.env",
       "justMyCode": false,
       "cwd": "${workspaceFolder}/autogpt_platform/backend"

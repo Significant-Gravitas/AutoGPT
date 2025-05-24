@@ -1,5 +1,6 @@
 "use client";
 import React, { useCallback, useMemo } from "react";
+import { isEmpty } from "lodash";
 import moment from "moment";
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
@@ -16,12 +17,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconRefresh, IconSquare } from "@/components/ui/icons";
 import { useToastOnFail } from "@/components/ui/use-toast";
 import ActionButtonGroup from "@/components/agptui/action-button-group";
+import LoadingBox from "@/components/ui/loading";
 import { Input } from "@/components/ui/input";
 
 import {
   AgentRunStatus,
   agentRunStatusMap,
 } from "@/components/agents/agent-run-status-chip";
+import useCredits from "@/hooks/useCredits";
 
 export default function AgentRunDetailsView({
   agent,
@@ -39,6 +42,7 @@ export default function AgentRunDetailsView({
   deleteRun: () => void;
 }): React.ReactNode {
   const api = useBackendAPI();
+  const { formatCredits } = useCredits();
 
   const runStatus: AgentRunStatus = useMemo(
     () => agentRunStatusMap[run.status],
@@ -65,11 +69,11 @@ export default function AgentRunDetailsView({
               value: moment.duration(run.stats.duration, "seconds").humanize(),
             },
             { label: "Steps", value: run.stats.node_exec_count },
-            { label: "Cost", value: `${run.stats.cost} credits` },
+            { label: "Cost", value: formatCredits(run.stats.cost) },
           ]
         : []),
     ];
-  }, [run, runStatus]);
+  }, [run, runStatus, formatCredits]);
 
   const agentRunInputs:
     | Record<
@@ -130,7 +134,8 @@ export default function AgentRunDetailsView({
     | null
     | undefined = useMemo(() => {
     if (!("outputs" in run)) return undefined;
-    if (!["running", "success", "failed"].includes(runStatus)) return null;
+    if (!["running", "success", "failed", "stopped"].includes(runStatus))
+      return null;
 
     // Add type info from agent input schema
     return Object.fromEntries(
@@ -164,7 +169,8 @@ export default function AgentRunDetailsView({
           ] satisfies ButtonAction[])
         : []),
       ...(["success", "failed", "stopped"].includes(runStatus) &&
-      !graph.has_webhook_trigger
+      !graph.has_webhook_trigger &&
+      isEmpty(graph.credentials_input_schema.required) // TODO: enable re-run with credentials - https://linear.app/autogpt/issue/SECRT-1243
         ? [
             {
               label: (
@@ -193,6 +199,7 @@ export default function AgentRunDetailsView({
       stopRun,
       deleteRun,
       graph.has_webhook_trigger,
+      graph.credentials_input_schema.properties,
       agent.can_access_graph,
       run.graph_id,
       run.graph_version,
@@ -234,7 +241,10 @@ export default function AgentRunDetailsView({
                         {title || key}
                       </label>
                       {values.map((value, i) => (
-                        <p className="text-sm text-neutral-700" key={i}>
+                        <p
+                          className="resize-none whitespace-pre-wrap break-words border-none text-sm text-neutral-700 disabled:cursor-not-allowed"
+                          key={i}
+                        >
                           {value}
                         </p>
                       ))}
@@ -243,7 +253,7 @@ export default function AgentRunDetailsView({
                   ),
                 )
               ) : (
-                <p>Loading...</p>
+                <LoadingBox spinnerSize={12} className="h-24" />
               )}
             </CardContent>
           </Card>
@@ -262,7 +272,7 @@ export default function AgentRunDetailsView({
                 </div>
               ))
             ) : (
-              <p>Loading...</p>
+              <LoadingBox spinnerSize={12} className="h-24" />
             )}
           </CardContent>
         </Card>
