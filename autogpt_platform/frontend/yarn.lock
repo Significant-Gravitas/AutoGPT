@@ -10186,10 +10186,10 @@ react-docgen@^7.0.0:
     loose-envify "^1.1.0"
     scheduler "^0.23.2"
 
-react-drag-drop-files@^2.4.0:
-  version "2.4.0"
-  resolved "https://registry.yarnpkg.com/react-drag-drop-files/-/react-drag-drop-files-2.4.0.tgz#d4c4f14cf3e76bb7fb2734aed2174e7120e56733"
-  integrity sha512-MGPV3HVVnwXEXq3gQfLtSU3jz5j5jrabvGedokpiSEMoONrDHgYl/NpIOlfsqGQ4zBv1bzzv7qbKURZNOX32PA==
+react-drag-drop-files@^3.0.1:
+  version "3.0.1"
+  resolved "https://registry.yarnpkg.com/react-drag-drop-files/-/react-drag-drop-files-3.0.1.tgz#82d5e449cb02089bb3c6fd3505c22997832b1062"
+  integrity sha512-gSx6QJJnStkTet8LExeqH520KA1agnUWgd78SXxggMmuhJi/cCH9OOvdnmiMBm1GkTM5fWUTNyIi/jD5PPhG8g==
   dependencies:
     prop-types "^15.7.2"
     styled-components "^6.1.11"
