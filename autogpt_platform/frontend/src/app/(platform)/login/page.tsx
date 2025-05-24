@@ -80,6 +80,7 @@ export default function LoginPage() {
       }
 
       const error = await login(data, turnstile.token as string);
+      await supabase?.auth.refreshSession();
       setIsLoading(false);
       if (error) {
         setFeedback(error);
@@ -89,7 +90,7 @@ export default function LoginPage() {
       }
       setFeedback(null);
     },
-    [form, turnstile],
+    [form, turnstile, supabase],
   );
 
   if (user) {
