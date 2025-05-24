@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Button } from "./ui/button";
 import { useRouter } from "next/navigation";
-import useSupabase from "@/hooks/useSupabase";
+import useSupabase from "@/lib/supabase/useSupabase";
 
 const ProfileDropdown = () => {
   const { supabase, user, isUserLoading } = useSupabase();

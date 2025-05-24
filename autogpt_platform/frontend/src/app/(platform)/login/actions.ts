@@ -8,30 +8,6 @@ import BackendAPI from "@/lib/autogpt-server-api";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 
-export async function logout() {
-  return await Sentry.withServerActionInstrumentation(
-    "logout",
-    {},
-    async () => {
-      const supabase = getServerSupabase();
-
-      if (!supabase) {
-        redirect("/error");
-      }
-
-      const { error } = await supabase.auth.signOut();
-
-      if (error) {
-        console.error("Error logging out", error);
-        return error.message;
-      }
-
-      revalidatePath("/", "layout");
-      redirect("/login");
-    },
-  );
-}
-
 async function shouldShowOnboarding() {
   const api = new BackendAPI();
   return (

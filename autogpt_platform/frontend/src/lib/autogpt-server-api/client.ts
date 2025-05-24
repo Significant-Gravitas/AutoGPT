@@ -91,6 +91,7 @@ export default class BackendAPI {
       ? createBrowserClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          { isSingleton: true },
         )
       : getServerSupabase();
   }
@@ -98,9 +99,9 @@ export default class BackendAPI {
   async isAuthenticated(): Promise<boolean> {
     if (!this.supabaseClient) return false;
     const {
-      data: { user },
-    } = await this.supabaseClient?.auth.getUser();
-    return user != null;
+      data: { session },
+    } = await this.supabaseClient.auth.getSession();
+    return session != null;
   }
 
   createUser(): Promise<User> {
