@@ -1,18 +1,15 @@
 import React, { Suspense } from "react";
 import type { Metadata } from "next";
-import { Inter, Poppins } from "next/font/google";
+import { Poppins } from "next/font/google";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 
-import { cn } from "@/lib/utils";
 import "./globals.css";
 
 import { Toaster } from "@/components/ui/toaster";
 import { Providers } from "@/app/providers";
 import TallyPopupSimple from "@/components/TallyPopup";
 import { GoogleAnalytics } from "@/components/analytics/google-analytics";
-
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 const poppins = Poppins({
   subsets: ["latin"],
@@ -33,19 +30,14 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${poppins.variable} ${GeistSans.variable} ${GeistMono.variable} ${inter.variable}`}
+      className={`${poppins.variable} ${GeistSans.variable} ${GeistMono.variable}`}
     >
       <head>
         <GoogleAnalytics
           gaId={process.env.GA_MEASUREMENT_ID || "G-FH2XK2W4GN"} // This is the measurement Id for the Google Analytics dev project
         />
       </head>
-      <body
-        className={cn(
-          "bg-neutral-50 antialiased transition-colors",
-          inter.className,
-        )}
-      >
+      <body>
         <Providers
           attribute="class"
           defaultTheme="light"
