@@ -1,4 +1,7 @@
+import { Metadata } from "next/types";
 import { APIKeysSection } from "@/components/agptui/composite/APIKeySection";
+
+export const metadata: Metadata = { title: "API Keys - AutoGPT Platform" };
 
 const ApiKeysPage = () => {
   return (

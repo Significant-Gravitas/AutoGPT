@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Metadata } from "next/types";
 import { ProfileInfoForm } from "@/components/agptui/ProfileInfoForm";
 import BackendAPI from "@/lib/autogpt-server-api";
 import { CreatorDetails } from "@/lib/autogpt-server-api/types";
@@ -16,6 +17,8 @@ async function getProfileData(api: BackendAPI) {
     };
   }
 }
+
+export const metadata: Metadata = { title: "Profile - AutoGPT Platform" };
 
 export default async function Page({}: {}) {
   const api = new BackendAPI();

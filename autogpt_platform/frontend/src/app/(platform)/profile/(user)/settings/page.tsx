@@ -4,8 +4,9 @@ import SettingsForm from "@/components/profile/settings/SettingsForm";
 import getServerUser from "@/lib/supabase/getServerUser";
 import { redirect } from "next/navigation";
 import { getUserPreferences } from "./actions";
+
 export const metadata: Metadata = {
-  title: "Settings",
+  title: "Settings - AutoGPT Platform",
   description: "Manage your account settings and preferences.",
 };
 
