@@ -86,7 +86,7 @@ async def get_library_agent(
 
 
 @router.get(
-    "/marketplace/{store_listing_version_id}/",
+    "/marketplace/{store_listing_version_id}",
     tags=["store, library"],
     response_model=library_model.LibraryAgent | None,
 )
