@@ -15,7 +15,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import useSupabase from "@/hooks/useSupabase";
+import useSupabase from "@/lib/supabase/useSupabase";
 import LoadingBox from "@/components/ui/loading";
 import {
   AuthCard,

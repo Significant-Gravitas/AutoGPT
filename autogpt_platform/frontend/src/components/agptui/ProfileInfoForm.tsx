@@ -9,7 +9,7 @@ import { Button } from "./Button";
 import { IconPersonFill } from "@/components/ui/icons";
 import { CreatorDetails, ProfileDetails } from "@/lib/autogpt-server-api/types";
 import { Separator } from "@/components/ui/separator";
-import useSupabase from "@/hooks/useSupabase";
+import useSupabase from "@/lib/supabase/useSupabase";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {

@@ -1,6 +1,9 @@
+"use client";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { User } from "@supabase/supabase-js";
-import { useEffect, useMemo, useState } from "react";
+
+import { _logoutServer } from "./actions";
 
 export default function useSupabase() {
   const [user, setUser] = useState<User | null>(null);
@@ -48,5 +51,9 @@ export default function useSupabase() {
     };
   }, [supabase]);
 
-  return { supabase, user, isUserLoading };
+  const logOut = useCallback(() => {
+    supabase?.auth.signOut().then(() => _logoutServer());
+  }, [supabase]);
+
+  return { supabase, user, isLoggedIn: !!user, isUserLoading, logOut };
 }
