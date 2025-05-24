@@ -24,9 +24,13 @@ export default function useSupabase() {
       return;
     }
 
-    const fetchUser = async () => {
-      const response = await supabase.auth.getUser();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
 
+    supabase.auth.getUser().then((response) => {
       if (response.error) {
         // Display error only if it's not about missing auth session (user is not logged in)
         if (response.error.message !== "Auth session missing!") {
@@ -37,14 +41,6 @@ export default function useSupabase() {
         setUser(response.data.user);
       }
       setIsUserLoading(false);
-    };
-
-    fetchUser();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
     });
 
     return () => {

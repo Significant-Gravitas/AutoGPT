@@ -255,7 +255,7 @@ export default function CredentialsProvider({
     createUserPasswordCredentials,
     deleteCredentials,
     oAuthCallback,
-    user?.id,
+    user,
   ]);
 
   return (
