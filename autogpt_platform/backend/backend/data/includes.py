@@ -1,9 +1,7 @@
-from typing import cast
+from typing import Sequence, cast
 
 import prisma.enums
 import prisma.types
-
-from backend.blocks.io import IO_BLOCK_IDs
 
 AGENT_NODE_INCLUDE: prisma.types.AgentNodeInclude = {
     "Input": True,
@@ -42,18 +40,26 @@ GRAPH_EXECUTION_INCLUDE_WITH_NODES: prisma.types.AgentGraphExecutionInclude = {
     }
 }
 
-GRAPH_EXECUTION_INCLUDE: prisma.types.AgentGraphExecutionInclude = {
-    "NodeExecutions": {
-        **cast(
-            prisma.types.FindManyAgentNodeExecutionArgsFromAgentGraphExecution,
-            GRAPH_EXECUTION_INCLUDE_WITH_NODES["NodeExecutions"],
-        ),
-        "where": {
-            "Node": {"is": {"AgentBlock": {"is": {"id": {"in": IO_BLOCK_IDs}}}}},
-            "NOT": [{"executionStatus": prisma.enums.AgentExecutionStatus.INCOMPLETE}],
-        },
+
+def graph_execution_include(
+    include_block_ids: Sequence[str],
+) -> prisma.types.AgentGraphExecutionInclude:
+    return {
+        "NodeExecutions": {
+            **cast(
+                prisma.types.FindManyAgentNodeExecutionArgsFromAgentGraphExecution,
+                GRAPH_EXECUTION_INCLUDE_WITH_NODES["NodeExecutions"],  # type: ignore
+            ),
+            "where": {
+                "Node": {
+                    "is": {"AgentBlock": {"is": {"id": {"in": include_block_ids}}}}
+                },
+                "NOT": [
+                    {"executionStatus": prisma.enums.AgentExecutionStatus.INCOMPLETE}
+                ],
+            },
+        }
     }
-}
 
 
 INTEGRATION_WEBHOOK_INCLUDE: prisma.types.IntegrationWebhookInclude = {

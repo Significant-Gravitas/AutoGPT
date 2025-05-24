@@ -1,3 +1,4 @@
+import functools
 import inspect
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -8,6 +9,7 @@ from typing import (
     Generator,
     Generic,
     Optional,
+    Sequence,
     Type,
     TypeVar,
     cast,
@@ -523,3 +525,21 @@ async def initialize_blocks() -> None:
 def get_block(block_id: str) -> Block[BlockSchema, BlockSchema] | None:
     cls = get_blocks().get(block_id)
     return cls() if cls else None
+
+
+@functools.cache
+def get_webhook_block_ids() -> Sequence[str]:
+    return [
+        id
+        for id, B in get_blocks().items()
+        if B().block_type in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
+    ]
+
+
+@functools.cache
+def get_io_block_ids() -> Sequence[str]:
+    return [
+        id
+        for id, B in get_blocks().items()
+        if B().block_type in (BlockType.INPUT, BlockType.OUTPUT)
+    ]
