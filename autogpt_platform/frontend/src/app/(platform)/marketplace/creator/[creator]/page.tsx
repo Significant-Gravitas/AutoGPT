@@ -1,8 +1,4 @@
 import BackendAPI from "@/lib/autogpt-server-api";
-import {
-  CreatorDetails as Creator,
-  StoreAgent,
-} from "@/lib/autogpt-server-api";
 import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
 import { BreadCrumbs } from "@/components/agptui/BreadCrumbs";
 import { Metadata } from "next";
@@ -65,11 +61,11 @@ export default async function Page({
               />
             </div>
             <div className="flex min-w-0 flex-1 flex-col gap-4 sm:gap-6 md:gap-8">
-              <p className="font-geist text-underline-position-from-font text-decoration-skip-none text-left text-base font-medium leading-6">
+              <p className="text-underline-position-from-font text-decoration-skip-none text-left font-poppins text-base font-medium leading-6">
                 About
               </p>
               <div
-                className="font-poppins text-[48px] font-normal leading-[59px] text-neutral-900 dark:text-zinc-50"
+                className="text-[48px] font-normal leading-[59px] text-neutral-900 dark:text-zinc-50"
                 style={{ whiteSpace: "pre-line" }}
               >
                 {creator.description}
@@ -92,9 +88,7 @@ export default async function Page({
   } catch (error) {
     return (
       <div className="flex h-screen w-full items-center justify-center">
-        <div className="font-neue text-2xl text-neutral-900">
-          Creator not found
-        </div>
+        <div className="text-2xl text-neutral-900">Creator not found</div>
       </div>
     );
   }
