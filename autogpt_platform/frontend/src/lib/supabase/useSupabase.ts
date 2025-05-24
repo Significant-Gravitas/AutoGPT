@@ -46,5 +46,11 @@ export default function useSupabase() {
     [supabase],
   );
 
-  return { supabase, user, isLoggedIn: !!user, isUserLoading, logOut };
+  if (!supabase || isUserLoading) {
+    return { supabase, user: null, isLoggedIn: null, isUserLoading, logOut };
+  }
+  if (!user) {
+    return { supabase, user, isLoggedIn: false, isUserLoading, logOut };
+  }
+  return { supabase, user, isLoggedIn: true, isUserLoading, logOut };
 }

@@ -205,7 +205,7 @@ export default function CredentialsProvider({
 
   useEffect(() => {
     if (!isLoggedIn) {
-      setProviders(null);
+      if (isLoggedIn == false) setProviders(null);
       return;
     }
 
