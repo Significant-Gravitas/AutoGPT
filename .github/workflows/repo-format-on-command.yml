@@ -1,0 +1,60 @@
+name: Repo - Format on command
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  run-formatters:
+    if: >-
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '!format') &&
+      (
+        github.event.comment.user.login == github.event.issue.user.login ||
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout PR source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.issue.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.issue.pull_request.head.ref }}
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '21'
+
+      - name: Install frontend dependencies
+        working-directory: autogpt_platform/frontend
+        run: yarn install --frozen-lockfile
+
+      - name: Run frontend formatter
+        working-directory: autogpt_platform/frontend
+        run: yarn format
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install backend dependencies
+        working-directory: autogpt_platform/backend
+        run: poetry install
+
+      - name: Run backend formatter
+        working-directory: autogpt_platform/backend
+        run: poetry run format
