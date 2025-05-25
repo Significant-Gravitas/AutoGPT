@@ -72,6 +72,13 @@ export default function AgentRunsPage(): React.ReactElement {
     useOnboarding();
   const [copyAgentDialogOpen, setCopyAgentDialogOpen] = useState(false);
 
+  // Set page title with agent name
+  useEffect(() => {
+    if (agent) {
+      document.title = `${agent.name} - Library - AutoGPT Platform`;
+    }
+  }, [agent]);
+
   const openRunDraftView = useCallback(() => {
     selectView({ type: "run" });
   }, []);
