@@ -1,7 +1,7 @@
 import logging
 from contextlib import contextmanager
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from autogpt_libs.utils.synchronize import RedisKeyedMutex
 from redis.lock import Lock as RedisLock
@@ -102,6 +102,27 @@ class IntegrationCredentialsManager:
                 f"Credentials #{credentials_id} for user #{user_id} not found"
             )
         return credentials, lock
+
+    def cached_getter(self, user_id: str) -> Callable[[str], "Credentials | None"]:
+        all_credentials = None
+
+        def get_credentials(creds_id: str) -> "Credentials | None":
+            nonlocal all_credentials
+            if not all_credentials:
+                # Fetch credentials on first necessity
+                all_credentials = self.store.get_all_creds(user_id)
+
+            credential = next((c for c in all_credentials if c.id == creds_id), None)
+            if not credential:
+                return None
+            if credential.type != "oauth2" or not credential.access_token_expires_at:
+                # Credential doesn't expire
+                return credential
+
+            # Credential is OAuth2 credential and has expiration timestamp
+            return self.refresh_if_needed(user_id, credential)
+
+        return get_credentials
 
     def refresh_if_needed(
         self, user_id: str, credentials: OAuth2Credentials, lock: bool = True

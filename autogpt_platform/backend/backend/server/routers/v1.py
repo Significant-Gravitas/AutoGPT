@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated, Any, Callable, Sequence
+from typing import Annotated, Any, Sequence
 
 import pydantic
 import stripe
@@ -60,7 +60,6 @@ from backend.data.user import (
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.executor.utils import create_execution_queue_config
-from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_activate,
     on_graph_deactivate,
@@ -77,9 +76,6 @@ from backend.server.model import (
 from backend.server.utils import get_user_id
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
-
-if TYPE_CHECKING:
-    from backend.data.model import Credentials
 
 
 @thread_cached
@@ -101,7 +97,6 @@ def execution_event_bus() -> AsyncRedisExecutionEventBus:
 
 settings = Settings()
 logger = logging.getLogger(__name__)
-integration_creds_manager = IntegrationCredentialsManager()
 
 _user_credit_model = get_user_credit_model()
 
@@ -466,10 +461,7 @@ async def create_new_graph(
         library_db.add_generated_agent_image(graph, library_agent.id)
     )
 
-    graph = await on_graph_activate(
-        graph,
-        get_credentials=_cached_credentials_getter(user_id),
-    )
+    graph = await on_graph_activate(graph, user_id=user_id)
     return graph
 
 
@@ -480,7 +472,7 @@ async def delete_graph(
     graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> DeleteGraphResponse:
     if active_version := await graph_db.get_graph(graph_id, user_id=user_id):
-        await on_graph_deactivate(active_version, _cached_credentials_getter(user_id))
+        await on_graph_deactivate(active_version, user_id=user_id)
 
     return {"version_counts": await graph_db.delete_graph(graph_id, user_id=user_id)}
 
@@ -518,20 +510,14 @@ async def update_graph(
         )
 
         # Handle activation of the new graph first to ensure continuity
-        new_graph_version = await on_graph_activate(
-            new_graph_version,
-            get_credentials=_cached_credentials_getter(user_id),
-        )
+        new_graph_version = await on_graph_activate(new_graph_version, user_id=user_id)
         # Ensure new version is the only active version
         await graph_db.set_graph_active_version(
             graph_id=graph_id, version=new_graph_version.version, user_id=user_id
         )
         if current_active_version:
             # Handle deactivation of the previously active version
-            await on_graph_deactivate(
-                current_active_version,
-                get_credentials=_cached_credentials_getter(user_id),
-            )
+            await on_graph_deactivate(current_active_version, user_id=user_id)
 
     return new_graph_version
 
@@ -556,10 +542,7 @@ async def set_graph_active_version(
     current_active_graph = await graph_db.get_graph(graph_id, user_id=user_id)
 
     # Handle activation of the new graph first to ensure continuity
-    await on_graph_activate(
-        new_active_graph,
-        get_credentials=_cached_credentials_getter(user_id),
-    )
+    await on_graph_activate(new_active_graph, user_id=user_id)
     # Ensure new version is the only active version
     await graph_db.set_graph_active_version(
         graph_id=graph_id,
@@ -574,32 +557,7 @@ async def set_graph_active_version(
 
     if current_active_graph and current_active_graph.version != new_active_version:
         # Handle deactivation of the previously active version
-        await on_graph_deactivate(
-            current_active_graph,
-            get_credentials=_cached_credentials_getter(user_id),
-        )
-
-
-def _cached_credentials_getter(user_id: str) -> Callable[[str], "Credentials | None"]:
-    all_credentials = None
-
-    def get_credentials(creds_id: str) -> "Credentials | None":
-        nonlocal all_credentials
-        if not all_credentials:
-            # Fetch credentials on first necessity
-            all_credentials = integration_creds_manager.store.get_all_creds(user_id)
-
-        credential = next((c for c in all_credentials if c.id == creds_id), None)
-        if not credential:
-            return None
-        if credential.type != "oauth2" or not credential.access_token_expires_at:
-            # Credential doesn't expire
-            return credential
-
-        # Credential is OAuth2 credential and has expiration timestamp
-        return integration_creds_manager.refresh_if_needed(user_id, credential)
-
-    return get_credentials
+        await on_graph_deactivate(current_active_graph, user_id=user_id)
 
 
 @v1_router.post(
