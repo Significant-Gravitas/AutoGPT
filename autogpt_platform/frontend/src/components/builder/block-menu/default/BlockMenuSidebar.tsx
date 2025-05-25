@@ -43,7 +43,7 @@ const BlockMenuSidebar: React.FC = ({}) => {
       type: "integrations",
       number: 24,
       onClick: () => {
-        setIntegration("");
+        setIntegration(null);
         setDefaultState("integrations");
       },
     },

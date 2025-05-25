@@ -6,36 +6,28 @@ import {
   integrationsListData,
 } from "../../testing_data";
 import { useBlockMenuContext } from "../block-menu-provider";
-
-export interface IntegrationBlockData {
-  title: string;
-  description: string;
-  icon_url: string;
-}
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { Block } from "@/lib/autogpt-server-api";
 
 const IntegrationBlocks: React.FC = ({}) => {
-  const { integration, setIntegration } = useBlockMenuContext();
-  const [blocks, setBlocks] = useState<IntegrationBlockData[]>([]);
+  const { integration, setIntegration, addNode } = useBlockMenuContext();
+  const [blocks, setBlocks] = useState<Block[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // TEMPORARY FETCHING
-  useEffect(() => {
-    if (integration) {
-      setIsLoading(true);
-      setTimeout(() => {
-        const foundBlocks = integrationBlocksData[integration] || [];
-        setBlocks(foundBlocks);
-        setIsLoading(false);
-      }, 800);
-    }
-  }, [integration]);
+  const api = useBackendAPI();
 
-  const getBlockCount = (): number => {
-    const integrationData = integrationsListData.find(
-      (item) => item.title === integration,
-    );
-    return integrationData?.number_of_blocks || 0;
-  };
+  useEffect(() => {
+    const fetchBlocks = async () => {
+      if (integration) {
+        setIsLoading(true);
+        const response = await api.getBuilderBlocks({ provider: integration });
+        setBlocks(response.blocks);
+        setIsLoading(false);
+      }
+    };
+
+    fetchBlocks();
+  }, [api, integration]);
 
   return (
     <div className="space-y-2.5">
@@ -45,7 +37,7 @@ const IntegrationBlocks: React.FC = ({}) => {
             variant={"link"}
             className="p-0 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800"
             onClick={() => {
-              setIntegration("");
+              setIntegration(null);
             }}
           >
             Integrations
@@ -58,7 +50,7 @@ const IntegrationBlocks: React.FC = ({}) => {
           </p>
         </div>
         <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 font-sans text-sm leading-[1.375rem] text-zinc-500 group-disabled:text-zinc-400">
-          {getBlockCount()}
+          {blocks.length}
         </span>
       </div>
 
@@ -75,9 +67,17 @@ const IntegrationBlocks: React.FC = ({}) => {
           {blocks.map((block, index) => (
             <IntegrationBlock
               key={index}
-              title={block.title}
+              title={block.name}
               description={block.description}
-              icon_url={block.icon_url}
+              icon_url={`/integrations/${integration}.png`}
+              onClick={() => {
+                addNode(
+                  block.id,
+                  block.name,
+                  block.hardcodedValues || {},
+                  block,
+                );
+              }}
             />
           ))}
         </div>

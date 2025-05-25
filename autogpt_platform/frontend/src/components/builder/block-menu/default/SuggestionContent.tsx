@@ -3,7 +3,10 @@ import SearchHistoryChip from "../SearchHistoryChip";
 import IntegrationChip from "../IntegrationChip";
 import Block from "../Block";
 import { useBlockMenuContext } from "../block-menu-provider";
-import { SuggestionsResponse } from "@/lib/autogpt-server-api";
+import {
+  CredentialsProviderName,
+  SuggestionsResponse,
+} from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 const SuggestionContent: React.FC = () => {
@@ -16,7 +19,6 @@ const SuggestionContent: React.FC = () => {
 
   const api = useBackendAPI();
 
-  // TEMPORARY FETCHING
   useEffect(() => {
     const fetchSuggestions = async () => {
       try {
@@ -33,7 +35,7 @@ const SuggestionContent: React.FC = () => {
     };
 
     fetchSuggestions();
-  }, []);
+  }, [api]);
 
   return (
     <div className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
@@ -78,7 +80,7 @@ const SuggestionContent: React.FC = () => {
                     name={provider}
                     onClick={() => {
                       setDefaultState("integrations");
-                      setIntegration(provider);
+                      setIntegration(provider as CredentialsProviderName);
                     }}
                   />
                 ))

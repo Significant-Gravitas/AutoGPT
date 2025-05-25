@@ -1,28 +1,23 @@
 import React, { useState, useEffect } from "react";
 import Integration from "../Integration";
-import { integrationsListData } from "../../testing_data";
 import { useBlockMenuContext } from "../block-menu-provider";
-
-export interface IntegrationData {
-  title: string;
-  icon_url: string;
-  description: string;
-  number_of_blocks: number;
-}
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { Provider } from "@/lib/autogpt-server-api";
 
 const IntegrationList: React.FC = ({}) => {
   const { setIntegration } = useBlockMenuContext();
-  const [integrations, setIntegrations] = useState<IntegrationData[]>([]);
+  const [integrations, setIntegrations] = useState<Provider[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // TEMPORARY FETCHING
+  const api = useBackendAPI();
+
   useEffect(() => {
     const fetchIntegrations = async () => {
       setIsLoading(true);
       try {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        setIntegrations(integrationsListData);
+        // Some integrations are missing, like twitter or todoist or more
+        const providers = await api.getProviders();
+        setIntegrations(providers.providers);
       } catch (error) {
         console.error("Failed to fetch integrations:", error);
       } finally {
@@ -31,7 +26,7 @@ const IntegrationList: React.FC = ({}) => {
     };
 
     fetchIntegrations();
-  }, []);
+  }, [api]);
 
   if (isLoading) {
     return (
@@ -50,11 +45,11 @@ const IntegrationList: React.FC = ({}) => {
       {integrations.map((integration, index) => (
         <Integration
           key={index}
-          title={integration.title}
-          icon_url={integration.icon_url}
+          title={integration.name}
+          icon_url={`/integrations/${integration.name}.png`}
           description={integration.description}
-          number_of_blocks={integration.number_of_blocks}
-          onClick={() => setIntegration(integration.title)}
+          number_of_blocks={integration.integration_count}
+          onClick={() => setIntegration(integration.name)}
         />
       ))}
     </div>

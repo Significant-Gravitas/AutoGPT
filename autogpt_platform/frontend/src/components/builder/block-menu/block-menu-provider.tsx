@@ -1,6 +1,6 @@
 "use client";
 
-import { Block } from "@/lib/autogpt-server-api";
+import { Block, CredentialsProviderName } from "@/lib/autogpt-server-api";
 import { createContext, ReactNode, useContext, useState } from "react";
 
 interface BaseSearchItem {
@@ -82,8 +82,10 @@ export interface Filters {
 interface BlockMenuContextType {
   defaultState: DefaultStateType;
   setDefaultState: React.Dispatch<React.SetStateAction<DefaultStateType>>;
-  integration: string;
-  setIntegration: React.Dispatch<React.SetStateAction<string>>;
+  integration: CredentialsProviderName | null;
+  setIntegration: React.Dispatch<
+    React.SetStateAction<CredentialsProviderName | null>
+  >;
   searchQuery: string;
   setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
   filters: Filters;
@@ -120,7 +122,8 @@ export function BlockMenuStateProvider({
 }: BlockMenuStateProviderProps) {
   const [defaultState, setDefaultState] =
     useState<DefaultStateType>("suggestion");
-  const [integration, setIntegration] = useState("");
+  const [integration, setIntegration] =
+    useState<CredentialsProviderName | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filters, setFilters] = useState<Filters>({
     categories: {
