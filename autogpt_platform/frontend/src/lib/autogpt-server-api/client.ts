@@ -9,6 +9,9 @@ import type {
   APIKeyCredentials,
   APIKeyPermission,
   Block,
+  BlockCategoryResponse,
+  BlockRequest,
+  BlockResponse,
   BlockSearchResponse,
   CreateAPIKeyResponse,
   CreateLibraryAgentPresetRequest,
@@ -41,6 +44,8 @@ import type {
   OttoQuery,
   OttoResponse,
   ProfileDetails,
+  Provider,
+  ProviderResponse,
   RefundRequest,
   ReviewSubmissionRequest,
   Schedule,
@@ -55,6 +60,7 @@ import type {
   StoreSubmissionRequest,
   StoreSubmissionsResponse,
   SubmissionStatus,
+  SuggestionsResponse,
   TransactionHistory,
   User,
   UserOnboarding,
@@ -204,20 +210,42 @@ export default class BackendAPI {
   }
 
   ////////////////////////////////////////
-  //////////////// GRAPHS ////////////////
+  //////////////// BUILDER ///////////////
   ////////////////////////////////////////
 
-  getBuilderBlocks(options: {
+  getSuggestions(): Promise<SuggestionsResponse> {
+    return this._get("/builder/suggestions");
+  }
+
+  getBlockCategories(): Promise<BlockCategoryResponse[]> {
+    return this._get("/builder/categories");
+  }
+
+  getBuilderBlocks(request?: BlockRequest): Promise<BlockResponse> {
+    return this._get("/builder/blocks", request);
+  }
+
+  getProviders(request?: {
+    page?: number;
+    page_size?: number;
+  }): Promise<ProviderResponse> {
+    return this._get("/builder/providers", request);
+  }
+
+  searchBlocks(options: {
     search_query?: string;
-    filter?: Omit<DefaultStateType | "providers", "suggestions">[];
-    providers?: CredentialsProviderName[];
+    filter?: ("blocks" | "integrations" | "marketplace_agents" | "my_agents")[];
     by_creator?: string[];
     search_id?: string;
     page?: number;
     page_size?: number;
   }): Promise<BlockSearchResponse> {
-    return this._request("POST", "/builder/blocks", options);
+    return this._request("POST", "/builder/search", options);
   }
+
+  ////////////////////////////////////////
+  //////////////// GRAPHS ////////////////
+  ////////////////////////////////////////
 
   getBlocks(): Promise<Block[]> {
     return this._get("/blocks");
