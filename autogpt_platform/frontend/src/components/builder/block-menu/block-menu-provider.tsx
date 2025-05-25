@@ -1,5 +1,6 @@
 "use client";
 
+import { Block } from "@/lib/autogpt-server-api";
 import { createContext, ReactNode, useContext, useState } from "react";
 
 interface BaseSearchItem {
@@ -91,13 +92,32 @@ interface BlockMenuContextType {
   setCreators: React.Dispatch<React.SetStateAction<string[]>>;
   searchData: SearchItem[];
   setSearchData: React.Dispatch<React.SetStateAction<SearchItem[]>>;
+  addNode: (
+    blockId: string,
+    nodeType: string,
+    hardcodedValues: any | undefined,
+    nodeSchema: Block | undefined,
+  ) => void;
 }
 
 export const BlockMenuContext = createContext<BlockMenuContextType>(
   {} as BlockMenuContextType,
 );
 
-export function BlockMenuStateProvider({ children }: { children: ReactNode }) {
+interface BlockMenuStateProviderProps {
+  children: ReactNode;
+  addNode: (
+    blockId: string,
+    nodeType: string,
+    hardcodedValues: any | undefined,
+    nodeSchema: Block | undefined,
+  ) => void;
+}
+
+export function BlockMenuStateProvider({
+  children,
+  addNode,
+}: BlockMenuStateProviderProps) {
   const [defaultState, setDefaultState] =
     useState<DefaultStateType>("suggestion");
   const [integration, setIntegration] = useState("");
@@ -131,6 +151,7 @@ export function BlockMenuStateProvider({ children }: { children: ReactNode }) {
         setFilters,
         searchData,
         setSearchData,
+        addNode,
       }}
     >
       {children}

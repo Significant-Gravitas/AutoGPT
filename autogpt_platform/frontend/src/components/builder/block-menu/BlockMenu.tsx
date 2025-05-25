@@ -10,12 +10,14 @@ import ControlPanelButton from "@/components/builder/block-menu/ControlPanelButt
 import { ToyBrick } from "lucide-react";
 import BlockMenuContent from "./BlockMenuContent";
 import { BlockMenuStateProvider } from "./block-menu-provider";
+import { Block } from "@/lib/autogpt-server-api";
 
 interface BlockMenuProps {
   addBlock: (
-    id: string,
-    name: string,
-    hardcodedValues: Record<string, any>,
+    blockId: string,
+    nodeType: string,
+    hardcodedValues: any | undefined,
+    nodeSchema: Block | undefined,
   ) => void;
   pinBlocksPopover: boolean;
   blockMenuSelected: "save" | "block" | "";
@@ -61,7 +63,7 @@ export const BlockMenu: React.FC<BlockMenuProps> = ({
         className="absolute h-[75vh] w-[46.625rem] overflow-hidden rounded-[1rem] border-none p-0 shadow-[0_2px_6px_0_rgba(0,0,0,0.05)]"
         data-id="blocks-control-popover-content"
       >
-        <BlockMenuStateProvider>
+        <BlockMenuStateProvider addNode={addBlock}>
           <BlockMenuContent />
         </BlockMenuStateProvider>
       </PopoverContent>

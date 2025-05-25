@@ -27,6 +27,7 @@ import "@xyflow/react/dist/style.css";
 import { CustomNode } from "./CustomNode";
 import "./flow.css";
 import {
+  Block,
   BlockUIType,
   formatEdgeID,
   GraphExecutionID,
@@ -467,8 +468,12 @@ const FlowEditor: React.FC<{
   }, [nodes, setViewport, x, y]);
 
   const addNode = useCallback(
-    (blockId: string, nodeType: string, hardcodedValues: any = {}) => {
-      const nodeSchema = availableNodes.find((node) => node.id === blockId);
+    (
+      blockId: string,
+      nodeType: string,
+      hardcodedValues: any = {},
+      nodeSchema: Block | undefined,
+    ) => {
       if (!nodeSchema) {
         console.error(`Schema not found for block ID: ${blockId}`);
         return;
@@ -546,7 +551,6 @@ const FlowEditor: React.FC<{
     [
       nodeId,
       setViewport,
-      availableNodes,
       addNodes,
       nodeDimensions,
       deleteElements,
