@@ -31,13 +31,13 @@ logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
 fmt = TextFormatter()
 
 LLMProviderName = Literal[
+    ProviderName.AIML_API,
     ProviderName.ANTHROPIC,
     ProviderName.GROQ,
     ProviderName.OLLAMA,
     ProviderName.OPENAI,
     ProviderName.OPEN_ROUTER,
     ProviderName.LLAMA_API,
-    ProviderName.AIML_API,
 ]
 AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
 
