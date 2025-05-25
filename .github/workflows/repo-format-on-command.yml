@@ -1,4 +1,4 @@
-name: Repo - Format on command
+name: Repo - Format PR on command
 
 on:
   issue_comment:
@@ -6,9 +6,10 @@ on:
 
 jobs:
   run-formatters:
+    # Run if the PR author or a maintainer comments '!format'
     if: >-
       github.event.issue.pull_request &&
-      contains(github.event.comment.body, '!format') &&
+      github.event.comment.body == '!format' &&
       (
         github.event.comment.user.login == github.event.issue.user.login ||
         github.event.comment.author_association == 'OWNER' ||
@@ -17,16 +18,29 @@ jobs:
       )
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       pull-requests: read
     steps:
+      - name: Get PR details
+        id: pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+
+            core.setOutput('head_repo', pullRequest.head.repo.full_name);
+            core.setOutput('head_ref', pullRequest.head.ref);
+            core.setOutput('head_sha', pullRequest.head.sha);
+
       - name: Checkout PR source
         uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.issue.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.issue.pull_request.head.ref }}
-          fetch-depth: 0
-          submodules: recursive
+          repository: ${{ steps.pr.outputs.head_repo }}
+          ref: ${{ steps.pr.outputs.head_ref }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -58,3 +72,18 @@ jobs:
       - name: Run backend formatter
         working-directory: autogpt_platform/backend
         run: poetry run format
+        # ignore exit status, because format.py also runs pyight
+        continue-on-error: true
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+
+          if [[ -n $(git status --porcelain) ]]; then
+            git add .
+            git commit -m "`!format`"
+            git push
+          else
+            echo "No formatting changes needed"
+          fi
