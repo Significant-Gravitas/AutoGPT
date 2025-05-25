@@ -7,50 +7,47 @@ import backend.server.v2.library.model as library_model
 import backend.server.v2.store.model as store_model
 from backend.integrations.providers import ProviderName
 
-FilterType = (
-    Literal["all_blocks"]
-    | Literal["input_blocks"]
-    | Literal["action_blocks"]
-    | Literal["output_blocks"]
-    | Literal["integrations"]
-    | Literal["providers"]
-    | Literal["marketplace_agents"]
-    | Literal["my_agents"]
-)
+FilterType = Literal[
+    "blocks",
+    "integrations",
+    "providers",
+    "marketplace_agents",
+    "my_agents",
+]
 
-
-SearchResultType = (
-    Literal["blocks"]
-    | Literal["integrations"]
-    | Literal["providers"]
-    | Literal["marketplace_agents"]
-    | Literal["my_agents"]
-)
+BlockType = Literal["all", "input", "action", "output"]
 
 BlockData = dict[str, Any]
 
 
-class SearchOptions(BaseModel):
-    search_query: str | None = None
-    filter: list[FilterType] | None = None
-    providers: list[str] | None = None
-    by_creator: list[str] | None = None
-    search_id: str | None = None
-    page: int | None = None
-    page_size: int | None = None
+# Suggestions
+class SuggestionsResponse(BaseModel):
+    otto_suggestions: list[str]
+    recent_searches: list[str]
+    providers: list[ProviderName]
+    top_blocks: list[BlockData]
 
 
+# All blocks
+class BlockCategoryResponse(BaseModel):
+    name: str
+    total_blocks: int
+    blocks: list[BlockData]
+
+    model_config = {"use_enum_values": False}  # <== use enum names like "AI"
+
+
+# Input/Action/Output and see all for block categories
+class BlockResponse(BaseModel):
+    blocks: list[BlockData]
+    pagination: server_model.Pagination
+
+
+# Providers
 class Provider(BaseModel):
     name: ProviderName
     description: str
     integration_count: int
-
-
-class BlockResponse(BaseModel):
-    blocks: list[BlockData]
-    total_block_count: int
-    total_integration_count: int
-    pagination: server_model.Pagination
 
 
 class ProviderResponse(BaseModel):
@@ -58,10 +55,26 @@ class ProviderResponse(BaseModel):
     pagination: server_model.Pagination
 
 
-class BlockSearchResponse(BaseModel):
+# Search
+class SearchRequest(BaseModel):
+    search_query: str | None = None
+    filter: list[FilterType] | None = None
+    by_creator: list[str] | None = None
+    search_id: str | None = None
+    page: int | None = None
+    page_size: int | None = None
+
+
+class SearchBlocksResponse(BaseModel):
+    blocks: BlockResponse
+    total_block_count: int
+    total_integration_count: int
+
+
+class SearchResponse(BaseModel):
     items: list[
         BlockData | Provider | library_model.LibraryAgent | store_model.StoreAgent
     ]
-    total_items: dict[SearchResultType, int]
+    total_items: dict[FilterType, int]
     page: int
     more_pages: bool

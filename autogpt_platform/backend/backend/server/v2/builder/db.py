@@ -1,25 +1,122 @@
 import functools
+import logging
 
 import backend.server.model as server_model
 from backend.blocks import load_all_blocks
-from backend.data.block import Block, BlockSchema, BlockType
+from backend.data.block import Block, BlockCategory, BlockSchema
 from backend.data.credit import get_block_costs
 from backend.integrations.providers import ProviderName
 from backend.server.v2.builder.model import (
+    BlockCategoryResponse,
     BlockResponse,
-    FilterType,
+    BlockType,
     Provider,
     ProviderResponse,
+    SearchBlocksResponse,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def get_block_categories(category_blocks: int = 3) -> list[BlockCategoryResponse]:
+    categories: dict[BlockCategory, BlockCategoryResponse] = {}
+
+    for block_type in load_all_blocks().values():
+        block: Block[BlockSchema, BlockSchema] = block_type()
+        # Skip disabled blocks
+        if block.disabled:
+            continue
+        # Skip blocks that don't have categories (all should have at least one)
+        if not block.categories:
+            continue
+
+        # Add block to the categories
+        for category in block.categories:
+            if category not in categories:
+                categories[category] = BlockCategoryResponse(
+                    name=category.name.lower(),
+                    total_blocks=0,
+                    blocks=[],
+                )
+
+            categories[category].total_blocks += 1
+
+            # Append if the category has less than the specified number of blocks
+            if len(categories[category].blocks) < category_blocks:
+                categories[category].blocks.append(block.to_dict())
+
+    # Sort categories by name
+    return sorted(categories.values(), key=lambda x: x.name)
 
 
 def get_blocks(
-    filter: list[FilterType],
-    query: str = "",
-    providers: list[ProviderName] | None = None,
+    *,
+    category: str | None = None,
+    type: BlockType | None = None,
+    provider: ProviderName | None = None,
     page: int = 1,
     page_size: int = 50,
 ) -> BlockResponse:
+    """
+    Get blocks based on either category, type or provider.
+    Providing nothing assumes category is `all`.
+    """
+    # Only one of category, type, or provider can be specified
+    if (category and type) or (category and provider) or (type and provider):
+        raise ValueError("Only one of category, type, or provider can be specified")
+
+    blocks: list[Block[BlockSchema, BlockSchema]] = []
+    skip = (page - 1) * page_size
+    take = page_size
+    total = 0
+
+    for block_type in load_all_blocks().values():
+        block: Block[BlockSchema, BlockSchema] = block_type()
+        # Skip disabled blocks
+        if block.disabled:
+            continue
+        # Skip blocks that don't match the category
+        if category and category not in {c.name.lower() for c in block.categories}:
+            continue
+        # Skip blocks that don't match the type
+        if (
+            (type == "input" and block.block_type.value != "Input")
+            or (type == "output" and block.block_type.value != "Output")
+            or (type == "action" and block.block_type.value in ("Input", "Output"))
+        ):
+            continue
+        # Skip blocks that don't match the provider
+        if provider:
+            credentials_info = block.input_schema.get_credentials_fields_info().values()
+            if not any(provider in info.provider for info in credentials_info):
+                continue
+
+        total += 1
+        if skip > 0:
+            skip -= 1
+            continue
+        if take > 0:
+            take -= 1
+            blocks.append(block)
+
+    return BlockResponse(
+        blocks=[b.to_dict() for b in blocks],
+        pagination=server_model.Pagination(
+            total_items=total,
+            total_pages=total // page_size + (1 if total % page_size > 0 else 0),
+            current_page=page,
+            page_size=page_size,
+        ),
+    )
+
+
+def search_blocks(
+    include_blocks: bool = True,
+    include_integrations: bool = True,
+    query: str = "",
+    page: int = 1,
+    page_size: int = 50,
+) -> SearchBlocksResponse:
     """
     Get blocks based on the filter and query.
     `providers` only applies for `integrations` filter.
@@ -43,30 +140,12 @@ def get_blocks(
             continue
         keep = False
         credentials = list(block.input_schema.get_credentials_fields().values())
-        # Skip blocks that don't match the filter
-        if (
-            ("all_blocks" in filter)
-            or ("input_blocks" in filter and block.block_type == BlockType.INPUT)
-            or ("output_block" in filter and block.block_type == BlockType.OUTPUT)
-        ):
-            block_count += 1
+        if include_integrations and len(credentials) > 0:
             keep = True
-        elif (
-            "action_blocks" in filter
-            and block.block_type != BlockType.INPUT
-            and block.block_type != BlockType.OUTPUT
-        ):
-            block_count += 1
+            integration_count += 1
+        if include_blocks and len(credentials) == 0:
             keep = True
-        elif "integrations" in filter and len(credentials) > 0:
-            # Only keep if provider is in the list
-            if providers:
-                if any(c.provider in providers for c in credentials):
-                    keep = True
-                    integration_count += 1
-            else:
-                keep = True
-                integration_count += 1
+            block_count += 1
 
         if not keep:
             continue
@@ -81,16 +160,18 @@ def get_blocks(
 
     costs = get_block_costs()
 
-    return BlockResponse(
-        blocks=[{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks],
+    return SearchBlocksResponse(
+        blocks=BlockResponse(
+            blocks=[{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks],
+            pagination=server_model.Pagination(
+                total_items=total,
+                total_pages=total // page_size + (1 if total % page_size > 0 else 0),
+                current_page=page,
+                page_size=page_size,
+            ),
+        ),
         total_block_count=block_count,
         total_integration_count=integration_count,
-        pagination=server_model.Pagination(
-            total_items=total,
-            total_pages=total // page_size + (1 if total % page_size > 0 else 0),
-            current_page=page,
-            page_size=page_size,
-        ),
     )
 
 
@@ -135,18 +216,20 @@ def get_providers(
 
 @functools.cache
 def _get_all_providers() -> dict[ProviderName, Provider]:
-    providers = {}
+    providers: dict[ProviderName, Provider] = {}
+
     for block_type in load_all_blocks().values():
         block: Block[BlockSchema, BlockSchema] = block_type()
-        # Skip disabled blocks
         if block.disabled:
             continue
-        credentials = list(block.input_schema.get_credentials_fields().values())
-        for c in credentials:
-            if c.provider in providers:
-                providers[c.provider].integration_count += 1
-            else:
-                providers[c.provider] = Provider(
-                    name=c.provider, description="", integration_count=1
-                )
+
+        credentials_info = block.input_schema.get_credentials_fields_info().values()
+        for info in credentials_info:
+            for provider in info.provider:  # provider is a ProviderName enum member
+                if provider in providers:
+                    providers[provider].integration_count += 1
+                else:
+                    providers[provider] = Provider(
+                        name=provider, description="", integration_count=1
+                    )
     return providers
