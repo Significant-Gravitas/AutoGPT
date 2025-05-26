@@ -45,7 +45,8 @@ export class LoginPage {
         )
         .catch((reason) => {
           console.warn(
-            `Navigation away from /login timed out: ${reason}. Current URL: ${this.page.url()}`,
+            `Navigation away from /login timed out (current URL: ${this.page.url()}):`,
+            reason,
           );
           throw reason;
         }), // Wait for home page
