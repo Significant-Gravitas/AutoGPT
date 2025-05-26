@@ -39,7 +39,10 @@ export class LoginPage {
     // Start waiting for navigation before clicking
     const navigationPromise = Promise.race([
       this.page
-        .waitForURL(/^\/(marketplace|onboarding(\/.*)?)?$/, { timeout: 10_000 })
+        .waitForURL(
+          (url) => /^\/(marketplace|onboarding(\/.*)?)?$/.test(url.pathname),
+          { timeout: 10_000 },
+        )
         .catch((reason) => {
           console.warn(
             `Navigation away from /login timed out: ${reason}. Current URL: ${this.page.url()}`,
