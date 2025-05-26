@@ -23,20 +23,20 @@ def override_get_user_id():
 app.dependency_overrides[get_user_id] = override_get_user_id
 
 
-
 def test_log_raw_metric_success(
     mocker: pytest_mock.MockFixture,
     snapshot: Snapshot,
 ) -> None:
     """Test successful raw metric logging"""
+
     # Mock the analytics function
     # Create a simple object with the necessary id attribute
     class MockMetricResult:
         def __init__(self, id: str):
             self.id = id
-    
+
     mock_result = MockMetricResult(id="metric-123-uuid")
-    
+
     mock_log_metric = mocker.patch(
         "backend.data.analytics.log_raw_metric",
         new_callable=AsyncMock,
@@ -70,21 +70,21 @@ def test_log_raw_metric_success(
     )
 
 
-
 def test_log_raw_metric_various_values(
     mocker: pytest_mock.MockFixture,
     snapshot: Snapshot,
 ) -> None:
     """Test raw metric logging with various metric values"""
+
     # Mock the analytics function
     # Create a simple object with the necessary id attribute
     class MockMetricResult:
         def __init__(self, id: str):
             self.id = id
-    
+
     mock_result = MockMetricResult(id="metric-456-uuid")
-    
-    mock_log_metric = mocker.patch(
+
+    mocker.patch(
         "backend.data.analytics.log_raw_metric",
         new_callable=AsyncMock,
         return_value=mock_result,
@@ -119,7 +119,7 @@ def test_log_raw_metric_various_values(
 
     response = client.post("/log_raw_metric", json=request_data)
     assert response.status_code == 200
-    
+
     # Snapshot the last response
     snapshot.assert_match(
         json.dumps({"metric_id": response.json()}, indent=2, sort_keys=True),
@@ -127,20 +127,20 @@ def test_log_raw_metric_various_values(
     )
 
 
-
 def test_log_raw_analytics_success(
     mocker: pytest_mock.MockFixture,
     snapshot: Snapshot,
 ) -> None:
     """Test successful raw analytics logging"""
+
     # Mock the analytics function
     # Create a simple object with the necessary id attribute
     class MockAnalyticsResult:
         def __init__(self, id: str):
             self.id = id
-    
+
     mock_result = MockAnalyticsResult(id="analytics-789-uuid")
-    
+
     mock_log_analytics = mocker.patch(
         "backend.data.analytics.log_raw_analytics",
         new_callable=AsyncMock,
@@ -182,21 +182,21 @@ def test_log_raw_analytics_success(
     )
 
 
-
 def test_log_raw_analytics_complex_data(
     mocker: pytest_mock.MockFixture,
     snapshot: Snapshot,
 ) -> None:
     """Test raw analytics logging with complex nested data"""
+
     # Mock the analytics function
     # Create a simple object with the necessary id attribute
     class MockAnalyticsResult:
         def __init__(self, id: str):
             self.id = id
-    
+
     mock_result = MockAnalyticsResult(id="analytics-complex-uuid")
-    
-    mock_log_analytics = mocker.patch(
+
+    mocker.patch(
         "backend.data.analytics.log_raw_analytics",
         new_callable=AsyncMock,
         return_value=mock_result,

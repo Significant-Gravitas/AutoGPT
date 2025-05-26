@@ -9,8 +9,8 @@ from pytest_snapshot.plugin import Snapshot  # type: ignore
 
 import backend.server.v2.otto.models as otto_models
 import backend.server.v2.otto.routes as otto_routes
-from backend.server.v2.otto.service import OttoService
 from backend.server.utils import get_user_id
+from backend.server.v2.otto.service import OttoService
 
 app = fastapi.FastAPI()
 app.include_router(otto_routes.router)
@@ -32,7 +32,6 @@ app.dependency_overrides[autogpt_libs.auth.middleware.auth_middleware] = (
     override_auth_middleware
 )
 app.dependency_overrides[get_user_id] = override_get_user_id
-
 
 
 def test_ask_otto_success(
@@ -89,7 +88,6 @@ def test_ask_otto_success(
     )
 
 
-
 def test_ask_otto_with_graph_data(
     mocker: pytest_mock.MockFixture,
     snapshot: Snapshot,
@@ -134,7 +132,6 @@ def test_ask_otto_with_graph_data(
     )
 
 
-
 def test_ask_otto_empty_conversation(
     mocker: pytest_mock.MockFixture,
     snapshot: Snapshot,
@@ -172,7 +169,6 @@ def test_ask_otto_empty_conversation(
         json.dumps(response_data, indent=2, sort_keys=True),
         "otto_ask_empty_conversation_response",
     )
-
 
 
 def test_ask_otto_service_error(

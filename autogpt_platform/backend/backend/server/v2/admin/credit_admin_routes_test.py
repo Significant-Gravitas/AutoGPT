@@ -36,7 +36,6 @@ app.dependency_overrides[autogpt_libs.auth.requires_admin_user] = (
 app.dependency_overrides[autogpt_libs.auth.depends.get_user_id] = override_get_user_id
 
 
-
 def test_add_user_credits_success(
     mocker: pytest_mock.MockFixture,
     snapshot: Snapshot,
@@ -70,15 +69,17 @@ def test_add_user_credits_success(
     assert call_args[1]["transaction_type"] == prisma.enums.CreditTransactionType.GRANT
     # Check that metadata is a Json object with the expected content
     from prisma import Json
+
     assert isinstance(call_args[1]["metadata"], Json)
-    assert call_args[1]["metadata"] == Json({"admin_id": "admin-user-id", "reason": "Test credit grant for debugging"})
+    assert call_args[1]["metadata"] == Json(
+        {"admin_id": "admin-user-id", "reason": "Test credit grant for debugging"}
+    )
 
     # Snapshot test the response
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "admin_add_credits_success_response",
     )
-
 
 
 def test_add_user_credits_negative_amount(
@@ -113,7 +114,6 @@ def test_add_user_credits_negative_amount(
     )
 
 
-
 def test_get_user_history_success(
     mocker: pytest_mock.MockFixture,
     snapshot: Snapshot,
@@ -127,7 +127,6 @@ def test_get_user_history_success(
                 user_email="user1@example.com",
                 amount=1000,
                 reason="Initial grant",
-                timestamp="2023-01-01T00:00:00Z",
                 transaction_type=prisma.enums.CreditTransactionType.GRANT,
             ),
             UserTransaction(
@@ -135,7 +134,6 @@ def test_get_user_history_success(
                 user_email="user2@example.com",
                 amount=-50,
                 reason="Usage",
-                timestamp="2023-01-02T00:00:00Z",
                 transaction_type=prisma.enums.CreditTransactionType.USAGE,
             ),
         ],
@@ -166,7 +164,6 @@ def test_get_user_history_success(
     )
 
 
-
 def test_get_user_history_with_filters(
     mocker: pytest_mock.MockFixture,
     snapshot: Snapshot,
@@ -180,7 +177,6 @@ def test_get_user_history_with_filters(
                 user_email="test@example.com",
                 amount=500,
                 reason="Top up",
-                timestamp="2023-01-03T00:00:00Z",
                 transaction_type=prisma.enums.CreditTransactionType.TOP_UP,
             ),
         ],
@@ -225,7 +221,6 @@ def test_get_user_history_with_filters(
         json.dumps(response_data, indent=2, sort_keys=True),
         "admin_get_user_history_filtered_response",
     )
-
 
 
 def test_get_user_history_empty_results(
@@ -299,7 +294,9 @@ def test_admin_endpoints_require_admin_role(mocker: pytest_mock.MockFixture) -> 
     # Mock requires_admin_user to raise an exception
     mocker.patch(
         "autogpt_libs.auth.requires_admin_user",
-        side_effect=fastapi.HTTPException(status_code=403, detail="Admin access required"),
+        side_effect=fastapi.HTTPException(
+            status_code=403, detail="Admin access required"
+        ),
     )
 
     # Test add_credits endpoint
@@ -311,11 +308,15 @@ def test_admin_endpoints_require_admin_role(mocker: pytest_mock.MockFixture) -> 
             "comments": "test",
         },
     )
-    assert response.status_code == 401  # Auth middleware returns 401 when auth is disabled
+    assert (
+        response.status_code == 401
+    )  # Auth middleware returns 401 when auth is disabled
 
     # Test users_history endpoint
     response = client.get("/admin/users_history")
-    assert response.status_code == 401  # Auth middleware returns 401 when auth is disabled
+    assert (
+        response.status_code == 401
+    )  # Auth middleware returns 401 when auth is disabled
 
     # Restore the override
     app.dependency_overrides[autogpt_libs.auth.requires_admin_user] = (

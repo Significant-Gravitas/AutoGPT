@@ -85,7 +85,7 @@ async def test_get_library_agents(mocker):
 @pytest.mark.asyncio(loop_scope="session")
 async def test_add_agent_to_library(mocker):
     await connect()
-    
+
     # Mock the transaction context
     mock_transaction = mocker.patch("backend.server.v2.library.db.locked_transaction")
     mock_transaction.return_value.__aenter__ = mocker.AsyncMock(return_value=None)
@@ -147,7 +147,7 @@ async def test_add_agent_to_library(mocker):
     mock_library_agent.return_value.create = mocker.AsyncMock(
         return_value=mock_library_agent_data
     )
-    
+
     # Mock the model conversion
     mock_from_db = mocker.patch("backend.server.v2.library.model.LibraryAgent.from_db")
     mock_from_db.return_value = mocker.Mock()

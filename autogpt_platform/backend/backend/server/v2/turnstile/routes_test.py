@@ -1,4 +1,3 @@
-
 import fastapi
 import fastapi.testclient
 import pytest_mock
@@ -9,7 +8,6 @@ app = fastapi.FastAPI()
 app.include_router(turnstile_routes.router)
 
 client = fastapi.testclient.TestClient(app)
-
 
 
 def test_verify_turnstile_token_no_secret_key(mocker: pytest_mock.MockFixture) -> None:
@@ -25,7 +23,6 @@ def test_verify_turnstile_token_no_secret_key(mocker: pytest_mock.MockFixture) -
     response_data = response.json()
     assert response_data["success"] is False
     assert response_data["error"] == "CONFIGURATION_ERROR"
-
 
 
 def test_verify_turnstile_token_invalid_request() -> None:

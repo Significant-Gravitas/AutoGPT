@@ -46,7 +46,7 @@ def test_get_or_create_user_route(
         "email": "test@example.com",
         "name": "Test User",
     }
-    
+
     mocker.patch(
         "backend.server.routers.v1.get_or_create_user",
         return_value=mock_user,
@@ -56,7 +56,7 @@ def test_get_or_create_user_route(
 
     assert response.status_code == 200
     response_data = response.json()
-    
+
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "auth_get_or_create_user_response",
@@ -78,7 +78,7 @@ def test_update_user_email_route(
     assert response.status_code == 200
     response_data = response.json()
     assert response_data["email"] == "newemail@example.com"
-    
+
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "auth_update_email_response",
@@ -101,13 +101,13 @@ def test_get_graph_blocks(
     }
     mock_block.id = "test-block"
     mock_block.disabled = False
-    
+
     # Mock get_blocks
     mocker.patch(
         "backend.server.routers.v1.get_blocks",
         return_value={"test-block": lambda: mock_block},
     )
-    
+
     # Mock block costs
     mocker.patch(
         "backend.server.routers.v1.get_block_costs",
@@ -120,7 +120,7 @@ def test_get_graph_blocks(
     response_data = response.json()
     assert len(response_data) == 1
     assert response_data[0]["id"] == "test-block"
-    
+
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "blocks_get_all_response",
@@ -138,7 +138,7 @@ def test_execute_graph_block(
         ("output1", {"data": "result1"}),
         ("output2", {"data": "result2"}),
     ]
-    
+
     mocker.patch(
         "backend.server.routers.v1.get_block",
         return_value=mock_block,
@@ -153,7 +153,7 @@ def test_execute_graph_block(
 
     assert response.status_code == 200
     response_data = response.json()
-    
+
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "blocks_execute_response",
@@ -181,9 +181,7 @@ def test_get_user_credits(
     snapshot: Snapshot,
 ) -> None:
     """Test get user credits endpoint"""
-    mock_credit_model = mocker.patch(
-        "backend.server.routers.v1._user_credit_model"
-    )
+    mock_credit_model = mocker.patch("backend.server.routers.v1._user_credit_model")
     mock_credit_model.get_credits = AsyncMock(return_value=1000)
 
     response = client.get("/credits")
@@ -191,7 +189,7 @@ def test_get_user_credits(
     assert response.status_code == 200
     response_data = response.json()
     assert response_data["credits"] == 1000
-    
+
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "credits_get_balance_response",
@@ -203,9 +201,7 @@ def test_request_top_up(
     snapshot: Snapshot,
 ) -> None:
     """Test request top up endpoint"""
-    mock_credit_model = mocker.patch(
-        "backend.server.routers.v1._user_credit_model"
-    )
+    mock_credit_model = mocker.patch("backend.server.routers.v1._user_credit_model")
     mock_credit_model.top_up_intent = AsyncMock(
         return_value="https://checkout.example.com/session123"
     )
@@ -217,7 +213,7 @@ def test_request_top_up(
     assert response.status_code == 200
     response_data = response.json()
     assert "checkout_url" in response_data
-    
+
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "credits_top_up_request_response",
@@ -230,7 +226,7 @@ def test_get_auto_top_up(
 ) -> None:
     """Test get auto top-up configuration endpoint"""
     mock_config = AutoTopUpConfig(threshold=100, amount=500)
-    
+
     mocker.patch(
         "backend.server.routers.v1.get_auto_top_up",
         return_value=mock_config,
@@ -242,7 +238,7 @@ def test_get_auto_top_up(
     response_data = response.json()
     assert response_data["threshold"] == 100
     assert response_data["amount"] == 500
-    
+
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "credits_get_auto_top_up_response",
@@ -262,9 +258,8 @@ def test_get_graphs(
         name="Test Graph",
         description="A test graph",
         user_id="test-user-id",
-        graph={"nodes": [], "edges": []},
     )
-    
+
     mocker.patch(
         "backend.server.routers.v1.graph_db.get_graphs",
         return_value=[mock_graph],
@@ -276,7 +271,7 @@ def test_get_graphs(
     response_data = response.json()
     assert len(response_data) == 1
     assert response_data[0]["id"] == "graph-123"
-    
+
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "graphs_get_all_response",
@@ -295,9 +290,8 @@ def test_get_graph(
         name="Test Graph",
         description="A test graph",
         user_id="test-user-id",
-        graph={"nodes": [], "edges": []},
     )
-    
+
     mocker.patch(
         "backend.server.routers.v1.graph_db.get_graph",
         return_value=mock_graph,
@@ -308,7 +302,7 @@ def test_get_graph(
     assert response.status_code == 200
     response_data = response.json()
     assert response_data["id"] == "graph-123"
-    
+
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "graphs_get_single_response",
@@ -343,9 +337,8 @@ def test_delete_graph(
         name="Test Graph",
         description="A test graph",
         user_id="test-user-id",
-        graph={"nodes": [], "edges": []},
     )
-    
+
     mocker.patch(
         "backend.server.routers.v1.graph_db.get_graph",
         return_value=mock_graph,
@@ -364,7 +357,7 @@ def test_delete_graph(
     assert response.status_code == 200
     response_data = response.json()
     assert response_data["version_counts"] == 3
-    
+
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "graphs_delete_response",
