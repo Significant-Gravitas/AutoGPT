@@ -1,18 +1,14 @@
 import json
-from datetime import datetime
-from typing import Any
 from unittest.mock import AsyncMock, Mock
 
 import autogpt_libs.auth.depends
 import fastapi
 import fastapi.testclient
-import pytest
 import pytest_mock
 from pytest_snapshot.plugin import Snapshot  # type: ignore
 
 import backend.server.routers.v1 as v1_routes
-from backend.data.block import CompletedBlockOutput
-from backend.data.credit import AutoTopUpConfig, TransactionHistory
+from backend.data.credit import AutoTopUpConfig
 from backend.data.graph import GraphModel
 from backend.server.utils import get_user_id
 

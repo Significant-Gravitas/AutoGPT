@@ -6,11 +6,9 @@ import autogpt_libs.auth.depends
 import fastapi
 import fastapi.testclient
 import prisma.enums
-import pytest
 import pytest_mock
 from pytest_snapshot.plugin import Snapshot  # type: ignore
 
-import backend.data.credit
 import backend.server.v2.admin.credit_admin_routes as credit_admin_routes
 import backend.server.v2.admin.model as admin_model
 from backend.data.model import UserTransaction

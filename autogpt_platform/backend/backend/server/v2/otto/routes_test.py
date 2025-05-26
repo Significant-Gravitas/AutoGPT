@@ -1,11 +1,9 @@
 import json
-from unittest.mock import AsyncMock, patch
 
 import autogpt_libs.auth.depends
 import autogpt_libs.auth.middleware
 import fastapi
 import fastapi.testclient
-import pytest
 import pytest_mock
 from pytest_snapshot.plugin import Snapshot  # type: ignore
 

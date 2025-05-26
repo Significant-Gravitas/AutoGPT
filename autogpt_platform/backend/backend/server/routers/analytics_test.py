@@ -1,17 +1,13 @@
 import json
 from unittest.mock import AsyncMock
 
-import autogpt_libs.auth.depends
 import fastapi
 import fastapi.testclient
-import pytest
 import pytest_mock
 from pytest_snapshot.plugin import Snapshot  # type: ignore
 
-import backend.data.analytics
 import backend.server.routers.analytics as analytics_routes
 from backend.server.utils import get_user_id
-from typing import Any
 
 app = fastapi.FastAPI()
 app.include_router(analytics_routes.router)

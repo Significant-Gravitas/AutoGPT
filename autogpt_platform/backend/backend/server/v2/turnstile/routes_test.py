@@ -1,12 +1,7 @@
-import json
-from unittest.mock import AsyncMock, patch
 
-import aiohttp
 import fastapi
 import fastapi.testclient
-import pytest
 import pytest_mock
-from pytest_snapshot.plugin import Snapshot  # type: ignore
 
 import backend.server.v2.turnstile.routes as turnstile_routes
 
