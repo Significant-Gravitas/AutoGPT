@@ -7,7 +7,7 @@
     "dev:nosentry": "NODE_ENV=development && DISABLE_SENTRY=true && next dev --turbo",
     "dev:test": "NODE_ENV=test && next dev --turbo",
     "build": "SKIP_STORYBOOK_TESTS=true next build",
-    "start": "next start",
+    "start": "node .next/standalone/server.js",
     "lint": "next lint && prettier --check .",
     "format": "prettier --write .",
     "type-check": "tsc --noEmit",
