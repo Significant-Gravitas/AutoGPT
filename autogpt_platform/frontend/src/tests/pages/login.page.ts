@@ -4,7 +4,10 @@ export class LoginPage {
   constructor(private page: Page) {}
 
   async login(email: string, password: string) {
-    console.log("Attempting login with:", { email, password }); // Debug log
+    console.log(`Attempting login on ${this.page.url()} with`, {
+      email,
+      password,
+    }); // Debug log
 
     // Fill email
     const emailInput = this.page.getByPlaceholder("m@example.com");
@@ -35,15 +38,20 @@ export class LoginPage {
 
     // Start waiting for navigation before clicking
     const navigationPromise = Promise.race([
-      this.page.waitForURL("/", { timeout: 10_000 }), // Wait for home page
-      this.page.waitForURL("/marketplace", { timeout: 10_000 }), // Wait for home page
-      this.page.waitForURL("/onboarding/**", { timeout: 10_000 }), // Wait for onboarding page
+      this.page
+        .waitForURL(/^\/(marketplace|onboarding(\/.*)?)?$/, { timeout: 10_000 })
+        .catch((reason) => {
+          console.warn(
+            `Navigation away from /login timed out: ${reason}. Current URL: ${this.page.url()}`,
+          );
+          throw reason;
+        }), // Wait for home page
     ]);
 
-    console.log("About to click login button"); // Debug log
+    console.log(`About to click login button on ${this.page.url()}`); // Debug log
     await loginButton.click();
 
-    console.log("Waiting for navigation"); // Debug log
+    console.log("Waiting for navigation away from /login"); // Debug log
     await navigationPromise;
 
     await this.page.goto("/marketplace");
