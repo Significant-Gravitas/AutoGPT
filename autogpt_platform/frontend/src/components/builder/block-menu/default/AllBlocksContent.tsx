@@ -43,8 +43,6 @@ const AllBlocksContent: React.FC = () => {
         return cat;
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-
       setCategories(updatedCategories);
     } catch (error) {
       console.error(`Failed to fetch blocks for category ${category}:`, error);
@@ -75,7 +73,6 @@ const AllBlocksContent: React.FC = () => {
   }
 
   return (
-    // BLOCK TODO : NEED to add the laoding skeleton when clicking see all
     <div className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
       <div className="w-full space-y-3 px-4 pb-4">
         {categories.map((category, index) => (
@@ -112,6 +109,16 @@ const AllBlocksContent: React.FC = () => {
                     }}
                   />
                 ))}
+
+                {loadingCategories.has(category.name) && (
+                  <>
+                    {[0, 1, 2, 3, 4].map((skeletonIndex) => (
+                      <Block.Skeleton
+                        key={`skeleton-${category.name}-${skeletonIndex}`}
+                      />
+                    ))}
+                  </>
+                )}
 
                 {category.total_blocks > category.blocks.length && (
                   <Button
