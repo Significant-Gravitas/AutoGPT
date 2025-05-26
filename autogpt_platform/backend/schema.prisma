@@ -195,6 +195,8 @@ model NotificationEvent {
 
   type NotificationType
   data Json
+
+  @@index([userNotificationBatchId])
 }
 
 model UserNotificationBatch {
@@ -380,6 +382,11 @@ model AgentNodeExecution {
   @@index([agentGraphExecutionId])
   @@index([agentNodeId])
   @@index([addedTime])
+  // Composite indexes for query optimization
+  @@index([agentNodeId, agentGraphExecutionId, executionStatus])
+  @@index([agentGraphExecutionId, executionStatus])
+  @@index([agentGraphExecutionId, queuedTime, addedTime])
+  @@index([queuedTime, addedTime])
 }
 
 // This model describes the output of an AgentNodeExecution.
@@ -402,6 +409,8 @@ model AgentNodeExecutionInputOutput {
   // Input and Output pin names are unique for each AgentNodeExecution.
   @@unique([referencedByInputExecId, referencedByOutputExecId, name])
   @@index([referencedByOutputExecId])
+  // Composite index for NOT IN subquery optimization
+  @@index([referencedByInputExecId, name])
 }
 
 // Webhook that is registered with a provider and propagates to one or more nodes
