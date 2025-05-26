@@ -492,15 +492,21 @@ async def upsert_execution_input(
         "agentNodeId": node_id,
         "agentGraphExecutionId": graph_exec_id,
         "executionStatus": ExecutionStatus.INCOMPLETE,
-        "Input": {"every": {"name": {"not": input_name}}},
     }
     if node_exec_id:
         existing_exec_query_filter["id"] = node_exec_id
 
-    existing_execution = await AgentNodeExecution.prisma().find_first(
-        where=existing_exec_query_filter,
-        order={"addedTime": "asc"},
-        include={"Input": True},
+    existing_execution = next(
+        (
+            execution
+            for execution in await AgentNodeExecution.prisma().find_many(
+                where=existing_exec_query_filter,
+                order={"addedTime": "asc"},
+                include={"Input": True},
+            )
+            if input_name not in [d.name for d in execution.Input or []]
+        ),
+        None,
     )
     json_input_data = Json(input_data)
 
