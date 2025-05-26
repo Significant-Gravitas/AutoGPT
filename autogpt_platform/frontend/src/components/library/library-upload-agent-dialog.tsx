@@ -219,7 +219,6 @@ export default function LibraryUploadAgentDialog(): React.ReactNode {
                             justifyContent: "center",
                             alignItems: "center",
                             outline: "none",
-                            fontFamily: "var(--font-geist-sans)",
                             color: "#525252",
                             fontSize: "14px",
                             fontWeight: "500",
