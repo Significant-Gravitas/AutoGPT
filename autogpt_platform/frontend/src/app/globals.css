@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    --background: 0 0% 99.6%; /* #FEFEFE */
+    --background: 0 0% 98%; /* neutral-50#FAFAFA */
     --foreground: 240 10% 3.9%;
     --card: 0 0% 100%;
     --card-foreground: 240 10% 3.9%;
@@ -62,11 +62,7 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
-  }
-
-  .font-neue {
-    font-family: "PP Neue Montreal TT", sans-serif;
+    @apply bg-background font-sans text-foreground antialiased transition-colors;
   }
 }
 
