@@ -100,13 +100,17 @@ jobs:
         run: |
           cp .env.example .env
 
+      - name: Build frontend
+        run: yarn build --turbo
+        # uses Turbopack, much faster and safe enough for a test pipeline
+
       - name: Install Browser '${{ matrix.browser }}'
         run: yarn playwright install --with-deps ${{ matrix.browser }}
 
       - name: Run tests
         timeout-minutes: 20
         run: |
-          yarn test --project=${{ matrix.browser }}
+          yarn test:no-build --project=${{ matrix.browser }}
 
       - name: Print Final Docker Compose logs
         if: always()
