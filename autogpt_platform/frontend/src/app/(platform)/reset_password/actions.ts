@@ -11,7 +11,7 @@ export async function sendResetEmail(email: string, turnstileToken: string) {
     {},
     async () => {
       const supabase = getServerSupabase();
-      const headersList = headers();
+      const headersList = await headers();
       const host = headersList.get("host");
       const protocol =
         process.env.NODE_ENV === "development" ? "http" : "https";
