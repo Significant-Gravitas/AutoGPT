@@ -46,8 +46,9 @@ export default withSentryConfig(nextConfig, {
   // side errors will fail.
   tunnelRoute: "/store",
 
-  // Hides source maps from generated client bundles
-  hideSourceMaps: true,
+  // No need to hide source maps from generated client bundles
+  // since the source is public anyway :)
+  hideSourceMaps: false,
 
   // Automatically tree-shake Sentry logger statements to reduce bundle size
   disableLogger: true,
