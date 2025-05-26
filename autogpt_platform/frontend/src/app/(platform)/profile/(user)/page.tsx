@@ -4,25 +4,14 @@ import { ProfileInfoForm } from "@/components/agptui/ProfileInfoForm";
 import BackendAPI from "@/lib/autogpt-server-api";
 import { CreatorDetails } from "@/lib/autogpt-server-api/types";
 
-async function getProfileData(api: BackendAPI) {
-  try {
-    const profile = await api.getStoreProfile();
-    return {
-      profile,
-    };
-  } catch (error) {
-    console.error("Error fetching profile:", error);
-    return {
-      profile: null,
-    };
-  }
-}
-
 export const metadata: Metadata = { title: "Profile - AutoGPT Platform" };
 
-export default async function Page({}: {}) {
+export default async function UserProfilePage({}: {}) {
   const api = new BackendAPI();
-  const { profile } = await getProfileData(api);
+  const profile = await api.getStoreProfile().catch((error) => {
+    console.error("Error fetching profile:", error);
+    return null;
+  });
 
   if (!profile) {
     return (
@@ -34,7 +23,7 @@ export default async function Page({}: {}) {
 
   return (
     <div className="flex flex-col items-center justify-center px-4">
-      <ProfileInfoForm profile={profile as CreatorDetails} />
+      <ProfileInfoForm profile={profile} />
     </div>
   );
 }
