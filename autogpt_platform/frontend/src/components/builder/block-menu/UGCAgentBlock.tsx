@@ -8,7 +8,7 @@ import { highlightText } from "./IntegrationBlock";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
-  edited_time?: string;
+  edited_time?: Date;
   version?: number;
   image_url?: string;
   highlightedText?: string;
@@ -61,7 +61,7 @@ const UGCAgentBlock: UGCAgentBlockComponent = ({
             )}
           >
             {/* BLOCK MENU TODO: We need to create a utility to convert the edit time into relative time (e.g., "2 hours ago") */}
-            Edited on {edited_time}
+            Edited on {edited_time?.toLocaleString()}
           </span>
 
           <span className="font-sans text-zinc-400">•</span>

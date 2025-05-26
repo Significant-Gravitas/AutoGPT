@@ -1,19 +1,19 @@
 import React, { useEffect, useState } from "react";
-import { actionBlocksListData } from "../../testing_data";
-import { BlockListType } from "./BlockMenuDefaultContent";
 import BlocksList from "./BlocksList";
+import { Block } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 const ActionBlocksContent: React.FC = () => {
-  const [blocks, setBlocks] = useState<BlockListType[]>([]);
+  const [blocks, setBlocks] = useState<Block[]>([]);
   const [loading, setLoading] = useState(true);
+  const api = useBackendAPI();
 
-  // TEMPORARY FETCHING
   useEffect(() => {
     const fetchBlocks = async () => {
       setLoading(true);
       try {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        setBlocks(actionBlocksListData);
+        const response = await api.getBuilderBlocks({ type: "action" });
+        setBlocks(response.blocks);
       } catch (error) {
         console.error("Error fetching blocks:", error);
       } finally {
@@ -22,7 +22,7 @@ const ActionBlocksContent: React.FC = () => {
     };
 
     fetchBlocks();
-  }, []);
+  }, [api]);
   return <BlocksList blocks={blocks} loading={loading} />;
 };
 

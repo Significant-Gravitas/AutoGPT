@@ -4,34 +4,58 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { allBlocksDataWithCategories } from "../../testing_data";
 import { Skeleton } from "@/components/ui/skeleton";
-
-type BlockItem = {
-  title: string;
-  description: string;
-};
-
-export type BlockCategory = {
-  name: string;
-  count: number;
-  items: BlockItem[];
-};
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { BlockCategoryResponse } from "@/lib/autogpt-server-api";
+import { useBlockMenuContext } from "../block-menu-provider";
 
 const AllBlocksContent: React.FC = () => {
-  const [categories, setCategories] = useState<BlockCategory[]>([]);
+  const { addNode } = useBlockMenuContext();
+  const [categories, setCategories] = useState<BlockCategoryResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingCategories, setLoadingCategories] = useState<Set<string>>(
+    new Set(),
+  );
 
-  // TEMPORARY FETCHING
+  const api = useBackendAPI();
+
   useEffect(() => {
     const fetchBlocks = async () => {
       setLoading(true);
-      setTimeout(() => {
-        setCategories(allBlocksDataWithCategories);
-        setLoading(false);
-      }, 800);
+      const response = await api.getBlockCategories();
+      setCategories(response);
+      setLoading(false);
     };
 
     fetchBlocks();
-  }, []);
+  }, [api]);
+
+  const fetchMoreBlockOfACategory = async (category: string) => {
+    try {
+      setLoadingCategories((prev) => new Set(prev).add(category));
+      const response = await api.getBuilderBlocks({ category: category });
+      const updatedCategories = categories.map((cat) => {
+        if (cat.name === category) {
+          return {
+            ...cat,
+            blocks: [...response.blocks],
+          };
+        }
+        return cat;
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
+      setCategories(updatedCategories);
+    } catch (error) {
+      console.error(`Failed to fetch blocks for category ${category}:`, error);
+    } finally {
+      setLoadingCategories((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(category);
+        return newSet;
+      });
+    }
+  };
 
   if (loading) {
     return (
@@ -51,6 +75,7 @@ const AllBlocksContent: React.FC = () => {
   }
 
   return (
+    // BLOCK TODO : NEED to add the laoding skeleton when clicking see all
     <div className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
       <div className="w-full space-y-3 px-4 pb-4">
         {categories.map((category, index) => (
@@ -66,23 +91,36 @@ const AllBlocksContent: React.FC = () => {
                   {category.name}
                 </p>
                 <span className="rounded-full bg-zinc-100 px-[0.375rem] font-sans text-sm leading-[1.375rem] text-zinc-600">
-                  {category.count}
+                  {category.total_blocks}
                 </span>
               </div>
 
               <div className="space-y-2">
-                {category.items.slice(0, 3).map((item, idx) => (
+                {category.blocks.map((block, idx) => (
+                  // It might go fail for agent block
                   <Block
                     key={`${category.name}-${idx}`}
-                    title={item.title}
-                    description={item.description}
+                    title={block.name}
+                    description={block.name}
+                    onClick={() => {
+                      addNode(
+                        block.id,
+                        block.name,
+                        block.hardcodedValues || {},
+                        block,
+                      );
+                    }}
                   />
                 ))}
 
-                {category.items.length > 3 && (
+                {category.total_blocks > category.blocks.length && (
                   <Button
                     variant={"link"}
                     className="px-0 font-sans text-sm leading-[1.375rem] text-zinc-600 underline hover:text-zinc-800"
+                    disabled={loadingCategories.has(category.name)}
+                    onClick={() => {
+                      fetchMoreBlockOfACategory(category.name);
+                    }}
                   >
                     see all
                   </Button>

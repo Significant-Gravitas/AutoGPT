@@ -1,25 +1,20 @@
 import React, { useState, useEffect } from "react";
 import UGCAgentBlock from "../UGCAgentBlock";
 import { myAgentData } from "../../testing_data";
-
-export interface UserAgent {
-  id: number;
-  title: string;
-  edited_time: string;
-  version: number;
-  image_url: string;
-}
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { LibraryAgent } from "@/lib/autogpt-server-api";
 
 const MyAgentsContent: React.FC = () => {
-  const [agents, setAgents] = useState<UserAgent[]>([]);
+  const [agents, setAgents] = useState<LibraryAgent[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
-
+  const api = useBackendAPI();
   // TEMPORARY FETCHING
   useEffect(() => {
     const fetchAgents = async () => {
       try {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        setAgents(myAgentData);
+        // BLOCK MENU TODO : figure out how to add agent in flow and add pagination as well
+        const response = await api.listLibraryAgents();
+        setAgents(response.agents);
         setLoading(false);
       } catch (err) {
         setLoading(false);
@@ -27,7 +22,7 @@ const MyAgentsContent: React.FC = () => {
     };
 
     fetchAgents();
-  }, []);
+  }, [api]);
 
   if (loading) {
     return (
@@ -47,9 +42,9 @@ const MyAgentsContent: React.FC = () => {
         {agents.map((agent) => (
           <UGCAgentBlock
             key={agent.id}
-            title={agent.title}
-            edited_time={agent.edited_time}
-            version={agent.version}
+            title={agent.name}
+            edited_time={agent.updated_at}
+            version={agent.graph_version}
             image_url={agent.image_url}
           />
         ))}
