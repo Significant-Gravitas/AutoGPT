@@ -1,8 +1,9 @@
 import logging
-from typing import TYPE_CHECKING, Callable, Optional, cast
+from typing import TYPE_CHECKING, Optional, cast
 
 from backend.data.block import BlockSchema, BlockWebhookConfig
 from backend.data.graph import set_node_webhook
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks import get_webhook_manager, supports_webhooks
 
 if TYPE_CHECKING:
@@ -12,21 +13,17 @@ if TYPE_CHECKING:
     from ._base import BaseWebhooksManager
 
 logger = logging.getLogger(__name__)
+credentials_manager = IntegrationCredentialsManager()
 
 
-async def on_graph_activate(
-    graph: "GraphModel", get_credentials: Callable[[str], "Credentials | None"]
-):
+async def on_graph_activate(graph: "GraphModel", user_id: str):
     """
     Hook to be called when a graph is activated/created.
 
     ⚠️ Assuming node entities are not re-used between graph versions, ⚠️
     this hook calls `on_node_activate` on all nodes in this graph.
-
-    Params:
-        get_credentials: `credentials_id` -> Credentials
     """
-    # Compare nodes in new_graph_version with previous_graph_version
+    get_credentials = credentials_manager.cached_getter(user_id)
     updated_nodes = []
     for new_node in graph.nodes:
         block_input_schema = cast(BlockSchema, new_node.block.input_schema)
@@ -56,18 +53,14 @@ async def on_graph_activate(
     return graph
 
 
-async def on_graph_deactivate(
-    graph: "GraphModel", get_credentials: Callable[[str], "Credentials | None"]
-):
+async def on_graph_deactivate(graph: "GraphModel", user_id: str):
     """
     Hook to be called when a graph is deactivated/deleted.
 
     ⚠️ Assuming node entities are not re-used between graph versions, ⚠️
     this hook calls `on_node_deactivate` on all nodes in `graph`.
-
-    Params:
-        get_credentials: `credentials_id` -> Credentials
     """
+    get_credentials = credentials_manager.cached_getter(user_id)
     updated_nodes = []
     for node in graph.nodes:
         block_input_schema = cast(BlockSchema, node.block.input_schema)
