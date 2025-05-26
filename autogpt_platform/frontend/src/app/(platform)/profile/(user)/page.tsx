@@ -1,12 +1,14 @@
-import * as React from "react";
+import React from "react";
 import { Metadata } from "next/types";
-import { ProfileInfoForm } from "@/components/agptui/ProfileInfoForm";
+import { redirect } from "next/navigation";
 import BackendAPI from "@/lib/autogpt-server-api";
-import { CreatorDetails } from "@/lib/autogpt-server-api/types";
+import { ProfileInfoForm } from "@/components/agptui/ProfileInfoForm";
 
 export const metadata: Metadata = { title: "Profile - AutoGPT Platform" };
 
-export default async function UserProfilePage({}: {}) {
+export const dynamic = "force-dynamic"; // force SSR
+
+export default async function UserProfilePage(): Promise<React.ReactElement> {
   const api = new BackendAPI();
   const profile = await api.getStoreProfile().catch((error) => {
     console.error("Error fetching profile:", error);
@@ -14,11 +16,7 @@ export default async function UserProfilePage({}: {}) {
   });
 
   if (!profile) {
-    return (
-      <div className="flex flex-col items-center justify-center p-4">
-        <p>Please log in to view your profile</p>
-      </div>
-    );
+    redirect("/login");
   }
 
   return (
