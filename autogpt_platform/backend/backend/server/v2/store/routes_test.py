@@ -6,9 +6,12 @@ import fastapi
 import fastapi.testclient
 import prisma.enums
 import pytest_mock
+from pytest_snapshot.plugin import Snapshot  # type: ignore
 
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
+
+FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0)
 
 app = fastapi.FastAPI()
 app.include_router(backend.server.v2.store.routes.router)
@@ -32,7 +35,10 @@ app.dependency_overrides[autogpt_libs.auth.middleware.auth_middleware] = (
 app.dependency_overrides[autogpt_libs.auth.depends.get_user_id] = override_get_user_id
 
 
-def test_get_agents_defaults(mocker: pytest_mock.MockFixture):
+def test_get_agents_defaults(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
     mocked_value = backend.server.v2.store.model.StoreAgentsResponse(
         agents=[],
         pagination=backend.server.v2.store.model.Pagination(
@@ -52,6 +58,7 @@ def test_get_agents_defaults(mocker: pytest_mock.MockFixture):
     )
     assert data.pagination.total_pages == 0
     assert data.agents == []
+    snapshot.assert_match(response.json())
     mock_db_call.assert_called_once_with(
         featured=False,
         creator=None,
@@ -63,7 +70,10 @@ def test_get_agents_defaults(mocker: pytest_mock.MockFixture):
     )
 
 
-def test_get_agents_featured(mocker: pytest_mock.MockFixture):
+def test_get_agents_featured(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
     mocked_value = backend.server.v2.store.model.StoreAgentsResponse(
         agents=[
             backend.server.v2.store.model.StoreAgent(
@@ -94,6 +104,7 @@ def test_get_agents_featured(mocker: pytest_mock.MockFixture):
     )
     assert len(data.agents) == 1
     assert data.agents[0].slug == "featured-agent"
+    snapshot.assert_match(response.json())
     mock_db_call.assert_called_once_with(
         featured=True,
         creator=None,
@@ -105,7 +116,10 @@ def test_get_agents_featured(mocker: pytest_mock.MockFixture):
     )
 
 
-def test_get_agents_by_creator(mocker: pytest_mock.MockFixture):
+def test_get_agents_by_creator(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
     mocked_value = backend.server.v2.store.model.StoreAgentsResponse(
         agents=[
             backend.server.v2.store.model.StoreAgent(
@@ -136,6 +150,7 @@ def test_get_agents_by_creator(mocker: pytest_mock.MockFixture):
     )
     assert len(data.agents) == 1
     assert data.agents[0].creator == "specific-creator"
+    snapshot.assert_match(response.json())
     mock_db_call.assert_called_once_with(
         featured=False,
         creator="specific-creator",
@@ -147,7 +162,10 @@ def test_get_agents_by_creator(mocker: pytest_mock.MockFixture):
     )
 
 
-def test_get_agents_sorted(mocker: pytest_mock.MockFixture):
+def test_get_agents_sorted(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
     mocked_value = backend.server.v2.store.model.StoreAgentsResponse(
         agents=[
             backend.server.v2.store.model.StoreAgent(
@@ -178,6 +196,7 @@ def test_get_agents_sorted(mocker: pytest_mock.MockFixture):
     )
     assert len(data.agents) == 1
     assert data.agents[0].runs == 1000
+    snapshot.assert_match(response.json())
     mock_db_call.assert_called_once_with(
         featured=False,
         creator=None,
@@ -189,7 +208,10 @@ def test_get_agents_sorted(mocker: pytest_mock.MockFixture):
     )
 
 
-def test_get_agents_search(mocker: pytest_mock.MockFixture):
+def test_get_agents_search(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
     mocked_value = backend.server.v2.store.model.StoreAgentsResponse(
         agents=[
             backend.server.v2.store.model.StoreAgent(
@@ -220,6 +242,7 @@ def test_get_agents_search(mocker: pytest_mock.MockFixture):
     )
     assert len(data.agents) == 1
     assert "specific" in data.agents[0].description.lower()
+    snapshot.assert_match(response.json())
     mock_db_call.assert_called_once_with(
         featured=False,
         creator=None,
@@ -231,7 +254,10 @@ def test_get_agents_search(mocker: pytest_mock.MockFixture):
     )
 
 
-def test_get_agents_category(mocker: pytest_mock.MockFixture):
+def test_get_agents_category(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
     mocked_value = backend.server.v2.store.model.StoreAgentsResponse(
         agents=[
             backend.server.v2.store.model.StoreAgent(
@@ -261,6 +287,7 @@ def test_get_agents_category(mocker: pytest_mock.MockFixture):
         response.json()
     )
     assert len(data.agents) == 1
+    snapshot.assert_match(response.json())
     mock_db_call.assert_called_once_with(
         featured=False,
         creator=None,
@@ -272,7 +299,10 @@ def test_get_agents_category(mocker: pytest_mock.MockFixture):
     )
 
 
-def test_get_agents_pagination(mocker: pytest_mock.MockFixture):
+def test_get_agents_pagination(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
     mocked_value = backend.server.v2.store.model.StoreAgentsResponse(
         agents=[
             backend.server.v2.store.model.StoreAgent(
@@ -305,6 +335,7 @@ def test_get_agents_pagination(mocker: pytest_mock.MockFixture):
     assert len(data.agents) == 5
     assert data.pagination.current_page == 2
     assert data.pagination.page_size == 5
+    snapshot.assert_match(response.json())
     mock_db_call.assert_called_once_with(
         featured=False,
         creator=None,
@@ -334,7 +365,10 @@ def test_get_agents_malformed_request(mocker: pytest_mock.MockFixture):
     mock_db_call.assert_not_called()
 
 
-def test_get_agent_details(mocker: pytest_mock.MockFixture):
+def test_get_agent_details(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
     mocked_value = backend.server.v2.store.model.StoreAgentDetails(
         store_listing_version_id="test-version-id",
         slug="test-agent",
@@ -349,7 +383,7 @@ def test_get_agent_details(mocker: pytest_mock.MockFixture):
         runs=100,
         rating=4.5,
         versions=["1.0.0", "1.1.0"],
-        last_updated=datetime.datetime.now(),
+        last_updated=FIXED_NOW,
     )
     mock_db_call = mocker.patch("backend.server.v2.store.db.get_store_agent_details")
     mock_db_call.return_value = mocked_value
@@ -362,10 +396,14 @@ def test_get_agent_details(mocker: pytest_mock.MockFixture):
     )
     assert data.agent_name == "Test Agent"
     assert data.creator == "creator1"
+    snapshot.assert_match(response.json())
     mock_db_call.assert_called_once_with(username="creator1", agent_name="test-agent")
 
 
-def test_get_creators_defaults(mocker: pytest_mock.MockFixture):
+def test_get_creators_defaults(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
     mocked_value = backend.server.v2.store.model.CreatorsResponse(
         creators=[],
         pagination=backend.server.v2.store.model.Pagination(
@@ -386,12 +424,16 @@ def test_get_creators_defaults(mocker: pytest_mock.MockFixture):
     )
     assert data.pagination.total_pages == 0
     assert data.creators == []
+    snapshot.assert_match(response.json())
     mock_db_call.assert_called_once_with(
         featured=False, search_query=None, sorted_by=None, page=1, page_size=20
     )
 
 
-def test_get_creators_pagination(mocker: pytest_mock.MockFixture):
+def test_get_creators_pagination(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
     mocked_value = backend.server.v2.store.model.CreatorsResponse(
         creators=[
             backend.server.v2.store.model.Creator(
@@ -425,6 +467,7 @@ def test_get_creators_pagination(mocker: pytest_mock.MockFixture):
     assert len(data.creators) == 5
     assert data.pagination.current_page == 2
     assert data.pagination.page_size == 5
+    snapshot.assert_match(response.json())
     mock_db_call.assert_called_once_with(
         featured=False, search_query=None, sorted_by=None, page=2, page_size=5
     )
@@ -448,7 +491,10 @@ def test_get_creators_malformed_request(mocker: pytest_mock.MockFixture):
     mock_db_call.assert_not_called()
 
 
-def test_get_creator_details(mocker: pytest_mock.MockFixture):
+def test_get_creator_details(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
     mocked_value = backend.server.v2.store.model.CreatorDetails(
         name="Test User",
         username="creator1",
@@ -468,17 +514,21 @@ def test_get_creator_details(mocker: pytest_mock.MockFixture):
     data = backend.server.v2.store.model.CreatorDetails.model_validate(response.json())
     assert data.username == "creator1"
     assert data.name == "Test User"
+    snapshot.assert_match(response.json())
     mock_db_call.assert_called_once_with(username="creator1")
 
 
-def test_get_submissions_success(mocker: pytest_mock.MockFixture):
+def test_get_submissions_success(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
     mocked_value = backend.server.v2.store.model.StoreSubmissionsResponse(
         submissions=[
             backend.server.v2.store.model.StoreSubmission(
                 name="Test Agent",
                 description="Test agent description",
                 image_urls=["test.jpg"],
-                date_submitted=datetime.datetime.now(),
+                date_submitted=FIXED_NOW,
                 status=prisma.enums.SubmissionStatus.APPROVED,
                 runs=50,
                 rating=4.2,
@@ -507,10 +557,14 @@ def test_get_submissions_success(mocker: pytest_mock.MockFixture):
     assert len(data.submissions) == 1
     assert data.submissions[0].name == "Test Agent"
     assert data.pagination.current_page == 1
+    snapshot.assert_match(response.json())
     mock_db_call.assert_called_once_with(user_id="test-user-id", page=1, page_size=20)
 
 
-def test_get_submissions_pagination(mocker: pytest_mock.MockFixture):
+def test_get_submissions_pagination(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
     mocked_value = backend.server.v2.store.model.StoreSubmissionsResponse(
         submissions=[],
         pagination=backend.server.v2.store.model.Pagination(
@@ -531,6 +585,7 @@ def test_get_submissions_pagination(mocker: pytest_mock.MockFixture):
     )
     assert data.pagination.current_page == 2
     assert data.pagination.page_size == 5
+    snapshot.assert_match(response.json())
     mock_db_call.assert_called_once_with(user_id="test-user-id", page=2, page_size=5)
 
 
