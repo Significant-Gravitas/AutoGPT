@@ -40,7 +40,10 @@ export class LoginPage {
     const navigationPromise = Promise.race([
       this.page
         .waitForURL(
-          (url) => /^\/(marketplace|onboarding(\/.*)?)?$/.test(url.pathname),
+          (url) => {
+            console.log(`Navigation update: ${url}`);
+            return /^\/(marketplace|onboarding(\/.*)?)?$/.test(url.pathname);
+          },
           { timeout: 10_000 },
         )
         .catch((reason) => {
