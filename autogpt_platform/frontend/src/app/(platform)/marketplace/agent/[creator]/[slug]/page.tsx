@@ -8,12 +8,15 @@ import { Separator } from "@/components/ui/separator";
 import { Metadata } from "next";
 import getServerUser from "@/lib/supabase/getServerUser";
 
+type MarketplaceAgentPageParams = { creator: string; slug: string };
+
 export async function generateMetadata({
-  params,
+  params: _params,
 }: {
-  params: { creator: string; slug: string };
+  params: Promise<MarketplaceAgentPageParams>;
 }): Promise<Metadata> {
   const api = new BackendAPI();
+  const params = await _params;
   const agent = await api.getStoreAgent(params.creator, params.slug);
 
   return {
@@ -31,11 +34,12 @@ export async function generateMetadata({
 //   }));
 // }
 
-export default async function Page({
-  params,
+export default async function MarketplaceAgentPage({
+  params: _params,
 }: {
-  params: { creator: string; slug: string };
+  params: Promise<MarketplaceAgentPageParams>;
 }) {
+  const params = await _params;
   const creator_lower = params.creator.toLowerCase();
   const { user } = await getServerUser();
   const api = new BackendAPI();
