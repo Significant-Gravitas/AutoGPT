@@ -55,6 +55,7 @@ nav:
          - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/frontend/README.md
 
   - Contribute: contribute/index.md
+        - Testing: autogpt_platform/backend/TESTING.md
     
   # - Challenges:
   #     - Introduction: challenges/introduction.md
