@@ -1,4 +1,5 @@
 import datetime
+import json
 
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi.testclient
@@ -88,7 +89,9 @@ async def test_get_library_agents_success(
     assert data.agents[0].can_access_graph is True
     assert data.agents[1].graph_id == "test-agent-2"
     assert data.agents[1].can_access_graph is False
-    snapshot.assert_match(response.json())
+    snapshot.assert_match(
+        json.dumps(response.json(), indent=2), "library_agents_search_response"
+    )
     mock_db_call.assert_called_once_with(
         user_id="test-user-id",
         search_term="test",

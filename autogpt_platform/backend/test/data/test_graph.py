@@ -1,9 +1,11 @@
+import json
 from typing import Any
 from uuid import UUID
 
 import autogpt_libs.auth.models
 import fastapi.exceptions
 import pytest
+from pytest_snapshot.plugin import Snapshot  # type: ignore
 
 import backend.server.v2.store.model as store
 from backend.blocks.basic import StoreValueBlock
@@ -18,7 +20,7 @@ from backend.util.test import SpinTestServer
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_graph_creation(server: SpinTestServer):
+async def test_graph_creation(server: SpinTestServer, snapshot: Snapshot):
     """
     Test the creation of a graph with nodes and links.
 
@@ -70,9 +72,26 @@ async def test_graph_creation(server: SpinTestServer):
     assert links[0].source_id in {nodes[0].id, nodes[1].id, nodes[2].id}
     assert links[0].sink_id in {nodes[0].id, nodes[1].id, nodes[2].id}
 
+    # Create a serializable version of the graph for snapshot testing
+    # Remove dynamic IDs to make snapshots reproducible
+    graph_data = {
+        "name": created_graph.name,
+        "description": created_graph.description,
+        "nodes_count": len(created_graph.nodes),
+        "links_count": len(created_graph.links),
+        "node_blocks": [node.block_id for node in created_graph.nodes],
+        "link_structure": [
+            {"source_name": link.source_name, "sink_name": link.sink_name}
+            for link in created_graph.links
+        ],
+    }
+    snapshot.assert_match(
+        json.dumps(graph_data, indent=2, sort_keys=True), "created_graph_structure"
+    )
+
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_get_input_schema(server: SpinTestServer):
+async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
     """
     Test the get_input_schema method of a created graph.
 
@@ -162,9 +181,19 @@ async def test_get_input_schema(server: SpinTestServer):
     input_schema["title"] = "ExpectedInputSchema"
     assert input_schema == ExpectedInputSchema.jsonschema()
 
+    # Add snapshot testing for the schemas
+    snapshot.assert_match(
+        json.dumps(input_schema, indent=2, sort_keys=True), "graph_input_schema"
+    )
+
     output_schema = created_graph.output_schema
     output_schema["title"] = "ExpectedOutputSchema"
     assert output_schema == ExpectedOutputSchema.jsonschema()
+
+    # Add snapshot testing for the output schema
+    snapshot.assert_match(
+        json.dumps(output_schema, indent=2, sort_keys=True), "graph_output_schema"
+    )
 
 
 @pytest.mark.asyncio(loop_scope="session")

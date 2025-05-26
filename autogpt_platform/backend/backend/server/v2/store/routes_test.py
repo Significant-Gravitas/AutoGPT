@@ -1,4 +1,5 @@
 import datetime
+import json
 
 import autogpt_libs.auth.depends
 import autogpt_libs.auth.middleware
@@ -58,7 +59,9 @@ def test_get_agents_defaults(
     )
     assert data.pagination.total_pages == 0
     assert data.agents == []
-    snapshot.assert_match(response.json())
+    snapshot.assert_match(
+        json.dumps(response.json(), indent=2), "default_agents_response"
+    )
     mock_db_call.assert_called_once_with(
         featured=False,
         creator=None,
@@ -104,7 +107,9 @@ def test_get_agents_featured(
     )
     assert len(data.agents) == 1
     assert data.agents[0].slug == "featured-agent"
-    snapshot.assert_match(response.json())
+    snapshot.assert_match(
+        json.dumps(response.json(), indent=2), "featured_agents_response"
+    )
     mock_db_call.assert_called_once_with(
         featured=True,
         creator=None,
@@ -150,7 +155,9 @@ def test_get_agents_by_creator(
     )
     assert len(data.agents) == 1
     assert data.agents[0].creator == "specific-creator"
-    snapshot.assert_match(response.json())
+    snapshot.assert_match(
+        json.dumps(response.json(), indent=2), "agents_by_creator_response"
+    )
     mock_db_call.assert_called_once_with(
         featured=False,
         creator="specific-creator",
@@ -196,7 +203,9 @@ def test_get_agents_sorted(
     )
     assert len(data.agents) == 1
     assert data.agents[0].runs == 1000
-    snapshot.assert_match(response.json())
+    snapshot.assert_match(
+        json.dumps(response.json(), indent=2), "agents_sorted_response"
+    )
     mock_db_call.assert_called_once_with(
         featured=False,
         creator=None,
@@ -242,7 +251,9 @@ def test_get_agents_search(
     )
     assert len(data.agents) == 1
     assert "specific" in data.agents[0].description.lower()
-    snapshot.assert_match(response.json())
+    snapshot.assert_match(
+        json.dumps(response.json(), indent=2), "agents_search_response"
+    )
     mock_db_call.assert_called_once_with(
         featured=False,
         creator=None,
@@ -287,7 +298,9 @@ def test_get_agents_category(
         response.json()
     )
     assert len(data.agents) == 1
-    snapshot.assert_match(response.json())
+    snapshot.assert_match(
+        json.dumps(response.json(), indent=2), "agents_category_response"
+    )
     mock_db_call.assert_called_once_with(
         featured=False,
         creator=None,
@@ -335,7 +348,9 @@ def test_get_agents_pagination(
     assert len(data.agents) == 5
     assert data.pagination.current_page == 2
     assert data.pagination.page_size == 5
-    snapshot.assert_match(response.json())
+    snapshot.assert_match(
+        json.dumps(response.json(), indent=2), "agents_pagination_response"
+    )
     mock_db_call.assert_called_once_with(
         featured=False,
         creator=None,
@@ -396,7 +411,9 @@ def test_get_agent_details(
     )
     assert data.agent_name == "Test Agent"
     assert data.creator == "creator1"
-    snapshot.assert_match(response.json())
+    snapshot.assert_match(
+        json.dumps(response.json(), indent=2), "agent_details_response"
+    )
     mock_db_call.assert_called_once_with(username="creator1", agent_name="test-agent")
 
 
@@ -424,7 +441,9 @@ def test_get_creators_defaults(
     )
     assert data.pagination.total_pages == 0
     assert data.creators == []
-    snapshot.assert_match(response.json())
+    snapshot.assert_match(
+        json.dumps(response.json(), indent=2), "default_creators_response"
+    )
     mock_db_call.assert_called_once_with(
         featured=False, search_query=None, sorted_by=None, page=1, page_size=20
     )
@@ -467,7 +486,9 @@ def test_get_creators_pagination(
     assert len(data.creators) == 5
     assert data.pagination.current_page == 2
     assert data.pagination.page_size == 5
-    snapshot.assert_match(response.json())
+    snapshot.assert_match(
+        json.dumps(response.json(), indent=2), "creators_pagination_response"
+    )
     mock_db_call.assert_called_once_with(
         featured=False, search_query=None, sorted_by=None, page=2, page_size=5
     )
@@ -514,7 +535,9 @@ def test_get_creator_details(
     data = backend.server.v2.store.model.CreatorDetails.model_validate(response.json())
     assert data.username == "creator1"
     assert data.name == "Test User"
-    snapshot.assert_match(response.json())
+    snapshot.assert_match(
+        json.dumps(response.json(), indent=2), "creator_details_response"
+    )
     mock_db_call.assert_called_once_with(username="creator1")
 
 
@@ -557,7 +580,9 @@ def test_get_submissions_success(
     assert len(data.submissions) == 1
     assert data.submissions[0].name == "Test Agent"
     assert data.pagination.current_page == 1
-    snapshot.assert_match(response.json())
+    snapshot.assert_match(
+        json.dumps(response.json(), indent=2), "submissions_success_response"
+    )
     mock_db_call.assert_called_once_with(user_id="test-user-id", page=1, page_size=20)
 
 
@@ -585,7 +610,9 @@ def test_get_submissions_pagination(
     )
     assert data.pagination.current_page == 2
     assert data.pagination.page_size == 5
-    snapshot.assert_match(response.json())
+    snapshot.assert_match(
+        json.dumps(response.json(), indent=2), "submissions_pagination_response"
+    )
     mock_db_call.assert_called_once_with(user_id="test-user-id", page=2, page_size=5)
 
 

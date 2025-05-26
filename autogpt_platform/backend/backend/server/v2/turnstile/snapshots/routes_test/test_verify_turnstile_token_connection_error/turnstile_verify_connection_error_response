@@ -1,0 +1,7 @@
+{
+  "action": null,
+  "challenge_timestamp": null,
+  "error": "CONNECTION_ERROR: Connection timeout",
+  "hostname": null,
+  "success": false
+}

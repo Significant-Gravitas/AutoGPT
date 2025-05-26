@@ -60,7 +60,10 @@ def test():
         sys.exit(1)
 
     # Run Prisma migrations
-    run_command(["prisma", "migrate", "dev"])
+    # First, reset the database to ensure clean state
+    run_command(["prisma", "migrate", "reset", "--force", "--skip-seed"], check=False)
+    # Then apply migrations
+    run_command(["prisma", "migrate", "deploy"])
 
     # Run the tests
     result = subprocess.run(["pytest"] + sys.argv[1:], check=False)
