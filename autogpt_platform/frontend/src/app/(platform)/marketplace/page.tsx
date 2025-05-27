@@ -102,9 +102,9 @@ async function getStoreData() {
 
 // FIX: Correct metadata
 export const metadata: Metadata = {
-  title: "Marketplace - NextGen AutoGPT",
+  title: "Marketplace - AutoGPT Platform",
   description: "Find and use AI Agents created by our community",
-  applicationName: "NextGen AutoGPT Store",
+  applicationName: "AutoGPT Marketplace",
   authors: [{ name: "AutoGPT Team" }],
   keywords: [
     "AI agents",
@@ -118,22 +118,22 @@ export const metadata: Metadata = {
     follow: true,
   },
   openGraph: {
-    title: "Marketplace - NextGen AutoGPT",
+    title: "Marketplace - AutoGPT Platform",
     description: "Find and use AI Agents created by our community",
     type: "website",
-    siteName: "NextGen AutoGPT Store",
+    siteName: "AutoGPT Marketplace",
     images: [
       {
         url: "/images/store-og.png",
         width: 1200,
         height: 630,
-        alt: "NextGen AutoGPT Store",
+        alt: "AutoGPT Marketplace",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Marketplace - NextGen AutoGPT",
+    title: "Marketplace - AutoGPT Platform",
     description: "Find and use AI Agents created by our community",
     images: ["/images/store-twitter.png"],
   },
