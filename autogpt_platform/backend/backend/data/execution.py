@@ -489,8 +489,8 @@ async def upsert_execution_input(
         dict[str, Any]: Node input data; key is the input name, value is the input data.
     """
     existing_exec_query_filter: AgentNodeExecutionWhereInput = {
-        "agentNodeId": node_id,
         "agentGraphExecutionId": graph_exec_id,
+        "agentNodeId": node_id,
         "executionStatus": ExecutionStatus.INCOMPLETE,
         "Input": {
             "none": {
@@ -720,9 +720,15 @@ async def get_latest_node_execution(
 ) -> NodeExecutionResult | None:
     execution = await AgentNodeExecution.prisma().find_first(
         where={
-            "agentNodeId": node_id,
             "agentGraphExecutionId": graph_eid,
-            "NOT": [{"executionStatus": ExecutionStatus.INCOMPLETE}],
+            "agentNodeId": node_id,
+            "OR": [
+                {"executionStatus": ExecutionStatus.QUEUED},
+                {"executionStatus": ExecutionStatus.RUNNING},
+                {"executionStatus": ExecutionStatus.COMPLETED},
+                {"executionStatus": ExecutionStatus.TERMINATED},
+                {"executionStatus": ExecutionStatus.FAILED},
+            ],
         },
         order=[
             {"queuedTime": "desc"},
