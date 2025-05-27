@@ -60,6 +60,9 @@ export class LoginPage {
     await leaveLoginPage;
     console.log(`⌛ Post-login redirected to ${this.page.url()}`);
 
+    await new Promise((resolve) => setTimeout(resolve, 200)); // allow time for client-side redirect
+    await this.page.waitForLoadState("load", { timeout: 10_000 });
+
     console.log("➡️ Navigating to /marketplace ...");
     await this.page.goto("/marketplace", { timeout: 10_000 });
     console.log("✅ Login process complete");
