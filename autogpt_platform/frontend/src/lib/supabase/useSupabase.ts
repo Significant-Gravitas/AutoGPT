@@ -1,11 +1,11 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { User } from "@supabase/supabase-js";
-
-import { _logoutServer } from "./actions";
+import { SignOut, User } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
 
 export default function useSupabase() {
+  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [isUserLoading, setIsUserLoading] = useState(true);
 
@@ -42,8 +42,17 @@ export default function useSupabase() {
   }, [supabase]);
 
   const logOut = useCallback(
-    () => Promise.all([_logoutServer(), supabase?.auth.signOut()]),
-    [supabase],
+    async (options?: SignOut) => {
+      if (!supabase) return;
+
+      const { error } = await supabase.auth.signOut({
+        scope: options?.scope ?? "local",
+      });
+      if (error) console.error("Error logging out:", error);
+
+      router.push("/login");
+    },
+    [router, supabase],
   );
 
   if (!supabase || isUserLoading) {
