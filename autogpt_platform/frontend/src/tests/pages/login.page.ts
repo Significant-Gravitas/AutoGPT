@@ -36,13 +36,13 @@ export class LoginPage {
     });
     await loginButton.waitFor({ state: "visible" });
 
+    // Attach navigation logger for debug purposes
+    this.page.on("load", (page) => console.log(`ℹ️ Now at URL: ${page.url()}`));
+
     // Start waiting for navigation before clicking
     const leaveLoginPage = this.page
       .waitForURL(
-        (url) => {
-          console.log(`ℹ️ Now at URL: ${url}`);
-          return /^\/(marketplace|onboarding(\/.*)?)?$/.test(url.pathname);
-        },
+        (url) => /^\/(marketplace|onboarding(\/.*)?)?$/.test(url.pathname),
         { timeout: 10_000 },
       )
       .catch((reason) => {
