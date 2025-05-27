@@ -17,7 +17,7 @@ repos:
         name: Detect secrets
         description: Detects high entropy strings that are likely to be passwords.
         files: ^autogpt_platform/
-        stages: [push]
+        stages: [pre-push]
 
   - repo: local
     # For proper type checking, all dependencies need to be up-to-date.
