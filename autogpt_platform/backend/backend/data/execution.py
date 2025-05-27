@@ -1,6 +1,6 @@
 import logging
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from multiprocessing import Manager
 from typing import (
@@ -492,7 +492,12 @@ async def upsert_execution_input(
         "agentNodeId": node_id,
         "agentGraphExecutionId": graph_exec_id,
         "executionStatus": ExecutionStatus.INCOMPLETE,
-        "Input": {"every": {"name": {"not": input_name}}},
+        "Input": {
+            "none": {
+                "name": input_name,
+                "time": {"gte": datetime.now(tz=timezone.utc) - timedelta(days=1)},
+            }
+        },
     }
     if node_exec_id:
         existing_exec_query_filter["id"] = node_exec_id
