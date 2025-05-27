@@ -380,7 +380,6 @@ model AgentNodeExecution {
   stats Json?
 
   @@index([agentGraphExecutionId, agentNodeId, executionStatus])
-  @@index([agentNodeId, executionStatus])
   @@index([addedTime, queuedTime])
 }
 
