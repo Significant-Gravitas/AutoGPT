@@ -85,4 +85,3 @@ class ExaContentsBlock(Block):
             yield "results", data.get("results", [])
         except Exception as e:
             yield "error", str(e)
-            yield "results", []

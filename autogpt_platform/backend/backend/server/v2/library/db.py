@@ -736,10 +736,7 @@ async def fork_library_agent(library_agent_id: str, user_id: str):
             new_graph = await graph_db.fork_graph(
                 original_agent.graph_id, original_agent.graph_version, user_id
             )
-            new_graph = await on_graph_activate(
-                new_graph,
-                get_credentials=lambda id: integration_creds_manager.get(user_id, id),
-            )
+            new_graph = await on_graph_activate(new_graph, user_id=user_id)
 
             # Create a library agent for the new graph
             return await create_library_agent(new_graph, user_id)
