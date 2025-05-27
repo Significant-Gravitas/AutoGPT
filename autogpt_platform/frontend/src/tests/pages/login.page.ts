@@ -4,10 +4,10 @@ export class LoginPage {
   constructor(private page: Page) {}
 
   async login(email: string, password: string) {
-    console.log(`Attempting login on ${this.page.url()} with`, {
+    console.log(`ℹ️ Attempting login on ${this.page.url()} with`, {
       email,
       password,
-    }); // Debug log
+    });
 
     // Fill email
     const emailInput = this.page.getByPlaceholder("m@example.com");
@@ -37,34 +37,31 @@ export class LoginPage {
     await loginButton.waitFor({ state: "visible" });
 
     // Start waiting for navigation before clicking
-    const navigationPromise = Promise.race([
-      this.page
-        .waitForURL(
-          (url) => {
-            console.log(`Navigation update: ${url}`);
-            return /^\/(marketplace|onboarding(\/.*)?)?$/.test(url.pathname);
-          },
-          { timeout: 10_000 },
-        )
-        .catch((reason) => {
-          console.warn(
-            `Navigation away from /login timed out (current URL: ${this.page.url()}):`,
-            reason,
-          );
-          throw reason;
-        }), // Wait for home page
-    ]);
+    const leaveLoginPage = this.page
+      .waitForURL(
+        (url) => {
+          console.log(`ℹ️ Now at URL: ${url}`);
+          return /^\/(marketplace|onboarding(\/.*)?)?$/.test(url.pathname);
+        },
+        { timeout: 10_000 },
+      )
+      .catch((reason) => {
+        console.error(
+          `🚨 Navigation away from /login timed out (current URL: ${this.page.url()}):`,
+          reason,
+        );
+        throw reason;
+      });
 
-    console.log(`About to click login button on ${this.page.url()}`); // Debug log
+    console.log(`🖱️ Clicking login button...`);
     await loginButton.click();
 
-    console.log("Waiting for navigation away from /login"); // Debug log
-    await navigationPromise;
+    console.log("⏳ Waiting for navigation away from /login ...");
+    await leaveLoginPage;
+    console.log(`⌛ Post-login redirected to ${this.page.url()}`);
 
-    await this.page.goto("/marketplace");
-
-    console.log("Navigation complete, waiting for network idle"); // Debug log
-    await this.page.waitForLoadState("load", { timeout: 10_000 });
-    console.log("Login process complete"); // Debug log
+    console.log("➡️ Navigating to /marketplace ...");
+    await this.page.goto("/marketplace", { timeout: 10_000 });
+    console.log("✅ Login process complete");
   }
 }
