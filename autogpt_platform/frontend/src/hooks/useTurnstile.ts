@@ -21,6 +21,7 @@ interface UseTurnstileResult {
   reset: () => void;
   siteKey: string;
   shouldRender: boolean;
+  setWidgetId: (id: string | null) => void;
 }
 
 const TURNSTILE_SITE_KEY =
@@ -34,7 +35,7 @@ export function useTurnstile({
   autoVerify = true,
   onSuccess,
   onError,
-  resetOnError = false,
+  resetOnError = true,
 }: UseTurnstileOptions = {}): UseTurnstileResult {
   const [token, setToken] = useState<string | null>(null);
   const [verifying, setVerifying] = useState(false);
@@ -60,26 +61,30 @@ export function useTurnstile({
     }
   }, [token, autoVerify, shouldRender]);
 
-  useEffect(() => {
-    if (typeof window !== "undefined" && window.turnstile) {
-      const originalRender = window.turnstile.render;
-      window.turnstile.render = (container, options) => {
-        const id = originalRender(container, options);
-        setWidgetId(id);
-        return id;
-      };
-    }
+  const setWidgetIdCallback = useCallback((id: string | null) => {
+    setWidgetId(id);
   }, []);
 
   const reset = useCallback(() => {
-    if (shouldRender && window.turnstile && widgetId) {
-      window.turnstile.reset(widgetId);
+    // Always reset the state when reset is called, regardless of shouldRender
+    // This ensures users can retry CAPTCHA after failed attempts
+    setToken(null);
+    setVerified(false);
+    setVerifying(false);
+    setError(null);
 
-      // Always reset the state when reset is called
-      setToken(null);
-      setVerified(false);
-      setVerifying(false);
-      setError(null);
+    // Only reset the actual Turnstile widget if it exists and shouldRender is true
+    if (
+      shouldRender &&
+      typeof window !== "undefined" &&
+      window.turnstile &&
+      widgetId
+    ) {
+      try {
+        window.turnstile.reset(widgetId);
+      } catch (err) {
+        console.warn("Failed to reset Turnstile widget:", err);
+      }
     }
   }, [shouldRender, widgetId]);
 
@@ -106,6 +111,7 @@ export function useTurnstile({
             setError(newError);
             if (onError) onError(newError);
             if (resetOnError) {
+              setToken(null);
               setVerified(false);
             }
           }
@@ -119,6 +125,7 @@ export function useTurnstile({
               : new Error("Unknown error during verification");
           setError(newError);
           if (resetOnError) {
+            setToken(null);
             setVerified(false);
           }
           setVerifying(false);
@@ -138,6 +145,7 @@ export function useTurnstile({
     if (shouldRender) {
       setToken(null);
       setVerified(false);
+      setError(null);
     }
   }, [shouldRender]);
 
@@ -146,6 +154,7 @@ export function useTurnstile({
       if (shouldRender) {
         setError(err);
         if (resetOnError) {
+          setToken(null);
           setVerified(false);
         }
         if (onError) onError(err);
@@ -165,5 +174,6 @@ export function useTurnstile({
     reset,
     siteKey: TURNSTILE_SITE_KEY,
     shouldRender,
+    setWidgetId: setWidgetIdCallback,
   };
 }
