@@ -124,8 +124,10 @@ class AddMemoryBlock(Block, Mem0Base):
 
             if isinstance(input_data.content, Conversation):
                 messages = input_data.content.messages
+            elif isinstance(input_data.content, Content):
+                messages = [{"role": "user", "content": input_data.content.content}]
             else:
-                messages = [{"role": "user", "content": input_data.content}]
+                messages = [{"role": "user", "content": str(input_data.content)}]
 
             params = {
                 "user_id": user_id,
@@ -152,7 +154,7 @@ class AddMemoryBlock(Block, Mem0Base):
                 yield "action", "NO_CHANGE"
 
         except Exception as e:
-            yield "error", str(object=e)
+            yield "error", str(e)
 
 
 class SearchMemoryBlock(Block, Mem0Base):
