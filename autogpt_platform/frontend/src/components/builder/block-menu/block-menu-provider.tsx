@@ -24,9 +24,9 @@ export type DefaultStateType =
 export type CategoryKey =
   | "blocks"
   | "integrations"
+  | "providers"
   | "marketplace_agents"
-  | "my_agents"
-  | "templates";
+  | "my_agents";
 
 export interface Filters {
   categories: {
@@ -34,10 +34,12 @@ export interface Filters {
     integrations: boolean;
     marketplace_agents: boolean;
     my_agents: boolean;
-    templates: boolean;
+    providers: boolean;
   };
   createdBy: string[];
 }
+
+export type CategoryCounts = Record<CategoryKey, number>;
 
 interface BlockMenuContextType {
   defaultState: DefaultStateType;
@@ -56,6 +58,8 @@ interface BlockMenuContextType {
   setCreators: React.Dispatch<React.SetStateAction<string[]>>;
   searchData: SearchItem[];
   setSearchData: React.Dispatch<React.SetStateAction<SearchItem[]>>;
+  categoryCounts: CategoryCounts;
+  setCategoryCounts: React.Dispatch<React.SetStateAction<CategoryCounts>>;
   addNode: (
     blockId: string,
     nodeType: string,
@@ -93,7 +97,7 @@ export function BlockMenuStateProvider({
       integrations: false,
       marketplace_agents: false,
       my_agents: false,
-      templates: false,
+      providers: false,
     },
     createdBy: [],
   });
@@ -102,6 +106,14 @@ export function BlockMenuStateProvider({
   const [creators, setCreators] = useState<string[]>([]);
 
   const [searchId, setSearchId] = useState<string | undefined>(undefined);
+
+  const [categoryCounts, setCategoryCounts] = useState<CategoryCounts>({
+    blocks: 0,
+    integrations: 0,
+    marketplace_agents: 0,
+    my_agents: 0,
+    providers: 0,
+  });
 
   return (
     <BlockMenuContext.Provider
@@ -120,6 +132,8 @@ export function BlockMenuStateProvider({
         setFilters,
         searchData,
         setSearchData,
+        categoryCounts,
+        setCategoryCounts,
         addNode,
       }}
     >

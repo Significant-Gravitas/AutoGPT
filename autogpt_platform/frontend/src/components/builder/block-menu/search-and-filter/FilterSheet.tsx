@@ -69,7 +69,7 @@ export default function FilterSheet({
         integrations: false,
         marketplace_agents: false,
         my_agents: false,
-        templates: false,
+        providers: false,
       },
       createdBy: [],
     };

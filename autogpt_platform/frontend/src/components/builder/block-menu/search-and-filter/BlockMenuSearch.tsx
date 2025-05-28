@@ -5,8 +5,14 @@ import { useBlockMenuContext } from "../block-menu-provider";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 const BlockMenuSearch: React.FC = ({}) => {
-  const { searchData, searchQuery, searchId, setSearchData } =
-    useBlockMenuContext();
+  const {
+    searchData,
+    searchQuery,
+    searchId,
+    setSearchData,
+    filters,
+    setCategoryCounts,
+  } = useBlockMenuContext();
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasMore, setHasMore] = useState<boolean>(true);
   const [page, setPage] = useState<number>(0);
@@ -26,14 +32,31 @@ const BlockMenuSearch: React.FC = ({}) => {
       }
 
       try {
+        // Prepare filter array from active categories
+        const activeCategories = Object.entries(filters.categories)
+          .filter(([_, isActive]) => isActive)
+          .map(([category, _]) => category)
+          .filter((category) => category !== "templates") // API doesn't support templates filter
+          .map(
+            (category) =>
+              category as
+                | "blocks"
+                | "integrations"
+                | "marketplace_agents"
+                | "my_agents",
+          );
+
         const response = await api.searchBlocks({
           search_query: searchQuery,
           search_id: searchId,
           page: pageNum,
           page_size: pageSize,
+          filter: activeCategories.length > 0 ? activeCategories : undefined,
+          by_creator:
+            filters.createdBy.length > 0 ? filters.createdBy : undefined,
         });
 
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        setCategoryCounts(response.total_items);
 
         if (isLoadMore) {
           setSearchData((prev) => [...prev, ...response.items]);
@@ -58,7 +81,7 @@ const BlockMenuSearch: React.FC = ({}) => {
         setLoadingMore(false);
       }
     },
-    [searchQuery, searchId, api, setSearchData, pageSize],
+    [searchQuery, searchId, filters, api, setSearchData, pageSize],
   );
 
   const handleScroll = useCallback(() => {
@@ -92,7 +115,7 @@ const BlockMenuSearch: React.FC = ({}) => {
       setPage(0);
       setHasMore(true);
     }
-  }, [searchQuery, searchId, fetchSearchData, setSearchData]);
+  }, [searchQuery, searchId, filters, fetchSearchData, setSearchData]);
 
   return (
     <div
