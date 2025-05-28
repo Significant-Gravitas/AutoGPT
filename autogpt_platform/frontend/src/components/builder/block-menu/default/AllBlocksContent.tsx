@@ -2,7 +2,6 @@ import React, { useState, useEffect, Fragment } from "react";
 import Block from "../Block";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { allBlocksDataWithCategories } from "../../testing_data";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { BlockCategoryResponse } from "@/lib/autogpt-server-api";

@@ -1,55 +1,15 @@
 "use client";
 
-import { Block, CredentialsProviderName } from "@/lib/autogpt-server-api";
+import {
+  Block,
+  CredentialsProviderName,
+  LibraryAgent,
+  Provider,
+  StoreAgent,
+} from "@/lib/autogpt-server-api";
 import { createContext, ReactNode, useContext, useState } from "react";
 
-interface BaseSearchItem {
-  type: "marketing_agent" | "integration_block" | "block" | "my_agent" | "ai";
-}
-
-interface MarketingAgentItem extends BaseSearchItem {
-  type: "marketing_agent";
-  title: string;
-  image_url: string;
-  creator_name: string;
-  number_of_runs: number;
-}
-
-interface AIItem extends BaseSearchItem {
-  type: "ai";
-  title: string;
-  description: string;
-  ai_name: string;
-}
-
-interface BlockItem extends BaseSearchItem {
-  type: "block";
-  title: string;
-  description: string;
-}
-
-interface IntegrationItem extends BaseSearchItem {
-  type: "integration_block";
-  title: string;
-  description: string;
-  icon_url: string;
-  number_of_blocks: number;
-}
-
-interface MyAgentItem extends BaseSearchItem {
-  type: "my_agent";
-  title: string;
-  image_url: string;
-  edited_time: string;
-  version: number;
-}
-
-export type SearchItem =
-  | MarketingAgentItem
-  | AIItem
-  | BlockItem
-  | IntegrationItem
-  | MyAgentItem;
+export type SearchItem = Block | Provider | LibraryAgent | StoreAgent;
 
 export type DefaultStateType =
   | "suggestion"
@@ -88,6 +48,8 @@ interface BlockMenuContextType {
   >;
   searchQuery: string;
   setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
+  searchId: string | undefined;
+  setSearchId: React.Dispatch<React.SetStateAction<string | undefined>>;
   filters: Filters;
   setFilters: React.Dispatch<React.SetStateAction<Filters>>;
   creators: string[];
@@ -139,6 +101,8 @@ export function BlockMenuStateProvider({
 
   const [creators, setCreators] = useState<string[]>([]);
 
+  const [searchId, setSearchId] = useState<string | undefined>(undefined);
+
   return (
     <BlockMenuContext.Provider
       value={{
@@ -148,6 +112,8 @@ export function BlockMenuStateProvider({
         setIntegration,
         searchQuery,
         setSearchQuery,
+        searchId,
+        setSearchId,
         creators,
         setCreators,
         filters,

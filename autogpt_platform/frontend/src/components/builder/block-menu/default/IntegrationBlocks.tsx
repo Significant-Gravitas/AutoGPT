@@ -1,10 +1,6 @@
 import { Button } from "@/components/ui/button";
 import React, { useState, useEffect } from "react";
 import IntegrationBlock from "../IntegrationBlock";
-import {
-  integrationBlocksData,
-  integrationsListData,
-} from "../../testing_data";
 import { useBlockMenuContext } from "../block-menu-provider";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { Block } from "@/lib/autogpt-server-api";

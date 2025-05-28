@@ -1,8 +1,9 @@
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { Search } from "lucide-react";
-import React, { useRef } from "react";
+import { Search, X } from "lucide-react";
+import React, { useRef, useState } from "react";
 import { useBlockMenuContext } from "./block-menu-provider";
+import { Button } from "@/components/ui/button";
 
 interface BlockMenuSearchBarProps {
   className?: string;
@@ -11,8 +12,10 @@ interface BlockMenuSearchBarProps {
 const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
   className = "",
 }) => {
-  const inputRef = useRef(null);
-  const { searchQuery, setSearchQuery } = useBlockMenuContext();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const { searchQuery, setSearchQuery, searchId, setSearchId } =
+    useBlockMenuContext();
+
   return (
     <div
       className={cn(
@@ -27,6 +30,11 @@ const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
         value={searchQuery}
         onChange={(e) => {
           setSearchQuery(e.target.value);
+          if (e.target.value.length === 0) {
+            setSearchId(undefined);
+          } else if (!searchId) {
+            setSearchId(crypto.randomUUID());
+          }
         }}
         placeholder={"Blocks, Agents, Integrations or Keywords..."}
         className={cn(

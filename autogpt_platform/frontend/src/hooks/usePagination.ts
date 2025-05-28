@@ -66,7 +66,7 @@ type GetReturnType<T> = T extends BlocksPaginationRequest
 export const usePagination = <T extends PaginationRequest>({
   request,
   pageSize = 10,
-  enabled = true, // to allow pagination or nor
+  enabled = true, // to allow pagination or not
 }: UsePaginationOptions<T>): UsePaginationReturn<GetReturnType<T>> => {
   const [data, setData] = useState<GetReturnType<T>[]>([]);
   const [loading, setLoading] = useState(true);
@@ -144,8 +144,6 @@ export const usePagination = <T extends PaginationRequest>({
               `Unknown request type: ${(currentRequest as any).apiType}`,
             );
         }
-
-        await new Promise((resolve) => setTimeout(resolve, 2000));
 
         if (isLoadMore) {
           setData((prev) => [...prev, ...newData]);
