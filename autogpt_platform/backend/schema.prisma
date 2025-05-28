@@ -68,6 +68,7 @@ enum OnboardingStep {
   AGENT_INPUT
   CONGRATS
   GET_RESULTS
+  RUN_AGENTS
   // Marketplace
   MARKETPLACE_VISIT
   MARKETPLACE_ADD_AGENT
@@ -93,6 +94,7 @@ model UserOnboarding {
   selectedStoreListingVersionId String?
   agentInput                    Json?
   onboardingAgentExecutionId    String?
+  agentRuns                     Int              @default(0)
 
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
