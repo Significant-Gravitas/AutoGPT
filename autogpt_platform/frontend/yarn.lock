@@ -10310,6 +10310,11 @@ react-style-singleton@^2.2.2, react-style-singleton@^2.2.3:
     get-nonce "^1.0.0"
     tslib "^2.0.0"
 
+react-timeago@^8.2.0:
+  version "8.2.0"
+  resolved "https://registry.yarnpkg.com/react-timeago/-/react-timeago-8.2.0.tgz#a6c9c81f1ed8565f87d297d012c467944a0176be"
+  integrity sha512-RWDlG3Jj+iwv+yNEDweA/Qk1mxE8i/Oc4oW8Irp29ZfBp+eNpqqYPMLPYQJyfRMJcGB8CmWkEGMYhB4fW8eZlQ==
+
 react-transition-group@^4.4.5:
   version "4.4.5"
   resolved "https://registry.yarnpkg.com/react-transition-group/-/react-transition-group-4.4.5.tgz#e53d4e3f3344da8521489fbef8f2581d42becdd1"

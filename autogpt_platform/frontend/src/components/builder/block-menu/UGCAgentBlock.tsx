@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
 import { highlightText } from "./IntegrationBlock";
+import TimeAgo from "react-timeago";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
@@ -60,8 +61,7 @@ const UGCAgentBlock: UGCAgentBlockComponent = ({
               "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
             )}
           >
-            {/* BLOCK MENU TODO: We need to create a utility to convert the edit time into relative time (e.g., "2 hours ago") */}
-            Edited on {edited_time?.toLocaleString()}
+            Edited {edited_time && <TimeAgo date={edited_time} />}
           </span>
 
           <span className="font-sans text-zinc-400">•</span>
