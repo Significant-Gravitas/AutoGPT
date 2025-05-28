@@ -92,7 +92,7 @@ export function Turnstile({
         },
         action,
       });
-      
+
       // Notify the hook about the widget ID
       setWidgetId?.(widgetIdRef.current);
     }
@@ -108,7 +108,16 @@ export function Turnstile({
         widgetIdRef.current = null;
       }
     };
-  }, [loaded, siteKey, onVerify, onExpire, onError, action, shouldRender, setWidgetId]);
+  }, [
+    loaded,
+    siteKey,
+    onVerify,
+    onExpire,
+    onError,
+    action,
+    shouldRender,
+    setWidgetId,
+  ]);
 
   // Method to reset the widget manually
   const reset = useCallback(() => {
