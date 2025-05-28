@@ -468,17 +468,7 @@ const FlowEditor: React.FC<{
   }, [nodes, setViewport, x, y]);
 
   const addNode = useCallback(
-    (
-      blockId: string,
-      nodeType: string,
-      hardcodedValues: any = {},
-      nodeSchema: Block | undefined,
-    ) => {
-      if (!nodeSchema) {
-        console.error(`Schema not found for block ID: ${blockId}`);
-        return;
-      }
-
+    (block: Block) => {
       /*
        Calculate a position to the right of the newly added block, allowing for some margin.
        If adding to the right side causes the new block to collide with an existing block, attempt to place it at the bottom or left.
@@ -495,7 +485,7 @@ const FlowEditor: React.FC<{
           ? // we will get all the dimension of nodes, then store
             findNewlyAddedBlockCoordinates(
               nodeDimensions,
-              nodeSchema.uiType == BlockUIType.NOTE ? 300 : 500,
+              block.uiType == BlockUIType.NOTE ? 300 : 500,
               60,
               1.0,
             )
@@ -510,19 +500,19 @@ const FlowEditor: React.FC<{
         type: "custom",
         position: viewportCoordinates, // Set the position to the calculated viewport center
         data: {
-          blockType: nodeType,
-          blockCosts: nodeSchema.costs,
-          title: `${nodeType} ${nodeId}`,
-          description: nodeSchema.description,
-          categories: nodeSchema.categories,
-          inputSchema: nodeSchema.inputSchema,
-          outputSchema: nodeSchema.outputSchema,
-          hardcodedValues: hardcodedValues,
+          blockType: block.name,
+          blockCosts: block.costs,
+          title: `${block.name} ${nodeId}`,
+          description: block.description,
+          categories: block.categories,
+          inputSchema: block.inputSchema,
+          outputSchema: block.outputSchema,
+          hardcodedValues: block.hardcodedValues || {},
           connections: [],
           isOutputOpen: false,
-          block_id: blockId,
-          isOutputStatic: nodeSchema.staticOutput,
-          uiType: nodeSchema.uiType,
+          block_id: block.id,
+          isOutputStatic: block.staticOutput,
+          uiType: block.uiType,
         },
       };
 
@@ -689,7 +679,7 @@ const FlowEditor: React.FC<{
             topChildren={
               <BlockMenu
                 pinBlocksPopover={pinBlocksPopover}
-                addBlock={addNode}
+                addNode={addNode}
                 blockMenuSelected={blockMenuSelected}
                 setBlockMenuSelected={setBlockMenuSelected}
               />

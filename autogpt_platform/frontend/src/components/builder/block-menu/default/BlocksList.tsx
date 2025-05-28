@@ -22,12 +22,7 @@ const BlocksList: React.FC<BlocksListProps> = ({ blocks, loading = false }) => {
               title={block.name}
               description={block.description}
               onClick={() => {
-                addNode(
-                  block.id,
-                  block.name,
-                  block.hardcodedValues || {},
-                  block,
-                );
+                addNode(block);
               }}
             />
           ))}

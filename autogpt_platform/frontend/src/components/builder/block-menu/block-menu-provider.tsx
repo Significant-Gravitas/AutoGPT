@@ -60,12 +60,7 @@ interface BlockMenuContextType {
   setSearchData: React.Dispatch<React.SetStateAction<SearchItem[]>>;
   categoryCounts: CategoryCounts;
   setCategoryCounts: React.Dispatch<React.SetStateAction<CategoryCounts>>;
-  addNode: (
-    blockId: string,
-    nodeType: string,
-    hardcodedValues: any | undefined,
-    nodeSchema: Block | undefined,
-  ) => void;
+  addNode: (block: Block) => void;
 }
 
 export const BlockMenuContext = createContext<BlockMenuContextType>(
@@ -74,12 +69,7 @@ export const BlockMenuContext = createContext<BlockMenuContextType>(
 
 interface BlockMenuStateProviderProps {
   children: ReactNode;
-  addNode: (
-    blockId: string,
-    nodeType: string,
-    hardcodedValues: any | undefined,
-    nodeSchema: Block | undefined,
-  ) => void;
+  addNode: (block: Block) => void;
 }
 
 export function BlockMenuStateProvider({

@@ -72,7 +72,7 @@ const AllBlocksContent: React.FC = () => {
   }
 
   return (
-    <div className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200 transition-all duration-200">
+    <div className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200">
       <div className="w-full space-y-3 px-4 pb-4">
         {categories.map((category, index) => (
           <Fragment key={category.name}>
@@ -99,12 +99,7 @@ const AllBlocksContent: React.FC = () => {
                     title={block.name}
                     description={block.name}
                     onClick={() => {
-                      addNode(
-                        block.id,
-                        block.name,
-                        block.hardcodedValues || {},
-                        block,
-                      );
+                      addNode(block);
                     }}
                   />
                 ))}

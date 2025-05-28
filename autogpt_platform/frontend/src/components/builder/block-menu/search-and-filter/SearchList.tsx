@@ -109,7 +109,7 @@ const SearchList: React.FC<SearchListProps> = ({
                 highlightedText={searchQuery}
                 description={item.description}
                 onClick={() => {
-                  addNode(item.id, item.name, item.hardcodedValues || {}, item);
+                  addNode(item);
                 }}
               />
             );
@@ -123,7 +123,7 @@ const SearchList: React.FC<SearchListProps> = ({
                 icon_url={`/integrations/${item.name}.png`}
                 description={item.description}
                 onClick={() => {
-                  addNode(item.id, item.name, item.hardcodedValues || {}, item);
+                  addNode(item);
                 }}
               />
             );

@@ -67,12 +67,7 @@ const IntegrationBlocks: React.FC = ({}) => {
               description={block.description}
               icon_url={`/integrations/${integration}.png`}
               onClick={() => {
-                addNode(
-                  block.id,
-                  block.name,
-                  block.hardcodedValues || {},
-                  block,
-                );
+                addNode(block);
               }}
             />
           ))}
