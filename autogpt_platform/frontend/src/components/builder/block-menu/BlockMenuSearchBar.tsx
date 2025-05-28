@@ -1,9 +1,10 @@
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { Search, X } from "lucide-react";
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useCallback, useEffect } from "react";
 import { useBlockMenuContext } from "./block-menu-provider";
 import { Button } from "@/components/ui/button";
+import debounce from "lodash/debounce";
+import { Input } from "@/components/ui/input";
 
 interface BlockMenuSearchBarProps {
   className?: string;
@@ -13,8 +14,27 @@ const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
   className = "",
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [localQuery, setLocalQuery] = useState("");
   const { searchQuery, setSearchQuery, searchId, setSearchId } =
     useBlockMenuContext();
+
+  const debouncedSetSearchQuery = useCallback(
+    debounce((value: string) => {
+      setSearchQuery(value);
+      if (value.length === 0) {
+        setSearchId(undefined);
+      } else if (!searchId) {
+        setSearchId(crypto.randomUUID());
+      }
+    }, 500),
+    [setSearchQuery, setSearchId, searchId],
+  );
+
+  useEffect(() => {
+    return () => {
+      debouncedSetSearchQuery.cancel();
+    };
+  }, [debouncedSetSearchQuery]);
 
   return (
     <div
@@ -27,14 +47,10 @@ const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
       <Input
         ref={inputRef}
         type="text"
-        value={searchQuery}
+        value={localQuery}
         onChange={(e) => {
-          setSearchQuery(e.target.value);
-          if (e.target.value.length === 0) {
-            setSearchId(undefined);
-          } else if (!searchId) {
-            setSearchId(crypto.randomUUID());
-          }
+          setLocalQuery(e.target.value);
+          debouncedSetSearchQuery(e.target.value);
         }}
         placeholder={"Blocks, Agents, Integrations or Keywords..."}
         className={cn(
