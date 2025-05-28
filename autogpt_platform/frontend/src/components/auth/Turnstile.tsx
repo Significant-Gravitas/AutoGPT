@@ -70,7 +70,11 @@ export function Turnstile({
 
     // Reset any existing widget
     if (widgetIdRef.current && window.turnstile) {
-      window.turnstile.reset(widgetIdRef.current);
+      try {
+        window.turnstile.reset(widgetIdRef.current);
+      } catch (err) {
+        console.warn("Failed to reset existing Turnstile widget:", err);
+      }
     }
 
     // Render a new widget
@@ -95,7 +99,11 @@ export function Turnstile({
 
     return () => {
       if (widgetIdRef.current && window.turnstile) {
-        window.turnstile.remove(widgetIdRef.current);
+        try {
+          window.turnstile.remove(widgetIdRef.current);
+        } catch (err) {
+          console.warn("Failed to remove Turnstile widget:", err);
+        }
         setWidgetId?.(null);
         widgetIdRef.current = null;
       }

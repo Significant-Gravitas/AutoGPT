@@ -67,14 +67,19 @@ export function useTurnstile({
 
   const reset = useCallback(() => {
     // Always reset the state when reset is called, regardless of shouldRender
+    // This ensures users can retry CAPTCHA after failed attempts
     setToken(null);
     setVerified(false);
     setVerifying(false);
     setError(null);
 
     // Only reset the actual Turnstile widget if it exists and shouldRender is true
-    if (shouldRender && window.turnstile && widgetId) {
-      window.turnstile.reset(widgetId);
+    if (shouldRender && typeof window !== "undefined" && window.turnstile && widgetId) {
+      try {
+        window.turnstile.reset(widgetId);
+      } catch (err) {
+        console.warn("Failed to reset Turnstile widget:", err);
+      }
     }
   }, [shouldRender, widgetId]);
 
