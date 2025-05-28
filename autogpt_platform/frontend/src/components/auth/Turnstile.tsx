@@ -11,6 +11,7 @@ export interface TurnstileProps {
   className?: string;
   id?: string;
   shouldRender?: boolean;
+  setWidgetId?: (id: string | null) => void;
 }
 
 export function Turnstile({
@@ -22,6 +23,7 @@ export function Turnstile({
   className,
   id = "cf-turnstile",
   shouldRender = true,
+  setWidgetId,
 }: TurnstileProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
@@ -86,15 +88,19 @@ export function Turnstile({
         },
         action,
       });
+      
+      // Notify the hook about the widget ID
+      setWidgetId?.(widgetIdRef.current);
     }
 
     return () => {
       if (widgetIdRef.current && window.turnstile) {
         window.turnstile.remove(widgetIdRef.current);
+        setWidgetId?.(null);
         widgetIdRef.current = null;
       }
     };
-  }, [loaded, siteKey, onVerify, onExpire, onError, action, shouldRender]);
+  }, [loaded, siteKey, onVerify, onExpire, onError, action, shouldRender, setWidgetId]);
 
   // Method to reset the widget manually
   const reset = useCallback(() => {
