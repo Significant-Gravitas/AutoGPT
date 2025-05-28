@@ -34,11 +34,11 @@ const Integration: IntegrationComponent = ({
     >
       <div className="relative h-[2.625rem] w-[2.625rem] overflow-hidden rounded-[0.5rem] bg-white">
         {icon_url && (
-          // TODO : handle fallback
           <Image
             src={icon_url}
             alt="integration-icon"
             fill
+            sizes="2.25rem"
             className="w-full rounded-[0.5rem] object-contain group-disabled:opacity-50"
           />
         )}

@@ -42,6 +42,7 @@ const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             src={image_url}
             alt="integration-icon"
             fill
+            sizes="5.625rem"
             className="w-full object-contain group-disabled:opacity-50"
           />
         )}

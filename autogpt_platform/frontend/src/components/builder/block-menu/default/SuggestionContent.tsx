@@ -27,7 +27,6 @@ const SuggestionContent: React.FC = () => {
       setError(null);
       const response = await api.getSuggestions();
       setSuggestionsData(response);
-      console.log(response);
     } catch (err) {
       console.error("Error fetching data:", err);
       setError(

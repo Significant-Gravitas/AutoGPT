@@ -55,6 +55,7 @@ const IntegrationBlock: IntegrationBlockComponent = ({
             src={icon_url}
             alt="integration-icon"
             fill
+            sizes="2.25rem"
             className="w-full object-contain group-disabled:opacity-50"
           />
         )}
