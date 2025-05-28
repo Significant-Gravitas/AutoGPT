@@ -188,6 +188,7 @@ export default function ResetPasswordPage() {
                 onVerify={changePasswordTurnstile.handleVerify}
                 onExpire={changePasswordTurnstile.handleExpire}
                 onError={changePasswordTurnstile.handleError}
+                setWidgetId={changePasswordTurnstile.setWidgetId}
                 action="change_password"
                 shouldRender={changePasswordTurnstile.shouldRender}
               />
@@ -230,6 +231,7 @@ export default function ResetPasswordPage() {
                 onVerify={sendEmailTurnstile.handleVerify}
                 onExpire={sendEmailTurnstile.handleExpire}
                 onError={sendEmailTurnstile.handleError}
+                setWidgetId={sendEmailTurnstile.setWidgetId}
                 action="reset_password"
                 shouldRender={sendEmailTurnstile.shouldRender}
               />
