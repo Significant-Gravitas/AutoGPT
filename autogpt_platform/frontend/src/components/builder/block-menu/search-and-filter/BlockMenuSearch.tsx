@@ -120,7 +120,7 @@ const BlockMenuSearch: React.FC = ({}) => {
   return (
     <div
       ref={scrollRef}
-      className="scrollbar-thumb-rounded h-full space-y-4 overflow-y-auto py-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200"
+      className="scrollbar-thumb-rounded h-full space-y-4 overflow-y-auto py-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200 transition-all duration-200"
     >
       {searchData.length !== 0 && <FiltersList />}
       <SearchList

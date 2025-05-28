@@ -22,7 +22,7 @@ const PaginatedBlocksContent: React.FC<PaginatedBlocksContentProps> = ({
   return (
     <div 
       ref={scrollRef}
-      className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200"
+      className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200 transition-all duration-200"
     >
       <BlocksList blocks={blocks} loading={loading} />
       {error && (
