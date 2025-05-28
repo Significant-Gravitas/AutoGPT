@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import React from "react";
 import MarketplaceAgentBlock from "../MarketplaceAgentBlock";
 import Block from "../Block";
 import UGCAgentBlock from "../UGCAgentBlock";
@@ -6,13 +6,24 @@ import AiBlock from "./AiBlock";
 import IntegrationBlock from "../IntegrationBlock";
 import { SearchItem, useBlockMenuContext } from "../block-menu-provider";
 import NoSearchResult from "./NoSearchResult";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { Button } from "@/components/ui/button";
 
-const SearchList = () => {
-  const { searchQuery, addNode, searchId, searchData, setSearchData } =
-    useBlockMenuContext();
-  const [isLoading, setIsLoading] = useState<boolean>(true);
-  const api = useBackendAPI();
+interface SearchListProps {
+  isLoading: boolean;
+  loadingMore: boolean;
+  hasMore: boolean;
+  error: string | null;
+  onRetry: () => void;
+}
+
+const SearchList: React.FC<SearchListProps> = ({
+  isLoading,
+  loadingMore,
+  hasMore,
+  error,
+  onRetry,
+}) => {
+  const { searchQuery, addNode, searchData } = useBlockMenuContext();
 
   // Need to change it once, we got provider blocks
   const getBlockType = (item: any) => {
@@ -31,25 +42,6 @@ const SearchList = () => {
     return null;
   };
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      try {
-        const response = await api.searchBlocks({
-          search_query: searchQuery,
-          search_id: searchId,
-        });
-        setSearchData(response.items);
-      } catch (error) {
-        console.error("Error fetching search data:", error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [searchQuery, setSearchData]);
-
   if (isLoading) {
     return (
       <div className="space-y-2.5 px-4">
@@ -61,6 +53,26 @@ const SearchList = () => {
           .map((_, i) => (
             <Block.Skeleton key={i} />
           ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="px-4">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+          <p className="mb-2 text-sm text-red-600">
+            Error loading search results: {error}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onRetry}
+            className="h-7 text-xs"
+          >
+            Retry
+          </Button>
+        </div>
       </div>
     );
   }
@@ -131,6 +143,15 @@ const SearchList = () => {
             return null;
         }
       })}
+      {loadingMore && hasMore && (
+        <div className="space-y-2.5">
+          {Array(3)
+            .fill(0)
+            .map((_, i) => (
+              <Block.Skeleton key={`loading-more-${i}`} />
+            ))}
+        </div>
+      )}
     </div>
   );
 };
