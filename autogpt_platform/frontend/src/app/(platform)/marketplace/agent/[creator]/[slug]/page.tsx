@@ -47,7 +47,7 @@ export default async function Page({
   });
   const libraryAgent = user
     ? await api
-        .getLibraryAgentByStoreListingVersionID(agent.store_listing_version_id)
+        .getLibraryAgentByStoreListingVersionID(agent.active_version_id || "")
         .catch((error) => {
           console.error("Failed to fetch library agent:", error);
           return null;
