@@ -1,29 +1,72 @@
 import { Button } from "@/components/ui/button";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, Fragment } from "react";
 import IntegrationBlock from "../IntegrationBlock";
 import { useBlockMenuContext } from "../block-menu-provider";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { Block } from "@/lib/autogpt-server-api";
+import ErrorState from "../ErrorState";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const IntegrationBlocks: React.FC = ({}) => {
   const { integration, setIntegration, addNode } = useBlockMenuContext();
   const [blocks, setBlocks] = useState<Block[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const api = useBackendAPI();
 
-  useEffect(() => {
-    const fetchBlocks = async () => {
-      if (integration) {
-        setIsLoading(true);
+  const fetchBlocks = async () => {
+    if (integration) {
+      try {
+        setLoading(true);
+        setError(null);
         const response = await api.getBuilderBlocks({ provider: integration });
         setBlocks(response.blocks);
-        setIsLoading(false);
+      } catch (err) {
+        console.error("Failed to fetch integration blocks:", err);
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to load integration blocks",
+        );
+      } finally {
+        setLoading(false);
       }
-    };
+    }
+  };
 
+  useEffect(() => {
     fetchBlocks();
   }, [api, integration]);
+
+  if (loading) {
+    return (
+      <div className="w-full space-y-3 p-4">
+        {[0, 1, 3].map((blockIndex) => (
+          <Fragment key={blockIndex}>
+            {blockIndex > 0 && (
+              <Skeleton className="my-4 h-[1px] w-full text-zinc-100" />
+            )}
+            {[0, 1, 2].map((index) => (
+              <IntegrationBlock.Skeleton key={`${blockIndex}-${index}`} />
+            ))}
+          </Fragment>
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="h-full p-4">
+        <ErrorState
+          title="Failed to load integration blocks"
+          error={error}
+          onRetry={fetchBlocks}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2.5">
@@ -49,30 +92,19 @@ const IntegrationBlocks: React.FC = ({}) => {
           {blocks.length}
         </span>
       </div>
-
-      {isLoading ? (
-        <div className="space-y-3">
-          {Array(5)
-            .fill(0)
-            .map((_, index) => (
-              <IntegrationBlock.Skeleton key={index} />
-            ))}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {blocks.map((block, index) => (
-            <IntegrationBlock
-              key={index}
-              title={block.name}
-              description={block.description}
-              icon_url={`/integrations/${integration}.png`}
-              onClick={() => {
-                addNode(block);
-              }}
-            />
-          ))}
-        </div>
-      )}
+      <div className="space-y-3">
+        {blocks.map((block, index) => (
+          <IntegrationBlock
+            key={index}
+            title={block.name}
+            description={block.description}
+            icon_url={`/integrations/${integration}.png`}
+            onClick={() => {
+              addNode(block);
+            }}
+          />
+        ))}
+      </div>
     </div>
   );
 };

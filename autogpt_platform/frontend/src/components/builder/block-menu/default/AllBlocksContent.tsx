@@ -6,25 +6,36 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { BlockCategoryResponse } from "@/lib/autogpt-server-api";
 import { useBlockMenuContext } from "../block-menu-provider";
+import ErrorState from "../ErrorState";
 
 const AllBlocksContent: React.FC = () => {
   const { addNode } = useBlockMenuContext();
   const [categories, setCategories] = useState<BlockCategoryResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [loadingCategories, setLoadingCategories] = useState<Set<string>>(
     new Set(),
   );
 
   const api = useBackendAPI();
 
-  useEffect(() => {
-    const fetchBlocks = async () => {
+  const fetchBlocks = async () => {
+    try {
       setLoading(true);
+      setError(null);
       const response = await api.getBlockCategories();
       setCategories(response);
+    } catch (err) {
+      console.error("Failed to fetch block categories:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to load block categories",
+      );
+    } finally {
       setLoading(false);
-    };
+    }
+  };
 
+  useEffect(() => {
     fetchBlocks();
   }, [api]);
 
@@ -71,6 +82,18 @@ const AllBlocksContent: React.FC = () => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="h-full p-4">
+        <ErrorState
+          title="Failed to load blocks"
+          error={error}
+          onRetry={fetchBlocks}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200">
       <div className="w-full space-y-3 px-4 pb-4">
@@ -93,7 +116,6 @@ const AllBlocksContent: React.FC = () => {
 
               <div className="space-y-2">
                 {category.blocks.map((block, idx) => (
-                  // It might go fail for agent block
                   <Block
                     key={`${category.name}-${idx}`}
                     title={block.name}

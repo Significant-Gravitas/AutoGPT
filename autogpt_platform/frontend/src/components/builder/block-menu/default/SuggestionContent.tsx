@@ -8,6 +8,7 @@ import {
   SuggestionsResponse,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import ErrorState from "../ErrorState";
 
 const SuggestionContent: React.FC = () => {
   const { setIntegration, setDefaultState, setSearchQuery, addNode } =
@@ -16,26 +17,42 @@ const SuggestionContent: React.FC = () => {
   const [suggestionsData, setSuggestionsData] =
     useState<SuggestionsResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
   const api = useBackendAPI();
 
-  useEffect(() => {
-    const fetchSuggestions = async () => {
-      try {
-        setLoading(true);
-        const response = await api.getSuggestions();
-        setSuggestionsData(response);
-        console.log(response);
-        setLoading(false);
-      } catch (error) {
-        console.error("Error fetching data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const fetchSuggestions = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await api.getSuggestions();
+      setSuggestionsData(response);
+      console.log(response);
+    } catch (err) {
+      console.error("Error fetching data:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to load suggestions",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     fetchSuggestions();
   }, [api]);
+
+  if (error) {
+    return (
+      <div className="h-full p-4">
+        <ErrorState
+          title="Failed to load suggestions"
+          error={error}
+          onRetry={fetchSuggestions}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200">
