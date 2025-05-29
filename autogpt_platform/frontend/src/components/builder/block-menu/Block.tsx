@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { beautifyString, cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import React, { ButtonHTMLAttributes } from "react";
 import { highlightText } from "./IntegrationBlock";
@@ -36,7 +36,7 @@ const Block: BlockComponent = ({
             "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
           )}
         >
-          {highlightText(title, highlightedText)}
+          {title && highlightText(beautifyString(title), highlightedText)}
         </span>
         <span
           className={cn(

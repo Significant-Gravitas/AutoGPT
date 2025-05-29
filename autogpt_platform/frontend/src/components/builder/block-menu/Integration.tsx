@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { beautifyString, cn } from "@/lib/utils";
 import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
 
@@ -47,7 +47,7 @@ const Integration: IntegrationComponent = ({
       <div className="w-full">
         <div className="flex items-center justify-between gap-2">
           <p className="line-clamp-1 flex-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-700 group-disabled:text-zinc-400">
-            {title}
+            {title && beautifyString(title)}
           </p>
           <span className="flex h-[1.375rem] w-[1.6875rem] items-center justify-center rounded-[1.25rem] bg-[#f0f0f0] p-1.5 font-sans text-sm leading-[1.375rem] text-zinc-500 group-disabled:text-zinc-400">
             {number_of_blocks}
