@@ -3,8 +3,8 @@ name: Dev Deploy PR Event Dispatcher
 on:
   pull_request:
     types: [opened, synchronize, closed]
-  pull_request_target:
-    types: [labeled, unlabeled]
+  issue_comment:
+    types: [created]
 
 jobs:
   dispatch:
