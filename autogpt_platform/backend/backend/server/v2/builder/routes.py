@@ -217,3 +217,13 @@ async def search(
         page=options.page,
         more_pages=more_pages,
     )
+
+
+@router.get(
+    "/counts",
+    dependencies=[fastapi.Depends(auth_middleware)],
+)
+async def get_counts(
+    user_id: Annotated[str, fastapi.Depends(get_user_id)],
+) -> builder_model.CountResponse:
+    return await builder_db.get_counts(user_id)

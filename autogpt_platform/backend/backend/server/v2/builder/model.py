@@ -78,3 +78,13 @@ class SearchResponse(BaseModel):
     total_items: dict[FilterType, int]
     page: int
     more_pages: bool
+
+
+class CountResponse(BaseModel):
+    all_blocks: int
+    input_blocks: int
+    action_blocks: int
+    output_blocks: int
+    integrations: int
+    marketplace_agents: int
+    my_agents: int

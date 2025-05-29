@@ -85,6 +85,17 @@ export type BlockSearchResponse = {
   more_pages: boolean;
 };
 
+/* Mirror of backend/server/v2/builder/model.py:CountResponse */
+export type CountResponse = {
+  all_blocks: number;
+  input_blocks: number;
+  action_blocks: number;
+  output_blocks: number;
+  integrations: number;
+  marketplace_agents: number;
+  my_agents: number;
+};
+
 /* Mirror of backend/data/block.py:Block */
 export type Block = {
   id: string;

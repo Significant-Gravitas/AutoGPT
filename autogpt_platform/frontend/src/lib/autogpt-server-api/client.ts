@@ -13,6 +13,7 @@ import type {
   BlockRequest,
   BlockResponse,
   BlockSearchResponse,
+  CountResponse,
   CreateAPIKeyResponse,
   CreateLibraryAgentPresetRequest,
   CreatorDetails,
@@ -234,13 +235,23 @@ export default class BackendAPI {
 
   searchBlocks(options: {
     search_query?: string;
-    filter?: ("blocks" | "integrations" | "marketplace_agents" | "my_agents")[];
+    filter?: (
+      | "blocks"
+      | "integrations"
+      | "providers"
+      | "marketplace_agents"
+      | "my_agents"
+    )[];
     by_creator?: string[];
     search_id?: string;
     page?: number;
     page_size?: number;
   }): Promise<BlockSearchResponse> {
     return this._request("POST", "/builder/search", options);
+  }
+
+  getBlockCounts(): Promise<CountResponse> {
+    return this._get("/builder/counts");
   }
 
   ////////////////////////////////////////

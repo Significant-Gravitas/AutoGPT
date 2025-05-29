@@ -1,6 +1,8 @@
 import functools
 import logging
 
+import prisma
+
 import backend.server.model as server_model
 from backend.blocks import load_all_blocks
 from backend.data.block import Block, BlockCategory, BlockSchema
@@ -10,12 +12,14 @@ from backend.server.v2.builder.model import (
     BlockCategoryResponse,
     BlockResponse,
     BlockType,
+    CountResponse,
     Provider,
     ProviderResponse,
     SearchBlocksResponse,
 )
 
 logger = logging.getLogger(__name__)
+_static_counts_cache: dict | None = None
 
 
 def get_block_categories(category_blocks: int = 3) -> list[BlockCategoryResponse]:
@@ -98,6 +102,8 @@ def get_blocks(
         if take > 0:
             take -= 1
             blocks.append(block)
+
+    # todo kcze costs
 
     return BlockResponse(
         blocks=[b.to_dict() for b in blocks],
@@ -212,6 +218,69 @@ def get_providers(
             page_size=page_size,
         ),
     )
+
+
+async def get_counts(user_id: str) -> CountResponse:
+    my_agents = await prisma.models.LibraryAgent.prisma().count(
+        where={
+            "userId": user_id,
+            "isDeleted": False,
+            "isArchived": False,
+        }
+    )
+    counts = await _get_static_counts()
+    return CountResponse(
+        my_agents=my_agents,
+        **counts,
+    )
+
+
+async def _get_static_counts():
+    """
+    Get counts of blocks, integrations, and marketplace agents.
+    This is cached to avoid unnecessary database queries and calculations.
+    Can't use functools.cache here because the function is async.
+    """
+    global _static_counts_cache
+    if _static_counts_cache is not None:
+        return _static_counts_cache
+
+    all_blocks = 0
+    input_blocks = 0
+    action_blocks = 0
+    output_blocks = 0
+    integrations = 0
+
+    for block_type in load_all_blocks().values():
+        block: Block[BlockSchema, BlockSchema] = block_type()
+        if block.disabled:
+            continue
+
+        all_blocks += 1
+
+        if block.block_type.value == "Input":
+            input_blocks += 1
+        elif block.block_type.value == "Output":
+            output_blocks += 1
+        else:
+            action_blocks += 1
+
+        credentials = list(block.input_schema.get_credentials_fields().values())
+        if len(credentials) > 0:
+            integrations += 1
+
+    marketplace_agents = await prisma.models.StoreAgent.prisma().count()
+
+    _static_counts_cache = {
+        "all_blocks": all_blocks,
+        "input_blocks": input_blocks,
+        "action_blocks": action_blocks,
+        "output_blocks": output_blocks,
+        "integrations": integrations,
+        "marketplace_agents": marketplace_agents,
+    }
+
+    return _static_counts_cache
 
 
 @functools.cache
