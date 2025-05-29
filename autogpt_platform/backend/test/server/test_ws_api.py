@@ -63,9 +63,7 @@ async def test_websocket_router_subscribe(
     sent_message = mock_websocket.send_text.call_args[0][0]
     parsed_message = json.loads(sent_message)
     snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(parsed_message, indent=2, sort_keys=True), "sub"
-    )
+    snapshot.assert_match(json.dumps(parsed_message, indent=2, sort_keys=True), "sub")
 
     mock_manager.disconnect_socket.assert_called_once_with(mock_websocket)
 
@@ -103,9 +101,7 @@ async def test_websocket_router_unsubscribe(
     sent_message = mock_websocket.send_text.call_args[0][0]
     parsed_message = json.loads(sent_message)
     snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(parsed_message, indent=2, sort_keys=True), "unsub"
-    )
+    snapshot.assert_match(json.dumps(parsed_message, indent=2, sort_keys=True), "unsub")
 
     mock_manager.disconnect_socket.assert_called_once_with(mock_websocket)
 

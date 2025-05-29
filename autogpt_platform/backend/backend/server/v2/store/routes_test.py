@@ -59,11 +59,9 @@ def test_get_agents_defaults(
     )
     assert data.pagination.total_pages == 0
     assert data.agents == []
- 
+
     snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "def_agts"
-    )
+    snapshot.assert_match(json.dumps(response.json(), indent=2), "def_agts")
     mock_db_call.assert_called_once_with(
         featured=False,
         creator=None,
@@ -110,9 +108,7 @@ def test_get_agents_featured(
     assert len(data.agents) == 1
     assert data.agents[0].slug == "featured-agent"
     snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "feat_agts"
-    )
+    snapshot.assert_match(json.dumps(response.json(), indent=2), "feat_agts")
     mock_db_call.assert_called_once_with(
         featured=True,
         creator=None,
@@ -159,9 +155,7 @@ def test_get_agents_by_creator(
     assert len(data.agents) == 1
     assert data.agents[0].creator == "specific-creator"
     snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "agts_by_creator"
-    )
+    snapshot.assert_match(json.dumps(response.json(), indent=2), "agts_by_creator")
     mock_db_call.assert_called_once_with(
         featured=False,
         creator="specific-creator",
@@ -208,9 +202,7 @@ def test_get_agents_sorted(
     assert len(data.agents) == 1
     assert data.agents[0].runs == 1000
     snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "agts_sorted"
-    )
+    snapshot.assert_match(json.dumps(response.json(), indent=2), "agts_sorted")
     mock_db_call.assert_called_once_with(
         featured=False,
         creator=None,
@@ -257,9 +249,7 @@ def test_get_agents_search(
     assert len(data.agents) == 1
     assert "specific" in data.agents[0].description.lower()
     snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "agts_search"
-    )
+    snapshot.assert_match(json.dumps(response.json(), indent=2), "agts_search")
     mock_db_call.assert_called_once_with(
         featured=False,
         creator=None,
@@ -305,9 +295,7 @@ def test_get_agents_category(
     )
     assert len(data.agents) == 1
     snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "agts_category"
-    )
+    snapshot.assert_match(json.dumps(response.json(), indent=2), "agts_category")
     mock_db_call.assert_called_once_with(
         featured=False,
         creator=None,
@@ -356,9 +344,7 @@ def test_get_agents_pagination(
     assert data.pagination.current_page == 2
     assert data.pagination.page_size == 5
     snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "agts_pagination"
-    )
+    snapshot.assert_match(json.dumps(response.json(), indent=2), "agts_pagination")
     mock_db_call.assert_called_once_with(
         featured=False,
         creator=None,
@@ -420,9 +406,7 @@ def test_get_agent_details(
     assert data.agent_name == "Test Agent"
     assert data.creator == "creator1"
     snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "agt_details"
-    )
+    snapshot.assert_match(json.dumps(response.json(), indent=2), "agt_details")
     mock_db_call.assert_called_once_with(username="creator1", agent_name="test-agent")
 
 
@@ -451,9 +435,7 @@ def test_get_creators_defaults(
     assert data.pagination.total_pages == 0
     assert data.creators == []
     snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "def_creators"
-    )
+    snapshot.assert_match(json.dumps(response.json(), indent=2), "def_creators")
     mock_db_call.assert_called_once_with(
         featured=False, search_query=None, sorted_by=None, page=1, page_size=20
     )
@@ -497,9 +479,7 @@ def test_get_creators_pagination(
     assert data.pagination.current_page == 2
     assert data.pagination.page_size == 5
     snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "creators_pagination"
-    )
+    snapshot.assert_match(json.dumps(response.json(), indent=2), "creators_pagination")
     mock_db_call.assert_called_once_with(
         featured=False, search_query=None, sorted_by=None, page=2, page_size=5
     )
@@ -547,9 +527,7 @@ def test_get_creator_details(
     assert data.username == "creator1"
     assert data.name == "Test User"
     snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "creator_details"
-    )
+    snapshot.assert_match(json.dumps(response.json(), indent=2), "creator_details")
     mock_db_call.assert_called_once_with(username="creator1")
 
 
@@ -593,9 +571,7 @@ def test_get_submissions_success(
     assert data.submissions[0].name == "Test Agent"
     assert data.pagination.current_page == 1
     snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "sub_success"
-    )
+    snapshot.assert_match(json.dumps(response.json(), indent=2), "sub_success")
     mock_db_call.assert_called_once_with(user_id="test-user-id", page=1, page_size=20)
 
 
@@ -624,9 +600,7 @@ def test_get_submissions_pagination(
     assert data.pagination.current_page == 2
     assert data.pagination.page_size == 5
     snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "sub_pagination"
-    )
+    snapshot.assert_match(json.dumps(response.json(), indent=2), "sub_pagination")
     mock_db_call.assert_called_once_with(user_id="test-user-id", page=2, page_size=5)
 
 
