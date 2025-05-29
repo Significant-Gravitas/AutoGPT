@@ -7,7 +7,7 @@ import fastapi
 import fastapi.testclient
 import prisma.enums
 import pytest_mock
-from pytest_snapshot.plugin import Snapshot  # type: ignore
+from pytest_snapshot.plugin import Snapshot
 
 import backend.server.v2.admin.credit_admin_routes as credit_admin_routes
 import backend.server.v2.admin.model as admin_model
@@ -76,9 +76,10 @@ def test_add_user_credits_success(
     )
 
     # Snapshot test the response
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "admin_add_credits_success_response",
+        "adm_add_cred_ok",
     )
 
 
@@ -108,9 +109,10 @@ def test_add_user_credits_negative_amount(
     assert response_data["new_balance"] == 200
 
     # Snapshot test the response
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "admin_add_credits_negative_response",
+        "adm_add_cred_neg",
     )
 
 
@@ -158,9 +160,10 @@ def test_get_user_history_success(
     assert response_data["pagination"]["total_items"] == 2
 
     # Snapshot test the response
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "admin_get_user_history_success_response",
+        "adm_usr_hist_ok",
     )
 
 
@@ -217,9 +220,10 @@ def test_get_user_history_with_filters(
     )
 
     # Snapshot test the response
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "admin_get_user_history_filtered_response",
+        "adm_usr_hist_filt",
     )
 
 
@@ -252,9 +256,10 @@ def test_get_user_history_empty_results(
     assert response_data["pagination"]["total_items"] == 0
 
     # Snapshot test the response
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "admin_get_user_history_empty_response",
+        "adm_usr_hist_empty",
     )
 
 

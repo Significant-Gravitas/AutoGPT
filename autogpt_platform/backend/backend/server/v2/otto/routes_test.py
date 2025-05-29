@@ -5,7 +5,7 @@ import autogpt_libs.auth.middleware
 import fastapi
 import fastapi.testclient
 import pytest_mock
-from pytest_snapshot.plugin import Snapshot  # type: ignore
+from pytest_snapshot.plugin import Snapshot
 
 import backend.server.v2.otto.models as otto_models
 import backend.server.v2.otto.routes as otto_routes
@@ -82,9 +82,10 @@ def test_ask_otto_success(
     assert len(response_data["documents"]) == 2
 
     # Snapshot test the response
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "otto_ask_success_response",
+        "otto_ok",
     )
 
 
@@ -126,9 +127,10 @@ def test_ask_otto_with_graph_data(
     assert response_data["success"] is True
 
     # Snapshot test the response
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "otto_ask_with_graph_response",
+        "otto_grph",
     )
 
 
@@ -165,9 +167,10 @@ def test_ask_otto_empty_conversation(
     assert len(response_data["documents"]) == 0
 
     # Snapshot test the response
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "otto_ask_empty_conversation_response",
+        "otto_empty",
     )
 
 
@@ -203,9 +206,10 @@ def test_ask_otto_service_error(
     assert response_data["success"] is False
 
     # Snapshot test the response
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "otto_ask_service_error_response",
+        "otto_err",
     )
 
 

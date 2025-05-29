@@ -5,7 +5,7 @@ from uuid import UUID
 import autogpt_libs.auth.models
 import fastapi.exceptions
 import pytest
-from pytest_snapshot.plugin import Snapshot  # type: ignore
+from pytest_snapshot.plugin import Snapshot
 
 import backend.server.v2.store.model as store
 from backend.blocks.basic import StoreValueBlock
@@ -85,8 +85,9 @@ async def test_graph_creation(server: SpinTestServer, snapshot: Snapshot):
             for link in created_graph.links
         ],
     }
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps(graph_data, indent=2, sort_keys=True), "created_graph_structure"
+        json.dumps(graph_data, indent=2, sort_keys=True), "grph_struct"
     )
 
 
@@ -182,8 +183,9 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
     assert input_schema == ExpectedInputSchema.jsonschema()
 
     # Add snapshot testing for the schemas
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps(input_schema, indent=2, sort_keys=True), "graph_input_schema"
+        json.dumps(input_schema, indent=2, sort_keys=True), "grph_in_schm"
     )
 
     output_schema = created_graph.output_schema
@@ -191,8 +193,9 @@ async def test_get_input_schema(server: SpinTestServer, snapshot: Snapshot):
     assert output_schema == ExpectedOutputSchema.jsonschema()
 
     # Add snapshot testing for the output schema
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps(output_schema, indent=2, sort_keys=True), "graph_output_schema"
+        json.dumps(output_schema, indent=2, sort_keys=True), "grph_out_schm"
     )
 
 

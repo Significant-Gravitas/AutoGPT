@@ -5,7 +5,7 @@ import autogpt_libs.auth as autogpt_auth_lib
 import fastapi.testclient
 import pytest
 import pytest_mock
-from pytest_snapshot.plugin import Snapshot  # type: ignore
+from pytest_snapshot.plugin import Snapshot
 
 import backend.server.model as server_model
 import backend.server.v2.library.model as library_model
@@ -89,9 +89,10 @@ async def test_get_library_agents_success(
     assert data.agents[0].can_access_graph is True
     assert data.agents[1].graph_id == "test-agent-2"
     assert data.agents[1].can_access_graph is False
-    snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "library_agents_search_response"
-    )
+
+    snapshot.snapshot_dir = "snapshots"
+    snapshot.assert_match(json.dumps(response.json(), indent=2), "lib_agts_search")
+
     mock_db_call.assert_called_once_with(
         user_id="test-user-id",
         search_term="test",

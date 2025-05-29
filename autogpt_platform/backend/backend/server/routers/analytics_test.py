@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import fastapi
 import fastapi.testclient
 import pytest_mock
-from pytest_snapshot.plugin import Snapshot  # type: ignore
+from pytest_snapshot.plugin import Snapshot
 
 import backend.server.routers.analytics as analytics_routes
 from backend.server.utils import get_user_id
@@ -64,9 +64,10 @@ def test_log_raw_metric_success(
     )
 
     # Snapshot test the response
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps({"metric_id": response_data}, indent=2, sort_keys=True),
-        "analytics_log_metric_success_response",
+        json.dumps({"metric_id": response.json()}, indent=2, sort_keys=True),
+        "log_metric_ok",
     )
 
 
@@ -121,9 +122,10 @@ def test_log_raw_metric_various_values(
     assert response.status_code == 200
 
     # Snapshot the last response
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps({"metric_id": response.json()}, indent=2, sort_keys=True),
-        "analytics_log_metric_various_values_response",
+        "log_metric_vals",
     )
 
 
@@ -176,9 +178,10 @@ def test_log_raw_analytics_success(
     )
 
     # Snapshot test the response
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps({"analytics_id": response_data}, indent=2, sort_keys=True),
-        "analytics_log_analytics_success_response",
+        "log_anlyt_ok",
     )
 
 
@@ -231,6 +234,7 @@ def test_log_raw_analytics_complex_data(
     response_data = response.json()
 
     # Snapshot test the complex data structure
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(
             {
@@ -240,7 +244,7 @@ def test_log_raw_analytics_complex_data(
             indent=2,
             sort_keys=True,
         ),
-        "analytics_log_analytics_complex_data_response",
+        "log_anlyt_cplx",
     )
 
 

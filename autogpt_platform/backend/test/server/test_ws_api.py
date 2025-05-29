@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import WebSocket, WebSocketDisconnect
-from pytest_snapshot.plugin import Snapshot  # type: ignore
+from pytest_snapshot.plugin import Snapshot
 
 from backend.data.user import DEFAULT_USER_ID
 from backend.server.conn_manager import ConnectionManager
@@ -62,8 +62,9 @@ async def test_websocket_router_subscribe(
     # Capture and snapshot the WebSocket response message
     sent_message = mock_websocket.send_text.call_args[0][0]
     parsed_message = json.loads(sent_message)
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps(parsed_message, indent=2, sort_keys=True), "subscribe_response"
+        json.dumps(parsed_message, indent=2, sort_keys=True), "sub"
     )
 
     mock_manager.disconnect_socket.assert_called_once_with(mock_websocket)
@@ -101,8 +102,9 @@ async def test_websocket_router_unsubscribe(
     # Capture and snapshot the WebSocket response message
     sent_message = mock_websocket.send_text.call_args[0][0]
     parsed_message = json.loads(sent_message)
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps(parsed_message, indent=2, sort_keys=True), "unsubscribe_response"
+        json.dumps(parsed_message, indent=2, sort_keys=True), "unsub"
     )
 
     mock_manager.disconnect_socket.assert_called_once_with(mock_websocket)

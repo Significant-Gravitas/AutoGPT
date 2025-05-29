@@ -7,7 +7,7 @@ import fastapi
 import fastapi.testclient
 import prisma.enums
 import pytest_mock
-from pytest_snapshot.plugin import Snapshot  # type: ignore
+from pytest_snapshot.plugin import Snapshot
 
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
@@ -59,8 +59,10 @@ def test_get_agents_defaults(
     )
     assert data.pagination.total_pages == 0
     assert data.agents == []
+ 
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "default_agents_response"
+        json.dumps(response.json(), indent=2), "def_agts"
     )
     mock_db_call.assert_called_once_with(
         featured=False,
@@ -107,8 +109,9 @@ def test_get_agents_featured(
     )
     assert len(data.agents) == 1
     assert data.agents[0].slug == "featured-agent"
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "featured_agents_response"
+        json.dumps(response.json(), indent=2), "feat_agts"
     )
     mock_db_call.assert_called_once_with(
         featured=True,
@@ -155,8 +158,9 @@ def test_get_agents_by_creator(
     )
     assert len(data.agents) == 1
     assert data.agents[0].creator == "specific-creator"
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "agents_by_creator_response"
+        json.dumps(response.json(), indent=2), "agts_by_creator"
     )
     mock_db_call.assert_called_once_with(
         featured=False,
@@ -203,8 +207,9 @@ def test_get_agents_sorted(
     )
     assert len(data.agents) == 1
     assert data.agents[0].runs == 1000
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "agents_sorted_response"
+        json.dumps(response.json(), indent=2), "agts_sorted"
     )
     mock_db_call.assert_called_once_with(
         featured=False,
@@ -251,8 +256,9 @@ def test_get_agents_search(
     )
     assert len(data.agents) == 1
     assert "specific" in data.agents[0].description.lower()
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "agents_search_response"
+        json.dumps(response.json(), indent=2), "agts_search"
     )
     mock_db_call.assert_called_once_with(
         featured=False,
@@ -298,8 +304,9 @@ def test_get_agents_category(
         response.json()
     )
     assert len(data.agents) == 1
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "agents_category_response"
+        json.dumps(response.json(), indent=2), "agts_category"
     )
     mock_db_call.assert_called_once_with(
         featured=False,
@@ -348,8 +355,9 @@ def test_get_agents_pagination(
     assert len(data.agents) == 5
     assert data.pagination.current_page == 2
     assert data.pagination.page_size == 5
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "agents_pagination_response"
+        json.dumps(response.json(), indent=2), "agts_pagination"
     )
     mock_db_call.assert_called_once_with(
         featured=False,
@@ -411,8 +419,9 @@ def test_get_agent_details(
     )
     assert data.agent_name == "Test Agent"
     assert data.creator == "creator1"
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "agent_details_response"
+        json.dumps(response.json(), indent=2), "agt_details"
     )
     mock_db_call.assert_called_once_with(username="creator1", agent_name="test-agent")
 
@@ -441,8 +450,9 @@ def test_get_creators_defaults(
     )
     assert data.pagination.total_pages == 0
     assert data.creators == []
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "default_creators_response"
+        json.dumps(response.json(), indent=2), "def_creators"
     )
     mock_db_call.assert_called_once_with(
         featured=False, search_query=None, sorted_by=None, page=1, page_size=20
@@ -486,8 +496,9 @@ def test_get_creators_pagination(
     assert len(data.creators) == 5
     assert data.pagination.current_page == 2
     assert data.pagination.page_size == 5
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "creators_pagination_response"
+        json.dumps(response.json(), indent=2), "creators_pagination"
     )
     mock_db_call.assert_called_once_with(
         featured=False, search_query=None, sorted_by=None, page=2, page_size=5
@@ -535,8 +546,9 @@ def test_get_creator_details(
     data = backend.server.v2.store.model.CreatorDetails.model_validate(response.json())
     assert data.username == "creator1"
     assert data.name == "Test User"
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "creator_details_response"
+        json.dumps(response.json(), indent=2), "creator_details"
     )
     mock_db_call.assert_called_once_with(username="creator1")
 
@@ -580,8 +592,9 @@ def test_get_submissions_success(
     assert len(data.submissions) == 1
     assert data.submissions[0].name == "Test Agent"
     assert data.pagination.current_page == 1
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "submissions_success_response"
+        json.dumps(response.json(), indent=2), "sub_success"
     )
     mock_db_call.assert_called_once_with(user_id="test-user-id", page=1, page_size=20)
 
@@ -610,8 +623,9 @@ def test_get_submissions_pagination(
     )
     assert data.pagination.current_page == 2
     assert data.pagination.page_size == 5
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
-        json.dumps(response.json(), indent=2), "submissions_pagination_response"
+        json.dumps(response.json(), indent=2), "sub_pagination"
     )
     mock_db_call.assert_called_once_with(user_id="test-user-id", page=2, page_size=5)
 

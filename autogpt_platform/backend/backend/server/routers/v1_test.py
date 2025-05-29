@@ -5,7 +5,7 @@ import autogpt_libs.auth.depends
 import fastapi
 import fastapi.testclient
 import pytest_mock
-from pytest_snapshot.plugin import Snapshot  # type: ignore
+from pytest_snapshot.plugin import Snapshot
 
 import backend.server.routers.v1 as v1_routes
 from backend.data.credit import AutoTopUpConfig
@@ -57,9 +57,10 @@ def test_get_or_create_user_route(
     assert response.status_code == 200
     response_data = response.json()
 
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "auth_get_or_create_user_response",
+        "auth_user",
     )
 
 
@@ -79,9 +80,10 @@ def test_update_user_email_route(
     response_data = response.json()
     assert response_data["email"] == "newemail@example.com"
 
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "auth_update_email_response",
+        "auth_email",
     )
 
 
@@ -121,9 +123,10 @@ def test_get_graph_blocks(
     assert len(response_data) == 1
     assert response_data[0]["id"] == "test-block"
 
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "blocks_get_all_response",
+        "blks_all",
     )
 
 
@@ -154,9 +157,10 @@ def test_execute_graph_block(
     assert response.status_code == 200
     response_data = response.json()
 
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "blocks_execute_response",
+        "blks_exec",
     )
 
 
@@ -190,9 +194,10 @@ def test_get_user_credits(
     response_data = response.json()
     assert response_data["credits"] == 1000
 
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "credits_get_balance_response",
+        "cred_bal",
     )
 
 
@@ -214,9 +219,10 @@ def test_request_top_up(
     response_data = response.json()
     assert "checkout_url" in response_data
 
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "credits_top_up_request_response",
+        "cred_topup_req",
     )
 
 
@@ -239,9 +245,10 @@ def test_get_auto_top_up(
     assert response_data["threshold"] == 100
     assert response_data["amount"] == 500
 
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "credits_get_auto_top_up_response",
+        "cred_topup_cfg",
     )
 
 
@@ -272,9 +279,10 @@ def test_get_graphs(
     assert len(response_data) == 1
     assert response_data[0]["id"] == "graph-123"
 
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "graphs_get_all_response",
+        "grphs_all",
     )
 
 
@@ -303,9 +311,10 @@ def test_get_graph(
     response_data = response.json()
     assert response_data["id"] == "graph-123"
 
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "graphs_get_single_response",
+        "grph_single",
     )
 
 
@@ -358,9 +367,10 @@ def test_delete_graph(
     response_data = response.json()
     assert response_data["version_counts"] == 3
 
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "graphs_delete_response",
+        "grphs_del",
     )
 
 

@@ -69,7 +69,8 @@ def test_api_endpoint(snapshot: Snapshot):
     response = client.get("/api/endpoint")
     
     # Snapshot the response
-    snapshot.assert_match(
+    snapshot.snapshot_dir = "snapshots"
+snapshot.assert_match(
         json.dumps(response.json(), indent=2, sort_keys=True),
         "endpoint_response"
     )
@@ -89,6 +90,7 @@ response_data = response.json()
 response_data.pop("created_at", None)
 response_data.pop("id", None)
 
+snapshot.snapshot_dir = "snapshots"
 snapshot.assert_match(
     json.dumps(response_data, indent=2, sort_keys=True),
     "static_response_data"
@@ -121,6 +123,7 @@ def test_endpoint_success(snapshot: Snapshot):
     assert data["status"] == "success"
     
     # Snapshot the full response
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(data, indent=2, sort_keys=True),
         "endpoint_success_response"
@@ -154,6 +157,7 @@ def test_external_api_call(mocker, snapshot):
     response = client.post("/api/process")
     assert response.status_code == 200
     
+    snapshot.snapshot_dir = "snapshots"
     snapshot.assert_match(
         json.dumps(response.json(), indent=2, sort_keys=True),
         "process_with_external_response"
