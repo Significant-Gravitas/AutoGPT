@@ -164,6 +164,7 @@ export default function SignupPage() {
             onVerify={turnstile.handleVerify}
             onExpire={turnstile.handleExpire}
             onError={turnstile.handleError}
+            setWidgetId={turnstile.setWidgetId}
             action="signup"
             shouldRender={turnstile.shouldRender}
           />
