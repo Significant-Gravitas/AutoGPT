@@ -1,6 +1,3 @@
-# Updated SendWebRequestBlock to support multipart requests with repeated field names (e.g. "image[]") and to
-# automatically switch between JSON and form‑data depending on the `json_format` flag and presence of files.
-
 import json
 import logging
 from enum import Enum
@@ -33,17 +30,6 @@ class HttpMethod(Enum):
 
 
 class SendWebRequestBlock(Block):
-    """A versatile HTTP client block that can post JSON, x‑www‑form‑urlencoded **or** multipart‑form bodies.
-
-    **Key behaviour changes** (May 2025):
-    * If *any* files are supplied, the request is always sent as *multipart/form‑data* ‑ every non‑file
-      field in `body` is placed into the same multipart envelope (i.e. `data=`).
-    * `files` can now map a single field‑name to **one or many** MediaFileType values.  Repeating the same
-      key is what the OpenAI Images Edit endpoint expects (e.g. `image[]`).
-    * If `json_format=True` **and** files are supplied we raise an early `ValueError` – JSON bodies can't be
-      combined with multipart in Requests without losing fields.
-    """
-
     class Input(BlockSchema):
         url: str = SchemaField(
             description="The URL to send the request to",
@@ -122,10 +108,6 @@ class SendWebRequestBlock(Block):
             files_payload.append((files_name, (Path(abs_path).name, handle, mime)))
 
         return files_payload, open_handles
-
-    # ──────────────────────────────────────────────────────────────────
-    #                               Run
-    # ──────────────────────────────────────────────────────────────────
 
     def run(self, input_data: Input, *, graph_exec_id: str, **kwargs) -> BlockOutput:
         # ─── Parse/normalise body ────────────────────────────────────
