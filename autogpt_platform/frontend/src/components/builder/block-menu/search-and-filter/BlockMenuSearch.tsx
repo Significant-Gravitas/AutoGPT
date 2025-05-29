@@ -81,7 +81,15 @@ const BlockMenuSearch: React.FC = ({}) => {
         setLoadingMore(false);
       }
     },
-    [searchQuery, searchId, filters, api, setSearchData, pageSize],
+    [
+      searchQuery,
+      searchId,
+      filters,
+      api,
+      setCategoryCounts,
+      setSearchData,
+      pageSize,
+    ],
   );
 
   const handleScroll = useCallback(() => {
@@ -120,7 +128,7 @@ const BlockMenuSearch: React.FC = ({}) => {
   return (
     <div
       ref={scrollRef}
-      className="scrollbar-thumb-rounded h-full space-y-4 overflow-y-auto py-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200 transition-all duration-200"
+      className="scrollbar-thumb-rounded h-full space-y-4 overflow-y-auto py-4 transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200"
     >
       {searchData.length !== 0 && <FiltersList />}
       <SearchList

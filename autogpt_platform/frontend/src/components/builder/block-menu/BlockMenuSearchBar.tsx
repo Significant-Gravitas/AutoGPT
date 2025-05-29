@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Search, X } from "lucide-react";
-import React, { useRef, useState, useCallback, useEffect } from "react";
+import React, { useRef, useState, useEffect, useMemo } from "react";
 import { useBlockMenuContext } from "./block-menu-provider";
 import { Button } from "@/components/ui/button";
 import debounce from "lodash/debounce";
@@ -18,15 +18,16 @@ const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
   const { searchQuery, setSearchQuery, searchId, setSearchId } =
     useBlockMenuContext();
 
-  const debouncedSetSearchQuery = useCallback(
-    debounce((value: string) => {
-      setSearchQuery(value);
-      if (value.length === 0) {
-        setSearchId(undefined);
-      } else if (!searchId) {
-        setSearchId(crypto.randomUUID());
-      }
-    }, 500),
+  const debouncedSetSearchQuery = useMemo(
+    () =>
+      debounce((value: string) => {
+        setSearchQuery(value);
+        if (value.length === 0) {
+          setSearchId(undefined);
+        } else if (!searchId) {
+          setSearchId(crypto.randomUUID());
+        }
+      }, 500),
     [setSearchQuery, setSearchId, searchId],
   );
 
@@ -35,6 +36,13 @@ const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
       debouncedSetSearchQuery.cancel();
     };
   }, [debouncedSetSearchQuery]);
+
+  const handleClear = () => {
+    setLocalQuery("");
+    setSearchQuery("");
+    setSearchId(undefined);
+    debouncedSetSearchQuery.cancel();
+  };
 
   return (
     <div
@@ -58,6 +66,16 @@ const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
           "placeholder:text-zinc-400 focus:shadow-none focus:outline-none focus:ring-0",
         )}
       />
+      {localQuery.length > 0 && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleClear}
+          className="h-6 w-6 p-0 hover:bg-zinc-100"
+        >
+          <X className="h-4 w-4 text-zinc-500" />
+        </Button>
+      )}
     </div>
   );
 };
