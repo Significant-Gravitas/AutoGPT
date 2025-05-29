@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { beautifyString, cn } from "@/lib/utils";
 import { Plus } from "lucide-react";
 import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
@@ -45,7 +45,7 @@ const IntegrationBlock: IntegrationBlockComponent = ({
     <Button
       className={cn(
         "group flex h-16 w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 px-[0.875rem] py-[0.625rem] text-start shadow-none",
-        "hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:pointer-events-none",
+        "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:pointer-events-none",
       )}
       {...rest}
     >
@@ -55,6 +55,7 @@ const IntegrationBlock: IntegrationBlockComponent = ({
             src={icon_url}
             alt="integration-icon"
             fill
+            sizes="2.25rem"
             className="w-full object-contain group-disabled:opacity-50"
           />
         )}
@@ -65,7 +66,7 @@ const IntegrationBlock: IntegrationBlockComponent = ({
             "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
           )}
         >
-          {highlightText(title, highlightedText)}
+          {title && highlightText(beautifyString(title), highlightedText)}
         </span>
         <span
           className={cn(

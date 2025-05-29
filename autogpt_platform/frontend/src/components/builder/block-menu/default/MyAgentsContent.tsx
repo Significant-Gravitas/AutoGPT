@@ -1,58 +1,66 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import UGCAgentBlock from "../UGCAgentBlock";
-import { myAgentData } from "../../testing_data";
-
-export interface UserAgent {
-  id: number;
-  title: string;
-  edited_time: string;
-  version: number;
-  image_url: string;
-}
+import { usePagination } from "@/hooks/usePagination";
+import ErrorState from "../ErrorState";
 
 const MyAgentsContent: React.FC = () => {
-  const [agents, setAgents] = useState<UserAgent[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-
-  // TEMPORARY FETCHING
-  useEffect(() => {
-    const fetchAgents = async () => {
-      try {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        setAgents(myAgentData);
-        setLoading(false);
-      } catch (err) {
-        setLoading(false);
-      }
-    };
-
-    fetchAgents();
-  }, []);
+  const {
+    data: agents,
+    loading,
+    loadingMore,
+    hasMore,
+    error,
+    scrollRef,
+    refresh,
+  } = usePagination({
+    request: { apiType: "library-agents" },
+    pageSize: 10,
+  });
 
   if (loading) {
     return (
       <div className="w-full space-y-3 p-4">
-        {Array(5)
-          .fill(null)
-          .map((_, index) => (
-            <UGCAgentBlock.Skeleton key={index} />
-          ))}
+        {[0, 1, 2, 3, 4].map((index) => (
+          <UGCAgentBlock.Skeleton key={index} />
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="h-full p-4">
+        <ErrorState
+          title="Failed to load library agents"
+          error={error}
+          onRetry={refresh}
+        />
       </div>
     );
   }
 
   return (
-    <div className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
+    <div
+      ref={scrollRef}
+      className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200"
+    >
       <div className="w-full space-y-3 px-4 pb-4">
         {agents.map((agent) => (
           <UGCAgentBlock
             key={agent.id}
-            title={agent.title}
-            edited_time={agent.edited_time}
-            version={agent.version}
+            title={agent.name}
+            edited_time={agent.updated_at}
+            version={agent.graph_version}
             image_url={agent.image_url}
           />
         ))}
+        {loadingMore && hasMore && (
+          <>
+            {Array.from({ length: 3 }).map((_, index) => (
+              <UGCAgentBlock.Skeleton key={`loading-${index}`} />
+            ))}
+          </>
+        )}
       </div>
     </div>
   );

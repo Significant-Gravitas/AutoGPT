@@ -31,7 +31,7 @@ const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
     <Button
       className={cn(
         "group flex h-[4.375rem] w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 p-[0.625rem] pr-[0.875rem] text-start shadow-none",
-        "hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:pointer-events-none",
+        "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:pointer-events-none",
         className,
       )}
       {...rest}
@@ -42,6 +42,7 @@ const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
             src={image_url}
             alt="integration-icon"
             fill
+            sizes="5.625rem"
             className="w-full object-contain group-disabled:opacity-50"
           />
         )}

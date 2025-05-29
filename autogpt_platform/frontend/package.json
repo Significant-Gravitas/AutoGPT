@@ -80,6 +80,7 @@
     "react-markdown": "^9.0.3",
     "react-modal": "^3.16.3",
     "react-shepherd": "^6.1.8",
+    "react-timeago": "^8.2.0",
     "recharts": "^2.15.3",
     "tailwind-merge": "^2.6.0",
     "tailwind-scrollbar": "^4.0.2",

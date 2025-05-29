@@ -2,81 +2,86 @@ import React, { useEffect, useState } from "react";
 import SearchHistoryChip from "../SearchHistoryChip";
 import IntegrationChip from "../IntegrationChip";
 import Block from "../Block";
-
-import {
-  integrationsData,
-  topBlocksData,
-  recentSearchesData,
-} from "../../testing_data";
 import { useBlockMenuContext } from "../block-menu-provider";
+import {
+  CredentialsProviderName,
+  SuggestionsResponse,
+} from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import ErrorState from "../ErrorState";
 
 const SuggestionContent: React.FC = () => {
-  const { setIntegration, setDefaultState, setSearchQuery } =
+  const { setIntegration, setDefaultState, setSearchQuery, addNode } =
     useBlockMenuContext();
 
-  const [recentSearches, setRecentSearches] = useState<string[] | null>(null);
-  const [integrations, setIntegrations] = useState<
-    { icon_url: string; name: string }[] | null
-  >(null);
-  const [topBlocks, setTopBlocks] = useState<
-    { title: string; description: string }[] | null
-  >(null);
+  const [suggestionsData, setSuggestionsData] =
+    useState<SuggestionsResponse | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // TEMPORARY FETCHING
+  const api = useBackendAPI();
+
+  const fetchSuggestions = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await api.getSuggestions();
+      setSuggestionsData(response);
+    } catch (err) {
+      console.error("Error fetching data:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to load suggestions",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const fetchRecentSearches = async (): Promise<string[]> => {
-          await new Promise((resolve) => setTimeout(resolve, 300));
-          return recentSearchesData;
-        };
+    fetchSuggestions();
+  }, [api]);
 
-        const fetchIntegrations = async (): Promise<
-          { icon_url: string; name: string }[]
-        > => {
-          await new Promise((resolve) => setTimeout(resolve, 400));
-          return integrationsData;
-        };
-
-        const fetchTopBlocks = async (): Promise<
-          { title: string; description: string }[]
-        > => {
-          await new Promise((resolve) => setTimeout(resolve, 600));
-          return topBlocksData;
-        };
-
-        const [
-          recentSearchesDataFetched,
-          integrationsDataFetched,
-          topBlocksDataFetched,
-        ] = await Promise.all([
-          fetchRecentSearches(),
-          fetchIntegrations(),
-          fetchTopBlocks(),
-        ]);
-
-        setRecentSearches(recentSearchesDataFetched);
-        setIntegrations(integrationsDataFetched);
-        setTopBlocks(topBlocksDataFetched);
-      } catch (error) {
-        console.error("Error fetching data:", error);
-      }
-    };
-
-    fetchData();
-  }, []);
+  if (error) {
+    return (
+      <div className="h-full p-4">
+        <ErrorState
+          title="Failed to load suggestions"
+          error={error}
+          onRetry={fetchSuggestions}
+        />
+      </div>
+    );
+  }
 
   return (
-    <div className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-zinc-200">
+    <div className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200">
       <div className="w-full space-y-6 pb-4">
         {/* Recent Searches */}
-        <div className="space-y-2.5">
+        <div className="-mb-2 space-y-2.5">
           <p className="px-4 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
             Recent searches
           </p>
-          <div className="flex flex-nowrap gap-2 overflow-x-auto scrollbar-hide">
-            {recentSearches
-              ? recentSearches.map((search, index) => (
+          <div className="scrollbar-thumb-rounded flex flex-nowrap gap-2 overflow-x-auto transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200">
+            {" "}
+            {!loading && suggestionsData
+              ? suggestionsData.recent_searches.map((search, index) => (
+                  <SearchHistoryChip
+                    key={`search-${index}`}
+                    content={search}
+                    className={index === 0 ? "ml-4" : ""}
+                    onClick={() => setSearchQuery(search)}
+                  />
+                ))
+              : Array(3)
+                  .fill(0)
+                  .map((_, index) => (
+                    <SearchHistoryChip.Skeleton
+                      key={`search-${index}`}
+                      className={index === 0 ? "ml-4" : ""}
+                    />
+                  ))}
+            {!loading && suggestionsData
+              ? suggestionsData.recent_searches.map((search, index) => (
                   <SearchHistoryChip
                     key={`search-${index}`}
                     content={search}
@@ -97,19 +102,19 @@ const SuggestionContent: React.FC = () => {
 
         {/* Integrations */}
         <div className="space-y-2.5 px-4">
-          <p className="font-sans text-xs font-medium leading-[1.25rem] text-zinc-500">
+          <p className="font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
             Integrations
           </p>
           <div className="grid grid-cols-3 grid-rows-2 gap-2">
-            {integrations
-              ? integrations.map((integration, index) => (
+            {!loading && suggestionsData
+              ? suggestionsData.providers.map((provider, index) => (
                   <IntegrationChip
                     key={`integration-${index}`}
-                    icon_url={integration.icon_url}
-                    name={integration.name}
+                    icon_url={`/integrations/${provider}.png`}
+                    name={provider}
                     onClick={() => {
                       setDefaultState("integrations");
-                      setIntegration(integration.name);
+                      setIntegration(provider as CredentialsProviderName);
                     }}
                   />
                 ))
@@ -129,12 +134,15 @@ const SuggestionContent: React.FC = () => {
             Top blocks
           </p>
           <div className="space-y-2">
-            {topBlocks
-              ? topBlocks.map((block, index) => (
+            {!loading && suggestionsData
+              ? suggestionsData.top_blocks.map((block, index) => (
                   <Block
                     key={`block-${index}`}
-                    title={block.title}
+                    title={block.name}
                     description={block.description}
+                    onClick={() => {
+                      addNode(block);
+                    }}
                   />
                 ))
               : Array(3)

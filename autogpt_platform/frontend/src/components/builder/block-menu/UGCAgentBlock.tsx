@@ -5,10 +5,11 @@ import { Plus } from "lucide-react";
 import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
 import { highlightText } from "./IntegrationBlock";
+import TimeAgo from "react-timeago";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
-  edited_time?: string;
+  edited_time?: Date;
   version?: number;
   image_url?: string;
   highlightedText?: string;
@@ -31,7 +32,7 @@ const UGCAgentBlock: UGCAgentBlockComponent = ({
     <Button
       className={cn(
         "group flex h-[4.375rem] w-full min-w-[7.5rem] items-center justify-start gap-3 whitespace-normal rounded-[0.75rem] bg-zinc-50 p-[0.625rem] pr-[0.875rem] text-start shadow-none",
-        "hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:pointer-events-none",
+        "hover:cursor-default hover:bg-zinc-100 focus:ring-0 active:bg-zinc-100 active:ring-1 active:ring-zinc-300 disabled:pointer-events-none",
         className,
       )}
       {...rest}
@@ -42,6 +43,7 @@ const UGCAgentBlock: UGCAgentBlockComponent = ({
             src={image_url}
             alt="integration-icon"
             fill
+            sizes="5.625rem"
             className="w-full object-contain group-disabled:opacity-50"
           />
         )}
@@ -60,8 +62,7 @@ const UGCAgentBlock: UGCAgentBlockComponent = ({
               "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
             )}
           >
-            {/* BLOCK MENU TODO: We need to create a utility to convert the edit time into relative time (e.g., "2 hours ago") */}
-            Edited on {edited_time}
+            Edited {edited_time && <TimeAgo date={edited_time} />}
           </span>
 
           <span className="font-sans text-zinc-400">•</span>

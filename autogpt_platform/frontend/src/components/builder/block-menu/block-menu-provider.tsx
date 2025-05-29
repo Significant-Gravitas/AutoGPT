@@ -1,54 +1,15 @@
 "use client";
 
+import {
+  Block,
+  CredentialsProviderName,
+  LibraryAgent,
+  Provider,
+  StoreAgent,
+} from "@/lib/autogpt-server-api";
 import { createContext, ReactNode, useContext, useState } from "react";
 
-interface BaseSearchItem {
-  type: "marketing_agent" | "integration_block" | "block" | "my_agent" | "ai";
-}
-
-interface MarketingAgentItem extends BaseSearchItem {
-  type: "marketing_agent";
-  title: string;
-  image_url: string;
-  creator_name: string;
-  number_of_runs: number;
-}
-
-interface AIItem extends BaseSearchItem {
-  type: "ai";
-  title: string;
-  description: string;
-  ai_name: string;
-}
-
-interface BlockItem extends BaseSearchItem {
-  type: "block";
-  title: string;
-  description: string;
-}
-
-interface IntegrationItem extends BaseSearchItem {
-  type: "integration_block";
-  title: string;
-  description: string;
-  icon_url: string;
-  number_of_blocks: number;
-}
-
-interface MyAgentItem extends BaseSearchItem {
-  type: "my_agent";
-  title: string;
-  image_url: string;
-  edited_time: string;
-  version: number;
-}
-
-export type SearchItem =
-  | MarketingAgentItem
-  | AIItem
-  | BlockItem
-  | IntegrationItem
-  | MyAgentItem;
+export type SearchItem = Block | Provider | LibraryAgent | StoreAgent;
 
 export type DefaultStateType =
   | "suggestion"
@@ -63,9 +24,9 @@ export type DefaultStateType =
 export type CategoryKey =
   | "blocks"
   | "integrations"
+  | "providers"
   | "marketplace_agents"
-  | "my_agents"
-  | "templates";
+  | "my_agents";
 
 export interface Filters {
   categories: {
@@ -73,34 +34,52 @@ export interface Filters {
     integrations: boolean;
     marketplace_agents: boolean;
     my_agents: boolean;
-    templates: boolean;
+    providers: boolean;
   };
   createdBy: string[];
 }
 
+export type CategoryCounts = Record<CategoryKey, number>;
+
 interface BlockMenuContextType {
   defaultState: DefaultStateType;
   setDefaultState: React.Dispatch<React.SetStateAction<DefaultStateType>>;
-  integration: string;
-  setIntegration: React.Dispatch<React.SetStateAction<string>>;
+  integration: CredentialsProviderName | null;
+  setIntegration: React.Dispatch<
+    React.SetStateAction<CredentialsProviderName | null>
+  >;
   searchQuery: string;
   setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
+  searchId: string | undefined;
+  setSearchId: React.Dispatch<React.SetStateAction<string | undefined>>;
   filters: Filters;
   setFilters: React.Dispatch<React.SetStateAction<Filters>>;
   creators: string[];
   setCreators: React.Dispatch<React.SetStateAction<string[]>>;
   searchData: SearchItem[];
   setSearchData: React.Dispatch<React.SetStateAction<SearchItem[]>>;
+  categoryCounts: CategoryCounts;
+  setCategoryCounts: React.Dispatch<React.SetStateAction<CategoryCounts>>;
+  addNode: (block: Block) => void;
 }
 
 export const BlockMenuContext = createContext<BlockMenuContextType>(
   {} as BlockMenuContextType,
 );
 
-export function BlockMenuStateProvider({ children }: { children: ReactNode }) {
+interface BlockMenuStateProviderProps {
+  children: ReactNode;
+  addNode: (block: Block) => void;
+}
+
+export function BlockMenuStateProvider({
+  children,
+  addNode,
+}: BlockMenuStateProviderProps) {
   const [defaultState, setDefaultState] =
     useState<DefaultStateType>("suggestion");
-  const [integration, setIntegration] = useState("");
+  const [integration, setIntegration] =
+    useState<CredentialsProviderName | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filters, setFilters] = useState<Filters>({
     categories: {
@@ -108,13 +87,23 @@ export function BlockMenuStateProvider({ children }: { children: ReactNode }) {
       integrations: false,
       marketplace_agents: false,
       my_agents: false,
-      templates: false,
+      providers: false,
     },
     createdBy: [],
   });
   const [searchData, setSearchData] = useState<SearchItem[]>([]);
 
   const [creators, setCreators] = useState<string[]>([]);
+
+  const [searchId, setSearchId] = useState<string | undefined>(undefined);
+
+  const [categoryCounts, setCategoryCounts] = useState<CategoryCounts>({
+    blocks: 0,
+    integrations: 0,
+    marketplace_agents: 0,
+    my_agents: 0,
+    providers: 0,
+  });
 
   return (
     <BlockMenuContext.Provider
@@ -125,12 +114,17 @@ export function BlockMenuStateProvider({ children }: { children: ReactNode }) {
         setIntegration,
         searchQuery,
         setSearchQuery,
+        searchId,
+        setSearchId,
         creators,
         setCreators,
         filters,
         setFilters,
         searchData,
         setSearchData,
+        categoryCounts,
+        setCategoryCounts,
+        addNode,
       }}
     >
       {children}
