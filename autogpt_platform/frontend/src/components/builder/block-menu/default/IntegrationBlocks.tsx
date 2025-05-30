@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import React, { useState, useEffect, Fragment } from "react";
+import React, { useState, useEffect, Fragment, useCallback } from "react";
 import IntegrationBlock from "../IntegrationBlock";
 import { useBlockMenuContext } from "../block-menu-provider";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
@@ -15,7 +15,7 @@ const IntegrationBlocks: React.FC = ({}) => {
 
   const api = useBackendAPI();
 
-  const fetchBlocks = async () => {
+  const fetchBlocks = useCallback(async () => {
     if (integration) {
       try {
         setLoading(true);
@@ -33,11 +33,11 @@ const IntegrationBlocks: React.FC = ({}) => {
         setLoading(false);
       }
     }
-  };
+  }, [api, integration]);
 
   useEffect(() => {
     fetchBlocks();
-  }, [api, integration]);
+  }, [api, integration, fetchBlocks]);
 
   if (loading) {
     return (

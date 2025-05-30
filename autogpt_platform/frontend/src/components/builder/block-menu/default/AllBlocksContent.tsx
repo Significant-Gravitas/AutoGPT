@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Fragment } from "react";
+import React, { useState, useEffect, Fragment, useCallback } from "react";
 import Block from "../Block";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -20,7 +20,7 @@ const AllBlocksContent: React.FC = () => {
 
   const api = useBackendAPI();
 
-  const fetchBlocks = async () => {
+  const fetchBlocks = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -34,11 +34,11 @@ const AllBlocksContent: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [api]);
 
   useEffect(() => {
     fetchBlocks();
-  }, [api]);
+  }, [api, fetchBlocks]);
 
   const fetchMoreBlockOfACategory = async (category: string) => {
     try {
