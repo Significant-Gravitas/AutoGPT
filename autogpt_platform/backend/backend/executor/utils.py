@@ -1,5 +1,7 @@
 import logging
-from typing import TYPE_CHECKING, Any, Optional, cast
+from collections import defaultdict
+from multiprocessing.pool import AsyncResult
+from typing import TYPE_CHECKING, Any, Callable, Optional, cast
 
 from autogpt_libs.utils.cache import thread_cached
 from pydantic import BaseModel
@@ -748,3 +750,72 @@ def add_graph_execution(
             stats=GraphExecutionStats(error=str(e)),
         )
         raise
+
+
+# ============ Execution Output Helpers ============ #
+
+
+class ExecutionOutputEntry(BaseModel):
+    node: Node
+    node_exec_id: str
+    data: BlockData
+
+
+class NodeExecutionProgress:
+    def __init__(self, drain_output_queue: Callable[[], None]):
+        self.output: dict[str, list[ExecutionOutputEntry]] = defaultdict(list)
+        self.tasks: dict[str, AsyncResult] = {}
+        self.drain_output_queue = drain_output_queue
+
+    def add_task(self, node_exec_id: str, task: AsyncResult):
+        self.tasks[node_exec_id] = task
+
+    def add_output(self, output: ExecutionOutputEntry):
+        self.output[output.node_exec_id].append(output)
+
+    def pop_output(self) -> ExecutionOutputEntry | None:
+        exec_id = self._next_exec()
+        if not exec_id:
+            return None
+
+        if self._pop_done_task(exec_id):
+            return self.pop_output()
+
+        if next_output := self.output[exec_id]:
+            return next_output.pop(0)
+
+        return None
+
+    def is_done(self, wait_time: float = 0.0) -> bool:
+        exec_id = self._next_exec()
+        if not exec_id:
+            return True
+
+        if self._pop_done_task(exec_id):
+            return self.is_done(wait_time)
+
+        if wait_time <= 0:
+            return False
+
+        self.tasks[exec_id].wait(wait_time)
+        return self.is_done(0)
+
+    def _pop_done_task(self, exec_id: str) -> bool:
+        task = self.tasks.get(exec_id)
+        if not task:
+            return True
+
+        if not task.ready():
+            return False
+
+        self.drain_output_queue()
+        if self.output[exec_id]:
+            return False
+
+        self.tasks.pop(exec_id)
+        return True
+
+    def _next_exec(self) -> str | None:
+        if not self.tasks:
+            return None
+        return next(iter(self.tasks.keys()))
