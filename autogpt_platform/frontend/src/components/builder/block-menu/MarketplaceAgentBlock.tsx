@@ -61,7 +61,7 @@ const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
         <div className="flex items-center space-x-2.5">
           <span
             className={cn(
-              "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
+              "truncate font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
             )}
           >
             By {creator_name}
@@ -71,7 +71,7 @@ const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
 
           <span
             className={cn(
-              "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
+              "truncate font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
             )}
           >
             {number_of_runs} runs
@@ -79,7 +79,7 @@ const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
           <span className="font-sans text-zinc-400">•</span>
           <Link
             href={`/marketplace/agent/${creator_name}/${slug}`}
-            className="flex gap-0.5"
+            className="flex gap-0.5 truncate"
           >
             <span className="font-sans text-xs leading-5 text-blue-700 underline">
               Agent page
