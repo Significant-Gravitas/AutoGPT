@@ -27,25 +27,6 @@ const PaginatedBlocksContent: React.FC<PaginatedBlocksContentProps> = ({
     pageSize,
   });
 
-  if (loading) {
-    return (
-      <div className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200">
-        <div className="w-full px-4 pb-4">
-          {[0, 1, 3].map((categoryIndex) => (
-            <Fragment key={categoryIndex}>
-              {categoryIndex > 0 && (
-                <div className="my-4 h-[1px] w-full bg-zinc-100" />
-              )}
-              {[0, 1, 2].map((blockIndex) => (
-                <Block.Skeleton key={`${categoryIndex}-${blockIndex}`} />
-              ))}
-            </Fragment>
-          ))}
-        </div>
-      </div>
-    );
-  }
-
   if (error) {
     return (
       <div className="h-full w-full px-4 pb-4">
