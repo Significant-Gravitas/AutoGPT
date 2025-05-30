@@ -41,7 +41,24 @@ class FluxKontextModelName(str, Enum):
         }[self]
 
 
-class FluxKontextBlock(Block):
+class AspectRatio(str, Enum):
+    MATCH_INPUT_IMAGE = "match_input_image"
+    ASPECT_1_1 = "1:1"
+    ASPECT_16_9 = "16:9"
+    ASPECT_9_16 = "9:16"
+    ASPECT_4_3 = "4:3"
+    ASPECT_3_4 = "3:4"
+    ASPECT_3_2 = "3:2"
+    ASPECT_2_3 = "2:3"
+    ASPECT_4_5 = "4:5"
+    ASPECT_5_4 = "5:4"
+    ASPECT_21_9 = "21:9"
+    ASPECT_9_21 = "9:21"
+    ASPECT_2_1 = "2:1"
+    ASPECT_1_2 = "1:2"
+
+
+class AIImageEditorBlock(Block):
     class Input(BlockSchema):
         credentials: CredentialsMetaInput[
             Literal[ProviderName.REPLICATE], Literal["api_key"]
@@ -57,9 +74,9 @@ class FluxKontextBlock(Block):
             default=None,
             title="Input Image",
         )
-        aspect_ratio: str = SchemaField(
+        aspect_ratio: AspectRatio = SchemaField(
             description="Aspect ratio of the generated image",
-            default="match_input_image",
+            default=AspectRatio.MATCH_INPUT_IMAGE,
             title="Aspect Ratio",
             advanced=False,
         )
@@ -87,12 +104,12 @@ class FluxKontextBlock(Block):
                 "and optional reference image to generate a modified image."
             ),
             categories={BlockCategory.AI, BlockCategory.MULTIMEDIA},
-            input_schema=FluxKontextBlock.Input,
-            output_schema=FluxKontextBlock.Output,
+            input_schema=AIImageEditorBlock.Input,
+            output_schema=AIImageEditorBlock.Output,
             test_input={
                 "prompt": "Add a hat to the cat",
                 "input_image": "https://example.com/cat.png",
-                "aspect_ratio": "match_input_image",
+                "aspect_ratio": AspectRatio.MATCH_INPUT_IMAGE,
                 "seed": None,
                 "model": FluxKontextModelName.PRO,
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -119,7 +136,7 @@ class FluxKontextBlock(Block):
             model_name=input_data.model.api_name,
             prompt=input_data.prompt,
             input_image=input_data.input_image,
-            aspect_ratio=input_data.aspect_ratio,
+            aspect_ratio=input_data.aspect_ratio.value,
             seed=seed,
         )
         yield "image_url", result
