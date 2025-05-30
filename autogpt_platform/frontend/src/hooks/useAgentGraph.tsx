@@ -241,6 +241,7 @@ export default function useAgentGraph(
                 isStatic: link.is_static,
                 beadUp: 0,
                 beadDown: 0,
+                beadData: new Map<string, NodeExecutionResult["status"]>(),
               },
               markerEnd: {
                 type: MarkerType.ArrowClosed,
@@ -303,19 +304,9 @@ export default function useAgentGraph(
 
   const updateEdgeBeads = useCallback(
     (executionData: NodeExecutionResult) => {
-      const { node_id, status, node_exec_id } = executionData;
-
       setEdges((edges) => {
         return edges.map((e) => {
           const edge = { ...e, data: { ...e.data } } as CustomEdge;
-
-          // Initialize execution tracking if not exists
-          if (!edge.data?.beadData) {
-            edge.data!.beadData = new Map<
-              string,
-              NodeExecutionResult["status"]
-            >();
-          }
           const execStatus = edge.data!.beadData!;
 
           // Update execution status for input edges
