@@ -175,7 +175,7 @@ export default function ResetPasswordPage() {
                       <PasswordInput {...field} />
                     </FormControl>
                     <FormDescription className="text-sm font-normal leading-tight text-slate-500">
-                      Password needs to be at least 6 characters long
+                      Password needs to be at least 12 characters long
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
