@@ -46,7 +46,7 @@ const PaginatedBlocksContent: React.FC<PaginatedBlocksContentProps> = ({
 
   if (error) {
     return (
-      <div className="w-full px-4 pb-4">
+      <div className="h-full w-full px-4 pb-4">
         <ErrorState
           title="Failed to load blocks"
           error={error}
