@@ -1,10 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { Plus } from "lucide-react";
+import { ExternalLink, Plus } from "lucide-react";
 import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
 import { highlightText } from "./IntegrationBlock";
+import Link from "next/link";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   title?: string;
@@ -12,6 +13,7 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   number_of_runs?: number;
   image_url?: string;
   highlightedText?: string;
+  slug: string;
 }
 
 interface MarketplaceAgentBlockComponent extends React.FC<Props> {
@@ -25,6 +27,7 @@ const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
   number_of_runs,
   className,
   highlightedText,
+  slug,
   ...rest
 }) => {
   return (
@@ -73,6 +76,16 @@ const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
           >
             {number_of_runs} runs
           </span>
+          <span className="font-sans text-zinc-400">•</span>
+          <Link
+            href={`/marketplace/agent/${creator_name}/${slug}`}
+            className="flex gap-0.5"
+          >
+            <span className="font-sans text-xs leading-5 text-blue-700 underline">
+              Agent page
+            </span>
+            <ExternalLink className="h-4 w-4 text-blue-700" strokeWidth={1} />
+          </Link>
         </div>
       </div>
       <div

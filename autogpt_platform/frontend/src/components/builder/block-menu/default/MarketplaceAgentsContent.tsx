@@ -48,6 +48,7 @@ const MarketplaceAgentsContent: React.FC = () => {
         {agents.map((agent) => (
           <MarketplaceAgentBlock
             key={agent.slug}
+            slug={agent.slug}
             title={agent.agent_name}
             image_url={agent.agent_image}
             creator_name={agent.creator}
