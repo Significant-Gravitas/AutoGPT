@@ -71,9 +71,9 @@ const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
           variant="ghost"
           size="sm"
           onClick={handleClear}
-          className="h-6 w-6 p-0 hover:bg-zinc-100"
+          className="p-0 hover:bg-transparent"
         >
-          <X className="h-4 w-4 text-zinc-500" />
+          <X className="h-6 w-6 text-zinc-700" strokeWidth={2} />
         </Button>
       )}
     </div>
