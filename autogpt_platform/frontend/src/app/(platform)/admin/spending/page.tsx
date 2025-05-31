@@ -3,14 +3,16 @@ import type { CreditTransactionType } from "@/lib/autogpt-server-api";
 import { withRoleAccess } from "@/lib/withRoleAccess";
 import { Suspense } from "react";
 
+type SpendingDashboardPageSearchParams = {
+  page?: string;
+  status?: string;
+  search?: string;
+};
+
 function SpendingDashboard({
   searchParams,
 }: {
-  searchParams: {
-    page?: string;
-    status?: string;
-    search?: string;
-  };
+  searchParams: SpendingDashboardPageSearchParams;
 }) {
   const page = searchParams.page ? Number.parseInt(searchParams.page) : 1;
   const search = searchParams.search;
@@ -45,14 +47,10 @@ function SpendingDashboard({
 export default async function SpendingDashboardPage({
   searchParams,
 }: {
-  searchParams: {
-    page?: string;
-    status?: string;
-    search?: string;
-  };
+  searchParams: Promise<SpendingDashboardPageSearchParams>;
 }) {
   "use server";
   const withAdminAccess = await withRoleAccess(["admin"]);
   const ProtectedSpendingDashboard = await withAdminAccess(SpendingDashboard);
-  return <ProtectedSpendingDashboard searchParams={searchParams} />;
+  return <ProtectedSpendingDashboard searchParams={await searchParams} />;
 }

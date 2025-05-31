@@ -3,14 +3,16 @@ import { Suspense } from "react";
 import type { SubmissionStatus } from "@/lib/autogpt-server-api/types";
 import { AdminAgentsDataTable } from "@/components/admin/marketplace/admin-agents-data-table";
 
+type MarketplaceAdminPageSearchParams = {
+  page?: string;
+  status?: string;
+  search?: string;
+};
+
 async function AdminMarketplaceDashboard({
   searchParams,
 }: {
-  searchParams: {
-    page?: string;
-    status?: string;
-    search?: string;
-  };
+  searchParams: MarketplaceAdminPageSearchParams;
 }) {
   const page = searchParams.page ? Number.parseInt(searchParams.page) : 1;
   const status = searchParams.status as SubmissionStatus | undefined;
@@ -47,16 +49,12 @@ async function AdminMarketplaceDashboard({
 export default async function AdminMarketplacePage({
   searchParams,
 }: {
-  searchParams: {
-    page?: string;
-    status?: string;
-    search?: string;
-  };
+  searchParams: Promise<MarketplaceAdminPageSearchParams>;
 }) {
   "use server";
   const withAdminAccess = await withRoleAccess(["admin"]);
   const ProtectedAdminMarketplace = await withAdminAccess(
     AdminMarketplaceDashboard,
   );
-  return <ProtectedAdminMarketplace searchParams={searchParams} />;
+  return <ProtectedAdminMarketplace searchParams={await searchParams} />;
 }
