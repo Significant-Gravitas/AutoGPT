@@ -31,7 +31,7 @@ jobs:
             
             core.setOutput('comment_body', commentBody);
             core.setOutput('has_permission', hasPermission);
-            
+            `
             if (!hasPermission && (commentBody === '!deploy' || commentBody === '!undeploy')) {
               core.setOutput('permission_denied', 'true');
               return;
