@@ -17,7 +17,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import useSupabase from "@/hooks/useSupabase";
+import useSupabase from "@/lib/supabase/useSupabase";
 import { sendEmailFormSchema, changePasswordFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCallback, useState } from "react";
