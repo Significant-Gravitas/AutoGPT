@@ -6,6 +6,10 @@ on:
   issue_comment:
     types: [created]
 
+permissions:
+  issues: write
+  pull-requests: write
+
 jobs:
   dispatch:
     runs-on: ubuntu-latest
@@ -20,10 +24,10 @@ jobs:
             const commentUser = context.payload.comment.user.login;
             const prAuthor = context.payload.issue.user.login;
             const authorAssociation = context.payload.comment.author_association;
+            const triggeringCommentId = context.payload.comment.id;
             
             // Check permissions
             const hasPermission = (
-              commentUser === prAuthor ||
               authorAssociation === 'OWNER' ||
               authorAssociation === 'MEMBER' ||
               authorAssociation === 'COLLABORATOR'
@@ -42,48 +46,63 @@ jobs:
             }
             
             // Get all comments to check deployment status
-            const comments = await github.rest.issues.listComments({
+            const commentsResponse = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: context.issue.number
+              issue_number: context.issue.number,
+              per_page: 100
             });
             
-            let lastDeployIndex = -1;
+            // Filter out the triggering comment
+            const commentsData = commentsResponse.data.filter(comment => comment.id !== triggeringCommentId);
+            
+            // Find the last deploy and undeploy commands
+            let lastDeployIndex = -2;
             let lastUndeployIndex = -1;
             
-            comments.data.forEach((comment, index) => {
-              if (comment.body.trim() === '!deploy') {
-                lastDeployIndex = index;
-              } else if (comment.body.trim() === '!undeploy') {
-                lastUndeployIndex = index;
+            console.log(`Found ${commentsResponse.data.length} total comments, using ${commentsData.length} for status check after filtering`);
+            
+            // Iterate through comments in reverse to find the most recent commands
+            for (let i = commentsData.length - 1; i >= 0; i--) {
+              const currentCommentBody = commentsData[i].body.trim();
+              console.log(`Processing comment ${i}: ${currentCommentBody}`);
+              
+              if (currentCommentBody === '!deploy' && lastDeployIndex === -2) {
+                lastDeployIndex = i;
+              } else if (currentCommentBody === '!undeploy' && lastUndeployIndex === -1) {
+                lastUndeployIndex = i;
               }
-            });
+              
+              // Break early if we found both
+              if (lastDeployIndex !== -2 && lastUndeployIndex !== -1) {
+                break;
+              }
+            }
             
-            // Determine current deployment state
-            const hasActiveDeployment = lastDeployIndex !== -1 && lastDeployIndex > lastUndeployIndex;
+            console.log(`Last deploy index: ${lastDeployIndex}`);
+            console.log(`Last undeploy index: ${lastUndeployIndex}`);
             
-            core.setOutput('has_active_deployment', hasActiveDeployment);
-            core.setOutput('last_deploy_index', lastDeployIndex);
-            core.setOutput('last_undeploy_index', lastUndeployIndex);
+            // Currently deployed if there's a deploy command after the last undeploy
+            const isCurrentlyDeployed = lastDeployIndex > lastUndeployIndex;
             
-            // Determine actions
+            // Determine actions based on current state and requested command
             if (commentBody === '!deploy') {
-              if (hasActiveDeployment) {
+              if (isCurrentlyDeployed) {
                 core.setOutput('deploy_blocked', 'already_deployed');
               } else {
                 core.setOutput('should_deploy', 'true');
               }
             } else if (commentBody === '!undeploy') {
-              if (!hasActiveDeployment) {
-                if (lastDeployIndex === -1) {
-                  core.setOutput('undeploy_blocked', 'never_deployed');
-                } else {
-                  core.setOutput('undeploy_blocked', 'already_undeployed');
-                }
+              if (!isCurrentlyDeployed) {
+                // Check if there was ever a deploy
+                const hasEverDeployed = lastDeployIndex !== -2;
+                core.setOutput('undeploy_blocked', hasEverDeployed ? 'already_undeployed' : 'never_deployed');
               } else {
                 core.setOutput('should_undeploy', 'true');
               }
             }
+            
+            core.setOutput('has_active_deployment', isCurrentlyDeployed);
 
       - name: Post permission denied comment
         if: steps.check_status.outputs.permission_denied == 'true'
@@ -94,7 +113,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `❌ **Permission denied**: Only the PR author, repository owners, members, or collaborators can use deployment commands.`
+              body: `❌ **Permission denied**: Only the repository owners, members, or collaborators can use deployment commands.`
             });
 
       - name: Post deploy blocked comment
