@@ -1,0 +1,27 @@
+{
+  "store_listing_version_id": "test-version-id",
+  "slug": "test-agent",
+  "agent_name": "Test Agent",
+  "agent_video": "video.mp4",
+  "agent_image": [
+    "image1.jpg",
+    "image2.jpg"
+  ],
+  "creator": "creator1",
+  "creator_avatar": "avatar1.jpg",
+  "sub_heading": "Test agent subheading",
+  "description": "Test agent description",
+  "categories": [
+    "category1",
+    "category2"
+  ],
+  "runs": 100,
+  "rating": 4.5,
+  "versions": [
+    "1.0.0",
+    "1.1.0"
+  ],
+  "last_updated": "2023-01-01T00:00:00",
+  "active_version_id": null,
+  "has_approved_version": false
+}

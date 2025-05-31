@@ -1,0 +1,10 @@
+{
+  "answer": "Here's information about your graph.",
+  "documents": [
+    {
+      "relevance_score": 0.92,
+      "url": "https://example.com/graph-doc"
+    }
+  ],
+  "success": true
+}

@@ -1,0 +1,65 @@
+{
+  "agents": [
+    {
+      "slug": "agent-0",
+      "agent_name": "Agent 0",
+      "agent_image": "agent0.jpg",
+      "creator": "creator1",
+      "creator_avatar": "avatar1.jpg",
+      "sub_heading": "Agent 0 subheading",
+      "description": "Agent 0 description",
+      "runs": 0,
+      "rating": 4.0
+    },
+    {
+      "slug": "agent-1",
+      "agent_name": "Agent 1",
+      "agent_image": "agent1.jpg",
+      "creator": "creator1",
+      "creator_avatar": "avatar1.jpg",
+      "sub_heading": "Agent 1 subheading",
+      "description": "Agent 1 description",
+      "runs": 10,
+      "rating": 4.0
+    },
+    {
+      "slug": "agent-2",
+      "agent_name": "Agent 2",
+      "agent_image": "agent2.jpg",
+      "creator": "creator1",
+      "creator_avatar": "avatar1.jpg",
+      "sub_heading": "Agent 2 subheading",
+      "description": "Agent 2 description",
+      "runs": 20,
+      "rating": 4.0
+    },
+    {
+      "slug": "agent-3",
+      "agent_name": "Agent 3",
+      "agent_image": "agent3.jpg",
+      "creator": "creator1",
+      "creator_avatar": "avatar1.jpg",
+      "sub_heading": "Agent 3 subheading",
+      "description": "Agent 3 description",
+      "runs": 30,
+      "rating": 4.0
+    },
+    {
+      "slug": "agent-4",
+      "agent_name": "Agent 4",
+      "agent_image": "agent4.jpg",
+      "creator": "creator1",
+      "creator_avatar": "avatar1.jpg",
+      "sub_heading": "Agent 4 subheading",
+      "description": "Agent 4 description",
+      "runs": 40,
+      "rating": 4.0
+    }
+  ],
+  "pagination": {
+    "total_items": 15,
+    "total_pages": 3,
+    "current_page": 2,
+    "page_size": 5
+  }
+}

@@ -1,9 +1,11 @@
 import datetime
+import json
 
 import autogpt_libs.auth as autogpt_auth_lib
 import fastapi.testclient
 import pytest
 import pytest_mock
+from pytest_snapshot.plugin import Snapshot
 
 import backend.server.model as server_model
 import backend.server.v2.library.model as library_model
@@ -13,6 +15,8 @@ app = fastapi.FastAPI()
 app.include_router(library_router)
 
 client = fastapi.testclient.TestClient(app)
+
+FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0)
 
 
 def override_auth_middleware():
@@ -30,7 +34,10 @@ app.dependency_overrides[autogpt_auth_lib.depends.get_user_id] = override_get_us
 
 
 @pytest.mark.asyncio
-async def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
+async def test_get_library_agents_success(
+    mocker: pytest_mock.MockFixture,
+    snapshot: Snapshot,
+) -> None:
     mocked_value = library_model.LibraryAgentResponse(
         agents=[
             library_model.LibraryAgent(
@@ -82,6 +89,10 @@ async def test_get_library_agents_success(mocker: pytest_mock.MockFixture):
     assert data.agents[0].can_access_graph is True
     assert data.agents[1].graph_id == "test-agent-2"
     assert data.agents[1].can_access_graph is False
+
+    snapshot.snapshot_dir = "snapshots"
+    snapshot.assert_match(json.dumps(response.json(), indent=2), "lib_agts_search")
+
     mock_db_call.assert_called_once_with(
         user_id="test-user-id",
         search_term="test",

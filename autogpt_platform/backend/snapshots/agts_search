@@ -1,0 +1,21 @@
+{
+  "agents": [
+    {
+      "slug": "search-agent",
+      "agent_name": "Search Agent",
+      "agent_image": "search.jpg",
+      "creator": "creator1",
+      "creator_avatar": "avatar1.jpg",
+      "sub_heading": "Search agent subheading",
+      "description": "Specific search term description",
+      "runs": 75,
+      "rating": 4.2
+    }
+  ],
+  "pagination": {
+    "total_items": 1,
+    "total_pages": 1,
+    "current_page": 1,
+    "page_size": 20
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "creators": [
+    {
+      "name": "Creator 0",
+      "username": "creator0",
+      "description": "Creator 0 description",
+      "avatar_url": "avatar0.jpg",
+      "num_agents": 1,
+      "agent_rating": 4.5,
+      "agent_runs": 100,
+      "is_featured": false
+    },
+    {
+      "name": "Creator 1",
+      "username": "creator1",
+      "description": "Creator 1 description",
+      "avatar_url": "avatar1.jpg",
+      "num_agents": 1,
+      "agent_rating": 4.5,
+      "agent_runs": 100,
+      "is_featured": false
+    },
+    {
+      "name": "Creator 2",
+      "username": "creator2",
+      "description": "Creator 2 description",
+      "avatar_url": "avatar2.jpg",
+      "num_agents": 1,
+      "agent_rating": 4.5,
+      "agent_runs": 100,
+      "is_featured": false
+    },
+    {
+      "name": "Creator 3",
+      "username": "creator3",
+      "description": "Creator 3 description",
+      "avatar_url": "avatar3.jpg",
+      "num_agents": 1,
+      "agent_rating": 4.5,
+      "agent_runs": 100,
+      "is_featured": false
+    },
+    {
+      "name": "Creator 4",
+      "username": "creator4",
+      "description": "Creator 4 description",
+      "avatar_url": "avatar4.jpg",
+      "num_agents": 1,
+      "agent_rating": 4.5,
+      "agent_runs": 100,
+      "is_featured": false
+    }
+  ],
+  "pagination": {
+    "total_items": 15,
+    "total_pages": 3,
+    "current_page": 2,
+    "page_size": 5
+  }
+}
