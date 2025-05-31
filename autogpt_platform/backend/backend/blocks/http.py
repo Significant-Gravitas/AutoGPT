@@ -3,6 +3,7 @@ import logging
 from enum import Enum
 from typing import Any
 
+from pydantic import SecretStr
 from requests.exceptions import HTTPError, RequestException
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -35,6 +36,10 @@ class SendWebRequestBlock(Block):
         headers: dict[str, str] = SchemaField(
             description="The headers to include in the request",
             default_factory=dict,
+        )
+        authorization: SecretStr | None = SchemaField(
+            description="Value for the Authorization header",
+            default=None,
         )
         json_format: bool = SchemaField(
             title="JSON format",
@@ -75,10 +80,14 @@ class SendWebRequestBlock(Block):
                     input_data.json_format = False
 
         try:
+            headers = dict(input_data.headers)
+            if input_data.authorization is not None:
+                headers["Authorization"] = input_data.authorization.get_secret_value()
+
             response = requests.request(
                 input_data.method.value,
                 input_data.url,
-                headers=input_data.headers,
+                headers=headers,
                 json=body if input_data.json_format else None,
                 data=body if not input_data.json_format else None,
             )
