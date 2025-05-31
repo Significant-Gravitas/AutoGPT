@@ -804,7 +804,7 @@ export const CustomNode = React.memo(
                     <div className="nodrag mr-5 flex flex-col gap-1">
                       Webhook URL:
                       <div className="flex gap-2 rounded-md bg-gray-50 p-2">
-                        <code className="select-all text-sm">
+                        <code className="select-all break-all text-sm">
                           {data.webhook.url}
                         </code>
                         <Button
