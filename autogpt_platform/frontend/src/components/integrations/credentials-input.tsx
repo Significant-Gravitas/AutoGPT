@@ -56,6 +56,7 @@ export const providerIcons: Record<
   CredentialsProviderName,
   React.FC<{ className?: string }>
 > = {
+  aiml_api: fallbackIcon,
   anthropic: fallbackIcon,
   apollo: fallbackIcon,
   e2b: fallbackIcon,
