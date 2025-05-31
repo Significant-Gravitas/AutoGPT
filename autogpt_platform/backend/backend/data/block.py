@@ -55,6 +55,7 @@ class BlockType(Enum):
     WEBHOOK_MANUAL = "Webhook (manual)"
     AGENT = "Agent"
     AI = "AI"
+    AYRSHARE = "Ayrshare"
 
 
 class BlockCategory(Enum):
@@ -78,6 +79,7 @@ class BlockCategory(Enum):
     PRODUCTIVITY = "Block that helps with productivity"
     ISSUE_TRACKING = "Block that helps with issue tracking"
     MULTIMEDIA = "Block that interacts with multimedia content"
+    MARKETING = "Block that helps with marketing"
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
