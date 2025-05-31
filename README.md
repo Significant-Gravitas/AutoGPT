@@ -23,6 +23,32 @@ We’ve moved to a fully maintained and regularly updated documentation site.
 
 This tutorial assumes you have Docker, VSCode, git and npm installed.
 
+## System Requirements
+
+To ensure a smooth experience with AutoGPT, your system should meet the following requirements:
+
+### Supported Operating Systems
+- Linux (recommended)
+- macOS
+- Windows (via WSL2)
+
+### Minimum Hardware
+- CPU: 2+ cores (x86_64 or ARM64)
+- RAM: 4 GB minimum (8 GB recommended)
+- Storage: 5 GB free disk space
+
+### Required Software & Minimum Versions
+- Docker: v20.10+
+- Docker Compose: v2.0+
+- Node.js: v18+
+- npm: v8+
+- Git: v2.25+
+- (Optional) VSCode: v1.70+ for development
+
+### Additional Prerequisites
+- Internet connection for downloading dependencies and Docker images
+- For Windows, WSL2 is required
+
 ### 🧱 AutoGPT Frontend
 
 The AutoGPT frontend is where users interact with our powerful AI automation platform. It offers multiple ways to engage with and leverage our AI agents. This is the interface where you'll bring your AI automation ideas to life:
