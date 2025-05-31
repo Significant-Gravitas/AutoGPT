@@ -1,4 +1,4 @@
-name: Dev Deploy PR Event Dispatcher
+name: AutoGPT Platform - Dev Deploy PR Event Dispatcher
 
 on:
   pull_request:
