@@ -1081,13 +1081,21 @@ const NodeStringInput: FC<{
   className,
   displayName,
 }) => {
+  const schemaType = (schema as any).type;
+  const isNumeric = schemaType === "number" || schemaType === "integer";
   value ||= schema.default || "";
+  const normalizedValue = value === undefined ? "" : String(value);
   return (
     <div className={className}>
       {schema.enum && schema.enum.length > 0 ? (
         <Select
-          defaultValue={value}
-          onValueChange={(newValue) => handleInputChange(selfKey, newValue)}
+          defaultValue={normalizedValue}
+          onValueChange={(newValue) =>
+            handleInputChange(
+              selfKey,
+              isNumeric ? parseFloat(newValue) : newValue,
+            )
+          }
         >
           <SelectTrigger>
             <SelectValue placeholder={schema.placeholder || displayName} />
@@ -1095,11 +1103,14 @@ const NodeStringInput: FC<{
           <SelectContent className="nodrag">
             {schema.enum
               .filter((option) => option)
-              .map((option, index) => (
-                <SelectItem key={index} value={option}>
-                  {beautifyString(option)}
-                </SelectItem>
-              ))}
+              .map((option, index) => {
+                const optionStr = String(option);
+                return (
+                  <SelectItem key={index} value={optionStr}>
+                    {beautifyString(optionStr)}
+                  </SelectItem>
+                );
+              })}
           </SelectContent>
         </Select>
       ) : (
