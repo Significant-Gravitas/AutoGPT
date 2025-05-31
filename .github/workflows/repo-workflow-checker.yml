@@ -29,4 +29,4 @@ jobs:
           echo "Attempting to run Python script:"
           python .github/workflows/scripts/check_actions_status.py
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{nfp_yybW1wJaq3oLEDG1B3z4y3DhGnXBsS6Y01b6 }}
