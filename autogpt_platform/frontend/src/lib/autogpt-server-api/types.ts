@@ -469,6 +469,7 @@ export type LibraryAgent = {
   name: string;
   description: string;
   input_schema: BlockIOObjectSubSchema;
+  output_schema: BlockIOObjectSubSchema;
   new_output: boolean;
   can_access_graph: boolean;
   is_latest_version: boolean;
