@@ -60,7 +60,7 @@ def test():
         sys.exit(1)
 
     # Run Prisma migrations
-    run_command(["prisma", "migrate", "dev"])
+    run_command(["prisma", "migrate", "deploy"])
 
     # Run the tests
     result = subprocess.run(["pytest"] + sys.argv[1:], check=False)

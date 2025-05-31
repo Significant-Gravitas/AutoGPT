@@ -4,6 +4,7 @@ import logging
 from enum import Enum
 
 from prisma.models import AgentGraph
+from pydantic import SecretStr
 from replicate.client import Client as ReplicateClient
 from replicate.exceptions import ReplicateError
 from replicate.helpers import FileOutput
@@ -18,13 +19,17 @@ from backend.blocks.ideogram import (
     UpscaleOption,
 )
 from backend.data.graph import Graph
-from backend.data.model import CredentialsMetaInput, ProviderName
-from backend.integrations.credentials_store import ideogram_credentials
+from backend.data.model import APIKeyCredentials, CredentialsMetaInput, ProviderName
+from backend.integrations.credentials_store import discover_default_credentials
 from backend.util.request import requests
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
 settings = Settings()
+_defaults = {c.provider: c for c in discover_default_credentials()}
+ideogram_credentials = _defaults.get("ideogram") or APIKeyCredentials(
+    id="", provider="ideogram", api_key=SecretStr(""), title="", expires_at=None
+)
 
 
 class ImageSize(str, Enum):
