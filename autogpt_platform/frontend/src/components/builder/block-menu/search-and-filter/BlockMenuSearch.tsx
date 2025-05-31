@@ -15,7 +15,7 @@ const BlockMenuSearch: React.FC = ({}) => {
   } = useBlockMenuContext();
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [hasMore, setHasMore] = useState<boolean>(true);
-  const [page, setPage] = useState<number>(0);
+  const [page, setPage] = useState<number>(1);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -59,8 +59,10 @@ const BlockMenuSearch: React.FC = ({}) => {
         setCategoryCounts(response.total_items);
 
         if (isLoadMore) {
+          console.log("search list : ", response.items);
           setSearchData((prev) => [...prev, ...response.items]);
         } else {
+          console.log("initial list : ", response.items);
           setSearchData(response.items);
         }
 
@@ -74,7 +76,7 @@ const BlockMenuSearch: React.FC = ({}) => {
             : "Failed to load search results",
         );
         if (!isLoadMore) {
-          setPage(0);
+          setPage(1);
         }
       } finally {
         setIsLoading(false);
@@ -113,14 +115,14 @@ const BlockMenuSearch: React.FC = ({}) => {
 
   useEffect(() => {
     if (searchQuery) {
-      setPage(0);
+      setPage(1);
       setHasMore(true);
       setError(null);
-      fetchSearchData(0, false);
+      fetchSearchData(1, false);
     } else {
       setSearchData([]);
       setError(null);
-      setPage(0);
+      setPage(1);
       setHasMore(true);
     }
   }, [searchQuery, searchId, filters, fetchSearchData, setSearchData]);
@@ -137,9 +139,9 @@ const BlockMenuSearch: React.FC = ({}) => {
         hasMore={hasMore}
         error={error}
         onRetry={() => {
-          setPage(0);
+          setPage(1);
           setError(null);
-          fetchSearchData(0, false);
+          fetchSearchData(1, false);
         }}
       />
     </div>

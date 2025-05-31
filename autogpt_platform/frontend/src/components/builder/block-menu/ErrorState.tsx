@@ -45,7 +45,7 @@ const ErrorState: React.FC<ErrorStateProps> = ({
           variant="default"
           size="sm"
           onClick={onRetry}
-          className="mt-2 h-7 text-xs"
+          className="mt-2 h-7 bg-zinc-800 text-xs"
         >
           <RefreshCw className="mr-1 h-3 w-3" />
           {retryLabel}

@@ -94,6 +94,7 @@ const SearchList: React.FC<SearchListProps> = ({
             return (
               <MarketplaceAgentBlock
                 key={index}
+                slug={item.slug}
                 highlightedText={searchQuery}
                 title={item.agent_name}
                 image_url={item.agent_image}

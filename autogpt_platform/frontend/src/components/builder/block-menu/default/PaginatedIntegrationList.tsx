@@ -21,10 +21,15 @@ const PaginatedIntegrationList: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="w-full space-y-3 p-4">
-        {[0, 1, 3].map((integrationIndex) => (
-          <Integration.Skeleton key={integrationIndex} />
-        ))}
+      <div
+        ref={scrollRef}
+        className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200"
+      >
+        <div className="w-full space-y-3 px-4 pb-4">
+          {[0, 1, 3, 4, 5].map((integrationIndex) => (
+            <Integration.Skeleton key={integrationIndex} />
+          ))}
+        </div>
       </div>
     );
   }

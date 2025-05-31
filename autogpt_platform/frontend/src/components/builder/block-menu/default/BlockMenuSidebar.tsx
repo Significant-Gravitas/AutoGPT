@@ -6,7 +6,6 @@ const BlockMenuSidebar: React.FC = ({}) => {
   const { defaultState, setDefaultState, setIntegration } =
     useBlockMenuContext();
 
-  // TEMPORARY FETCHING
   const topLevelMenuItems = [
     {
       name: "Suggestion",

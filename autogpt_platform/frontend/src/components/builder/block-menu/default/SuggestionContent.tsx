@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import SearchHistoryChip from "../SearchHistoryChip";
 import IntegrationChip from "../IntegrationChip";
 import Block from "../Block";
@@ -21,7 +21,7 @@ const SuggestionContent: React.FC = () => {
 
   const api = useBackendAPI();
 
-  const fetchSuggestions = async () => {
+  const fetchSuggestions = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -35,11 +35,11 @@ const SuggestionContent: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [api]);
 
   useEffect(() => {
     fetchSuggestions();
-  }, [api]);
+  }, [api, fetchSuggestions]);
 
   if (error) {
     return (
@@ -57,7 +57,7 @@ const SuggestionContent: React.FC = () => {
     <div className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200">
       <div className="w-full space-y-6 pb-4">
         {/* Recent Searches */}
-        <div className="-mb-2 space-y-2.5">
+        {/* <div className="-mb-2 space-y-2.5">
           <p className="px-4 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800">
             Recent searches
           </p>
@@ -98,7 +98,7 @@ const SuggestionContent: React.FC = () => {
                     />
                   ))}
           </div>
-        </div>
+        </div> */}
 
         {/* Integrations */}
         <div className="space-y-2.5 px-4">

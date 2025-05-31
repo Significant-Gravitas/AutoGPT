@@ -73,7 +73,7 @@ const IntegrationBlock: IntegrationBlockComponent = ({
             "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
           )}
         >
-          {description}
+          {description && highlightText(description, highlightedText)}
         </span>
       </div>
       <div

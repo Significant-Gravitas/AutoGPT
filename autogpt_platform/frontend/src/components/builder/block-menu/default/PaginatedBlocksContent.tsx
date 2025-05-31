@@ -27,26 +27,9 @@ const PaginatedBlocksContent: React.FC<PaginatedBlocksContentProps> = ({
     pageSize,
   });
 
-  if (loading) {
-    return (
-      <div className="w-full space-y-3 p-4">
-        {[0, 1, 3].map((categoryIndex) => (
-          <Fragment key={categoryIndex}>
-            {categoryIndex > 0 && (
-              <div className="my-4 h-[1px] w-full bg-zinc-100" />
-            )}
-            {[0, 1, 2].map((blockIndex) => (
-              <Block.Skeleton key={`${categoryIndex}-${blockIndex}`} />
-            ))}
-          </Fragment>
-        ))}
-      </div>
-    );
-  }
-
   if (error) {
     return (
-      <div className="w-full px-4 pb-4">
+      <div className="h-full w-full px-4 pb-4">
         <ErrorState
           title="Failed to load blocks"
           error={error}
