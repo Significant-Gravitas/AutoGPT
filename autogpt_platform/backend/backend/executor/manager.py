@@ -5,10 +5,11 @@ import os
 import signal
 import sys
 import threading
+from collections import defaultdict
 from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import contextmanager
-from multiprocessing.pool import AsyncResult, Pool
-from typing import TYPE_CHECKING, Any, Generator, Optional, TypeVar, cast
+from multiprocessing.pool import Pool
+from typing import TYPE_CHECKING, Optional, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
@@ -39,7 +40,13 @@ from prometheus_client import Gauge, start_http_server
 
 from backend.blocks.agent import AgentExecutorBlock
 from backend.data import redis
-from backend.data.block import BlockData, BlockInput, BlockSchema, get_block
+from backend.data.block import (
+    BlockData,
+    BlockInput,
+    BlockOutput,
+    BlockSchema,
+    get_block,
+)
 from backend.data.credit import UsageTransactionMetadata
 from backend.data.execution import (
     ExecutionQueue,
@@ -54,6 +61,8 @@ from backend.executor.utils import (
     GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
     GRAPH_EXECUTION_QUEUE_NAME,
     CancelExecutionEvent,
+    ExecutionOutputEntry,
+    NodeExecutionProgress,
     block_usage_cost,
     execution_usage_cost,
     get_execution_event_bus,
@@ -116,18 +125,17 @@ class LogMetadata(TruncatedLogger):
 
 
 T = TypeVar("T")
-ExecutionStream = Generator[NodeExecutionEntry, None, None]
 
 
 def execute_node(
-    db_client: "DatabaseManagerClient",
+    node: Node,
     creds_manager: IntegrationCredentialsManager,
     data: NodeExecutionEntry,
     execution_stats: NodeExecutionStats | None = None,
     node_credentials_input_map: Optional[
         dict[str, dict[str, CredentialsMetaInput]]
     ] = None,
-) -> ExecutionStream:
+) -> BlockOutput:
     """
     Execute a node in the graph. This will trigger a block execution on a node,
     persist the execution result, and return the subsequent node to be executed.
@@ -146,23 +154,7 @@ def execute_node(
     graph_id = data.graph_id
     node_exec_id = data.node_exec_id
     node_id = data.node_id
-
-    def update_execution_status(status: ExecutionStatus) -> NodeExecutionResult:
-        """Sets status and fetches+broadcasts the latest state of the node execution"""
-        exec_update = db_client.update_node_execution_status(node_exec_id, status)
-        send_execution_update(exec_update)
-        return exec_update
-
-    node = db_client.get_node(node_id)
-
     node_block = node.block
-
-    def push_output(output_name: str, output_data: Any) -> None:
-        db_client.upsert_execution_output(
-            node_exec_id=node_exec_id,
-            output_name=output_name,
-            output_data=output_data,
-        )
 
     log_metadata = LogMetadata(
         user_id=user_id,
@@ -177,8 +169,7 @@ def execute_node(
     input_data, error = validate_exec(node, data.inputs, resolve_input=False)
     if input_data is None:
         log_metadata.error(f"Skip execution, input validation error: {error}")
-        push_output("error", error)
-        update_execution_status(ExecutionStatus.FAILED)
+        yield "error", error
         return
 
     # Re-shape the input data for agent block.
@@ -195,7 +186,6 @@ def execute_node(
     input_data_str = json.dumps(input_data)
     input_size = len(input_data_str)
     log_metadata.debug("Executed node with input", input=input_data_str)
-    update_execution_status(ExecutionStatus.RUNNING)
 
     # Inject extra execution arguments for the blocks via kwargs
     extra_exec_kwargs: dict = {
@@ -219,47 +209,19 @@ def execute_node(
 
     output_size = 0
     try:
-        outputs: dict[str, Any] = {}
         for output_name, output_data in node_block.execute(
             input_data, **extra_exec_kwargs
         ):
             output_data = json.convert_pydantic_to_json(output_data)
             output_size += len(json.dumps(output_data))
             log_metadata.debug("Node produced output", **{output_name: output_data})
-            push_output(output_name, output_data)
-            outputs[output_name] = output_data
-            for execution in _enqueue_next_nodes(
-                db_client=db_client,
-                node=node,
-                output=(output_name, output_data),
-                user_id=user_id,
-                graph_exec_id=graph_exec_id,
-                graph_id=graph_id,
-                log_metadata=log_metadata,
-                node_credentials_input_map=node_credentials_input_map,
-            ):
-                yield execution
-
-        update_execution_status(ExecutionStatus.COMPLETED)
+            yield output_name, output_data
 
     except Exception as e:
         error_msg = str(e)
-        push_output("error", error_msg)
-        update_execution_status(ExecutionStatus.FAILED)
-
-        for execution in _enqueue_next_nodes(
-            db_client=db_client,
-            node=node,
-            output=("error", error_msg),
-            user_id=user_id,
-            graph_exec_id=graph_exec_id,
-            graph_id=graph_id,
-            log_metadata=log_metadata,
-            node_credentials_input_map=node_credentials_input_map,
-        ):
-            yield execution
-
+        yield "error", error_msg
         raise e
+
     finally:
         # Ensure credentials are released even if execution fails
         if creds_lock and creds_lock.locked() and creds_lock.owned():
@@ -290,10 +252,12 @@ def _enqueue_next_nodes(
     def add_enqueued_execution(
         node_exec_id: str, node_id: str, block_id: str, data: BlockInput
     ) -> NodeExecutionEntry:
-        exec_update = db_client.update_node_execution_status(
-            node_exec_id, ExecutionStatus.QUEUED, data
+        update_node_execution_status(
+            db_client=db_client,
+            exec_id=node_exec_id,
+            status=ExecutionStatus.QUEUED,
+            execution_data=data,
         )
-        send_execution_update(exec_update)
         return NodeExecutionEntry(
             user_id=user_id,
             graph_exec_id=graph_exec_id,
@@ -326,6 +290,11 @@ def _enqueue_next_nodes(
                 graph_exec_id=graph_exec_id,
                 input_name=next_input_name,
                 input_data=next_data,
+            )
+            update_node_execution_status(
+                db_client=db_client,
+                exec_id=next_node_exec_id,
+                status=ExecutionStatus.INCOMPLETE,
             )
 
             # Complete missing static input pins data using the last execution input.
@@ -486,7 +455,7 @@ class Executor:
     @error_logged
     def on_node_execution(
         cls,
-        q: ExecutionQueue[NodeExecutionEntry],
+        q: ExecutionQueue[ExecutionOutputEntry],
         node_exec: NodeExecutionEntry,
         node_credentials_input_map: Optional[
             dict[str, dict[str, CredentialsMetaInput]]
@@ -500,10 +469,16 @@ class Executor:
             node_id=node_exec.node_id,
             block_name="-",
         )
+        node = cls.db_client.get_node(node_exec.node_id)
 
         execution_stats = NodeExecutionStats()
         timing_info, _ = cls._on_node_execution(
-            q, node_exec, log_metadata, execution_stats, node_credentials_input_map
+            q=q,
+            node_exec=node_exec,
+            node=node,
+            log_metadata=log_metadata,
+            stats=execution_stats,
+            node_credentials_input_map=node_credentials_input_map,
         )
         execution_stats.walltime = timing_info.wall_time
         execution_stats.cputime = timing_info.cpu_time
@@ -519,8 +494,9 @@ class Executor:
     @time_measured
     def _on_node_execution(
         cls,
-        q: ExecutionQueue[NodeExecutionEntry],
+        q: ExecutionQueue[ExecutionOutputEntry],
         node_exec: NodeExecutionEntry,
+        node: Node,
         log_metadata: LogMetadata,
         stats: NodeExecutionStats | None = None,
         node_credentials_input_map: Optional[
@@ -529,14 +505,26 @@ class Executor:
     ):
         try:
             log_metadata.info(f"Start node execution {node_exec.node_exec_id}")
-            for execution in execute_node(
+            update_node_execution_status(
                 db_client=cls.db_client,
+                exec_id=node_exec.node_exec_id,
+                status=ExecutionStatus.RUNNING,
+            )
+
+            for output in execute_node(
+                node=node,
                 creds_manager=cls.creds_manager,
                 data=node_exec,
                 execution_stats=stats,
                 node_credentials_input_map=node_credentials_input_map,
             ):
-                q.add(execution)
+                q.add(
+                    ExecutionOutputEntry(
+                        node=node,
+                        node_exec_id=node_exec.node_exec_id,
+                        data=output,
+                    )
+                )
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
         except Exception as e:
             # Avoid user error being marked as an actual error.
@@ -702,6 +690,13 @@ class Executor:
         error = None
         finished = False
 
+        def drain_output_queue():
+            while output := output_queue.get_or_none():
+                log_metadata.debug(
+                    f"Received output for {output.node.id} - {output.node_exec_id}: {output.data}"
+                )
+                running_executions[output.node.id].add_output(output)
+
         def cancel_handler():
             nonlocal execution_status
 
@@ -726,19 +721,20 @@ class Executor:
                     amount=1,
                 )
 
-            queue = ExecutionQueue[NodeExecutionEntry]()
+            output_queue = ExecutionQueue[ExecutionOutputEntry]()
+            execution_queue = ExecutionQueue[NodeExecutionEntry]()
             for node_exec in cls.db_client.get_node_executions(
                 graph_exec.graph_exec_id,
                 statuses=[ExecutionStatus.RUNNING, ExecutionStatus.QUEUED],
             ):
-                queue.add(node_exec.to_node_execution_entry())
+                execution_queue.add(node_exec.to_node_execution_entry())
 
-            running_executions: dict[str, AsyncResult] = {}
+            running_executions: dict[str, NodeExecutionProgress] = defaultdict(
+                lambda: NodeExecutionProgress(drain_output_queue)
+            )
 
             def make_exec_callback(exec_data: NodeExecutionEntry):
                 def callback(result: object):
-                    running_executions.pop(exec_data.node_id)
-
                     if not isinstance(result, NodeExecutionStats):
                         return
 
@@ -766,13 +762,14 @@ class Executor:
 
                 return callback
 
-            while not queue.empty():
+            while not execution_queue.empty():
                 if cancel.is_set():
                     execution_status = ExecutionStatus.TERMINATED
                     return execution_stats, execution_status, error
 
-                queued_node_exec = queue.get()
+                queued_node_exec = execution_queue.get()
 
+                """
                 # Avoid parallel execution of the same node.
                 execution = running_executions.get(queued_node_exec.node_id)
                 if execution and not execution.ready():
@@ -781,6 +778,7 @@ class Executor:
                     #   To improve this we need a separate queue for each node.
                     #   Re-enqueueing the data back to the queue will disrupt the order.
                     execution.wait()
+                """
 
                 log_metadata.debug(
                     f"Dispatching node execution {queued_node_exec.node_exec_id} "
@@ -800,12 +798,12 @@ class Executor:
                         output_name="error",
                         output_data=str(error),
                     )
-
-                    execution_status = ExecutionStatus.FAILED
-                    exec_update = cls.db_client.update_node_execution_status(
-                        node_exec_id, execution_status
+                    update_node_execution_status(
+                        db_client=cls.db_client,
+                        exec_id=node_exec_id,
+                        status=ExecutionStatus.FAILED,
                     )
-                    send_execution_update(exec_update)
+                    execution_status = ExecutionStatus.FAILED
 
                     cls._handle_low_balance_notif(
                         graph_exec.user_id,
@@ -828,27 +826,64 @@ class Executor:
                     )
 
                 # Initiate node execution
-                running_executions[queued_node_exec.node_id] = cls.executor.apply_async(
-                    cls.on_node_execution,
-                    (queue, queued_node_exec, node_creds_map),
-                    callback=make_exec_callback(queued_node_exec),
+                running_executions[queued_node_exec.node_id].add_task(
+                    queued_node_exec.node_exec_id,
+                    cls.executor.apply_async(
+                        cls.on_node_execution,
+                        (output_queue, queued_node_exec, node_creds_map),
+                        callback=make_exec_callback(queued_node_exec),
+                    ),
                 )
 
                 # Avoid terminating graph execution when some nodes are still running.
-                while queue.empty() and running_executions:
+                while execution_queue.empty() and running_executions:
                     log_metadata.debug(
                         f"Queue empty; running nodes: {list(running_executions.keys())}"
                     )
+
+                    # Register next node executions from running_executions.
                     for node_id, execution in list(running_executions.items()):
                         if cancel.is_set():
                             execution_status = ExecutionStatus.TERMINATED
                             return execution_stats, execution_status, error
 
-                        if not queue.empty():
+                        if not execution_queue.empty():
                             break  # yield to parent loop to execute new queue items
 
                         log_metadata.debug(f"Waiting on execution of node {node_id}")
-                        execution.wait(3)
+                        while output := execution.pop_output():
+
+                            name, data = output.data
+                            cls.db_client.upsert_execution_output(
+                                node_exec_id=output.node_exec_id,
+                                output_name=name,
+                                output_data=data,
+                            )
+                            update_node_execution_status(
+                                db_client=cls.db_client,
+                                exec_id=output.node_exec_id,
+                                status=(
+                                    ExecutionStatus.COMPLETED
+                                    if name != "error"
+                                    else ExecutionStatus.FAILED
+                                ),
+                            )
+
+                            log_metadata.debug(f"Enqueue nodes for {node_id}: {output}")
+                            for next_execution in _enqueue_next_nodes(
+                                db_client=cls.db_client,
+                                node=output.node,
+                                output=output.data,
+                                user_id=graph_exec.user_id,
+                                graph_exec_id=graph_exec.graph_exec_id,
+                                graph_id=graph_exec.graph_id,
+                                log_metadata=log_metadata,
+                                node_credentials_input_map=node_creds_map,
+                            ):
+                                execution_queue.add(next_execution)
+
+                        if execution.is_done(3):
+                            running_executions.pop(node_id)
 
             log_metadata.info(f"Finished graph execution {graph_exec.graph_exec_id}")
             execution_status = ExecutionStatus.COMPLETED
@@ -1130,6 +1165,20 @@ def send_execution_update(entry: GraphExecution | NodeExecutionResult | None):
     if entry is None:
         return
     return get_execution_event_bus().publish(entry)
+
+
+def update_node_execution_status(
+    db_client: "DatabaseManagerClient",
+    exec_id: str,
+    status: ExecutionStatus,
+    execution_data: BlockInput | None = None,
+) -> NodeExecutionResult:
+    """Sets status and fetches+broadcasts the latest state of the node execution"""
+    exec_update = db_client.update_node_execution_status(
+        exec_id, status, execution_data
+    )
+    send_execution_update(exec_update)
+    return exec_update
 
 
 @contextmanager

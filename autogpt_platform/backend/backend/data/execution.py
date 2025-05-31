@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from multiprocessing import Manager
+from queue import Empty
 from typing import (
     Annotated,
     Any,
@@ -793,6 +794,12 @@ class ExecutionQueue(Generic[T]):
 
     def empty(self) -> bool:
         return self.queue.empty()
+
+    def get_or_none(self) -> T | None:
+        try:
+            return self.queue.get_nowait()
+        except Empty:
+            return None
 
 
 # --------------------- Event Bus --------------------- #
