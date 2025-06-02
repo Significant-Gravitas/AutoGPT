@@ -13,6 +13,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
+from backend.util.file import MediaFileType
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -66,7 +67,7 @@ class AIImageEditorBlock(Block):
             description="Text instruction describing the desired edit",
             title="Prompt",
         )
-        input_image: Optional[str] = SchemaField(
+        input_image: Optional[MediaFileType] = SchemaField(
             description="Reference image URI (jpeg, png, gif, webp)",
             default=None,
             title="Input Image",
@@ -90,7 +91,9 @@ class AIImageEditorBlock(Block):
         )
 
     class Output(BlockSchema):
-        image_url: str = SchemaField(description="URL of the transformed image")
+        output_image: MediaFileType = SchemaField(
+            description="URL of the transformed image"
+        )
         error: str = SchemaField(description="Error message if generation failed")
 
     def __init__(self):
@@ -112,7 +115,7 @@ class AIImageEditorBlock(Block):
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[
-                ("image_url", "https://replicate.com/output/edited-image.png"),
+                ("output_image", "https://replicate.com/output/edited-image.png"),
             ],
             test_mock={
                 "run_model": lambda *args, **kwargs: "https://replicate.com/output/edited-image.png",
@@ -135,17 +138,17 @@ class AIImageEditorBlock(Block):
             aspect_ratio=input_data.aspect_ratio.value,
             seed=input_data.seed,
         )
-        yield "image_url", result
+        yield "output_image", result
 
     def run_model(
         self,
         api_key: SecretStr,
         model_name: str,
         prompt: str,
-        input_image: Optional[str],
+        input_image: Optional[MediaFileType],
         aspect_ratio: str,
         seed: Optional[int],
-    ) -> str:
+    ) -> MediaFileType:
         client = ReplicateClient(api_token=api_key.get_secret_value())
         input_params = {
             "prompt": prompt,
@@ -162,9 +165,10 @@ class AIImageEditorBlock(Block):
 
         if isinstance(output, list) and output:
             output = output[0]
+
         if isinstance(output, FileOutput):
-            return output.url
+            return MediaFileType(output.url)
         if isinstance(output, str):
-            return output
+            return MediaFileType(output)
 
         raise ValueError("No output received")
