@@ -12,7 +12,7 @@
 # cd ..
 
 # cd frontend 
-# npm install
-# npm run dev
+# pnpm install
+# pnpm run dev
 
 # localhost:3000
