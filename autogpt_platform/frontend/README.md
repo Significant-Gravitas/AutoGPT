@@ -128,6 +128,7 @@ By integrating Storybook into our development workflow, we can streamline UI dev
 ### Styling & UI Components
 
 - [**Tailwind CSS**](https://tailwindcss.com/) - Utility-first CSS framework
+- [**shadcn/ui**](https://ui.shadcn.com/) - Re-usable components built with Radix UI and Tailwind CSS
 - [**Radix UI**](https://www.radix-ui.com/) - Headless UI components for accessibility
 - [**Lucide React**](https://lucide.dev/guide/packages/lucide-react) - Beautiful & consistent icons
 - [**Framer Motion**](https://motion.dev/) - Animation library for React
