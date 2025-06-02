@@ -8,6 +8,8 @@ import {
   StoreAgent,
 } from "@/lib/autogpt-server-api";
 import { createContext, ReactNode, useContext, useState } from "react";
+import { convertLibraryAgentIntoBlock } from "@/lib/utils";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export type SearchItem = Block | Provider | LibraryAgent | StoreAgent;
 
@@ -54,13 +56,20 @@ interface BlockMenuContextType {
   setSearchId: React.Dispatch<React.SetStateAction<string | undefined>>;
   filters: Filters;
   setFilters: React.Dispatch<React.SetStateAction<Filters>>;
-  creators: string[];
-  setCreators: React.Dispatch<React.SetStateAction<string[]>>;
   searchData: SearchItem[];
   setSearchData: React.Dispatch<React.SetStateAction<SearchItem[]>>;
   categoryCounts: CategoryCounts;
   setCategoryCounts: React.Dispatch<React.SetStateAction<CategoryCounts>>;
   addNode: (block: Block) => void;
+  handleAddStoreAgent: ({
+    creator_name,
+    slug,
+  }: {
+    creator_name: string;
+    slug: string;
+  }) => Promise<void>;
+  loadingSlug: string | null;
+  setLoadingSlug: React.Dispatch<React.SetStateAction<string | null>>;
 }
 
 export const BlockMenuContext = createContext<BlockMenuContextType>(
@@ -93,8 +102,6 @@ export function BlockMenuStateProvider({
   });
   const [searchData, setSearchData] = useState<SearchItem[]>([]);
 
-  const [creators, setCreators] = useState<string[]>([]);
-
   const [searchId, setSearchId] = useState<string | undefined>(undefined);
 
   const [categoryCounts, setCategoryCounts] = useState<CategoryCounts>({
@@ -104,6 +111,41 @@ export function BlockMenuStateProvider({
     my_agents: 0,
     providers: 0,
   });
+
+  const [loadingSlug, setLoadingSlug] = useState<string | null>(null);
+
+  const api = useBackendAPI();
+
+  const handleAddStoreAgent = async ({
+    creator_name,
+    slug,
+  }: {
+    creator_name: string;
+    slug: string;
+  }) => {
+    try {
+      setLoadingSlug(slug);
+      const details = await api.getStoreAgent(creator_name, slug);
+
+      if (!details.active_version_id) {
+        console.error(
+          "Cannot add store agent to library: active version ID is missing or undefined",
+        );
+        return;
+      }
+
+      const libraryAgent = await api.addMarketplaceAgentToLibrary(
+        details.active_version_id,
+      );
+
+      const block = convertLibraryAgentIntoBlock(libraryAgent);
+      addNode(block);
+    } catch (error) {
+      console.error("Failed to add store agent:", error);
+    } finally {
+      setLoadingSlug(null);
+    }
+  };
 
   return (
     <BlockMenuContext.Provider
@@ -116,8 +158,6 @@ export function BlockMenuStateProvider({
         setSearchQuery,
         searchId,
         setSearchId,
-        creators,
-        setCreators,
         filters,
         setFilters,
         searchData,
@@ -125,6 +165,9 @@ export function BlockMenuStateProvider({
         categoryCounts,
         setCategoryCounts,
         addNode,
+        handleAddStoreAgent,
+        loadingSlug,
+        setLoadingSlug,
       }}
     >
       {children}

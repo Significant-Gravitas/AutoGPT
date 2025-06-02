@@ -36,7 +36,6 @@ const BlockMenuSearch: React.FC = ({}) => {
         const activeCategories = Object.entries(filters.categories)
           .filter(([_, isActive]) => isActive)
           .map(([category, _]) => category)
-          .filter((category) => category !== "templates") // API doesn't support templates filter
           .map(
             (category) =>
               category as

@@ -2,6 +2,8 @@ import React from "react";
 import UGCAgentBlock from "../UGCAgentBlock";
 import { usePagination } from "@/hooks/usePagination";
 import ErrorState from "../ErrorState";
+import { useBlockMenuContext } from "../block-menu-provider";
+import { convertLibraryAgentIntoBlock } from "@/lib/utils";
 
 const MyAgentsContent: React.FC = () => {
   const {
@@ -16,6 +18,7 @@ const MyAgentsContent: React.FC = () => {
     request: { apiType: "library-agents" },
     pageSize: 10,
   });
+  const { addNode } = useBlockMenuContext();
 
   if (loading) {
     return (
@@ -57,6 +60,10 @@ const MyAgentsContent: React.FC = () => {
             edited_time={agent.updated_at}
             version={agent.graph_version}
             image_url={agent.image_url}
+            onClick={() => {
+              const block = convertLibraryAgentIntoBlock(agent);
+              addNode(block);
+            }}
           />
         ))}
         {loadingMore && hasMore && (

@@ -1,7 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import MarketplaceAgentBlock from "../MarketplaceAgentBlock";
 import { usePagination } from "@/hooks/usePagination";
 import ErrorState from "../ErrorState";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { convertLibraryAgentIntoBlock } from "@/lib/utils";
+import { useBlockMenuContext } from "../block-menu-provider";
 
 const MarketplaceAgentsContent: React.FC = () => {
   const {
@@ -16,6 +19,9 @@ const MarketplaceAgentsContent: React.FC = () => {
     request: { apiType: "store-agents" },
     pageSize: 10,
   });
+  const api = useBackendAPI();
+  const { handleAddStoreAgent } = useBlockMenuContext();
+  const [loadingSlug, setLoadingSlug] = useState<string | null>(null);
 
   if (loading) {
     return (
@@ -58,6 +64,13 @@ const MarketplaceAgentsContent: React.FC = () => {
             image_url={agent.agent_image}
             creator_name={agent.creator}
             number_of_runs={agent.runs}
+            loading={loadingSlug === agent.slug}
+            onClick={() =>
+              handleAddStoreAgent({
+                creator_name: agent.creator,
+                slug: agent.slug,
+              })
+            }
           />
         ))}
         {loadingMore && hasMore && (

@@ -18,7 +18,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Checkbox } from "@/components/ui/checkbox";
 import useSupabase from "@/hooks/useSupabase";
-import Spinner from "@/components/Spinner";
+import LoadingBox from "@/components/ui/loading";
 import {
   AuthCard,
   AuthHeader,
@@ -94,7 +94,7 @@ export default function SignupPage() {
   }
 
   if (isUserLoading || user) {
-    return <Spinner className="h-[80vh]" />;
+    return <LoadingBox className="h-[80vh]" />;
   }
 
   if (!supabase) {
@@ -151,7 +151,7 @@ export default function SignupPage() {
                   <PasswordInput {...field} autoComplete="new-password" />
                 </FormControl>
                 <FormDescription className="text-sm font-normal leading-tight text-slate-500">
-                  Password needs to be at least 6 characters long
+                  Password needs to be at least 12 characters long
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -164,6 +164,7 @@ export default function SignupPage() {
             onVerify={turnstile.handleVerify}
             onExpire={turnstile.handleExpire}
             onError={turnstile.handleError}
+            setWidgetId={turnstile.setWidgetId}
             action="signup"
             shouldRender={turnstile.shouldRender}
           />

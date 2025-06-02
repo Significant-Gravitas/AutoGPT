@@ -47,6 +47,8 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.GPT4O: 3,
     LlmModel.GPT4_TURBO: 10,
     LlmModel.GPT3_5_TURBO: 1,
+    LlmModel.CLAUDE_4_OPUS: 21,
+    LlmModel.CLAUDE_4_SONNET: 5,
     LlmModel.CLAUDE_3_7_SONNET: 5,
     LlmModel.CLAUDE_3_5_SONNET: 4,
     LlmModel.CLAUDE_3_5_HAIKU: 1,  # $0.80 / $4.00

@@ -1,10 +1,29 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import MenuItem from "../MenuItem";
 import { DefaultStateType, useBlockMenuContext } from "../block-menu-provider";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { CountResponse } from "@/lib/autogpt-server-api";
 
 const BlockMenuSidebar: React.FC = ({}) => {
   const { defaultState, setDefaultState, setIntegration } =
     useBlockMenuContext();
+  const [blockCounts, setBlockCounts] = useState<CountResponse | undefined>(
+    undefined,
+  );
+  const api = useBackendAPI();
+
+  useEffect(() => {
+    const fetchBlockCounts = async () => {
+      try {
+        const counts = await api.getBlockCounts();
+        setBlockCounts(counts);
+      } catch (error) {
+        console.error("Failed to fetch block counts:", error);
+      }
+    };
+
+    fetchBlockCounts();
+  }, [api]);
 
   const topLevelMenuItems = [
     {
@@ -14,7 +33,7 @@ const BlockMenuSidebar: React.FC = ({}) => {
     {
       name: "All blocks",
       type: "all_blocks",
-      number: 103,
+      number: blockCounts?.all_blocks,
     },
   ];
 
@@ -22,17 +41,17 @@ const BlockMenuSidebar: React.FC = ({}) => {
     {
       name: "Input blocks",
       type: "input_blocks",
-      number: 12,
+      number: blockCounts?.input_blocks,
     },
     {
       name: "Action blocks",
       type: "action_blocks",
-      number: 40,
+      number: blockCounts?.action_blocks,
     },
     {
       name: "Output blocks",
       type: "output_blocks",
-      number: 6,
+      number: blockCounts?.output_blocks,
     },
   ];
 
@@ -40,7 +59,7 @@ const BlockMenuSidebar: React.FC = ({}) => {
     {
       name: "Integrations",
       type: "integrations",
-      number: 24,
+      number: blockCounts?.integrations,
       onClick: () => {
         setIntegration(null);
         setDefaultState("integrations");
@@ -49,12 +68,12 @@ const BlockMenuSidebar: React.FC = ({}) => {
     {
       name: "Marketplace Agents",
       type: "marketplace_agents",
-      number: 103,
+      number: blockCounts?.marketplace_agents,
     },
     {
       name: "My Agents",
       type: "my_agents",
-      number: 6,
+      number: blockCounts?.my_agents,
     },
   ];
 

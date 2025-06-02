@@ -7,6 +7,7 @@ import IntegrationBlock from "../IntegrationBlock";
 import { SearchItem, useBlockMenuContext } from "../block-menu-provider";
 import NoSearchResult from "./NoSearchResult";
 import { Button } from "@/components/ui/button";
+import { convertLibraryAgentIntoBlock, getBlockType } from "@/lib/utils";
 
 interface SearchListProps {
   isLoading: boolean;
@@ -23,24 +24,8 @@ const SearchList: React.FC<SearchListProps> = ({
   error,
   onRetry,
 }) => {
-  const { searchQuery, addNode, searchData } = useBlockMenuContext();
-
-  // Need to change it once, we got provider blocks
-  const getBlockType = (item: any) => {
-    if (item.id && item.name && item.inputSchema && item.outputSchema) {
-      return "block";
-    }
-    if (item.name && typeof item.integration_count === "number") {
-      return "provider";
-    }
-    if (item.id && item.graph_id && item.status) {
-      return "library_agent";
-    }
-    if (item.slug && item.agent_name && item.runs !== undefined) {
-      return "store_agent";
-    }
-    return null;
-  };
+  const { searchQuery, addNode, loadingSlug, searchData, handleAddStoreAgent } =
+    useBlockMenuContext();
 
   if (isLoading) {
     return (
@@ -100,6 +85,13 @@ const SearchList: React.FC<SearchListProps> = ({
                 image_url={item.agent_image}
                 creator_name={item.creator}
                 number_of_runs={item.runs}
+                loading={loadingSlug == item.slug}
+                onClick={() =>
+                  handleAddStoreAgent({
+                    creator_name: item.creator,
+                    slug: item.slug,
+                  })
+                }
               />
             );
           case "block":
@@ -115,7 +107,6 @@ const SearchList: React.FC<SearchListProps> = ({
               />
             );
           case "provider":
-            // Here we do need the Integration blocks list, not integration itself
             return (
               <IntegrationBlock
                 key={index}
@@ -137,6 +128,10 @@ const SearchList: React.FC<SearchListProps> = ({
                 image_url={item.image_url}
                 version={item.graph_version}
                 edited_time={item.updated_at}
+                onClick={() => {
+                  const block = convertLibraryAgentIntoBlock(item);
+                  addNode(block);
+                }}
               />
             );
           // currently our backend does not support ai blocks
