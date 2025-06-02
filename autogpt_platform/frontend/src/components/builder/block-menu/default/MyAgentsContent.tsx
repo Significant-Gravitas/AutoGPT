@@ -2,13 +2,8 @@ import React from "react";
 import UGCAgentBlock from "../UGCAgentBlock";
 import { usePagination } from "@/hooks/usePagination";
 import ErrorState from "../ErrorState";
-import {
-  Block,
-  BlockUIType,
-  LibraryAgent,
-  SpecialBlockID,
-} from "@/lib/autogpt-server-api";
 import { useBlockMenuContext } from "../block-menu-provider";
+import { convertLibraryAgentIntoBlock } from "@/lib/utils";
 
 const MyAgentsContent: React.FC = () => {
   const {
@@ -24,31 +19,6 @@ const MyAgentsContent: React.FC = () => {
     pageSize: 10,
   });
   const { addNode } = useBlockMenuContext();
-
-  const handleAddAgent = (agent: LibraryAgent) => {
-    const block = {
-      id: SpecialBlockID.AGENT,
-      name: agent.name,
-      description:
-        `Ver.${agent.graph_version}` +
-        (agent.description ? ` | ${agent.description}` : ""),
-      categories: [{ category: "AGENT", description: "" }],
-      inputSchema: agent.input_schema,
-      outputSchema: agent.output_schema,
-      staticOutput: false,
-      uiType: BlockUIType.AGENT,
-      uiKey: agent.id,
-      costs: [],
-      hardcodedValues: {
-        graph_id: agent.graph_id,
-        graph_version: agent.graph_version,
-        input_schema: agent.input_schema,
-        output_schema: agent.output_schema,
-      },
-    } as Block;
-
-    addNode(block);
-  };
 
   if (loading) {
     return (
@@ -90,7 +60,10 @@ const MyAgentsContent: React.FC = () => {
             edited_time={agent.updated_at}
             version={agent.graph_version}
             image_url={agent.image_url}
-            onClick={() => handleAddAgent(agent)}
+            onClick={() => {
+              const block = convertLibraryAgentIntoBlock(agent);
+              addNode(block);
+            }}
           />
         ))}
         {loadingMore && hasMore && (

@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { ExternalLink, Plus } from "lucide-react";
+import { ExternalLink, Loader2, Plus } from "lucide-react";
 import Image from "next/image";
 import React, { ButtonHTMLAttributes } from "react";
 import { highlightText } from "./IntegrationBlock";
@@ -14,6 +14,7 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   image_url?: string;
   highlightedText?: string;
   slug: string;
+  loading: boolean;
 }
 
 interface MarketplaceAgentBlockComponent extends React.FC<Props> {
@@ -26,6 +27,7 @@ const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
   creator_name,
   number_of_runs,
   className,
+  loading,
   highlightedText,
   slug,
   ...rest
@@ -90,10 +92,14 @@ const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
       </div>
       <div
         className={cn(
-          "flex h-7 w-7 items-center justify-center rounded-[0.5rem] bg-zinc-700 group-disabled:bg-zinc-400",
+          "flex h-7 min-w-7 items-center justify-center rounded-[0.5rem] bg-zinc-700 group-disabled:bg-zinc-400",
         )}
       >
-        <Plus className="h-5 w-5 text-zinc-50" strokeWidth={2} />
+        {!loading ? (
+          <Plus className="h-5 w-5 text-zinc-50" strokeWidth={2} />
+        ) : (
+          <Loader2 className="h-5 w-5 animate-spin" />
+        )}
       </div>
     </Button>
   );

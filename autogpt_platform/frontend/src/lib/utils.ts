@@ -1,7 +1,14 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
-import { Category, Graph } from "@/lib/autogpt-server-api/types";
+import {
+  Block,
+  BlockUIType,
+  Category,
+  Graph,
+  LibraryAgent,
+  SpecialBlockID,
+} from "@/lib/autogpt-server-api/types";
 import { NodeDimension } from "@/components/Flow";
 
 export function cn(...inputs: ClassValue[]) {
@@ -396,3 +403,28 @@ export function getValue(key: string, value: any) {
 export function isEmptyOrWhitespace(str: string | undefined | null): boolean {
   return !str || str.trim().length === 0;
 }
+
+export const convertLibraryAgentIntoBlock = (agent: LibraryAgent) => {
+  const block = {
+    id: SpecialBlockID.AGENT,
+    name: agent.name,
+    description:
+      `Ver.${agent.graph_version}` +
+      (agent.description ? ` | ${agent.description}` : ""),
+    categories: [{ category: "AGENT", description: "" }],
+    inputSchema: agent.input_schema,
+    outputSchema: agent.output_schema,
+    staticOutput: false,
+    uiType: BlockUIType.AGENT,
+    uiKey: agent.id,
+    costs: [],
+    hardcodedValues: {
+      graph_id: agent.graph_id,
+      graph_version: agent.graph_version,
+      input_schema: agent.input_schema,
+      output_schema: agent.output_schema,
+    },
+  } as Block;
+
+  return block;
+};

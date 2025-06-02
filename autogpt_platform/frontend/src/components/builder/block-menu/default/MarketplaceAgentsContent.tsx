@@ -1,7 +1,10 @@
-import React from "react";
+import React, { useState } from "react";
 import MarketplaceAgentBlock from "../MarketplaceAgentBlock";
 import { usePagination } from "@/hooks/usePagination";
 import ErrorState from "../ErrorState";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { convertLibraryAgentIntoBlock } from "@/lib/utils";
+import { useBlockMenuContext } from "../block-menu-provider";
 
 const MarketplaceAgentsContent: React.FC = () => {
   const {
@@ -16,6 +19,40 @@ const MarketplaceAgentsContent: React.FC = () => {
     request: { apiType: "store-agents" },
     pageSize: 10,
   });
+  const api = useBackendAPI();
+  const { addNode } = useBlockMenuContext();
+  const [loadingSlug, setLoadingSlug] = useState<string | null>(null);
+
+  const handleAddStoreAgent = async ({
+    creator_name,
+    slug,
+  }: {
+    creator_name: string;
+    slug: string;
+  }) => {
+    try {
+      setLoadingSlug(slug);
+      const details = await api.getStoreAgent(creator_name, slug);
+
+      if (!details.active_version_id) {
+        console.error(
+          "Cannot add store agent to library: active version ID is missing or undefined",
+        );
+        return;
+      }
+
+      const libraryAgent = await api.addMarketplaceAgentToLibrary(
+        details.active_version_id,
+      );
+
+      const block = convertLibraryAgentIntoBlock(libraryAgent);
+      addNode(block);
+    } catch (error) {
+      console.error("Failed to add store agent:", error);
+    } finally {
+      setLoadingSlug(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -58,6 +95,13 @@ const MarketplaceAgentsContent: React.FC = () => {
             image_url={agent.agent_image}
             creator_name={agent.creator}
             number_of_runs={agent.runs}
+            loading={loadingSlug === agent.slug}
+            onClick={() =>
+              handleAddStoreAgent({
+                creator_name: agent.creator,
+                slug: agent.slug,
+              })
+            }
           />
         ))}
         {loadingMore && hasMore && (
