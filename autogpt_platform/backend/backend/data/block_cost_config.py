@@ -2,6 +2,7 @@ from typing import Type
 
 from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
 from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
+from backend.blocks.flux_kontext import AIImageEditorBlock, FluxKontextModelName
 from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
 from backend.blocks.jina.search import ExtractWebsiteContentBlock, SearchTheWebBlock
@@ -259,6 +260,30 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                 }
             },
         )
+    ],
+    AIImageEditorBlock: [
+        BlockCost(
+            cost_amount=10,
+            cost_filter={
+                "model": FluxKontextModelName.PRO.api_name,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=20,
+            cost_filter={
+                "model": FluxKontextModelName.MAX.api_name,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
     ],
     AIMusicGeneratorBlock: [
         BlockCost(
