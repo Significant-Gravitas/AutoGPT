@@ -165,7 +165,7 @@ async def test_add_agent_to_library(mocker):
             "agentGraphId": "agent1",
             "agentGraphVersion": 1,
         },
-        include={"AgentGraph": True},
+        include=library_agent_include("test-user"),
     )
     mock_library_agent.return_value.create.assert_called_once_with(
         data=prisma.types.LibraryAgentCreateInput(
