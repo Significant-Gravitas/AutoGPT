@@ -6,6 +6,9 @@ import { CreatorInfoCard } from "@/components/agptui/CreatorInfoCard";
 import { CreatorLinks } from "@/components/agptui/CreatorLinks";
 import { Separator } from "@/components/ui/separator";
 
+// Force dynamic rendering to avoid static generation issues with cookies
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({
   params,
 }: {

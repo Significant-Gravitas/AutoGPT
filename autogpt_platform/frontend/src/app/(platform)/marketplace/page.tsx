@@ -18,6 +18,9 @@ import {
 } from "@/lib/autogpt-server-api/types";
 import BackendAPI from "@/lib/autogpt-server-api";
 
+// Force dynamic rendering to avoid static generation issues with cookies
+export const dynamic = "force-dynamic";
+
 async function getStoreData() {
   try {
     const api = new BackendAPI();
