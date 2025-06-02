@@ -56,8 +56,6 @@ interface BlockMenuContextType {
   setSearchId: React.Dispatch<React.SetStateAction<string | undefined>>;
   filters: Filters;
   setFilters: React.Dispatch<React.SetStateAction<Filters>>;
-  creators: string[];
-  setCreators: React.Dispatch<React.SetStateAction<string[]>>;
   searchData: SearchItem[];
   setSearchData: React.Dispatch<React.SetStateAction<SearchItem[]>>;
   categoryCounts: CategoryCounts;
@@ -103,8 +101,6 @@ export function BlockMenuStateProvider({
     createdBy: [],
   });
   const [searchData, setSearchData] = useState<SearchItem[]>([]);
-
-  const [creators, setCreators] = useState<string[]>([]);
 
   const [searchId, setSearchId] = useState<string | undefined>(undefined);
 
@@ -162,8 +158,6 @@ export function BlockMenuStateProvider({
         setSearchQuery,
         searchId,
         setSearchId,
-        creators,
-        setCreators,
         filters,
         setFilters,
         searchData,

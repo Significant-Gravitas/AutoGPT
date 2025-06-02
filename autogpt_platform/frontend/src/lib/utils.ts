@@ -428,3 +428,20 @@ export const convertLibraryAgentIntoBlock = (agent: LibraryAgent) => {
 
   return block;
 };
+
+// Need to change it once, we got provider blocks
+export const getBlockType = (item: any) => {
+  if (item.id && item.name && item.inputSchema && item.outputSchema) {
+    return "block";
+  }
+  if (item.name && typeof item.integration_count === "number") {
+    return "provider";
+  }
+  if (item.id && item.graph_id && item.status) {
+    return "library_agent";
+  }
+  if (item.slug && item.agent_name && item.runs !== undefined) {
+    return "store_agent";
+  }
+  return null;
+};

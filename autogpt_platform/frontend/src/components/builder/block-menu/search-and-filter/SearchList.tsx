@@ -7,7 +7,7 @@ import IntegrationBlock from "../IntegrationBlock";
 import { SearchItem, useBlockMenuContext } from "../block-menu-provider";
 import NoSearchResult from "./NoSearchResult";
 import { Button } from "@/components/ui/button";
-import { convertLibraryAgentIntoBlock } from "@/lib/utils";
+import { convertLibraryAgentIntoBlock, getBlockType } from "@/lib/utils";
 
 interface SearchListProps {
   isLoading: boolean;
@@ -26,23 +26,6 @@ const SearchList: React.FC<SearchListProps> = ({
 }) => {
   const { searchQuery, addNode, loadingSlug, searchData, handleAddStoreAgent } =
     useBlockMenuContext();
-
-  // Need to change it once, we got provider blocks
-  const getBlockType = (item: any) => {
-    if (item.id && item.name && item.inputSchema && item.outputSchema) {
-      return "block";
-    }
-    if (item.name && typeof item.integration_count === "number") {
-      return "provider";
-    }
-    if (item.id && item.graph_id && item.status) {
-      return "library_agent";
-    }
-    if (item.slug && item.agent_name && item.runs !== undefined) {
-      return "store_agent";
-    }
-    return null;
-  };
 
   if (isLoading) {
     return (

@@ -2,7 +2,7 @@ import FilterChip from "../FilterChip";
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, getBlockType } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -10,29 +10,41 @@ import {
   Filters,
   useBlockMenuContext,
 } from "../block-menu-provider";
+import { StoreAgent } from "@/lib/autogpt-server-api";
 
 export default function FilterSheet({
   categories,
 }: {
   categories: Array<{ key: CategoryKey; name: string }>;
 }) {
-  const { filters, creators, setFilters } = useBlockMenuContext();
+  const { filters, setFilters, searchData } = useBlockMenuContext();
   const [isOpen, setIsOpen] = useState(false);
   const [isSheetVisible, setIsSheetVisible] = useState(false);
   const [localFilters, setLocalFilters] = useState<Filters>(filters);
 
-  // Animation
+  const [creators, setCreators] = useState<string[]>([]);
+
   useEffect(() => {
     if (isOpen) {
       setIsSheetVisible(true);
       setLocalFilters(filters);
+
+      const marketplaceAgents = (searchData?.filter(
+        (item) => getBlockType(item) === "store_agent",
+      ) || []) as StoreAgent[];
+
+      const uniqueCreators = Array.from(
+        new Set(marketplaceAgents.map((agent) => agent.creator)),
+      );
+
+      setCreators(uniqueCreators);
     } else {
       const timer = setTimeout(() => {
         setIsSheetVisible(false);
       }, 300);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, filters]);
+  }, [isOpen, filters, searchData]);
 
   const onCategoryChange = useCallback((category: CategoryKey) => {
     setLocalFilters((prev) => ({
@@ -173,7 +185,7 @@ export default function FilterSheet({
                       id={`creator-${creator}`}
                       checked={localFilters.createdBy.includes(creator)}
                       onCheckedChange={() => onCreatorChange(creator)}
-                      className="border border-[#D4D4D4] shadow-none data-[state=checked]:border-none data-[state=checked]:bg-zinc-500 data-[state=checked]:text-white"
+                      className="border border-[#D4D4D4] shadow-none data-[state=checked]:border-none data-[state=checked]:bg-violet-700 data-[state=checked]:text-white"
                     />
                     <label
                       htmlFor={`creator-${creator}`}
@@ -184,12 +196,14 @@ export default function FilterSheet({
                   </div>
                 ))}
               </div>
-              <Button
-                variant={"link"}
-                className="m-0 p-0 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 underline hover:text-zinc-600"
-              >
-                More
-              </Button>
+              {creators.length > 5 && (
+                <Button
+                  variant={"link"}
+                  className="m-0 p-0 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 underline hover:text-zinc-600"
+                >
+                  More
+                </Button>
+              )}
             </div>
 
             {/* Footer buttons */}
