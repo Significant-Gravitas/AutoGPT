@@ -7,11 +7,13 @@ import fastapi
 import fastapi.testclient
 import prisma.enums
 import pytest_mock
+from prisma import Json
 from pytest_snapshot.plugin import Snapshot
 
 import backend.server.v2.admin.credit_admin_routes as credit_admin_routes
 import backend.server.v2.admin.model as admin_model
 from backend.data.model import UserTransaction
+from backend.server.conftest import ADMIN_USER_ID, TARGET_USER_ID
 from backend.server.model import Pagination
 
 app = fastapi.FastAPI()
@@ -20,14 +22,14 @@ app.include_router(credit_admin_routes.router)
 client = fastapi.testclient.TestClient(app)
 
 
-def override_requires_admin_user():
+def override_requires_admin_user() -> dict[str, str]:
     """Override admin user check for testing"""
-    return {"sub": "admin-user-id", "role": "admin"}
+    return {"sub": ADMIN_USER_ID, "role": "admin"}
 
 
-def override_get_user_id():
+def override_get_user_id() -> str:
     """Override get_user_id for testing"""
-    return "admin-user-id"
+    return ADMIN_USER_ID
 
 
 app.dependency_overrides[autogpt_libs.auth.requires_admin_user] = (
@@ -38,7 +40,7 @@ app.dependency_overrides[autogpt_libs.auth.depends.get_user_id] = override_get_u
 
 def test_add_user_credits_success(
     mocker: pytest_mock.MockFixture,
-    snapshot: Snapshot,
+    configured_snapshot: Snapshot,
 ) -> None:
     """Test successful credit addition by admin"""
     # Mock the credit model
@@ -50,7 +52,7 @@ def test_add_user_credits_success(
     )
 
     request_data = {
-        "user_id": "target-user-id",
+        "user_id": TARGET_USER_ID,
         "amount": 500,
         "comments": "Test credit grant for debugging",
     }
@@ -65,21 +67,18 @@ def test_add_user_credits_success(
     # Verify the function was called with correct parameters
     mock_credit_model._add_transaction.assert_called_once()
     call_args = mock_credit_model._add_transaction.call_args
-    assert call_args[0] == ("target-user-id", 500)
+    assert call_args[0] == (TARGET_USER_ID, 500)
     assert call_args[1]["transaction_type"] == prisma.enums.CreditTransactionType.GRANT
     # Check that metadata is a Json object with the expected content
-    from prisma import Json
-
     assert isinstance(call_args[1]["metadata"], Json)
     assert call_args[1]["metadata"] == Json(
-        {"admin_id": "admin-user-id", "reason": "Test credit grant for debugging"}
+        {"admin_id": ADMIN_USER_ID, "reason": "Test credit grant for debugging"}
     )
 
     # Snapshot test the response
-    snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
+    configured_snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
-        "adm_add_cred_ok",
+        "admin_add_credits_success",
     )
 
 

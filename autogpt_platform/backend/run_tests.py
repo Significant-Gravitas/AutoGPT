@@ -62,7 +62,7 @@ def test():
 
     # IMPORTANT: Set test database environment variables to prevent accidentally
     # resetting the developer's local database.
-    # 
+    #
     # This script spins up a separate test database container (postgres-test) using
     # docker-compose.test.yaml. We explicitly set DATABASE_URL and DIRECT_URL to point
     # to this test database to ensure that:
@@ -73,24 +73,26 @@ def test():
     # Without this, if a developer has DATABASE_URL set in their environment pointing
     # to their development database, running tests would wipe their local data!
     test_env = os.environ.copy()
-    
+
     # Use environment variables if set, otherwise use defaults that match docker-compose.test.yaml
     db_user = os.getenv("DB_USER", "postgres")
     db_pass = os.getenv("DB_PASS", "postgres")
     db_name = os.getenv("DB_NAME", "postgres")
     db_port = os.getenv("DB_PORT", "5432")
-    
+
     # Construct the test database URL - this ensures we're always pointing to the test container
-    test_env["DATABASE_URL"] = f"postgresql://{db_user}:{db_pass}@localhost:{db_port}/{db_name}"
+    test_env["DATABASE_URL"] = (
+        f"postgresql://{db_user}:{db_pass}@localhost:{db_port}/{db_name}"
+    )
     test_env["DIRECT_URL"] = test_env["DATABASE_URL"]
-    
+
     # Run Prisma migrations with test database
     # First, reset the database to ensure clean state for tests
     # This is safe because we've explicitly set DATABASE_URL to the test database above
     subprocess.run(
         ["prisma", "migrate", "reset", "--force", "--skip-seed"],
         env=test_env,
-        check=False
+        check=False,
     )
     # Then apply migrations to get the test database schema up to date
     subprocess.run(["prisma", "migrate", "deploy"], env=test_env, check=True)

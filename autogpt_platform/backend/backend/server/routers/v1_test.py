@@ -10,6 +10,7 @@ from pytest_snapshot.plugin import Snapshot
 import backend.server.routers.v1 as v1_routes
 from backend.data.credit import AutoTopUpConfig
 from backend.data.graph import GraphModel
+from backend.server.conftest import TEST_USER_ID
 from backend.server.utils import get_user_id
 
 app = fastapi.FastAPI()
@@ -18,14 +19,14 @@ app.include_router(v1_routes.v1_router)
 client = fastapi.testclient.TestClient(app)
 
 
-def override_auth_middleware(request: fastapi.Request):
+def override_auth_middleware(request: fastapi.Request) -> dict[str, str]:
     """Override auth middleware for testing"""
-    return {"sub": "test-user-id", "role": "user", "email": "test@example.com"}
+    return {"sub": TEST_USER_ID, "role": "user", "email": "test@example.com"}
 
 
-def override_get_user_id():
+def override_get_user_id() -> str:
     """Override get_user_id for testing"""
-    return "test-user-id"
+    return TEST_USER_ID
 
 
 app.dependency_overrides[autogpt_libs.auth.middleware.auth_middleware] = (
@@ -37,12 +38,12 @@ app.dependency_overrides[get_user_id] = override_get_user_id
 # Auth endpoints tests
 def test_get_or_create_user_route(
     mocker: pytest_mock.MockFixture,
-    snapshot: Snapshot,
+    configured_snapshot: Snapshot,
 ) -> None:
     """Test get or create user endpoint"""
     mock_user = Mock()
     mock_user.model_dump.return_value = {
-        "id": "test-user-id",
+        "id": TEST_USER_ID,
         "email": "test@example.com",
         "name": "Test User",
     }
@@ -57,8 +58,7 @@ def test_get_or_create_user_route(
     assert response.status_code == 200
     response_data = response.json()
 
-    snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
+    configured_snapshot.assert_match(
         json.dumps(response_data, indent=2, sort_keys=True),
         "auth_user",
     )

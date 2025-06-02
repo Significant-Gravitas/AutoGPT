@@ -12,6 +12,8 @@ from pytest_snapshot.plugin import Snapshot
 import backend.server.v2.store.model
 import backend.server.v2.store.routes
 
+# Using a fixed timestamp for reproducible tests
+# 2023 date is intentionally used to ensure tests work regardless of current year
 FIXED_NOW = datetime.datetime(2023, 1, 1, 0, 0, 0)
 
 app = fastapi.FastAPI()
@@ -20,12 +22,12 @@ app.include_router(backend.server.v2.store.routes.router)
 client = fastapi.testclient.TestClient(app)
 
 
-def override_auth_middleware():
+def override_auth_middleware() -> dict[str, str]:
     """Override auth middleware for testing"""
     return {"sub": "test-user-id"}
 
 
-def override_get_user_id():
+def override_get_user_id() -> str:
     """Override get_user_id for testing"""
     return "test-user-id"
 

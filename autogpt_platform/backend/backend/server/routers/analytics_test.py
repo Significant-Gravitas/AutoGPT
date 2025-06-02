@@ -1,5 +1,5 @@
 import json
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import fastapi
 import fastapi.testclient
@@ -7,6 +7,7 @@ import pytest_mock
 from pytest_snapshot.plugin import Snapshot
 
 import backend.server.routers.analytics as analytics_routes
+from backend.server.conftest import TEST_USER_ID
 from backend.server.utils import get_user_id
 
 app = fastapi.FastAPI()
@@ -15,9 +16,9 @@ app.include_router(analytics_routes.router)
 client = fastapi.testclient.TestClient(app)
 
 
-def override_get_user_id():
+def override_get_user_id() -> str:
     """Override get_user_id for testing"""
-    return "test-user-id"
+    return TEST_USER_ID
 
 
 app.dependency_overrides[get_user_id] = override_get_user_id
@@ -25,17 +26,12 @@ app.dependency_overrides[get_user_id] = override_get_user_id
 
 def test_log_raw_metric_success(
     mocker: pytest_mock.MockFixture,
-    snapshot: Snapshot,
+    configured_snapshot: Snapshot,
 ) -> None:
     """Test successful raw metric logging"""
 
     # Mock the analytics function
-    # Create a simple object with the necessary id attribute
-    class MockMetricResult:
-        def __init__(self, id: str):
-            self.id = id
-
-    mock_result = MockMetricResult(id="metric-123-uuid")
+    mock_result = Mock(id="metric-123-uuid")
 
     mock_log_metric = mocker.patch(
         "backend.data.analytics.log_raw_metric",
@@ -57,33 +53,27 @@ def test_log_raw_metric_success(
 
     # Verify the function was called with correct parameters
     mock_log_metric.assert_called_once_with(
-        user_id="test-user-id",
+        user_id=TEST_USER_ID,
         metric_name="page_load_time",
         metric_value=2.5,
         data_string="/dashboard",
     )
 
     # Snapshot test the response
-    snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
+    configured_snapshot.assert_match(
         json.dumps({"metric_id": response.json()}, indent=2, sort_keys=True),
-        "log_metric_ok",
+        "analytics_log_metric_success",
     )
 
 
 def test_log_raw_metric_various_values(
     mocker: pytest_mock.MockFixture,
-    snapshot: Snapshot,
+    configured_snapshot: Snapshot,
 ) -> None:
     """Test raw metric logging with various metric values"""
 
     # Mock the analytics function
-    # Create a simple object with the necessary id attribute
-    class MockMetricResult:
-        def __init__(self, id: str):
-            self.id = id
-
-    mock_result = MockMetricResult(id="metric-456-uuid")
+    mock_result = Mock(id="metric-456-uuid")
 
     mocker.patch(
         "backend.data.analytics.log_raw_metric",
@@ -122,26 +112,20 @@ def test_log_raw_metric_various_values(
     assert response.status_code == 200
 
     # Snapshot the last response
-    snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
+    configured_snapshot.assert_match(
         json.dumps({"metric_id": response.json()}, indent=2, sort_keys=True),
-        "log_metric_vals",
+        "analytics_log_metric_various_values",
     )
 
 
 def test_log_raw_analytics_success(
     mocker: pytest_mock.MockFixture,
-    snapshot: Snapshot,
+    configured_snapshot: Snapshot,
 ) -> None:
     """Test successful raw analytics logging"""
 
     # Mock the analytics function
-    # Create a simple object with the necessary id attribute
-    class MockAnalyticsResult:
-        def __init__(self, id: str):
-            self.id = id
-
-    mock_result = MockAnalyticsResult(id="analytics-789-uuid")
+    mock_result = Mock(id="analytics-789-uuid")
 
     mock_log_analytics = mocker.patch(
         "backend.data.analytics.log_raw_analytics",
@@ -171,33 +155,27 @@ def test_log_raw_analytics_success(
 
     # Verify the function was called with correct parameters
     mock_log_analytics.assert_called_once_with(
-        "test-user-id",
+        TEST_USER_ID,
         "user_action",
         request_data["data"],
         "button_click_submit_form",
     )
 
     # Snapshot test the response
-    snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
+    configured_snapshot.assert_match(
         json.dumps({"analytics_id": response_data}, indent=2, sort_keys=True),
-        "log_anlyt_ok",
+        "analytics_log_analytics_success",
     )
 
 
 def test_log_raw_analytics_complex_data(
     mocker: pytest_mock.MockFixture,
-    snapshot: Snapshot,
+    configured_snapshot: Snapshot,
 ) -> None:
     """Test raw analytics logging with complex nested data"""
 
     # Mock the analytics function
-    # Create a simple object with the necessary id attribute
-    class MockAnalyticsResult:
-        def __init__(self, id: str):
-            self.id = id
-
-    mock_result = MockAnalyticsResult(id="analytics-complex-uuid")
+    mock_result = Mock(id="analytics-complex-uuid")
 
     mocker.patch(
         "backend.data.analytics.log_raw_analytics",
@@ -234,8 +212,7 @@ def test_log_raw_analytics_complex_data(
     response_data = response.json()
 
     # Snapshot test the complex data structure
-    snapshot.snapshot_dir = "snapshots"
-    snapshot.assert_match(
+    configured_snapshot.assert_match(
         json.dumps(
             {
                 "analytics_id": response_data,
@@ -244,7 +221,7 @@ def test_log_raw_analytics_complex_data(
             indent=2,
             sort_keys=True,
         ),
-        "log_anlyt_cplx",
+        "analytics_log_analytics_complex_data",
     )
 
 
