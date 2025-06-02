@@ -10,20 +10,22 @@ Takes a prompt describing the desired transformation and optionally a reference 
 The block sends your prompt, image, and settings to the selected Flux Kontext model on Replicate. The service processes the request and returns a link to the edited image.
 
 ## Inputs
-| Input | Description |
-|-------|-------------|
-| API Key | Your Replicate API key |
-| Prompt | Instruction describing how to edit the image |
-| Input Image | Optional reference image URI to modify |
-| Aspect Ratio | Target aspect ratio for the output |
-| Seed | Optional seed for reproducible results |
-| Model | Choose between Flux Kontext Pro and Flux Kontext Max |
+| Input        | Description                                                                 |
+|--------------|-----------------------------------------------------------------------------|
+| Credentials  | Replicate API key with permissions for Flux Kontext models                  |
+| Prompt       | Text instruction describing the desired edit                                |
+| Input Image  | (Optional) Reference image URI (jpeg, png, gif, webp)                      |
+| Aspect Ratio | Aspect ratio of the generated image (e.g. match_input_image, 1:1, 16:9, etc.) |
+| Seed         | (Optional, advanced) Random seed for reproducible generation                |
+| Model        | Model variant to use: Flux Kontext Pro or Flux Kontext Max                  |
 
 ## Outputs
-| Output | Description |
-|--------|-------------|
-| image_url | URL of the transformed image |
-| error | Error message if something goes wrong |
+| Output     | Description                              |
+|------------|------------------------------------------|
+| image_url  | URL of the transformed image             |
+| error      | Error message if generation failed       |
 
-## Possible use case
-Enhance a marketing image by requesting "add soft lighting and a subtle vignette" while providing the original asset as the reference image.
+## Use Cases
+- Enhance a marketing image by requesting "add soft lighting and a subtle vignette" while providing the original asset as the reference image.
+- Generate social media assets with specific aspect ratios and style prompts.
+- Apply creative edits to product photos using text instructions.

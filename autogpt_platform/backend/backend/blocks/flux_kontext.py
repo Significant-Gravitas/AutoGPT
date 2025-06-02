@@ -35,10 +35,7 @@ class FluxKontextModelName(str, Enum):
 
     @property
     def api_name(self) -> str:
-        return {
-            FluxKontextModelName.PRO: "black-forest-labs/flux-kontext-pro",
-            FluxKontextModelName.MAX: "black-forest-labs/flux-kontext-max",
-        }[self]
+        return f"black-forest-labs/flux-kontext-{self.name.lower()}"
 
 
 class AspectRatio(str, Enum):
@@ -118,7 +115,7 @@ class AIImageEditorBlock(Block):
                 ("image_url", "https://replicate.com/output/edited-image.png"),
             ],
             test_mock={
-                "run_model": lambda api_key, model_name, prompt, input_image, aspect_ratio, seed: "https://replicate.com/output/edited-image.png",
+                "run_model": lambda *args, **kwargs: "https://replicate.com/output/edited-image.png",
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -130,14 +127,13 @@ class AIImageEditorBlock(Block):
         credentials: APIKeyCredentials,
         **kwargs,
     ) -> BlockOutput:
-        seed = input_data.seed
         result = self.run_model(
             api_key=credentials.api_key,
             model_name=input_data.model.api_name,
             prompt=input_data.prompt,
             input_image=input_data.input_image,
             aspect_ratio=input_data.aspect_ratio.value,
-            seed=seed,
+            seed=input_data.seed,
         )
         yield "image_url", result
 
@@ -155,9 +151,8 @@ class AIImageEditorBlock(Block):
             "prompt": prompt,
             "input_image": input_image,
             "aspect_ratio": aspect_ratio,
+            **({"seed": seed} if seed is not None else {}),
         }
-        if seed is not None:
-            input_params["seed"] = seed
 
         output: FileOutput | list[FileOutput] = client.run(  # type: ignore
             model_name,
@@ -166,12 +161,10 @@ class AIImageEditorBlock(Block):
         )
 
         if isinstance(output, list) and output:
-            first = output[0]
-            if isinstance(first, FileOutput):
-                return first.url
-            return first
+            output = output[0]
         if isinstance(output, FileOutput):
             return output.url
         if isinstance(output, str):
             return output
-        return "No output received"
+
+        raise ValueError("No output received")
