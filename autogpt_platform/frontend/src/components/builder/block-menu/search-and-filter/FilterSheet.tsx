@@ -100,7 +100,9 @@ export default function FilterSheet({
         variant={"link"}
         className="m-0 p-0 hover:no-underline"
       >
-        <FilterChip name="All filters" />
+        <FilterChip
+          name={hasActiveFilters() ? "Edit filters" : "All filters"}
+        />
       </Button>
 
       {isSheetVisible && (
@@ -143,7 +145,7 @@ export default function FilterSheet({
                       id={category.key}
                       checked={localFilters.categories[category.key]}
                       onCheckedChange={() => onCategoryChange(category.key)}
-                      className="border border-[#D4D4D4] shadow-none data-[state=checked]:border-none data-[state=checked]:bg-zinc-500 data-[state=checked]:text-white"
+                      className="border border-[#D4D4D4] shadow-none data-[state=checked]:border-none data-[state=checked]:bg-violet-700 data-[state=checked]:text-white"
                     />
                     <label
                       htmlFor={category.key}

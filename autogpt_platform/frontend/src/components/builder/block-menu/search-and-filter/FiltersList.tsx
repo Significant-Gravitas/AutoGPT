@@ -61,10 +61,6 @@ const FiltersList = () => {
         <FilterChip
           key={category.key}
           name={category.name}
-          needHover={
-            Object.values(filters.categories).filter(Boolean).length === 1 &&
-            filters.categories[category.key]
-          }
           number={categoryCounts[category.key]}
           selected={filters.categories[category.key]}
           onClick={() => handleCategoryFilter(category.key)}
