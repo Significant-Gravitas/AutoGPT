@@ -20,39 +20,8 @@ const MarketplaceAgentsContent: React.FC = () => {
     pageSize: 10,
   });
   const api = useBackendAPI();
-  const { addNode } = useBlockMenuContext();
+  const { handleAddStoreAgent } = useBlockMenuContext();
   const [loadingSlug, setLoadingSlug] = useState<string | null>(null);
-
-  const handleAddStoreAgent = async ({
-    creator_name,
-    slug,
-  }: {
-    creator_name: string;
-    slug: string;
-  }) => {
-    try {
-      setLoadingSlug(slug);
-      const details = await api.getStoreAgent(creator_name, slug);
-
-      if (!details.active_version_id) {
-        console.error(
-          "Cannot add store agent to library: active version ID is missing or undefined",
-        );
-        return;
-      }
-
-      const libraryAgent = await api.addMarketplaceAgentToLibrary(
-        details.active_version_id,
-      );
-
-      const block = convertLibraryAgentIntoBlock(libraryAgent);
-      addNode(block);
-    } catch (error) {
-      console.error("Failed to add store agent:", error);
-    } finally {
-      setLoadingSlug(null);
-    }
-  };
 
   if (loading) {
     return (

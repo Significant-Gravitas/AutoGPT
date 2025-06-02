@@ -7,6 +7,7 @@ import IntegrationBlock from "../IntegrationBlock";
 import { SearchItem, useBlockMenuContext } from "../block-menu-provider";
 import NoSearchResult from "./NoSearchResult";
 import { Button } from "@/components/ui/button";
+import { convertLibraryAgentIntoBlock } from "@/lib/utils";
 
 interface SearchListProps {
   isLoading: boolean;
@@ -23,7 +24,8 @@ const SearchList: React.FC<SearchListProps> = ({
   error,
   onRetry,
 }) => {
-  const { searchQuery, addNode, searchData } = useBlockMenuContext();
+  const { searchQuery, addNode, loadingSlug, searchData, handleAddStoreAgent } =
+    useBlockMenuContext();
 
   // Need to change it once, we got provider blocks
   const getBlockType = (item: any) => {
@@ -100,6 +102,13 @@ const SearchList: React.FC<SearchListProps> = ({
                 image_url={item.agent_image}
                 creator_name={item.creator}
                 number_of_runs={item.runs}
+                loading={loadingSlug == item.slug}
+                onClick={() =>
+                  handleAddStoreAgent({
+                    creator_name: item.creator,
+                    slug: item.slug,
+                  })
+                }
               />
             );
           case "block":
@@ -115,7 +124,6 @@ const SearchList: React.FC<SearchListProps> = ({
               />
             );
           case "provider":
-            // Here we do need the Integration blocks list, not integration itself
             return (
               <IntegrationBlock
                 key={index}
@@ -137,6 +145,10 @@ const SearchList: React.FC<SearchListProps> = ({
                 image_url={item.image_url}
                 version={item.graph_version}
                 edited_time={item.updated_at}
+                onClick={() => {
+                  const block = convertLibraryAgentIntoBlock(item);
+                  addNode(block);
+                }}
               />
             );
           // currently our backend does not support ai blocks
