@@ -16,7 +16,7 @@ import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import useSupabase from "@/hooks/useSupabase";
-import Spinner from "@/components/Spinner";
+import LoadingBox from "@/components/ui/loading";
 import {
   AuthCard,
   AuthHeader,
@@ -98,7 +98,7 @@ export default function LoginPage() {
   }
 
   if (isUserLoading || user) {
-    return <Spinner className="h-[80vh]" />;
+    return <LoadingBox className="h-[80vh]" />;
   }
 
   if (!supabase) {
@@ -163,6 +163,7 @@ export default function LoginPage() {
             onVerify={turnstile.handleVerify}
             onExpire={turnstile.handleExpire}
             onError={turnstile.handleError}
+            setWidgetId={turnstile.setWidgetId}
             action="login"
             shouldRender={turnstile.shouldRender}
           />

@@ -1,11 +1,12 @@
 "use client";
 import React, {
+  createContext,
   useState,
   useCallback,
   useEffect,
   useRef,
   MouseEvent,
-  createContext,
+  Suspense,
 } from "react";
 import {
   ReactFlow,
@@ -49,6 +50,7 @@ import RunnerUIWrapper, {
   RunnerUIWrapperRef,
 } from "@/components/RunnerUIWrapper";
 import PrimaryActionBar from "@/components/PrimaryActionButton";
+import OttoChatWidget from "@/components/OttoChatWidget";
 import { useToast } from "@/components/ui/use-toast";
 import { useCopyPaste } from "../hooks/useCopyPaste";
 import { CronScheduler } from "./cronScheduler";
@@ -152,6 +154,13 @@ const FlowEditor: React.FC<{
 
   // It stores the dimension of all nodes with position as well
   const [nodeDimensions, setNodeDimensions] = useState<NodeDimension>({});
+
+  // Set page title with or without graph name
+  useEffect(() => {
+    document.title = savedAgent
+      ? `${savedAgent.name} - Builder - AutoGPT Platform`
+      : `Builder - AutoGPT Platform`;
+  }, [savedAgent]);
 
   useEffect(() => {
     if (params.get("resetTutorial") === "true") {
@@ -700,6 +709,7 @@ const FlowEditor: React.FC<{
             }
           ></ControlPanel>
           <PrimaryActionBar
+            className="absolute bottom-0 left-1/2 z-20 -translate-x-1/2"
             onClickAgentOutputs={() => runnerUIRef.current?.openRunnerOutput()}
             onClickRunAgent={() => {
               if (!savedAgent) {
@@ -739,6 +749,12 @@ const FlowEditor: React.FC<{
         scheduleRunner={scheduleRunner}
         requestSaveAndRun={requestSaveAndRun}
       />
+      <Suspense fallback={null}>
+        <OttoChatWidget
+          graphID={flowID}
+          className="fixed bottom-4 right-4 z-20"
+        />
+      </Suspense>
     </FlowContext.Provider>
   );
 };

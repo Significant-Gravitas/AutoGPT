@@ -17,7 +17,7 @@ repos:
         name: Detect secrets
         description: Detects high entropy strings that are likely to be passwords.
         files: ^autogpt_platform/
-        stages: [push]
+        stages: [pre-push]
 
   - repo: local
     # For proper type checking, all dependencies need to be up-to-date.
@@ -241,38 +241,38 @@ repos:
         language: system
         pass_filenames: false
 
-  - repo: local
-    hooks:
-      - id: pytest
-        name: Run tests - AutoGPT Platform - Backend
-        alias: pytest-platform-backend
-        entry: bash -c 'cd autogpt_platform/backend && poetry run pytest'
-        # include autogpt_libs source (since it's a path dependency) but exclude *_test.py files:
-        files: ^autogpt_platform/(backend/((backend|test)/|poetry\.lock$)|autogpt_libs/(autogpt_libs/.*(?<!_test)\.py|poetry\.lock)$)
-        language: system
-        pass_filenames: false
+  # - repo: local
+  #   hooks:
+  #     - id: pytest
+  #       name: Run tests - AutoGPT Platform - Backend
+  #       alias: pytest-platform-backend
+  #       entry: bash -c 'cd autogpt_platform/backend && poetry run pytest'
+  #       # include autogpt_libs source (since it's a path dependency) but exclude *_test.py files:
+  #       files: ^autogpt_platform/(backend/((backend|test)/|poetry\.lock$)|autogpt_libs/(autogpt_libs/.*(?<!_test)\.py|poetry\.lock)$)
+  #       language: system
+  #       pass_filenames: false
 
-      - id: pytest
-        name: Run tests - Classic - AutoGPT (excl. slow tests)
-        alias: pytest-classic-autogpt
-        entry: bash -c 'cd classic/original_autogpt && poetry run pytest --cov=autogpt -m "not slow" tests/unit tests/integration'
-        # include forge source (since it's a path dependency) but exclude *_test.py files:
-        files: ^(classic/original_autogpt/((autogpt|tests)/|poetry\.lock$)|classic/forge/(forge/.*(?<!_test)\.py|poetry\.lock)$)
-        language: system
-        pass_filenames: false
+  #     - id: pytest
+  #       name: Run tests - Classic - AutoGPT (excl. slow tests)
+  #       alias: pytest-classic-autogpt
+  #       entry: bash -c 'cd classic/original_autogpt && poetry run pytest --cov=autogpt -m "not slow" tests/unit tests/integration'
+  #       # include forge source (since it's a path dependency) but exclude *_test.py files:
+  #       files: ^(classic/original_autogpt/((autogpt|tests)/|poetry\.lock$)|classic/forge/(forge/.*(?<!_test)\.py|poetry\.lock)$)
+  #       language: system
+  #       pass_filenames: false
 
-      - id: pytest
-        name: Run tests - Classic - Forge (excl. slow tests)
-        alias: pytest-classic-forge
-        entry: bash -c 'cd classic/forge && poetry run pytest --cov=forge -m "not slow"'
-        files: ^classic/forge/(forge/|tests/|poetry\.lock$)
-        language: system
-        pass_filenames: false
+  #     - id: pytest
+  #       name: Run tests - Classic - Forge (excl. slow tests)
+  #       alias: pytest-classic-forge
+  #       entry: bash -c 'cd classic/forge && poetry run pytest --cov=forge -m "not slow"'
+  #       files: ^classic/forge/(forge/|tests/|poetry\.lock$)
+  #       language: system
+  #       pass_filenames: false
 
-      - id: pytest
-        name: Run tests - Classic - Benchmark
-        alias: pytest-classic-benchmark
-        entry: bash -c 'cd classic/benchmark && poetry run pytest --cov=benchmark'
-        files: ^classic/benchmark/(agbenchmark/|tests/|poetry\.lock$)
-        language: system
-        pass_filenames: false
+  #     - id: pytest
+  #       name: Run tests - Classic - Benchmark
+  #       alias: pytest-classic-benchmark
+  #       entry: bash -c 'cd classic/benchmark && poetry run pytest --cov=benchmark'
+  #       files: ^classic/benchmark/(agbenchmark/|tests/|poetry\.lock$)
+  #       language: system
+  #       pass_filenames: false

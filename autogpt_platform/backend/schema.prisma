@@ -68,6 +68,7 @@ enum OnboardingStep {
   AGENT_INPUT
   CONGRATS
   GET_RESULTS
+  RUN_AGENTS
   // Marketplace
   MARKETPLACE_VISIT
   MARKETPLACE_ADD_AGENT
@@ -93,6 +94,7 @@ model UserOnboarding {
   selectedStoreListingVersionId String?
   agentInput                    Json?
   onboardingAgentExecutionId    String?
+  agentRuns                     Int              @default(0)
 
   userId String @unique
   User   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -195,6 +197,8 @@ model NotificationEvent {
 
   type NotificationType
   data Json
+
+  @@index([userNotificationBatchId])
 }
 
 model UserNotificationBatch {
@@ -377,9 +381,8 @@ model AgentNodeExecution {
 
   stats Json?
 
-  @@index([agentGraphExecutionId])
-  @@index([agentNodeId])
-  @@index([addedTime])
+  @@index([agentGraphExecutionId, agentNodeId, executionStatus])
+  @@index([addedTime, queuedTime])
 }
 
 // This model describes the output of an AgentNodeExecution.
@@ -402,6 +405,8 @@ model AgentNodeExecutionInputOutput {
   // Input and Output pin names are unique for each AgentNodeExecution.
   @@unique([referencedByInputExecId, referencedByOutputExecId, name])
   @@index([referencedByOutputExecId])
+  // Composite index for `upsert_execution_input`.
+  @@index([name, time])
 }
 
 // Webhook that is registered with a provider and propagates to one or more nodes
