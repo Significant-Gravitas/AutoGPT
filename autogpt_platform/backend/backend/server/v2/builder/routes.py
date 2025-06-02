@@ -191,9 +191,7 @@ async def search(
     # todo kcze sort results
 
     return builder_model.SearchResponse(
-        items=blocks.blocks.blocks
-        + my_agents.agents
-        + marketplace_agents.agents,
+        items=blocks.blocks.blocks + my_agents.agents + marketplace_agents.agents,
         total_items={
             "blocks": blocks.total_block_count,
             "integrations": blocks.total_integration_count,

@@ -71,9 +71,7 @@ class SearchBlocksResponse(BaseModel):
 
 
 class SearchResponse(BaseModel):
-    items: list[
-        BlockData | library_model.LibraryAgent | store_model.StoreAgent
-    ]
+    items: list[BlockData | library_model.LibraryAgent | store_model.StoreAgent]
     total_items: dict[FilterType, int]
     page: int
     more_pages: bool
