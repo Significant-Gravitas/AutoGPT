@@ -10,7 +10,6 @@ from backend.integrations.providers import ProviderName
 FilterType = Literal[
     "blocks",
     "integrations",
-    "providers",
     "marketplace_agents",
     "my_agents",
 ]
@@ -73,7 +72,7 @@ class SearchBlocksResponse(BaseModel):
 
 class SearchResponse(BaseModel):
     items: list[
-        BlockData | Provider | library_model.LibraryAgent | store_model.StoreAgent
+        BlockData | library_model.LibraryAgent | store_model.StoreAgent
     ]
     total_items: dict[FilterType, int]
     page: int
