@@ -86,6 +86,11 @@ def test():
     )
     test_env["DIRECT_URL"] = test_env["DATABASE_URL"]
 
+    test_env["DB_PORT"] = db_port
+    test_env["DB_NAME"] = db_name
+    test_env["DB_PASS"] = db_pass
+    test_env["DB_USER"] = db_user
+
     # Run Prisma migrations with test database
     # First, reset the database to ensure clean state for tests
     # This is safe because we've explicitly set DATABASE_URL to the test database above
