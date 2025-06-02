@@ -223,6 +223,7 @@ class GmailReadBlock(Block):
             if html_content:
                 try:
                     import html2text
+
                     h = html2text.HTML2Text()
                     h.ignore_links = False
                     h.ignore_images = True
@@ -233,7 +234,9 @@ class GmailReadBlock(Block):
 
         # Handle content stored as attachment
         if body.get("attachmentId"):
-            attachment_data = self._download_attachment_body(body["attachmentId"], msg_id, service)
+            attachment_data = self._download_attachment_body(
+                body["attachmentId"], msg_id, service
+            )
             if attachment_data:
                 return self._decode_base64(attachment_data)
 
@@ -253,7 +256,7 @@ class GmailReadBlock(Block):
             # Add padding if necessary
             missing_padding = len(data) % 4
             if missing_padding:
-                data += '=' * (4 - missing_padding)
+                data += "=" * (4 - missing_padding)
             return base64.urlsafe_b64decode(data).decode("utf-8")
         except Exception:
             return None

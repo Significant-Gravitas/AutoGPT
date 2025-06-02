@@ -1,6 +1,7 @@
 import base64
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
 
 from backend.blocks.google.gmail import GmailReadBlock
 
@@ -59,7 +60,9 @@ class TestGmailReadBlock:
 
     def test_html_only_email(self):
         """Test parsing HTML-only email with conversion to plain text."""
-        html_text = "<html><body><h1>Hello World</h1><p>This is HTML content.</p></body></html>"
+        html_text = (
+            "<html><body><h1>Hello World</h1><p>This is HTML content.</p></body></html>"
+        )
 
         msg = {
             "id": "test_msg_3",
@@ -165,6 +168,7 @@ class TestGmailReadBlock:
 
     def test_recursion_depth_limit(self):
         """Test that recursion depth is properly limited."""
+
         # Create a deeply nested structure that would exceed the limit
         def create_nested_part(depth):
             if depth > 15:  # Exceed the limit of 10
@@ -207,7 +211,9 @@ class TestGmailReadBlock:
         }
 
         # Mock attachment download failure
-        self.mock_service.users().messages().attachments().get().execute.side_effect = Exception("Download failed")
+        self.mock_service.users().messages().attachments().get().execute.side_effect = (
+            Exception("Download failed")
+        )
 
         result = self.gmail_block._get_email_body(msg, self.mock_service)
         assert result == "This email does not contain a readable body."
