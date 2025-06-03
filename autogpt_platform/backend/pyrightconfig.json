@@ -1,0 +1,20 @@
+{
+  "include": [
+    "."
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.*",
+    "backend/blocks/example_sdk_block.py",
+    "backend/blocks/simple_example_block.py",
+    "backend/blocks/example_webhook_sdk_block.py",
+    "test/sdk/demo_sdk_block.py",
+    "test/sdk/test_sdk_integration.py",
+    "backend/sdk/auto_registry.py"
+  ],
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false,
+  "pythonVersion": "3.10",
+  "pythonPlatform": "All"
+}

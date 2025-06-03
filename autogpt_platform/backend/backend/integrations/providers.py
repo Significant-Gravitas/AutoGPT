@@ -6,10 +6,11 @@ from typing import Any
 class ProviderName(str, Enum):
     """
     Provider names for integrations.
-    
+
     This enum extends str to accept any string value while maintaining
     backward compatibility with existing provider constants.
     """
+
     ANTHROPIC = "anthropic"
     APOLLO = "apollo"
     COMPASS = "compass"
@@ -48,7 +49,7 @@ class ProviderName(str, Enum):
     TODOIST = "todoist"
     UNREAL_SPEECH = "unreal_speech"
     ZEROBOUNCE = "zerobounce"
-    
+
     @classmethod
     def _missing_(cls, value: Any) -> "ProviderName":
         """
@@ -63,4 +64,5 @@ class ProviderName(str, Enum):
             pseudo_member._value_ = value
             return pseudo_member
         return None  # type: ignore
+
     # --8<-- [end:ProviderName]
