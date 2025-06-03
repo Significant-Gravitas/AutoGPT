@@ -493,9 +493,10 @@ class Executor:
 
         if isinstance(execution_stats.error, Exception):
             execution_stats.error = str(execution_stats.error)
-        cls.db_client.update_node_execution_stats(
+        exec_update = cls.db_client.update_node_execution_stats(
             node_exec.node_exec_id, execution_stats
         )
+        send_execution_update(exec_update)
         return execution_stats
 
     @classmethod
@@ -777,17 +778,6 @@ class Executor:
 
                 queued_node_exec = execution_queue.get()
 
-                """
-                # Avoid parallel execution of the same node.
-                execution = running_executions.get(queued_node_exec.node_id)
-                if execution and not execution.ready():
-                    # TODO (performance improvement):
-                    #   Wait for the completion of the same node execution is blocking.
-                    #   To improve this we need a separate queue for each node.
-                    #   Re-enqueueing the data back to the queue will disrupt the order.
-                    execution.wait()
-                """
-
                 log_metadata.debug(
                     f"Dispatching node execution {queued_node_exec.node_exec_id} "
                     f"for node {queued_node_exec.node_id}",
@@ -919,15 +909,8 @@ class Executor:
                 output_name=name,
                 output_data=data,
             )
-            update_node_execution_status(
-                db_client=cls.db_client,
-                exec_id=output.node_exec_id,
-                status=(
-                    ExecutionStatus.COMPLETED
-                    if name != "error"
-                    else ExecutionStatus.FAILED
-                ),
-            )
+            if exec_update := cls.db_client.get_node_execution(output.node_exec_id):
+                send_execution_update(exec_update)
 
             log_metadata.debug(f"Enqueue nodes for {node_id}: {output}")
             for next_execution in _enqueue_next_nodes(

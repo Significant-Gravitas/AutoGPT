@@ -622,14 +622,29 @@ async def update_graph_execution_stats(
     return GraphExecution.from_db(graph_exec)
 
 
-async def update_node_execution_stats(node_exec_id: str, stats: NodeExecutionStats):
+async def update_node_execution_stats(
+    node_exec_id: str, stats: NodeExecutionStats
+) -> NodeExecutionResult:
     data = stats.model_dump()
     if isinstance(data["error"], Exception):
         data["error"] = str(data["error"])
-    await AgentNodeExecution.prisma().update(
+        execution_status = ExecutionStatus.FAILED
+    else:
+        execution_status = ExecutionStatus.COMPLETED
+
+    res = await AgentNodeExecution.prisma().update(
         where={"id": node_exec_id},
-        data={"stats": Json(data)},
+        data={
+            "stats": Json(data),
+            "executionStatus": execution_status,
+            "endedTime": datetime.now(tz=timezone.utc),
+        },
+        include=EXECUTION_RESULT_INCLUDE,
     )
+    if not res:
+        raise ValueError(f"Node execution {node_exec_id} not found.")
+
+    return NodeExecutionResult.from_db(res)
 
 
 async def update_node_execution_status_batch(
@@ -701,6 +716,16 @@ async def delete_graph_execution(
         raise DatabaseError(
             f"Could not delete graph execution #{graph_exec_id}: not found"
         )
+
+
+async def get_node_execution(node_exec_id: str) -> NodeExecutionResult | None:
+    execution = await AgentNodeExecution.prisma().find_first(
+        where={"id": node_exec_id},
+        include=EXECUTION_RESULT_INCLUDE,
+    )
+    if not execution:
+        return None
+    return NodeExecutionResult.from_db(execution)
 
 
 async def get_node_executions(
