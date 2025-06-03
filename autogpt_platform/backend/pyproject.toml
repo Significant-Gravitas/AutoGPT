@@ -115,8 +115,6 @@ target-version = "py310"
 
 [tool.ruff.lint.per-file-ignores]
 # Example and test files using SDK star imports
-"backend/blocks/example_sdk_block.py" = ["F403", "F405"]
-"backend/blocks/simple_example_block.py" = ["F403", "F405"]
-"backend/blocks/example_webhook_sdk_block.py" = ["F403", "F405"]
+"backend/blocks/examples/*.py" = ["F403", "F405"]
 "test/sdk/demo_sdk_block.py" = ["F403", "F405"]
-"test/sdk/test_sdk_integration.py" = ["F403", "F405", "F406"]
+"test/sdk/test_sdk_integration.py" = ["F403", "F405", "F406", "E402"]

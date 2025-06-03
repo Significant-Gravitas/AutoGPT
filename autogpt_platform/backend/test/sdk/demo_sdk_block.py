@@ -70,7 +70,7 @@ class UltraTranslateBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="ultra-translate-block-aabbccdd-1122-3344-5566-778899aabbcc",
+            id="abb8abc4-c968-45fe-815a-c5521ad67f32",
             description="Translate text between languages using Ultra Translate AI",
             categories={BlockCategory.TEXT, BlockCategory.AI},
             input_schema=UltraTranslateBlock.Input,

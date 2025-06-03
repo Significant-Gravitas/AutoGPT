@@ -8,6 +8,13 @@ files outside the blocks folder.
 from backend.sdk import *  # noqa: F403, F405
 
 
+# Define event filter model
+class ExampleEventFilter(BaseModel):
+    created: bool = Field(default=True, description="Listen for created events")
+    updated: bool = Field(default=True, description="Listen for updated events")
+    deleted: bool = Field(default=False, description="Listen for deleted events")
+
+
 # First, define a simple webhook manager for our example service
 class ExampleWebhookManager(BaseWebhooksManager):
     """Example webhook manager for demonstration."""
@@ -17,13 +24,22 @@ class ExampleWebhookManager(BaseWebhooksManager):
     class WebhookType(str, Enum):
         EXAMPLE = "example"
 
-    async def validate_payload(self, webhook, request) -> tuple[dict, str]:
+    @classmethod
+    async def validate_payload(cls, webhook, request) -> tuple[dict, str]:
         """Validate incoming webhook payload."""
         payload = await request.json()
         event_type = request.headers.get("X-Example-Event", "unknown")
         return payload, event_type
 
-    async def _register_webhook(self, webhook, credentials) -> tuple[str, dict]:
+    async def _register_webhook(
+        self,
+        credentials,
+        webhook_type: str,
+        resource: str,
+        events: list[str],
+        ingress_url: str,
+        secret: str,
+    ) -> tuple[str, dict]:
         """Register webhook with external service."""
         # In real implementation, this would call the external API
         return "example-webhook-id", {"registered": True}
@@ -53,13 +69,18 @@ class ExampleWebhookSDKBlock(Block):
     """
 
     class Input(BlockSchema):
+        credentials: CredentialsMetaInput = CredentialsField(
+            provider="examplewebhook",
+            supported_credential_types={"api_key"},
+            description="Credentials for webhook service",
+        )
         webhook_url: String = SchemaField(
             description="URL to receive webhooks (auto-generated)",
             default="",
             hidden=True,
         )
-        event_filter: Boolean = SchemaField(
-            description="Filter for specific events", default=True
+        event_filter: ExampleEventFilter = SchemaField(
+            description="Filter for specific events", default=ExampleEventFilter()
         )
         payload: Dict = SchemaField(
             description="Webhook payload data", default={}, hidden=True
@@ -73,7 +94,7 @@ class ExampleWebhookSDKBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="example-webhook-sdk-block-87654321-4321-4321-4321-210987654321",
+            id="7e50eb33-f854-4b73-99a1-50cad2819ae0",
             description="Example webhook block with auto-registration",
             categories={BlockCategory.INPUT},
             input_schema=ExampleWebhookSDKBlock.Input,
@@ -96,11 +117,22 @@ class ExampleWebhookSDKBlock(Block):
             event_type = payload.get("action", "unknown")
             timestamp = payload.get("timestamp", "")
 
-            # Filter events if enabled
-            if input_data.event_filter and event_type not in ["created", "updated"]:
+            # Filter events based on event filter settings
+            event_filter = input_data.event_filter
+            should_process = False
+
+            if event_type == "created" and event_filter.created:
+                should_process = True
+            elif event_type == "updated" and event_filter.updated:
+                should_process = True
+            elif event_type == "deleted" and event_filter.deleted:
+                should_process = True
+
+            if not should_process:
                 yield "event_type", "filtered"
                 yield "event_data", {}
                 yield "timestamp", timestamp
+                yield "error", ""
                 return
 
             yield "event_type", event_type

@@ -170,7 +170,7 @@ class TestSDKImplementation:
 
             def __init__(self):
                 super().__init__(
-                    id="test-service-block-12345678-1234-1234-1234-123456789012",
+                    id="f0421f19-53da-4824-97cc-4d2bccd1399f",
                     description="Test service block",
                     categories={BlockCategory.TEXT},
                     input_schema=TestServiceBlock.Input,
@@ -306,7 +306,7 @@ class TestSDKImplementation:
 
             def __init__(self):
                 super().__init__(
-                    id="ai-translator-block-98765432-4321-4321-4321-210987654321",
+                    id="dc832afe-902a-4520-8512-d3b85428d4ec",
                     description="Translate text using AI Translator Service",
                     categories={BlockCategory.TEXT, BlockCategory.AI},
                     input_schema=AITranslatorBlock.Input,
@@ -351,7 +351,7 @@ class TestSDKImplementation:
 
         # Verify the block was created correctly
         block = AITranslatorBlock()
-        assert block.id == "ai-translator-block-98765432-4321-4321-4321-210987654321"
+        assert block.id == "dc832afe-902a-4520-8512-d3b85428d4ec"
         assert block.description == "Translate text using AI Translator Service"
         assert BlockCategory.TEXT in block.categories
         assert BlockCategory.AI in block.categories

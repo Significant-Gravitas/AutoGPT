@@ -10,6 +10,9 @@ from pathlib import Path
 backend_path = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(backend_path))
 
+# Import SDK at module level for testing
+from backend.sdk import *  # noqa: F403, F405
+
 
 def test_complete_sdk_workflow():
     """
@@ -28,8 +31,7 @@ def test_complete_sdk_workflow():
 
     # Step 1: Import everything needed with a single statement
     print("Step 1: Import SDK")
-    from backend.sdk import *  # noqa: F403, F405
-
+    # SDK already imported at module level
     print("✅ Imported all components with 'from backend.sdk import *'")
 
     # Step 2: Create a custom AI service block
@@ -106,7 +108,7 @@ def test_complete_sdk_workflow():
 
         def __init__(self):
             super().__init__(
-                id="custom-ai-vision-block-11223344-5566-7788-99aa-bbccddeeff00",
+                id="303d9bd3-f2a5-41ca-bb9c-e347af8ef72f",
                 description="Analyze images using Custom AI Vision Service with configurable detection types",
                 categories={BlockCategory.AI, BlockCategory.MULTIMEDIA},
                 input_schema=CustomAIVisionBlock.Input,
@@ -246,7 +248,7 @@ def test_complete_sdk_workflow():
     block = CustomAIVisionBlock()
 
     # Verify block properties
-    assert block.id == "custom-ai-vision-block-11223344-5566-7788-99aa-bbccddeeff00"
+    assert block.id == "303d9bd3-f2a5-41ca-bb9c-e347af8ef72f"
     assert BlockCategory.AI in block.categories
     assert BlockCategory.MULTIMEDIA in block.categories
     print("✅ Block instantiated successfully")
@@ -260,6 +262,11 @@ def test_complete_sdk_workflow():
     )
 
     test_input = CustomAIVisionBlock.Input(
+        credentials={
+            "provider": "custom-ai-vision-service",
+            "id": "test",
+            "type": "api_key",
+        },
         image_url="https://example.com/test.jpg",
         analysis_type="objects",
         confidence_threshold=0.8,
@@ -301,11 +308,11 @@ def test_webhook_block_workflow():
     print("🔔 Webhook Block Integration Test")
     print("=" * 60 + "\n")
 
-    from backend.sdk import *  # noqa: F403, F405
+    # SDK already imported at module level
 
     # Create a simple webhook manager
     class CustomWebhookManager(BaseWebhooksManager):
-        PROVIDER_NAME = "custom-webhook-service"
+        PROVIDER_NAME = ProviderName("custom-webhook-service")
 
         class WebhookType(str, Enum):
             DATA_UPDATE = "data_update"
@@ -329,12 +336,7 @@ def test_webhook_block_workflow():
             # Mock registration
             return "webhook-12345", {"status": "registered"}
 
-        async def _deregister_webhook(
-            self,
-            credentials,
-            webhook_type: str,
-            webhook_id: str,
-        ) -> None:
+        async def _deregister_webhook(self, webhook, credentials) -> None:
             pass
 
     # Create webhook block
@@ -357,14 +359,14 @@ def test_webhook_block_workflow():
 
         def __init__(self):
             super().__init__(
-                id="custom-webhook-block-99887766-5544-3322-1100-ffeeddccbbaa",
+                id="3e730ed4-6eb2-4b89-b5ae-001860c88aef",
                 description="Listen for custom webhook events",
                 categories={BlockCategory.INPUT},
                 input_schema=CustomWebhookBlock.Input,
                 output_schema=CustomWebhookBlock.Output,
                 block_type=BlockType.WEBHOOK,
                 webhook_config=BlockWebhookConfig(
-                    provider="custom-webhook-service",
+                    provider=ProviderName("custom-webhook-service"),
                     webhook_type="data_update",
                     event_filter_input="webhook_events",
                     resource_format="{resource}",

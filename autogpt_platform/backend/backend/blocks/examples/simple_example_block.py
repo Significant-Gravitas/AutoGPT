@@ -39,7 +39,7 @@ class SimpleExampleBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="simple-example-block-11111111-2222-3333-4444-555555555555",
+            id="4a6db1ae-e9d5-4a57-b8b6-9186174a6dd3",
             description="Simple example block using SDK",
             categories={BlockCategory.TEXT},
             input_schema=SimpleExampleBlock.Input,

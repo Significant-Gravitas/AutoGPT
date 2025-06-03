@@ -58,7 +58,7 @@ class ExampleSDKBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="example-sdk-block-12345678-1234-1234-1234-123456789012",
+            id="83815e8c-1273-418e-a8c2-4c454e042060",
             description="Example block showing SDK capabilities with auto-registration",
             categories={BlockCategory.TEXT, BlockCategory.BASIC},
             input_schema=ExampleSDKBlock.Input,

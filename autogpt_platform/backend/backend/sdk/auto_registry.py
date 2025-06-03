@@ -132,19 +132,19 @@ def patch_existing_systems():
                 cred_store.IntegrationCredentialsStore.get_all_creds
             )
 
-            def patched_get_all_creds(self) -> dict:
-                # Get original credentials
-                creds = original_get_all_creds(self)
+            def patched_get_all_creds(self, user_id: str) -> list:
+                # Get original credentials list
+                creds_list = original_get_all_creds(self, user_id)
 
-                # Add auto-registered credentials
+                # Add auto-registered credentials that aren't already in the list
                 for credential in _registry.get_default_credentials_list():
-                    if hasattr(credential, "provider") and hasattr(credential, "id"):
-                        provider = credential.provider
-                        if provider not in creds:
-                            creds[provider] = {}
-                        creds[provider][credential.id] = credential
+                    # Check if credential is already in list by id
+                    if not any(
+                        hasattr(c, "id") and c.id == credential.id for c in creds_list
+                    ):
+                        creds_list.append(credential)
 
-                return creds
+                return creds_list
 
             cred_store.IntegrationCredentialsStore.get_all_creds = patched_get_all_creds
     except Exception as e:
@@ -155,7 +155,12 @@ def patch_existing_systems():
         import backend.integrations.oauth as oauth_module
 
         if hasattr(oauth_module, "HANDLERS_BY_NAME"):
-            oauth_module.HANDLERS_BY_NAME.update(_registry.get_oauth_handlers_dict())
+            # Convert string keys to ProviderName enum
+            from backend.integrations.providers import ProviderName
+
+            for provider_str, handler in _registry.get_oauth_handlers_dict().items():
+                provider_enum = ProviderName(provider_str)
+                oauth_module.HANDLERS_BY_NAME[provider_enum] = handler
     except Exception as e:
         print(f"Warning: Could not patch OAuth handlers: {e}")
 
@@ -164,9 +169,12 @@ def patch_existing_systems():
         import backend.integrations.webhooks as webhook_module
 
         if hasattr(webhook_module, "_WEBHOOK_MANAGERS"):
-            webhook_module._WEBHOOK_MANAGERS.update(
-                _registry.get_webhook_managers_dict()
-            )
+            # Convert string keys to ProviderName enum
+            from backend.integrations.providers import ProviderName
+
+            for provider_str, manager in _registry.get_webhook_managers_dict().items():
+                provider_enum = ProviderName(provider_str)
+                webhook_module._WEBHOOK_MANAGERS[provider_enum] = manager
 
         # Also patch the load_webhook_managers function
         if hasattr(webhook_module, "load_webhook_managers"):
@@ -176,7 +184,14 @@ def patch_existing_systems():
                 # Call original to load existing managers
                 managers = original_load()
                 # Add auto-registered managers
-                managers.update(_registry.get_webhook_managers_dict())
+                from backend.integrations.providers import ProviderName
+
+                for (
+                    provider_str,
+                    manager,
+                ) in _registry.get_webhook_managers_dict().items():
+                    provider_enum = ProviderName(provider_str)
+                    managers[provider_enum] = manager
                 return managers
 
             webhook_module.load_webhook_managers = patched_load_webhook_managers
