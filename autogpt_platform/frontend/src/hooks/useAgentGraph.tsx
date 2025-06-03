@@ -307,7 +307,9 @@ export default function useAgentGraph(
       setEdges((edges) => {
         return edges.map((e) => {
           const edge = { ...e, data: { ...e.data } } as CustomEdge;
-          const execStatus = edge.data!.beadData!;
+          const execStatus =
+            edge.data!.beadData ||
+            new Map<string, NodeExecutionResult["status"]>();
 
           // Update execution status for input edges
           for (let key in executionData.input_data) {
