@@ -511,7 +511,7 @@ class Executor:
                 status=ExecutionStatus.RUNNING,
             )
 
-            for output in execute_node(
+            for output_name, output_data in execute_node(
                 node=node,
                 creds_manager=cls.creds_manager,
                 data=node_exec,
@@ -522,7 +522,7 @@ class Executor:
                     ExecutionOutputEntry(
                         node=node,
                         node_exec_id=node_exec.node_exec_id,
-                        data=output,
+                        data=(output_name, output_data),
                     )
                 )
             log_metadata.info(f"Finished node execution {node_exec.node_exec_id}")
@@ -890,7 +890,7 @@ class Executor:
 
         except Exception as e:
             error = e
-            log_metadata.error(
+            log_metadata.exception(
                 f"Failed graph execution {graph_exec.graph_exec_id}: {error}"
             )
             execution_status = ExecutionStatus.FAILED
