@@ -363,7 +363,8 @@ def merge_execution_input(data: BlockInput) -> BlockInput:
 
         merged[base] = _assign(merged.get(base), tokens, value)
 
-    return merged
+    data.update(merged)
+    return data
 
 
 def validate_exec(
