@@ -1,8 +1,15 @@
 from enum import Enum
+from typing import Any
 
 
 # --8<-- [start:ProviderName]
 class ProviderName(str, Enum):
+    """
+    Provider names for integrations.
+    
+    This enum extends str to accept any string value while maintaining
+    backward compatibility with existing provider constants.
+    """
     ANTHROPIC = "anthropic"
     APOLLO = "apollo"
     COMPASS = "compass"
@@ -41,4 +48,19 @@ class ProviderName(str, Enum):
     TODOIST = "todoist"
     UNREAL_SPEECH = "unreal_speech"
     ZEROBOUNCE = "zerobounce"
+    
+    @classmethod
+    def _missing_(cls, value: Any) -> "ProviderName":
+        """
+        Allow any string value to be used as a ProviderName.
+        This enables SDK users to define custom providers without
+        modifying the enum.
+        """
+        if isinstance(value, str):
+            # Create a pseudo-member that behaves like an enum member
+            pseudo_member = str.__new__(cls, value)
+            pseudo_member._name_ = value.upper()
+            pseudo_member._value_ = value
+            return pseudo_member
+        return None  # type: ignore
     # --8<-- [end:ProviderName]

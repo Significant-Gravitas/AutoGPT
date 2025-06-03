@@ -550,7 +550,7 @@ class MyServiceBlock(Block):
 - [x] Patch `credentials_store.py` to use auto-discovered credentials ✅ DONE via auto_registry.py
 - [x] Patch `oauth/__init__.py` to use auto-discovered handlers ✅ DONE via auto_registry.py
 - [x] Patch `webhooks/__init__.py` to use auto-discovered managers ✅ DONE via auto_registry.py
-- [x] Extend `ProviderName` enum dynamically ⚠️ PARTIAL - logged but enum extension is tricky
+- [x] Extend `ProviderName` enum dynamically ✅ DONE - enum already has `_missing_` method for dynamic providers
 
 #### Testing and Migration
 - [x] Create test blocks using new decorators ✅ DONE - 3 example blocks created
