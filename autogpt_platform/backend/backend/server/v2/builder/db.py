@@ -5,6 +5,7 @@ import prisma
 
 import backend.server.model as server_model
 from backend.blocks import load_all_blocks
+from backend.blocks.llm import LlmModel
 from backend.data.block import Block, BlockCategory, BlockSchema
 from backend.data.credit import get_block_costs
 from backend.integrations.providers import ProviderName
@@ -19,6 +20,9 @@ from backend.server.v2.builder.model import (
 )
 
 logger = logging.getLogger(__name__)
+llm_models = [
+    name.name.lower().replace("_", " ") for name in LlmModel
+]
 _static_counts_cache: dict | None = None
 
 
@@ -142,7 +146,11 @@ def search_blocks(
         if block.disabled:
             continue
         # Skip blocks that don't match the query
-        if query not in block.name.lower() or query not in block.description.lower():
+        if (
+            query not in block.name.lower()
+            and query not in block.description.lower()
+            and not _matches_llm_model(block.input_schema, query)
+        ):
             continue
         keep = False
         credentials = list(block.input_schema.get_credentials_fields().values())
@@ -281,6 +289,15 @@ async def _get_static_counts():
     }
 
     return _static_counts_cache
+
+
+def _matches_llm_model(schema_cls: type[BlockSchema], query: str) -> bool:
+    for field in schema_cls.model_fields.values():
+        if field.annotation == LlmModel:
+            # Check if query matches any value in llm_models
+            if any(query in name for name in llm_models):
+                return True
+    return False
 
 
 @functools.cache

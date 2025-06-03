@@ -126,7 +126,6 @@ async def search(
         options.filter = [
             "blocks",
             "integrations",
-            "providers",
             "marketplace_agents",
             "my_agents",
         ]
@@ -147,18 +146,6 @@ async def search(
         blocks = builder_db.search_blocks(
             include_blocks="blocks" in options.filter,
             include_integrations="integrations" in options.filter,
-            query=options.search_query or "",
-            page=options.page,
-            page_size=options.page_size,
-        )
-
-    # Providers
-    providers = builder_model.ProviderResponse(
-        providers=[],
-        pagination=server_model.Pagination.empty(),
-    )
-    if "providers" in options.filter:
-        providers = builder_db.get_providers(
             query=options.search_query or "",
             page=options.page,
             page_size=options.page_size,
@@ -204,10 +191,7 @@ async def search(
     # todo kcze sort results
 
     return builder_model.SearchResponse(
-        items=blocks.blocks.blocks
-        + providers.providers
-        + my_agents.agents
-        + marketplace_agents.agents,
+        items=blocks.blocks.blocks + my_agents.agents + marketplace_agents.agents,
         total_items={
             "blocks": blocks.total_block_count,
             "integrations": blocks.total_integration_count,

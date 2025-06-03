@@ -239,7 +239,6 @@ export default class BackendAPI {
     filter?: (
       | "blocks"
       | "integrations"
-      | "providers"
       | "marketplace_agents"
       | "my_agents"
     )[];

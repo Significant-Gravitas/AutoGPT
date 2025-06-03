@@ -72,11 +72,10 @@ export type ProviderResponse = {
 
 /* Mirror of backend/server/v2/builder/model.py:BlockSearchResponse */
 export type BlockSearchResponse = {
-  items: (Block | Provider | LibraryAgent | StoreAgent)[];
+  items: (Block | LibraryAgent | StoreAgent)[];
   total_items: Record<
     | "blocks"
     | "integrations"
-    | "providers"
     | "marketplace_agents"
     | "my_agents",
     number
