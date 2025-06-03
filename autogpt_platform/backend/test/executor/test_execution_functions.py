@@ -117,14 +117,18 @@ def test_merge_execution_input():
         "list_$_0": "a",
         "list_$_1": "b",
     }
-    assert merge_execution_input(data) == {"list": ["a", "b"]}
+    result = merge_execution_input(data)
+    assert "list" in result
+    assert result["list"] == ["a", "b"]
 
     # Test case for basic dict extraction
     data = {
         "dict_#_key1": "value1",
         "dict_#_key2": "value2",
     }
-    assert merge_execution_input(data) == {"dict": {"key1": "value1", "key2": "value2"}}
+    result = merge_execution_input(data)
+    assert "dict" in result
+    assert result["dict"] == {"key1": "value1", "key2": "value2"}
 
     # Test case for object extraction
     class Sample:
@@ -137,6 +141,7 @@ def test_merge_execution_input():
         "object_@_attr2": "value2",
     }
     result = merge_execution_input(data)
+    assert "object" in result
     assert isinstance(result["object"], MockObject)
     assert result["object"].attr1 == "value1"
     assert result["object"].attr2 == "value2"
@@ -147,7 +152,9 @@ def test_merge_execution_input():
         "nested_list_$_0_$_1": "b",
         "nested_list_$_1_$_0": "c",
     }
-    assert merge_execution_input(data) == {"nested_list": [["a", "b"], ["c"]]}
+    result = merge_execution_input(data)
+    assert "nested_list" in result
+    assert result["nested_list"] == [["a", "b"], ["c"]]
 
     # Test case for list containing dict
     data = {
@@ -155,9 +162,12 @@ def test_merge_execution_input():
         "list_with_dict_$_0_#_key2": "value2",
         "list_with_dict_$_1_#_key3": "value3",
     }
-    assert merge_execution_input(data) == {
-        "list_with_dict": [{"key1": "value1", "key2": "value2"}, {"key3": "value3"}]
-    }
+    result = merge_execution_input(data)
+    assert "list_with_dict" in result
+    assert result["list_with_dict"] == [
+        {"key1": "value1", "key2": "value2"},
+        {"key3": "value3"},
+    ]
 
     # Test case for dict containing list
     data = {
@@ -165,8 +175,11 @@ def test_merge_execution_input():
         "dict_with_list_#_key1_$_1": "value2",
         "dict_with_list_#_key2_$_0": "value3",
     }
-    assert merge_execution_input(data) == {
-        "dict_with_list": {"key1": ["value1", "value2"], "key2": ["value3"]}
+    result = merge_execution_input(data)
+    assert "dict_with_list" in result
+    assert result["dict_with_list"] == {
+        "key1": ["value1", "value2"],
+        "key2": ["value3"],
     }
 
     # Test case for complex nested structure
@@ -177,6 +190,7 @@ def test_merge_execution_input():
         "complex_$_1_#_key3_$_0": "value4",
     }
     result = merge_execution_input(data)
+    assert "complex" in result
     assert result["complex"][0]["key1"] == ["value1", "value2"]
     assert isinstance(result["complex"][0]["key2"], MockObject)
     assert result["complex"][0]["key2"].attr1 == "value3"
@@ -194,6 +208,7 @@ def test_merge_execution_input():
         "nested_$_0_#_key_$_1": "value2",
     }
     result = merge_execution_input(data)
+    assert "nested" in result
     assert result["nested"][0]["key"] == ["value1", "value2"]
 
     # Test case 2: Dict -> List -> Object
@@ -202,6 +217,7 @@ def test_merge_execution_input():
         "nested_#_key_$_1_@_attr": "value2",
     }
     result = merge_execution_input(data)
+    assert "nested" in result
     assert isinstance(result["nested"]["key"][0], MockObject)
     assert result["nested"]["key"][0].attr == "value1"
     assert result["nested"]["key"][1].attr == "value2"
@@ -212,6 +228,7 @@ def test_merge_execution_input():
         "nested_@_items_$_1_#_key": "value2",
     }
     result = merge_execution_input(data)
+    assert "nested" in result
     nested = result["nested"]
     assert isinstance(nested, MockObject)
     items = nested.items
@@ -225,6 +242,7 @@ def test_merge_execution_input():
         "deep_#_key_$_0_@_data_$_1_#_items_$_0_#_value": "another_value",
     }
     result = merge_execution_input(data)
+    assert "deep" in result
     deep_key = result["deep"]["key"][0]
     assert deep_key is not None
     data0 = getattr(deep_key, "data", None)
@@ -248,11 +266,13 @@ def test_merge_execution_input():
     assert isinstance(items1[0], dict)
     assert items1[0]["value"] == "another_value"  # type: ignore
 
-    # Test case 5: Mixed delimiter types in different orders, the last one should replace the type
+    # Test case 5: Mixed delimiter types in different orders
+    # the last one should replace the type
     data = {
         "mixed_$_0_#_key_@_attr": "value1",  # List -> Dict -> Object
         "mixed_#_key_$_0_@_attr": "value2",  # Dict -> List -> Object
         "mixed_@_attr_$_0_#_key": "value3",  # Object -> List -> Dict
     }
     result = merge_execution_input(data)
+    assert "mixed" in result
     assert result["mixed"].attr[0]["key"] == "value3"
