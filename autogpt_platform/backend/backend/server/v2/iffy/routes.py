@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
+from backend.server.routers.v1 import _cancel_execution
 
 from .models import BlockContentForModeration, EventType, IffyWebhookEvent, UserData
 
@@ -21,13 +22,6 @@ iffy_signature_validator = HMACValidator(
 )
 
 
-@thread_cached
-def get_execution_manager():
-    from backend.executor import ExecutionManager
-
-    return get_service_client(ExecutionManager)
-
-
 # This handles the webhook events from iffy like stopping an execution if a flagged block is detected.
 async def handle_record_event(
     event_type: EventType, block_content: BlockContentForModeration
@@ -40,19 +34,10 @@ async def handle_record_event(
             f'Content flagged for node "{block_content.node_id}" ("{block_content.block_name}") '
             f'in execution "{block_content.graph_exec_id}"'
         )
-        execution_manager = get_execution_manager()
-        try:
-            execution_manager.cancel_execution(block_content.graph_exec_id)
-            logger.info(
-                f'Successfully stopped execution "{block_content.graph_exec_id}" due to flagged content'
-            )
-        except Exception as e:
-            if "not active/running" not in str(e):
-                logger.error(f"Error cancelling execution processes: {str(e)}")
-                raise
-            logger.info(
-                f'Execution "{block_content.graph_exec_id}" was already completed/cancelled'
-            )
+        
+        # Stop execution directly
+        await _cancel_execution(block_content.graph_exec_id)
+        logger.info(f'Successfully stopped execution "{block_content.graph_exec_id}" due to flagged content')
 
         return Response(status_code=200)
 
