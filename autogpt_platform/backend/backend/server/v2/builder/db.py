@@ -3,6 +3,7 @@ import logging
 
 import prisma
 
+import backend.data.block
 import backend.server.model as server_model
 from backend.blocks import load_all_blocks
 from backend.blocks.llm import LlmModel
@@ -11,6 +12,7 @@ from backend.data.credit import get_block_costs
 from backend.integrations.providers import ProviderName
 from backend.server.v2.builder.model import (
     BlockCategoryResponse,
+    BlockData,
     BlockResponse,
     BlockType,
     CountResponse,
@@ -20,10 +22,9 @@ from backend.server.v2.builder.model import (
 )
 
 logger = logging.getLogger(__name__)
-llm_models = [
-    name.name.lower().replace("_", " ") for name in LlmModel
-]
+llm_models = [name.name.lower().replace("_", " ") for name in LlmModel]
 _static_counts_cache: dict | None = None
+_suggested_blocks: list[BlockData] | None = None
 
 
 def get_block_categories(category_blocks: int = 3) -> list[BlockCategoryResponse]:
@@ -78,6 +79,7 @@ def get_blocks(
     take = page_size
     total = 0
 
+    # todo kcze cache instances?
     for block_type in load_all_blocks().values():
         block: Block[BlockSchema, BlockSchema] = block_type()
         # Skip disabled blocks
@@ -319,3 +321,50 @@ def _get_all_providers() -> dict[ProviderName, Provider]:
                         name=provider, description="", integration_count=1
                     )
     return providers
+
+
+async def get_suggested_blocks(count: int = 5) -> list[BlockData]:
+    if _suggested_blocks is not None and len(_suggested_blocks) >= count:
+        return _suggested_blocks[:count]
+
+    global _suggested_blocks
+    _suggested_blocks = []
+    # Sum the number of executions for each block type
+    # Prisma cannot group by nested relations, so we do a raw query
+    results = await prisma.get_client().query_raw(
+        """
+        SELECT
+            agent_node."agentBlockId" AS block_id,
+            COUNT(execution.id) AS execution_count
+        FROM "AgentNodeExecution" execution
+        JOIN "AgentNode" agent_node ON execution."agentNodeId" = agent_node.id
+        GROUP BY agent_node."agentBlockId"
+        ORDER BY execution_count DESC;
+        """
+    )
+
+    # Get the top blocks based on execution count
+    # But ignore Input and Output blocks
+    blocks: list[tuple[BlockData, int]] = []
+
+    for block_type in load_all_blocks().values():
+        block: Block[BlockSchema, BlockSchema] = block_type()
+        if block.disabled or block.block_type in (
+            backend.data.block.BlockType.INPUT,
+            backend.data.block.BlockType.OUTPUT,
+            backend.data.block.BlockType.AGENT,
+        ):
+            continue
+        # Find the execution count for this block
+        execution_count = next(
+            (row["execution_count"] for row in results if row["block_id"] == block.id),
+            0,
+        )
+        blocks.append((block.to_dict(), execution_count))
+    # Sort blocks by execution count
+    blocks.sort(key=lambda x: x[1], reverse=True)
+
+    _suggested_blocks = [block[0] for block in blocks]
+
+    # Return the top blocks
+    return _suggested_blocks[:count]

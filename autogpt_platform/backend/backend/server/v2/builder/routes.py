@@ -64,7 +64,7 @@ async def get_suggestions(
             ProviderName.JINA,
             ProviderName.GOOGLE_MAPS,
         ],
-        top_blocks=builder_db.get_blocks(page_size=5).blocks,
+        top_blocks=await builder_db.get_suggested_blocks(),
     )
 
 
