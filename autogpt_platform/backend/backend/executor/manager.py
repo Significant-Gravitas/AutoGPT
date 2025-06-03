@@ -5,6 +5,7 @@ import os
 import signal
 import sys
 import threading
+import time
 from collections import defaultdict
 from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import contextmanager
@@ -859,38 +860,19 @@ class Executor:
 
                         log_metadata.debug(f"Waiting on execution of node {node_id}")
                         while output := execution.pop_output():
-
-                            name, data = output.data
-                            cls.db_client.upsert_execution_output(
-                                node_exec_id=output.node_exec_id,
-                                output_name=name,
-                                output_data=data,
-                            )
-                            update_node_execution_status(
-                                db_client=cls.db_client,
-                                exec_id=output.node_exec_id,
-                                status=(
-                                    ExecutionStatus.COMPLETED
-                                    if name != "error"
-                                    else ExecutionStatus.FAILED
-                                ),
-                            )
-
-                            log_metadata.debug(f"Enqueue nodes for {node_id}: {output}")
-                            for next_execution in _enqueue_next_nodes(
-                                db_client=cls.db_client,
-                                node=output.node,
-                                output=output.data,
-                                user_id=graph_exec.user_id,
-                                graph_exec_id=graph_exec.graph_exec_id,
-                                graph_id=graph_exec.graph_id,
+                            cls._process_node_output(
+                                output=output,
+                                node_id=node_id,
+                                graph_exec=graph_exec,
                                 log_metadata=log_metadata,
-                                node_credentials_input_map=node_creds_map,
-                            ):
-                                execution_queue.add(next_execution)
+                                node_creds_map=node_creds_map,
+                                execution_queue=execution_queue,
+                            )
 
-                        if execution.is_done(3):
+                        if execution.is_done(1):
                             running_executions.pop(node_id)
+                        else:
+                            time.sleep(0.1)
 
             log_metadata.info(f"Finished graph execution {graph_exec.graph_exec_id}")
             execution_status = ExecutionStatus.COMPLETED
@@ -909,6 +891,68 @@ class Executor:
             cancel_thread.join()
             clean_exec_files(graph_exec.graph_exec_id)
             return execution_stats, execution_status, error
+
+    @classmethod
+    def _process_node_output(
+        cls,
+        output: ExecutionOutputEntry,
+        node_id: str,
+        graph_exec: GraphExecutionEntry,
+        log_metadata: LogMetadata,
+        node_creds_map: Optional[dict[str, dict[str, CredentialsMetaInput]]],
+        execution_queue: ExecutionQueue[NodeExecutionEntry],
+    ) -> None:
+        """Process a node's output, update its status, and enqueue next nodes.
+
+        Args:
+            output: The execution output entry to process
+            node_id: The ID of the node that produced the output
+            graph_exec: The graph execution entry
+            log_metadata: Logger metadata for consistent logging
+            node_creds_map: Optional map of node credentials
+            execution_queue: Queue to add next executions to
+        """
+        try:
+            name, data = output.data
+            cls.db_client.upsert_execution_output(
+                node_exec_id=output.node_exec_id,
+                output_name=name,
+                output_data=data,
+            )
+            update_node_execution_status(
+                db_client=cls.db_client,
+                exec_id=output.node_exec_id,
+                status=(
+                    ExecutionStatus.COMPLETED
+                    if name != "error"
+                    else ExecutionStatus.FAILED
+                ),
+            )
+
+            log_metadata.debug(f"Enqueue nodes for {node_id}: {output}")
+            for next_execution in _enqueue_next_nodes(
+                db_client=cls.db_client,
+                node=output.node,
+                output=output.data,
+                user_id=graph_exec.user_id,
+                graph_exec_id=graph_exec.graph_exec_id,
+                graph_id=graph_exec.graph_id,
+                log_metadata=log_metadata,
+                node_credentials_input_map=node_creds_map,
+            ):
+                execution_queue.add(next_execution)
+        except Exception as e:
+            log_metadata.exception(f"Failed to process node output: {e}")
+            cls.db_client.upsert_execution_output(
+                node_exec_id=output.node_exec_id,
+                output_name="error",
+                output_data=str(e),
+            )
+            update_node_execution_status(
+                db_client=cls.db_client,
+                exec_id=output.node_exec_id,
+                status=ExecutionStatus.FAILED,
+            )
 
     @classmethod
     def _handle_agent_run_notif(
