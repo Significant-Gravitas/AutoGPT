@@ -2,6 +2,238 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Block Development with SDK
+
+The AutoGPT Platform now includes a comprehensive SDK that dramatically simplifies block creation. Blocks can be fully self-contained with zero external configuration required.
+
+### Quick Start - Creating a New Block
+
+```python
+from backend.sdk import *
+
+@provider("my-service")  # Auto-registers new provider
+@cost_config(
+    BlockCost(cost_amount=5, cost_type=BlockCostType.RUN),
+    BlockCost(cost_amount=1, cost_type=BlockCostType.BYTE)
+)
+@default_credentials(
+    APIKeyCredentials(
+        id="my-service-default",
+        provider="my-service",
+        api_key=SecretStr("default-api-key"),
+        title="My Service Default API Key"
+    )
+)
+class MyServiceBlock(Block):
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput = CredentialsField(
+            provider="my-service",
+            supported_credential_types={"api_key"}
+        )
+        text: String = SchemaField(description="Input text")
+        
+    class Output(BlockSchema):
+        result: String = SchemaField(description="Output result")
+        error: String = SchemaField(description="Error message", default="")
+    
+    def __init__(self):
+        super().__init__(
+            id="my-service-block-12345678-1234-1234-1234-123456789012",
+            description="Process text using My Service",
+            categories={BlockCategory.TEXT},
+            input_schema=MyServiceBlock.Input,
+            output_schema=MyServiceBlock.Output,
+        )
+    
+    def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs) -> BlockOutput:
+        try:
+            api_key = credentials.api_key.get_secret_value()
+            # Process with API
+            yield "result", f"Processed: {input_data.text}"
+        except Exception as e:
+            yield "error", str(e)
+```
+
+### Key Features
+
+1. **Single Import**: `from backend.sdk import *` provides everything needed
+2. **Auto-Registration**: No manual configuration files to update
+3. **Dynamic Providers**: Any string works as a provider name
+4. **Self-Contained**: All configuration via decorators
+
+### Available Decorators
+
+- `@provider("name")` - Register new provider
+- `@cost_config(...)` - Set block execution costs
+- `@default_credentials(...)` - Provide default API credentials
+- `@webhook_config("provider", ManagerClass)` - Register webhook manager
+- `@oauth_config("provider", HandlerClass)` - Register OAuth handler
+
+### Creating Blocks with Webhooks
+
+```python
+from backend.sdk import *
+
+# First, create webhook manager
+class MyWebhookManager(BaseWebhooksManager):
+    PROVIDER_NAME = "my-service"
+    
+    class WebhookType(str, Enum):
+        DATA_UPDATE = "data_update"
+    
+    async def validate_payload(self, webhook, request) -> tuple[dict, str]:
+        payload = await request.json()
+        event_type = request.headers.get("X-MyService-Event", "unknown")
+        return payload, event_type
+    
+    async def _register_webhook(self, webhook, credentials) -> tuple[str, dict]:
+        # Register with external service
+        return "webhook-id", {"status": "registered"}
+    
+    async def _deregister_webhook(self, webhook, credentials) -> None:
+        # Deregister from external service
+        pass
+
+# Then create webhook block
+@provider("my-service")
+@webhook_config("my-service", MyWebhookManager)
+class MyWebhookBlock(Block):
+    class Input(BlockSchema):
+        events: BaseModel = SchemaField(
+            description="Events to listen for",
+            default={"data_update": True}
+        )
+        payload: Dict = SchemaField(
+            description="Webhook payload",
+            default={},
+            hidden=True
+        )
+        
+    class Output(BlockSchema):
+        event_type: String = SchemaField(description="Event type")
+        event_data: Dict = SchemaField(description="Event data")
+    
+    def __init__(self):
+        super().__init__(
+            id="my-webhook-block-12345678-1234-1234-1234-123456789012",
+            description="Listen for My Service webhooks",
+            categories={BlockCategory.INPUT},
+            input_schema=MyWebhookBlock.Input,
+            output_schema=MyWebhookBlock.Output,
+            block_type=BlockType.WEBHOOK,
+            webhook_config=BlockWebhookConfig(
+                provider="my-service",
+                webhook_type="data_update",
+                event_filter_input="events",
+            ),
+        )
+    
+    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        payload = input_data.payload
+        yield "event_type", payload.get("type", "unknown")
+        yield "event_data", payload
+```
+
+### Creating Blocks with OAuth
+
+```python
+from backend.sdk import *
+
+# First, create OAuth handler
+class MyServiceOAuthHandler(BaseOAuthHandler):
+    PROVIDER_NAME = "my-service"
+    DEFAULT_SCOPES = ["read", "write"]
+    
+    def get_login_url(self, scopes: list[str], state: str, code_challenge: Optional[str]) -> str:
+        # Build OAuth authorization URL
+        return f"https://my-service.com/oauth/authorize?..."
+    
+    def exchange_code_for_tokens(self, code: str, scopes: list[str], code_verifier: Optional[str]) -> OAuth2Credentials:
+        # Exchange authorization code for tokens
+        return OAuth2Credentials(
+            provider="my-service",
+            access_token=SecretStr("access-token"),
+            refresh_token=SecretStr("refresh-token"),
+            scopes=scopes,
+            access_token_expires_at=int(time.time() + 3600)
+        )
+
+# Then create OAuth-enabled block
+@provider("my-service")
+@oauth_config("my-service", MyServiceOAuthHandler)
+class MyOAuthBlock(Block):
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput = CredentialsField(
+            provider="my-service",
+            supported_credential_types={"oauth2"},
+            required_scopes={"read", "write"}
+        )
+        action: String = SchemaField(description="Action to perform")
+        
+    class Output(BlockSchema):
+        result: Dict = SchemaField(description="API response")
+        error: String = SchemaField(description="Error message", default="")
+    
+    def __init__(self):
+        super().__init__(
+            id="my-oauth-block-12345678-1234-1234-1234-123456789012",
+            description="Interact with My Service using OAuth",
+            categories={BlockCategory.DEVELOPER_TOOLS},
+            input_schema=MyOAuthBlock.Input,
+            output_schema=MyOAuthBlock.Output,
+        )
+    
+    def run(self, input_data: Input, *, credentials: OAuth2Credentials, **kwargs) -> BlockOutput:
+        try:
+            headers = {"Authorization": f"Bearer {credentials.access_token.get_secret_value()}"}
+            # Make API call with OAuth token
+            yield "result", {"status": "success", "action": input_data.action}
+        except Exception as e:
+            yield "error", str(e)
+```
+
+### SDK Components Available
+
+The SDK provides 68+ components via `from backend.sdk import *`:
+
+**Core Block Components:**
+- `Block`, `BlockSchema`, `BlockOutput`, `BlockCategory`, `BlockType`
+- `SchemaField`, `CredentialsField`, `CredentialsMetaInput`
+
+**Credential Types:**
+- `APIKeyCredentials`, `OAuth2Credentials`, `UserPasswordCredentials`
+
+**Cost System:**
+- `BlockCost`, `BlockCostType`, `NodeExecutionStats`
+
+**Type Aliases:**
+- `String`, `Integer`, `Float`, `Boolean` (cleaner than str, int, etc.)
+
+**Common Types:**
+- `List`, `Dict`, `Optional`, `Any`, `Union`, `BaseModel`, `SecretStr`
+
+**Utilities:**
+- `json`, `logging`, `store_media_file`, `MediaFileType`
+
+### Best Practices
+
+1. **Use UUID for Block ID**: Generate a unique UUID for each block
+2. **Handle Errors**: Always include error handling in the run method
+3. **Yield All Outputs**: Ensure all output schema fields are yielded
+4. **Test Your Block**: Include test_input and test_output in __init__
+5. **Document Well**: Provide clear descriptions for the block and all fields
+
+### No Manual Configuration Needed
+
+With the SDK, you never need to manually update these files:
+- ❌ `backend/data/block_cost_config.py`
+- ❌ `backend/integrations/credentials_store.py`
+- ❌ `backend/integrations/providers.py`
+- ❌ `backend/integrations/oauth/__init__.py`
+- ❌ `backend/integrations/webhooks/__init__.py`
+
+Everything is handled automatically by the decorators!
+
 ## Project Architecture
 
 The AutoGPT Platform is a microservice-based system for creating and running AI-powered agent workflows. It consists of three main components:
