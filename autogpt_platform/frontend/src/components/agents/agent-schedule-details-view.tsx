@@ -12,7 +12,8 @@ import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AgentRunStatus } from "@/components/agents/agent-run-status-chip";
 import { useToastOnFail } from "@/components/ui/use-toast";
-import { Button } from "@/components/agptui/Button";
+import ActionButtonGroup from "@/components/agptui/action-button-group";
+import LoadingBox from "@/components/ui/loading";
 import { Input } from "@/components/ui/input";
 
 export default function AgentScheduleDetailsView({
@@ -75,7 +76,7 @@ export default function AgentScheduleDetailsView({
     [api, graph, schedule, onForcedRun, toastOnFail],
   );
 
-  const runActions: { label: string; callback: () => void }[] = useMemo(
+  const runActions: ButtonAction[] = useMemo(
     () => [{ label: "Run now", callback: () => runNow() }],
     [runNow],
   );
@@ -109,15 +110,11 @@ export default function AgentScheduleDetailsView({
               Object.entries(agentRunInputs).map(([key, { title, value }]) => (
                 <div key={key} className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium">{title || key}</label>
-                  <Input
-                    defaultValue={value}
-                    className="rounded-full"
-                    disabled
-                  />
+                  <Input value={value} className="rounded-full" disabled />
                 </div>
               ))
             ) : (
-              <p>Loading...</p>
+              <LoadingBox spinnerSize={12} className="h-24" />
             )}
           </CardContent>
         </Card>
@@ -126,27 +123,9 @@ export default function AgentScheduleDetailsView({
       {/* Run / Agent Actions */}
       <aside className="w-48 xl:w-56">
         <div className="flex flex-col gap-8">
-          <div className="flex flex-col gap-3">
-            <h3 className="text-sm font-medium">Run actions</h3>
-            {runActions.map((action, i) => (
-              <Button key={i} variant="outline" onClick={action.callback}>
-                {action.label}
-              </Button>
-            ))}
-          </div>
+          <ActionButtonGroup title="Run actions" actions={runActions} />
 
-          <div className="flex flex-col gap-3">
-            <h3 className="text-sm font-medium">Agent actions</h3>
-            {agentActions.map((action, i) => (
-              <Button
-                key={i}
-                variant={action.variant ?? "outline"}
-                onClick={action.callback}
-              >
-                {action.label}
-              </Button>
-            ))}
-          </div>
+          <ActionButtonGroup title="Agent actions" actions={agentActions} />
         </div>
       </aside>
     </div>

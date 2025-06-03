@@ -22,11 +22,11 @@ export const BreadCrumbs: React.FC<BreadCrumbsProps> = ({ items }) => {
       <button className="flex h-12 w-12 items-center justify-center rounded-full border border-neutral-200 transition-colors hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">
         <IconRightArrow className="h-5 w-5 text-neutral-900 dark:text-neutral-100" />
       </button> */}
-      <div className="flex h-auto flex-wrap items-center justify-start gap-4 rounded-[5rem] bg-white dark:bg-transparent">
+      <div className="flex h-auto flex-wrap items-center justify-start gap-4 rounded-[5rem] dark:bg-transparent">
         {items.map((item, index) => (
           <React.Fragment key={index}>
             <Link href={item.link}>
-              <span className="rounded py-1 pr-2 font-neue text-xl font-medium leading-9 tracking-tight text-[#272727] transition-colors duration-200 hover:text-gray-400 dark:text-neutral-100 dark:hover:text-gray-500">
+              <span className="rounded py-1 pr-2 text-xl font-medium leading-9 tracking-tight text-[#272727] transition-colors duration-200 hover:text-gray-400 dark:text-neutral-100 dark:hover:text-gray-500">
                 {item.name}
               </span>
             </Link>

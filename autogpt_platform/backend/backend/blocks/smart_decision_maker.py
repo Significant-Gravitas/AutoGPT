@@ -14,7 +14,6 @@ from backend.data.block import (
     BlockOutput,
     BlockSchema,
     BlockType,
-    get_block,
 )
 from backend.data.model import SchemaField
 from backend.util import json
@@ -27,10 +26,10 @@ logger = logging.getLogger(__name__)
 
 @thread_cached
 def get_database_manager_client():
-    from backend.executor import DatabaseManager
+    from backend.executor import DatabaseManagerClient
     from backend.util.service import get_service_client
 
-    return get_service_client(DatabaseManager)
+    return get_service_client(DatabaseManagerClient)
 
 
 def _get_tool_requests(entry: dict[str, Any]) -> list[str]:
@@ -155,7 +154,7 @@ class SmartDecisionMakerBlock(Block):
             description="The system prompt to provide additional context to the model.",
         )
         conversation_history: list[dict] = SchemaField(
-            default=[],
+            default_factory=list,
             description="The conversation history to provide context for the prompt.",
         )
         last_tool_output: Any = SchemaField(
@@ -169,7 +168,7 @@ class SmartDecisionMakerBlock(Block):
         )
         prompt_values: dict[str, str] = SchemaField(
             advanced=False,
-            default={},
+            default_factory=dict,
             description="Values used to fill in the prompt. The values can be used in the prompt by putting them in a double curly braces, e.g. {{variable_name}}.",
         )
         max_tokens: int | None = SchemaField(
@@ -248,6 +247,10 @@ class SmartDecisionMakerBlock(Block):
         )
 
     @staticmethod
+    def cleanup(s: str):
+        return re.sub(r"[^a-zA-Z0-9_-]", "_", s).lower()
+
+    @staticmethod
     def _create_block_function_signature(
         sink_node: "Node", links: list["Link"]
     ) -> dict[str, Any]:
@@ -264,12 +267,10 @@ class SmartDecisionMakerBlock(Block):
         Raises:
             ValueError: If the block specified by sink_node.block_id is not found.
         """
-        block = get_block(sink_node.block_id)
-        if not block:
-            raise ValueError(f"Block not found: {sink_node.block_id}")
+        block = sink_node.block
 
         tool_function: dict[str, Any] = {
-            "name": re.sub(r"[^a-zA-Z0-9_-]", "_", block.name).lower(),
+            "name": SmartDecisionMakerBlock.cleanup(block.name),
             "description": block.description,
         }
 
@@ -284,7 +285,7 @@ class SmartDecisionMakerBlock(Block):
                 and sink_block_input_schema.model_fields[link.sink_name].description
                 else f"The {link.sink_name} of the tool"
             )
-            properties[link.sink_name.lower()] = {
+            properties[SmartDecisionMakerBlock.cleanup(link.sink_name)] = {
                 "type": "string",
                 "description": description,
             }
@@ -329,7 +330,7 @@ class SmartDecisionMakerBlock(Block):
             )
 
         tool_function: dict[str, Any] = {
-            "name": re.sub(r"[^a-zA-Z0-9_-]", "_", sink_graph_meta.name).lower(),
+            "name": SmartDecisionMakerBlock.cleanup(sink_graph_meta.name),
             "description": sink_graph_meta.description,
         }
 
@@ -344,7 +345,7 @@ class SmartDecisionMakerBlock(Block):
                 in sink_block_input_schema["properties"][link.sink_name]
                 else f"The {link.sink_name} of the tool"
             )
-            properties[link.sink_name.lower()] = {
+            properties[SmartDecisionMakerBlock.cleanup(link.sink_name)] = {
                 "type": "string",
                 "description": description,
             }
@@ -494,6 +495,7 @@ class SmartDecisionMakerBlock(Block):
             max_tokens=input_data.max_tokens,
             tools=tool_functions,
             ollama_host=input_data.ollama_host,
+            parallel_tool_calls=False,
         )
 
         if not response.tool_calls:
@@ -505,7 +507,7 @@ class SmartDecisionMakerBlock(Block):
             tool_args = json.loads(tool_call.function.arguments)
 
             for arg_name, arg_value in tool_args.items():
-                yield f"tools_^_{tool_name}_{arg_name}".lower(), arg_value
+                yield f"tools_^_{tool_name}_~_{arg_name}", arg_value
 
         response.prompt.append(response.raw_response)
         yield "conversations", response.prompt

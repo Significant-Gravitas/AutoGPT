@@ -65,7 +65,7 @@ class AddMemoryBlock(Block, Mem0Base):
             default=Content(discriminator="content", content="I'm a vegetarian"),
         )
         metadata: dict[str, Any] = SchemaField(
-            description="Optional metadata for the memory", default={}
+            description="Optional metadata for the memory", default_factory=dict
         )
 
         limit_memory_to_run: bool = SchemaField(
@@ -124,8 +124,10 @@ class AddMemoryBlock(Block, Mem0Base):
 
             if isinstance(input_data.content, Conversation):
                 messages = input_data.content.messages
+            elif isinstance(input_data.content, Content):
+                messages = [{"role": "user", "content": input_data.content.content}]
             else:
-                messages = [{"role": "user", "content": input_data.content}]
+                messages = [{"role": "user", "content": str(input_data.content)}]
 
             params = {
                 "user_id": user_id,
@@ -152,7 +154,7 @@ class AddMemoryBlock(Block, Mem0Base):
                 yield "action", "NO_CHANGE"
 
         except Exception as e:
-            yield "error", str(object=e)
+            yield "error", str(e)
 
 
 class SearchMemoryBlock(Block, Mem0Base):
@@ -173,7 +175,7 @@ class SearchMemoryBlock(Block, Mem0Base):
         )
         categories_filter: list[str] = SchemaField(
             description="Categories to filter by",
-            default=[],
+            default_factory=list,
             advanced=True,
         )
         limit_memory_to_run: bool = SchemaField(

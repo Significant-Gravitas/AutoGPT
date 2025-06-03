@@ -7,6 +7,7 @@ from tweepy.client import Response
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TWITTER_OAUTH_IS_CONFIGURED,
     TwitterCredentials,
     TwitterCredentialsField,
     TwitterCredentialsInput,
@@ -75,6 +76,7 @@ class TwitterGetUserBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetUserBlock.Input,
             output_schema=TwitterGetUserBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "identifier": {"discriminator": "username", "username": "twitter"},
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -200,7 +202,7 @@ class UserIdList(BaseModel):
     user_ids: list[str] = SchemaField(
         description="List of user IDs to lookup (max 100)",
         placeholder="Enter user IDs",
-        default=[],
+        default_factory=list,
         advanced=False,
     )
 
@@ -210,7 +212,7 @@ class UsernameList(BaseModel):
     usernames: list[str] = SchemaField(
         description="List of Twitter usernames/handles to lookup (max 100)",
         placeholder="Enter usernames",
-        default=[],
+        default_factory=list,
         advanced=False,
     )
 
@@ -251,6 +253,7 @@ class TwitterGetUsersBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetUsersBlock.Input,
             output_schema=TwitterGetUsersBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "identifier": {
                     "discriminator": "username_list",

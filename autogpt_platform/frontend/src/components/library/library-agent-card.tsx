@@ -8,7 +8,7 @@ export default function LibraryAgentCard({
     id,
     name,
     description,
-    agent_id,
+    graph_id: agent_id,
     can_access_graph,
     creator_image_url,
     image_url,
@@ -48,7 +48,7 @@ export default function LibraryAgentCard({
           />
         )}
         <div className="absolute bottom-4 left-4">
-          <Avatar className="h-16 w-16 border-2 border-white dark:border-gray-800">
+          <Avatar className="h-16 w-16">
             <AvatarImage
               src={
                 creator_image_url
@@ -57,7 +57,7 @@ export default function LibraryAgentCard({
               }
               alt={`${name} creator avatar`}
             />
-            <AvatarFallback>{name.charAt(0)}</AvatarFallback>
+            <AvatarFallback size={64}>{name.charAt(0)}</AvatarFallback>
           </Avatar>
         </div>
       </Link>
@@ -79,7 +79,7 @@ export default function LibraryAgentCard({
         <div className="items-between mt-4 flex w-full justify-between gap-3">
           <Link
             href={`/library/agents/${id}`}
-            className="font-geist text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
+            className="text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
           >
             See runs
           </Link>
@@ -87,7 +87,7 @@ export default function LibraryAgentCard({
           {can_access_graph && (
             <Link
               href={`/build?flowID=${agent_id}`}
-              className="font-geist text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
+              className="text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
             >
               Open in builder
             </Link>

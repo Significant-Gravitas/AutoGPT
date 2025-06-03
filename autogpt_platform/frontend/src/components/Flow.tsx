@@ -1,11 +1,12 @@
 "use client";
 import React, {
+  createContext,
   useState,
   useCallback,
   useEffect,
   useRef,
   MouseEvent,
-  createContext,
+  Suspense,
 } from "react";
 import {
   ReactFlow,
@@ -48,6 +49,7 @@ import RunnerUIWrapper, {
   RunnerUIWrapperRef,
 } from "@/components/RunnerUIWrapper";
 import PrimaryActionBar from "@/components/PrimaryActionButton";
+import OttoChatWidget from "@/components/OttoChatWidget";
 import { useToast } from "@/components/ui/use-toast";
 import { useCopyPaste } from "../hooks/useCopyPaste";
 import { CronScheduler } from "./cronScheduler";
@@ -146,6 +148,13 @@ const FlowEditor: React.FC<{
 
   // It stores the dimension of all nodes with position as well
   const [nodeDimensions, setNodeDimensions] = useState<NodeDimension>({});
+
+  // Set page title with or without graph name
+  useEffect(() => {
+    document.title = savedAgent
+      ? `${savedAgent.name} - Builder - AutoGPT Platform`
+      : `Builder - AutoGPT Platform`;
+  }, [savedAgent]);
 
   useEffect(() => {
     if (params.get("resetTutorial") === "true") {
@@ -461,37 +470,6 @@ const FlowEditor: React.FC<{
     });
   }, [nodes, setViewport, x, y]);
 
-  const fillDefaults = useCallback((obj: any, schema: any) => {
-    // Iterate over the schema properties
-    for (const key in schema.properties) {
-      if (schema.properties.hasOwnProperty(key)) {
-        const propertySchema = schema.properties[key];
-
-        // If the property is not in the object, initialize it with the default value
-        if (!obj.hasOwnProperty(key)) {
-          if (propertySchema.default !== undefined) {
-            obj[key] = propertySchema.default;
-          } else if (propertySchema.type === "object") {
-            // Recursively fill defaults for nested objects
-            obj[key] = fillDefaults({}, propertySchema);
-          } else if (propertySchema.type === "array") {
-            // Recursively fill defaults for arrays
-            obj[key] = fillDefaults([], propertySchema);
-          }
-        } else {
-          // If the property exists, recursively fill defaults for nested objects/arrays
-          if (propertySchema.type === "object") {
-            obj[key] = fillDefaults(obj[key], propertySchema);
-          } else if (propertySchema.type === "array") {
-            obj[key] = fillDefaults(obj[key], propertySchema);
-          }
-        }
-      }
-    }
-
-    return obj;
-  }, []);
-
   const addNode = useCallback(
     (blockId: string, nodeType: string, hardcodedValues: any = {}) => {
       const nodeSchema = availableNodes.find((node) => node.id === blockId);
@@ -538,10 +516,7 @@ const FlowEditor: React.FC<{
           categories: nodeSchema.categories,
           inputSchema: nodeSchema.inputSchema,
           outputSchema: nodeSchema.outputSchema,
-          hardcodedValues: {
-            ...fillDefaults({}, nodeSchema.inputSchema),
-            ...hardcodedValues,
-          },
+          hardcodedValues: hardcodedValues,
           connections: [],
           isOutputOpen: false,
           block_id: blockId,
@@ -710,7 +685,7 @@ const FlowEditor: React.FC<{
           <Controls />
           <Background className="dark:bg-slate-800" />
           <ControlPanel
-            className="absolute z-10"
+            className="absolute z-20"
             controls={editorControls}
             topChildren={
               <BlocksControl
@@ -735,6 +710,7 @@ const FlowEditor: React.FC<{
             }
           ></ControlPanel>
           <PrimaryActionBar
+            className="absolute bottom-0 left-1/2 z-20 -translate-x-1/2"
             onClickAgentOutputs={() => runnerUIRef.current?.openRunnerOutput()}
             onClickRunAgent={() => {
               if (!savedAgent) {
@@ -774,6 +750,12 @@ const FlowEditor: React.FC<{
         scheduleRunner={scheduleRunner}
         requestSaveAndRun={requestSaveAndRun}
       />
+      <Suspense fallback={null}>
+        <OttoChatWidget
+          graphID={flowID}
+          className="fixed bottom-4 right-4 z-20"
+        />
+      </Suspense>
     </FlowContext.Provider>
   );
 };

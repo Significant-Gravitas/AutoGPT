@@ -7,6 +7,7 @@ from tweepy.client import Response
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TWITTER_OAUTH_IS_CONFIGURED,
     TwitterCredentials,
     TwitterCredentialsField,
     TwitterCredentialsInput,
@@ -44,7 +45,7 @@ class SpaceList(BaseModel):
     space_ids: list[str] = SchemaField(
         description="List of Space IDs to lookup (up to 100)",
         placeholder="Enter Space IDs",
-        default=[],
+        default_factory=list,
         advanced=False,
     )
 
@@ -54,7 +55,7 @@ class UserList(BaseModel):
     user_ids: list[str] = SchemaField(
         description="List of user IDs to lookup their Spaces (up to 100)",
         placeholder="Enter user IDs",
-        default=[],
+        default_factory=list,
         advanced=False,
     )
 
@@ -94,6 +95,7 @@ class TwitterGetSpacesBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetSpacesBlock.Input,
             output_schema=TwitterGetSpacesBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "identifier": {
                     "discriminator": "space_list",
@@ -227,7 +229,6 @@ class TwitterGetSpaceByIdBlock(Block):
         space_id: str = SchemaField(
             description="Space ID to lookup",
             placeholder="Enter Space ID",
-            required=True,
         )
 
     class Output(BlockSchema):
@@ -250,6 +251,7 @@ class TwitterGetSpaceByIdBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetSpaceByIdBlock.Input,
             output_schema=TwitterGetSpaceByIdBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "space_id": "1DXxyRYNejbKM",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -389,7 +391,6 @@ class TwitterGetSpaceBuyersBlock(Block):
         space_id: str = SchemaField(
             description="Space ID to lookup buyers for",
             placeholder="Enter Space ID",
-            required=True,
         )
 
     class Output(BlockSchema):
@@ -411,6 +412,7 @@ class TwitterGetSpaceBuyersBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetSpaceBuyersBlock.Input,
             output_schema=TwitterGetSpaceBuyersBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "space_id": "1DXxyRYNejbKM",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -517,7 +519,6 @@ class TwitterGetSpaceTweetsBlock(Block):
         space_id: str = SchemaField(
             description="Space ID to lookup tweets for",
             placeholder="Enter Space ID",
-            required=True,
         )
 
     class Output(BlockSchema):
@@ -540,6 +541,7 @@ class TwitterGetSpaceTweetsBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetSpaceTweetsBlock.Input,
             output_schema=TwitterGetSpaceTweetsBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "space_id": "1DXxyRYNejbKM",
                 "credentials": TEST_CREDENTIALS_INPUT,

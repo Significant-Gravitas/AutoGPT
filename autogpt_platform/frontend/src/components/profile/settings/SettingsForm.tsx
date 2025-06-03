@@ -18,7 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { updateSettings } from "@/app/profile/(user)/settings/actions";
+import { updateSettings } from "@/app/(platform)/profile/(user)/settings/actions";
 import { toast } from "@/components/ui/use-toast";
 import {
   NotificationPreference,
@@ -33,9 +33,9 @@ const formSchema = z
       .optional()
       .refine((val) => {
         // If password is provided, it must be at least 8 characters
-        if (val) return val.length >= 8;
+        if (val) return val.length >= 12;
         return true;
-      }, "String must contain at least 8 character(s)"),
+      }, "String must contain at least 12 character(s)"),
     confirmPassword: z.string().optional(),
     notifyOnAgentRun: z.boolean(),
     notifyOnZeroBalance: z.boolean(),

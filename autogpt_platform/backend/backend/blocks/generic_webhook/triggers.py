@@ -12,10 +12,10 @@ from backend.integrations.webhooks.generic import GenericWebhookType
 
 class GenericWebhookTriggerBlock(Block):
     class Input(BlockSchema):
-        payload: dict = SchemaField(hidden=True, default={})
+        payload: dict = SchemaField(hidden=True, default_factory=dict)
         constants: dict = SchemaField(
             description="The constants to be set when the block is put on the graph",
-            default={},
+            default_factory=dict,
         )
 
     class Output(BlockSchema):

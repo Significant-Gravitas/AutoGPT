@@ -6,6 +6,7 @@ from tweepy.client import Response
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TWITTER_OAUTH_IS_CONFIGURED,
     TwitterCredentials,
     TwitterCredentialsField,
     TwitterCredentialsInput,
@@ -39,7 +40,6 @@ class TwitterUnpinListBlock(Block):
         list_id: str = SchemaField(
             description="The ID of the List to unpin",
             placeholder="Enter list ID",
-            required=True,
         )
 
     class Output(BlockSchema):
@@ -53,6 +53,7 @@ class TwitterUnpinListBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterUnpinListBlock.Input,
             output_schema=TwitterUnpinListBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={"list_id": "123456789", "credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
@@ -103,7 +104,6 @@ class TwitterPinListBlock(Block):
         list_id: str = SchemaField(
             description="The ID of the List to pin",
             placeholder="Enter list ID",
-            required=True,
         )
 
     class Output(BlockSchema):
@@ -117,6 +117,7 @@ class TwitterPinListBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterPinListBlock.Input,
             output_schema=TwitterPinListBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={"list_id": "123456789", "credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
@@ -186,6 +187,7 @@ class TwitterGetPinnedListsBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetPinnedListsBlock.Input,
             output_schema=TwitterGetPinnedListsBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "expansions": None,
                 "list_fields": None,

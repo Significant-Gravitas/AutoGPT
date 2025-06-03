@@ -6,6 +6,7 @@ from tweepy.client import Response
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TWITTER_OAUTH_IS_CONFIGURED,
     TwitterCredentials,
     TwitterCredentialsField,
     TwitterCredentialsInput,
@@ -45,13 +46,11 @@ class TwitterRemoveListMemberBlock(Block):
         list_id: str = SchemaField(
             description="The ID of the List to remove the member from",
             placeholder="Enter list ID",
-            required=True,
         )
 
         user_id: str = SchemaField(
             description="The ID of the user to remove from the List",
             placeholder="Enter user ID to remove",
-            required=True,
         )
 
     class Output(BlockSchema):
@@ -67,6 +66,7 @@ class TwitterRemoveListMemberBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterRemoveListMemberBlock.Input,
             output_schema=TwitterRemoveListMemberBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "list_id": "123456789",
                 "user_id": "987654321",
@@ -120,13 +120,11 @@ class TwitterAddListMemberBlock(Block):
         list_id: str = SchemaField(
             description="The ID of the List to add the member to",
             placeholder="Enter list ID",
-            required=True,
         )
 
         user_id: str = SchemaField(
             description="The ID of the user to add to the List",
             placeholder="Enter user ID to add",
-            required=True,
         )
 
     class Output(BlockSchema):
@@ -142,6 +140,7 @@ class TwitterAddListMemberBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterAddListMemberBlock.Input,
             output_schema=TwitterAddListMemberBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "list_id": "123456789",
                 "user_id": "987654321",
@@ -195,7 +194,6 @@ class TwitterGetListMembersBlock(Block):
         list_id: str = SchemaField(
             description="The ID of the List to get members from",
             placeholder="Enter list ID",
-            required=True,
         )
 
         max_results: int | None = SchemaField(
@@ -234,6 +232,7 @@ class TwitterGetListMembersBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetListMembersBlock.Input,
             output_schema=TwitterGetListMembersBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "list_id": "123456789",
                 "max_results": 2,
@@ -376,7 +375,6 @@ class TwitterGetListMembershipsBlock(Block):
         user_id: str = SchemaField(
             description="The ID of the user whose List memberships to retrieve",
             placeholder="Enter user ID",
-            required=True,
         )
 
         max_results: int | None = SchemaField(
@@ -411,6 +409,7 @@ class TwitterGetListMembershipsBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetListMembershipsBlock.Input,
             output_schema=TwitterGetListMembershipsBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "user_id": "123456789",
                 "max_results": 1,

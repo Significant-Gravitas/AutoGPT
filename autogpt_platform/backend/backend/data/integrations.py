@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, AsyncGenerator, Optional
 
 from prisma import Json
 from prisma.models import IntegrationWebhook
+from prisma.types import IntegrationWebhookCreateInput
 from pydantic import Field, computed_field
 
 from backend.data.includes import INTEGRATION_WEBHOOK_INCLUDE
@@ -66,18 +67,18 @@ class Webhook(BaseDbModel):
 
 async def create_webhook(webhook: Webhook) -> Webhook:
     created_webhook = await IntegrationWebhook.prisma().create(
-        data={
-            "id": webhook.id,
-            "userId": webhook.user_id,
-            "provider": webhook.provider.value,
-            "credentialsId": webhook.credentials_id,
-            "webhookType": webhook.webhook_type,
-            "resource": webhook.resource,
-            "events": webhook.events,
-            "config": Json(webhook.config),
-            "secret": webhook.secret,
-            "providerWebhookId": webhook.provider_webhook_id,
-        }
+        data=IntegrationWebhookCreateInput(
+            id=webhook.id,
+            userId=webhook.user_id,
+            provider=webhook.provider.value,
+            credentialsId=webhook.credentials_id,
+            webhookType=webhook.webhook_type,
+            resource=webhook.resource,
+            events=webhook.events,
+            config=Json(webhook.config),
+            secret=webhook.secret,
+            providerWebhookId=webhook.provider_webhook_id,
+        )
     )
     return Webhook.from_db(created_webhook)
 

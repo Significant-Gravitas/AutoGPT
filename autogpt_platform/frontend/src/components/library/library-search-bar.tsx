@@ -4,7 +4,7 @@ import debounce from "lodash/debounce";
 import { Input } from "@/components/ui/input";
 import { Search, X } from "lucide-react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useLibraryPageContext } from "@/app/library/state-provider";
+import { useLibraryPageContext } from "@/app/(platform)/library/state-provider";
 
 export default function LibrarySearchBar(): React.ReactNode {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -49,7 +49,7 @@ export default function LibrarySearchBar(): React.ReactNode {
         onFocus={() => setIsFocused(true)}
         onBlur={() => !inputRef.current?.value && setIsFocused(false)}
         onChange={handleSearchInput}
-        className="flex-1 border-none font-sans text-[16px] font-normal leading-7 shadow-none focus:shadow-none"
+        className="flex-1 border-none font-sans text-[16px] font-normal leading-7 shadow-none focus:shadow-none focus:ring-0"
         type="text"
         placeholder="Search agents"
       />

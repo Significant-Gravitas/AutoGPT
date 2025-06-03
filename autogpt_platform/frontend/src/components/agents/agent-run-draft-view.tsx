@@ -6,11 +6,13 @@ import { GraphExecutionID, GraphMeta } from "@/lib/autogpt-server-api";
 
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CredentialsInput } from "@/components/integrations/credentials-input";
 import { TypeBasedInput } from "@/components/type-based-input";
 import { useToastOnFail } from "@/components/ui/use-toast";
+import ActionButtonGroup from "@/components/agptui/action-button-group";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { IconPlay } from "@/components/ui/icons";
-import { Button } from "@/components/agptui/Button";
+import { useOnboarding } from "../onboarding/onboarding-provider";
 
 export default function AgentRunDraftView({
   graph,
@@ -25,16 +27,32 @@ export default function AgentRunDraftView({
   const toastOnFail = useToastOnFail();
 
   const agentInputs = graph.input_schema.properties;
+  const agentCredentialsInputs = graph.credentials_input_schema.properties;
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
-
-  const doRun = useCallback(
-    () =>
-      api
-        .executeGraph(graph.id, graph.version, inputValues)
-        .then((newRun) => onRun(newRun.graph_exec_id))
-        .catch(toastOnFail("execute agent")),
-    [api, graph, inputValues, onRun, toastOnFail],
+  const [inputCredentials, setInputCredentials] = useState<Record<string, any>>(
+    {},
   );
+  const { state, completeStep } = useOnboarding();
+
+  const doRun = useCallback(() => {
+    api
+      .executeGraph(graph.id, graph.version, inputValues, inputCredentials)
+      .then((newRun) => onRun(newRun.graph_exec_id))
+      .catch(toastOnFail("execute agent"));
+    // Mark run agent onboarding step as completed
+    if (state?.completedSteps.includes("MARKETPLACE_ADD_AGENT")) {
+      completeStep("MARKETPLACE_RUN_AGENT");
+    }
+  }, [
+    api,
+    graph,
+    inputValues,
+    inputCredentials,
+    onRun,
+    toastOnFail,
+    state,
+    completeStep,
+  ]);
 
   const runActions: ButtonAction[] = useMemo(
     () => [
@@ -60,6 +78,26 @@ export default function AgentRunDraftView({
             <CardTitle className="font-poppins text-lg">Input</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
+            {/* Credentials inputs */}
+            {Object.entries(agentCredentialsInputs).map(
+              ([key, inputSubSchema]) => (
+                <CredentialsInput
+                  key={key}
+                  schema={{ ...inputSubSchema, discriminator: undefined }}
+                  selectedCredentials={
+                    inputCredentials[key] ?? inputSubSchema.default
+                  }
+                  onSelectCredentials={(value) =>
+                    setInputCredentials((obj) => ({
+                      ...obj,
+                      [key]: value,
+                    }))
+                  }
+                />
+              ),
+            )}
+
+            {/* Regular inputs */}
             {Object.entries(agentInputs).map(([key, inputSubSchema]) => (
               <div key={key} className="flex flex-col space-y-2">
                 <label className="flex items-center gap-1 text-sm font-medium">
@@ -87,31 +125,9 @@ export default function AgentRunDraftView({
       {/* Actions */}
       <aside className="w-48 xl:w-56">
         <div className="flex flex-col gap-8">
-          <div className="flex flex-col gap-3">
-            <h3 className="text-sm font-medium">Run actions</h3>
-            {runActions.map((action, i) => (
-              <Button
-                key={i}
-                variant={action.variant ?? "outline"}
-                onClick={action.callback}
-              >
-                {action.label}
-              </Button>
-            ))}
-          </div>
+          <ActionButtonGroup title="Run actions" actions={runActions} />
 
-          <div className="flex flex-col gap-3">
-            <h3 className="text-sm font-medium">Agent actions</h3>
-            {agentActions.map((action, i) => (
-              <Button
-                key={i}
-                variant={action.variant ?? "outline"}
-                onClick={action.callback}
-              >
-                {action.label}
-              </Button>
-            ))}
-          </div>
+          <ActionButtonGroup title="Agent actions" actions={agentActions} />
         </div>
       </aside>
     </div>

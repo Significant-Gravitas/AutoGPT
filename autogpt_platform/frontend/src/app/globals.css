@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    --background: 0 0% 99.6%; /* #FEFEFE */
+    --background: 0 0% 98%; /* neutral-50#FAFAFA */
     --foreground: 240 10% 3.9%;
     --card: 0 0% 100%;
     --card-foreground: 240 10% 3.9%;
@@ -62,11 +62,7 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
-  }
-
-  .font-neue {
-    font-family: "PP Neue Montreal TT", sans-serif;
+    @apply bg-background font-sans text-foreground antialiased transition-colors;
   }
 }
 
@@ -74,7 +70,7 @@
 
 @layer components {
   .agpt-border-input {
-    @apply m-0.5 border border-input focus-visible:border-gray-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-gray-400;
+    @apply m-0.5 border border-input focus:border-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400 data-[state=open]:border-gray-400 data-[state=open]:ring-1 data-[state=open]:ring-gray-400;
   }
 
   .agpt-shadow-input {
@@ -143,4 +139,14 @@
   .text-balance {
     text-wrap: balance;
   }
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
 }

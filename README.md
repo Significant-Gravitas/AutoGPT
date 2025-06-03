@@ -15,7 +15,38 @@
 > Setting up and hosting the AutoGPT Platform yourself is a technical process. 
 > If you'd rather something that just works, we recommend [joining the waitlist](https://bit.ly/3ZDijAI) for the cloud-hosted beta.
 
-https://github.com/user-attachments/assets/d04273a5-b36a-4a37-818e-f631ce72d603
+### System Requirements
+
+Before proceeding with the installation, ensure your system meets the following requirements:
+
+#### Hardware Requirements
+- CPU: 4+ cores recommended
+- RAM: Minimum 8GB, 16GB recommended
+- Storage: At least 10GB of free space
+
+#### Software Requirements
+- Operating Systems:
+  - Linux (Ubuntu 20.04 or newer recommended)
+  - macOS (10.15 or newer)
+  - Windows 10/11 with WSL2
+- Required Software (with minimum versions):
+  - Docker Engine (20.10.0 or newer)
+  - Docker Compose (2.0.0 or newer)
+  - Git (2.30 or newer)
+  - Node.js (16.x or newer)
+  - npm (8.x or newer)
+  - VSCode (1.60 or newer) or any modern code editor
+
+#### Network Requirements
+- Stable internet connection
+- Access to required ports (will be configured in Docker)
+- Ability to make outbound HTTPS connections
+
+### Updated Setup Instructions:
+We've moved to a fully maintained and regularly updated documentation site.
+
+👉 [Follow the official self-hosting guide here](https://docs.agpt.co/platform/getting-started/)
+
 
 This tutorial assumes you have Docker, VSCode, git and npm installed.
 
@@ -148,7 +179,7 @@ Just clone the repo, install dependencies with `./run setup`, and you should be 
 
 [![Join us on Discord](https://invidget.switchblade.xyz/autogpt)](https://discord.gg/autogpt)
 
-To report a bug or request a feature, create a [GitHub Issue](https://github.com/Significant-Gravitas/AutoGPT/issues/new/choose). Please ensure someone else hasn’t created an issue for the same topic.
+To report a bug or request a feature, create a [GitHub Issue](https://github.com/Significant-Gravitas/AutoGPT/issues/new/choose). Please ensure someone else hasn't created an issue for the same topic.
 
 ## 🤝 Sister projects
 

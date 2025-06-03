@@ -4,5 +4,5 @@ import React from "react";
 export type ButtonAction = {
   label: React.ReactNode;
   variant?: ButtonProps["variant"];
-  callback: () => void;
-};
+  disabled?: boolean;
+} & ({ callback: () => void } | { href: string });

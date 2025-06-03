@@ -8,7 +8,6 @@ import {
   CarouselItem,
 } from "@/components/ui/carousel";
 import { useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
 
 export interface Agent {
   slug: string;
@@ -26,12 +25,14 @@ interface AgentsSectionProps {
   sectionTitle: string;
   agents: Agent[];
   hideAvatars?: boolean;
+  margin?: string;
 }
 
 export const AgentsSection: React.FC<AgentsSectionProps> = ({
   sectionTitle,
   agents: allAgents,
   hideAvatars = false,
+  margin = "24px",
 }) => {
   const router = useRouter();
 
@@ -45,11 +46,14 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
   };
 
   return (
-    <div className="flex flex-col items-center justify-center py-4 lg:py-8">
+    <div className="flex flex-col items-center justify-center">
       <div className="w-full max-w-[1360px]">
-        <div className="decoration-skip-ink-none mb-8 text-left font-poppins text-[18px] font-[600] leading-7 text-[#282828] underline-offset-[from-font] dark:text-neutral-200">
+        <h2
+          style={{ marginBottom: margin }}
+          className="font-poppins text-lg font-semibold text-[#282828] dark:text-neutral-200"
+        >
           {sectionTitle}
-        </div>
+        </h2>
         {!displayedAgents || displayedAgents.length === 0 ? (
           <div className="text-center text-gray-500 dark:text-gray-400">
             No agents found
@@ -82,7 +86,7 @@ export const AgentsSection: React.FC<AgentsSectionProps> = ({
               </CarouselContent>
             </Carousel>
 
-            <div className="hidden grid-cols-1 place-items-center gap-6 md:grid md:grid-cols-2 lg:grid-cols-4">
+            <div className="hidden grid-cols-1 place-items-center gap-6 md:grid md:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
               {displayedAgents.map((agent, index) => (
                 <StoreCard
                   key={index}

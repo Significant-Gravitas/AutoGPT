@@ -2,23 +2,15 @@ import logging
 from typing import Annotated, Any
 
 import autogpt_libs.auth as autogpt_auth_lib
-import autogpt_libs.utils.cache
 from fastapi import APIRouter, Body, Depends, HTTPException, status
 
-import backend.executor
 import backend.server.v2.library.db as db
 import backend.server.v2.library.model as models
-import backend.util.service
+from backend.executor.utils import add_graph_execution_async
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-@autogpt_libs.utils.cache.thread_cached
-def execution_manager_client() -> backend.executor.ExecutionManager:
-    """Return a cached instance of ExecutionManager client."""
-    return backend.util.service.get_service_client(backend.executor.ExecutionManager)
 
 
 @router.get(
@@ -226,17 +218,17 @@ async def execute_preset(
         # Merge input overrides with preset inputs
         merged_node_input = preset.inputs | node_input
 
-        execution = execution_manager_client().add_execution(
+        execution = await add_graph_execution_async(
             graph_id=graph_id,
-            graph_version=graph_version,
-            data=merged_node_input,
             user_id=user_id,
+            inputs=merged_node_input,
             preset_id=preset_id,
+            graph_version=graph_version,
         )
 
         logger.debug(f"Execution added: {execution} with input: {merged_node_input}")
 
-        return {"id": execution.graph_exec_id}
+        return {"id": execution.id}
     except HTTPException:
         raise
     except Exception as e:
