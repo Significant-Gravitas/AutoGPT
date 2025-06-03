@@ -86,6 +86,7 @@ Below is a comprehensive list of all available blocks, categorized by their prim
 | [Unreal Text to Speech](text_to_speech_block.md#unreal-text-to-speech) | Converts text to speech using Unreal Speech API |
 | [AI Shortform Video Creator](ai_shortform_video_block.md#ai-shortform-video-creator) | Generates short-form videos using AI |
 | [Replicate Flux Advanced Model](replicate_flux_advanced.md#replicate-flux-advanced-model) | Creates images using Replicate's Flux models |
+| [Flux Kontext](flux_kontext.md#flux-kontext) | Text-based image editing using Flux Kontext |
 
 ## Miscellaneous
 | Block Name | Description |
