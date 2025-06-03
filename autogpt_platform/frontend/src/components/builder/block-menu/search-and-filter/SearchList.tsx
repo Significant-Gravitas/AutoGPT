@@ -134,7 +134,25 @@ const SearchList: React.FC<SearchListProps> = ({
                 }}
               />
             );
-          // currently our backend does not support ai blocks
+          case "ai_agent":
+            return (
+              <AiBlock
+                key={index}
+                title={item.name}
+                description={item.description}
+                ai_name={item.inputSchema.properties.model.enum.find(
+                  (model: string) =>
+                    model
+                      .toLowerCase()
+                      .includes(searchQuery.toLowerCase().trim()),
+                )}
+                onClick={() => {
+                  const block = convertLibraryAgentIntoBlock(item);
+                  addNode(block);
+                }}
+              />
+            );
+
           default:
             return null;
         }

@@ -13,7 +13,6 @@ const FiltersList = () => {
     { key: "integrations", name: "Integrations" },
     { key: "marketplace_agents", name: "Marketplace agents" },
     { key: "my_agents", name: "My agents" },
-    { key: "providers", name: "Providers" },
   ];
 
   const handleCategoryFilter = (category: CategoryKey) => {

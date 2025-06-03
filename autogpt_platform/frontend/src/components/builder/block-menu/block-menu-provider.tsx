@@ -26,7 +26,6 @@ export type DefaultStateType =
 export type CategoryKey =
   | "blocks"
   | "integrations"
-  | "providers"
   | "marketplace_agents"
   | "my_agents";
 
