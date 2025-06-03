@@ -16,9 +16,9 @@ settings = Settings()
 
 @thread_cached
 def get_db():
-    from backend.executor.database import DatabaseManager
+    from backend.executor.database import DatabaseManagerClient
 
-    return get_service_client(DatabaseManager)
+    return get_service_client(DatabaseManagerClient)
 
 
 class IffyService:
