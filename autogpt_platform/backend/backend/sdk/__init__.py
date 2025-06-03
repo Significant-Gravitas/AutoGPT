@@ -94,7 +94,7 @@ Boolean = bool
 # === AUTO-REGISTRATION DECORATORS ===
 from .decorators import (
     register_credentials, register_cost, register_oauth, register_webhook_manager,
-    provider, cost_config, webhook_config, default_credentials
+    provider, cost_config, webhook_config, default_credentials, oauth_config
 )
 
 # === RE-EXPORT PROVIDER-SPECIFIC COMPONENTS ===
@@ -183,7 +183,7 @@ __all__ = [
     
     # Auto-Registration Decorators
     "register_credentials", "register_cost", "register_oauth", "register_webhook_manager",
-    "provider", "cost_config", "webhook_config", "default_credentials",
+    "provider", "cost_config", "webhook_config", "default_credentials", "oauth_config",
 ]
 
 # Remove None values from __all__
