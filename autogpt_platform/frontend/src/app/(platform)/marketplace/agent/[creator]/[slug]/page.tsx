@@ -8,6 +8,9 @@ import { Separator } from "@/components/ui/separator";
 import { Metadata } from "next";
 import getServerUser from "@/lib/supabase/getServerUser";
 
+// Force dynamic rendering to avoid static generation issues with cookies
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({
   params,
 }: {
