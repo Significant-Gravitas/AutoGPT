@@ -45,7 +45,7 @@ updates:
           - "patch"
 
   # frontend (Next.js project)
-  - package-ecosystem: "pnpm"
+  - package-ecosystem: "npm"
     directory: "autogpt_platform/frontend"
     schedule:
       interval: "weekly"
