@@ -15,6 +15,9 @@ import { Metadata } from "next";
 
 import { getMarketplaceData } from "./actions";
 
+// Force dynamic rendering to avoid static generation issues with cookies
+export const dynamic = "force-dynamic";
+
 // FIX: Correct metadata
 export const metadata: Metadata = {
   title: "Marketplace - AutoGPT Platform",
@@ -58,8 +61,6 @@ export const metadata: Metadata = {
     apple: "/apple-touch-icon.png",
   },
 };
-
-export const dynamic = "force-dynamic"; // force SSR
 
 export default async function MarketplacePage(): Promise<React.ReactElement> {
   const { featuredAgents, topAgents, featuredCreators } =

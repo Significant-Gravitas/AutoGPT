@@ -4,9 +4,10 @@ import { redirect } from "next/navigation";
 import BackendAPI from "@/lib/autogpt-server-api";
 import { ProfileInfoForm } from "@/components/agptui/ProfileInfoForm";
 
-export const metadata: Metadata = { title: "Profile - AutoGPT Platform" };
+// Force dynamic rendering to avoid static generation issues with cookies
+export const dynamic = "force-dynamic";
 
-export const dynamic = "force-dynamic"; // force SSR
+export const metadata: Metadata = { title: "Profile - AutoGPT Platform" };
 
 export default async function UserProfilePage(): Promise<React.ReactElement> {
   const api = new BackendAPI();
