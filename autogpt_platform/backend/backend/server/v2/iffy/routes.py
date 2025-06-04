@@ -43,8 +43,7 @@ async def handle_record_event(
 
     elif event_type in (EventType.RECORD_COMPLIANT, EventType.RECORD_UNFLAGGED):
         logger.info(
-            f'Content cleared for node "{block_content.node_id}" ("{block_content.block_name}") '
-            f'in execution "{block_content.graph_exec_id}"'
+            f'Content cleared for node "{block_content.node_id}" in execution "{block_content.graph_exec_id}"'
         )
 
     return Response(status_code=200)
