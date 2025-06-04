@@ -1,40 +1,28 @@
-import * as React from "react";
+import React from "react";
 import { Metadata } from "next/types";
-import { ProfileInfoForm } from "@/components/agptui/ProfileInfoForm";
+import { redirect } from "next/navigation";
 import BackendAPI from "@/lib/autogpt-server-api";
-import { CreatorDetails } from "@/lib/autogpt-server-api/types";
+import { ProfileInfoForm } from "@/components/agptui/ProfileInfoForm";
 
-async function getProfileData(api: BackendAPI) {
-  try {
-    const profile = await api.getStoreProfile();
-    return {
-      profile,
-    };
-  } catch (error) {
-    console.error("Error fetching profile:", error);
-    return {
-      profile: null,
-    };
-  }
-}
+// Force dynamic rendering to avoid static generation issues with cookies
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Profile - AutoGPT Platform" };
 
-export default async function Page({}: {}) {
+export default async function UserProfilePage(): Promise<React.ReactElement> {
   const api = new BackendAPI();
-  const { profile } = await getProfileData(api);
+  const profile = await api.getStoreProfile().catch((error) => {
+    console.error("Error fetching profile:", error);
+    return null;
+  });
 
   if (!profile) {
-    return (
-      <div className="flex flex-col items-center justify-center p-4">
-        <p>Please log in to view your profile</p>
-      </div>
-    );
+    redirect("/login");
   }
 
   return (
     <div className="flex flex-col items-center justify-center px-4">
-      <ProfileInfoForm profile={profile as CreatorDetails} />
+      <ProfileInfoForm profile={profile} />
     </div>
   );
 }

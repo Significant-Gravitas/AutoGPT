@@ -164,6 +164,7 @@ export default function LoginPage() {
             onVerify={turnstile.handleVerify}
             onExpire={turnstile.handleExpire}
             onError={turnstile.handleError}
+            setWidgetId={turnstile.setWidgetId}
             action="login"
             shouldRender={turnstile.shouldRender}
           />

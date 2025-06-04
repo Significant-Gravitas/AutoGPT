@@ -3,21 +3,22 @@
   "version": "0.3.4",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "dev:nosentry": "NODE_ENV=development && DISABLE_SENTRY=true && next dev",
-    "dev:test": "NODE_ENV=test && next dev",
+    "dev": "next dev --turbo",
+    "dev:test": "NODE_ENV=test && next dev --turbo",
     "build": "SKIP_STORYBOOK_TESTS=true next build",
     "start": "next start",
+    "start:standalone": "cd .next/standalone && node server.js",
     "lint": "next lint && prettier --check .",
     "format": "prettier --write .",
     "type-check": "tsc --noEmit",
-    "test": "playwright test",
-    "test-ui": "playwright test --ui",
+    "test": "next build --turbo && playwright test",
+    "test-ui": "next build --turbo && playwright test --ui",
+    "test:no-build": "playwright test",
     "gentests": "playwright codegen http://localhost:3000",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "test-storybook": "test-storybook",
-    "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"npm run build-storybook -- --quiet && npx http-server storybook-static --port 6006 --silent\" \"wait-on tcp:6006 && npm run test-storybook\""
+    "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"pnpm run build-storybook -- --quiet && npx http-server storybook-static --port 6006 --silent\" \"wait-on tcp:6006 && pnpm run test-storybook\""
   },
   "browserslist": [
     "defaults"
@@ -47,7 +48,7 @@
     "@radix-ui/react-tooltip": "^1.2.6",
     "@sentry/nextjs": "^9",
     "@supabase/ssr": "^0.6.1",
-    "@supabase/supabase-js": "^2.49.4",
+    "@supabase/supabase-js": "^2.49.10",
     "@tanstack/react-table": "^8.21.3",
     "@types/jaro-winkler": "^0.2.4",
     "@xyflow/react": "12.6.4",
@@ -61,14 +62,14 @@
     "dotenv": "^16.5.0",
     "elliptic": "6.6.1",
     "embla-carousel-react": "^8.6.0",
-    "framer-motion": "^12.12.1",
+    "framer-motion": "^12.16.0",
     "geist": "^1.4.2",
     "jaro-winkler": "^0.2.8",
     "launchdarkly-react-client-sdk": "^3.7.0",
-    "lodash.debounce": "^4.0.8",
-    "lucide-react": "^0.510.0",
+    "lodash": "^4.17.21",
+    "lucide-react": "^0.513.0",
     "moment": "^2.30.1",
-    "next": "^14.2.26",
+    "next": "^15.3.2",
     "next-themes": "^0.4.6",
     "party-js": "^2.2.0",
     "react": "^18",
@@ -81,10 +82,11 @@
     "react-modal": "^3.16.3",
     "react-shepherd": "^6.1.8",
     "recharts": "^2.15.3",
+    "shepherd.js": "^14.5.0",
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^11.1.0",
-    "zod": "^3.24.4"
+    "zod": "^3.25.51"
   },
   "devDependencies": {
     "@chromatic-com/storybook": "^3.2.4",
@@ -98,9 +100,9 @@
     "@storybook/nextjs": "^8.5.3",
     "@storybook/react": "^8.3.5",
     "@storybook/test": "^8.3.5",
-    "@storybook/test-runner": "^0.21.0",
+    "@storybook/test-runner": "^0.22.0",
     "@types/canvas-confetti": "^1.9.0",
-    "@types/lodash": "^4.17.13",
+    "@types/lodash": "^4.17.17",
     "@types/negotiator": "^0.6.3",
     "@types/node": "^22.13.0",
     "@types/react": "^18",
@@ -110,9 +112,9 @@
     "chromatic": "^11.25.2",
     "concurrently": "^9.1.2",
     "eslint": "^8",
-    "eslint-config-next": "15.1.6",
+    "eslint-config-next": "15.3.3",
     "eslint-plugin-storybook": "^0.11.2",
-    "msw": "^2.7.0",
+    "msw": "^2.9.0",
     "msw-storybook-addon": "^2.0.3",
     "postcss": "^8",
     "prettier": "^3.3.3",
@@ -121,10 +123,10 @@
     "tailwindcss": "^3.4.17",
     "typescript": "^5"
   },
-  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
   "msw": {
     "workerDirectory": [
       "public"
     ]
-  }
+  },
+  "packageManager": "pnpm@10.11.1+sha256.211e9990148495c9fc30b7e58396f7eeda83d9243eb75407ea4f8650fb161f7c"
 }
