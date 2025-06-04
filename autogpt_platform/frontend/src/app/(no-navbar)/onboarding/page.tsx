@@ -2,6 +2,9 @@ import BackendAPI from "@/lib/autogpt-server-api";
 import { redirect } from "next/navigation";
 import { finishOnboarding } from "./6-congrats/actions";
 
+// Force dynamic rendering to avoid static generation issues with cookies
+export const dynamic = "force-dynamic";
+
 export default async function OnboardingPage() {
   const api = new BackendAPI();
 
