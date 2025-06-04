@@ -174,68 +174,195 @@ def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bo
 
 # ============ Execution Input Helpers ============ #
 
+# --------------------------------------------------------------------------- #
+#  Delimiters
+# --------------------------------------------------------------------------- #
+
 LIST_SPLIT = "_$_"
 DICT_SPLIT = "_#_"
 OBJC_SPLIT = "_@_"
 
+_DELIMS = (LIST_SPLIT, DICT_SPLIT, OBJC_SPLIT)
+
+# --------------------------------------------------------------------------- #
+#  Tokenisation utilities
+# --------------------------------------------------------------------------- #
+
+
+def _next_delim(s: str) -> tuple[str | None, int]:
+    """
+    Return the *earliest* delimiter appearing in `s` and its index.
+
+    If none present → (None, -1).
+    """
+    first: str | None = None
+    pos = len(s)  # sentinel: larger than any real index
+    for d in _DELIMS:
+        i = s.find(d)
+        if 0 <= i < pos:
+            first, pos = d, i
+    return first, (pos if first else -1)
+
+
+def _tokenise(path: str) -> list[tuple[str, str]] | None:
+    """
+    Convert the raw path string (starting with a delimiter) into
+    [ (delimiter, identifier), … ] or None if the syntax is malformed.
+    """
+    tokens: list[tuple[str, str]] = []
+    while path:
+        # 1. Which delimiter starts this chunk?
+        delim = next((d for d in _DELIMS if path.startswith(d)), None)
+        if delim is None:
+            return None  # invalid syntax
+
+        # 2. Slice off the delimiter, then up to the next delimiter (or EOS)
+        path = path[len(delim) :]
+        nxt_delim, pos = _next_delim(path)
+        token, path = (
+            path[: pos if pos != -1 else len(path)],
+            path[pos if pos != -1 else len(path) :],
+        )
+        if token == "":
+            return None  # empty identifier is invalid
+        tokens.append((delim, token))
+    return tokens
+
+
+# --------------------------------------------------------------------------- #
+#  Public API – parsing (flattened ➜ concrete)
+# --------------------------------------------------------------------------- #
+
 
 def parse_execution_output(output: BlockData, name: str) -> Any | None:
     """
-    Extracts partial output data by name from a given BlockData.
+    Retrieve a nested value out of `output` using the flattened *name*.
 
-    The function supports extracting data from lists, dictionaries, and objects
-    using specific naming conventions:
-    - For lists: <output_name>_$_<index>
-    - For dictionaries: <output_name>_#_<key>
-    - For objects: <output_name>_@_<attribute>
-
-    Args:
-        output (BlockData): A tuple containing the output name and data.
-        name (str): The name used to extract specific data from the output.
-
-    Returns:
-        Any | None: The extracted data if found, otherwise None.
-
-    Examples:
-        >>> output = ("result", [10, 20, 30])
-        >>> parse_execution_output(output, "result_$_1")
-        20
-
-        >>> output = ("config", {"key1": "value1", "key2": "value2"})
-        >>> parse_execution_output(output, "config_#_key1")
-        'value1'
-
-        >>> class Sample:
-        ...     attr1 = "value1"
-        ...     attr2 = "value2"
-        >>> output = ("object", Sample())
-        >>> parse_execution_output(output, "object_@_attr1")
-        'value1'
+    On any failure (wrong name, wrong type, out-of-range, bad path)
+    returns **None**.
     """
-    output_name, output_data = output
+    base_name, data = output
 
-    if name == output_name:
-        return output_data
+    # Exact match → whole object
+    if name == base_name:
+        return data
 
-    if name.startswith(f"{output_name}{LIST_SPLIT}"):
-        index = int(name.split(LIST_SPLIT)[1])
-        if not isinstance(output_data, list) or len(output_data) <= index:
-            return None
-        return output_data[int(name.split(LIST_SPLIT)[1])]
+    # Must start with the expected name
+    if not name.startswith(base_name):
+        return None
+    path = name[len(base_name) :]
+    if not path:
+        return None  # nothing left to parse
 
-    if name.startswith(f"{output_name}{DICT_SPLIT}"):
-        index = name.split(DICT_SPLIT)[1]
-        if not isinstance(output_data, dict) or index not in output_data:
-            return None
-        return output_data[index]
-
-    if name.startswith(f"{output_name}{OBJC_SPLIT}"):
-        index = name.split(OBJC_SPLIT)[1]
-        if isinstance(output_data, object) and hasattr(output_data, index):
-            return getattr(output_data, index)
+    tokens = _tokenise(path)
+    if tokens is None:
         return None
 
-    return None
+    cur: Any = data
+    for delim, ident in tokens:
+        if delim == LIST_SPLIT:
+            # list[index]
+            try:
+                idx = int(ident)
+            except ValueError:
+                return None
+            if not isinstance(cur, list) or idx >= len(cur):
+                return None
+            cur = cur[idx]
+
+        elif delim == DICT_SPLIT:
+            if not isinstance(cur, dict) or ident not in cur:
+                return None
+            cur = cur[ident]
+
+        elif delim == OBJC_SPLIT:
+            if not hasattr(cur, ident):
+                return None
+            cur = getattr(cur, ident)
+
+        else:
+            return None  # unreachable
+
+    return cur
+
+
+def _assign(container: Any, tokens: list[tuple[str, str]], value: Any) -> Any:
+    """
+    Recursive helper that *returns* the (possibly new) container with
+    `value` assigned along the remaining `tokens` path.
+    """
+    if not tokens:
+        return value  # leaf reached
+
+    delim, ident = tokens[0]
+    rest = tokens[1:]
+
+    # ---------- list ----------
+    if delim == LIST_SPLIT:
+        try:
+            idx = int(ident)
+        except ValueError:
+            raise ValueError("index must be an integer")
+
+        if container is None:
+            container = []
+        elif not isinstance(container, list):
+            container = list(container) if hasattr(container, "__iter__") else []
+
+        while len(container) <= idx:
+            container.append(None)
+        container[idx] = _assign(container[idx], rest, value)
+        return container
+
+    # ---------- dict ----------
+    if delim == DICT_SPLIT:
+        if container is None:
+            container = {}
+        elif not isinstance(container, dict):
+            container = dict(container) if hasattr(container, "items") else {}
+        container[ident] = _assign(container.get(ident), rest, value)
+        return container
+
+    # ---------- object ----------
+    if delim == OBJC_SPLIT:
+        if container is None or not isinstance(container, MockObject):
+            container = MockObject()
+        setattr(
+            container,
+            ident,
+            _assign(getattr(container, ident, None), rest, value),
+        )
+        return container
+
+    return value  # unreachable
+
+
+def merge_execution_input(data: BlockInput) -> BlockInput:
+    """
+    Reconstruct nested objects from a *flattened* dict of key → value.
+
+    Raises ValueError on syntactically invalid list indices.
+    """
+    merged: BlockInput = {}
+
+    for key, value in data.items():
+        # Split off the base name (before the first delimiter, if any)
+        delim, pos = _next_delim(key)
+        if delim is None:
+            merged[key] = value
+            continue
+
+        base, path = key[:pos], key[pos:]
+        tokens = _tokenise(path)
+        if tokens is None:
+            # Invalid key; treat as scalar under the raw name
+            merged[key] = value
+            continue
+
+        merged[base] = _assign(merged.get(base), tokens, value)
+
+    data.update(merged)
+    return data
 
 
 def validate_exec(
@@ -290,77 +417,6 @@ def validate_exec(
         return None, error_message
 
     return data, node_block.name
-
-
-def merge_execution_input(data: BlockInput) -> BlockInput:
-    """
-    Merges dynamic input pins into a single list, dictionary, or object based on naming patterns.
-
-    This function processes input keys that follow specific patterns to merge them into a unified structure:
-    - `<input_name>_$_<index>` for list inputs.
-    - `<input_name>_#_<index>` for dictionary inputs.
-    - `<input_name>_@_<index>` for object inputs.
-
-    Args:
-        data (BlockInput): A dictionary containing input keys and their corresponding values.
-
-    Returns:
-        BlockInput: A dictionary with merged inputs.
-
-    Raises:
-        ValueError: If a list index is not an integer.
-
-    Examples:
-        >>> data = {
-        ...     "list_$_0": "a",
-        ...     "list_$_1": "b",
-        ...     "dict_#_key1": "value1",
-        ...     "dict_#_key2": "value2",
-        ...     "object_@_attr1": "value1",
-        ...     "object_@_attr2": "value2"
-        ... }
-        >>> merge_execution_input(data)
-        {
-            "list": ["a", "b"],
-            "dict": {"key1": "value1", "key2": "value2"},
-            "object": <MockObject attr1="value1" attr2="value2">
-        }
-    """
-
-    # Merge all input with <input_name>_$_<index> into a single list.
-    items = list(data.items())
-
-    for key, value in items:
-        if LIST_SPLIT not in key:
-            continue
-        name, index = key.split(LIST_SPLIT)
-        if not index.isdigit():
-            raise ValueError(f"Invalid key: {key}, #{index} index must be an integer.")
-
-        data[name] = data.get(name, [])
-        if int(index) >= len(data[name]):
-            # Pad list with empty string on missing indices.
-            data[name].extend([""] * (int(index) - len(data[name]) + 1))
-        data[name][int(index)] = value
-
-    # Merge all input with <input_name>_#_<index> into a single dict.
-    for key, value in items:
-        if DICT_SPLIT not in key:
-            continue
-        name, index = key.split(DICT_SPLIT)
-        data[name] = data.get(name, {})
-        data[name][index] = value
-
-    # Merge all input with <input_name>_@_<index> into a single object.
-    for key, value in items:
-        if OBJC_SPLIT not in key:
-            continue
-        name, index = key.split(OBJC_SPLIT)
-        if name not in data or not isinstance(data[name], object):
-            data[name] = MockObject()
-        setattr(data[name], index, value)
-
-    return data
 
 
 def _validate_node_input_credentials(
