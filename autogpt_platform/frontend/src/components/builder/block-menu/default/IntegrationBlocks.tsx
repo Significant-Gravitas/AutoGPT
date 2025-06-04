@@ -42,7 +42,7 @@ const IntegrationBlocks: React.FC = ({}) => {
   if (loading) {
     return (
       <div className="w-full space-y-3 p-4">
-        {[0, 1, 3].map((blockIndex) => (
+        {Array.from({ length: 3 }).map((_, blockIndex) => (
           <Fragment key={blockIndex}>
             {blockIndex > 0 && (
               <Skeleton className="my-4 h-[1px] w-full text-zinc-100" />

@@ -30,7 +30,7 @@ const MarketplaceAgentsContent: React.FC = () => {
         className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200"
       >
         <div className="w-full space-y-3 px-4 pb-4">
-          {[0, 1, 2, 3, 4].map((index) => (
+          {Array.from({ length: 5 }).map((_, index) => (
             <MarketplaceAgentBlock.Skeleton key={index} />
           ))}
         </div>

@@ -32,7 +32,6 @@ const BlockMenuSearch: React.FC = ({}) => {
       }
 
       try {
-        // Prepare filter array from active categories
         const activeCategories = Object.entries(filters.categories)
           .filter(([_, isActive]) => isActive)
           .map(([category, _]) => category)
@@ -58,10 +57,8 @@ const BlockMenuSearch: React.FC = ({}) => {
         setCategoryCounts(response.total_items);
 
         if (isLoadMore) {
-          console.log("search list : ", response.items);
           setSearchData((prev) => [...prev, ...response.items]);
         } else {
-          console.log("initial list : ", response.items);
           setSearchData(response.items);
         }
 
