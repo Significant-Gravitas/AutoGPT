@@ -577,7 +577,9 @@ class GmailGetThreadBlock(Block):
             test_input={"threadId": "t1", "credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[("thread", {"id": "t1", "messages": []})],
-            test_mock={"_get_thread": lambda *args, **kwargs: {"id": "t1"}},
+            test_mock={
+                "_get_thread": lambda *args, **kwargs: {"id": "t1", "messages": []}
+            },
         )
 
     def run(
@@ -706,6 +708,7 @@ class GmailReplyBlock(Block):
             test_output=[
                 ("messageId", "m2"),
                 ("threadId", "t1"),
+                ("message", {"id": "m2", "threadId": "t1"}),
             ],
             test_mock={
                 "_reply": lambda *args, **kwargs: {
