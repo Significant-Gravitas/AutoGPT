@@ -4,6 +4,9 @@ import { ProfileInfoForm } from "@/components/agptui/ProfileInfoForm";
 import BackendAPI from "@/lib/autogpt-server-api";
 import { CreatorDetails } from "@/lib/autogpt-server-api/types";
 
+// Force dynamic rendering to avoid static generation issues with cookies
+export const dynamic = "force-dynamic";
+
 async function getProfileData(api: BackendAPI) {
   try {
     const profile = await api.getStoreProfile();
