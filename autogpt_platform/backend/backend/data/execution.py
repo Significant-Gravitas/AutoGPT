@@ -38,12 +38,19 @@ from backend.server.v2.store.exceptions import DatabaseError
 from backend.util import type as type_utils
 from backend.util.settings import Config
 
-from .block import BlockInput, BlockType, CompletedBlockOutput, get_block
+from .block import (
+    BlockInput,
+    BlockType,
+    CompletedBlockOutput,
+    get_block,
+    get_io_block_ids,
+    get_webhook_block_ids,
+)
 from .db import BaseDbModel
 from .includes import (
     EXECUTION_RESULT_INCLUDE,
-    GRAPH_EXECUTION_INCLUDE,
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
+    graph_execution_include,
 )
 from .model import CredentialsMetaInput, GraphExecutionStats, NodeExecutionStats
 from .queue import AsyncRedisEventBus, RedisEventBus
@@ -411,7 +418,9 @@ async def get_graph_execution(
         include=(
             GRAPH_EXECUTION_INCLUDE_WITH_NODES
             if include_node_executions
-            else GRAPH_EXECUTION_INCLUDE
+            else graph_execution_include(
+                [*get_io_block_ids(), *get_webhook_block_ids()]
+            )
         ),
     )
     if not execution:
@@ -568,7 +577,9 @@ async def update_graph_execution_start_time(
             "executionStatus": ExecutionStatus.RUNNING,
             "startedAt": datetime.now(tz=timezone.utc),
         },
-        include=GRAPH_EXECUTION_INCLUDE,
+        include=graph_execution_include(
+            [*get_io_block_ids(), *get_webhook_block_ids()]
+        ),
     )
     return GraphExecution.from_db(res) if res else None
 
@@ -603,7 +614,9 @@ async def update_graph_execution_stats(
 
     graph_exec = await AgentGraphExecution.prisma().find_unique_or_raise(
         where={"id": graph_exec_id},
-        include=GRAPH_EXECUTION_INCLUDE,
+        include=graph_execution_include(
+            [*get_io_block_ids(), *get_webhook_block_ids()]
+        ),
     )
     return GraphExecution.from_db(graph_exec)
 

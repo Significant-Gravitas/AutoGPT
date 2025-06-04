@@ -24,7 +24,6 @@ jobs:
             const commentUser = context.payload.comment.user.login;
             const prAuthor = context.payload.issue.user.login;
             const authorAssociation = context.payload.comment.author_association;
-            const triggeringCommentId = context.payload.comment.id;
             
             // Check permissions
             const hasPermission = (
@@ -45,64 +44,14 @@ jobs:
               return;
             }
             
-            // Get all comments to check deployment status
-            const commentsResponse = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              per_page: 100
-            });
-            
-            // Filter out the triggering comment
-            const commentsData = commentsResponse.data.filter(comment => comment.id !== triggeringCommentId);
-            
-            // Find the last deploy and undeploy commands
-            let lastDeployIndex = -2;
-            let lastUndeployIndex = -1;
-            
-            console.log(`Found ${commentsResponse.data.length} total comments, using ${commentsData.length} for status check after filtering`);
-            
-            // Iterate through comments in reverse to find the most recent commands
-            for (let i = commentsData.length - 1; i >= 0; i--) {
-              const currentCommentBody = commentsData[i].body.trim();
-              console.log(`Processing comment ${i}: ${currentCommentBody}`);
-              
-              if (currentCommentBody === '!deploy' && lastDeployIndex === -2) {
-                lastDeployIndex = i;
-              } else if (currentCommentBody === '!undeploy' && lastUndeployIndex === -1) {
-                lastUndeployIndex = i;
-              }
-              
-              // Break early if we found both
-              if (lastDeployIndex !== -2 && lastUndeployIndex !== -1) {
-                break;
-              }
-            }
-            
-            console.log(`Last deploy index: ${lastDeployIndex}`);
-            console.log(`Last undeploy index: ${lastUndeployIndex}`);
-            
-            // Currently deployed if there's a deploy command after the last undeploy
-            const isCurrentlyDeployed = lastDeployIndex > lastUndeployIndex;
-            
-            // Determine actions based on current state and requested command
+            // Process deploy command
             if (commentBody === '!deploy') {
-              if (isCurrentlyDeployed) {
-                core.setOutput('deploy_blocked', 'already_deployed');
-              } else {
-                core.setOutput('should_deploy', 'true');
-              }
-            } else if (commentBody === '!undeploy') {
-              if (!isCurrentlyDeployed) {
-                // Check if there was ever a deploy
-                const hasEverDeployed = lastDeployIndex !== -2;
-                core.setOutput('undeploy_blocked', hasEverDeployed ? 'already_undeployed' : 'never_deployed');
-              } else {
-                core.setOutput('should_undeploy', 'true');
-              }
+              core.setOutput('should_deploy', 'true');
             }
-            
-            core.setOutput('has_active_deployment', isCurrentlyDeployed);
+            // Process undeploy command
+            else if (commentBody === '!undeploy') {
+              core.setOutput('should_undeploy', 'true');
+            }
 
       - name: Post permission denied comment
         if: steps.check_status.outputs.permission_denied == 'true'
@@ -114,39 +63,6 @@ jobs:
               repo: context.repo.repo,
               issue_number: context.issue.number,
               body: `❌ **Permission denied**: Only the repository owners, members, or collaborators can use deployment commands.`
-            });
-
-      - name: Post deploy blocked comment
-        if: steps.check_status.outputs.deploy_blocked == 'already_deployed'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: `⚠️ **Deploy skipped**: This PR already has an active deployment. Use \`!undeploy\` first if you want to redeploy.`
-            });
-
-      - name: Post undeploy blocked comment
-        if: steps.check_status.outputs.undeploy_blocked != ''
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const reason = '${{ steps.check_status.outputs.undeploy_blocked }}';
-            let message;
-            
-            if (reason === 'never_deployed') {
-              message = `⚠️ **Undeploy skipped**: This PR has never been deployed. Use \`!deploy\` first.`;
-            } else if (reason === 'already_undeployed') {
-              message = `⚠️ **Undeploy skipped**: This PR is already undeployed.`;
-            }
-            
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: message
             });
 
       - name: Get PR details for deployment
