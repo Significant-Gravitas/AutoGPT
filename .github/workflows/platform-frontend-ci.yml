@@ -100,7 +100,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Setup Builder .env
+      - name: Setup .env
         run: cp .env.example .env
 
       - name: Build frontend
