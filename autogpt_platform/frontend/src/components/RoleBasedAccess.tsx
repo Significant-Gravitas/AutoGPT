@@ -1,5 +1,5 @@
 // components/RoleBasedAccess.tsx
-import useSupabase from "@/hooks/useSupabase";
+import useSupabase from "@/lib/supabase/useSupabase";
 import React from "react";
 
 interface RoleBasedAccessProps {
