@@ -1,3 +1,4 @@
+# noqa: E402
 """
 AutoGPT Platform Block Development SDK
 
@@ -13,6 +14,10 @@ This module provides:
 - Auto-registration decorators
 """
 
+# Pre-configured CredentialsMetaInput that accepts any provider
+# Uses ProviderName which has _missing_ method to accept any string
+from typing import Literal as _Literal
+
 # === CORE BLOCK SYSTEM ===
 from backend.data.block import (
     Block,
@@ -23,10 +28,9 @@ from backend.data.block import (
     BlockType,
     BlockWebhookConfig,
 )
+from backend.data.model import APIKeyCredentials, CredentialsField
+from backend.data.model import CredentialsMetaInput as _CredentialsMetaInput
 from backend.data.model import (
-    APIKeyCredentials,
-    CredentialsField,
-    CredentialsMetaInput,
     NodeExecutionStats,
     OAuth2Credentials,
     SchemaField,
@@ -35,6 +39,10 @@ from backend.data.model import (
 
 # === INTEGRATIONS ===
 from backend.integrations.providers import ProviderName
+
+CredentialsMetaInput = _CredentialsMetaInput[
+    ProviderName, _Literal["api_key", "oauth2", "user_password"]
+]
 
 # === WEBHOOKS ===
 try:

@@ -65,4 +65,41 @@ class ProviderName(str, Enum):
             return pseudo_member
         return None  # type: ignore
 
+    @classmethod
+    def __get_pydantic_json_schema__(cls, schema, handler):
+        """
+        Custom JSON schema generation that allows any string value,
+        not just the predefined enum values.
+        """
+        # Get the default schema
+        json_schema = handler(schema)
+
+        # Remove the enum constraint to allow any string
+        if "enum" in json_schema:
+            del json_schema["enum"]
+
+        # Keep the type as string
+        json_schema["type"] = "string"
+
+        # Update description to indicate custom providers are allowed
+        json_schema["description"] = (
+            "Provider name for integrations. "
+            "Can be any string value, including custom provider names."
+        )
+
+        return json_schema
+
+    @classmethod
+    def __get_pydantic_core_schema__(cls, source_type, handler):
+        """
+        Pydantic v2 core schema that allows any string value.
+        """
+        from pydantic_core import core_schema
+
+        # Create a string schema that validates any string
+        return core_schema.no_info_after_validator_function(
+            cls,
+            core_schema.str_schema(),
+        )
+
     # --8<-- [end:ProviderName]

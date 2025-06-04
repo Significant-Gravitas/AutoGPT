@@ -9,17 +9,33 @@ This demonstrates:
 
 from backend.sdk import *  # noqa: F403, F405
 
+# Define test credentials for testing
+TEST_CREDENTIALS = APIKeyCredentials(
+    id="01234567-89ab-cdef-0123-456789abcdef",
+    provider="example-service",  # Custom provider name
+    api_key=SecretStr("mock-example-api-key"),
+    title="Mock Example Service API key",
+    expires_at=None,
+)
+
+TEST_CREDENTIALS_INPUT = {
+    "provider": TEST_CREDENTIALS.provider,
+    "id": TEST_CREDENTIALS.id,
+    "type": TEST_CREDENTIALS.type,
+    "title": TEST_CREDENTIALS.title,
+}
+
 
 # Example of a simple service with auto-registration
-@provider("exampleservice")
+@provider("example-service")  # Custom provider demonstrating SDK flexibility
 @cost_config(
     BlockCost(cost_amount=2, cost_type=BlockCostType.RUN),
     BlockCost(cost_amount=1, cost_type=BlockCostType.BYTE),
 )
 @default_credentials(
     APIKeyCredentials(
-        id="exampleservice-default",
-        provider="exampleservice",
+        id="example-service-default",
+        provider="example-service",  # Custom provider name
         api_key=SecretStr("example-default-api-key"),
         title="Example Service Default API Key",
         expires_at=None,
@@ -39,7 +55,7 @@ class ExampleSDKBlock(Block):
 
     class Input(BlockSchema):
         credentials: CredentialsMetaInput = CredentialsField(
-            provider="exampleservice",
+            provider="example-service",  # Custom provider name
             supported_credential_types={"api_key"},
             description="Credentials for Example Service API",
         )
@@ -63,12 +79,17 @@ class ExampleSDKBlock(Block):
             categories={BlockCategory.TEXT, BlockCategory.BASIC},
             input_schema=ExampleSDKBlock.Input,
             output_schema=ExampleSDKBlock.Output,
-            test_input={"text": "Test input", "max_length": 50},
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "text": "Test input",
+                "max_length": 50,
+            },
             test_output=[
                 ("result", "PROCESSED: Test input"),
-                ("length", 20),
+                ("length", 21),  # Length of "PROCESSED: Test input"
                 ("api_key_used", True),
             ],
+            test_credentials=TEST_CREDENTIALS,
         )
 
     def run(
