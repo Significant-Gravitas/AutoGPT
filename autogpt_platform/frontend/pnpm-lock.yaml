@@ -134,9 +134,9 @@ importers:
       launchdarkly-react-client-sdk:
         specifier: ^3.7.0
         version: 3.8.1(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
-      lodash.debounce:
-        specifier: ^4.0.8
-        version: 4.0.8
+      lodash:
+        specifier: ^4.17.21
+        version: 4.17.21
       lucide-react:
         specifier: ^0.510.0
         version: 0.510.0(react@18.3.1)
@@ -238,7 +238,7 @@ importers:
         specifier: ^1.9.0
         version: 1.9.0
       '@types/lodash':
-        specifier: ^4.17.13
+        specifier: ^4.17.17
         version: 4.17.17
       '@types/negotiator':
         specifier: ^0.6.3
