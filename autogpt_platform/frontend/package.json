@@ -48,7 +48,7 @@
     "@radix-ui/react-tooltip": "^1.2.6",
     "@sentry/nextjs": "^9",
     "@supabase/ssr": "^0.6.1",
-    "@supabase/supabase-js": "^2.49.4",
+    "@supabase/supabase-js": "^2.49.10",
     "@tanstack/react-table": "^8.21.3",
     "@types/jaro-winkler": "^0.2.4",
     "@xyflow/react": "12.6.4",
@@ -62,12 +62,12 @@
     "dotenv": "^16.5.0",
     "elliptic": "6.6.1",
     "embla-carousel-react": "^8.6.0",
-    "framer-motion": "^12.12.1",
+    "framer-motion": "^12.16.0",
     "geist": "^1.4.2",
     "jaro-winkler": "^0.2.8",
     "launchdarkly-react-client-sdk": "^3.7.0",
     "lodash": "^4.17.21",
-    "lucide-react": "^0.510.0",
+    "lucide-react": "^0.513.0",
     "moment": "^2.30.1",
     "next": "^15.3.2",
     "next-themes": "^0.4.6",
@@ -86,7 +86,7 @@
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^11.1.0",
-    "zod": "^3.24.4"
+    "zod": "^3.25.51"
   },
   "devDependencies": {
     "@chromatic-com/storybook": "^3.2.4",
