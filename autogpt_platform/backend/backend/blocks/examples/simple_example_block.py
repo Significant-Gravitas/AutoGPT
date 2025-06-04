@@ -15,7 +15,19 @@ After SDK: Single import statement
 # from pydantic import SecretStr
 
 # === NEW WAY (With SDK) ===
-from backend.sdk import *  # noqa: F403, F405
+from backend.sdk import (
+    Block,
+    BlockCategory,
+    BlockCost,
+    BlockCostType,
+    BlockOutput,
+    BlockSchema,
+    Integer,
+    SchemaField,
+    String,
+    cost_config,
+    provider,
+)
 
 
 @provider("simple_service")

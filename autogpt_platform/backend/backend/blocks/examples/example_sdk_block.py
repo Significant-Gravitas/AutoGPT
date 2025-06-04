@@ -2,12 +2,30 @@
 Example Block using the new SDK
 
 This demonstrates:
-1. Single import statement: from backend.sdk import *
+1. Import from backend.sdk module
 2. Auto-registration decorators
 3. No external configuration needed
 """
 
-from backend.sdk import *  # noqa: F403, F405
+from backend.sdk import (
+    APIKeyCredentials,
+    Block,
+    BlockCategory,
+    BlockCost,
+    BlockCostType,
+    BlockOutput,
+    BlockSchema,
+    Boolean,
+    CredentialsField,
+    CredentialsMetaInput,
+    Integer,
+    SchemaField,
+    SecretStr,
+    String,
+    cost_config,
+    default_credentials,
+    provider,
+)
 
 # Define test credentials for testing
 TEST_CREDENTIALS = APIKeyCredentials(

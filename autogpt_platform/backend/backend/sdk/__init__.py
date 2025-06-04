@@ -1,4 +1,3 @@
-# noqa: E402
 """
 AutoGPT Platform Block Development SDK
 
@@ -14,9 +13,18 @@ This module provides:
 - Auto-registration decorators
 """
 
-# Pre-configured CredentialsMetaInput that accepts any provider
-# Uses ProviderName which has _missing_ method to accept any string
+# Standard library imports
+import asyncio
+import logging
+from enum import Enum
+from logging import getLogger as TruncatedLogger
+from typing import Any, Dict, List
+from typing import Literal
 from typing import Literal as _Literal
+from typing import Optional, Set, Tuple, Type, TypeVar, Union
+
+# Third-party imports
+from pydantic import BaseModel, Field, SecretStr
 
 # === CORE BLOCK SYSTEM ===
 from backend.data.block import (
@@ -40,11 +48,24 @@ from backend.data.model import (
 # === INTEGRATIONS ===
 from backend.integrations.providers import ProviderName
 
-CredentialsMetaInput = _CredentialsMetaInput[
-    ProviderName, _Literal["api_key", "oauth2", "user_password"]
-]
+# === UTILITIES ===
+from backend.util import json
 
-# === WEBHOOKS ===
+# === AUTO-REGISTRATION DECORATORS ===
+from .decorators import (
+    cost_config,
+    default_credentials,
+    oauth_config,
+    provider,
+    register_cost,
+    register_credentials,
+    register_oauth,
+    register_webhook_manager,
+    webhook_config,
+)
+
+# === OPTIONAL IMPORTS WITH TRY/EXCEPT ===
+# Webhooks
 try:
     from backend.integrations.webhooks._base import BaseWebhooksManager
 except ImportError:
@@ -55,7 +76,7 @@ try:
 except ImportError:
     ManualWebhookManagerBase = None
 
-# === COST SYSTEM ===
+# Cost System
 try:
     from backend.data.cost import BlockCost, BlockCostType
 except ImportError:
@@ -71,9 +92,7 @@ try:
 except ImportError:
     block_usage_cost = None
 
-# === UTILITIES ===
-from backend.util import json
-
+# Utilities
 try:
     from backend.util.file import store_media_file
 except ImportError:
@@ -93,36 +112,8 @@ except ImportError:
 try:
     from backend.util.logging import TruncatedLogger
 except ImportError:
-    from logging import getLogger as TruncatedLogger
+    TruncatedLogger = TruncatedLogger  # Use the one imported at top
 
-# === COMMON TYPES ===
-import asyncio
-import logging
-from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Type, TypeVar, Union
-
-from pydantic import BaseModel, Field, SecretStr
-
-# === TYPE ALIASES ===
-String = str
-Integer = int
-Float = float
-Boolean = bool
-
-# === AUTO-REGISTRATION DECORATORS ===
-from .decorators import (  # noqa: E402
-    cost_config,
-    default_credentials,
-    oauth_config,
-    provider,
-    register_cost,
-    register_credentials,
-    register_oauth,
-    register_webhook_manager,
-    webhook_config,
-)
-
-# === RE-EXPORT PROVIDER-SPECIFIC COMPONENTS ===
 # GitHub components
 try:
     from backend.blocks.github._auth import (
@@ -166,19 +157,36 @@ except ImportError:
 # Webhook managers
 try:
     from backend.integrations.webhooks.github import GithubWebhooksManager
-
-    GitHubWebhooksManager = GithubWebhooksManager  # Alias for consistency
 except ImportError:
-    GitHubWebhooksManager = None
     GithubWebhooksManager = None
 
 try:
     from backend.integrations.webhooks.generic import GenericWebhooksManager
-
-    GenericWebhookManager = GenericWebhooksManager  # Alias for consistency
 except ImportError:
-    GenericWebhookManager = None
     GenericWebhooksManager = None
+
+# === VARIABLE ASSIGNMENTS AND TYPE ALIASES ===
+# Type aliases
+String = str
+Integer = int
+Float = float
+Boolean = bool
+
+# Credential type with proper provider name
+CredentialsMetaInput = _CredentialsMetaInput[
+    ProviderName, _Literal["api_key", "oauth2", "user_password"]
+]
+
+# Webhook manager aliases
+if GithubWebhooksManager is not None:
+    GitHubWebhooksManager = GithubWebhooksManager  # Alias for consistency
+else:
+    GitHubWebhooksManager = None
+
+if GenericWebhooksManager is not None:
+    GenericWebhookManager = GenericWebhooksManager  # Alias for consistency
+else:
+    GenericWebhookManager = None
 
 # === COMPREHENSIVE __all__ EXPORT ===
 __all__ = [

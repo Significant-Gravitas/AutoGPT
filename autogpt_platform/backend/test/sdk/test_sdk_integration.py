@@ -4,14 +4,41 @@ This shows how a developer would create a new block with zero external configura
 """
 
 import sys
+from enum import Enum
 from pathlib import Path
 
 # Add backend to path
 backend_path = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(backend_path))
 
-# Import SDK at module level for testing
-from backend.sdk import *  # noqa: F403, F405
+# ruff: noqa: E402
+# Import SDK at module level for testing (after sys.path modification)
+from backend.integrations.providers import ProviderName
+from backend.sdk import (
+    APIKeyCredentials,
+    BaseWebhooksManager,
+    Block,
+    BlockCategory,
+    BlockCost,
+    BlockCostType,
+    BlockOutput,
+    BlockSchema,
+    BlockType,
+    BlockWebhookConfig,
+    CredentialsField,
+    CredentialsMetaInput,
+    Dict,
+    Float,
+    Integer,
+    List,
+    SchemaField,
+    SecretStr,
+    String,
+    cost_config,
+    default_credentials,
+    provider,
+    webhook_config,
+)
 
 
 def test_complete_sdk_workflow():

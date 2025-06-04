@@ -5,7 +5,29 @@ This demonstrates webhook auto-registration without modifying
 files outside the blocks folder.
 """
 
-from backend.sdk import *  # noqa: F403, F405
+from backend.sdk import (
+    BaseModel,
+    BaseWebhooksManager,
+    Block,
+    BlockCategory,
+    BlockCost,
+    BlockCostType,
+    BlockOutput,
+    BlockSchema,
+    BlockType,
+    BlockWebhookConfig,
+    CredentialsField,
+    CredentialsMetaInput,
+    Dict,
+    Enum,
+    Field,
+    ProviderName,
+    SchemaField,
+    String,
+    cost_config,
+    provider,
+    webhook_config,
+)
 
 
 # Define event filter model

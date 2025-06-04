@@ -1,4 +1,3 @@
-# noqa: F405
 """
 Test custom provider functionality in the SDK.
 
@@ -6,9 +5,25 @@ This test suite verifies that the SDK properly supports dynamic provider
 registration and that custom providers work correctly with the system.
 """
 
-
 from backend.integrations.providers import ProviderName
-from backend.sdk import *  # noqa: F403
+from backend.sdk import (
+    APIKeyCredentials,
+    Block,
+    BlockCategory,
+    BlockCost,
+    BlockCostType,
+    BlockOutput,
+    BlockSchema,
+    Boolean,
+    CredentialsField,
+    CredentialsMetaInput,
+    SchemaField,
+    SecretStr,
+    String,
+    cost_config,
+    default_credentials,
+    provider,
+)
 from backend.sdk.auto_registry import get_registry
 from backend.util.test import execute_block_test
 
