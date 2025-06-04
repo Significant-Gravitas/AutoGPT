@@ -15,7 +15,7 @@
 .custom-node [data-id^="date-picker"],
 .custom-node [data-list-container],
 .custom-node [data-add-item],
-.custom-node [data-content-settings]. .array-item-container {
+.custom-node [data-content-settings] .array-item-container {
   display: flex;
   align-items: center;
   min-width: calc(100% - 2.5rem);
