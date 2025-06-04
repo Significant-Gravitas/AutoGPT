@@ -2,7 +2,6 @@
 import getServerSupabase from "@/lib/supabase/getServerSupabase";
 import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
-import { headers } from "next/headers";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 
 export async function sendResetEmail(email: string, turnstileToken: string) {
@@ -11,8 +10,7 @@ export async function sendResetEmail(email: string, turnstileToken: string) {
     {},
     async () => {
       const supabase = getServerSupabase();
-      const headersList = await headers();
-      const host = headersList.get("host");
+      const host = process.env.FRONTEND_BASE_URL ?? "localhost:3000";
       const protocol =
         process.env.NODE_ENV === "development" ? "http" : "https";
       const origin = `${protocol}://${host}`;
