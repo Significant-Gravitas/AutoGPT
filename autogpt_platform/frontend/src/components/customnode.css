@@ -9,7 +9,7 @@
   margin-bottom: 1rem;
 }
 
-.custom-node input:not([type="checkbox"]),
+.custom-node input:not([type="checkbox"]):not([type="file"]),
 .custom-node textarea,
 .custom-node select,
 .custom-node [data-id^="date-picker"],
