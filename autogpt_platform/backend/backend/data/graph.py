@@ -731,9 +731,6 @@ async def get_graph(
         ):
             return None
 
-    if graph is None or (graph.userId != user_id and not ()):
-        return None
-
     if include_subgraphs or for_export:
         sub_graphs = await get_sub_graphs(graph)
         return GraphModel.from_db(
