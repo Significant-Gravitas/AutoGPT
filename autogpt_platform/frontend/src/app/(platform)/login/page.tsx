@@ -23,10 +23,11 @@ import {
   AuthButton,
   AuthFeedback,
   AuthBottomText,
+  GoogleOAuthButton,
   PasswordInput,
   Turnstile,
 } from "@/components/auth";
-import { loginFormSchema } from "@/types/auth";
+import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { getBehaveAs } from "@/lib/utils";
 import { useTurnstile } from "@/hooks/useTurnstile";
 
@@ -35,6 +36,7 @@ export default function LoginPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
   const turnstile = useTurnstile({
     action: "login",
@@ -50,19 +52,16 @@ export default function LoginPage() {
     },
   });
 
-  // TODO: uncomment when we enable social login
-  // const onProviderLogin = useCallback(async (
-  //   provider: LoginProvider,
-  // ) => {
-  //   setIsLoading(true);
-  //   const error = await providerLogin(provider);
-  //   setIsLoading(false);
-  //   if (error) {
-  //     setFeedback(error);
-  //     return;
-  //   }
-  //   setFeedback(null);
-  // }, [supabase]);
+  const onProviderLogin = useCallback(async (provider: LoginProvider) => {
+    setIsGoogleLoading(true);
+    const error = await providerLogin(provider);
+    setIsGoogleLoading(false);
+    if (error) {
+      setFeedback(error);
+      return;
+    }
+    setFeedback(null);
+  }, []);
 
   const onLogin = useCallback(
     async (data: z.infer<typeof loginFormSchema>) => {
@@ -113,6 +112,23 @@ export default function LoginPage() {
   return (
     <AuthCard className="mx-auto">
       <AuthHeader>Login to your account</AuthHeader>
+
+      {/* Google OAuth Button */}
+      <div className="mb-6">
+        <GoogleOAuthButton
+          onClick={() => onProviderLogin("google")}
+          isLoading={isGoogleLoading}
+          disabled={isLoading}
+        />
+      </div>
+
+      {/* Divider */}
+      <div className="mb-6 flex items-center">
+        <div className="flex-1 border-t border-gray-300"></div>
+        <span className="mx-3 text-sm text-gray-500">or</span>
+        <div className="flex-1 border-t border-gray-300"></div>
+      </div>
+
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onLogin)}>
           <FormField

@@ -1,5 +1,6 @@
 "use client";
 import { signup } from "./actions";
+import { providerLogin } from "../login/actions";
 import {
   Form,
   FormControl,
@@ -24,11 +25,12 @@ import {
   AuthHeader,
   AuthButton,
   AuthBottomText,
+  GoogleOAuthButton,
   PasswordInput,
   Turnstile,
 } from "@/components/auth";
 import AuthFeedback from "@/components/auth/AuthFeedback";
-import { signupFormSchema } from "@/types/auth";
+import { signupFormSchema, LoginProvider } from "@/types/auth";
 import { getBehaveAs } from "@/lib/utils";
 import { useTurnstile } from "@/hooks/useTurnstile";
 
@@ -37,6 +39,7 @@ export default function SignupPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   //TODO: Remove after closed beta
 
   const turnstile = useTurnstile({
@@ -54,6 +57,17 @@ export default function SignupPage() {
       agreeToTerms: false,
     },
   });
+
+  const onProviderLogin = useCallback(async (provider: LoginProvider) => {
+    setIsGoogleLoading(true);
+    const error = await providerLogin(provider);
+    setIsGoogleLoading(false);
+    if (error) {
+      setFeedback(error);
+      return;
+    }
+    setFeedback(null);
+  }, []);
 
   const onSignup = useCallback(
     async (data: z.infer<typeof signupFormSchema>) => {
@@ -108,6 +122,23 @@ export default function SignupPage() {
   return (
     <AuthCard className="mx-auto mt-12">
       <AuthHeader>Create a new account</AuthHeader>
+
+      {/* Google OAuth Button */}
+      <div className="mb-6">
+        <GoogleOAuthButton
+          onClick={() => onProviderLogin("google")}
+          isLoading={isGoogleLoading}
+          disabled={isLoading}
+        />
+      </div>
+
+      {/* Divider */}
+      <div className="mb-6 flex items-center">
+        <div className="flex-1 border-t border-gray-300"></div>
+        <span className="mx-3 text-sm text-gray-500">or</span>
+        <div className="flex-1 border-t border-gray-300"></div>
+      </div>
+
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSignup)}>
           <FormField
