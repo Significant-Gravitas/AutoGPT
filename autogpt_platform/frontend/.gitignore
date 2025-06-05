@@ -22,8 +22,13 @@
 
 # debug
 npm-debug.log*
+pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# lock files (from yarn1 or npm)
+yarn.lock
+package-lock.json
 
 # local env files
 .env*.local
