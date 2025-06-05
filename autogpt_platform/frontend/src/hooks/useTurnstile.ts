@@ -47,10 +47,13 @@ export function useTurnstile({
   useEffect(() => {
     const behaveAs = getBehaveAs();
     const hasTurnstileKey = !!TURNSTILE_SITE_KEY;
+    const turnstileDisabled = process.env.NEXT_PUBLIC_DISABLE_TURNSTILE === "true";
 
-    setShouldRender(behaveAs === BehaveAs.CLOUD && hasTurnstileKey);
+    // Only render Turnstile in cloud environment if not explicitly disabled
+    setShouldRender(behaveAs === BehaveAs.CLOUD && hasTurnstileKey && !turnstileDisabled);
 
-    if (behaveAs !== BehaveAs.CLOUD || !hasTurnstileKey) {
+    // Skip verification if disabled, in local development, or no key
+    if (turnstileDisabled || behaveAs !== BehaveAs.CLOUD || !hasTurnstileKey) {
       setVerified(true);
     }
   }, []);
