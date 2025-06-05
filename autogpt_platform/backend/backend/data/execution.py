@@ -1,6 +1,6 @@
 import logging
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from multiprocessing import Manager
 from typing import (
@@ -38,12 +38,19 @@ from backend.server.v2.store.exceptions import DatabaseError
 from backend.util import type as type_utils
 from backend.util.settings import Config
 
-from .block import BlockInput, BlockType, CompletedBlockOutput, get_block
+from .block import (
+    BlockInput,
+    BlockType,
+    CompletedBlockOutput,
+    get_block,
+    get_io_block_ids,
+    get_webhook_block_ids,
+)
 from .db import BaseDbModel
 from .includes import (
     EXECUTION_RESULT_INCLUDE,
-    GRAPH_EXECUTION_INCLUDE,
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
+    graph_execution_include,
 )
 from .model import CredentialsMetaInput, GraphExecutionStats, NodeExecutionStats
 from .queue import AsyncRedisEventBus, RedisEventBus
@@ -411,7 +418,9 @@ async def get_graph_execution(
         include=(
             GRAPH_EXECUTION_INCLUDE_WITH_NODES
             if include_node_executions
-            else GRAPH_EXECUTION_INCLUDE
+            else graph_execution_include(
+                [*get_io_block_ids(), *get_webhook_block_ids()]
+            )
         ),
     )
     if not execution:
@@ -489,10 +498,15 @@ async def upsert_execution_input(
         dict[str, Any]: Node input data; key is the input name, value is the input data.
     """
     existing_exec_query_filter: AgentNodeExecutionWhereInput = {
-        "agentNodeId": node_id,
         "agentGraphExecutionId": graph_exec_id,
+        "agentNodeId": node_id,
         "executionStatus": ExecutionStatus.INCOMPLETE,
-        "Input": {"every": {"name": {"not": input_name}}},
+        "Input": {
+            "none": {
+                "name": input_name,
+                "time": {"gte": datetime.now(tz=timezone.utc) - timedelta(days=1)},
+            }
+        },
     }
     if node_exec_id:
         existing_exec_query_filter["id"] = node_exec_id
@@ -563,7 +577,9 @@ async def update_graph_execution_start_time(
             "executionStatus": ExecutionStatus.RUNNING,
             "startedAt": datetime.now(tz=timezone.utc),
         },
-        include=GRAPH_EXECUTION_INCLUDE,
+        include=graph_execution_include(
+            [*get_io_block_ids(), *get_webhook_block_ids()]
+        ),
     )
     return GraphExecution.from_db(res) if res else None
 
@@ -598,7 +614,9 @@ async def update_graph_execution_stats(
 
     graph_exec = await AgentGraphExecution.prisma().find_unique_or_raise(
         where={"id": graph_exec_id},
-        include=GRAPH_EXECUTION_INCLUDE,
+        include=graph_execution_include(
+            [*get_io_block_ids(), *get_webhook_block_ids()]
+        ),
     )
     return GraphExecution.from_db(graph_exec)
 
@@ -715,9 +733,15 @@ async def get_latest_node_execution(
 ) -> NodeExecutionResult | None:
     execution = await AgentNodeExecution.prisma().find_first(
         where={
-            "agentNodeId": node_id,
             "agentGraphExecutionId": graph_eid,
-            "NOT": [{"executionStatus": ExecutionStatus.INCOMPLETE}],
+            "agentNodeId": node_id,
+            "OR": [
+                {"executionStatus": ExecutionStatus.QUEUED},
+                {"executionStatus": ExecutionStatus.RUNNING},
+                {"executionStatus": ExecutionStatus.COMPLETED},
+                {"executionStatus": ExecutionStatus.TERMINATED},
+                {"executionStatus": ExecutionStatus.FAILED},
+            ],
         },
         order=[
             {"queuedTime": "desc"},

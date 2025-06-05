@@ -67,7 +67,7 @@ from backend.util.decorator import error_logged, time_measured
 from backend.util.file import clean_exec_files
 from backend.util.logging import TruncatedLogger, configure_logging
 from backend.util.process import AppProcess, set_service_name
-from backend.util.retry import func_retry
+from backend.util.retry import continuous_retry, func_retry
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
@@ -305,6 +305,13 @@ def _enqueue_next_nodes(
         )
 
     def register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
+        try:
+            return _register_next_executions(node_link)
+        except Exception as e:
+            log_metadata.exception(f"Failed to register next executions: {e}")
+            return []
+
+    def _register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
         enqueued_executions = []
         next_output_name = node_link.source_name
         next_input_name = node_link.sink_name
@@ -938,9 +945,6 @@ class ExecutionManager(AppProcess):
         self.pool_size = settings.config.num_graph_workers
         self.running = True
         self.active_graph_runs: dict[str, tuple[Future, threading.Event]] = {}
-        atexit.register(self._on_cleanup)
-        signal.signal(signal.SIGTERM, lambda sig, frame: self._on_sigterm())
-        signal.signal(signal.SIGINT, lambda sig, frame: self._on_sigterm())
 
     def run(self):
         pool_size_gauge.set(self.pool_size)
@@ -966,22 +970,29 @@ class ExecutionManager(AppProcess):
         logger.info(f"[{self.service_name}] ⏳ Connecting to Redis...")
         redis.connect()
 
+        threading.Thread(
+            target=lambda: self._consume_execution_cancel(),
+            daemon=True,
+        ).start()
+
+        self._consume_execution_run()
+
+    @continuous_retry()
+    def _consume_execution_cancel(self):
         cancel_client = SyncRabbitMQ(create_execution_queue_config())
         cancel_client.connect()
         cancel_channel = cancel_client.get_channel()
         logger.info(f"[{self.service_name}] ⏳ Starting cancel message consumer...")
-        threading.Thread(
-            target=lambda: (
-                cancel_channel.basic_consume(
-                    queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
-                    on_message_callback=self._handle_cancel_message,
-                    auto_ack=True,
-                ),
-                cancel_channel.start_consuming(),
-            ),
-            daemon=True,
-        ).start()
+        cancel_channel.basic_consume(
+            queue=GRAPH_EXECUTION_CANCEL_QUEUE_NAME,
+            on_message_callback=self._handle_cancel_message,
+            auto_ack=True,
+        )
+        cancel_channel.start_consuming()
+        raise RuntimeError(f"❌ cancel message consumer is stopped: {cancel_channel}")
 
+    @continuous_retry()
+    def _consume_execution_run(self):
         run_client = SyncRabbitMQ(create_execution_queue_config())
         run_client.connect()
         run_channel = run_client.get_channel()
@@ -993,6 +1004,7 @@ class ExecutionManager(AppProcess):
         )
         logger.info(f"[{self.service_name}] ⏳ Starting to consume run messages...")
         run_channel.start_consuming()
+        raise RuntimeError(f"❌ run message consumer is stopped: {run_channel}")
 
     def _handle_cancel_message(
         self,
@@ -1091,10 +1103,6 @@ class ExecutionManager(AppProcess):
         super().cleanup()
         self._on_cleanup()
 
-    def _on_sigterm(self):
-        llprint(f"[{self.service_name}] ⚠️ GraphExec SIGTERM received")
-        self._on_cleanup(log=llprint)
-
     def _on_cleanup(self, log=logger.info):
         prefix = f"[{self.service_name}][on_graph_executor_stop {os.getpid()}]"
         log(f"{prefix} ⏳ Shutting down service loop...")
@@ -1111,7 +1119,7 @@ class ExecutionManager(AppProcess):
         redis.disconnect()
 
         log(f"{prefix} ✅ Finished GraphExec cleanup")
-        exit(0)
+        sys.exit(0)
 
 
 # ------- UTILITIES ------- #
