@@ -1,0 +1,51 @@
+name: AutoGPT Platform - Deploy Dev Environment
+
+on:
+  push:
+    branches: [ dev ]
+    paths:
+      - 'autogpt_platform/**'
+
+permissions:
+  contents: 'read'
+  id-token: 'write'
+
+jobs:
+  migrate:
+    environment: develop
+    name: Run migrations for AutoGPT Platform
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install prisma
+
+      - name: Run Backend Migrations
+        working-directory: ./autogpt_platform/backend
+        run: |
+          python -m prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.BACKEND_DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.BACKEND_DATABASE_URL }}
+
+  trigger:
+    needs: migrate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger deploy workflow
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.DEPLOY_TOKEN }}
+          repository: Significant-Gravitas/AutoGPT_cloud_infrastructure
+          event-type: build_deploy_dev
+          client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "repository": "${{ github.repository }}"}'
