@@ -31,7 +31,7 @@ export default function LoginPage() {
     feedback,
     turnstile,
     isLoading,
-    isProdEnv,
+    isCloudEnv,
     isLoggedIn,
     isUserLoading,
     isGoogleLoading,
@@ -56,7 +56,7 @@ export default function LoginPage() {
     <AuthCard className="mx-auto">
       <AuthHeader>Login to your account</AuthHeader>
 
-      {isProdEnv ? (
+      {isCloudEnv ? (
         <>
           <div className="mb-6">
             <GoogleOAuthButton

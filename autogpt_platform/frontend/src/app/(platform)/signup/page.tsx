@@ -32,7 +32,7 @@ export default function SignupPage() {
     turnstile,
     isLoggedIn,
     isLoading,
-    isProdEnv,
+    isCloudEnv,
     isUserLoading,
     isGoogleLoading,
     isSupabaseAvailable,
@@ -56,7 +56,7 @@ export default function SignupPage() {
     <AuthCard className="mx-auto mt-12">
       <AuthHeader>Create a new account</AuthHeader>
 
-      {isProdEnv ? (
+      {isCloudEnv ? (
         <>
           <div className="mb-6">
             <GoogleOAuthButton

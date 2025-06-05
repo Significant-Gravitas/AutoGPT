@@ -7,6 +7,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { login, providerLogin } from "./actions";
 import z from "zod";
+import { BehaveAs } from "@/lib/utils";
+import { getBehaveAs } from "@/lib/utils";
 
 export function useLoginPage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -14,7 +16,7 @@ export function useLoginPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const isProdEnv = process.env.NODE_ENV === "production";
+  const isCloudEnv = getBehaveAs() === BehaveAs.CLOUD;
 
   const turnstile = useTurnstile({
     action: "login",
@@ -77,7 +79,7 @@ export function useLoginPage() {
     turnstile,
     isLoggedIn: !!user,
     isLoading,
-    isProdEnv,
+    isCloudEnv,
     isUserLoading,
     isGoogleLoading,
     isSupabaseAvailable: !!supabase,

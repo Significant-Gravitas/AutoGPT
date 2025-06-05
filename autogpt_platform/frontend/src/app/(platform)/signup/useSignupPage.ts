@@ -8,6 +8,7 @@ import { useForm } from "react-hook-form";
 import { signup } from "./actions";
 import { providerLogin } from "../login/actions";
 import z from "zod";
+import { BehaveAs, getBehaveAs } from "@/lib/utils";
 
 export function useSignupPage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -15,7 +16,7 @@ export function useSignupPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const isProdEnv = process.env.NODE_ENV === "production";
+  const isCloudEnv = getBehaveAs() === BehaveAs.CLOUD;
 
   const turnstile = useTurnstile({
     action: "signup",
@@ -88,7 +89,7 @@ export function useSignupPage() {
     turnstile,
     isLoggedIn: !!user,
     isLoading,
-    isProdEnv,
+    isCloudEnv,
     isUserLoading,
     isGoogleLoading,
     isSupabaseAvailable: !!supabase,
