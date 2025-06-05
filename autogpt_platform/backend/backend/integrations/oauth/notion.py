@@ -4,7 +4,7 @@ from urllib.parse import urlencode
 
 from backend.data.model import OAuth2Credentials
 from backend.integrations.providers import ProviderName
-from backend.util.request import requests
+from backend.util.request import Requests
 
 from .base import BaseOAuthHandler
 
@@ -52,7 +52,9 @@ class NotionOAuthHandler(BaseOAuthHandler):
             "Authorization": f"Basic {auth_str}",
             "Accept": "application/json",
         }
-        response = requests.post(self.token_url, json=request_body, headers=headers)
+        response = Requests(trusted_origins=["https://api.notion.com"]).post(
+            self.token_url, json=request_body, headers=headers
+        )
         token_data = response.json()
         # Email is only available for non-bot users
         email = (

@@ -7,7 +7,7 @@ from pydantic import SecretStr
 from backend.blocks.linear._api import LinearAPIException
 from backend.data.model import APIKeyCredentials, OAuth2Credentials
 from backend.integrations.providers import ProviderName
-from backend.util.request import requests
+from backend.util.request import Requests
 
 from .base import BaseOAuthHandler
 
@@ -53,7 +53,9 @@ class LinearOAuthHandler(BaseOAuthHandler):
             "Authorization": f"Bearer {credentials.access_token.get_secret_value()}"
         }
 
-        response = requests.post(self.revoke_url, headers=headers)
+        response = Requests(
+            trusted_origins=["https://linear.app", "https://api.linear.app"]
+        ).post(self.revoke_url, headers=headers)
         if not response.ok:
             try:
                 error_data = response.json()
@@ -95,7 +97,9 @@ class LinearOAuthHandler(BaseOAuthHandler):
         headers = {
             "Content-Type": "application/x-www-form-urlencoded"
         }  # Correct header for token request
-        response = requests.post(self.token_url, data=request_body, headers=headers)
+        response = Requests(
+            trusted_origins=["https://linear.app", "https://api.linear.app"]
+        ).post(self.token_url, data=request_body, headers=headers)
 
         if not response.ok:
             try:

@@ -5,7 +5,7 @@ from backend.blocks.nvidia._auth import (
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.request import requests
+from backend.util.request import Requests
 from backend.util.type import MediaFileType
 
 
@@ -59,7 +59,9 @@ class NvidiaDeepfakeDetectBlock(Block):
         }
 
         try:
-            response = requests.post(url, headers=headers, json=payload)
+            response = Requests(trusted_origins=["https://ai.api.nvidia.com"]).post(
+                url, headers=headers, json=payload
+            )
             response.raise_for_status()
             data = response.json()
 

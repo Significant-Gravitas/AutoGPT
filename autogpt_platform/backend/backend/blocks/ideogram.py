@@ -12,7 +12,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.request import requests
+from backend.util.request import Requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -267,7 +267,9 @@ class IdeogramModelBlock(Block):
             }
 
         try:
-            response = requests.post(url, json=data, headers=headers)
+            response = Requests(trusted_origins=["https://api.ideogram.ai"]).post(
+                url, json=data, headers=headers
+            )
             return response.json()["data"][0]["url"]
         except RequestException as e:
             raise Exception(f"Failed to fetch image: {str(e)}")
@@ -280,14 +282,16 @@ class IdeogramModelBlock(Block):
 
         try:
             # Step 1: Download the image from the provided URL
-            image_response = requests.get(image_url)
+            image_response = Requests(trusted_origins=["https://api.ideogram.ai"]).get(
+                image_url
+            )
 
             # Step 2: Send the downloaded image to the upscale API
             files = {
                 "image_file": ("image.png", image_response.content, "image/png"),
             }
 
-            response = requests.post(
+            response = Requests(trusted_origins=["https://api.ideogram.ai"]).post(
                 url,
                 headers=headers,
                 data={"image_request": "{}"},

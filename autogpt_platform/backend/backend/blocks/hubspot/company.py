@@ -5,7 +5,7 @@ from backend.blocks.hubspot._auth import (
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.request import requests
+from backend.util.request import Requests
 
 
 class HubSpotCompanyBlock(Block):
@@ -45,7 +45,7 @@ class HubSpotCompanyBlock(Block):
         }
 
         if input_data.operation == "create":
-            response = requests.post(
+            response = Requests(trusted_origins=["https://api.hubapi.com"]).post(
                 base_url, headers=headers, json={"properties": input_data.company_data}
             )
             result = response.json()
@@ -67,14 +67,16 @@ class HubSpotCompanyBlock(Block):
                     }
                 ]
             }
-            response = requests.post(search_url, headers=headers, json=search_data)
+            response = Requests(trusted_origins=["https://api.hubapi.com"]).post(
+                search_url, headers=headers, json=search_data
+            )
             result = response.json()
             yield "company", result.get("results", [{}])[0]
             yield "status", "retrieved"
 
         elif input_data.operation == "update":
             # First get company ID by domain
-            search_response = requests.post(
+            search_response = Requests(trusted_origins=["https://api.hubapi.com"]).post(
                 f"{base_url}/search",
                 headers=headers,
                 json={
@@ -94,7 +96,7 @@ class HubSpotCompanyBlock(Block):
             company_id = search_response.json().get("results", [{}])[0].get("id")
 
             if company_id:
-                response = requests.patch(
+                response = Requests(trusted_origins=["https://api.hubapi.com"]).patch(
                     f"{base_url}/{company_id}",
                     headers=headers,
                     json={"properties": input_data.company_data},

@@ -8,7 +8,7 @@ from backend.blocks.exa._auth import (
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.request import requests
+from backend.util.request import Requests
 
 from .helpers import ContentSettings
 
@@ -120,7 +120,9 @@ class ExaFindSimilarBlock(Block):
                 payload[api_field] = value.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
         try:
-            response = requests.post(url, headers=headers, json=payload)
+            response = Requests(trusted_origins=["https://api.exa.ai"]).post(
+                url, headers=headers, json=payload
+            )
             response.raise_for_status()
             data = response.json()
             yield "results", data.get("results", [])

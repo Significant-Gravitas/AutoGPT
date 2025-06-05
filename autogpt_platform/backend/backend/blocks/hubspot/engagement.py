@@ -7,7 +7,7 @@ from backend.blocks.hubspot._auth import (
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.request import requests
+from backend.util.request import Requests
 
 
 class HubSpotEngagementBlock(Block):
@@ -66,7 +66,9 @@ class HubSpotEngagementBlock(Block):
                 }
             }
 
-            response = requests.post(email_url, headers=headers, json=email_data)
+            response = Requests(trusted_origins=["https://api.hubapi.com"]).post(
+                email_url, headers=headers, json=email_data
+            )
             result = response.json()
             yield "result", result
             yield "status", "email_sent"
@@ -80,7 +82,9 @@ class HubSpotEngagementBlock(Block):
 
             params = {"limit": 100, "after": from_date.isoformat()}
 
-            response = requests.get(engagement_url, headers=headers, params=params)
+            response = Requests(trusted_origins=["https://api.hubapi.com"]).get(
+                engagement_url, headers=headers, params=params
+            )
             engagements = response.json()
 
             # Process engagement metrics
