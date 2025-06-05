@@ -120,7 +120,7 @@
     "prettier": "3.5.3",
     "prettier-plugin-tailwindcss": "0.6.12",
     "storybook": "8.6.14",
-    "tailwindcss": "3.4.17",
+    "tailwindcss": "4.1.8",
     "typescript": "5.8.3"
   },
   "msw": {
