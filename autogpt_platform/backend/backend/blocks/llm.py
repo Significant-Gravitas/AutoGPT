@@ -648,8 +648,9 @@ def llm_call(
             response=completion.choices[0].message.content or "",
             tool_calls=None,
             prompt_tokens=completion.usage.prompt_tokens if completion.usage else 0,
-            completion_tokens=completion.usage.completion_tokens
-            if completion.usage else 0,
+            completion_tokens=(
+                completion.usage.completion_tokens if completion.usage else 0
+            ),
         )
     else:
         raise ValueError(f"Unsupported LLM provider: {provider}")

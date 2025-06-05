@@ -36,7 +36,7 @@ def mock_storage_client(mocker):
 
 async def test_upload_media_success(mock_settings, mock_storage_client):
     # Create test JPEG data with valid signature
-    test_data = b"\xFF\xD8\xFF" + b"test data"
+    test_data = b"\xff\xd8\xff" + b"test data"
 
     test_file = fastapi.UploadFile(
         filename="laptop.jpeg",
@@ -75,7 +75,7 @@ async def test_upload_media_missing_credentials(monkeypatch):
 
     test_file = fastapi.UploadFile(
         filename="laptop.jpeg",
-        file=io.BytesIO(b"\xFF\xD8\xFF" + b"test data"),  # Valid JPEG signature
+        file=io.BytesIO(b"\xff\xd8\xff" + b"test data"),  # Valid JPEG signature
         headers=starlette.datastructures.Headers({"content-type": "image/jpeg"}),
     )
 
@@ -99,7 +99,7 @@ async def test_upload_media_video_type(mock_settings, mock_storage_client):
 
 
 async def test_upload_media_file_too_large(mock_settings, mock_storage_client):
-    large_data = b"\xFF\xD8\xFF" + b"x" * (
+    large_data = b"\xff\xd8\xff" + b"x" * (
         50 * 1024 * 1024 + 1
     )  # 50MB + 1 byte with valid JPEG signature
     test_file = fastapi.UploadFile(
