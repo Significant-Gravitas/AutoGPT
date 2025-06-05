@@ -113,7 +113,7 @@
     "concurrently": "^9.1.2",
     "eslint": "^8",
     "eslint-config-next": "15.3.3",
-    "eslint-plugin-storybook": "^0.11.2",
+    "eslint-plugin-storybook": "^0.12.0",
     "msw": "^2.9.0",
     "msw-storybook-addon": "^2.0.3",
     "postcss": "^8",
