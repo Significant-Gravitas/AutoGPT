@@ -24,7 +24,6 @@
 :root {
   --font-poppins: "Poppins", sans-serif;
   --font-geist-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
-  --font-geist-mono:
-    "GeistMono", ui-monospace, "Cascadia Code", "Source Code Pro", Menlo,
-    Consolas, monospace;
+  --font-geist-mono: "GeistMono", ui-monospace, "Cascadia Code",
+    "Source Code Pro", Menlo, Consolas, monospace;
 }
