@@ -37,12 +37,12 @@ interface ProfilePopoutMenuProps {
   }[];
 }
 
-export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
+export function ProfilePopoutMenu({
   userName,
   userEmail,
   avatarSrc,
   menuItemGroups,
-}) => {
+}: ProfilePopoutMenuProps) {
   const popupId = React.useId();
 
   const getIcon = (icon: IconType) => {
@@ -91,28 +91,28 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
 
       <PopoverContent
         id={popupId}
-        className="flex h-[380px] w-[300px] flex-col items-start justify-start gap-4 rounded-[26px] bg-zinc-400/70 p-6 shadow backdrop-blur-2xl dark:bg-zinc-800/70"
+        className="flex flex-col items-start justify-start gap-4 rounded-[26px] bg-zinc-400/70 p-4 shadow backdrop-blur-2xl dark:bg-zinc-800/70"
       >
         {/* Header with avatar and user info */}
-        <div className="inline-flex items-center justify-start gap-4 self-stretch">
+        <div className="inline-flex items-center justify-start gap-1 self-stretch">
           <Avatar className="h-[60px] w-[60px]">
             <AvatarImage src={avatarSrc} alt="" aria-hidden="true" />
             <AvatarFallback aria-hidden="true">
               {userName?.charAt(0) || "U"}
             </AvatarFallback>
           </Avatar>
-          <div className="relative h-[47px] w-[173px]">
-            <div className="absolute left-0 top-0 font-sans text-base font-semibold leading-7 text-white dark:text-neutral-200">
+          <div className="relative flex h-[47px] w-[173px] flex-col items-start justify-center gap-1">
+            <div className="max-w-[10.5rem] truncate font-sans text-base font-semibold leading-none text-white dark:text-neutral-200">
               {userName}
             </div>
-            <div className="absolute left-0 top-[23px] font-sans text-base font-normal leading-normal text-white dark:text-neutral-400">
+            <div className="max-w-[10.5rem] truncate font-sans text-base font-normal leading-none text-white dark:text-neutral-400">
               {userEmail}
             </div>
           </div>
         </div>
 
         {/* Menu items */}
-        <div className="flex w-full flex-col items-start justify-start gap-1.5 rounded-[23px]">
+        <div className="flex w-full flex-col items-start justify-start gap-2 rounded-[23px]">
           {menuItemGroups.map((group, groupIndex) => (
             <div
               key={groupIndex}
@@ -180,4 +180,4 @@ export const ProfilePopoutMenu: React.FC<ProfilePopoutMenuProps> = ({
       </PopoverContent>
     </Popover>
   );
-};
+}

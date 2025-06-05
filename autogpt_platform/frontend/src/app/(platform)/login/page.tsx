@@ -15,7 +15,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import useSupabase from "@/hooks/useSupabase";
+import useSupabase from "@/lib/supabase/useSupabase";
 import LoadingBox from "@/components/ui/loading";
 import {
   AuthCard,
@@ -80,6 +80,7 @@ export default function LoginPage() {
       }
 
       const error = await login(data, turnstile.token as string);
+      await supabase?.auth.refreshSession();
       setIsLoading(false);
       if (error) {
         setFeedback(error);
@@ -89,7 +90,7 @@ export default function LoginPage() {
       }
       setFeedback(null);
     },
-    [form, turnstile],
+    [form, turnstile, supabase],
   );
 
   if (user) {
@@ -163,6 +164,7 @@ export default function LoginPage() {
             onVerify={turnstile.handleVerify}
             onExpire={turnstile.handleExpire}
             onError={turnstile.handleError}
+            setWidgetId={turnstile.setWidgetId}
             action="login"
             shouldRender={turnstile.shouldRender}
           />

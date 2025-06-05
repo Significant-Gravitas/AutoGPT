@@ -1,8 +1,6 @@
 import React, { Suspense } from "react";
 import type { Metadata } from "next";
-import { Poppins } from "next/font/google";
-import { GeistSans } from "geist/font/sans";
-import { GeistMono } from "geist/font/mono";
+import { fonts } from "@/components/styles/fonts";
 
 import "./globals.css";
 
@@ -10,12 +8,6 @@ import { Toaster } from "@/components/ui/toaster";
 import { Providers } from "@/app/providers";
 import TallyPopupSimple from "@/components/TallyPopup";
 import { GoogleAnalytics } from "@/components/analytics/google-analytics";
-
-const poppins = Poppins({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-poppins",
-});
 
 export const metadata: Metadata = {
   title: "AutoGPT Platform",
@@ -30,7 +22,7 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${poppins.variable} ${GeistSans.variable} ${GeistMono.variable}`}
+      className={`${fonts.poppins.variable} ${fonts.sans.variable} ${fonts.mono.variable}`}
     >
       <head>
         <GoogleAnalytics
