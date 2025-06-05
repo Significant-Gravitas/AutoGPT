@@ -59,5 +59,4 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
-// Export the required hook for navigation instrumentation
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
