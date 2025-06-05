@@ -324,10 +324,11 @@ def _get_all_providers() -> dict[ProviderName, Provider]:
 
 
 async def get_suggested_blocks(count: int = 5) -> list[BlockData]:
+    global _suggested_blocks
+
     if _suggested_blocks is not None and len(_suggested_blocks) >= count:
         return _suggested_blocks[:count]
 
-    global _suggested_blocks
     _suggested_blocks = []
     # Sum the number of executions for each block type
     # Prisma cannot group by nested relations, so we do a raw query
