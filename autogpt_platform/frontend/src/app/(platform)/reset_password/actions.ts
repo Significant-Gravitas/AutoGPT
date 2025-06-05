@@ -10,10 +10,7 @@ export async function sendResetEmail(email: string, turnstileToken: string) {
     {},
     async () => {
       const supabase = getServerSupabase();
-      const host = process.env.FRONTEND_BASE_URL || "localhost:3000";
-      const protocol =
-        process.env.NODE_ENV === "development" ? "http" : "https";
-      const origin = `${protocol}://${host}`;
+      const origin = process.env.FRONTEND_BASE_URL || "http://localhost:3000";
 
       if (!supabase) {
         redirect("/error");
