@@ -75,7 +75,7 @@
     "react": "18.3.1",
     "react-day-picker": "9.7.0",
     "react-dom": "18.3.1",
-    "react-drag-drop-files": "2.4.0",
+    "react-drag-drop-files": "3.0.1",
     "react-hook-form": "7.57.0",
     "react-icons": "5.5.0",
     "react-markdown": "9.0.3",
