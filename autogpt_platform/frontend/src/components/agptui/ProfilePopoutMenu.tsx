@@ -102,10 +102,10 @@ export function ProfilePopoutMenu({
             </AvatarFallback>
           </Avatar>
           <div className="relative flex h-[47px] w-[173px] flex-col items-start justify-center gap-1">
-            <div className="max-w-[10.5rem] overflow-hidden text-ellipsis whitespace-nowrap font-sans text-base font-semibold leading-none text-white dark:text-neutral-200">
+            <div className="max-w-[10.5rem] truncate font-sans text-base font-semibold leading-none text-white dark:text-neutral-200">
               {userName}
             </div>
-            <div className="max-w-[10.5rem] overflow-hidden text-ellipsis whitespace-nowrap font-sans text-base font-normal leading-none text-white dark:text-neutral-400">
+            <div className="max-w-[10.5rem] truncate font-sans text-base font-normal leading-none text-white dark:text-neutral-400">
               {userEmail}
             </div>
           </div>
