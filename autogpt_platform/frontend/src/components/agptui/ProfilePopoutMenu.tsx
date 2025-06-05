@@ -105,7 +105,7 @@ export function ProfilePopoutMenu({
             <div className="max-w-[10.5rem] overflow-hidden text-ellipsis whitespace-nowrap font-sans text-base font-semibold leading-none text-white dark:text-neutral-200">
               {userName}
             </div>
-            <div className="font-sans text-base font-normal leading-none text-white dark:text-neutral-400">
+            <div className="max-w-[10.5rem] overflow-hidden text-ellipsis whitespace-nowrap font-sans text-base font-normal leading-none text-white dark:text-neutral-400">
               {userEmail}
             </div>
           </div>
