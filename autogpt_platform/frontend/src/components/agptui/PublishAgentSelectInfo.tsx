@@ -159,9 +159,16 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
 
   const handleSubmit = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
-    onSubmit(title, subheader, slug, description, images, youtubeLink, [
-      category,
-    ]);
+    const categories = category ? [category] : [];
+    onSubmit(
+      title,
+      subheader,
+      slug,
+      description,
+      images,
+      youtubeLink,
+      categories,
+    );
   };
 
   return (

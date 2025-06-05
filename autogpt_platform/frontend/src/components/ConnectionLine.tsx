@@ -1,11 +1,12 @@
 import {
   BaseEdge,
   ConnectionLineComponentProps,
+  Node,
   getBezierPath,
   Position,
 } from "@xyflow/react";
 
-const ConnectionLine: React.FC<ConnectionLineComponentProps> = ({
+export default function ConnectionLine<NodeType extends Node>({
   fromPosition,
   fromHandle,
   fromX,
@@ -13,7 +14,7 @@ const ConnectionLine: React.FC<ConnectionLineComponentProps> = ({
   toPosition,
   toX,
   toY,
-}) => {
+}: ConnectionLineComponentProps<NodeType>) {
   const sourceX =
     fromPosition === Position.Right
       ? fromX + (fromHandle?.width! / 2 - 5)
@@ -29,6 +30,4 @@ const ConnectionLine: React.FC<ConnectionLineComponentProps> = ({
   });
 
   return <BaseEdge path={path} style={{ strokeWidth: 2, stroke: "#555" }} />;
-};
-
-export default ConnectionLine;
+}

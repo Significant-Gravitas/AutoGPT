@@ -2,7 +2,7 @@ import asyncio
 import logging
 from collections import defaultdict
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated, Any, Sequence
+from typing import Annotated, Any, Sequence
 
 import pydantic
 import stripe
@@ -60,7 +60,6 @@ from backend.data.user import (
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
 from backend.executor.utils import create_execution_queue_config
-from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_activate,
     on_graph_deactivate,
@@ -77,9 +76,6 @@ from backend.server.model import (
 from backend.server.utils import get_user_id
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
-
-if TYPE_CHECKING:
-    from backend.data.model import Credentials
 
 
 @thread_cached
@@ -101,7 +97,6 @@ def execution_event_bus() -> AsyncRedisExecutionEventBus:
 
 settings = Settings()
 logger = logging.getLogger(__name__)
-integration_creds_manager = IntegrationCredentialsManager()
 
 _user_credit_model = get_user_credit_model()
 
@@ -466,10 +461,7 @@ async def create_new_graph(
         library_db.add_generated_agent_image(graph, library_agent.id)
     )
 
-    graph = await on_graph_activate(
-        graph,
-        get_credentials=lambda id: integration_creds_manager.get(user_id, id),
-    )
+    graph = await on_graph_activate(graph, user_id=user_id)
     return graph
 
 
@@ -480,11 +472,7 @@ async def delete_graph(
     graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> DeleteGraphResponse:
     if active_version := await graph_db.get_graph(graph_id, user_id=user_id):
-
-        def get_credentials(credentials_id: str) -> "Credentials | None":
-            return integration_creds_manager.get(user_id, credentials_id)
-
-        await on_graph_deactivate(active_version, get_credentials)
+        await on_graph_deactivate(active_version, user_id=user_id)
 
     return {"version_counts": await graph_db.delete_graph(graph_id, user_id=user_id)}
 
@@ -521,24 +509,15 @@ async def update_graph(
             user_id, graph.id, graph.version
         )
 
-        def get_credentials(credentials_id: str) -> "Credentials | None":
-            return integration_creds_manager.get(user_id, credentials_id)
-
         # Handle activation of the new graph first to ensure continuity
-        new_graph_version = await on_graph_activate(
-            new_graph_version,
-            get_credentials=get_credentials,
-        )
+        new_graph_version = await on_graph_activate(new_graph_version, user_id=user_id)
         # Ensure new version is the only active version
         await graph_db.set_graph_active_version(
             graph_id=graph_id, version=new_graph_version.version, user_id=user_id
         )
         if current_active_version:
             # Handle deactivation of the previously active version
-            await on_graph_deactivate(
-                current_active_version,
-                get_credentials=get_credentials,
-            )
+            await on_graph_deactivate(current_active_version, user_id=user_id)
 
     return new_graph_version
 
@@ -562,14 +541,8 @@ async def set_graph_active_version(
 
     current_active_graph = await graph_db.get_graph(graph_id, user_id=user_id)
 
-    def get_credentials(credentials_id: str) -> "Credentials | None":
-        return integration_creds_manager.get(user_id, credentials_id)
-
     # Handle activation of the new graph first to ensure continuity
-    await on_graph_activate(
-        new_active_graph,
-        get_credentials=get_credentials,
-    )
+    await on_graph_activate(new_active_graph, user_id=user_id)
     # Ensure new version is the only active version
     await graph_db.set_graph_active_version(
         graph_id=graph_id,
@@ -584,10 +557,7 @@ async def set_graph_active_version(
 
     if current_active_graph and current_active_graph.version != new_active_version:
         # Handle deactivation of the previously active version
-        await on_graph_deactivate(
-            current_active_graph,
-            get_credentials=get_credentials,
-        )
+        await on_graph_deactivate(current_active_graph, user_id=user_id)
 
 
 @v1_router.post(
@@ -660,11 +630,15 @@ async def _cancel_execution(graph_exec_id: str):
         exchange=execution_utils.GRAPH_EXECUTION_CANCEL_EXCHANGE,
     )
 
-    # Update the status of the graph & node executions
-    await execution_db.update_graph_execution_stats(
+    # Update the status of the graph execution
+    graph_execution = await execution_db.update_graph_execution_stats(
         graph_exec_id,
         execution_db.ExecutionStatus.TERMINATED,
     )
+    if graph_execution:
+        await execution_event_bus().publish(graph_execution)
+
+    # Update the status of the node executions
     node_execs = [
         node_exec.model_copy(update={"status": execution_db.ExecutionStatus.TERMINATED})
         for node_exec in await execution_db.get_node_executions(
@@ -676,7 +650,6 @@ async def _cancel_execution(graph_exec_id: str):
             ],
         )
     ]
-
     await execution_db.update_node_execution_status_batch(
         [node_exec.node_exec_id for node_exec in node_execs],
         execution_db.ExecutionStatus.TERMINATED,

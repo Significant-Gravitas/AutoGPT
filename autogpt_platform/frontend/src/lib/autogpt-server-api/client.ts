@@ -68,6 +68,7 @@ export default class BackendAPI {
   private webSocket: WebSocket | null = null;
   private wsConnecting: Promise<void> | null = null;
   private wsOnConnectHandlers: Set<() => void> = new Set();
+  private wsOnDisconnectHandlers: Set<() => void> = new Set();
   private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
 
   readonly HEARTBEAT_INTERVAL = 100_000; // 100 seconds
@@ -90,6 +91,7 @@ export default class BackendAPI {
       ? createBrowserClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          { isSingleton: true },
         )
       : getServerSupabase();
   }
@@ -97,9 +99,9 @@ export default class BackendAPI {
   async isAuthenticated(): Promise<boolean> {
     if (!this.supabaseClient) return false;
     const {
-      data: { user },
-    } = await this.supabaseClient?.auth.getUser();
-    return user != null;
+      data: { session },
+    } = await this.supabaseClient.auth.getSession();
+    return session != null;
   }
 
   createUser(): Promise<User> {
@@ -939,43 +941,69 @@ export default class BackendAPI {
     return () => this.wsOnConnectHandlers.delete(handler);
   }
 
+  /**
+   * All handlers are invoked when the WebSocket disconnects.
+   *
+   * @returns a detacher for the passed handler.
+   */
+  onWebSocketDisconnect(handler: () => void): () => void {
+    this.wsOnDisconnectHandlers.add(handler);
+
+    // Return detacher
+    return () => this.wsOnDisconnectHandlers.delete(handler);
+  }
+
   async connectWebSocket(): Promise<void> {
-    this.wsConnecting ??= new Promise(async (resolve, reject) => {
+    return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
         const token =
           (await this.supabaseClient?.auth.getSession())?.data.session
             ?.access_token || "";
         const wsUrlWithToken = `${this.wsUrl}?token=${token}`;
         this.webSocket = new WebSocket(wsUrlWithToken);
+        this.webSocket.state = "connecting";
 
         this.webSocket.onopen = () => {
+          this.webSocket!.state = "connected";
+          console.info("[BackendAPI] WebSocket connected to", this.wsUrl);
           this._startWSHeartbeat(); // Start heartbeat when connection opens
           this.wsOnConnectHandlers.forEach((handler) => handler());
           resolve();
         };
 
         this.webSocket.onclose = (event) => {
-          console.warn("WebSocket connection closed", event);
+          if (this.webSocket?.state == "connecting") {
+            console.error(
+              `[BackendAPI] WebSocket failed to connect: ${event.reason}`,
+              event,
+            );
+          } else if (this.webSocket?.state == "connected") {
+            console.warn(
+              `[BackendAPI] WebSocket connection closed: ${event.reason}`,
+              event,
+            );
+          }
+          this.webSocket!.state = "closed";
+
           this._stopWSHeartbeat(); // Stop heartbeat when connection closes
           this.wsConnecting = null;
+          this.wsOnDisconnectHandlers.forEach((handler) => handler());
           // Attempt to reconnect after a delay
-          setTimeout(() => this.connectWebSocket(), 1000);
+          setTimeout(() => this.connectWebSocket().then(resolve), 1000);
         };
 
         this.webSocket.onerror = (error) => {
-          console.error("WebSocket error:", error);
-          this._stopWSHeartbeat(); // Stop heartbeat on error
-          this.wsConnecting = null;
-          reject(error);
+          if (this.webSocket?.state == "connected") {
+            console.error("[BackendAPI] WebSocket error:", error);
+          }
         };
 
         this.webSocket.onmessage = (event) => this._handleWSMessage(event);
       } catch (error) {
-        console.error("Error connecting to WebSocket:", error);
+        console.error("[BackendAPI] Error connecting to WebSocket:", error);
         reject(error);
       }
-    });
-    return this.wsConnecting;
+    }));
   }
 
   disconnectWebSocket() {
@@ -1041,6 +1069,12 @@ export default class BackendAPI {
       clearTimeout(this.heartbeatTimeoutID);
       this.heartbeatTimeoutID = null;
     }
+  }
+}
+
+declare global {
+  interface WebSocket {
+    state: "connecting" | "connected" | "closed";
   }
 }
 

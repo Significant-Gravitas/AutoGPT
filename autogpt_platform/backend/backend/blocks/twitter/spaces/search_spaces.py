@@ -6,6 +6,7 @@ from tweepy.client import Response
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TWITTER_OAUTH_IS_CONFIGURED,
     TwitterCredentials,
     TwitterCredentialsField,
     TwitterCredentialsInput,
@@ -78,6 +79,7 @@ class TwitterSearchSpacesBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterSearchSpacesBlock.Input,
             output_schema=TwitterSearchSpacesBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "query": "tech",
                 "max_results": 1,

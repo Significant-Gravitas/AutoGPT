@@ -7,14 +7,14 @@ import Image from "next/image";
 
 import { Button } from "./Button";
 import { IconPersonFill } from "@/components/ui/icons";
-import { CreatorDetails, ProfileDetails } from "@/lib/autogpt-server-api/types";
+import { ProfileDetails } from "@/lib/autogpt-server-api/types";
 import { Separator } from "@/components/ui/separator";
-import useSupabase from "@/hooks/useSupabase";
+import useSupabase from "@/lib/supabase/useSupabase";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
-export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
+export const ProfileInfoForm = ({ profile }: { profile: ProfileDetails }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [profileData, setProfileData] = useState(profile);
+  const [profileData, setProfileData] = useState<ProfileDetails>(profile);
   const { supabase } = useSupabase();
   const api = useBackendAPI();
 
@@ -31,10 +31,8 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
       };
 
       if (!isSubmitting) {
-        const returnedProfile = await api.updateStoreProfile(
-          updatedProfile as ProfileDetails,
-        );
-        setProfileData(returnedProfile as CreatorDetails);
+        const returnedProfile = await api.updateStoreProfile(updatedProfile);
+        setProfileData(returnedProfile);
       }
     } catch (error) {
       console.error("Error updating profile:", error);
@@ -88,10 +86,8 @@ export const ProfileInfoForm = ({ profile }: { profile: CreatorDetails }) => {
         avatar_url: mediaUrl,
       };
 
-      const returnedProfile = await api.updateStoreProfile(
-        updatedProfile as ProfileDetails,
-      );
-      setProfileData(returnedProfile as CreatorDetails);
+      const returnedProfile = await api.updateStoreProfile(updatedProfile);
+      setProfileData(returnedProfile);
     } catch (error) {
       console.error("Error uploading image:", error);
     }
