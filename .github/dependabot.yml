@@ -10,6 +10,8 @@ updates:
     commit-message:
       prefix: "chore(libs/deps)"
       prefix-development: "chore(libs/deps-dev)"
+    ignore:
+      - dependency-name: "poetry"
     groups:
       production-dependencies:
         dependency-type: "production"
@@ -32,6 +34,8 @@ updates:
     commit-message:
       prefix: "chore(backend/deps)"
       prefix-development: "chore(backend/deps-dev)"
+    ignore:
+      - dependency-name: "poetry"
     groups:
       production-dependencies:
         dependency-type: "production"
@@ -45,7 +49,7 @@ updates:
           - "patch"
 
   # frontend (Next.js project)
-  - package-ecosystem: "pnpm"
+  - package-ecosystem: "npm"
     directory: "autogpt_platform/frontend"
     schedule:
       interval: "weekly"
