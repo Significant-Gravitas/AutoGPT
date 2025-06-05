@@ -30,78 +30,27 @@ import {
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { getBehaveAs } from "@/lib/utils";
 import { useTurnstile } from "@/hooks/useTurnstile";
+import { useLoginPage } from "./useLoginPage";
 
 export default function LoginPage() {
-  const { supabase, user, isUserLoading } = useSupabase();
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
-  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const {
+    form,
+    feedback,
+    turnstile,
+    isLoading,
+    isLoggedIn,
+    isUserLoading,
+    isGoogleLoading,
+    isSupabaseAvailable,
+    handleLogin,
+    handleProviderLogin,
+  } = useLoginPage();
 
-  const turnstile = useTurnstile({
-    action: "login",
-    autoVerify: false,
-    resetOnError: true,
-  });
-
-  const form = useForm<z.infer<typeof loginFormSchema>>({
-    resolver: zodResolver(loginFormSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-    },
-  });
-
-  const onProviderLogin = useCallback(async (provider: LoginProvider) => {
-    setIsGoogleLoading(true);
-    const error = await providerLogin(provider);
-    setIsGoogleLoading(false);
-    if (error) {
-      setFeedback(error);
-      return;
-    }
-    setFeedback(null);
-  }, []);
-
-  const onLogin = useCallback(
-    async (data: z.infer<typeof loginFormSchema>) => {
-      setIsLoading(true);
-
-      if (!(await form.trigger())) {
-        setIsLoading(false);
-        return;
-      }
-
-      if (!turnstile.verified) {
-        setFeedback("Please complete the CAPTCHA challenge.");
-        setIsLoading(false);
-        return;
-      }
-
-      const error = await login(data, turnstile.token as string);
-      await supabase?.auth.refreshSession();
-      setIsLoading(false);
-      if (error) {
-        setFeedback(error);
-        // Always reset the turnstile on any error
-        turnstile.reset();
-        return;
-      }
-      setFeedback(null);
-    },
-    [form, turnstile, supabase],
-  );
-
-  if (user) {
-    console.debug("User exists, redirecting to /");
-    router.push("/");
-  }
-
-  if (isUserLoading || user) {
+  if (isUserLoading || isLoggedIn) {
     return <LoadingBox className="h-[80vh]" />;
   }
 
-  if (!supabase) {
+  if (!isSupabaseAvailable) {
     return (
       <div>
         User accounts are disabled because Supabase client is unavailable
@@ -116,7 +65,7 @@ export default function LoginPage() {
       {/* Google OAuth Button */}
       <div className="mb-6">
         <GoogleOAuthButton
-          onClick={() => onProviderLogin("google")}
+          onClick={() => handleProviderLogin("google")}
           isLoading={isGoogleLoading}
           disabled={isLoading}
         />
@@ -130,7 +79,7 @@ export default function LoginPage() {
       </div>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onLogin)}>
+        <form onSubmit={form.handleSubmit(handleLogin)}>
           <FormField
             control={form.control}
             name="email"
@@ -186,7 +135,7 @@ export default function LoginPage() {
           />
 
           <AuthButton
-            onClick={() => onLogin(form.getValues())}
+            onClick={() => handleLogin(form.getValues())}
             isLoading={isLoading}
             type="submit"
           >
