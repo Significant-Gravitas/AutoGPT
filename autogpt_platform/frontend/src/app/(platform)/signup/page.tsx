@@ -32,10 +32,11 @@ export default function SignupPage() {
     turnstile,
     isLoggedIn,
     isLoading,
+    isProdEnv,
     isUserLoading,
     isGoogleLoading,
     isSupabaseAvailable,
-    handleSignup,
+    handleSubmit,
     handleProviderSignup,
   } = useSignupPage();
 
@@ -55,24 +56,25 @@ export default function SignupPage() {
     <AuthCard className="mx-auto mt-12">
       <AuthHeader>Create a new account</AuthHeader>
 
-      {/* Google OAuth Button */}
-      <div className="mb-6">
-        <GoogleOAuthButton
-          onClick={() => handleProviderSignup("google")}
-          isLoading={isGoogleLoading}
-          disabled={isLoading}
-        />
-      </div>
-
-      {/* Divider */}
-      <div className="mb-6 flex items-center">
-        <div className="flex-1 border-t border-gray-300"></div>
-        <span className="mx-3 text-sm text-gray-500">or</span>
-        <div className="flex-1 border-t border-gray-300"></div>
-      </div>
+      {isProdEnv ? (
+        <>
+          <div className="mb-6">
+            <GoogleOAuthButton
+              onClick={() => handleProviderSignup("google")}
+              isLoading={isGoogleLoading}
+              disabled={isLoading}
+            />
+          </div>
+          <div className="mb-6 flex items-center">
+            <div className="flex-1 border-t border-gray-300"></div>
+            <span className="mx-3 text-sm text-gray-500">or</span>
+            <div className="flex-1 border-t border-gray-300"></div>
+          </div>
+        </>
+      ) : null}
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(handleSignup)}>
+        <form onSubmit={handleSubmit}>
           <FormField
             control={form.control}
             name="email"
@@ -132,11 +134,7 @@ export default function SignupPage() {
             shouldRender={turnstile.shouldRender}
           />
 
-          <AuthButton
-            onClick={() => handleSignup(form.getValues())}
-            isLoading={isLoading}
-            type="submit"
-          >
+          <AuthButton isLoading={isLoading} type="submit">
             Sign up
           </AuthButton>
           <FormField

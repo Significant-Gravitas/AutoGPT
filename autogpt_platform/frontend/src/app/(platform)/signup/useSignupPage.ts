@@ -15,6 +15,7 @@ export function useSignupPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const isProdEnv = process.env.NODE_ENV === "production";
 
   const turnstile = useTurnstile({
     action: "signup",
@@ -50,13 +51,17 @@ export function useSignupPage() {
   async function handleSignup(data: z.infer<typeof signupFormSchema>) {
     setIsLoading(true);
 
-    if (!(await form.trigger())) {
+    if (!turnstile.verified) {
+      setFeedback("Please complete the CAPTCHA challenge.");
       setIsLoading(false);
       return;
     }
 
-    if (!turnstile.verified) {
-      setFeedback("Please complete the CAPTCHA challenge.");
+    if (data.email.includes("@agpt.co")) {
+      setFeedback(
+        "Please use Google SSO to create an account using an AutoGPT email.",
+      );
+
       setIsLoading(false);
       return;
     }
@@ -83,10 +88,11 @@ export function useSignupPage() {
     turnstile,
     isLoggedIn: !!user,
     isLoading,
+    isProdEnv,
     isUserLoading,
     isGoogleLoading,
     isSupabaseAvailable: !!supabase,
-    handleSignup,
+    handleSubmit: form.handleSubmit(handleSignup),
     handleProviderSignup,
   };
 }

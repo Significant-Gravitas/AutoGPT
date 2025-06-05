@@ -4,7 +4,6 @@ import { Button } from "../ui/button";
 
 interface Props {
   children?: ReactNode;
-  onClick: () => void;
   isLoading?: boolean;
   disabled?: boolean;
   type?: "button" | "submit" | "reset";
@@ -12,7 +11,6 @@ interface Props {
 
 export default function AuthButton({
   children,
-  onClick,
   isLoading = false,
   disabled = false,
   type = "button",
@@ -23,7 +21,6 @@ export default function AuthButton({
       variant="outline"
       type={type}
       disabled={isLoading || disabled}
-      onClick={onClick}
     >
       {isLoading ? (
         <FaSpinner className="animate-spin" />

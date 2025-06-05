@@ -1,5 +1,4 @@
 "use client";
-import { login, providerLogin } from "./actions";
 import {
   Form,
   FormControl,
@@ -8,14 +7,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { useForm } from "react-hook-form";
 import { Input } from "@/components/ui/input";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useCallback, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import useSupabase from "@/lib/supabase/useSupabase";
 import LoadingBox from "@/components/ui/loading";
 import {
   AuthCard,
@@ -38,11 +31,12 @@ export default function LoginPage() {
     feedback,
     turnstile,
     isLoading,
+    isProdEnv,
     isLoggedIn,
     isUserLoading,
     isGoogleLoading,
     isSupabaseAvailable,
-    handleLogin,
+    handleSubmit,
     handleProviderLogin,
   } = useLoginPage();
 
@@ -62,24 +56,25 @@ export default function LoginPage() {
     <AuthCard className="mx-auto">
       <AuthHeader>Login to your account</AuthHeader>
 
-      {/* Google OAuth Button */}
-      <div className="mb-6">
-        <GoogleOAuthButton
-          onClick={() => handleProviderLogin("google")}
-          isLoading={isGoogleLoading}
-          disabled={isLoading}
-        />
-      </div>
-
-      {/* Divider */}
-      <div className="mb-6 flex items-center">
-        <div className="flex-1 border-t border-gray-300"></div>
-        <span className="mx-3 text-sm text-gray-500">or</span>
-        <div className="flex-1 border-t border-gray-300"></div>
-      </div>
+      {isProdEnv ? (
+        <>
+          <div className="mb-6">
+            <GoogleOAuthButton
+              onClick={() => handleProviderLogin("google")}
+              isLoading={isGoogleLoading}
+              disabled={isLoading}
+            />
+          </div>
+          <div className="mb-6 flex items-center">
+            <div className="flex-1 border-t border-gray-300"></div>
+            <span className="mx-3 text-sm text-gray-500">or</span>
+            <div className="flex-1 border-t border-gray-300"></div>
+          </div>
+        </>
+      ) : null}
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(handleLogin)}>
+        <form onSubmit={handleSubmit}>
           <FormField
             control={form.control}
             name="email"
@@ -134,11 +129,7 @@ export default function LoginPage() {
             shouldRender={turnstile.shouldRender}
           />
 
-          <AuthButton
-            onClick={() => handleLogin(form.getValues())}
-            isLoading={isLoading}
-            type="submit"
-          >
+          <AuthButton isLoading={isLoading} type="submit">
             Login
           </AuthButton>
         </form>
