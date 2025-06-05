@@ -52,4 +52,5 @@ node_modules/
 storybook-static
 *.ignore.*
 *.ign.*
+!.npmrc
 .cursorrules
