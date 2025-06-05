@@ -7,6 +7,7 @@ interface Props {
   isLoading?: boolean;
   disabled?: boolean;
   type?: "button" | "submit" | "reset";
+  onClick?: () => void;
 }
 
 export default function AuthButton({
@@ -14,6 +15,7 @@ export default function AuthButton({
   isLoading = false,
   disabled = false,
   type = "button",
+  onClick,
 }: Props) {
   return (
     <Button
@@ -21,6 +23,7 @@ export default function AuthButton({
       variant="outline"
       type={type}
       disabled={isLoading || disabled}
+      onClick={onClick}
     >
       {isLoading ? (
         <FaSpinner className="animate-spin" />
