@@ -9,6 +9,7 @@ from backend.data.execution import (
     get_graph_execution_meta,
     get_graph_executions,
     get_latest_node_execution,
+    get_node_execution,
     get_node_executions,
     update_graph_execution_start_time,
     update_graph_execution_stats,
@@ -90,6 +91,7 @@ class DatabaseManager(AppService):
     get_graph_executions = _(get_graph_executions)
     get_graph_execution_meta = _(get_graph_execution_meta)
     create_graph_execution = _(create_graph_execution)
+    get_node_execution = _(get_node_execution)
     get_node_executions = _(get_node_executions)
     get_latest_node_execution = _(get_latest_node_execution)
     update_node_execution_status = _(update_node_execution_status)
@@ -147,6 +149,7 @@ class DatabaseManagerClient(AppServiceClient):
     get_graph_executions = _(d.get_graph_executions)
     get_graph_execution_meta = _(d.get_graph_execution_meta)
     create_graph_execution = _(d.create_graph_execution)
+    get_node_execution = _(d.get_node_execution)
     get_node_executions = _(d.get_node_executions)
     get_latest_node_execution = _(d.get_latest_node_execution)
     update_node_execution_status = _(d.update_node_execution_status)
