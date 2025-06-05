@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
-import { Button } from "../ui/button";
 import { FaSpinner } from "react-icons/fa";
+import { Button } from "../ui/button";
 
 interface Props {
   children?: ReactNode;
@@ -19,7 +19,8 @@ export default function AuthButton({
 }: Props) {
   return (
     <Button
-      className="mt-2 w-full self-stretch rounded-md bg-slate-900 px-4 py-2"
+      className="mt-2 w-full px-4 py-2 text-zinc-800"
+      variant="outline"
       type={type}
       disabled={isLoading || disabled}
       onClick={onClick}
@@ -27,9 +28,7 @@ export default function AuthButton({
       {isLoading ? (
         <FaSpinner className="animate-spin" />
       ) : (
-        <div className="text-sm font-medium leading-normal text-slate-50">
-          {children}
-        </div>
+        <div className="text-sm font-medium">{children}</div>
       )}
     </Button>
   );
