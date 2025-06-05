@@ -236,12 +236,7 @@ export default class BackendAPI {
 
   searchBlocks(options: {
     search_query?: string;
-    filter?: (
-      | "blocks"
-      | "integrations"
-      | "marketplace_agents"
-      | "my_agents"
-    )[];
+    filter?: ("blocks" | "integrations" | "marketplace_agents" | "my_agents")[];
     by_creator?: string[];
     search_id?: string;
     page?: number;

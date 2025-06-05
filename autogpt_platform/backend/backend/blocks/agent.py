@@ -22,6 +22,7 @@ class AgentExecutorBlock(Block):
         user_id: str = SchemaField(description="User ID")
         graph_id: str = SchemaField(description="Graph ID")
         graph_version: int = SchemaField(description="Graph Version")
+        block_name: str = SchemaField(description="Name to display in the Builder UI")
 
         inputs: BlockInput = SchemaField(description="Input data for the graph")
         input_schema: dict = SchemaField(description="Input schema for the graph")
