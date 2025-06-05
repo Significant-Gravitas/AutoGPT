@@ -1,12 +1,24 @@
 import getServerSupabase from "@/lib/supabase/getServerSupabase";
 import { NextResponse } from "next/server";
 
+// Validate redirect URL to prevent open redirect attacks
+function validateRedirectUrl(url: string): string {
+  // Only allow relative URLs that start with /
+  if (url.startsWith("/") && !url.startsWith("//")) {
+    return url;
+  }
+  // Default to home page for any invalid URLs
+  return "/";
+}
+
 // Handle the callback to complete the user session login
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
   // if "next" is in param, use it as the redirect URL
-  const next = searchParams.get("next") ?? "/";
+  const nextParam = searchParams.get("next") ?? "/";
+  // Validate redirect URL to prevent open redirect attacks
+  const next = validateRedirectUrl(nextParam);
 
   if (code) {
     const supabase = getServerSupabase();
