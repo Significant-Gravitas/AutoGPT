@@ -89,7 +89,7 @@ export default function FilterSheet({
     setIsOpen(false);
   }, [setFilters]);
 
-  const hasActiveFilters = useCallback(() => {
+  const hasLocalActiveFilters = useCallback(() => {
     const hasCategoryFilter = Object.values(localFilters.categories).some(
       (value) => value,
     );
@@ -97,6 +97,15 @@ export default function FilterSheet({
 
     return hasCategoryFilter || hasCreatorFilter;
   }, [localFilters]);
+
+  const hasActiveFilters = useCallback(() => {
+    const hasCategoryFilter = Object.values(filters.categories).some(
+      (value) => value,
+    );
+    const hasCreatorFilter = filters.createdBy.length > 0;
+
+    return hasCategoryFilter || hasCreatorFilter;
+  }, [filters]);
 
   return (
     <div className="m-0 ml-4 inline w-fit p-0">
@@ -221,7 +230,7 @@ export default function FilterSheet({
                   "min-w-[6.25rem] rounded-[0.5rem] border-none px-1.5 py-2 font-sans text-sm font-medium leading-[1.375rem] text-white shadow-none ring-1 disabled:ring-0",
                 )}
                 onClick={handleApplyFilters}
-                disabled={!hasActiveFilters()}
+                disabled={!hasLocalActiveFilters()}
               >
                 Apply filters
               </Button>
