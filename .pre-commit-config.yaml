@@ -235,7 +235,7 @@ repos:
     hooks:
       - id: tsc
         name: Typecheck - AutoGPT Platform - Frontend
-        entry: bash -c 'cd autogpt_platform/frontend && npm run type-check'
+        entry: bash -c 'cd autogpt_platform/frontend && pnpm type-check'
         files: ^autogpt_platform/frontend/
         types: [file]
         language: system

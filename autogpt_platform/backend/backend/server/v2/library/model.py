@@ -168,27 +168,62 @@ class LibraryAgentResponse(pydantic.BaseModel):
     pagination: server_model.Pagination
 
 
-class LibraryAgentPreset(pydantic.BaseModel):
+class LibraryAgentPresetCreatable(pydantic.BaseModel):
+    """
+    Request model used when creating a new preset for a library agent.
+    """
+
+    graph_id: str
+    graph_version: int
+
+    inputs: block_model.BlockInput
+
+    name: str
+    description: str
+
+    is_active: bool = True
+
+
+class LibraryAgentPresetCreatableFromGraphExecution(pydantic.BaseModel):
+    """
+    Request model used when creating a new preset for a library agent.
+    """
+
+    graph_execution_id: str
+
+    name: str
+    description: str
+
+    is_active: bool = True
+
+
+class LibraryAgentPresetUpdatable(pydantic.BaseModel):
+    """
+    Request model used when updating a preset for a library agent.
+    """
+
+    inputs: Optional[block_model.BlockInput] = None
+
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+    is_active: Optional[bool] = None
+
+
+class LibraryAgentPreset(LibraryAgentPresetCreatable):
     """Represents a preset configuration for a library agent."""
 
     id: str
     updated_at: datetime.datetime
 
-    graph_id: str
-    graph_version: int
-
-    name: str
-    description: str
-
-    is_active: bool
-
-    inputs: block_model.BlockInput
-
     @classmethod
     def from_db(cls, preset: prisma.models.AgentPreset) -> "LibraryAgentPreset":
+        if preset.InputPresets is None:
+            raise ValueError("Input values must be included in object")
+
         input_data: block_model.BlockInput = {}
 
-        for preset_input in preset.InputPresets or []:
+        for preset_input in preset.InputPresets:
             input_data[preset_input.name] = preset_input.data
 
         return cls(
@@ -208,19 +243,6 @@ class LibraryAgentPresetResponse(pydantic.BaseModel):
 
     presets: list[LibraryAgentPreset]
     pagination: server_model.Pagination
-
-
-class CreateLibraryAgentPresetRequest(pydantic.BaseModel):
-    """
-    Request model used when creating a new preset for a library agent.
-    """
-
-    name: str
-    description: str
-    inputs: block_model.BlockInput
-    graph_id: str
-    graph_version: int
-    is_active: bool
 
 
 class LibraryAgentFilter(str, Enum):

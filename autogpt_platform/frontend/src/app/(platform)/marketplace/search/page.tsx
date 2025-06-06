@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
 import { SearchBar } from "@/components/agptui/SearchBar";
 import { FeaturedCreators } from "@/components/agptui/composite/FeaturedCreators";
@@ -9,15 +9,17 @@ import { SearchFilterChips } from "@/components/agptui/SearchFilterChips";
 import { SortDropdown } from "@/components/agptui/SortDropdown";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
-export default function Page({
+type MarketplaceSearchPageSearchParams = { searchTerm?: string; sort?: string };
+
+export default function MarketplaceSearchPage({
   searchParams,
 }: {
-  searchParams: { searchTerm?: string; sort?: string };
+  searchParams: Promise<MarketplaceSearchPageSearchParams>;
 }) {
   return (
     <SearchResults
-      searchTerm={searchParams.searchTerm || ""}
-      sort={searchParams.sort || "trending"}
+      searchTerm={use(searchParams).searchTerm || ""}
+      sort={use(searchParams).sort || "trending"}
     />
   );
 }
@@ -28,7 +30,7 @@ function SearchResults({
 }: {
   searchTerm: string;
   sort: string;
-}) {
+}): React.ReactElement {
   const [showAgents, setShowAgents] = useState(true);
   const [showCreators, setShowCreators] = useState(true);
   const [agents, setAgents] = useState<any[]>([]);
@@ -80,40 +82,43 @@ function SearchResults({
     }
   };
 
-  const handleSortChange = (sortValue: string) => {
-    let sortBy = "recent";
-    if (sortValue === "runs") {
-      sortBy = "runs";
-    } else if (sortValue === "rating") {
-      sortBy = "rating";
-    }
-
-    const sortedAgents = [...agents].sort((a, b) => {
-      if (sortBy === "runs") {
-        return b.runs - a.runs;
-      } else if (sortBy === "rating") {
-        return b.rating - a.rating;
-      } else {
-        return (
-          new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-        );
+  const handleSortChange = useCallback(
+    (sortValue: string) => {
+      let sortBy = "recent";
+      if (sortValue === "runs") {
+        sortBy = "runs";
+      } else if (sortValue === "rating") {
+        sortBy = "rating";
       }
-    });
 
-    const sortedCreators = [...creators].sort((a, b) => {
-      if (sortBy === "runs") {
-        return b.agent_runs - a.agent_runs;
-      } else if (sortBy === "rating") {
-        return b.agent_rating - a.agent_rating;
-      } else {
-        // Creators don't have updated_at, sort by number of agents as fallback
-        return b.num_agents - a.num_agents;
-      }
-    });
+      const sortedAgents = [...agents].sort((a, b) => {
+        if (sortBy === "runs") {
+          return b.runs - a.runs;
+        } else if (sortBy === "rating") {
+          return b.rating - a.rating;
+        } else {
+          return (
+            new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+          );
+        }
+      });
 
-    setAgents(sortedAgents);
-    setCreators(sortedCreators);
-  };
+      const sortedCreators = [...creators].sort((a, b) => {
+        if (sortBy === "runs") {
+          return b.agent_runs - a.agent_runs;
+        } else if (sortBy === "rating") {
+          return b.agent_rating - a.agent_rating;
+        } else {
+          // Creators don't have updated_at, sort by number of agents as fallback
+          return b.num_agents - a.num_agents;
+        }
+      });
+
+      setAgents(sortedAgents);
+      setCreators(sortedCreators);
+    },
+    [agents, creators],
+  );
 
   return (
     <div className="w-full">

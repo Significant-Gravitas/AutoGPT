@@ -6,12 +6,18 @@ import { CreatorInfoCard } from "@/components/agptui/CreatorInfoCard";
 import { CreatorLinks } from "@/components/agptui/CreatorLinks";
 import { Separator } from "@/components/ui/separator";
 
+// Force dynamic rendering to avoid static generation issues with cookies
+export const dynamic = "force-dynamic";
+
+type MarketplaceCreatorPageParams = { creator: string };
+
 export async function generateMetadata({
-  params,
+  params: _params,
 }: {
-  params: { creator: string };
+  params: Promise<MarketplaceCreatorPageParams>;
 }): Promise<Metadata> {
   const api = new BackendAPI();
+  const params = await _params;
   const creator = await api.getStoreCreator(params.creator.toLowerCase());
 
   return {
@@ -29,11 +35,12 @@ export async function generateMetadata({
 // }
 
 export default async function Page({
-  params,
+  params: _params,
 }: {
-  params: { creator: string };
+  params: Promise<MarketplaceCreatorPageParams>;
 }) {
   const api = new BackendAPI();
+  const params = await _params;
 
   try {
     const creator = await api.getStoreCreator(params.creator);

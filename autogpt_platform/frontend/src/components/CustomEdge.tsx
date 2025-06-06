@@ -12,6 +12,7 @@ import "./customedge.css";
 import { X } from "lucide-react";
 import { useBezierPath } from "@/hooks/useBezierPath";
 import { FlowContext } from "./Flow";
+import { NodeExecutionResult } from "@/lib/autogpt-server-api";
 
 export type CustomEdgeData = {
   edgeColor: string;
@@ -19,7 +20,7 @@ export type CustomEdgeData = {
   isStatic?: boolean;
   beadUp?: number;
   beadDown?: number;
-  beadData?: any[];
+  beadData?: Map<string, NodeExecutionResult["status"]>;
 };
 
 type Bead = {
