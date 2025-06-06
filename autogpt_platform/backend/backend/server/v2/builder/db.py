@@ -109,10 +109,10 @@ def get_blocks(
             take -= 1
             blocks.append(block)
 
-    # todo kcze costs
+    costs = get_block_costs()
 
     return BlockResponse(
-        blocks=[b.to_dict() for b in blocks],
+        blocks=[{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks],
         pagination=server_model.Pagination(
             total_items=total,
             total_pages=total // page_size + (1 if total % page_size > 0 else 0),
