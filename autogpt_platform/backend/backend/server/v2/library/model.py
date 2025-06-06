@@ -257,6 +257,7 @@ class LibraryAgentSort(str, Enum):
 
     CREATED_AT = "createdAt"
     UPDATED_AT = "updatedAt"
+    LAST_EXECUTION = "lastExecution"
 
 
 class LibraryAgentUpdateRequest(pydantic.BaseModel):
