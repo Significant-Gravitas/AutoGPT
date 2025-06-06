@@ -136,7 +136,7 @@ class ExaSearchBlock(Block):
                 payload[api_field] = value
 
         try:
-            response = Requests(trusted_origins=["https://api.exa.ai"]).post(
+            response = Requests().post(
                 url, headers=headers, json=payload
             )
             response.raise_for_status()

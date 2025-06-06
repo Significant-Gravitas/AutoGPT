@@ -267,7 +267,7 @@ class IdeogramModelBlock(Block):
             }
 
         try:
-            response = Requests(trusted_origins=["https://api.ideogram.ai"]).post(
+            response = Requests().post(
                 url, json=data, headers=headers
             )
             return response.json()["data"][0]["url"]
@@ -282,7 +282,7 @@ class IdeogramModelBlock(Block):
 
         try:
             # Step 1: Download the image from the provided URL
-            image_response = Requests(trusted_origins=["https://api.ideogram.ai"]).get(
+            image_response = Requests().get(
                 image_url
             )
 
@@ -291,7 +291,7 @@ class IdeogramModelBlock(Block):
                 "image_file": ("image.png", image_response.content, "image/png"),
             }
 
-            response = Requests(trusted_origins=["https://api.ideogram.ai"]).post(
+            response = Requests().post(
                 url,
                 headers=headers,
                 data={"image_request": "{}"},

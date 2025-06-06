@@ -160,7 +160,7 @@ class PublishToMediumBlock(Block):
             "notifyFollowers": notify_followers,
         }
 
-        response = Requests(trusted_origins=["https://api.medium.com"]).post(
+        response = Requests().post(
             f"https://api.medium.com/v1/users/{author_id}/posts",
             headers=headers,
             json=data,

@@ -16,7 +16,7 @@ class Slant3DBlockBase(Block):
 
     def _make_request(self, method: str, endpoint: str, api_key: str, **kwargs) -> Dict:
         url = f"{self.BASE_URL}/{endpoint}"
-        response = Requests(trusted_origins=["https://www.slant3dapi.com"]).request(
+        response = Requests().request(
             method=method, url=url, headers=self._get_headers(api_key), **kwargs
         )
 

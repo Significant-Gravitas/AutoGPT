@@ -45,7 +45,7 @@ class HubSpotContactBlock(Block):
         }
 
         if input_data.operation == "create":
-            response = Requests(trusted_origins=["https://api.hubapi.com"]).post(
+            response = Requests().post(
                 base_url, headers=headers, json={"properties": input_data.contact_data}
             )
             result = response.json()
@@ -68,7 +68,7 @@ class HubSpotContactBlock(Block):
                     }
                 ]
             }
-            response = Requests(trusted_origins=["https://api.hubapi.com"]).post(
+            response = Requests().post(
                 search_url, headers=headers, json=search_data
             )
             result = response.json()
@@ -76,7 +76,7 @@ class HubSpotContactBlock(Block):
             yield "status", "retrieved"
 
         elif input_data.operation == "update":
-            search_response = Requests(trusted_origins=["https://api.hubapi.com"]).post(
+            search_response = Requests().post(
                 f"{base_url}/search",
                 headers=headers,
                 json={
@@ -96,7 +96,7 @@ class HubSpotContactBlock(Block):
             contact_id = search_response.json().get("results", [{}])[0].get("id")
 
             if contact_id:
-                response = Requests(trusted_origins=["https://api.hubapi.com"]).patch(
+                response = Requests().patch(
                     f"{base_url}/{contact_id}",
                     headers=headers,
                     json={"properties": input_data.contact_data},

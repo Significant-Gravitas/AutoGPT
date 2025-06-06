@@ -45,7 +45,7 @@ class HubSpotCompanyBlock(Block):
         }
 
         if input_data.operation == "create":
-            response = Requests(trusted_origins=["https://api.hubapi.com"]).post(
+            response = Requests().post(
                 base_url, headers=headers, json={"properties": input_data.company_data}
             )
             result = response.json()
@@ -67,7 +67,7 @@ class HubSpotCompanyBlock(Block):
                     }
                 ]
             }
-            response = Requests(trusted_origins=["https://api.hubapi.com"]).post(
+            response = Requests().post(
                 search_url, headers=headers, json=search_data
             )
             result = response.json()
@@ -76,7 +76,7 @@ class HubSpotCompanyBlock(Block):
 
         elif input_data.operation == "update":
             # First get company ID by domain
-            search_response = Requests(trusted_origins=["https://api.hubapi.com"]).post(
+            search_response = Requests().post(
                 f"{base_url}/search",
                 headers=headers,
                 json={
@@ -96,7 +96,7 @@ class HubSpotCompanyBlock(Block):
             company_id = search_response.json().get("results", [{}])[0].get("id")
 
             if company_id:
-                response = Requests(trusted_origins=["https://api.hubapi.com"]).patch(
+                response = Requests().patch(
                     f"{base_url}/{company_id}",
                     headers=headers,
                     json={"properties": input_data.company_data},

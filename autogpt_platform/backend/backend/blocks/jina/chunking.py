@@ -55,7 +55,7 @@ class JinaChunkingBlock(Block):
                 "max_chunk_length": str(input_data.max_chunk_length),
             }
 
-            response = Requests(trusted_origins=["https://api.jina.ai"]).post(
+            response = Requests().post(
                 url, headers=headers, json=data
             )
             result = response.json()

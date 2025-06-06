@@ -59,7 +59,7 @@ class NvidiaDeepfakeDetectBlock(Block):
         }
 
         try:
-            response = Requests(trusted_origins=["https://ai.api.nvidia.com"]).post(
+            response = Requests().post(
                 url, headers=headers, json=payload
             )
             response.raise_for_status()

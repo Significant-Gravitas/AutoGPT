@@ -73,7 +73,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
         repo, github_hook_id = webhook.resource, webhook.provider_webhook_id
         ping_url = f"{self.GITHUB_API_URL}/repos/{repo}/hooks/{github_hook_id}/pings"
 
-        response = Requests(trusted_origins=["https://api.github.com"]).post(
+        response = Requests().post(
             ping_url, headers=headers
         )
 
@@ -112,7 +112,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
             },
         }
 
-        response = Requests(trusted_origins=["https://api.github.com"]).post(
+        response = Requests().post(
             f"{self.GITHUB_API_URL}/repos/{resource}/hooks",
             headers=headers,
             json=webhook_data,
@@ -155,7 +155,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
                 f"Unsupported webhook type '{webhook.webhook_type}'"
             )
 
-        response = Requests(trusted_origins=["https://api.github.com"]).delete(
+        response = Requests().delete(
             delete_url, headers=headers
         )
 

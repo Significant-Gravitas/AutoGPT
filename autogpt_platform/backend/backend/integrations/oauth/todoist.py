@@ -47,16 +47,12 @@ class TodoistOAuthHandler(BaseOAuthHandler):
             "redirect_uri": self.redirect_uri,
         }
 
-        response = Requests(
-            trusted_origins=["https://todoist.com", "https://api.todoist.com"]
-        ).post(self.TOKEN_URL, data=data)
+        response = Requests().post(self.TOKEN_URL, data=data)
         response.raise_for_status()
 
         tokens = response.json()
 
-        response = Requests(
-            trusted_origins=["https://todoist.com", "https://api.todoist.com"]
-        ).post(
+        response = Requests().post(
             "https://api.todoist.com/sync/v9/sync",
             headers={"Authorization": f"Bearer {tokens['access_token']}"},
             data={"sync_token": "*", "resource_types": '["user"]'},

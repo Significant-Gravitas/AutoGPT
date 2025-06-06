@@ -53,9 +53,7 @@ class LinearOAuthHandler(BaseOAuthHandler):
             "Authorization": f"Bearer {credentials.access_token.get_secret_value()}"
         }
 
-        response = Requests(
-            trusted_origins=["https://linear.app", "https://api.linear.app"]
-        ).post(self.revoke_url, headers=headers)
+        response = Requests().post(self.revoke_url, headers=headers)
         if not response.ok:
             try:
                 error_data = response.json()
@@ -97,9 +95,7 @@ class LinearOAuthHandler(BaseOAuthHandler):
         headers = {
             "Content-Type": "application/x-www-form-urlencoded"
         }  # Correct header for token request
-        response = Requests(
-            trusted_origins=["https://linear.app", "https://api.linear.app"]
-        ).post(self.token_url, data=request_body, headers=headers)
+        response = Requests().post(self.token_url, data=request_body, headers=headers)
 
         if not response.ok:
             try:

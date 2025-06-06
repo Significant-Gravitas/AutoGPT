@@ -52,7 +52,7 @@ class NotionOAuthHandler(BaseOAuthHandler):
             "Authorization": f"Basic {auth_str}",
             "Accept": "application/json",
         }
-        response = Requests(trusted_origins=["https://api.notion.com"]).post(
+        response = Requests().post(
             self.token_url, json=request_body, headers=headers
         )
         token_data = response.json()

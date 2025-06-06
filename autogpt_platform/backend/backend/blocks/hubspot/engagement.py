@@ -66,7 +66,7 @@ class HubSpotEngagementBlock(Block):
                 }
             }
 
-            response = Requests(trusted_origins=["https://api.hubapi.com"]).post(
+            response = Requests().post(
                 email_url, headers=headers, json=email_data
             )
             result = response.json()
@@ -82,7 +82,7 @@ class HubSpotEngagementBlock(Block):
 
             params = {"limit": 100, "after": from_date.isoformat()}
 
-            response = Requests(trusted_origins=["https://api.hubapi.com"]).get(
+            response = Requests().get(
                 engagement_url, headers=headers, params=params
             )
             engagements = response.json()
