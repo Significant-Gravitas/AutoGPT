@@ -17,7 +17,7 @@ export function useLoginPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const isCloudEnv = getBehaveAs() === BehaveAs.CLOUD;
+  const isCloudEnv = true;
 
   const turnstile = useTurnstile({
     action: "login",
@@ -44,14 +44,16 @@ export function useLoginPage() {
 
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);
-    const error = await providerLogin(provider);
-    setIsGoogleLoading(false);
-    if (error) {
+    try {
+      const error = await providerLogin(provider);
+      if (error) throw error;
+      setFeedback(null);
+    } catch (error) {
       resetCaptcha();
-      setFeedback(error);
-      return;
+      setFeedback(JSON.stringify(error));
+    } finally {
+      setIsGoogleLoading(false);
     }
-    setFeedback(null);
   }
 
   async function handleLogin(data: z.infer<typeof loginFormSchema>) {

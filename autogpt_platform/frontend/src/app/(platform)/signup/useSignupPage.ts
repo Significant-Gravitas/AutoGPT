@@ -17,7 +17,7 @@ export function useSignupPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const isCloudEnv = getBehaveAs() === BehaveAs.CLOUD;
+  const isCloudEnv = true;
 
   const turnstile = useTurnstile({
     action: "signup",
