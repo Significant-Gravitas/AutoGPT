@@ -12,7 +12,9 @@ Follow these steps to set up and run Ollama with the AutoGPT platform.
 ## Setup Steps
 
 ### 1. Launch Ollama
+
 Open a new terminal and execute:
+
 ```bash
 ollama run llama3.2
 ```
@@ -20,17 +22,23 @@ ollama run llama3.2
 > **Note**: This will download the [llama3.2](https://ollama.com/library/llama3.2) model and start the service. Keep this terminal running in the background.
 
 ### 2. Start the Backend
+
 Open a new terminal and navigate to the autogpt_platform directory:
+
 ```bash
 cd autogpt_platform
 docker compose up -d --build
 ```
 
 ### 3. Start the Frontend
+
 Open a new terminal and navigate to the frontend directory:
+
 ```bash
 cd autogpt_platform/frontend
-npm run dev
+corepack enable
+pnpm i
+pnpm dev
 ```
 
 Then visit [http://localhost:3000](http://localhost:3000) to see the frontend running, after registering an account/logging in, navigate to the build page at [http://localhost:3000/build](http://localhost:3000/build)
@@ -46,13 +54,13 @@ Now that both Ollama and the AutoGPT platform are running we can move onto using
    ![Select Ollama Model](../imgs/ollama/Ollama-Select-Llama32.png)
 
 3. Now we need to add some prompts then save and then run the graph:
-![Add Prompt](../imgs/ollama/Ollama-Add-Prompts.png)
+   ![Add Prompt](../imgs/ollama/Ollama-Add-Prompts.png)
 
 That's it! You've successfully setup the AutoGPT platform and made a LLM call to Ollama.
 ![Ollama Output](../imgs/ollama/Ollama-Output.png)
 
+### Using Ollama on a Remote Server with AutoGPT
 
-### Using Ollama on a Remote Server with AutoGPT 
 For running Ollama on a remote server, simply make sure the Ollama server is running and is accessible from other devices on your network/remotely through the port 11434, then you can use the same steps above but you need to add the Ollama servers IP address to the "Ollama Host" field in the block settings like so:
 
 ![Ollama Remote Host](../imgs/ollama/Ollama-Remote-Host.png)

@@ -17,7 +17,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import useSupabase from "@/hooks/useSupabase";
+import useSupabase from "@/lib/supabase/useSupabase";
 import { sendEmailFormSchema, changePasswordFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCallback, useState } from "react";
@@ -189,7 +189,7 @@ export default function ResetPasswordPage() {
                       <PasswordInput {...field} />
                     </FormControl>
                     <FormDescription className="text-sm font-normal leading-tight text-slate-500">
-                      Password needs to be at least 6 characters long
+                      Password needs to be at least 12 characters long
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -203,6 +203,7 @@ export default function ResetPasswordPage() {
                 onVerify={changePasswordTurnstile.handleVerify}
                 onExpire={changePasswordTurnstile.handleExpire}
                 onError={changePasswordTurnstile.handleError}
+                setWidgetId={changePasswordTurnstile.setWidgetId}
                 action="change_password"
                 shouldRender={changePasswordTurnstile.shouldRender}
               />
@@ -246,6 +247,7 @@ export default function ResetPasswordPage() {
                 onVerify={sendEmailTurnstile.handleVerify}
                 onExpire={sendEmailTurnstile.handleExpire}
                 onError={sendEmailTurnstile.handleError}
+                setWidgetId={sendEmailTurnstile.setWidgetId}
                 action="reset_password"
                 shouldRender={sendEmailTurnstile.shouldRender}
               />
