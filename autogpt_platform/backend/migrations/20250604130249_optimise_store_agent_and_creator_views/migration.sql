@@ -1,8 +1,10 @@
 -- CreateIndex
-CREATE INDEX  "idx_store_listing_approved" ON "StoreListing"("isDeleted", "hasApprovedVersion", "owningUserId") WHERE "isDeleted" = false AND "hasApprovedVersion" = true;
+-- Optimized: Only include owningUserId in index columns since isDeleted and hasApprovedVersion are in WHERE clause
+CREATE INDEX  "idx_store_listing_approved" ON "StoreListing"("owningUserId") WHERE "isDeleted" = false AND "hasApprovedVersion" = true;
 
 -- CreateIndex
-CREATE INDEX  "idx_store_listing_version_status" ON "StoreListingVersion"("storeListingId", "submissionStatus") WHERE "submissionStatus" = 'APPROVED';
+-- Optimized: Only include storeListingId since submissionStatus is in WHERE clause
+CREATE INDEX  "idx_store_listing_version_status" ON "StoreListingVersion"("storeListingId") WHERE "submissionStatus" = 'APPROVED';
 
 -- CreateIndex
 CREATE INDEX  "idx_slv_categories_gin" ON "StoreListingVersion" USING GIN ("categories") WHERE "submissionStatus" = 'APPROVED';
@@ -172,14 +174,33 @@ $$;
 SELECT refresh_store_materialized_views();
 
 -- Schedule automatic refresh every 15 minutes (requires pg_cron extension)
--- This will fail gracefully if pg_cron is not installed
+-- Improved pg_cron handling with better error messages
 DO $$
 BEGIN
+    -- Check if pg_cron extension exists
     IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
-        PERFORM cron.schedule('refresh-store-views', '*/15 * * * *', 'SELECT refresh_store_materialized_views();');
-        RAISE NOTICE 'Scheduled automatic refresh of materialized views every 15 minutes';
+        -- Check if the job already exists to avoid duplicates
+        IF NOT EXISTS (
+            SELECT 1 FROM cron.job 
+            WHERE jobname = 'refresh-store-views'
+        ) THEN
+            PERFORM cron.schedule(
+                'refresh-store-views', 
+                '*/15 * * * *', 
+                'SELECT refresh_store_materialized_views();'
+            );
+            RAISE NOTICE 'Scheduled automatic refresh of materialized views every 15 minutes';
+        ELSE
+            RAISE NOTICE 'Materialized view refresh job already exists';
+        END IF;
     ELSE
-        RAISE NOTICE 'pg_cron extension not found - materialized views will need manual refresh via SELECT refresh_store_materialized_views();';
+        RAISE WARNING 'pg_cron extension not installed. Materialized views will need manual refresh.';
+        RAISE NOTICE 'To refresh manually, run: SELECT refresh_store_materialized_views();';
+        RAISE NOTICE 'To install pg_cron: CREATE EXTENSION pg_cron;';
     END IF;
+EXCEPTION
+    WHEN OTHERS THEN
+        RAISE WARNING 'Could not schedule automatic refresh: %', SQLERRM;
+        RAISE NOTICE 'Materialized views will need manual refresh via: SELECT refresh_store_materialized_views();';
 END;
 $$;
