@@ -211,6 +211,10 @@ export default function useAgentGraph(
               hardcodedValues: node.input_default,
               webhook: node.webhook,
               uiType: block.uiType,
+              isOutdated:
+                block.uiType === BlockUIType.AGENT && flow
+                  ? node.input_default.graph_version < flow.version
+                  : false,
               connections: graph.links
                 .filter((l) => [l.source_id, l.sink_id].includes(node.id))
                 .map((link) => ({
