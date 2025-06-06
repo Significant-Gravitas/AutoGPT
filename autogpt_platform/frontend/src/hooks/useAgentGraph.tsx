@@ -26,7 +26,6 @@ import { InputItem } from "@/components/RunnerUIWrapper";
 import { GraphMeta } from "@/lib/autogpt-server-api";
 import { default as NextLink } from "next/link";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
-import { get } from "lodash";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -80,7 +79,7 @@ export default function useAgentGraph(
     useState(false);
   const [nodes, setNodes] = useState<CustomNode[]>([]);
   const [edges, setEdges] = useState<CustomEdge[]>([]);
-  const { state, completeStep } = useOnboarding();
+  const { state, completeStep, incrementRuns } = useOnboarding();
 
   const api = useMemo(
     () => new BackendAPI(process.env.NEXT_PUBLIC_AGPT_SERVER_URL!),
@@ -242,7 +241,7 @@ export default function useAgentGraph(
                 isStatic: link.is_static,
                 beadUp: 0,
                 beadDown: 0,
-                beadData: [],
+                beadData: new Map<string, NodeExecutionResult["status"]>(),
               },
               markerEnd: {
                 type: MarkerType.ArrowClosed,
@@ -308,61 +307,46 @@ export default function useAgentGraph(
       setEdges((edges) => {
         return edges.map((e) => {
           const edge = { ...e, data: { ...e.data } } as CustomEdge;
+          const execStatus =
+            edge.data!.beadData ||
+            new Map<string, NodeExecutionResult["status"]>();
 
-          if (executionData.status === "COMPLETED") {
-            // Produce output beads
-            for (let key in executionData.output_data) {
-              if (
-                edge.source !== getFrontendId(executionData.node_id, nodes) ||
-                edge.sourceHandle !== cleanupSourceName(key) ||
-                (isToolSourceName(key) &&
-                  getToolArgName(key) !== edge.targetHandle)
-              ) {
-                console.log(
-                  key,
-                  cleanupSourceName(key),
-                  edge.targetHandle,
-                  " are not equal ",
-                  getToolArgName(key),
-                  edge.sourceHandle,
-                );
-                continue;
-              }
-              const count = executionData.output_data[key].length;
-              edge.data!.beadUp = (edge.data!.beadUp ?? 0) + count;
-              // For static edges beadDown is always one less than beadUp
-              // Because there's no queueing and one bead is always at the connection point
-              if (edge.data?.isStatic) {
-                edge.data!.beadDown = (edge.data!.beadUp ?? 0) - 1;
-                edge.data!.beadData = edge.data!.beadData!.slice(0, -1);
-                continue;
-              }
-              edge.data!.beadData = [
-                ...executionData.output_data[key].toReversed(),
-                ...edge.data!.beadData!,
-              ];
+          // Update execution status for input edges
+          for (let key in executionData.input_data) {
+            if (
+              edge.target !== getFrontendId(executionData.node_id, nodes) ||
+              edge.targetHandle !== key
+            ) {
+              continue;
             }
-          } else if (executionData.status === "RUNNING") {
-            // Consume input beads
-            for (let key in executionData.input_data) {
-              if (
-                edge.target !== getFrontendId(executionData.node_id, nodes) ||
-                edge.targetHandle !== key
-              ) {
-                continue;
-              }
-              // Skip decreasing bead count if edge doesn't match or if it's static
-              if (
-                edge.data!.beadData![edge.data!.beadData!.length - 1] !==
-                  executionData.input_data[key] ||
-                edge.data?.isStatic
-              ) {
-                continue;
-              }
-              edge.data!.beadDown = (edge.data!.beadDown ?? 0) + 1;
-              edge.data!.beadData = edge.data!.beadData!.slice(0, -1);
-            }
+
+            // Store only the execution status
+            execStatus.set(executionData.node_exec_id, executionData.status);
           }
+
+          // Calculate bead counts based on execution status
+          let beadUp = 0;
+          let beadDown = 0;
+
+          execStatus.forEach((status) => {
+            beadUp++;
+            if (status !== "INCOMPLETE") {
+              // Count any non-incomplete execution as consumed
+              beadDown++;
+            }
+          });
+
+          // For static edges, ensure beadUp is always beadDown + 1
+          // This is because static edges represent reusable inputs that are never fully consumed
+          // The +1 represents the input that's still available for reuse
+          if (edge.data?.isStatic && beadUp > 0) {
+            beadUp = beadDown + 1;
+          }
+
+          // Update edge data
+          edge.data!.beadUp = beadUp;
+          edge.data!.beadDown = beadDown;
+
           return edge;
         });
       });
@@ -398,7 +382,11 @@ export default function useAgentGraph(
                   executionResults:
                     Object.keys(executionData.output_data).length > 0
                       ? [
-                          ...(node.data.executionResults || []),
+                          // Execution updates are not cumulative, so we need to filter out the old ones.
+                          ...(node.data.executionResults?.filter(
+                            (result) =>
+                              result.execId !== executionData.node_exec_id,
+                          ) || []),
                           {
                             execId: executionData.node_exec_id,
                             data: {
@@ -435,14 +423,11 @@ export default function useAgentGraph(
     }
     setUpdateQueue((prev) => {
       prev.forEach((data) => {
-        // Skip already processed updates by checking
-        // if the data is in the processedUpdates array by reference
-        // This is not to process twice in react dev mode
-        // because it'll add double the beads
-        if (processedUpdates.current.includes(data)) {
-          return;
-        }
         updateNodesWithExecutionData(data);
+        // Execution updates are not cumulative, so we need to filter out the old ones.
+        processedUpdates.current = processedUpdates.current.filter(
+          (update) => update.node_exec_id !== data.node_exec_id,
+        );
         processedUpdates.current.push(data);
       });
       return [];
@@ -656,7 +641,7 @@ export default function useAgentGraph(
             setSaveRunRequest({ request: "run", state: "error" });
           });
 
-        processedUpdates.current = processedUpdates.current = [];
+        processedUpdates.current = [];
       }
     }
     // Handle stop request
@@ -758,13 +743,14 @@ export default function useAgentGraph(
             // an empty set means the graph has finished running.
             cancelExecListener();
             setSaveRunRequest({ request: "none", state: "none" });
+            incrementRuns();
           }
         },
       );
     };
 
     fetchExecutions();
-  }, [flowID, flowExecutionID]);
+  }, [flowID, flowExecutionID, incrementRuns]);
 
   // Check if node ids are synced with saved agent
   useEffect(() => {
@@ -997,7 +983,6 @@ export default function useAgentGraph(
           edgeColor: edge.data?.edgeColor!,
           beadUp: 0,
           beadDown: 0,
-          beadData: [],
         },
       }));
     });

@@ -16,10 +16,7 @@ const config = {
       fontFamily: {
         sans: ["var(--font-geist-sans)"],
         mono: ["var(--font-geist-mono)"],
-        // Include the custom font family
-        neue: ['"PP Neue Montreal TT"', "sans-serif"],
         poppins: ["var(--font-poppins)"],
-        inter: ["var(--font-inter)"],
       },
       colors: {
         border: "hsl(var(--border))",

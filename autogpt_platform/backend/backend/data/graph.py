@@ -12,6 +12,7 @@ from prisma.types import (
     AgentGraphWhereInput,
     AgentNodeCreateInput,
     AgentNodeLinkCreateInput,
+    StoreListingVersionWhereInput,
 )
 from pydantic import create_model
 from pydantic.fields import computed_field
@@ -712,22 +713,23 @@ async def get_graph(
         include=AGENT_GRAPH_INCLUDE,
         order={"version": "desc"},
     )
-
-    # For access, the graph must be owned by the user or listed in the store
-    if graph is None or (
-        graph.userId != user_id
-        and not (
-            await StoreListingVersion.prisma().find_first(
-                where={
-                    "agentGraphId": graph_id,
-                    "agentGraphVersion": version or graph.version,
-                    "isDeleted": False,
-                    "submissionStatus": SubmissionStatus.APPROVED,
-                }
-            )
-        )
-    ):
+    if graph is None:
         return None
+
+    if graph.userId != user_id:
+        store_listing_filter: StoreListingVersionWhereInput = {
+            "agentGraphId": graph_id,
+            "isDeleted": False,
+            "submissionStatus": SubmissionStatus.APPROVED,
+        }
+        if version is not None:
+            store_listing_filter["agentGraphVersion"] = version
+
+        # For access, the graph must be owned by the user or listed in the store
+        if not await StoreListingVersion.prisma().find_first(
+            where=store_listing_filter, order={"agentGraphVersion": "desc"}
+        ):
+            return None
 
     if include_subgraphs or for_export:
         sub_graphs = await get_sub_graphs(graph)

@@ -17,14 +17,14 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import useSupabase from "@/hooks/useSupabase";
+import useSupabase from "@/lib/supabase/useSupabase";
 import { sendEmailFormSchema, changePasswordFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { changePassword, sendResetEmail } from "./actions";
-import Spinner from "@/components/Spinner";
+import LoadingBox from "@/components/ui/loading";
 import { getBehaveAs } from "@/lib/utils";
 import { useTurnstile } from "@/hooks/useTurnstile";
 
@@ -134,7 +134,7 @@ export default function ResetPasswordPage() {
   );
 
   if (isUserLoading) {
-    return <Spinner className="h-[80vh]" />;
+    return <LoadingBox className="h-[80vh]" />;
   }
 
   if (!supabase) {
@@ -175,7 +175,7 @@ export default function ResetPasswordPage() {
                       <PasswordInput {...field} />
                     </FormControl>
                     <FormDescription className="text-sm font-normal leading-tight text-slate-500">
-                      Password needs to be at least 6 characters long
+                      Password needs to be at least 12 characters long
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -188,6 +188,7 @@ export default function ResetPasswordPage() {
                 onVerify={changePasswordTurnstile.handleVerify}
                 onExpire={changePasswordTurnstile.handleExpire}
                 onError={changePasswordTurnstile.handleError}
+                setWidgetId={changePasswordTurnstile.setWidgetId}
                 action="change_password"
                 shouldRender={changePasswordTurnstile.shouldRender}
               />
@@ -230,6 +231,7 @@ export default function ResetPasswordPage() {
                 onVerify={sendEmailTurnstile.handleVerify}
                 onExpire={sendEmailTurnstile.handleExpire}
                 onError={sendEmailTurnstile.handleError}
+                setWidgetId={sendEmailTurnstile.setWidgetId}
                 action="reset_password"
                 shouldRender={sendEmailTurnstile.shouldRender}
               />
