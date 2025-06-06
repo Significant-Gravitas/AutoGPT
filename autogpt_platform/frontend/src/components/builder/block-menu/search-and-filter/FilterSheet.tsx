@@ -12,6 +12,8 @@ import {
 } from "../block-menu-provider";
 import { StoreAgent } from "@/lib/autogpt-server-api";
 
+const INITIAL_CREATORS_TO_SHOW = 5;
+
 export default function FilterSheet({
   categories,
 }: {
@@ -23,11 +25,15 @@ export default function FilterSheet({
   const [localFilters, setLocalFilters] = useState<Filters>(filters);
 
   const [creators, setCreators] = useState<string[]>([]);
+  const [displayedCreatorsCount, setDisplayedCreatorsCount] = useState(
+    INITIAL_CREATORS_TO_SHOW,
+  );
 
   useEffect(() => {
     if (isOpen) {
       setIsSheetVisible(true);
       setLocalFilters(filters);
+      setDisplayedCreatorsCount(INITIAL_CREATORS_TO_SHOW); // Reset on open
 
       const marketplaceAgents = (searchData?.filter(
         (item) => getBlockType(item) === "store_agent",
@@ -106,6 +112,16 @@ export default function FilterSheet({
 
     return hasCategoryFilter || hasCreatorFilter;
   }, [filters]);
+
+  const handleToggleShowMoreCreators = () => {
+    if (displayedCreatorsCount < creators.length) {
+      setDisplayedCreatorsCount(creators.length);
+    } else {
+      setDisplayedCreatorsCount(INITIAL_CREATORS_TO_SHOW);
+    }
+  };
+
+  const visibleCreators = creators.slice(0, displayedCreatorsCount);
 
   return (
     <div className="m-0 ml-4 inline w-fit p-0">
@@ -194,7 +210,7 @@ export default function FilterSheet({
                   Created by
                 </p>
                 <div className="space-y-2">
-                  {creators.map((creator) => (
+                  {visibleCreators.map((creator) => (
                     <div key={creator} className="flex items-center space-x-2">
                       <Checkbox
                         id={`creator-${creator}`}
@@ -211,12 +227,13 @@ export default function FilterSheet({
                     </div>
                   ))}
                 </div>
-                {creators.length > 5 && (
+                {creators.length > INITIAL_CREATORS_TO_SHOW && (
                   <Button
                     variant={"link"}
                     className="m-0 p-0 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 underline hover:text-zinc-600"
+                    onClick={handleToggleShowMoreCreators}
                   >
-                    More
+                    {displayedCreatorsCount < creators.length ? "More" : "Less"}
                   </Button>
                 )}
               </div>
