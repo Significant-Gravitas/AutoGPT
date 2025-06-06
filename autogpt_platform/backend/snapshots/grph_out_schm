@@ -1,0 +1,15 @@
+{
+  "properties": {
+    "out_key": {
+      "advanced": false,
+      "description": "This is an output key",
+      "secret": false,
+      "title": "out_key"
+    }
+  },
+  "required": [
+    "out_key"
+  ],
+  "title": "ExpectedOutputSchema",
+  "type": "object"
+}

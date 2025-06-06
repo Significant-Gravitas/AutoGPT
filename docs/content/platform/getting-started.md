@@ -342,6 +342,12 @@ To run the tests:
 poetry run test
 ```
 
+To update stored snapshots after intentional API changes:
+
+```sh
+pytest --snapshot-update
+```
+
 ## Project Outline
 
 The current project has the following main modules:
