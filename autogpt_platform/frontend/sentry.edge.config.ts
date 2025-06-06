@@ -6,25 +6,31 @@
 import * as Sentry from "@sentry/nextjs";
 import { getEnvironmentStr } from "./src/lib/utils";
 
-Sentry.init({
-  dsn: "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288",
+const sentryDisabled =
+  process.env.SENTRY_DISABLED === "true" ||
+  process.env.NODE_ENV !== "production";
 
-  environment: getEnvironmentStr(),
+if (!sentryDisabled) {
+  Sentry.init({
+    dsn: "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288",
 
-  // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
-  tracesSampleRate: 1,
-  tracePropagationTargets: [
-    "localhost",
-    "localhost:8006",
-    /^https:\/\/dev\-builder\.agpt\.co\/api/,
-    /^https:\/\/.*\.agpt\.co\/api/,
-  ],
+    environment: getEnvironmentStr(),
 
-  // Setting this option to true will print useful information to the console while you're setting up Sentry.
-  debug: false,
+    // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
+    tracesSampleRate: 1,
+    tracePropagationTargets: [
+      "localhost",
+      "localhost:8006",
+      /^https:\/\/dev\-builder\.agpt\.co\/api/,
+      /^https:\/\/.*\.agpt\.co\/api/,
+    ],
 
-  _experiments: {
-    // Enable logs to be sent to Sentry.
-    enableLogs: true,
-  },
-});
+    // Setting this option to true will print useful information to the console while you're setting up Sentry.
+    debug: false,
+
+    _experiments: {
+      // Enable logs to be sent to Sentry.
+      enableLogs: true,
+    },
+  });
+}

@@ -5,7 +5,9 @@
 import { getEnvironmentStr } from "@/lib/utils";
 import * as Sentry from "@sentry/nextjs";
 
-if (process.env.NODE_ENV === "production") {
+const sentryDisabled = process.env.NEXT_PUBLIC_SENTRY_DISABLED === "true";
+
+if (process.env.NODE_ENV === "production" && !sentryDisabled) {
   Sentry.init({
     dsn: "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288",
 
@@ -59,4 +61,6 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
-export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
+export const onRouterTransitionStart = sentryDisabled
+  ? () => {}
+  : Sentry.captureRouterTransitionStart;

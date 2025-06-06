@@ -9,7 +9,7 @@ export async function sendResetEmail(email: string, turnstileToken: string) {
     "sendResetEmail",
     {},
     async () => {
-      const supabase = getServerSupabase();
+      const supabase = await getServerSupabase();
       const origin = process.env.FRONTEND_BASE_URL || "http://localhost:3000";
 
       if (!supabase) {
@@ -42,7 +42,7 @@ export async function changePassword(password: string, turnstileToken: string) {
     "changePassword",
     {},
     async () => {
-      const supabase = getServerSupabase();
+      const supabase = await getServerSupabase();
 
       if (!supabase) {
         redirect("/error");
