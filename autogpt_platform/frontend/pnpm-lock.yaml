@@ -259,8 +259,8 @@ importers:
         specifier: 2.1.0
         version: 2.1.0(playwright@1.52.0)
       chromatic:
-        specifier: 11.25.2
-        version: 11.25.2
+        specifier: 12.1.0
+        version: 12.1.0
       concurrently:
         specifier: 9.1.2
         version: 9.1.2
@@ -3872,6 +3872,18 @@ packages:
 
   chromatic@11.25.2:
     resolution: {integrity: sha512-/9eQWn6BU1iFsop86t8Au21IksTRxwXAl7if8YHD05L2AbuMjClLWZo5cZojqrJHGKDhTqfrC2X2xE4uSm0iKw==}
+    hasBin: true
+    peerDependencies:
+      '@chromatic-com/cypress': ^0.*.* || ^1.0.0
+      '@chromatic-com/playwright': ^0.*.* || ^1.0.0
+    peerDependenciesMeta:
+      '@chromatic-com/cypress':
+        optional: true
+      '@chromatic-com/playwright':
+        optional: true
+
+  chromatic@12.1.0:
+    resolution: {integrity: sha512-X45IVEb8mX3J+iDEpb6dY6CUvqWm5jlo8QqzgUGFYlcO7A327Ve3G4dzuu96f/hcXifZ0T1E7BMN6/z0iO4V2A==}
     hasBin: true
     peerDependencies:
       '@chromatic-com/cypress': ^0.*.* || ^1.0.0
@@ -11823,6 +11835,8 @@ snapshots:
       fsevents: 2.3.3
 
   chromatic@11.25.2: {}
+
+  chromatic@12.1.0: {}
 
   chrome-trace-event@1.0.4: {}
 
