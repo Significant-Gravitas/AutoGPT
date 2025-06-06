@@ -78,7 +78,7 @@ pyright = "^1.1.400"
 pytest-mock = "^3.14.0"
 pytest-watcher = "^0.4.2"
 requests = "^2.32.3"
-ruff = "^0.11.10"
+ruff = "^0.11.13"
 # NOTE: please insert new dependencies in their alphabetical location
 
 [build-system]
