@@ -82,6 +82,7 @@ const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
           <Link
             href={`/marketplace/agent/${creator_name}/${slug}`}
             className="flex gap-0.5 truncate"
+            onClick={(e) => e.stopPropagation()}
           >
             <span className="font-sans text-xs leading-5 text-blue-700 underline">
               Agent page
