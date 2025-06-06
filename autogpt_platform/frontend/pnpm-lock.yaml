@@ -273,6 +273,9 @@ importers:
       eslint-plugin-storybook:
         specifier: 0.12.0
         version: 0.12.0(eslint@8.57.1)(typescript@5.8.3)
+      import-in-the-middle:
+        specifier: 1.14.0
+        version: 1.14.0
       msw:
         specifier: 2.9.0
         version: 2.9.0(@types/node@22.15.29)(typescript@5.8.3)
@@ -288,6 +291,9 @@ importers:
       prettier-plugin-tailwindcss:
         specifier: 0.6.12
         version: 0.6.12(prettier@3.5.3)
+      require-in-the-middle:
+        specifier: 7.5.2
+        version: 7.5.2
       storybook:
         specifier: 8.6.14
         version: 8.6.14(prettier@3.5.3)
@@ -15281,7 +15287,7 @@ snapshots:
     dependencies:
       debug: 4.4.1
       module-details-from-path: 1.0.4
-      resolve: 1.22.8
+      resolve: 1.22.10
     transitivePeerDependencies:
       - supports-color
 
