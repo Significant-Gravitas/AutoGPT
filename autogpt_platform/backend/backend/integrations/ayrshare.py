@@ -4,8 +4,9 @@ import json
 import logging
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional
 
+from backend.util.exceptions import MissingConfigError
 from backend.util.request import Requests
 from backend.util.settings import Settings
 
@@ -29,9 +30,11 @@ class SocialPlatform(str, Enum):
     YOUTUBE = "youtube"
     REDDIT = "reddit"
     TELEGRAM = "telegram"
-    GMB = "gmb"
+    GOOGLE_MY_BUSINESS = "gmb"
     PINTEREST = "pinterest"
     TIKTOK = "tiktok"
+    SNAPCHAT = "snapchat"
+    THREADS = "threads"
 
 
 @dataclass
@@ -69,9 +72,9 @@ class PostResponse:
     refId: str
     profileTitle: str
     post: str
-    postIds: Optional[List[Dict[str, Any]]] = None
+    postIds: Optional[list[dict[str, Any]]] = None
     scheduleDate: Optional[str] = None
-    errors: Optional[List[str]] = None
+    errors: Optional[list[str]] = None
 
 
 @dataclass
@@ -83,13 +86,13 @@ class AutoHashtag:
 @dataclass
 class FirstComment:
     text: str
-    platforms: Optional[List[SocialPlatform]] = None
+    platforms: Optional[list[SocialPlatform]] = None
 
 
 @dataclass
 class AutoSchedule:
     interval: str
-    platforms: Optional[List[SocialPlatform]] = None
+    platforms: Optional[list[SocialPlatform]] = None
     startDate: Optional[str] = None
     endDate: Optional[str] = None
 
@@ -97,16 +100,9 @@ class AutoSchedule:
 @dataclass
 class AutoRepost:
     interval: str
-    platforms: Optional[List[SocialPlatform]] = None
+    platforms: Optional[list[SocialPlatform]] = None
     startDate: Optional[str] = None
     endDate: Optional[str] = None
-
-
-@dataclass
-class PostError:
-    code: int
-    message: str
-    details: str
 
 
 class AyrshareClient:
@@ -121,7 +117,10 @@ class AyrshareClient:
         self,
         custom_requests: Optional[Requests] = None,
     ):
-        headers: Dict[str, str] = {
+        if not settings.secrets.ayrshare_api_key:
+            raise MissingConfigError("AYRSHARE_API_KEY is not configured")
+
+        headers: dict[str, str] = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {settings.secrets.ayrshare_api_key}",
         }
@@ -142,7 +141,7 @@ class AyrshareClient:
         profile_key: str,
         logout: Optional[bool] = None,
         redirect: Optional[str] = None,
-        allowed_social: Optional[List[SocialPlatform]] = None,
+        allowed_social: Optional[list[SocialPlatform]] = None,
         verify: Optional[bool] = None,
         base64: Optional[bool] = None,
         expires_in: Optional[int] = None,
@@ -169,7 +168,7 @@ class AyrshareClient:
         Raises:
             AyrshareAPIException: If the API request fails or private key is invalid.
         """
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "domain": "id-pojeg",
             "privateKey": private_key,
             "profileKey": profile_key,
@@ -221,12 +220,12 @@ class AyrshareClient:
         messaging_active: Optional[bool] = None,
         hide_top_header: Optional[bool] = None,
         top_header: Optional[str] = None,
-        disable_social: Optional[List[SocialPlatform]] = None,
+        disable_social: Optional[list[SocialPlatform]] = None,
         team: Optional[bool] = None,
         email: Optional[str] = None,
         sub_header: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-    ) -> ProfileResponse | PostError:
+        tags: Optional[list[str]] = None,
+    ) -> ProfileResponse:
         """
         Create a new User Profile under your Primary Profile.
 
@@ -247,7 +246,7 @@ class AyrshareClient:
         Raises:
             AyrshareAPIException: If the API request fails or profile title already exists.
         """
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "title": title,
         }
 
@@ -294,8 +293,9 @@ class AyrshareClient:
     def create_post(
         self,
         post: str,
-        platforms: List[SocialPlatform],
-        media_urls: Optional[List[str]] = None,
+        platforms: list[SocialPlatform],
+        *,
+        media_urls: Optional[list[str]] = None,
         is_video: Optional[bool] = None,
         schedule_date: Optional[str] = None,
         first_comment: Optional[FirstComment] = None,
@@ -303,27 +303,28 @@ class AyrshareClient:
         shorten_links: Optional[bool] = None,
         auto_schedule: Optional[AutoSchedule] = None,
         auto_repost: Optional[AutoRepost] = None,
-        auto_hashtag: Optional[Union[AutoHashtag, bool]] = None,
+        auto_hashtag: Optional[AutoHashtag | bool] = None,
         unsplash: Optional[str] = None,
-        bluesky_options: Optional[Dict[str, Any]] = None,
-        facebook_options: Optional[Dict[str, Any]] = None,
-        gmb_options: Optional[Dict[str, Any]] = None,
-        instagram_options: Optional[Dict[str, Any]] = None,
-        linkedin_options: Optional[Dict[str, Any]] = None,
-        pinterest_options: Optional[Dict[str, Any]] = None,
-        reddit_options: Optional[Dict[str, Any]] = None,
-        telegram_options: Optional[Dict[str, Any]] = None,
-        threads_options: Optional[Dict[str, Any]] = None,
-        tiktok_options: Optional[Dict[str, Any]] = None,
-        twitter_options: Optional[Dict[str, Any]] = None,
-        youtube_options: Optional[Dict[str, Any]] = None,
+        bluesky_options: Optional[dict[str, Any]] = None,
+        facebook_options: Optional[dict[str, Any]] = None,
+        gmb_options: Optional[dict[str, Any]] = None,
+        instagram_options: Optional[dict[str, Any]] = None,
+        linkedin_options: Optional[dict[str, Any]] = None,
+        pinterest_options: Optional[dict[str, Any]] = None,
+        reddit_options: Optional[dict[str, Any]] = None,
+        snapchat_options: Optional[dict[str, Any]] = None,
+        telegram_options: Optional[dict[str, Any]] = None,
+        threads_options: Optional[dict[str, Any]] = None,
+        tiktok_options: Optional[dict[str, Any]] = None,
+        twitter_options: Optional[dict[str, Any]] = None,
+        youtube_options: Optional[dict[str, Any]] = None,
         requires_approval: Optional[bool] = None,
         random_post: Optional[bool] = None,
         random_media_url: Optional[bool] = None,
         idempotency_key: Optional[str] = None,
         notes: Optional[str] = None,
         profile_key: Optional[str] = None,
-    ) -> PostResponse | PostError:
+    ) -> PostResponse:
         """
         Create a post across multiple social media platforms.
 
@@ -347,6 +348,7 @@ class AyrshareClient:
             linkedin_options: LinkedIn-specific options
             pinterest_options: Pinterest-specific options
             reddit_options: Reddit-specific options
+            snapchat_options: Snapchat-specific options
             telegram_options: Telegram-specific options
             threads_options: Threads-specific options
             tiktok_options: TikTok-specific options
@@ -365,7 +367,7 @@ class AyrshareClient:
             AyrshareAPIException: If the API request fails
         """
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "post": post,
             "platforms": [p.value for p in platforms],
         }
@@ -422,6 +424,8 @@ class AyrshareClient:
             payload["pinterestOptions"] = pinterest_options
         if reddit_options:
             payload["redditOptions"] = reddit_options
+        if snapchat_options:
+            payload["snapchatOptions"] = snapchat_options
         if telegram_options:
             payload["telegramOptions"] = telegram_options
         if threads_options:
@@ -455,14 +459,6 @@ class AyrshareClient:
             try:
                 error_data = response.json()
                 error_message = error_data.get("message", response.text)
-                error_code = error_data.get("code", response.status_code)
-                error_details = error_data.get("details", {})
-                logger.error(error_data)
-                return PostError(
-                    code=error_code,
-                    message=error_message,
-                    details=error_details,
-                )
             except json.JSONDecodeError:
                 error_message = response.text
 
@@ -479,4 +475,5 @@ class AyrshareClient:
             )
 
         # Return the first post from the response
+        # This is because Ayrshare returns an array of posts even for single posts
         return PostResponse(**response_data["posts"][0])
