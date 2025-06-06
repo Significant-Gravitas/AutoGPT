@@ -1,7 +1,7 @@
 "use client";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
-import { useCallback, useContext, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { IconKey, IconUser } from "@/components/ui/icons";
 import { Trash2Icon } from "lucide-react";
@@ -26,10 +26,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import useSupabase from "@/hooks/useSupabase";
+import useSupabase from "@/lib/supabase/useSupabase";
 import LoadingBox from "@/components/ui/loading";
 
-export default function PrivatePage() {
+export default function UserIntegrationsPage() {
   const { supabase, user, isUserLoading } = useSupabase();
   const router = useRouter();
   const providers = useContext(CredentialsProvidersContext);
@@ -122,13 +122,13 @@ export default function PrivatePage() {
     [],
   );
 
+  useEffect(() => {
+    if (isUserLoading) return;
+    if (!user || !supabase) router.push("/login");
+  }, [isUserLoading, user, supabase, router]);
+
   if (isUserLoading) {
     return <LoadingBox className="h-[80vh]" />;
-  }
-
-  if (!user || !supabase) {
-    router.push("/login");
-    return null;
   }
 
   const allCredentials = providers

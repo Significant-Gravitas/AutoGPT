@@ -8,30 +8,6 @@ import BackendAPI from "@/lib/autogpt-server-api";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 
-export async function logout() {
-  return await Sentry.withServerActionInstrumentation(
-    "logout",
-    {},
-    async () => {
-      const supabase = getServerSupabase();
-
-      if (!supabase) {
-        redirect("/error");
-      }
-
-      const { error } = await supabase.auth.signOut();
-
-      if (error) {
-        console.error("Error logging out", error);
-        return error.message;
-      }
-
-      revalidatePath("/", "layout");
-      redirect("/login");
-    },
-  );
-}
-
 async function shouldShowOnboarding() {
   const api = new BackendAPI();
   return (
@@ -59,23 +35,21 @@ export async function login(
     }
 
     // We are sure that the values are of the correct type because zod validates the form
-    const { data, error } = await supabase.auth.signInWithPassword(values);
+    const { error } = await supabase.auth.signInWithPassword(values);
 
     if (error) {
-      console.error("Error logging in", error);
+      console.error("Error logging in:", error);
       return error.message;
     }
 
     await api.createUser();
+
     // Don't onboard if disabled or already onboarded
     if (await shouldShowOnboarding()) {
       revalidatePath("/onboarding", "layout");
       redirect("/onboarding");
     }
 
-    if (data.session) {
-      await supabase.auth.setSession(data.session);
-    }
     revalidatePath("/", "layout");
     redirect("/");
   });
