@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   const next = searchParams.get("next") ?? "/";
 
   if (code) {
-    const supabase = getServerSupabase();
+    const supabase = await getServerSupabase();
 
     if (!supabase) {
       return NextResponse.redirect(`${origin}/error`);
