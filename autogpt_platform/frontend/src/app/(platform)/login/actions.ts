@@ -21,7 +21,7 @@ export async function login(
   turnstileToken: string,
 ) {
   return await Sentry.withServerActionInstrumentation("login", {}, async () => {
-    const supabase = getServerSupabase();
+    const supabase = await getServerSupabase();
     const api = new BackendAPI();
 
     if (!supabase) {
@@ -60,7 +60,7 @@ export async function providerLogin(provider: LoginProvider) {
     "providerLogin",
     {},
     async () => {
-      const supabase = getServerSupabase();
+      const supabase = await getServerSupabase();
       const api = new BackendAPI();
 
       if (!supabase) {
