@@ -55,6 +55,22 @@ async def get_user_by_id(user_id: str) -> User:
     return User.model_validate(user)
 
 
+async def get_user_info_by_id(user_id: str) -> dict:
+    # TODO: Change return type to a Pydantic model instead of a dict
+    try:
+        user = await User.prisma().find_unique(where={"id": user_id})
+        if not user:
+            raise ValueError(f"User with ID {user_id} not found")
+
+        return {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+        }
+    except Exception as e:
+        raise DatabaseError(f"Failed to get user info for user {user_id}: {e}") from e
+
+
 async def get_user_email_by_id(user_id: str) -> Optional[str]:
     try:
         user = await prisma.user.find_unique(where={"id": user_id})
