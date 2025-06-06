@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Annotated, Awaitable, Literal
+from typing import TYPE_CHECKING, Annotated, Awaitable, Dict, List, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field
@@ -20,6 +20,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
+from backend.sdk.auto_registry import get_registry
 from backend.util.exceptions import NeedConfirmation, NotFoundError
 from backend.util.settings import Settings
 
@@ -416,3 +417,89 @@ def _get_provider_oauth_handler(
         client_secret=client_secret,
         redirect_uri=f"{frontend_base_url}/auth/integrations/oauth_callback",
     )
+
+
+# === PROVIDER DISCOVERY ENDPOINTS ===
+
+
+@router.get("/providers", response_model=List[str])
+async def list_providers() -> List[str]:
+    """
+    Get a list of all available provider names.
+
+    Returns both statically defined providers (from ProviderName enum)
+    and dynamically registered providers (from SDK decorators).
+    """
+    # Get static providers from enum
+    static_providers = [member.value for member in ProviderName]
+
+    # Get dynamic providers from registry
+    registry = get_registry()
+    dynamic_providers = list(registry.providers)
+
+    # Combine and deduplicate
+    all_providers = list(set(static_providers + dynamic_providers))
+    all_providers.sort()
+
+    logger.info(f"Returning {len(all_providers)} providers")
+    return all_providers
+
+
+class ProviderDetails(BaseModel):
+    name: str
+    source: Literal["static", "dynamic", "both"]
+    has_oauth: bool
+    has_webhooks: bool
+    supported_credential_types: List[CredentialsType] = Field(default_factory=list)
+
+
+@router.get("/providers/details", response_model=Dict[str, ProviderDetails])
+async def get_providers_details() -> Dict[str, ProviderDetails]:
+    """
+    Get detailed information about all providers.
+
+    Returns a dictionary mapping provider names to their details,
+    including supported credential types and other metadata.
+    """
+    registry = get_registry()
+
+    # Build provider details
+    provider_details: Dict[str, ProviderDetails] = {}
+
+    # Add static providers
+    for member in ProviderName:
+        provider_details[member.value] = ProviderDetails(
+            name=member.value,
+            source="static",
+            has_oauth=member.value in registry.oauth_handlers,
+            has_webhooks=member.value in registry.webhook_managers,
+        )
+
+    # Add/update with dynamic providers
+    for provider in registry.providers:
+        if provider not in provider_details:
+            provider_details[provider] = ProviderDetails(
+                name=provider,
+                source="dynamic",
+                has_oauth=provider in registry.oauth_handlers,
+                has_webhooks=provider in registry.webhook_managers,
+            )
+        else:
+            provider_details[provider].source = "both"
+            provider_details[provider].has_oauth = provider in registry.oauth_handlers
+            provider_details[provider].has_webhooks = (
+                provider in registry.webhook_managers
+            )
+
+    # Determine supported credential types for each provider
+    # This is a simplified version - in reality, you might want to inspect
+    # the blocks or credentials to determine this more accurately
+    for provider_name, details in provider_details.items():
+        credential_types = []
+        if details.has_oauth:
+            credential_types.append("oauth2")
+        # Most providers support API keys
+        credential_types.append("api_key")
+        details.supported_credential_types = credential_types
+
+    return provider_details

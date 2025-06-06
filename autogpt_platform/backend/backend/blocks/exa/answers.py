@@ -1,0 +1,131 @@
+from backend.sdk import (
+    APIKeyCredentials,
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    Boolean,
+    CredentialsField,
+    CredentialsMetaInput,
+    Dict,
+    List,
+    SchemaField,
+    SecretStr,
+    Settings,
+    String,
+    default_credentials,
+    provider,
+    requests,
+)
+
+settings = Settings()
+
+
+@provider("exa")
+@default_credentials(
+    APIKeyCredentials(
+        id="01234567-89ab-cdef-0123-456789abcdef",
+        provider="exa",
+        api_key=SecretStr(settings.secrets.exa_api_key),
+        title="Use Credits for Exa",
+        expires_at=None,
+    )
+)
+class ExaAnswerBlock(Block):
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput = CredentialsField(
+            provider="exa",
+            supported_credential_types={"api_key"},
+            description="The Exa integration requires an API Key.",
+        )
+        query: String = SchemaField(
+            description="The question or query to answer",
+            placeholder="What is the latest valuation of SpaceX?",
+        )
+        stream: Boolean = SchemaField(
+            default=False,
+            description="If true, the response is returned as a server-sent events (SSE) stream",
+            advanced=True,
+        )
+        text: Boolean = SchemaField(
+            default=False,
+            description="If true, the response includes full text content in the search results",
+            advanced=True,
+        )
+        model: String = SchemaField(
+            default="exa",
+            description="The search model to use (exa or exa-pro)",
+            placeholder="exa",
+            advanced=True,
+        )
+
+    class Output(BlockSchema):
+        answer: String = SchemaField(
+            description="The generated answer based on search results",
+        )
+        citations: List[Dict] = SchemaField(
+            description="Search results used to generate the answer",
+            default_factory=list,
+        )
+        cost_dollars: Dict = SchemaField(
+            description="Cost breakdown of the request",
+            default_factory=dict,
+        )
+        error: String = SchemaField(
+            description="Error message if the request failed",
+            default="",
+        )
+
+    def __init__(self):
+        super().__init__(
+            id="f8e7d6c5-b4a3-5c2d-9e1f-3a7b8c9d4e6f",
+            description="Get an LLM answer to a question informed by Exa search results",
+            categories={BlockCategory.SEARCH, BlockCategory.AI},
+            input_schema=ExaAnswerBlock.Input,
+            output_schema=ExaAnswerBlock.Output,
+            test_input={
+                "query": "What is the capital of France?",
+                "text": False,
+                "stream": False,
+                "model": "exa",
+            },
+            test_output=[
+                ("answer", "Paris"),
+                ("citations", []),
+                ("cost_dollars", {}),
+            ],
+        )
+
+    def run(
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
+    ) -> BlockOutput:
+        url = "https://api.exa.ai/answer"
+        headers = {
+            "Content-Type": "application/json",
+            "x-api-key": credentials.api_key.get_secret_value(),
+        }
+
+        # Build the payload
+        payload = {
+            "query": input_data.query,
+            "stream": input_data.stream,
+            "text": input_data.text,
+            "model": input_data.model,
+        }
+
+        try:
+            # Note: This endpoint doesn't support streaming in our block implementation
+            # If stream=True is requested, we still make a regular request
+            response = requests.post(url, headers=headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
+
+            yield "answer", data.get("answer", "")
+            yield "citations", data.get("citations", [])
+            yield "cost_dollars", data.get("costDollars", {})
+
+        except Exception as e:
+            yield "error", str(e)
+            yield "answer", ""
+            yield "citations", []
+            yield "cost_dollars", {}

@@ -62,9 +62,36 @@ async def lifespan_context(app: fastapi.FastAPI):
     try:
         from backend.sdk.auto_registry import setup_auto_registration
 
-        setup_auto_registration()
+        logger.info("Starting SDK auto-registration system...")
+        registry = setup_auto_registration()
+
+        # Log successful registration
+        logger.info("Auto-registration completed successfully:")
+        logger.info(f"  - {len(registry.block_costs)} block costs registered")
+        logger.info(
+            f"  - {len(registry.default_credentials)} default credentials registered"
+        )
+        logger.info(f"  - {len(registry.oauth_handlers)} OAuth handlers registered")
+        logger.info(f"  - {len(registry.webhook_managers)} webhook managers registered")
+        logger.info(f"  - {len(registry.providers)} providers registered")
+
+        # Log specific credential providers for debugging
+        credential_providers = [
+            getattr(cred, "provider", "unknown")
+            for cred in registry.default_credentials
+        ]
+        if credential_providers:
+            logger.info(
+                f"  - Default credential providers: {', '.join(credential_providers)}"
+            )
+
     except Exception as e:
-        logger.warning(f"Auto-registration setup failed: {e}")
+        logger.error(f"Auto-registration setup failed: {e}")
+        import traceback
+
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        # Don't let this failure prevent startup, but make it very visible
+        raise
 
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
