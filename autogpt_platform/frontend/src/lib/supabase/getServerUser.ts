@@ -1,7 +1,7 @@
 import getServerSupabase from "./getServerSupabase";
 
 const getServerUser = async () => {
-  const supabase = getServerSupabase();
+  const supabase = await getServerSupabase();
 
   if (!supabase) {
     return { user: null, error: "Failed to create Supabase client" };
