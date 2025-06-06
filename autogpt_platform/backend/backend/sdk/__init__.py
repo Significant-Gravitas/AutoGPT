@@ -1,0 +1,273 @@
+"""
+AutoGPT Platform Block Development SDK
+
+Complete re-export of all dependencies needed for block development.
+Usage: from backend.sdk import *
+
+This module provides:
+- All block base classes and types
+- All credential and authentication components  
+- All cost tracking components
+- All webhook components
+- All utility functions
+- Auto-registration decorators
+"""
+
+# Standard library imports
+import asyncio
+import logging
+from enum import Enum
+from logging import getLogger as TruncatedLogger
+from typing import Any, Dict, List
+from typing import Literal
+from typing import Literal as _Literal
+from typing import Optional, Set, Tuple, Type, TypeVar, Union
+
+# Third-party imports
+from pydantic import BaseModel, Field, SecretStr
+
+# === CORE BLOCK SYSTEM ===
+from backend.data.block import (
+    Block,
+    BlockCategory,
+    BlockManualWebhookConfig,
+    BlockOutput,
+    BlockSchema,
+    BlockType,
+    BlockWebhookConfig,
+)
+from backend.data.model import APIKeyCredentials, CredentialsField
+from backend.data.model import CredentialsMetaInput as _CredentialsMetaInput
+from backend.data.model import (
+    NodeExecutionStats,
+    OAuth2Credentials,
+    SchemaField,
+    UserPasswordCredentials,
+)
+
+# === INTEGRATIONS ===
+from backend.integrations.providers import ProviderName
+
+# === UTILITIES ===
+from backend.util import json
+
+# === AUTO-REGISTRATION DECORATORS ===
+from .decorators import (
+    cost_config,
+    default_credentials,
+    oauth_config,
+    provider,
+    register_cost,
+    register_credentials,
+    register_oauth,
+    register_webhook_manager,
+    webhook_config,
+)
+
+# === OPTIONAL IMPORTS WITH TRY/EXCEPT ===
+# Webhooks
+try:
+    from backend.integrations.webhooks._base import BaseWebhooksManager
+except ImportError:
+    BaseWebhooksManager = None
+
+try:
+    from backend.integrations.webhooks._manual_base import ManualWebhookManagerBase
+except ImportError:
+    ManualWebhookManagerBase = None
+
+# Cost System
+try:
+    from backend.data.cost import BlockCost, BlockCostType
+except ImportError:
+    from backend.data.block_cost_config import BlockCost, BlockCostType
+
+try:
+    from backend.data.credit import UsageTransactionMetadata
+except ImportError:
+    UsageTransactionMetadata = None
+
+try:
+    from backend.executor.utils import block_usage_cost
+except ImportError:
+    block_usage_cost = None
+
+# Utilities
+try:
+    from backend.util.file import store_media_file
+except ImportError:
+    store_media_file = None
+
+try:
+    from backend.util.type import MediaFileType, convert
+except ImportError:
+    MediaFileType = None
+    convert = None
+
+try:
+    from backend.util.text import TextFormatter
+except ImportError:
+    TextFormatter = None
+
+try:
+    from backend.util.logging import TruncatedLogger
+except ImportError:
+    TruncatedLogger = TruncatedLogger  # Use the one imported at top
+
+# GitHub components
+try:
+    from backend.blocks.github._auth import (
+        GithubCredentials,
+        GithubCredentialsField,
+        GithubCredentialsInput,
+    )
+except ImportError:
+    GithubCredentials = None
+    GithubCredentialsInput = None
+    GithubCredentialsField = None
+
+# Google components
+try:
+    from backend.blocks.google._auth import (
+        GoogleCredentials,
+        GoogleCredentialsField,
+        GoogleCredentialsInput,
+    )
+except ImportError:
+    GoogleCredentials = None
+    GoogleCredentialsInput = None
+    GoogleCredentialsField = None
+
+# OAuth handlers
+try:
+    from backend.integrations.oauth.base import BaseOAuthHandler
+except ImportError:
+    BaseOAuthHandler = None
+
+try:
+    from backend.integrations.oauth.github import GitHubOAuthHandler
+except ImportError:
+    GitHubOAuthHandler = None
+
+try:
+    from backend.integrations.oauth.google import GoogleOAuthHandler
+except ImportError:
+    GoogleOAuthHandler = None
+
+# Webhook managers
+try:
+    from backend.integrations.webhooks.github import GithubWebhooksManager
+except ImportError:
+    GithubWebhooksManager = None
+
+try:
+    from backend.integrations.webhooks.generic import GenericWebhooksManager
+except ImportError:
+    GenericWebhooksManager = None
+
+# === VARIABLE ASSIGNMENTS AND TYPE ALIASES ===
+# Type aliases
+String = str
+Integer = int
+Float = float
+Boolean = bool
+
+# Credential type with proper provider name
+CredentialsMetaInput = _CredentialsMetaInput[
+    ProviderName, _Literal["api_key", "oauth2", "user_password"]
+]
+
+# Webhook manager aliases
+if GithubWebhooksManager is not None:
+    GitHubWebhooksManager = GithubWebhooksManager  # Alias for consistency
+else:
+    GitHubWebhooksManager = None
+
+if GenericWebhooksManager is not None:
+    GenericWebhookManager = GenericWebhooksManager  # Alias for consistency
+else:
+    GenericWebhookManager = None
+
+# === COMPREHENSIVE __all__ EXPORT ===
+__all__ = [
+    # Core Block System
+    "Block",
+    "BlockCategory",
+    "BlockOutput",
+    "BlockSchema",
+    "BlockType",
+    "BlockWebhookConfig",
+    "BlockManualWebhookConfig",
+    # Schema and Model Components
+    "SchemaField",
+    "CredentialsField",
+    "CredentialsMetaInput",
+    "APIKeyCredentials",
+    "OAuth2Credentials",
+    "UserPasswordCredentials",
+    "NodeExecutionStats",
+    # Cost System
+    "BlockCost",
+    "BlockCostType",
+    "UsageTransactionMetadata",
+    "block_usage_cost",
+    # Integrations
+    "ProviderName",
+    "BaseWebhooksManager",
+    "ManualWebhookManagerBase",
+    # Provider-Specific (when available)
+    "GithubCredentials",
+    "GithubCredentialsInput",
+    "GithubCredentialsField",
+    "GoogleCredentials",
+    "GoogleCredentialsInput",
+    "GoogleCredentialsField",
+    "BaseOAuthHandler",
+    "GitHubOAuthHandler",
+    "GoogleOAuthHandler",
+    "GitHubWebhooksManager",
+    "GithubWebhooksManager",
+    "GenericWebhookManager",
+    "GenericWebhooksManager",
+    # Utilities
+    "json",
+    "store_media_file",
+    "MediaFileType",
+    "convert",
+    "TextFormatter",
+    "TruncatedLogger",
+    "logging",
+    "asyncio",
+    # Types
+    "String",
+    "Integer",
+    "Float",
+    "Boolean",
+    "List",
+    "Dict",
+    "Optional",
+    "Any",
+    "Literal",
+    "Union",
+    "TypeVar",
+    "Type",
+    "Tuple",
+    "Set",
+    "BaseModel",
+    "SecretStr",
+    "Field",
+    "Enum",
+    # Auto-Registration Decorators
+    "register_credentials",
+    "register_cost",
+    "register_oauth",
+    "register_webhook_manager",
+    "provider",
+    "cost_config",
+    "webhook_config",
+    "default_credentials",
+    "oauth_config",
+]
+
+# Remove None values from __all__
+__all__ = [name for name in __all__ if globals().get(name) is not None]

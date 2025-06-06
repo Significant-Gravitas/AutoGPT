@@ -1,46 +1,59 @@
 from datetime import datetime
-from typing import List
 
-from backend.blocks.exa._auth import (
-    ExaCredentials,
-    ExaCredentialsField,
-    ExaCredentialsInput,
+from backend.sdk import (
+    APIKeyCredentials,
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    Boolean,
+    CredentialsField,
+    CredentialsMetaInput,
+    Integer,
+    List,
+    SchemaField,
+    String,
+    provider,
+    requests,
 )
-from backend.blocks.exa.helpers import ContentSettings
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
-from backend.util.request import requests
+
+from .helpers import ContentSettings
 
 
+@provider("exa")
 class ExaSearchBlock(Block):
     class Input(BlockSchema):
-        credentials: ExaCredentialsInput = ExaCredentialsField()
-        query: str = SchemaField(description="The search query")
-        use_auto_prompt: bool = SchemaField(
+        credentials: CredentialsMetaInput = CredentialsField(
+            provider="exa",
+            supported_credential_types={"api_key"},
+            description="The Exa integration requires an API Key.",
+        )
+        query: String = SchemaField(description="The search query")
+        use_auto_prompt: Boolean = SchemaField(
             description="Whether to use autoprompt",
             default=True,
             advanced=True,
         )
-        type: str = SchemaField(
+        type: String = SchemaField(
             description="Type of search",
             default="",
             advanced=True,
         )
-        category: str = SchemaField(
+        category: String = SchemaField(
             description="Category to search within",
             default="",
             advanced=True,
         )
-        number_of_results: int = SchemaField(
+        number_of_results: Integer = SchemaField(
             description="Number of results to return",
             default=10,
             advanced=True,
         )
-        include_domains: List[str] = SchemaField(
+        include_domains: List[String] = SchemaField(
             description="Domains to include in search",
             default_factory=list,
         )
-        exclude_domains: List[str] = SchemaField(
+        exclude_domains: List[String] = SchemaField(
             description="Domains to exclude from search",
             default_factory=list,
             advanced=True,
@@ -57,12 +70,12 @@ class ExaSearchBlock(Block):
         end_published_date: datetime = SchemaField(
             description="End date for published content",
         )
-        include_text: List[str] = SchemaField(
+        include_text: List[String] = SchemaField(
             description="Text patterns to include",
             default_factory=list,
             advanced=True,
         )
-        exclude_text: List[str] = SchemaField(
+        exclude_text: List[String] = SchemaField(
             description="Text patterns to exclude",
             default_factory=list,
             advanced=True,
@@ -74,12 +87,13 @@ class ExaSearchBlock(Block):
         )
 
     class Output(BlockSchema):
-        results: list = SchemaField(
+        results: List = SchemaField(
             description="List of search results",
             default_factory=list,
         )
-        error: str = SchemaField(
+        error: String = SchemaField(
             description="Error message if the request failed",
+            default="",
         )
 
     def __init__(self):
@@ -92,7 +106,7 @@ class ExaSearchBlock(Block):
         )
 
     def run(
-        self, input_data: Input, *, credentials: ExaCredentials, **kwargs
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         url = "https://api.exa.ai/search"
         headers = {
@@ -104,7 +118,7 @@ class ExaSearchBlock(Block):
             "query": input_data.query,
             "useAutoprompt": input_data.use_auto_prompt,
             "numResults": input_data.number_of_results,
-            "contents": input_data.contents.dict(),
+            "contents": input_data.contents.model_dump(),
         }
 
         date_field_mapping = {

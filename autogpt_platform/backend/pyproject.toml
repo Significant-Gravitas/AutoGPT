@@ -112,3 +112,4 @@ asyncio_mode = "auto"
 
 [tool.ruff]
 target-version = "py310"
+

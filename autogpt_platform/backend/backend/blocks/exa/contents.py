@@ -1,57 +1,46 @@
-from typing import List
-
-from pydantic import BaseModel
-
-from backend.blocks.exa._auth import (
-    ExaCredentials,
-    ExaCredentialsField,
-    ExaCredentialsInput,
+from backend.sdk import (
+    APIKeyCredentials,
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    CredentialsField,
+    CredentialsMetaInput,
+    List,
+    SchemaField,
+    String,
+    provider,
+    requests,
 )
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
-from backend.util.request import requests
+
+from .helpers import ContentSettings
 
 
-class ContentRetrievalSettings(BaseModel):
-    text: dict = SchemaField(
-        description="Text content settings",
-        default={"maxCharacters": 1000, "includeHtmlTags": False},
-        advanced=True,
-    )
-    highlights: dict = SchemaField(
-        description="Highlight settings",
-        default={
-            "numSentences": 3,
-            "highlightsPerUrl": 3,
-            "query": "",
-        },
-        advanced=True,
-    )
-    summary: dict = SchemaField(
-        description="Summary settings",
-        default={"query": ""},
-        advanced=True,
-    )
-
-
+@provider("exa")
 class ExaContentsBlock(Block):
     class Input(BlockSchema):
-        credentials: ExaCredentialsInput = ExaCredentialsField()
-        ids: List[str] = SchemaField(
+        credentials: CredentialsMetaInput = CredentialsField(
+            provider="exa",
+            supported_credential_types={"api_key"},
+            description="The Exa integration requires an API Key.",
+        )
+        ids: List[String] = SchemaField(
             description="Array of document IDs obtained from searches",
         )
-        contents: ContentRetrievalSettings = SchemaField(
+        contents: ContentSettings = SchemaField(
             description="Content retrieval settings",
-            default=ContentRetrievalSettings(),
+            default=ContentSettings(),
             advanced=True,
         )
 
     class Output(BlockSchema):
-        results: list = SchemaField(
+        results: List = SchemaField(
             description="List of document contents",
             default_factory=list,
         )
-        error: str = SchemaField(description="Error message if the request failed")
+        error: String = SchemaField(
+            description="Error message if the request failed", default=""
+        )
 
     def __init__(self):
         super().__init__(
@@ -63,7 +52,7 @@ class ExaContentsBlock(Block):
         )
 
     def run(
-        self, input_data: Input, *, credentials: ExaCredentials, **kwargs
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         url = "https://api.exa.ai/contents"
         headers = {
@@ -71,11 +60,24 @@ class ExaContentsBlock(Block):
             "x-api-key": credentials.api_key.get_secret_value(),
         }
 
+        # Convert ContentSettings to API format
+        contents_dict = input_data.contents.model_dump()
         payload = {
             "ids": input_data.ids,
-            "text": input_data.contents.text,
-            "highlights": input_data.contents.highlights,
-            "summary": input_data.contents.summary,
+            "text": {
+                "maxCharacters": contents_dict["text"]["max_characters"],
+                "includeHtmlTags": contents_dict["text"]["include_html_tags"],
+            },
+            "highlights": {
+                "numSentences": contents_dict["highlights"]["num_sentences"],
+                "highlightsPerUrl": contents_dict["highlights"]["highlights_per_url"],
+                "query": contents_dict["summary"][
+                    "query"
+                ],  # Note: query comes from summary
+            },
+            "summary": {
+                "query": contents_dict["summary"]["query"],
+            },
         }
 
         try:

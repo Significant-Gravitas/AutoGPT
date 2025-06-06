@@ -41,6 +41,9 @@ from pydantic_core import (
 from backend.integrations.providers import ProviderName
 from backend.util.settings import Secrets
 
+# Type alias for any provider name (including custom ones)
+AnyProviderName = str  # Will be validated as ProviderName at runtime
+
 if TYPE_CHECKING:
     from backend.data.block import BlockSchema
 
@@ -288,12 +291,20 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     type: CT
 
     @classmethod
-    def allowed_providers(cls) -> tuple[ProviderName, ...]:
-        return get_args(cls.model_fields["provider"].annotation)
+    def allowed_providers(cls) -> tuple[ProviderName, ...] | None:
+        args = get_args(cls.model_fields["provider"].annotation)
+        # If no type parameters are provided, allow any provider
+        if not args:
+            return None  # None means no specific providers, allow any
+        return args
 
     @classmethod
     def allowed_cred_types(cls) -> tuple[CredentialsType, ...]:
-        return get_args(cls.model_fields["type"].annotation)
+        args = get_args(cls.model_fields["type"].annotation)
+        # If no type parameters are provided, allow any credential type
+        if not args:
+            return ("api_key", "oauth2", "user_password")  # All credential types
+        return args
 
     @classmethod
     def validate_credentials_field_schema(cls, model: type["BlockSchema"]):
@@ -313,7 +324,12 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
                 f"{field_schema}"
             ) from e
 
-        if len(cls.allowed_providers()) > 1 and not schema_extra.discriminator:
+        providers = cls.allowed_providers()
+        if (
+            providers is not None
+            and len(providers) > 1
+            and not schema_extra.discriminator
+        ):
             raise TypeError(
                 f"Multi-provider CredentialsField '{field_name}' "
                 "requires discriminator!"
@@ -321,7 +337,12 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
 
     @staticmethod
     def _add_json_schema_extra(schema, cls: CredentialsMetaInput):
-        schema["credentials_provider"] = cls.allowed_providers()
+        allowed_providers = cls.allowed_providers()
+        # If no specific providers (None), allow any string
+        if allowed_providers is None:
+            schema["credentials_provider"] = ["string"]  # Allow any string provider
+        else:
+            schema["credentials_provider"] = allowed_providers
         schema["credentials_types"] = cls.allowed_cred_types()
 
     model_config = ConfigDict(
