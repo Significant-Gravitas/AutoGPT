@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import secrets
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional
 
@@ -177,6 +178,7 @@ zerobounce_credentials = APIKeyCredentials(
     expires_at=None,
 )
 
+
 llama_api_credentials = APIKeyCredentials(
     id="d44045af-1c33-4833-9e19-752313214de2",
     provider="llama_api",
@@ -223,6 +225,8 @@ class IntegrationCredentialsStore:
         from backend.util.service import get_service_client
 
         return get_service_client(DatabaseManagerClient)
+
+    # =============== USER-MANAGED CREDENTIALS =============== #
 
     def add_creds(self, user_id: str, credentials: Credentials) -> None:
         with self.locked_user_integrations(user_id):
@@ -282,6 +286,8 @@ class IntegrationCredentialsStore:
             all_credentials.append(zerobounce_credentials)
         if settings.secrets.google_maps_api_key:
             all_credentials.append(google_maps_credentials)
+        if settings.secrets.llama_api_key:
+            all_credentials.append(llama_api_credentials)
         return all_credentials
 
     def get_creds_by_id(self, user_id: str, credentials_id: str) -> Credentials | None:
@@ -337,6 +343,19 @@ class IntegrationCredentialsStore:
             ]
             self._set_user_integration_creds(user_id, filtered_credentials)
 
+    # ============== SYSTEM-MANAGED CREDENTIALS ============== #
+
+    def get_ayrshare_profile_key(self, user_id: str) -> SecretStr | None:
+        managed_user_creds = self._get_user_integrations(user_id).managed_credentials
+        return managed_user_creds.ayrshare_profile_key
+
+    def set_ayrshare_profile_key(self, user_id: str, profile_key: str) -> None:
+        _profile_key = SecretStr(profile_key)
+        with self.edit_user_integrations(user_id) as user_integrations:
+            user_integrations.managed_credentials.ayrshare_profile_key = _profile_key
+
+    # ===================== OAUTH STATES ===================== #
+
     def store_state_token(
         self, user_id: str, provider: str, scopes: list[str], use_pkce: bool = False
     ) -> tuple[str, str]:
@@ -353,16 +372,8 @@ class IntegrationCredentialsStore:
             scopes=scopes,
         )
 
-        with self.locked_user_integrations(user_id):
-
-            user_integrations = self._get_user_integrations(user_id)
-            oauth_states = user_integrations.oauth_states
-            oauth_states.append(state)
-            user_integrations.oauth_states = oauth_states
-
-            self.db_manager.update_user_integrations(
-                user_id=user_id, data=user_integrations
-            )
+        with self.edit_user_integrations(user_id) as user_integrations:
+            user_integrations.oauth_states.append(state)
 
         return token, code_challenge
 
@@ -403,6 +414,17 @@ class IntegrationCredentialsStore:
                 return valid_state
 
         return None
+
+    # =================== GET/SET HELPERS =================== #
+
+    @contextmanager
+    def edit_user_integrations(self, user_id: str):
+        with self.locked_user_integrations(user_id):
+            user_integrations = self._get_user_integrations(user_id)
+            yield user_integrations  # yield to allow edits
+            self.db_manager.update_user_integrations(
+                user_id=user_id, data=user_integrations
+            )
 
     def _set_user_integration_creds(
         self, user_id: str, credentials: list[Credentials]

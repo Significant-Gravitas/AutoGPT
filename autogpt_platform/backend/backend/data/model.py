@@ -15,7 +15,6 @@ from typing import (
     Literal,
     Optional,
     Sequence,
-    TypedDict,
     TypeVar,
     get_args,
 )
@@ -37,6 +36,7 @@ from pydantic_core import (
     ValidationError,
     core_schema,
 )
+from typing_extensions import TypedDict
 
 from backend.integrations.providers import ProviderName
 from backend.util.settings import Secrets
@@ -260,15 +260,32 @@ class OAuthState(BaseModel):
 
 class UserMetadata(BaseModel):
     integration_credentials: list[Credentials] = Field(default_factory=list)
+    """⚠️ Deprecated; use `UserIntegrations.credentials` instead"""
     integration_oauth_states: list[OAuthState] = Field(default_factory=list)
+    """⚠️ Deprecated; use `UserIntegrations.oauth_states` instead"""
 
 
 class UserMetadataRaw(TypedDict, total=False):
     integration_credentials: list[dict]
+    """⚠️ Deprecated; use `UserIntegrations.credentials` instead"""
     integration_oauth_states: list[dict]
+    """⚠️ Deprecated; use `UserIntegrations.oauth_states` instead"""
 
 
 class UserIntegrations(BaseModel):
+
+    class ManagedCredentials(BaseModel):
+        """Integration credentials managed by us, rather than by the user"""
+
+        ayrshare_profile_key: Optional[SecretStr] = None
+
+        @field_serializer("*")
+        def dump_secret_strings(value: Any, _info):
+            if isinstance(value, SecretStr):
+                return value.get_secret_value()
+            return value
+
+    managed_credentials: ManagedCredentials = Field(default_factory=ManagedCredentials)
     credentials: list[Credentials] = Field(default_factory=list)
     oauth_states: list[OAuthState] = Field(default_factory=list)
 

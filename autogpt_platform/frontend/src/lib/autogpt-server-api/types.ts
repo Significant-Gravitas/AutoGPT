@@ -591,6 +591,7 @@ export enum BlockUIType {
   WEBHOOK_MANUAL = "Webhook (manual)",
   AGENT = "Agent",
   AI = "AI",
+  AYRSHARE = "Ayrshare",
 }
 
 export enum SpecialBlockID {
