@@ -68,7 +68,7 @@ def get_blocks(
 ) -> BlockResponse:
     """
     Get blocks based on either category, type or provider.
-    Providing nothing assumes category is `all`.
+    Providing nothing fetches all block types.
     """
     # Only one of category, type, or provider can be specified
     if (category and type) or (category and provider) or (type and provider):
@@ -79,7 +79,6 @@ def get_blocks(
     take = page_size
     total = 0
 
-    # todo kcze cache instances?
     for block_type in load_all_blocks().values():
         block: Block[BlockSchema, BlockSchema] = block_type()
         # Skip disabled blocks
@@ -109,10 +108,10 @@ def get_blocks(
             take -= 1
             blocks.append(block)
 
-    # todo kcze costs
+    costs = get_block_costs()
 
     return BlockResponse(
-        blocks=[b.to_dict() for b in blocks],
+        blocks=[{**b.to_dict(), "costs": costs.get(b.id, [])} for b in blocks],
         pagination=server_model.Pagination(
             total_items=total,
             total_pages=total // page_size + (1 if total % page_size > 0 else 0),

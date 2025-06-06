@@ -105,7 +105,6 @@ const FlowEditor: React.FC<{
     setAgentDescription,
     savedAgent,
     availableNodes,
-    availableFlows,
     getOutputType,
     requestSave,
     requestSaveAndRun,

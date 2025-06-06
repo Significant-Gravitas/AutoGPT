@@ -74,10 +74,7 @@ export type ProviderResponse = {
 export type BlockSearchResponse = {
   items: (Block | LibraryAgent | StoreAgent)[];
   total_items: Record<
-    | "blocks"
-    | "integrations"
-    | "marketplace_agents"
-    | "my_agents",
+    "blocks" | "integrations" | "marketplace_agents" | "my_agents",
     number
   >;
   page: number;
