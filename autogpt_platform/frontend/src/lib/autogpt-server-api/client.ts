@@ -90,14 +90,13 @@ export default class BackendAPI {
   }
 
   private async getSupabaseClient(): Promise<SupabaseClient | null> {
-    const supabase = await getServerSupabase();
     return isClient
       ? createBrowserClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
           { isSingleton: true },
         )
-      : supabase;
+      : await getServerSupabase();
   }
 
   async isAuthenticated(): Promise<boolean> {
