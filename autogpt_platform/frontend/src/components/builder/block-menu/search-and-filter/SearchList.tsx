@@ -4,7 +4,7 @@ import Block from "../Block";
 import UGCAgentBlock from "../UGCAgentBlock";
 import AiBlock from "./AiBlock";
 import IntegrationBlock from "../IntegrationBlock";
-import { SearchItem, useBlockMenuContext } from "../block-menu-provider";
+import { useBlockMenuContext } from "../block-menu-provider";
 import NoSearchResult from "./NoSearchResult";
 import { Button } from "@/components/ui/button";
 import { convertLibraryAgentIntoBlock, getBlockType } from "@/lib/utils";
