@@ -397,6 +397,7 @@ export type LibraryAgent = {
   creator_image_url: string;
   status: AgentStatus;
   updated_at: Date;
+  last_executed_at?: Date;
   name: string;
   description: string;
   input_schema: BlockIOObjectSubSchema;
@@ -467,6 +468,7 @@ export type LibraryAgentPresetUpdatable = Partial<
 export enum LibraryAgentSortEnum {
   CREATED_AT = "createdAt",
   UPDATED_AT = "updatedAt",
+  LAST_EXECUTED_AT = "lastExecutedAt",
 }
 
 /* *** CREDENTIALS *** */
