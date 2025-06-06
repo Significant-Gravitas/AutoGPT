@@ -20,9 +20,7 @@ import {
   PasswordInput,
   Turnstile,
 } from "@/components/auth";
-import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { getBehaveAs } from "@/lib/utils";
-import { useTurnstile } from "@/hooks/useTurnstile";
 import { useLoginPage } from "./useLoginPage";
 
 export default function LoginPage() {
@@ -30,6 +28,7 @@ export default function LoginPage() {
     form,
     feedback,
     turnstile,
+    captchaKey,
     isLoading,
     isCloudEnv,
     isLoggedIn,
@@ -120,6 +119,7 @@ export default function LoginPage() {
 
           {/* Turnstile CAPTCHA Component */}
           <Turnstile
+            key={captchaKey}
             siteKey={turnstile.siteKey}
             onVerify={turnstile.handleVerify}
             onExpire={turnstile.handleExpire}

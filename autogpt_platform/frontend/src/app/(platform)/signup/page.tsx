@@ -30,6 +30,7 @@ export default function SignupPage() {
     form,
     feedback,
     turnstile,
+    captchaKey,
     isLoggedIn,
     isLoading,
     isCloudEnv,
@@ -125,6 +126,7 @@ export default function SignupPage() {
 
           {/* Turnstile CAPTCHA Component */}
           <Turnstile
+            key={captchaKey}
             siteKey={turnstile.siteKey}
             onVerify={turnstile.handleVerify}
             onExpire={turnstile.handleExpire}
