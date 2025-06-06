@@ -2,7 +2,6 @@
 
 [![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt) &ensp;
 [![Twitter Follow](https://img.shields.io/twitter/follow/Auto_GPT?style=social)](https://twitter.com/Auto_GPT) &ensp;
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **AutoGPT** is a powerful platform that allows you to create, deploy, and manage continuous AI agents that automate complex workflows. 
 
@@ -111,7 +110,7 @@ Be part of the revolution! **AutoGPT** is here to stay, at the forefront of AI i
 
 **Licensing:**
 
-MIT License: The majority of the AutoGPT repository is under the MIT License.
+MIT License: All files outside of autogpt_platform folder are under the MIT License.
 
 Polyform Shield License: This license applies to the autogpt_platform folder. 
 
