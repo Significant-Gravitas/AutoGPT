@@ -2,10 +2,9 @@ import time
 import urllib.parse
 from typing import ClassVar, Optional
 
-import requests
-
 from backend.data.model import OAuth2Credentials, ProviderName
 from backend.integrations.oauth.base import BaseOAuthHandler
+from backend.util.request import Requests, req
 
 
 class TwitterOAuthHandler(BaseOAuthHandler):
@@ -78,7 +77,7 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         auth = (self.client_id, self.client_secret)
 
-        response = requests.post(self.TOKEN_URL, headers=headers, data=data, auth=auth)
+        response = Requests().post(self.TOKEN_URL, headers=headers, data=data, auth=auth)
         response.raise_for_status()
 
         tokens = response.json()
@@ -102,9 +101,7 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         params = {"user.fields": "username"}
 
-        response = requests.get(
-            f"{self.USERNAME_URL}?{urllib.parse.urlencode(params)}", headers=headers
-        )
+        response = Requests().get(f"{self.USERNAME_URL}?{urllib.parse.urlencode(params)}", headers=headers)
         response.raise_for_status()
 
         return response.json()["data"]["username"]
@@ -122,11 +119,11 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         auth = (self.client_id, self.client_secret)
 
-        response = requests.post(self.TOKEN_URL, headers=header, data=data, auth=auth)
+        response = Requests().post(self.TOKEN_URL, headers=header, data=data, auth=auth)
 
         try:
             response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
+        except req.exceptions.HTTPError as e:
             print("HTTP Error:", e)
             print("Response Content:", response.text)
             raise
@@ -159,11 +156,11 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         auth = (self.client_id, self.client_secret)
 
-        response = requests.post(self.REVOKE_URL, headers=header, data=data, auth=auth)
+        response = Requests().post(self.REVOKE_URL, headers=header, data=data, auth=auth)
 
         try:
             response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
+        except req.exceptions.HTTPError as e:
             print("HTTP Error:", e)
             print("Response Content:", response.text)
             raise

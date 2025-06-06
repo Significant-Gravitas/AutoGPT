@@ -1,7 +1,7 @@
 from typing import Any, Dict
 
 from backend.data.block import Block
-from backend.util.request import requests
+from backend.util.request import Requests
 
 from ._api import Color, CustomerDetails, OrderItem, Profile
 
@@ -16,7 +16,7 @@ class Slant3DBlockBase(Block):
 
     def _make_request(self, method: str, endpoint: str, api_key: str, **kwargs) -> Dict:
         url = f"{self.BASE_URL}/{endpoint}"
-        response = requests.request(
+        response = Requests().request(
             method=method, url=url, headers=self._get_headers(api_key), **kwargs
         )
 

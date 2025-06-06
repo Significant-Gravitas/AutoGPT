@@ -434,8 +434,20 @@ export const CustomNode = React.memo(
         if (activeKey) {
           try {
             const parsedValue = JSON.parse(value);
-            handleInputChange(activeKey, parsedValue);
+            // Validate that the parsed value is safe before using it
+            if (
+              (typeof parsedValue === "object" &&
+                parsedValue !== null &&
+                !Array.isArray(parsedValue)) ||
+              Array.isArray(parsedValue)
+            ) {
+              handleInputChange(activeKey, parsedValue);
+            } else {
+              // For primitive values, use the original string
+              handleInputChange(activeKey, value);
+            }
           } catch (error) {
+            // If JSON parsing fails, treat as plain text
             handleInputChange(activeKey, value);
           }
         }

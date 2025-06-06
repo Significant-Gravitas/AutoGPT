@@ -1,10 +1,9 @@
 import urllib.parse
 from typing import ClassVar, Optional
 
-import requests
-
 from backend.data.model import OAuth2Credentials, ProviderName
 from backend.integrations.oauth.base import BaseOAuthHandler
+from backend.util.request import Requests
 
 
 class TodoistOAuthHandler(BaseOAuthHandler):
@@ -48,12 +47,12 @@ class TodoistOAuthHandler(BaseOAuthHandler):
             "redirect_uri": self.redirect_uri,
         }
 
-        response = requests.post(self.TOKEN_URL, data=data)
+        response = Requests().post(self.TOKEN_URL, data=data)
         response.raise_for_status()
 
         tokens = response.json()
 
-        response = requests.post(
+        response = Requests().post(
             "https://api.todoist.com/sync/v9/sync",
             headers={"Authorization": f"Bearer {tokens['access_token']}"},
             data={"sync_token": "*", "resource_types": '["user"]'},
