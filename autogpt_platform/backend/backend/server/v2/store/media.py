@@ -67,7 +67,7 @@ async def upload_media(
     # Validate file signature/magic bytes
     if file.content_type in ALLOWED_IMAGE_TYPES:
         # Check image file signatures
-        if content.startswith(b"\xff\xd8\xff"):  # JPEG
+        if content.startswith(b"\xFF\xD8\xFF"):  # JPEG
             if file.content_type != "image/jpeg":
                 raise backend.server.v2.store.exceptions.InvalidFileTypeError(
                     "File signature does not match content type"
