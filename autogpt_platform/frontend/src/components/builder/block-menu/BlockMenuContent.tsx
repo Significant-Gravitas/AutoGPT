@@ -10,12 +10,8 @@ const BlockMenuContent: React.FC = () => {
   const { searchQuery } = useBlockMenuContext();
   return (
     <div className="flex h-full w-full flex-col">
-      {/* Search Bar */}
       <BlockMenuSearchBar />
-
       <Separator className="h-[1px] w-full text-zinc-300" />
-
-      {/* Content */}
       {searchQuery ? <BlockMenuSearch /> : <BlockMenuDefault />}
     </div>
   );

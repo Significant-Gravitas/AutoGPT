@@ -1,5 +1,3 @@
-// BLOCK MENU TODO: Currently when i click on the control panel button, if it is already open, then it needs to close, currently its not happening
-
 import React, { useCallback, useState } from "react";
 import {
   Popover,

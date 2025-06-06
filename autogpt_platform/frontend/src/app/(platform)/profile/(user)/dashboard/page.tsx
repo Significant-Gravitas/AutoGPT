@@ -11,7 +11,7 @@ import {
   StoreSubmissionsResponse,
   StoreSubmissionRequest,
 } from "@/lib/autogpt-server-api/types";
-import useSupabase from "@/hooks/useSupabase";
+import useSupabase from "@/lib/supabase/useSupabase";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export default function Page({}: {}) {

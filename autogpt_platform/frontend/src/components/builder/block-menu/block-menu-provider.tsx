@@ -108,7 +108,6 @@ export function BlockMenuStateProvider({
     integrations: 0,
     marketplace_agents: 0,
     my_agents: 0,
-    providers: 0,
   });
 
   const [loadingSlug, setLoadingSlug] = useState<string | null>(null);

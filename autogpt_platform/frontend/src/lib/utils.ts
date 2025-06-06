@@ -432,8 +432,7 @@ export const convertLibraryAgentIntoBlock = (agent: LibraryAgent) => {
 
 // Need to change it once, we got provider blocks
 export const getBlockType = (item: any) => {
-  console.log(item);
-  if (item.inputSchema.properties?.model?.title === "LLM Model") {
+  if (item?.inputSchema?.properties?.model?.title === "LLM Model") {
     return "ai_agent";
   }
   if (item.id && item.name && item.inputSchema && item.outputSchema) {

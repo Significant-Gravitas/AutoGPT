@@ -1,13 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback } from "react";
 import FilterChip from "../FilterChip";
 import FilterSheet from "./FilterSheet";
 import { CategoryKey, useBlockMenuContext } from "../block-menu-provider";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 const FiltersList = () => {
-  const { filters, setFilters, categoryCounts, setCategoryCounts } =
-    useBlockMenuContext();
-  const api = useBackendAPI();
+  const { filters, setFilters, categoryCounts } = useBlockMenuContext();
   const categories: Array<{ key: CategoryKey; name: string }> = [
     { key: "blocks", name: "Blocks" },
     { key: "integrations", name: "Integrations" },
@@ -38,10 +35,6 @@ const FiltersList = () => {
     },
     [filters, setFilters],
   );
-
-  useEffect(() => {
-    console.log(categoryCounts);
-  }, [categoryCounts]);
 
   return (
     <div className="flex flex-nowrap gap-3 overflow-x-auto scrollbar-hide">

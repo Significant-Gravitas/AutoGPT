@@ -305,6 +305,13 @@ def _enqueue_next_nodes(
         )
 
     def register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
+        try:
+            return _register_next_executions(node_link)
+        except Exception as e:
+            log_metadata.exception(f"Failed to register next executions: {e}")
+            return []
+
+    def _register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
         enqueued_executions = []
         next_output_name = node_link.source_name
         next_input_name = node_link.sink_name

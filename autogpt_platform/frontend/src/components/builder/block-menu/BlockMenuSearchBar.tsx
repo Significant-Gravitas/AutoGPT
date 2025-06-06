@@ -15,7 +15,7 @@ const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [localQuery, setLocalQuery] = useState("");
-  const { searchQuery, setSearchQuery, searchId, setSearchId, setFilters } =
+  const { setSearchQuery, searchId, setSearchId, setFilters } =
     useBlockMenuContext();
 
   const debouncedSetSearchQuery = useMemo(
