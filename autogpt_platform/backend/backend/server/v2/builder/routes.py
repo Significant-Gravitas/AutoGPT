@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 router = fastapi.APIRouter()
 
 
+# Taken from backend/server/v2/store/db.py
 def sanitize_query(query: str | None) -> str | None:
     if query is None:
         return query
@@ -44,7 +45,9 @@ def sanitize_query(query: str | None) -> str | None:
 async def get_suggestions(
     user_id: Annotated[str, fastapi.Depends(get_user_id)],
 ) -> builder_model.SuggestionsResponse:
-    # todo kcze temp response
+    """
+    Get all suggestions for the Blocks Menu.
+    """
     return builder_model.SuggestionsResponse(
         otto_suggestions=[
             "What blocks do I need to get started?",
@@ -59,9 +62,9 @@ async def get_suggestions(
         providers=[
             ProviderName.TWITTER,
             ProviderName.GITHUB,
-            ProviderName.HUBSPOT,
-            ProviderName.EXA,
-            ProviderName.JINA,
+            ProviderName.NOTION,
+            ProviderName.GOOGLE,
+            ProviderName.DISCORD,
             ProviderName.GOOGLE_MAPS,
         ],
         top_blocks=await builder_db.get_suggested_blocks(),
@@ -75,6 +78,9 @@ async def get_suggestions(
 async def get_block_categories(
     category_blocks: Annotated[int, fastapi.Query()] = 3,
 ) -> Sequence[builder_model.BlockCategoryResponse]:
+    """
+    Get all block categories with a specified number of blocks per category.
+    """
     return builder_db.get_block_categories(category_blocks)
 
 
@@ -89,6 +95,9 @@ async def get_blocks(
     page: Annotated[int, fastapi.Query()] = 1,
     page_size: Annotated[int, fastapi.Query()] = 50,
 ) -> builder_model.BlockResponse:
+    """
+    Get blocks based on either category, type, or provider.
+    """
     return builder_db.get_blocks(
         category=category,
         type=type,
@@ -106,6 +115,9 @@ async def get_providers(
     page: Annotated[int, fastapi.Query()] = 1,
     page_size: Annotated[int, fastapi.Query()] = 50,
 ) -> builder_model.ProviderResponse:
+    """
+    Get all integration providers with their block counts.
+    """
     return builder_db.get_providers(
         page=page,
         page_size=page_size,
@@ -121,6 +133,9 @@ async def search(
     options: builder_model.SearchRequest,
     user_id: Annotated[str, fastapi.Depends(get_user_id)],
 ) -> builder_model.SearchResponse:
+    """
+    Search for blocks (including integrations), marketplace agents, and user library agents.
+    """
     # If no filters are provided, then we will return all types
     if not options.filter:
         options.filter = [
@@ -178,17 +193,13 @@ async def search(
         )
 
     more_pages = False
-    if blocks.blocks.pagination.current_page < blocks.blocks.pagination.total_pages:
-        more_pages = True
-    if my_agents.pagination.current_page < my_agents.pagination.total_pages:
-        more_pages = True
     if (
-        marketplace_agents.pagination.current_page
+        blocks.blocks.pagination.current_page < blocks.blocks.pagination.total_pages
+        or my_agents.pagination.current_page < my_agents.pagination.total_pages
+        or marketplace_agents.pagination.current_page
         < marketplace_agents.pagination.total_pages
     ):
         more_pages = True
-
-    # todo kcze sort results
 
     return builder_model.SearchResponse(
         items=blocks.blocks.blocks + my_agents.agents + marketplace_agents.agents,
@@ -210,4 +221,7 @@ async def search(
 async def get_counts(
     user_id: Annotated[str, fastapi.Depends(get_user_id)],
 ) -> builder_model.CountResponse:
+    """
+    Get item counts for the menu categories in the Blocks Menu.
+    """
     return await builder_db.get_counts(user_id)
