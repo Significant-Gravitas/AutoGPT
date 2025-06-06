@@ -179,8 +179,8 @@ export default function useAgentGraph(
       setAgentDescription(graph.description);
 
       const getGraphName = (node: Node) => {
-        if (node.input_default.block_name) {
-          return node.input_default.block_name;
+        if (node.input_default.agent_name) {
+          return node.input_default.agent_name;
         }
         return (
           availableFlows.find((flow) => flow.id === node.input_default.graph_id)
@@ -296,7 +296,7 @@ export default function useAgentGraph(
 
     const sinkNodeName =
       sinkNode.data.block_id === SpecialBlockID.AGENT
-        ? sinkNode.data.hardcodedValues?.block_name ||
+        ? sinkNode.data.hardcodedValues?.agent_name ||
           availableFlows.find(
             (flow) => flow.id === sinkNode.data.hardcodedValues.graph_id,
           )?.name ||

@@ -423,7 +423,7 @@ export const convertLibraryAgentIntoBlock = (agent: LibraryAgent) => {
       graph_version: agent.graph_version,
       input_schema: agent.input_schema,
       output_schema: agent.output_schema,
-      block_name: agent.name,
+      agent_name: agent.name,
     },
   } as Block;
 
