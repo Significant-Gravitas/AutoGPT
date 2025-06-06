@@ -20,10 +20,8 @@ const nextConfig = {
 };
 
 const isDevelopmentBuild = process.env.NODE_ENV !== "production";
-const sentryDisabled =
-  process.env.SENTRY_DISABLED === "true" || isDevelopmentBuild;
 
-export default sentryDisabled
+export default isDevelopmentBuild
   ? nextConfig
   : withSentryConfig(nextConfig, {
       // For all available options, see:
