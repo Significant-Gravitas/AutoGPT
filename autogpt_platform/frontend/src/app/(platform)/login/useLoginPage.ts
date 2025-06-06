@@ -17,7 +17,7 @@ export function useLoginPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
-  const isCloudEnv = true;
+  const isCloudEnv = getBehaveAs() === BehaveAs.CLOUD;
 
   const turnstile = useTurnstile({
     action: "login",
