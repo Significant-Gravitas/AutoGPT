@@ -1,4 +1,5 @@
 node_modules
+pnpm-lock.yaml
 .next
 build
 public

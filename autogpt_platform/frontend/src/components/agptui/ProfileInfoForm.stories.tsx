@@ -51,9 +51,6 @@ export const Empty: Story = {
       description: "",
       avatar_url: "",
       links: [],
-      top_categories: [],
-      agent_rating: 0,
-      agent_runs: 0,
     },
   },
 };
@@ -71,9 +68,6 @@ export const Filled: Story = {
         "twitter.com/oliviagrace",
         "github.com/ograce",
       ],
-      top_categories: ["Entertainment", "Blog", "Content creation"],
-      agent_rating: 4.5,
-      agent_runs: 100,
     },
   },
 };
