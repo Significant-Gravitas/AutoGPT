@@ -1110,6 +1110,7 @@ export default function useAgentGraph(
     setAgentDescription,
     savedAgent,
     availableNodes,
+    availableFlows,
     getOutputType,
     requestSave,
     requestSaveAndRun,
