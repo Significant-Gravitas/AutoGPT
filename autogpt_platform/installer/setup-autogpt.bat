@@ -66,6 +66,16 @@ if %CLONE_NEEDED%==1 (
 )
 echo.
 
+REM --- Prompt for Sentry enablement ---
+set SENTRY_ENABLED=0
+echo Would you like to enable debug information to be shared so we can fix your issues? [Y/n]
+set /p sentry_answer="Enable Sentry? [Y/n]: "
+if /I "%sentry_answer%"=="" set SENTRY_ENABLED=1
+if /I "%sentry_answer%"=="y" set SENTRY_ENABLED=1
+if /I "%sentry_answer%"=="yes" set SENTRY_ENABLED=1
+if /I "%sentry_answer%"=="n" set SENTRY_ENABLED=0
+if /I "%sentry_answer%"=="no" set SENTRY_ENABLED=0
+
 REM --- Setup backend ---
 echo Setting up backend services...
 echo.
@@ -73,6 +83,16 @@ cd /d "%REPO_DIR%\autogpt_platform"
 if exist .env.example copy /Y .env.example .env >nul
 cd backend
 if exist .env.example copy /Y .env.example .env >nul
+
+REM --- Set SENTRY_DSN in backend/.env ---
+set SENTRY_DSN=https://11d0640fef35640e0eb9f022eb7d7626@o4505260022104064.ingest.us.sentry.io/4507890252447744
+if %SENTRY_ENABLED%==1 (
+    powershell -Command "(Get-Content .env) -replace '^SENTRY_DSN=.*', 'SENTRY_DSN=%SENTRY_DSN%' | Set-Content .env"
+    echo Sentry enabled in backend.
+) else (
+    powershell -Command "(Get-Content .env) -replace '^SENTRY_DSN=.*', 'SENTRY_DSN=' | Set-Content .env"
+    echo Sentry not enabled in backend.
+)
 cd ..
 
 docker compose down > "%BACKEND_LOG%" 2>&1
