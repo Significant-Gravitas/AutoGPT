@@ -48,7 +48,7 @@ export function useTurnstile({
     const behaveAs = getBehaveAs();
     const hasTurnstileKey = !!TURNSTILE_SITE_KEY;
     const turnstileDisabled =
-      process.env.NEXT_PUBLIC_DISABLE_TURNSTILE === "true";
+      process.env.NEXT_PUBLIC_TURNSTILE !== "enabled";
 
     // Only render Turnstile in cloud environment if not explicitly disabled
     setShouldRender(
