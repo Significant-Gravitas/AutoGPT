@@ -17,8 +17,8 @@ import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Checkbox } from "@/components/ui/checkbox";
-import useSupabase from "@/hooks/useSupabase";
-import Spinner from "@/components/Spinner";
+import useSupabase from "@/lib/supabase/useSupabase";
+import LoadingBox from "@/components/ui/loading";
 import {
   AuthCard,
   AuthHeader,
@@ -37,6 +37,7 @@ export default function SignupPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [captchaKey, setCaptchaKey] = useState(0);
   //TODO: Remove after closed beta
 
   const turnstile = useTurnstile({
@@ -55,6 +56,11 @@ export default function SignupPage() {
     },
   });
 
+  const resetCaptcha = useCallback(() => {
+    setCaptchaKey((k) => k + 1);
+    turnstile.reset();
+  }, [turnstile]);
+
   const onSignup = useCallback(
     async (data: z.infer<typeof signupFormSchema>) => {
       setIsLoading(true);
@@ -67,6 +73,7 @@ export default function SignupPage() {
       if (!turnstile.verified) {
         setFeedback("Please complete the CAPTCHA challenge.");
         setIsLoading(false);
+        resetCaptcha();
         return;
       }
 
@@ -75,11 +82,11 @@ export default function SignupPage() {
       if (error) {
         if (error === "user_already_exists") {
           setFeedback("User with this email already exists");
-          turnstile.reset();
+          resetCaptcha();
           return;
         } else {
           setFeedback(error);
-          turnstile.reset();
+          resetCaptcha();
         }
         return;
       }
@@ -94,7 +101,7 @@ export default function SignupPage() {
   }
 
   if (isUserLoading || user) {
-    return <Spinner className="h-[80vh]" />;
+    return <LoadingBox className="h-[80vh]" />;
   }
 
   if (!supabase) {
@@ -151,7 +158,7 @@ export default function SignupPage() {
                   <PasswordInput {...field} autoComplete="new-password" />
                 </FormControl>
                 <FormDescription className="text-sm font-normal leading-tight text-slate-500">
-                  Password needs to be at least 6 characters long
+                  Password needs to be at least 12 characters long
                 </FormDescription>
                 <FormMessage />
               </FormItem>
@@ -160,10 +167,12 @@ export default function SignupPage() {
 
           {/* Turnstile CAPTCHA Component */}
           <Turnstile
+            key={captchaKey}
             siteKey={turnstile.siteKey}
             onVerify={turnstile.handleVerify}
             onExpire={turnstile.handleExpire}
             onError={turnstile.handleError}
+            setWidgetId={turnstile.setWidgetId}
             action="signup"
             shouldRender={turnstile.shouldRender}
           />

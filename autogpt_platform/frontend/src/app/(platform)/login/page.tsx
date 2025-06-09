@@ -15,8 +15,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import useSupabase from "@/hooks/useSupabase";
-import Spinner from "@/components/Spinner";
+import useSupabase from "@/lib/supabase/useSupabase";
+import LoadingBox from "@/components/ui/loading";
 import {
   AuthCard,
   AuthHeader,
@@ -35,6 +35,7 @@ export default function LoginPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [captchaKey, setCaptchaKey] = useState(0);
 
   const turnstile = useTurnstile({
     action: "login",
@@ -64,6 +65,11 @@ export default function LoginPage() {
   //   setFeedback(null);
   // }, [supabase]);
 
+  const resetCaptcha = useCallback(() => {
+    setCaptchaKey((k) => k + 1);
+    turnstile.reset();
+  }, [turnstile]);
+
   const onLogin = useCallback(
     async (data: z.infer<typeof loginFormSchema>) => {
       setIsLoading(true);
@@ -76,20 +82,21 @@ export default function LoginPage() {
       if (!turnstile.verified) {
         setFeedback("Please complete the CAPTCHA challenge.");
         setIsLoading(false);
+        resetCaptcha();
         return;
       }
 
       const error = await login(data, turnstile.token as string);
+      await supabase?.auth.refreshSession();
       setIsLoading(false);
       if (error) {
         setFeedback(error);
-        // Always reset the turnstile on any error
-        turnstile.reset();
+        resetCaptcha();
         return;
       }
       setFeedback(null);
     },
-    [form, turnstile],
+    [form, turnstile, supabase],
   );
 
   if (user) {
@@ -98,7 +105,7 @@ export default function LoginPage() {
   }
 
   if (isUserLoading || user) {
-    return <Spinner className="h-[80vh]" />;
+    return <LoadingBox className="h-[80vh]" />;
   }
 
   if (!supabase) {
@@ -159,10 +166,12 @@ export default function LoginPage() {
 
           {/* Turnstile CAPTCHA Component */}
           <Turnstile
+            key={captchaKey}
             siteKey={turnstile.siteKey}
             onVerify={turnstile.handleVerify}
             onExpire={turnstile.handleExpire}
             onError={turnstile.handleError}
+            setWidgetId={turnstile.setWidgetId}
             action="login"
             shouldRender={turnstile.shouldRender}
           />

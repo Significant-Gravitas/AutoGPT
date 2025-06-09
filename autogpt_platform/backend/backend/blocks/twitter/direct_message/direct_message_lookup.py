@@ -1,4 +1,4 @@
-# Todo : Add new Type support
+# Todo : Add new Type support, and disable block if it's Oauth is not configured
 
 # from typing import cast
 # import tweepy

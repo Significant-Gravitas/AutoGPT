@@ -13,19 +13,19 @@ To run the tests, you can use the following commands:
 Running the tests without the UI, and headless:
 
 ```bash
-yarn test
+pnpm test
 ```
 
 If you want to run the tests in a UI where you can identify each locator used you can use the following command:
 
 ```bash
-yarn test-ui
+pnpm test-ui
 ```
 
-You can also pass `--debug` to the test command to open the browsers in view mode rather than headless. This works with both the `yarn test` and `yarn test-ui` commands.
+You can also pass `--debug` to the test command to open the browsers in view mode rather than headless. This works with both the `pnpm test` and `pnpm test-ui` commands.
 
 ```bash
-yarn test --debug
+pnpm test --debug
 ```
 
 In CI, we run the tests in headless mode, with multiple browsers, and retry a failed test up to 2 times.
@@ -45,7 +45,7 @@ No matter what you do, you should **always** double check that your locators are
 If you need to debug a test, you can use the below command to open the test in the playwright test editor. This is helpful if you want to see the test in the browser and see the state of the page as the test sees it and the locators it uses.
 
 ```bash
-yarn test --debug --test-name-pattern="test-name"
+pnpm test --debug --test-name-pattern="test-name"
 ```
 
 #### Using vscode
@@ -64,7 +64,7 @@ This will save a file called `.auth/gentest-user.json` that can be loaded for al
 ### Saving a session for gen tests to always use
 
 ```bash
-yarn gentests --save-storage .auth/gentest-user.json
+pnpm gentests --save-storage .auth/gentest-user.json
 ```
 
 Stop your session with `CTRL + C` after you are logged in and swap the `--save-storage` flag with `--load-storage` to load the session for all future tests.
@@ -72,7 +72,7 @@ Stop your session with `CTRL + C` after you are logged in and swap the `--save-s
 ### Loading a session for gen tests to always use
 
 ```bash
-yarn gentests --load-storage .auth/gentest-user.json
+pnpm gentests --load-storage .auth/gentest-user.json
 ```
 
 ## How to make a new test

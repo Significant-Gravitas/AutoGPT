@@ -6,6 +6,7 @@ from tweepy.client import Response
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TWITTER_OAUTH_IS_CONFIGURED,
     TwitterCredentials,
     TwitterCredentialsField,
     TwitterCredentialsInput,
@@ -41,6 +42,7 @@ class TwitterDeleteListBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterDeleteListBlock.Input,
             output_schema=TwitterDeleteListBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={"list_id": "1234567890", "credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
@@ -118,6 +120,7 @@ class TwitterUpdateListBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterUpdateListBlock.Input,
             output_schema=TwitterUpdateListBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "list_id": "1234567890",
                 "name": "Updated List Name",
@@ -214,6 +217,7 @@ class TwitterCreateListBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterCreateListBlock.Input,
             output_schema=TwitterCreateListBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "name": "New List Name",
                 "description": "New List Description",

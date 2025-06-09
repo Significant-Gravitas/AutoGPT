@@ -78,6 +78,9 @@ class ExaSearchBlock(Block):
             description="List of search results",
             default_factory=list,
         )
+        error: str = SchemaField(
+            description="Error message if the request failed",
+        )
 
     def __init__(self):
         super().__init__(
@@ -140,4 +143,3 @@ class ExaSearchBlock(Block):
             yield "results", data.get("results", [])
         except Exception as e:
             yield "error", str(e)
-            yield "results", []

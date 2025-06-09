@@ -39,9 +39,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
+import LoadingBox, { LoadingSpinner } from "@/components/ui/loading";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
+  const { toast } = useToast();
   const router = useRouter();
   const api = useBackendAPI();
 
@@ -66,10 +68,19 @@ export default function AgentRunsPage(): React.ReactElement {
     useState<boolean>(false);
   const [confirmingDeleteAgentRun, setConfirmingDeleteAgentRun] =
     useState<GraphExecutionMeta | null>(null);
-  const { state: onboardingState, updateState: updateOnboardingState } =
-    useOnboarding();
+  const {
+    state: onboardingState,
+    updateState: updateOnboardingState,
+    incrementRuns,
+  } = useOnboarding();
   const [copyAgentDialogOpen, setCopyAgentDialogOpen] = useState(false);
-  const { toast } = useToast();
+
+  // Set page title with agent name
+  useEffect(() => {
+    if (agent) {
+      document.title = `${agent.name} - Library - AutoGPT Platform`;
+    }
+  }, [agent]);
 
   const openRunDraftView = useCallback(() => {
     selectView({ type: "run" });
@@ -120,7 +131,11 @@ export default function AgentRunsPage(): React.ReactElement {
     }
   }, [selectedRun, onboardingState, updateOnboardingState]);
 
+  const lastRefresh = useRef<number>(0);
   const refreshPageData = useCallback(() => {
+    if (Date.now() - lastRefresh.current < 2e3) return; // 2 second debounce
+    lastRefresh.current = Date.now();
+
     api.getLibraryAgent(agentID).then((agent) => {
       setAgent(agent);
 
@@ -156,6 +171,44 @@ export default function AgentRunsPage(): React.ReactElement {
   // Initial load
   useEffect(() => {
     refreshPageData();
+
+    // Show a toast when the WebSocket connection disconnects
+    let connectionToast: ReturnType<typeof toast> | null = null;
+    const cancelDisconnectHandler = api.onWebSocketDisconnect(() => {
+      connectionToast ??= toast({
+        title: "Connection to server was lost",
+        variant: "destructive",
+        description: (
+          <div className="flex items-center">
+            Trying to reconnect...
+            <LoadingSpinner className="ml-1.5 size-3.5" />
+          </div>
+        ),
+        duration: Infinity, // show until connection is re-established
+        dismissable: false,
+      });
+    });
+    const cancelConnectHandler = api.onWebSocketConnect(() => {
+      if (connectionToast)
+        connectionToast.update({
+          id: connectionToast.id,
+          title: "✅ Connection re-established",
+          variant: "default",
+          description: (
+            <div className="flex items-center">
+              Refreshing data...
+              <LoadingSpinner className="ml-1.5 size-3.5" />
+            </div>
+          ),
+          duration: 2000,
+          dismissable: true,
+        });
+      connectionToast = null;
+    });
+    return () => {
+      cancelDisconnectHandler();
+      cancelConnectHandler();
+    };
   }, []);
 
   // Subscribe to WebSocket updates for agent runs
@@ -177,6 +230,10 @@ export default function AgentRunsPage(): React.ReactElement {
       (data) => {
         if (data.graph_id != agent?.graph_id) return;
 
+        if (data.status == "COMPLETED") {
+          incrementRuns();
+        }
+
         setAgentRuns((prev) => {
           const index = prev.findIndex((run) => run.id === data.id);
           if (index === -1) {
@@ -195,7 +252,7 @@ export default function AgentRunsPage(): React.ReactElement {
     return () => {
       detachExecUpdateHandler();
     };
-  }, [api, agent?.graph_id, selectedView.id]);
+  }, [api, agent?.graph_id, selectedView.id, incrementRuns]);
 
   // Pre-load selectedRun based on selectedView
   useEffect(() => {
@@ -313,9 +370,15 @@ export default function AgentRunsPage(): React.ReactElement {
     [agent, downloadGraph],
   );
 
+  const onRun = useCallback(
+    (runID: GraphExecutionID) => {
+      selectRun(runID);
+    },
+    [selectRun],
+  );
+
   if (!agent || !graph) {
-    /* TODO: implement loading indicators / skeleton page */
-    return <span>Loading...</span>;
+    return <LoadingBox className="h-[90vh]" />;
   }
 
   return (
@@ -354,14 +417,14 @@ export default function AgentRunsPage(): React.ReactElement {
               graph={graphVersions.current[selectedRun.graph_version] ?? graph}
               run={selectedRun}
               agentActions={agentActions}
-              onRun={(runID) => selectRun(runID)}
+              onRun={onRun}
               deleteRun={() => setConfirmingDeleteAgentRun(selectedRun)}
             />
           )
         ) : selectedView.type == "run" ? (
           <AgentRunDraftView
             graph={graph}
-            onRun={(runID) => selectRun(runID)}
+            onRun={onRun}
             agentActions={agentActions}
           />
         ) : selectedView.type == "schedule" ? (
@@ -369,11 +432,11 @@ export default function AgentRunsPage(): React.ReactElement {
             <AgentScheduleDetailsView
               graph={graph}
               schedule={selectedSchedule}
-              onForcedRun={(runID) => selectRun(runID)}
+              onForcedRun={onRun}
               agentActions={agentActions}
             />
           )
-        ) : null) || <p>Loading...</p>}
+        ) : null) || <LoadingBox className="h-[70vh]" />}
 
         <DeleteConfirmDialog
           entityType="agent"

@@ -1,9 +1,10 @@
+import type { UnsafeUnwrappedCookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 
-export default function getServerSupabase() {
+export default async function getServerSupabase() {
   // Need require here, so Next.js doesn't complain about importing this on client side
   const { cookies } = require("next/headers");
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
 
   try {
     const supabase = createServerClient(
