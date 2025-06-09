@@ -42,6 +42,7 @@ class LibraryAgent(pydantic.BaseModel):
 
     # Made input_schema and output_schema match GraphMeta's type
     input_schema: dict[str, Any]  # Should be BlockIOObjectSubSchema in frontend
+    output_schema: dict[str, Any]
 
     # Indicates whether there's a new output (based on recent runs)
     new_output: bool
@@ -106,6 +107,7 @@ class LibraryAgent(pydantic.BaseModel):
             name=graph.name,
             description=graph.description,
             input_schema=graph.input_schema,
+            output_schema=graph.output_schema,
             new_output=new_output,
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,

@@ -448,7 +448,7 @@ async def add_store_agent_to_library(
                             "agentGraphVersion": graph.version,
                         }
                     },
-                    include={"AgentGraph": True},
+                    include=library_agent_include(user_id),
                 )
             )
             if existing_library_agent:
