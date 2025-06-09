@@ -1,0 +1,119 @@
+import React, { useEffect, useState } from "react";
+import MenuItem from "../MenuItem";
+import { DefaultStateType, useBlockMenuContext } from "../block-menu-provider";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { CountResponse } from "@/lib/autogpt-server-api";
+
+const BlockMenuSidebar: React.FC = ({}) => {
+  const { defaultState, setDefaultState, setIntegration } =
+    useBlockMenuContext();
+  const [blockCounts, setBlockCounts] = useState<CountResponse | undefined>(
+    undefined,
+  );
+  const api = useBackendAPI();
+
+  useEffect(() => {
+    const fetchBlockCounts = async () => {
+      try {
+        const counts = await api.getBlockCounts();
+        setBlockCounts(counts);
+      } catch (error) {
+        console.error("Failed to fetch block counts:", error);
+      }
+    };
+
+    fetchBlockCounts();
+  }, [api]);
+
+  const topLevelMenuItems = [
+    {
+      name: "Suggestion",
+      type: "suggestion",
+    },
+    {
+      name: "All blocks",
+      type: "all_blocks",
+      number: blockCounts?.all_blocks,
+    },
+  ];
+
+  const subMenuItems = [
+    {
+      name: "Input blocks",
+      type: "input_blocks",
+      number: blockCounts?.input_blocks,
+    },
+    {
+      name: "Action blocks",
+      type: "action_blocks",
+      number: blockCounts?.action_blocks,
+    },
+    {
+      name: "Output blocks",
+      type: "output_blocks",
+      number: blockCounts?.output_blocks,
+    },
+  ];
+
+  const bottomMenuItems = [
+    {
+      name: "Integrations",
+      type: "integrations",
+      number: blockCounts?.integrations,
+      onClick: () => {
+        setIntegration(null);
+        setDefaultState("integrations");
+      },
+    },
+    {
+      name: "Marketplace Agents",
+      type: "marketplace_agents",
+      number: blockCounts?.marketplace_agents,
+    },
+    {
+      name: "My Agents",
+      type: "my_agents",
+      number: blockCounts?.my_agents,
+    },
+  ];
+
+  return (
+    <div className="w-fit space-y-2 px-4 pt-4">
+      {topLevelMenuItems.map((item) => (
+        <MenuItem
+          key={item.type}
+          name={item.name}
+          number={item.number}
+          selected={defaultState === item.type}
+          onClick={() => setDefaultState(item.type as DefaultStateType)}
+        />
+      ))}
+      <div className="ml-[0.5365rem] space-y-2 border-l border-black/10 pl-[0.75rem]">
+        {subMenuItems.map((item) => (
+          <MenuItem
+            key={item.type}
+            name={item.name}
+            number={item.number}
+            className="max-w-[11.5339rem]"
+            selected={defaultState === item.type}
+            onClick={() => setDefaultState(item.type as DefaultStateType)}
+          />
+        ))}
+      </div>
+      {bottomMenuItems.map((item) => (
+        <MenuItem
+          key={item.type}
+          name={item.name}
+          number={item.number}
+          selected={defaultState === item.type}
+          onClick={
+            item.onClick ||
+            (() => setDefaultState(item.type as DefaultStateType))
+          }
+        />
+      ))}
+    </div>
+  );
+};
+
+export default BlockMenuSidebar;
