@@ -55,7 +55,7 @@ if exist "%REPO_DIR%\.git" (
 REM --- Clone repo if needed ---
 if %CLONE_NEEDED%==1 (
     echo Cloning AutoGPT repository...
-    git clone --branch auto-setup-script https://github.com/Significant-Gravitas/AutoGPT.git "%REPO_DIR%"
+    git clone https://github.com/Significant-Gravitas/AutoGPT.git "%REPO_DIR%"
     if errorlevel 1 (
         echo Failed to clone repository.
         pause
