@@ -61,13 +61,12 @@ export async function providerLogin(provider: LoginProvider) {
     {},
     async () => {
       const supabase = await getServerSupabase();
-      const api = new BackendAPI();
 
       if (!supabase) {
         redirect("/error");
       }
 
-      const { error } = await supabase!.auth.signInWithOAuth({
+      const { data, error } = await supabase!.auth.signInWithOAuth({
         provider: provider,
         options: {
           redirectTo:
@@ -81,12 +80,13 @@ export async function providerLogin(provider: LoginProvider) {
         return error.message;
       }
 
-      await api.createUser();
-      // Don't onboard if disabled or already onboarded
-      if (await shouldShowOnboarding()) {
-        revalidatePath("/onboarding", "layout");
-        redirect("/onboarding");
+      // Redirect to the OAuth provider's URL
+      if (data?.url) {
+        redirect(data.url);
       }
+
+      // Note: api.createUser() and onboarding check happen in the callback handler
+      // after the session is established. See `auth/callback/route.ts`.
     },
   );
 }
