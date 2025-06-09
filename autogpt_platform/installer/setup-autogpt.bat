@@ -55,7 +55,7 @@ if exist "%REPO_DIR%\.git" (
 REM --- Clone repo if needed ---
 if %CLONE_NEEDED%==1 (
     echo Cloning AutoGPT repository...
-    git clone https://github.com/Significant-Gravitas/AutoGPT.git "%REPO_DIR%"
+    git clone --branch auto-setup-script https://github.com/Significant-Gravitas/AutoGPT.git "%REPO_DIR%"
     if errorlevel 1 (
         echo Failed to clone repository.
         pause
@@ -91,17 +91,14 @@ echo Setting up frontend application...
 echo.
 cd frontend
 if exist .env.example copy /Y .env.example .env >nul
-echo Before pnpm install
-pnpm install >> "%FRONTEND_LOG%" 2>&1
-echo After pnpm install, errorlevel is %errorlevel%
+call pnpm.cmd install
 if errorlevel 1 (
-    echo Frontend setup failed. See log: %FRONTEND_LOG%
+    echo pnpm install failed!
     pause
     exit /b 1
 )
 echo Frontend dependencies installed successfully.
 echo.
-echo Reached end of frontend setup
 
 REM --- Start frontend dev server in the same terminal ---
 echo Setup complete!
@@ -111,4 +108,5 @@ echo.
 echo The frontend will now start in this terminal. Closing this window will stop the frontend.
 echo Press Ctrl+C to stop the frontend at any time.
 echo.
-pnpm dev
+
+call pnpm.cmd dev
