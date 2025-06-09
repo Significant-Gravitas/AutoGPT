@@ -46,9 +46,9 @@
     "@radix-ui/react-tabs": "1.1.12",
     "@radix-ui/react-toast": "1.2.14",
     "@radix-ui/react-tooltip": "1.2.7",
-    "@sentry/nextjs": "9.26.0",
+    "@sentry/nextjs": "9.27.0",
     "@supabase/ssr": "0.6.1",
-    "@supabase/supabase-js": "2.49.10",
+    "@supabase/supabase-js": "2.50.0",
     "@tanstack/react-table": "8.21.3",
     "@types/jaro-winkler": "0.2.4",
     "@xyflow/react": "12.6.4",
@@ -86,7 +86,7 @@
     "tailwind-merge": "2.6.0",
     "tailwindcss-animate": "1.0.7",
     "uuid": "11.1.0",
-    "zod": "3.25.51"
+    "zod": "3.25.56"
   },
   "devDependencies": {
     "@chromatic-com/storybook": "3.2.4",
