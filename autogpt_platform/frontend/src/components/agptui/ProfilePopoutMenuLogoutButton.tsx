@@ -1,13 +1,13 @@
 "use client";
-
-import { logout } from "@/app/(platform)/login/actions";
+import useSupabase from "@/lib/supabase/useSupabase";
 import { IconLogOut } from "@/components/ui/icons";
 
 export const ProfilePopoutMenuLogoutButton = () => {
+  const supabase = useSupabase();
   return (
     <div
       className="inline-flex w-full items-center justify-start gap-2.5"
-      onClick={() => logout()}
+      onClick={() => supabase.logOut()}
       role="button"
       tabIndex={0}
     >
