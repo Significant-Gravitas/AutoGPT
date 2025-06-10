@@ -670,8 +670,41 @@ class Executor:
                 )
                 running_executions[output.node.id].add_output(output)
 
+        def process_done_task(exec_id: str, result: object):
+            if not isinstance(result, NodeExecutionStats):
+                return
+
+            nonlocal execution_stats
+            execution_stats.node_count += 1
+            execution_stats.nodes_cputime += result.cputime
+            execution_stats.nodes_walltime += result.walltime
+            if (err := result.error) and isinstance(err, Exception):
+                execution_stats.node_error_count += 1
+                cls.db_client.update_node_execution_status(
+                    node_exec_id=exec_id, status=ExecutionStatus.FAILED
+                )
+            else:
+                cls.db_client.update_node_execution_status(
+                    node_exec_id=exec_id, status=ExecutionStatus.COMPLETED
+                )
+
+            if _graph_exec := cls.db_client.update_graph_execution_stats(
+                graph_exec_id=graph_exec.graph_exec_id,
+                status=execution_status,
+                stats=execution_stats,
+            ):
+                send_execution_update(_graph_exec)
+            else:
+                logger.error(
+                    "Callback for "
+                    f"finished node execution #{exec_id} "
+                    "could not update execution stats "
+                    f"for graph execution #{graph_exec.graph_exec_id}; "
+                    f"triggered while graph exec status = {execution_status}"
+                )
+
         running_executions: dict[str, NodeExecutionProgress] = defaultdict(
-            lambda: NodeExecutionProgress(drain_output_queue)
+            lambda: NodeExecutionProgress(drain_output_queue, process_done_task)
         )
         output_queue = ExecutionQueue[ExecutionOutputEntry]()
         execution_queue = ExecutionQueue[NodeExecutionEntry]()
@@ -690,35 +723,6 @@ class Executor:
                 statuses=[ExecutionStatus.RUNNING, ExecutionStatus.QUEUED],
             ):
                 execution_queue.add(node_exec.to_node_execution_entry())
-
-            def make_exec_callback(exec_data: NodeExecutionEntry):
-                def callback(result: object):
-                    if not isinstance(result, NodeExecutionStats):
-                        return
-
-                    nonlocal execution_stats
-                    execution_stats.node_count += 1
-                    execution_stats.nodes_cputime += result.cputime
-                    execution_stats.nodes_walltime += result.walltime
-                    if (err := result.error) and isinstance(err, Exception):
-                        execution_stats.node_error_count += 1
-
-                    if _graph_exec := cls.db_client.update_graph_execution_stats(
-                        graph_exec_id=exec_data.graph_exec_id,
-                        status=execution_status,
-                        stats=execution_stats,
-                    ):
-                        send_execution_update(_graph_exec)
-                    else:
-                        logger.error(
-                            "Callback for "
-                            f"finished node execution #{exec_data.node_exec_id} "
-                            "could not update execution stats "
-                            f"for graph execution #{exec_data.graph_exec_id}; "
-                            f"triggered while graph exec status = {execution_status}"
-                        )
-
-                return callback
 
             while not execution_queue.empty():
                 if cancel.is_set():
@@ -778,9 +782,6 @@ class Executor:
                         output_queue, queued_node_exec, node_creds_map
                     ),
                     cls.node_execution_loop,
-                )
-                node_execution_task.add_done_callback(
-                    make_exec_callback(queued_node_exec)
                 )
                 running_executions[queued_node_exec.node_id].add_task(
                     queued_node_exec.node_exec_id, node_execution_task

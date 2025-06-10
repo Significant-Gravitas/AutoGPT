@@ -822,10 +822,15 @@ class ExecutionOutputEntry(BaseModel):
 
 
 class NodeExecutionProgress:
-    def __init__(self, drain_output_queue: Callable[[], None]):
+    def __init__(
+        self,
+        drain_output_queue: Callable[[], None],
+        done_task_callback: Callable[[str, object], None],
+    ):
         self.output: dict[str, list[ExecutionOutputEntry]] = defaultdict(list)
         self.tasks: dict[str, Future] = {}
         self.drain_output_queue = drain_output_queue
+        self.done_task_callback = done_task_callback
 
     def add_task(self, node_exec_id: str, task: Future):
         self.tasks[node_exec_id] = task
@@ -890,7 +895,9 @@ class NodeExecutionProgress:
         if self.output[exec_id]:
             return False
 
-        self.tasks.pop(exec_id)
+        task = self.tasks.pop(exec_id)
+        self.done_task_callback(exec_id, task.result())
+
         return True
 
     def _next_exec(self) -> str | None:
