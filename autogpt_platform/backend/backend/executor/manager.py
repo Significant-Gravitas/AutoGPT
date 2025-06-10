@@ -873,7 +873,7 @@ class Executor:
                         if execution.is_done():
                             running_executions.pop(node_id)
 
-                    if execution_queue.empty():
+                    if execution_queue.empty() and running_executions:
                         log_metadata.debug(
                             "No more nodes to execute, waiting for outputs..."
                         )
