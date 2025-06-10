@@ -867,11 +867,11 @@ class Executor:
                             if not execution_queue.empty():
                                 break  # Prioritize executing next nodes than enqueuing outputs
 
-                        if not execution_queue.empty():
-                            continue  # Make sure each not is checked once
-
                         if execution.is_done():
                             running_executions.pop(node_id)
+
+                        if not execution_queue.empty():
+                            continue  # Make sure each not is checked once
 
                     if execution_queue.empty() and running_executions:
                         log_metadata.debug(
