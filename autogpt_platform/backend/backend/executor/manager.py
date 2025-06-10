@@ -833,21 +833,23 @@ class Executor:
                     continue
                 log_metadata.info(f"Stopping node execution {node_id}")
 
-            inflight_executions = cls.db_client.get_node_executions(
-                graph_exec.graph_exec_id,
-                statuses=[
-                    ExecutionStatus.QUEUED,
-                    ExecutionStatus.RUNNING,
-                    ExecutionStatus.INCOMPLETE,
-                ],
-            )
-            cls.db_client.update_node_execution_status_batch(
-                [node_exec.node_exec_id for node_exec in inflight_executions],
-                status=ExecutionStatus.TERMINATED,
-            )
-            for node_exec in inflight_executions:
-                node_exec.status = execution_status
-                send_execution_update(node_exec)
+            if execution_status in [ExecutionStatus.TERMINATED, ExecutionStatus.FAILED]:
+                inflight_executions = cls.db_client.get_node_executions(
+                    graph_exec.graph_exec_id,
+                    statuses=[
+                        ExecutionStatus.QUEUED,
+                        ExecutionStatus.RUNNING,
+                        ExecutionStatus.INCOMPLETE,
+                    ],
+                )
+                cls.db_client.update_node_execution_status_batch(
+                    [node_exec.node_exec_id for node_exec in inflight_executions],
+                    status=execution_status,
+                    stats={"error": str(error)} if error else None,
+                )
+                for node_exec in inflight_executions:
+                    node_exec.status = execution_status
+                    send_execution_update(node_exec)
 
             clean_exec_files(graph_exec.graph_exec_id)
             return execution_stats, execution_status, error
