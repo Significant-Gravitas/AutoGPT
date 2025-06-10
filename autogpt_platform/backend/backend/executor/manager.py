@@ -839,7 +839,6 @@ class Executor:
                     statuses=[
                         ExecutionStatus.QUEUED,
                         ExecutionStatus.RUNNING,
-                        ExecutionStatus.INCOMPLETE,
                     ],
                 )
                 cls.db_client.update_node_execution_status_batch(
