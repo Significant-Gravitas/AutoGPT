@@ -104,7 +104,7 @@ class AIVideoGeneratorBlock(Block):
         submit_url = f"{base_url}/{input_data.model.value}"
         submit_data = {"prompt": input_data.prompt}
         if input_data.model == FalModel.VEO3:
-            submit_data["generate_audio"] = True
+            submit_data["generate_audio"] = True # type: ignore
 
         seen_logs = set()
 
