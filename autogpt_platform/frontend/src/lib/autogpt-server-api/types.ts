@@ -281,6 +281,7 @@ export type GraphExecutionMeta = {
   started_at: Date;
   ended_at: Date;
   stats?: {
+    error?: string;
     cost: number;
     duration: number;
     duration_cpu_only: number;
