@@ -825,12 +825,12 @@ class NodeExecutionProgress:
     def __init__(
         self,
         drain_output_queue: Callable[[], None],
-        done_task_callback: Callable[[str, object], None],
+        drain_done_task: Callable[[str, object], None],
     ):
         self.output: dict[str, list[ExecutionOutputEntry]] = defaultdict(list)
         self.tasks: dict[str, Future] = {}
         self.drain_output_queue = drain_output_queue
-        self.done_task_callback = done_task_callback
+        self.drain_done_task = drain_done_task
 
     def add_task(self, node_exec_id: str, task: Future):
         self.tasks[node_exec_id] = task
@@ -895,8 +895,8 @@ class NodeExecutionProgress:
         if self.output[exec_id]:
             return False
 
-        task = self.tasks.pop(exec_id)
-        self.done_task_callback(exec_id, task.result())
+        if task := self.tasks.pop(exec_id):
+            self.drain_done_task(exec_id, task.result())
 
         return True
 

@@ -626,6 +626,8 @@ async def update_node_execution_stats(
     node_exec_id: str, stats: NodeExecutionStats
 ) -> NodeExecutionResult:
     data = stats.model_dump()
+    if isinstance(data["error"], Exception):
+        data["error"] = str(data["error"])
 
     res = await AgentNodeExecution.prisma().update(
         where={"id": node_exec_id},

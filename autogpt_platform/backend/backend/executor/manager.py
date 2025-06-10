@@ -670,8 +670,9 @@ class Executor:
                 )
                 running_executions[output.node.id].add_output(output)
 
-        def process_done_task(exec_id: str, result: object):
+        def drain_done_task(node_exec_id: str, result: object):
             if not isinstance(result, NodeExecutionStats):
+                log_metadata.error(f"Unexpected result #{node_exec_id}: {type(result)}")
                 return
 
             nonlocal execution_stats
@@ -681,11 +682,13 @@ class Executor:
             if (err := result.error) and isinstance(err, Exception):
                 execution_stats.node_error_count += 1
                 cls.db_client.update_node_execution_status(
-                    node_exec_id=exec_id, status=ExecutionStatus.FAILED
+                    node_exec_id=node_exec_id,
+                    status=ExecutionStatus.FAILED,
                 )
             else:
                 cls.db_client.update_node_execution_status(
-                    node_exec_id=exec_id, status=ExecutionStatus.COMPLETED
+                    node_exec_id=node_exec_id,
+                    status=ExecutionStatus.COMPLETED,
                 )
 
             if _graph_exec := cls.db_client.update_graph_execution_stats(
@@ -697,14 +700,17 @@ class Executor:
             else:
                 logger.error(
                     "Callback for "
-                    f"finished node execution #{exec_id} "
+                    f"finished node execution #{node_exec_id} "
                     "could not update execution stats "
                     f"for graph execution #{graph_exec.graph_exec_id}; "
                     f"triggered while graph exec status = {execution_status}"
                 )
 
         running_executions: dict[str, NodeExecutionProgress] = defaultdict(
-            lambda: NodeExecutionProgress(drain_output_queue, process_done_task)
+            lambda: NodeExecutionProgress(
+                drain_output_queue=drain_output_queue,
+                drain_done_task=drain_done_task,
+            )
         )
         output_queue = ExecutionQueue[ExecutionOutputEntry]()
         execution_queue = ExecutionQueue[NodeExecutionEntry]()
@@ -810,15 +816,19 @@ class Executor:
                                 execution_queue=execution_queue,
                             )
                             if not execution_queue.empty():
-                                break
-
-                        if not execution_queue.empty():
-                            continue  # yield to parent loop to execute new queue items
+                                break  # Prioritize executing next nodes than enqueuing outputs
 
                         if execution.is_done():
                             running_executions.pop(node_id)
-                        else:
-                            time.sleep(0.1)
+
+                        if not execution_queue.empty():
+                            continue  # Make sure each not is checked once
+
+                    if execution_queue.empty() and running_executions:
+                        log_metadata.debug(
+                            "No more nodes to execute, waiting for outputs..."
+                        )
+                        time.sleep(0.1)
 
             log_metadata.info(f"Finished graph execution {graph_exec.graph_exec_id}")
             execution_status = ExecutionStatus.COMPLETED
