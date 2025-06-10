@@ -877,7 +877,7 @@ class Executor:
                         log_metadata.debug(
                             "No more nodes to execute, waiting for outputs..."
                         )
-                        time.sleep(1)
+                        time.sleep(0.1)
 
             log_metadata.info(f"Finished graph execution {graph_exec.graph_exec_id}")
             execution_status = ExecutionStatus.COMPLETED
