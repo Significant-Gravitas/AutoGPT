@@ -207,6 +207,9 @@ importers:
       '@storybook/addon-a11y':
         specifier: 8.6.14
         version: 8.6.14(storybook@8.6.14(prettier@3.5.3))
+      '@storybook/addon-docs':
+        specifier: 8.6.14
+        version: 8.6.14(@types/react@18.3.17)(storybook@8.6.14(prettier@3.5.3))
       '@storybook/addon-essentials':
         specifier: 8.6.14
         version: 8.6.14(@types/react@18.3.17)(storybook@8.6.14(prettier@3.5.3))
