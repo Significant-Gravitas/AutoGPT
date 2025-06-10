@@ -379,12 +379,12 @@ export default function useAgentGraph(
       ];
 
       const statusRank = {
-        TERMINATED: 0,
+        RUNNING: 0,
         QUEUED: 1,
-        RUNNING: 2,
-        COMPLETED: 3,
-        FAILED: 4,
-        INCOMPLETE: 5,
+        INCOMPLETE: 2,
+        TERMINATED: 3,
+        COMPLETED: 4,
+        FAILED: 5,
       };
       const status = executionResults
         .map((v) => v.status)
