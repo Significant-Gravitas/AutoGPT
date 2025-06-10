@@ -579,7 +579,7 @@ async def execute_graph(
     if current_balance <= 0:
         raise HTTPException(
             status_code=402,
-            detail="Insufficient credits to execute the graph. Please top up your credits.",
+            detail="Insufficient balance to execute the agent. Please top up your account.",
         )
 
     graph_exec = await execution_utils.add_graph_execution_async(
