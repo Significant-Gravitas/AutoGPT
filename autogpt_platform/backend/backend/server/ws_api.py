@@ -3,6 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Protocol
 
+import pydantic
 import uvicorn
 from autogpt_libs.auth import parse_jwt_token
 from autogpt_libs.logging.utils import generate_uvicorn_config
@@ -51,7 +52,11 @@ async def event_broadcaster(manager: ConnectionManager):
         async for event in event_queue.listen("*"):
             await manager.send_execution_update(event)
     except Exception as e:
-        logger.exception(f"Event broadcaster error: {e}")
+        logger.exception(
+            "Event broadcaster stopped due to error: %s. "
+            "Verify the Redis connection and restart the service.",
+            e,
+        )
         raise
 
 
@@ -221,7 +226,22 @@ async def websocket_router(
     try:
         while True:
             data = await websocket.receive_text()
-            message = WSMessage.model_validate_json(data)
+            try:
+                message = WSMessage.model_validate_json(data)
+            except pydantic.ValidationError as e:
+                logger.error(
+                    "Invalid WebSocket message from user #%s: %s",
+                    user_id,
+                    e,
+                )
+                await websocket.send_text(
+                    WSMessage(
+                        method=WSMethod.ERROR,
+                        success=False,
+                        error=("Invalid message format. Review the schema and retry"),
+                    ).model_dump_json()
+                )
+                continue
 
             try:
                 if message.method in _MSG_HANDLERS:
@@ -232,6 +252,21 @@ async def websocket_router(
                         message=message,
                     )
                     continue
+            except pydantic.ValidationError as e:
+                logger.error(
+                    "Validation error while handling '%s' for user #%s: %s",
+                    message.method.value,
+                    user_id,
+                    e,
+                )
+                await websocket.send_text(
+                    WSMessage(
+                        method=WSMethod.ERROR,
+                        success=False,
+                        error="Invalid message data. Refer to the API schema",
+                    ).model_dump_json()
+                )
+                continue
             except Exception as e:
                 logger.error(
                     f"Error while handling '{message.method.value}' message "

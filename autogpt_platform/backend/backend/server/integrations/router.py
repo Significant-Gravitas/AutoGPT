@@ -120,9 +120,17 @@ def callback(
             )
 
     except Exception as e:
-        logger.error(f"Code->Token exchange failed for provider {provider.value}: {e}")
+        logger.exception(
+            "OAuth callback for provider %s failed during code exchange: %s. Confirm provider credentials.",
+            provider.value,
+            e,
+        )
         raise HTTPException(
-            status_code=400, detail=f"Failed to exchange code for tokens: {str(e)}"
+            status_code=400,
+            detail={
+                "message": str(e),
+                "hint": "Verify OAuth configuration and try again.",
+            },
         )
 
     # TODO: Allow specifying `title` to set on `credentials`
@@ -286,9 +294,13 @@ async def webhook_ingress_generic(
     try:
         webhook = await get_webhook(webhook_id)
     except NotFoundError as e:
-        logger.warning(f"Webhook payload received for unknown webhook: {e}")
+        logger.warning(
+            "Webhook payload received for unknown webhook %s. Confirm the webhook ID.",
+            webhook_id,
+        )
         raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND, detail=f"Webhook #{webhook_id} not found"
+            status_code=HTTP_404_NOT_FOUND,
+            detail={"message": str(e), "hint": "Check if the webhook ID is correct."},
         ) from e
     logger.debug(f"Webhook #{webhook_id}: {webhook}")
     payload, event_type = await webhook_manager.validate_payload(webhook, request)
@@ -398,11 +410,16 @@ def _get_provider_oauth_handler(
     client_id = getattr(settings.secrets, f"{provider_name.value}_client_id")
     client_secret = getattr(settings.secrets, f"{provider_name.value}_client_secret")
     if not (client_id and client_secret):
+        logger.error(
+            "OAuth credentials for provider %s are missing. Check environment configuration.",
+            provider_name.value,
+        )
         raise HTTPException(
             status_code=501,
-            detail=(
-                f"Integration with provider '{provider_name.value}' is not configured"
-            ),
+            detail={
+                "message": f"Integration with provider '{provider_name.value}' is not configured",
+                "hint": "Set client ID and secret in the environment.",
+            },
         )
 
     handler_class = HANDLERS_BY_NAME[provider_name]
