@@ -298,7 +298,7 @@ class AIImageGeneratorBlock(Block):
 
     async def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
         try:
-            url = self.generate_image(input_data, credentials)
+            url = await self.generate_image(input_data, credentials)
             if url:
                 yield "image_url", url
             else:
