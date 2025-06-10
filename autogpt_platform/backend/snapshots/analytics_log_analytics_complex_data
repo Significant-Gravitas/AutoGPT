@@ -1,0 +1,30 @@
+{
+  "analytics_id": "analytics-complex-uuid",
+  "logged_data": {
+    "agent_id": "agent_123",
+    "blocks_used": [
+      {
+        "block_id": "llm_block",
+        "count": 3
+      },
+      {
+        "block_id": "http_block",
+        "count": 5
+      },
+      {
+        "block_id": "code_block",
+        "count": 2
+      }
+    ],
+    "duration_ms": 3500,
+    "errors": [],
+    "execution_id": "exec_456",
+    "metadata": {
+      "environment": "production",
+      "trigger": "manual",
+      "user_tier": "premium"
+    },
+    "nodes_executed": 15,
+    "status": "completed"
+  }
+}

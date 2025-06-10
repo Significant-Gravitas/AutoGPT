@@ -22,22 +22,20 @@ interface TaskGroup {
 export function TaskGroups() {
   const [groups, setGroups] = useState<TaskGroup[]>([
     {
-      name: "Run your first agent",
+      name: "Run your first agents",
       isOpen: true,
       tasks: [
         {
-          id: "CONGRATS",
-          name: "Finish onboarding",
+          id: "GET_RESULTS",
+          name: "Complete onboarding and see your first agent's results",
           amount: 3,
-          details: "Go through our step by step tutorial",
+          details: "",
         },
         {
-          id: "GET_RESULTS",
-          name: "Get results from first agent",
+          id: "RUN_AGENTS",
+          name: "Run 10 agents",
           amount: 3,
-          details:
-            "Sit back and relax - your agent is running and will finish soon! See the results in the Library once it's done",
-          video: "/onboarding/get-results.mp4",
+          details: "Run agents from Library or Builder 10 times",
         },
       ],
     },
@@ -308,7 +306,7 @@ export function TaskGroups() {
                     >
                       {task.details}
                     </div>
-                    {task.video && (
+                    {task.video ? (
                       <div
                         className={cn(
                           "relative mx-6 aspect-video overflow-hidden rounded-lg transition-all duration-300 ease-in-out",
@@ -329,6 +327,8 @@ export function TaskGroups() {
                           )}
                         ></video>
                       </div>
+                    ) : (
+                      <div className="mb-1" />
                     )}
                   </>
                 )}
