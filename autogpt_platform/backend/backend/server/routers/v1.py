@@ -575,6 +575,13 @@ async def execute_graph(
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
 ) -> ExecuteGraphResponse:
+    current_balance = await _user_credit_model.get_credits(user_id)
+    if current_balance <= 0:
+        raise HTTPException(
+            status_code=402,
+            detail="Insufficient balance to execute the agent. Please top up your account.",
+        )
+
     graph_exec = await execution_utils.add_graph_execution_async(
         graph_id=graph_id,
         user_id=user_id,
