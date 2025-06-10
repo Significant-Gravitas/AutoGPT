@@ -798,11 +798,10 @@ class Executor:
                             execution_status = ExecutionStatus.TERMINATED
                             return execution_stats, execution_status, error
 
-                        if not execution_queue.empty():
-                            break  # yield to parent loop to execute new queue items
-
                         log_metadata.debug(f"Waiting on execution of node {node_id}")
-                        while output := execution.pop_output():
+                        while execution_queue.empty() and (
+                            output := execution.pop_output()
+                        ):
                             cls._process_node_output(
                                 output=output,
                                 node_id=node_id,
@@ -812,7 +811,10 @@ class Executor:
                                 execution_queue=execution_queue,
                             )
 
-                        if execution.is_done(1):
+                        if not execution_queue.empty():
+                            break  # yield to parent loop to execute new queue items
+
+                        if execution.is_done():
                             running_executions.pop(node_id)
                         else:
                             time.sleep(0.1)
