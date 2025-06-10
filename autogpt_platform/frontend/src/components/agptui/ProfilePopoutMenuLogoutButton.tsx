@@ -6,6 +6,7 @@ import { LoadingSpinner } from "../ui/loading";
 import { cn } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { toast } from "../ui/use-toast";
+import * as Sentry from "@sentry/nextjs";
 
 export function ProfilePopoutMenuLogoutButton() {
   const router = useRouter();
@@ -18,7 +19,7 @@ export function ProfilePopoutMenuLogoutButton() {
         await supabase.logOut();
         router.refresh();
       } catch (e) {
-        console.error(e);
+        Sentry.captureException(e);
         toast({
           title: "Error logging out",
           description:
