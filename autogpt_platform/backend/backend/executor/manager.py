@@ -790,7 +790,8 @@ class Executor:
                     cls.node_execution_loop,
                 )
                 running_executions[queued_node_exec.node_id].add_task(
-                    queued_node_exec.node_exec_id, node_execution_task
+                    node_exec_id=queued_node_exec.node_exec_id,
+                    task=node_execution_task,
                 )
 
                 # Avoid terminating graph execution when some nodes are still running.

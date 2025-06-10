@@ -175,12 +175,12 @@ class GithubCreateCheckRunBlock(Block):
         response = await api.post(
             check_runs_url, data=data.model_dump_json(exclude_none=True)
         )
-        data = response.json()
+        result = response.json()
 
         return {
-            "id": data["id"],
-            "html_url": data["html_url"],
-            "status": data["status"],
+            "id": result["id"],
+            "html_url": result["html_url"],
+            "status": result["status"],
         }
 
     async def run(
@@ -328,13 +328,13 @@ class GithubUpdateCheckRunBlock(Block):
         response = await api.patch(
             check_run_url, data=data.model_dump_json(exclude_none=True)
         )
-        data = response.json()
+        result = response.json()
 
         return {
-            "id": data["id"],
-            "html_url": data["html_url"],
-            "status": data["status"],
-            "conclusion": data.get("conclusion"),
+            "id": result["id"],
+            "html_url": result["html_url"],
+            "status": result["status"],
+            "conclusion": result.get("conclusion"),
         }
 
     async def run(
