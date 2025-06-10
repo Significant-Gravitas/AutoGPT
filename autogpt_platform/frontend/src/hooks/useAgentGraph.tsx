@@ -354,6 +354,55 @@ export default function useAgentGraph(
     [getFrontendId, nodes],
   );
 
+  const addExecutionDataToNode = useCallback(
+    (node: CustomNode, executionData: NodeExecutionResult) => {
+      if (!executionData.output_data) {
+        console.warn(
+          `Execution data for node ${executionData.node_id} is empty, skipping update`,
+        );
+        return node;
+      }
+
+      const executionResults = [
+        // Execution updates are not cumulative, so we need to filter out the old ones.
+        ...(node.data.executionResults?.filter(
+          (result) => result.execId !== executionData.node_exec_id,
+        ) || []),
+        {
+          execId: executionData.node_exec_id,
+          data: {
+            "[Input]": [executionData.input_data],
+            ...executionData.output_data,
+          },
+          status: executionData.status,
+        },
+      ];
+
+      const statusRank = {
+        TERMINATED: 0,
+        QUEUED: 1,
+        RUNNING: 2,
+        COMPLETED: 3,
+        FAILED: 4,
+        INCOMPLETE: 5,
+      };
+      const status = executionResults
+        .map((v) => v.status)
+        .reduce((a, b) => (statusRank[a] < statusRank[b] ? a : b));
+
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          status,
+          executionResults,
+          isOutputOpen: true,
+        },
+      };
+    },
+    [],
+  );
+
   const updateNodesWithExecutionData = useCallback(
     (executionData: NodeExecutionResult) => {
       if (!executionData.node_id) return;
@@ -374,31 +423,7 @@ export default function useAgentGraph(
         }
         return nodes.map((node) =>
           node.id === nodeId
-            ? {
-                ...node,
-                data: {
-                  ...node.data,
-                  status: executionData.status,
-                  executionResults:
-                    Object.keys(executionData.output_data).length > 0
-                      ? [
-                          // Execution updates are not cumulative, so we need to filter out the old ones.
-                          ...(node.data.executionResults?.filter(
-                            (result) =>
-                              result.execId !== executionData.node_exec_id,
-                          ) || []),
-                          {
-                            execId: executionData.node_exec_id,
-                            data: {
-                              "[Input]": [executionData.input_data],
-                              ...executionData.output_data,
-                            },
-                          },
-                        ]
-                      : node.data.executionResults,
-                  isOutputOpen: true,
-                },
-              }
+            ? addExecutionDataToNode(node, executionData)
             : node,
         );
       });
@@ -694,20 +719,17 @@ export default function useAgentGraph(
         return [...prev, ...execution.node_executions];
       });
 
-      // Track execution until completed
-      const pendingNodeExecutions: Set<string> = new Set();
-      const cancelExecListener = api.onWebSocketMessage(
-        "node_execution_event",
-        (nodeResult) => {
-          // We are racing the server here, since we need the ID to filter events
-          if (nodeResult.graph_exec_id != flowExecutionID) {
+      const cancelGraphExecListener = api.onWebSocketMessage(
+        "graph_execution_event",
+        (graphExec) => {
+          if (graphExec.id != flowExecutionID) {
             return;
           }
           if (
-            nodeResult.status === "FAILED" &&
-            nodeResult.output_data?.error?.[0]
-              .toLowerCase()
-              .includes("insufficient balance")
+            graphExec.status === "FAILED" &&
+            graphExec?.stats?.error
+              ?.toLowerCase()
+              ?.includes("insufficient balance")
           ) {
             // Show no credits toast if user has low credits
             toast({
@@ -731,17 +753,11 @@ export default function useAgentGraph(
             });
           }
           if (
-            !["COMPLETED", "TERMINATED", "FAILED"].includes(nodeResult.status)
+            graphExec.status === "COMPLETED" ||
+            graphExec.status === "TERMINATED" ||
+            graphExec.status === "FAILED"
           ) {
-            pendingNodeExecutions.add(nodeResult.node_exec_id);
-          } else {
-            pendingNodeExecutions.delete(nodeResult.node_exec_id);
-          }
-          if (pendingNodeExecutions.size == 0) {
-            // Assuming the first event is always a QUEUED node, and
-            // following nodes are QUEUED before all preceding nodes are COMPLETED,
-            // an empty set means the graph has finished running.
-            cancelExecListener();
+            cancelGraphExecListener();
             setSaveRunRequest({ request: "none", state: "none" });
             incrementRuns();
           }
