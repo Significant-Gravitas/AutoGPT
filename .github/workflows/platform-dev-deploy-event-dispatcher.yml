@@ -82,7 +82,7 @@ jobs:
           
       - name: Dispatch Deploy Event
         if: steps.check_status.outputs.should_deploy == 'true'
-        uses: peter-evans/repository-dispatch@v2
+        uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.DISPATCH_TOKEN }}
           repository: Significant-Gravitas/AutoGPT_cloud_infrastructure
@@ -110,7 +110,7 @@ jobs:
 
       - name: Dispatch Undeploy Event (from comment)
         if: steps.check_status.outputs.should_undeploy == 'true'
-        uses: peter-evans/repository-dispatch@v2
+        uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.DISPATCH_TOKEN }}
           repository: Significant-Gravitas/AutoGPT_cloud_infrastructure
@@ -168,7 +168,7 @@ jobs:
           github.event_name == 'pull_request' &&
           github.event.action == 'closed' &&
           steps.check_pr_close.outputs.should_undeploy == 'true'
-        uses: peter-evans/repository-dispatch@v2
+        uses: peter-evans/repository-dispatch@v3
         with:
           token: ${{ secrets.DISPATCH_TOKEN }}
           repository: Significant-Gravitas/AutoGPT_cloud_infrastructure

@@ -1083,8 +1083,8 @@ class AITextSummarizerBlock(AIBlockBase):
     def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        for output in self._run(input_data, credentials):
-            yield output
+        for output_name, output_data in self._run(input_data, credentials):
+            yield output_name, output_data
 
     def _run(self, input_data: Input, credentials: APIKeyCredentials) -> BlockOutput:
         chunks = self._split_text(

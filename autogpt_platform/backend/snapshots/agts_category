@@ -1,0 +1,21 @@
+{
+  "agents": [
+    {
+      "slug": "category-agent",
+      "agent_name": "Category Agent",
+      "agent_image": "category.jpg",
+      "creator": "creator1",
+      "creator_avatar": "avatar1.jpg",
+      "sub_heading": "Category agent subheading",
+      "description": "Category agent description",
+      "runs": 60,
+      "rating": 4.1
+    }
+  ],
+  "pagination": {
+    "total_items": 1,
+    "total_pages": 1,
+    "current_page": 1,
+    "page_size": 20
+  }
+}
