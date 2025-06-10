@@ -71,7 +71,7 @@ def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     tags=["blocks"],
     dependencies=[Depends(require_permission(APIKeyPermission.EXECUTE_BLOCK))],
 )
-def execute_graph_block(
+async def execute_graph_block(
     block_id: str,
     data: BlockInput,
     api_key: APIKey = Depends(require_permission(APIKeyPermission.EXECUTE_BLOCK)),
@@ -81,7 +81,7 @@ def execute_graph_block(
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
 
     output = defaultdict(list)
-    for name, data in obj.execute(data):
+    async for name, data in obj.execute(data):
         output[name].append(data)
     return output
 

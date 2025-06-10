@@ -37,7 +37,7 @@ class Slant3DTriggerBase:
             description="Error message if payload processing failed"
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "payload", input_data.payload
         yield "order_id", input_data.payload["orderId"]
 
@@ -117,8 +117,13 @@ class Slant3DOrderWebhookBlock(Slant3DTriggerBase, Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:  # type: ignore
-        yield from super().run(input_data, **kwargs)
+    async def _extract_and_normalize(self, input_data: Input) -> BlockOutput:
+        yield "payload", input_data.payload
+        yield "order_id", input_data.payload["orderId"]
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:  # type: ignore
+        async for name, value in self._extract_and_normalize(input_data):
+            yield name, value
 
         # Extract and normalize values from the payload
         yield "status", input_data.payload["status"]

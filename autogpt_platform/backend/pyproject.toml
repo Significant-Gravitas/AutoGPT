@@ -10,6 +10,7 @@ packages = [{ include = "backend", format = "sdist" }]
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
 aio-pika = "^9.5.5"
+aiodns = "^3.1.1"
 anthropic = "^0.51.0"
 apscheduler = "^3.11.0"
 autogpt-libs = { path = "../autogpt_libs", develop = true }

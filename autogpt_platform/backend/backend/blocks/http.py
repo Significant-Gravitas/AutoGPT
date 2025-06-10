@@ -4,8 +4,6 @@ from enum import Enum
 from io import BufferedReader
 from pathlib import Path
 
-from requests.exceptions import HTTPError, RequestException
-
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 from backend.util.file import (
@@ -77,7 +75,7 @@ class SendWebRequestBlock(Block):
         )
 
     @staticmethod
-    def _prepare_files(
+    async def _prepare_files(
         graph_exec_id: str,
         files_name: str,
         files: list[MediaFileType],
@@ -91,7 +89,9 @@ class SendWebRequestBlock(Block):
 
         for media in files:
             # Normalise to a list so we can repeat the same key
-            rel_path = store_media_file(graph_exec_id, media, return_content=False)
+            rel_path = await store_media_file(
+                graph_exec_id, media, return_content=False
+            )
             abs_path = get_exec_file_path(graph_exec_id, rel_path)
             try:
                 handle = open(abs_path, "rb")
@@ -109,7 +109,9 @@ class SendWebRequestBlock(Block):
 
         return files_payload, open_handles
 
-    def run(self, input_data: Input, *, graph_exec_id: str, **kwargs) -> BlockOutput:
+    async def run(
+        self, input_data: Input, *, graph_exec_id: str, **kwargs
+    ) -> BlockOutput:
         # ─── Parse/normalise body ────────────────────────────────────
         body = input_data.body
         if isinstance(body, str):
@@ -124,7 +126,7 @@ class SendWebRequestBlock(Block):
         files_payload: list[tuple[str, tuple[str, BufferedReader, str]]] = []
         open_handles: list[BufferedReader] = []
         if use_files:
-            files_payload, open_handles = self._prepare_files(
+            files_payload, open_handles = await self._prepare_files(
                 graph_exec_id, input_data.files_name, input_data.files
             )
 
@@ -136,7 +138,7 @@ class SendWebRequestBlock(Block):
 
         # ─── Execute request ─────────────────────────────────────────
         try:
-            response = requests.request(
+            response = await requests.request(
                 input_data.method.value,
                 input_data.url,
                 headers=input_data.headers,
@@ -148,31 +150,19 @@ class SendWebRequestBlock(Block):
             )
 
             # Decide how to parse the response
-            if input_data.json_format or response.headers.get(
-                "content-type", ""
-            ).startswith("application/json"):
-                result = (
-                    None
-                    if (response.status_code == 204 or not response.content.strip())
-                    else response.json()
-                )
+            if response.headers.get("content-type", "").startswith("application/json"):
+                result = None if response.status == 204 else response.json()
             else:
-                result = response.text
+                result = response.text()
 
             # Yield according to status code bucket
-            if 200 <= response.status_code < 300:
+            if 200 <= response.status < 300:
                 yield "response", result
-            elif 400 <= response.status_code < 500:
+            elif 400 <= response.status < 500:
                 yield "client_error", result
             else:
                 yield "server_error", result
 
-        except HTTPError as e:
-            yield "error", f"HTTP error: {str(e)}"
-        except RequestException as e:
-            yield "error", f"Request error: {str(e)}"
-        except Exception as e:
-            yield "error", str(e)
         finally:
             for h in open_handles:
                 try:

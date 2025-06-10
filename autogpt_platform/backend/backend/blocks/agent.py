@@ -61,13 +61,13 @@ class AgentExecutorBlock(Block):
             categories={BlockCategory.AGENT},
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         from backend.data.execution import ExecutionEventType
         from backend.executor import utils as execution_utils
 
-        event_bus = execution_utils.get_execution_event_bus()
+        event_bus = execution_utils.get_async_execution_event_bus()
 
-        graph_exec = execution_utils.add_graph_execution(
+        graph_exec = await execution_utils.add_graph_execution_async(
             graph_id=input_data.graph_id,
             graph_version=input_data.graph_version,
             user_id=input_data.user_id,
@@ -77,7 +77,7 @@ class AgentExecutorBlock(Block):
         log_id = f"Graph #{input_data.graph_id}-V{input_data.graph_version}, exec-id: {graph_exec.id}"
         logger.info(f"Starting execution of {log_id}")
 
-        for event in event_bus.listen(
+        async for event in event_bus.listen(
             user_id=graph_exec.user_id,
             graph_id=graph_exec.graph_id,
             graph_exec_id=graph_exec.id,

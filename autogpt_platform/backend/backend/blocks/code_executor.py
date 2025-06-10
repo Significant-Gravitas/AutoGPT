@@ -167,7 +167,7 @@ class CodeExecutionBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
@@ -278,7 +278,7 @@ class InstantiationBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
@@ -436,7 +436,7 @@ class StepExecutionBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:

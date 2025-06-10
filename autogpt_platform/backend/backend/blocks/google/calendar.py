@@ -168,7 +168,7 @@ class GoogleCalendarReadEventsBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         try:
@@ -477,7 +477,7 @@ class GoogleCalendarCreateEventBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         try:

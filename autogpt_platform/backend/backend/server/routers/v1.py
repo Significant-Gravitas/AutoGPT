@@ -224,13 +224,13 @@ def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     tags=["blocks"],
     dependencies=[Depends(auth_middleware)],
 )
-def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput:
+async def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput:
     obj = get_block(block_id)
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
 
     output = defaultdict(list)
-    for name, data in obj.execute(data):
+    async for name, data in obj.execute(data):
         output[name].append(data)
     return output
 

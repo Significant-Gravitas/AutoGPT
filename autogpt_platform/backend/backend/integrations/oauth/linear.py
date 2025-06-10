@@ -40,12 +40,14 @@ class LinearOAuthHandler(BaseOAuthHandler):
         }
         return f"{self.auth_base_url}?{urlencode(params)}"
 
-    def exchange_code_for_tokens(
+    async def exchange_code_for_tokens(
         self, code: str, scopes: list[str], code_verifier: Optional[str]
     ) -> OAuth2Credentials:
-        return self._request_tokens({"code": code, "redirect_uri": self.redirect_uri})
+        return await self._request_tokens(
+            {"code": code, "redirect_uri": self.redirect_uri}
+        )
 
-    def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
+    async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
         if not credentials.access_token:
             raise ValueError("No access token to revoke")
 
@@ -53,34 +55,36 @@ class LinearOAuthHandler(BaseOAuthHandler):
             "Authorization": f"Bearer {credentials.access_token.get_secret_value()}"
         }
 
-        response = requests.post(self.revoke_url, headers=headers)
+        response = await requests.post(self.revoke_url, headers=headers)
         if not response.ok:
             try:
-                error_data = response.json()
+                error_data = await response.json()
                 error_message = error_data.get("error", "Unknown error")
             except json.JSONDecodeError:
                 error_message = response.text
             raise LinearAPIException(
-                f"Failed to revoke Linear tokens ({response.status_code}): {error_message}",
-                response.status_code,
+                f"Failed to revoke Linear tokens ({response.status}): {error_message}",
+                response.status,
             )
 
         return True  # Linear doesn't return JSON on successful revoke
 
-    def _refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
+    async def _refresh_tokens(
+        self, credentials: OAuth2Credentials
+    ) -> OAuth2Credentials:
         if not credentials.refresh_token:
             raise ValueError(
                 "No refresh token available."
             )  # Linear uses non-expiring tokens
 
-        return self._request_tokens(
+        return await self._request_tokens(
             {
                 "refresh_token": credentials.refresh_token.get_secret_value(),
                 "grant_type": "refresh_token",
             }
         )
 
-    def _request_tokens(
+    async def _request_tokens(
         self,
         params: dict[str, str],
         current_credentials: Optional[OAuth2Credentials] = None,
@@ -95,21 +99,23 @@ class LinearOAuthHandler(BaseOAuthHandler):
         headers = {
             "Content-Type": "application/x-www-form-urlencoded"
         }  # Correct header for token request
-        response = requests.post(self.token_url, data=request_body, headers=headers)
+        response = await requests.post(
+            self.token_url, data=request_body, headers=headers
+        )
 
         if not response.ok:
             try:
-                error_data = response.json()
+                error_data = await response.json()
                 error_message = error_data.get("error", "Unknown error")
 
             except json.JSONDecodeError:
                 error_message = response.text
             raise LinearAPIException(
-                f"Failed to fetch Linear tokens ({response.status_code}): {error_message}",
-                response.status_code,
+                f"Failed to fetch Linear tokens ({response.status}): {error_message}",
+                response.status,
             )
 
-        token_data = response.json()
+        token_data = await response.json()
 
         # Note: Linear access tokens do not expire, so we set expires_at to None
         new_credentials = OAuth2Credentials(
@@ -132,13 +138,11 @@ class LinearOAuthHandler(BaseOAuthHandler):
             new_credentials.id = current_credentials.id
         return new_credentials
 
-    def _request_username(self, access_token: str) -> Optional[str]:
-
+    async def _request_username(self, access_token: str) -> Optional[str]:
         # Use the LinearClient to fetch user details using GraphQL
         from backend.blocks.linear._api import LinearClient
 
         try:
-
             linear_client = LinearClient(
                 APIKeyCredentials(
                     api_key=SecretStr(access_token),
@@ -156,10 +160,9 @@ class LinearOAuthHandler(BaseOAuthHandler):
                 }
             """
 
-            response = linear_client.query(query)
+            response = await linear_client.query(query)
             return response["viewer"]["name"]
 
         except Exception as e:  # Handle any errors
-
             print(f"Error fetching username: {e}")
             return None

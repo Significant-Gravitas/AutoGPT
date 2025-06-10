@@ -128,7 +128,7 @@ class GmailReadBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = self._build_service(credentials, **kwargs)
@@ -286,7 +286,7 @@ class GmailSendBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = GmailReadBlock._build_service(credentials, **kwargs)
@@ -358,7 +358,7 @@ class GmailListLabelsBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = GmailReadBlock._build_service(credentials, **kwargs)
@@ -419,7 +419,7 @@ class GmailAddLabelBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = GmailReadBlock._build_service(credentials, **kwargs)
@@ -502,7 +502,7 @@ class GmailRemoveLabelBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = GmailReadBlock._build_service(credentials, **kwargs)

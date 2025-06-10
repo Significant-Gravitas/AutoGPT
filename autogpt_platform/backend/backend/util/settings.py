@@ -59,12 +59,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=1000,
         description="Maximum number of workers to use for graph execution.",
     )
-    num_node_workers: int = Field(
-        default=5,
-        ge=1,
-        le=1000,
-        description="Maximum number of workers to use for node execution within a single graph.",
-    )
     pyro_host: str = Field(
         default="localhost",
         description="The default hostname of the Pyro server.",

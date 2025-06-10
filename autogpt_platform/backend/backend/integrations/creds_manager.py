@@ -1,7 +1,7 @@
 import logging
 from contextlib import contextmanager
 from datetime import datetime
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable, Coroutine
 
 from autogpt_libs.utils.synchronize import RedisKeyedMutex
 from redis.lock import Lock as RedisLock
@@ -64,7 +64,7 @@ class IntegrationCredentialsManager:
     def exists(self, user_id: str, credentials_id: str) -> bool:
         return self.store.get_creds_by_id(user_id, credentials_id) is not None
 
-    def get(
+    async def get(
         self, user_id: str, credentials_id: str, lock: bool = True
     ) -> Credentials | None:
         credentials = self.store.get_creds_by_id(user_id, credentials_id)
@@ -78,13 +78,13 @@ class IntegrationCredentialsManager:
                 f"{datetime.fromtimestamp(credentials.access_token_expires_at)}; "
                 f"current time is {datetime.now()}"
             )
-            credentials = self.refresh_if_needed(user_id, credentials, lock)
+            credentials = await self.refresh_if_needed(user_id, credentials, lock)
         else:
             logger.debug(f"Credentials #{credentials.id} never expire")
 
         return credentials
 
-    def acquire(
+    async def acquire(
         self, user_id: str, credentials_id: str
     ) -> tuple[Credentials, RedisLock]:
         """
@@ -96,17 +96,19 @@ class IntegrationCredentialsManager:
         # to allow priority access for refreshing/updating the tokens.
         with self._locked(user_id, credentials_id, "!time_sensitive"):
             lock = self._acquire_lock(user_id, credentials_id)
-        credentials = self.get(user_id, credentials_id, lock=False)
+        credentials = await self.get(user_id, credentials_id, lock=False)
         if not credentials:
             raise ValueError(
                 f"Credentials #{credentials_id} for user #{user_id} not found"
             )
         return credentials, lock
 
-    def cached_getter(self, user_id: str) -> Callable[[str], "Credentials | None"]:
+    def cached_getter(
+        self, user_id: str
+    ) -> Callable[[str], "Coroutine[Any, Any, Credentials | None]"]:
         all_credentials = None
 
-        def get_credentials(creds_id: str) -> "Credentials | None":
+        async def get_credentials(creds_id: str) -> "Credentials | None":
             nonlocal all_credentials
             if not all_credentials:
                 # Fetch credentials on first necessity
@@ -120,11 +122,11 @@ class IntegrationCredentialsManager:
                 return credential
 
             # Credential is OAuth2 credential and has expiration timestamp
-            return self.refresh_if_needed(user_id, credential)
+            return await self.refresh_if_needed(user_id, credential)
 
         return get_credentials
 
-    def refresh_if_needed(
+    async def refresh_if_needed(
         self, user_id: str, credentials: OAuth2Credentials, lock: bool = True
     ) -> OAuth2Credentials:
         with self._locked(user_id, credentials.id, "refresh"):
@@ -139,7 +141,7 @@ class IntegrationCredentialsManager:
                     # Wait until the credentials are no longer in use anywhere
                     _lock = self._acquire_lock(user_id, credentials.id)
 
-                fresh_credentials = oauth_handler.refresh_tokens(credentials)
+                fresh_credentials = await oauth_handler.refresh_tokens(credentials)
                 self.store.update_creds(user_id, fresh_credentials)
                 if _lock and _lock.locked() and _lock.owned():
                     _lock.release()

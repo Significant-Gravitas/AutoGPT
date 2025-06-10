@@ -76,7 +76,7 @@ class CredentialsMetaResponse(BaseModel):
 
 
 @router.post("/{provider}/callback")
-def callback(
+async def callback(
     provider: Annotated[
         ProviderName, Path(title="The target provider for this OAuth exchange")
     ],
@@ -100,7 +100,7 @@ def callback(
 
         scopes = handler.handle_default_scopes(scopes)
 
-        credentials = handler.exchange_code_for_tokens(
+        credentials = await handler.exchange_code_for_tokens(
             code, scopes, valid_state.code_verifier
         )
 
@@ -182,14 +182,14 @@ def list_credentials_by_provider(
 
 
 @router.get("/{provider}/credentials/{cred_id}")
-def get_credential(
+async def get_credential(
     provider: Annotated[
         ProviderName, Path(title="The provider to retrieve credentials for")
     ],
     cred_id: Annotated[str, Path(title="The ID of the credentials to retrieve")],
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> Credentials:
-    credential = creds_manager.get(user_id, cred_id)
+    credential = await creds_manager.get(user_id, cred_id)
     if not credential:
         raise HTTPException(status_code=404, detail="Credentials not found")
     if credential.provider != provider:
@@ -262,7 +262,7 @@ async def delete_credentials(
     tokens_revoked = None
     if isinstance(creds, OAuth2Credentials):
         handler = _get_provider_oauth_handler(request, provider)
-        tokens_revoked = handler.revoke_tokens(creds)
+        tokens_revoked = await handler.revoke_tokens(creds)
 
     return CredentialsDeletionResponse(revoked=tokens_revoked)
 
@@ -336,7 +336,7 @@ async def webhook_ping(
     webhook_manager = get_webhook_manager(webhook.provider)
 
     credentials = (
-        creds_manager.get(user_id, webhook.credentials_id)
+        await creds_manager.get(user_id, webhook.credentials_id)
         if webhook.credentials_id
         else None
     )

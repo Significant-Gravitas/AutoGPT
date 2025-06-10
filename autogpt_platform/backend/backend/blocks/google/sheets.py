@@ -68,7 +68,7 @@ class GoogleSheetsReadBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = self._build_service(credentials, **kwargs)
@@ -157,7 +157,7 @@ class GoogleSheetsWriteBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = GoogleSheetsReadBlock._build_service(credentials, **kwargs)

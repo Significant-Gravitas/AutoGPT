@@ -2,13 +2,13 @@ import hashlib
 import hmac
 import logging
 
-import requests
 from fastapi import HTTPException, Request
 from strenum import StrEnum
 
 from backend.data import integrations
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
+from backend.util.request import Response, requests
 
 from ._base import BaseWebhooksManager
 
@@ -73,10 +73,10 @@ class GithubWebhooksManager(BaseWebhooksManager):
         repo, github_hook_id = webhook.resource, webhook.provider_webhook_id
         ping_url = f"{self.GITHUB_API_URL}/repos/{repo}/hooks/{github_hook_id}/pings"
 
-        response = requests.post(ping_url, headers=headers)
+        response = await requests.post(ping_url, headers=headers)
 
-        if response.status_code != 204:
-            error_msg = extract_github_error_msg(response)
+        if response.status != 204:
+            error_msg = await extract_github_error_msg(response)
             raise ValueError(f"Failed to ping GitHub webhook: {error_msg}")
 
     async def _register_webhook(
@@ -110,14 +110,14 @@ class GithubWebhooksManager(BaseWebhooksManager):
             },
         }
 
-        response = requests.post(
+        response = await requests.post(
             f"{self.GITHUB_API_URL}/repos/{resource}/hooks",
             headers=headers,
             json=webhook_data,
         )
 
-        if response.status_code != 201:
-            error_msg = extract_github_error_msg(response)
+        if response.status != 201:
+            error_msg = await extract_github_error_msg(response)
             if "not found" in error_msg.lower():
                 error_msg = (
                     f"{error_msg} "
@@ -126,8 +126,9 @@ class GithubWebhooksManager(BaseWebhooksManager):
                 )
             raise ValueError(f"Failed to create GitHub webhook: {error_msg}")
 
-        webhook_id = response.json()["id"]
-        config = response.json()["config"]
+        resp = await response.json()
+        webhook_id = resp["id"]
+        config = resp["config"]
 
         return str(webhook_id), config
 
@@ -153,9 +154,9 @@ class GithubWebhooksManager(BaseWebhooksManager):
                 f"Unsupported webhook type '{webhook.webhook_type}'"
             )
 
-        response = requests.delete(delete_url, headers=headers)
+        response = await requests.delete(delete_url, headers=headers)
 
-        if response.status_code not in [204, 404]:
+        if response.status not in [204, 404]:
             # 204 means successful deletion, 404 means the webhook was already deleted
             error_msg = extract_github_error_msg(response)
             raise ValueError(f"Failed to delete GitHub webhook: {error_msg}")
@@ -166,9 +167,9 @@ class GithubWebhooksManager(BaseWebhooksManager):
 # --8<-- [end:GithubWebhooksManager]
 
 
-def extract_github_error_msg(response: requests.Response) -> str:
+async def extract_github_error_msg(response: Response) -> str:
     error_msgs = []
-    resp = response.json()
+    resp = await response.json()
     if resp.get("message"):
         error_msgs.append(resp["message"])
     if resp.get("errors"):

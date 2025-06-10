@@ -129,7 +129,7 @@ class GithubCreateCheckRunBlock(Block):
         )
 
     @staticmethod
-    def create_check_run(
+    async def create_check_run(
         credentials: GithubCredentials,
         repo_url: str,
         name: str,
@@ -172,18 +172,18 @@ class GithubCreateCheckRunBlock(Block):
             data.output = output_data
 
         check_runs_url = f"{repo_url}/check-runs"
-        response = api.post(
+        response = await api.post(
             check_runs_url, data=data.model_dump_json(exclude_none=True)
         )
-        result = response.json()
+        data = response.json()
 
         return {
-            "id": result["id"],
-            "html_url": result["html_url"],
-            "status": result["status"],
+            "id": data["id"],
+            "html_url": data["html_url"],
+            "status": data["status"],
         }
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -191,7 +191,7 @@ class GithubCreateCheckRunBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            result = self.create_check_run(
+            result = await self.create_check_run(
                 credentials=credentials,
                 repo_url=input_data.repo_url,
                 name=input_data.name,
@@ -292,7 +292,7 @@ class GithubUpdateCheckRunBlock(Block):
         )
 
     @staticmethod
-    def update_check_run(
+    async def update_check_run(
         credentials: GithubCredentials,
         repo_url: str,
         check_run_id: int,
@@ -325,19 +325,19 @@ class GithubUpdateCheckRunBlock(Block):
             data.output = output_data
 
         check_run_url = f"{repo_url}/check-runs/{check_run_id}"
-        response = api.patch(
+        response = await api.patch(
             check_run_url, data=data.model_dump_json(exclude_none=True)
         )
-        result = response.json()
+        data = response.json()
 
         return {
-            "id": result["id"],
-            "html_url": result["html_url"],
-            "status": result["status"],
-            "conclusion": result.get("conclusion"),
+            "id": data["id"],
+            "html_url": data["html_url"],
+            "status": data["status"],
+            "conclusion": data.get("conclusion"),
         }
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -345,7 +345,7 @@ class GithubUpdateCheckRunBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            result = self.update_check_run(
+            result = await self.update_check_run(
                 credentials=credentials,
                 repo_url=input_data.repo_url,
                 check_run_id=input_data.check_run_id,

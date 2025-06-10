@@ -123,14 +123,14 @@ class AIImageEditorBlock(Block):
             test_credentials=TEST_CREDENTIALS,
         )
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         credentials: APIKeyCredentials,
         **kwargs,
     ) -> BlockOutput:
-        result = self.run_model(
+        result = await self.run_model(
             api_key=credentials.api_key,
             model_name=input_data.model.api_name,
             prompt=input_data.prompt,
@@ -140,7 +140,7 @@ class AIImageEditorBlock(Block):
         )
         yield "output_image", result
 
-    def run_model(
+    async def run_model(
         self,
         api_key: SecretStr,
         model_name: str,
@@ -157,7 +157,7 @@ class AIImageEditorBlock(Block):
             **({"seed": seed} if seed is not None else {}),
         }
 
-        output: FileOutput | list[FileOutput] = client.run(  # type: ignore
+        output: FileOutput | list[FileOutput] = await client.async_run(  # type: ignore
             model_name,
             input=input_params,
             wait=False,

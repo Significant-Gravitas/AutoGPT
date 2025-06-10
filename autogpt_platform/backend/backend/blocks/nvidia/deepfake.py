@@ -40,7 +40,7 @@ class NvidiaDeepfakeDetectBlock(Block):
             output_schema=NvidiaDeepfakeDetectBlock.Output,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: NvidiaCredentials, **kwargs
     ) -> BlockOutput:
         url = "https://ai.api.nvidia.com/v1/cv/hive/deepfake-image-detection"
@@ -59,8 +59,7 @@ class NvidiaDeepfakeDetectBlock(Block):
         }
 
         try:
-            response = requests.post(url, headers=headers, json=payload)
-            response.raise_for_status()
+            response = await requests.post(url, headers=headers, json=payload)
             data = response.json()
 
             result = data.get("data", [{}])[0]
