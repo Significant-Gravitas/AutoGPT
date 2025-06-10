@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 class FalModel(str, Enum):
     MOCHI = "fal-ai/mochi-v1"
     LUMA = "fal-ai/luma-dream-machine"
+    VEO3 = "fal-ai/veo3"
 
 
 class AIVideoGeneratorBlock(Block):
