@@ -199,8 +199,8 @@ importers:
         version: 3.25.51
     devDependencies:
       '@chromatic-com/storybook':
-        specifier: 3.2.4
-        version: 3.2.4(react@18.3.1)(storybook@8.6.14(prettier@3.5.3))
+        specifier: 3.2.6
+        version: 3.2.6(react@18.3.1)(storybook@8.6.14(prettier@3.5.3))
       '@playwright/test':
         specifier: 1.52.0
         version: 1.52.0
@@ -276,6 +276,9 @@ importers:
       eslint-plugin-storybook:
         specifier: 0.12.0
         version: 0.12.0(eslint@8.57.1)(typescript@5.8.3)
+      import-in-the-middle:
+        specifier: 1.14.0
+        version: 1.14.0
       msw:
         specifier: 2.9.0
         version: 2.9.0(@types/node@22.15.29)(typescript@5.8.3)
@@ -291,6 +294,9 @@ importers:
       prettier-plugin-tailwindcss:
         specifier: 0.6.12
         version: 0.6.12(prettier@3.5.3)
+      require-in-the-middle:
+        specifier: 7.5.2
+        version: 7.5.2
       storybook:
         specifier: 8.6.14
         version: 8.6.14(prettier@3.5.3)
@@ -949,8 +955,8 @@ packages:
   '@bundled-es-modules/tough-cookie@0.1.6':
     resolution: {integrity: sha512-dvMHbL464C0zI+Yqxbz6kZ5TOEp7GLW+pry/RWndAR8MJQAXZ2rPmIs8tziTZjeIyhSNZgZbCePtfSbdWqStJw==}
 
-  '@chromatic-com/storybook@3.2.4':
-    resolution: {integrity: sha512-5/bOOYxfwZ2BktXeqcCpOVAoR6UCoeART5t9FVy22hoo8F291zOuX4y3SDgm10B1GVU/ZTtJWPT2X9wZFlxYLg==}
+  '@chromatic-com/storybook@3.2.6':
+    resolution: {integrity: sha512-FDmn5Ry2DzQdik+eq2sp/kJMMT36Ewe7ONXUXM2Izd97c7r6R/QyGli8eyh/F0iyqVvbLveNYFyF0dBOJNwLqw==}
     engines: {node: '>=16.0.0', yarn: '>=1.22.18'}
     peerDependencies:
       storybook: ^8.2.0 || ^8.3.0-0 || ^8.4.0-0 || ^8.5.0-0 || ^8.6.0-0
@@ -8538,7 +8544,7 @@ snapshots:
       '@types/tough-cookie': 4.0.5
       tough-cookie: 4.1.4
 
-  '@chromatic-com/storybook@3.2.4(react@18.3.1)(storybook@8.6.14(prettier@3.5.3))':
+  '@chromatic-com/storybook@3.2.6(react@18.3.1)(storybook@8.6.14(prettier@3.5.3))':
     dependencies:
       chromatic: 11.25.2
       filesize: 10.1.6
@@ -15293,7 +15299,7 @@ snapshots:
     dependencies:
       debug: 4.4.1
       module-details-from-path: 1.0.4
-      resolve: 1.22.8
+      resolve: 1.22.10
     transitivePeerDependencies:
       - supports-color
 
