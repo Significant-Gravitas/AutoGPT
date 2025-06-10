@@ -92,6 +92,7 @@
     "@chromatic-com/storybook": "3.2.6",
     "@playwright/test": "1.52.0",
     "@storybook/addon-a11y": "8.6.14",
+    "@storybook/addon-docs": "8.6.14",
     "@storybook/addon-essentials": "8.6.14",
     "@storybook/addon-interactions": "8.6.14",
     "@storybook/addon-links": "8.6.14",
