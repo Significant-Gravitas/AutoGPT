@@ -1,0 +1,14 @@
+[
+  {
+    "costs": [
+      {
+        "cost": 10,
+        "type": "credit"
+      }
+    ],
+    "description": "A test block",
+    "disabled": false,
+    "id": "test-block",
+    "name": "Test Block"
+  }
+]
