@@ -11,7 +11,6 @@ const meta: Meta<typeof Text> = {
 };
 
 export default meta;
-type Story = StoryObj<typeof Text>;
 
 export function AllVariants() {
   return (
@@ -39,7 +38,7 @@ export function AllVariants() {
                   <a
                     href="https://fonts.google.com/specimen/Poppins"
                     target="_blank"
-                    rel="noopener"
+                    rel="noopener noreferrer"
                     className="text-blue-600 hover:underline"
                   >
                     Poppins
@@ -57,7 +56,7 @@ export function AllVariants() {
                   <a
                     href="https://github.com/vercel/geist-font"
                     target="_blank"
-                    rel="noopener"
+                    rel="noopener noreferrer"
                     className="text-blue-600 hover:underline"
                   >
                     Geist Sans
@@ -142,7 +141,7 @@ export function AllVariants() {
           Body Text (Geist Sans)
         </h2>
         <Text variant="lead">Lead</Text>
-        <StoryCode code={`<Text variant="lead">Lead</Text>`} />
+        <StoryCode code="<Text variant='lead'>Lead</Text>" />
         <div className="flex flex-row gap-8">
           <Text variant="large">Large</Text>
           <Text variant="large-medium">Large Medium</Text>

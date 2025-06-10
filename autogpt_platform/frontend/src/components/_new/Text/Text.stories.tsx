@@ -145,11 +145,9 @@ export const Playground: Story = {
   parameters: {
     controls: { include: ["variant", "as", "children"] },
   },
-  render: () => (
+  render: (args) => (
     <div className="space-y-8">
-      <Text variant="h2" as="h2">
-        Use the controls below to try different variants
-      </Text>
+      <Text {...args} />
     </div>
   ),
 };
