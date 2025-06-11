@@ -23,6 +23,7 @@ export default async function RootLayout({
     <html
       lang="en"
       className={`${fonts.poppins.variable} ${fonts.sans.variable} ${fonts.mono.variable}`}
+      suppressHydrationWarning
     >
       <head>
         <GoogleAnalytics
