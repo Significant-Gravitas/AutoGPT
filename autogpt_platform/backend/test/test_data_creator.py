@@ -187,26 +187,56 @@ async def main():
             )
             agent_presets.append(preset)
 
-    # Insert UserAgents
-    user_agents = []
-    print(f"Inserting {NUM_USERS * MAX_AGENTS_PER_USER} user agents")
+    # Insert Profiles first (before LibraryAgents)
+    profiles = []
+    print(f"Inserting {NUM_USERS} profiles")
+    for user in users:
+        profile = await db.profile.create(
+            data=ProfileCreateInput(
+                userId=user.id,
+                name=user.name or faker.name(),
+                username=faker.unique.user_name(),
+                description=faker.text(),
+                links=[faker.url() for _ in range(3)],
+                avatarUrl=get_image(),
+            )
+        )
+        profiles.append(profile)
+
+    # Insert LibraryAgents
+    library_agents = []
+    print(f"Inserting library agents")
     for user in users:
         num_agents = random.randint(MIN_AGENTS_PER_USER, MAX_AGENTS_PER_USER)
-        for _ in range(num_agents):  # Create 1 LibraryAgent per user
+        created_combinations = set()  # Track created combinations to avoid duplicates
+        
+        for _ in range(num_agents):
             graph = random.choice(agent_graphs)
-            preset = random.choice(agent_presets)
-            user_agent = await db.libraryagent.create(
-                data={
-                    "userId": user.id,
-                    "agentGraphId": graph.id,
-                    "agentGraphVersion": graph.version,
-                    "isFavorite": random.choice([True, False]),
-                    "isCreatedByUser": random.choice([True, False]),
-                    "isArchived": random.choice([True, False]),
-                    "isDeleted": random.choice([True, False]),
-                }
+            
+            # Skip if we already created this combination
+            combo_key = (user.id, graph.id, graph.version)
+            if combo_key in created_combinations:
+                continue
+            
+            # Get creator profile for this graph's owner
+            creator_profile = next((p for p in profiles if p.userId == graph.userId), None)
+            
+            library_agent = await db.libraryagent.create(
+                data=LibraryAgentCreateInput(
+                    userId=user.id,
+                    agentGraphId=graph.id,
+                    agentGraphVersion=graph.version,
+                    creatorId=creator_profile.id if creator_profile else None,
+                    imageUrl=get_image() if random.random() < 0.5 else None,
+                    useGraphIsActiveVersion=random.choice([True, False]),
+                    isFavorite=random.choice([True, False]),
+                    isCreatedByUser=random.choice([True, False]),
+                    isArchived=random.choice([True, False]),
+                    isDeleted=random.choice([True, False]),
+                )
             )
-            user_agents.append(user_agent)
+            library_agents.append(library_agent)
+            created_combinations.add(combo_key)
 
     # Insert AgentGraphExecutions
     agent_graph_executions = []
@@ -220,7 +250,7 @@ async def main():
             MIN_EXECUTIONS_PER_GRAPH, MAX_EXECUTIONS_PER_GRAPH
         )
         for _ in range(num_executions):
-            matching_presets = [p for p in agent_presets if p.agentId == graph.id]
+            matching_presets = [p for p in agent_presets if p.agentGraphId == graph.id]
             preset = (
                 random.choice(matching_presets)
                 if matching_presets and random.random() < 0.5
@@ -358,25 +388,10 @@ async def main():
                 )
             )
 
-    # Insert Profiles
-    profiles = []
-    print(f"Inserting {NUM_USERS} profiles")
-    for user in users:
-        profile = await db.profile.create(
-            data=ProfileCreateInput(
-                userId=user.id,
-                name=user.name or faker.name(),
-                username=faker.unique.user_name(),
-                description=faker.text(),
-                links=[faker.url() for _ in range(3)],
-                avatarUrl=get_image(),
-            )
-        )
-        profiles.append(profile)
 
     # Insert StoreListings
     store_listings = []
-    print(f"Inserting {NUM_USERS} store listings")
+    print(f"Inserting store listings")
     for graph in agent_graphs:
         user = random.choice(users)
         slug = faker.slug()
@@ -393,9 +408,9 @@ async def main():
 
     # Insert StoreListingVersions
     store_listing_versions = []
-    print(f"Inserting {NUM_USERS} store listing versions")
+    print(f"Inserting store listing versions")
     for listing in store_listings:
-        graph = [g for g in agent_graphs if g.id == listing.agentId][0]
+        graph = [g for g in agent_graphs if g.id == listing.agentGraphId][0]
         version = await db.storelistingversion.create(
             data={
                 "agentGraphId": graph.id,
@@ -421,7 +436,7 @@ async def main():
         store_listing_versions.append(version)
 
     # Insert StoreListingReviews
-    print(f"Inserting {NUM_USERS * MAX_REVIEWS_PER_VERSION} store listing reviews")
+    print(f"Inserting store listing reviews")
     for version in store_listing_versions:
         # Create a copy of users list and shuffle it to avoid duplicates
         available_reviewers = users.copy()
@@ -454,22 +469,31 @@ async def main():
             num_steps = random.randint(1, len(possible_steps))
             completed_steps = random.sample(possible_steps, k=num_steps)
         
-        await db.useronboarding.create(
-            data=UserOnboardingCreateInput(
-                userId=user.id,
-                completedSteps=completed_steps,
-                notificationDot=random.choice([True, False]),
-                notified=random.sample(completed_steps, k=min(3, len(completed_steps))) if completed_steps else [],
-                rewardedFor=random.sample(completed_steps, k=min(2, len(completed_steps))) if completed_steps else [],
-                usageReason=random.choice(["personal", "business", "research", "learning"]) if random.random() < 0.7 else None,
-                integrations=random.sample(["github", "google", "discord", "slack"], k=random.randint(0, 2)),
-                otherIntegrations=faker.word() if random.random() < 0.2 else None,
-                selectedStoreListingVersionId=random.choice(store_listing_versions).id if store_listing_versions and random.random() < 0.5 else None,
-                agentInput=prisma.Json({"test": "data"}) if random.random() < 0.3 else None,
-                onboardingAgentExecutionId=random.choice(agent_graph_executions).id if agent_graph_executions and random.random() < 0.3 else None,
-                agentRuns=random.randint(0, 10),
+        try:
+            await db.useronboarding.create(
+                data={
+                    "userId": user.id,
+                    "completedSteps": completed_steps,
+                    "notificationDot": random.choice([True, False]),
+                    "notified": random.sample(completed_steps, k=min(3, len(completed_steps))) if completed_steps else [],
+                    "rewardedFor": random.sample(completed_steps, k=min(2, len(completed_steps))) if completed_steps else [],
+                    "usageReason": random.choice(["personal", "business", "research", "learning"]) if random.random() < 0.7 else None,
+                    "integrations": random.sample(["github", "google", "discord", "slack"], k=random.randint(0, 2)),
+                    "otherIntegrations": faker.word() if random.random() < 0.2 else None,
+                    "selectedStoreListingVersionId": random.choice(store_listing_versions).id if store_listing_versions and random.random() < 0.5 else None,
+                    "agentInput": Json({"test": "data"}) if random.random() < 0.3 else None,
+                    "onboardingAgentExecutionId": random.choice(agent_graph_executions).id if agent_graph_executions and random.random() < 0.3 else None,
+                    "agentRuns": random.randint(0, 10),
+                }
             )
-        )
+        except Exception as e:
+            print(f"Error creating onboarding for user {user.id}: {e}")
+            # Try simpler version
+            await db.useronboarding.create(
+                data={
+                    "userId": user.id,
+                }
+            )
     
     # Insert IntegrationWebhooks for some users
     print(f"Inserting integration webhooks")
