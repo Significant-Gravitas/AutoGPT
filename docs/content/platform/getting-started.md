@@ -117,23 +117,27 @@ To run the backend services, follow these steps:
 
 To run the frontend application open a new terminal and follow these steps:
 
-* Navigate to `frontend` folder within the `autogpt_platform` directory:
+- Navigate to `frontend` folder within the `autogpt_platform` directory:
+
   ```
    cd frontend
   ```
 
-* Copy the `.env.example` file available in the `frontend` directory to `.env` in the same directory:
+- Copy the `.env.example` file available in the `frontend` directory to `.env` in the same directory:
+
   ```
    cp .env.example .env
   ```
+
   You can modify the `.env` within this folder to add your own environment variables for the frontend application.
 
-* Run the following command:
+- Run the following command:
   ```
-   npm install
-   npm run dev
+   corepack enable
+   pnpm install
+   pnpm dev
   ```
-  This command will install the necessary dependencies and start the frontend application in development mode.
+  This command will enable corepack, install the necessary dependencies with pnpm, and start the frontend application in development mode.
 
 ### Checking if the application is running
 
@@ -336,6 +340,12 @@ To run the tests:
 
 ```sh
 poetry run test
+```
+
+To update stored snapshots after intentional API changes:
+
+```sh
+pytest --snapshot-update
 ```
 
 ## Project Outline

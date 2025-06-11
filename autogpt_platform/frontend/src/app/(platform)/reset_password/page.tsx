@@ -17,7 +17,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import useSupabase from "@/hooks/useSupabase";
+import useSupabase from "@/lib/supabase/useSupabase";
 import { sendEmailFormSchema, changePasswordFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCallback, useState } from "react";
@@ -34,6 +34,8 @@ export default function ResetPasswordPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
   const [disabled, setDisabled] = useState(false);
+  const [sendEmailCaptchaKey, setSendEmailCaptchaKey] = useState(0);
+  const [changePasswordCaptchaKey, setChangePasswordCaptchaKey] = useState(0);
 
   const sendEmailTurnstile = useTurnstile({
     action: "reset_password",
@@ -62,6 +64,16 @@ export default function ResetPasswordPage() {
     },
   });
 
+  const resetSendEmailCaptcha = useCallback(() => {
+    setSendEmailCaptchaKey((k) => k + 1);
+    sendEmailTurnstile.reset();
+  }, [sendEmailTurnstile]);
+
+  const resetChangePasswordCaptcha = useCallback(() => {
+    setChangePasswordCaptchaKey((k) => k + 1);
+    changePasswordTurnstile.reset();
+  }, [changePasswordTurnstile]);
+
   const onSendEmail = useCallback(
     async (data: z.infer<typeof sendEmailFormSchema>) => {
       setIsLoading(true);
@@ -76,6 +88,7 @@ export default function ResetPasswordPage() {
         setFeedback("Please complete the CAPTCHA challenge.");
         setIsError(true);
         setIsLoading(false);
+        resetSendEmailCaptcha();
         return;
       }
 
@@ -87,7 +100,7 @@ export default function ResetPasswordPage() {
       if (error) {
         setFeedback(error);
         setIsError(true);
-        sendEmailTurnstile.reset();
+        resetSendEmailCaptcha();
         return;
       }
       setDisabled(true);
@@ -96,7 +109,7 @@ export default function ResetPasswordPage() {
       );
       setIsError(false);
     },
-    [sendEmailForm, sendEmailTurnstile],
+    [sendEmailForm, sendEmailTurnstile, resetSendEmailCaptcha],
   );
 
   const onChangePassword = useCallback(
@@ -113,6 +126,7 @@ export default function ResetPasswordPage() {
         setFeedback("Please complete the CAPTCHA challenge.");
         setIsError(true);
         setIsLoading(false);
+        resetChangePasswordCaptcha();
         return;
       }
 
@@ -124,13 +138,13 @@ export default function ResetPasswordPage() {
       if (error) {
         setFeedback(error);
         setIsError(true);
-        changePasswordTurnstile.reset();
+        resetChangePasswordCaptcha();
         return;
       }
       setFeedback("Password changed successfully. Redirecting to login.");
       setIsError(false);
     },
-    [changePasswordForm, changePasswordTurnstile],
+    [changePasswordForm, changePasswordTurnstile, resetChangePasswordCaptcha],
   );
 
   if (isUserLoading) {
@@ -184,6 +198,7 @@ export default function ResetPasswordPage() {
 
               {/* Turnstile CAPTCHA Component for password change */}
               <Turnstile
+                key={changePasswordCaptchaKey}
                 siteKey={changePasswordTurnstile.siteKey}
                 onVerify={changePasswordTurnstile.handleVerify}
                 onExpire={changePasswordTurnstile.handleExpire}
@@ -227,6 +242,7 @@ export default function ResetPasswordPage() {
 
               {/* Turnstile CAPTCHA Component for reset email */}
               <Turnstile
+                key={sendEmailCaptchaKey}
                 siteKey={sendEmailTurnstile.siteKey}
                 onVerify={sendEmailTurnstile.handleVerify}
                 onExpire={sendEmailTurnstile.handleExpire}

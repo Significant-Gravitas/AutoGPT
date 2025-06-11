@@ -10,7 +10,6 @@ import type {
   APIKeyPermission,
   Block,
   CreateAPIKeyResponse,
-  CreateLibraryAgentPresetRequest,
   CreatorDetails,
   CreatorsResponse,
   Credentials,
@@ -29,7 +28,11 @@ import type {
   LibraryAgent,
   LibraryAgentID,
   LibraryAgentPreset,
+  LibraryAgentPresetCreatable,
+  LibraryAgentPresetCreatableFromGraphExecution,
+  LibraryAgentPresetID,
   LibraryAgentPresetResponse,
+  LibraryAgentPresetUpdatable,
   LibraryAgentResponse,
   LibraryAgentSortEnum,
   MyAgentsResponse,
@@ -86,21 +89,23 @@ export default class BackendAPI {
     this.wsUrl = wsUrl;
   }
 
-  private get supabaseClient(): SupabaseClient | null {
+  private async getSupabaseClient(): Promise<SupabaseClient | null> {
     return isClient
       ? createBrowserClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          { isSingleton: true },
         )
-      : getServerSupabase();
+      : await getServerSupabase();
   }
 
   async isAuthenticated(): Promise<boolean> {
-    if (!this.supabaseClient) return false;
+    const supabaseClient = await this.getSupabaseClient();
+    if (!supabaseClient) return false;
     const {
-      data: { user },
-    } = await this.supabaseClient?.auth.getUser();
-    return user != null;
+      data: { session },
+    } = await supabaseClient.auth.getSession();
+    return session != null;
   }
 
   createUser(): Promise<User> {
@@ -641,42 +646,63 @@ export default class BackendAPI {
     return this._request("POST", `/library/agents/${libraryAgentId}/fork`);
   }
 
-  listLibraryAgentPresets(params?: {
+  async listLibraryAgentPresets(params?: {
+    graph_id?: GraphID;
     page?: number;
     page_size?: number;
   }): Promise<LibraryAgentPresetResponse> {
-    return this._get("/library/presets", params);
+    const response: LibraryAgentPresetResponse = await this._get(
+      "/library/presets",
+      params,
+    );
+    return {
+      ...response,
+      presets: response.presets.map(parseLibraryAgentPresetTimestamp),
+    };
   }
 
-  getLibraryAgentPreset(presetId: string): Promise<LibraryAgentPreset> {
-    return this._get(`/library/presets/${presetId}`);
-  }
-
-  createLibraryAgentPreset(
-    preset: CreateLibraryAgentPresetRequest,
+  async getLibraryAgentPreset(
+    presetID: LibraryAgentPresetID,
   ): Promise<LibraryAgentPreset> {
-    return this._request("POST", "/library/presets", preset);
+    const preset = await this._get(`/library/presets/${presetID}`);
+    return parseLibraryAgentPresetTimestamp(preset);
   }
 
-  updateLibraryAgentPreset(
-    presetId: string,
-    preset: CreateLibraryAgentPresetRequest,
+  async createLibraryAgentPreset(
+    params:
+      | LibraryAgentPresetCreatable
+      | LibraryAgentPresetCreatableFromGraphExecution,
   ): Promise<LibraryAgentPreset> {
-    return this._request("PUT", `/library/presets/${presetId}`, preset);
+    const new_preset = await this._request("POST", "/library/presets", params);
+    return parseLibraryAgentPresetTimestamp(new_preset);
   }
 
-  async deleteLibraryAgentPreset(presetId: string): Promise<void> {
-    await this._request("DELETE", `/library/presets/${presetId}`);
+  async updateLibraryAgentPreset(
+    presetID: LibraryAgentPresetID,
+    partial_preset: LibraryAgentPresetUpdatable,
+  ): Promise<LibraryAgentPreset> {
+    const updated_preset = await this._request(
+      "PATCH",
+      `/library/presets/${presetID}`,
+      partial_preset,
+    );
+    return parseLibraryAgentPresetTimestamp(updated_preset);
+  }
+
+  async deleteLibraryAgentPreset(
+    presetID: LibraryAgentPresetID,
+  ): Promise<void> {
+    await this._request("DELETE", `/library/presets/${presetID}`);
   }
 
   executeLibraryAgentPreset(
-    presetId: string,
-    graphId: GraphID,
+    presetID: LibraryAgentPresetID,
+    graphID: GraphID,
     graphVersion: number,
     nodeInput: { [key: string]: any },
-  ): Promise<{ id: string }> {
-    return this._request("POST", `/library/presets/${presetId}/execute`, {
-      graph_id: graphId,
+  ): Promise<{ id: GraphExecutionID }> {
+    return this._request("POST", `/library/presets/${presetID}/execute`, {
+      graph_id: graphID,
       graph_version: graphVersion,
       node_input: nodeInput,
     });
@@ -725,9 +751,10 @@ export default class BackendAPI {
     const maxRetries = 3;
 
     while (retryCount < maxRetries) {
+      const supabaseClient = await this.getSupabaseClient();
       const {
         data: { session },
-      } = (await this.supabaseClient?.auth.getSession()) || {
+      } = (await supabaseClient?.auth.getSession()) || {
         data: { session: null },
       };
 
@@ -778,9 +805,10 @@ export default class BackendAPI {
     const maxRetries = 3;
 
     while (retryCount < maxRetries) {
+      const supabaseClient = await this.getSupabaseClient();
       const {
         data: { session },
-      } = (await this.supabaseClient?.auth.getSession()) || {
+      } = (await supabaseClient?.auth.getSession()) || {
         data: { session: null },
       };
 
@@ -955,8 +983,9 @@ export default class BackendAPI {
   async connectWebSocket(): Promise<void> {
     return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
+        const supabaseClient = await this.getSupabaseClient();
         const token =
-          (await this.supabaseClient?.auth.getSession())?.data.session
+          (await supabaseClient?.auth.getSession())?.data.session
             ?.access_token || "";
         const wsUrlWithToken = `${this.wsUrl}?token=${token}`;
         this.webSocket = new WebSocket(wsUrlWithToken);
@@ -1130,6 +1159,10 @@ function parseNodeExecutionResultTimestamps(result: any): NodeExecutionResult {
 
 function parseScheduleTimestamp(result: any): Schedule {
   return _parseObjectTimestamps<Schedule>(result, ["next_run_time"]);
+}
+
+function parseLibraryAgentPresetTimestamp(result: any): LibraryAgentPreset {
+  return _parseObjectTimestamps<LibraryAgentPreset>(result, ["updated_at"]);
 }
 
 function _parseObjectTimestamps<T>(obj: any, keys: (keyof T)[]): T {

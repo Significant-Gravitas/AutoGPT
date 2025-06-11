@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
   const next = searchParams.get("next") ?? "/";
 
   if (token_hash && type) {
-    const supabase = getServerSupabase();
+    const supabase = await getServerSupabase();
 
     if (!supabase) {
       redirect("/error");
