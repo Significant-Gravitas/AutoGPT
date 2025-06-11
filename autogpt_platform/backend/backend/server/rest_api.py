@@ -5,6 +5,7 @@ from typing import Any, Optional
 import autogpt_libs.auth.models
 import fastapi
 import fastapi.responses
+import pydantic
 import starlette.middleware.cors
 import uvicorn
 from autogpt_libs.feature_flag.client import (
@@ -12,6 +13,7 @@ from autogpt_libs.feature_flag.client import (
     shutdown_launchdarkly,
 )
 from autogpt_libs.logging.utils import generate_uvicorn_config
+from fastapi.exceptions import RequestValidationError
 
 import backend.data.block
 import backend.data.db
@@ -86,11 +88,23 @@ app = fastapi.FastAPI(
 def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
     def handler(request: fastapi.Request, exc: Exception):
         if log_error:
-            logger.exception(f"{request.method} {request.url.path} failed: {exc}")
+            logger.exception(
+                "%s %s failed. Investigate and resolve the underlying issue: %s",
+                request.method,
+                request.url.path,
+                exc,
+            )
+
+        hint = (
+            "Adjust the request and retry."
+            if status_code < 500
+            else "Check server logs and dependent services."
+        )
         return fastapi.responses.JSONResponse(
             content={
-                "message": f"{request.method} {request.url.path} failed",
+                "message": f"Failed to process {request.method} {request.url.path}",
                 "detail": str(exc),
+                "hint": hint,
             },
             status_code=status_code,
         )
@@ -98,6 +112,32 @@ def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
     return handler
 
 
+async def validation_error_handler(
+    request: fastapi.Request, exc: Exception
+) -> fastapi.responses.JSONResponse:
+    logger.error(
+        "Validation failed for %s %s: %s. Fix the request payload and try again.",
+        request.method,
+        request.url.path,
+        exc,
+    )
+    errors: list | str
+    if hasattr(exc, "errors"):
+        errors = exc.errors()  # type: ignore[call-arg]
+    else:
+        errors = str(exc)
+    return fastapi.responses.JSONResponse(
+        status_code=422,
+        content={
+            "message": f"Invalid data for {request.method} {request.url.path}",
+            "detail": errors,
+            "hint": "Ensure the request matches the API schema.",
+        },
+    )
+
+
+app.add_exception_handler(RequestValidationError, validation_error_handler)
+app.add_exception_handler(pydantic.ValidationError, validation_error_handler)
 app.add_exception_handler(ValueError, handle_internal_http_error(400))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 app.include_router(backend.server.routers.v1.v1_router, tags=["v1"], prefix="/api")
@@ -211,7 +251,7 @@ class AgentServer(backend.util.service.AppProcess):
 
     @staticmethod
     async def test_get_presets(user_id: str, page: int = 1, page_size: int = 10):
-        return await backend.server.v2.library.routes.presets.get_presets(
+        return await backend.server.v2.library.routes.presets.list_presets(
             user_id=user_id, page=page, page_size=page_size
         )
 
@@ -223,7 +263,7 @@ class AgentServer(backend.util.service.AppProcess):
 
     @staticmethod
     async def test_create_preset(
-        preset: backend.server.v2.library.model.CreateLibraryAgentPresetRequest,
+        preset: backend.server.v2.library.model.LibraryAgentPresetCreatable,
         user_id: str,
     ):
         return await backend.server.v2.library.routes.presets.create_preset(
@@ -233,7 +273,7 @@ class AgentServer(backend.util.service.AppProcess):
     @staticmethod
     async def test_update_preset(
         preset_id: str,
-        preset: backend.server.v2.library.model.CreateLibraryAgentPresetRequest,
+        preset: backend.server.v2.library.model.LibraryAgentPresetUpdatable,
         user_id: str,
     ):
         return await backend.server.v2.library.routes.presets.update_preset(

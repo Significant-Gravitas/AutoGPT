@@ -17,7 +17,7 @@ export async function signup(
     "signup",
     {},
     async () => {
-      const supabase = getServerSupabase();
+      const supabase = await getServerSupabase();
 
       if (!supabase) {
         redirect("/error");

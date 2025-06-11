@@ -2,6 +2,7 @@ from typing import Type
 
 from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
 from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
+from backend.blocks.flux_kontext import AIImageEditorBlock, FluxKontextModelName
 from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
 from backend.blocks.jina.search import ExtractWebsiteContentBlock, SearchTheWebBlock
@@ -37,7 +38,7 @@ from backend.integrations.credentials_store import (
 # =============== Configure the cost for each LLM Model call =============== #
 
 MODEL_COST: dict[LlmModel, int] = {
-    LlmModel.O3: 7,
+    LlmModel.O3: 4,
     LlmModel.O3_MINI: 2,  # $1.10 / $4.40
     LlmModel.O1: 16,  # $15 / $60
     LlmModel.O1_PREVIEW: 16,
@@ -259,6 +260,30 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                 }
             },
         )
+    ],
+    AIImageEditorBlock: [
+        BlockCost(
+            cost_amount=10,
+            cost_filter={
+                "model": FluxKontextModelName.PRO.api_name,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=20,
+            cost_filter={
+                "model": FluxKontextModelName.MAX.api_name,
+                "credentials": {
+                    "id": replicate_credentials.id,
+                    "provider": replicate_credentials.provider,
+                    "type": replicate_credentials.type,
+                },
+            },
+        ),
     ],
     AIMusicGeneratorBlock: [
         BlockCost(
