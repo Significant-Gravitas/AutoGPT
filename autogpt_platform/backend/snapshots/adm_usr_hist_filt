@@ -1,0 +1,28 @@
+{
+  "history": [
+    {
+      "admin_email": null,
+      "amount": 500,
+      "current_balance": 0,
+      "description": null,
+      "extra_data": null,
+      "reason": "Top up",
+      "running_balance": 0,
+      "transaction_key": "",
+      "transaction_time": "0001-01-01T00:00:00Z",
+      "transaction_type": "TOP_UP",
+      "usage_execution_id": null,
+      "usage_graph_id": null,
+      "usage_node_count": 0,
+      "usage_start_time": "9999-12-31T23:59:59.999999Z",
+      "user_email": "test@example.com",
+      "user_id": "user-3"
+    }
+  ],
+  "pagination": {
+    "current_page": 1,
+    "page_size": 10,
+    "total_items": 1,
+    "total_pages": 1
+  }
+}

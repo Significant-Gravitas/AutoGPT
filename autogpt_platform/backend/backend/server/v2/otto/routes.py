@@ -1,7 +1,7 @@
 import logging
 
 from autogpt_libs.auth.middleware import auth_middleware
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
 from backend.server.utils import get_user_id
 
@@ -23,4 +23,12 @@ async def proxy_otto_request(
     Proxy requests to Otto API while adding necessary security headers and logging.
     Requires an authenticated user.
     """
-    return await OttoService.ask(request, user_id)
+    logger.debug("Forwarding request to Otto for user %s", user_id)
+    try:
+        return await OttoService.ask(request, user_id)
+    except Exception as e:
+        logger.exception("Otto request failed for user %s: %s", user_id, e)
+        raise HTTPException(
+            status_code=502,
+            detail={"message": str(e), "hint": "Check Otto service status."},
+        )

@@ -575,6 +575,13 @@ async def execute_graph(
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
 ) -> ExecuteGraphResponse:
+    current_balance = await _user_credit_model.get_credits(user_id)
+    if current_balance <= 0:
+        raise HTTPException(
+            status_code=402,
+            detail="Insufficient balance to execute the agent. Please top up your account.",
+        )
+
     graph_exec = await execution_utils.add_graph_execution_async(
         graph_id=graph_id,
         user_id=user_id,
@@ -817,8 +824,15 @@ async def create_api_key(
         )
         return CreateAPIKeyResponse(api_key=api_key, plain_text_key=plain_text)
     except APIKeyError as e:
-        logger.error(f"Failed to create API key: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(
+            "Could not create API key for user %s: %s. Review input and permissions.",
+            user_id,
+            e,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail={"message": str(e), "hint": "Verify request payload and try again."},
+        )
 
 
 @v1_router.get(
@@ -834,8 +848,11 @@ async def get_api_keys(
     try:
         return await list_user_api_keys(user_id)
     except APIKeyError as e:
-        logger.error(f"Failed to list API keys: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error("Failed to list API keys for user %s: %s", user_id, e)
+        raise HTTPException(
+            status_code=400,
+            detail={"message": str(e), "hint": "Check API key service availability."},
+        )
 
 
 @v1_router.get(
@@ -854,8 +871,11 @@ async def get_api_key(
             raise HTTPException(status_code=404, detail="API key not found")
         return api_key
     except APIKeyError as e:
-        logger.error(f"Failed to get API key: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error("Error retrieving API key %s for user %s: %s", key_id, user_id, e)
+        raise HTTPException(
+            status_code=400,
+            detail={"message": str(e), "hint": "Ensure the key ID is correct."},
+        )
 
 
 @v1_router.delete(
@@ -876,8 +896,14 @@ async def delete_api_key(
     except APIKeyPermissionError:
         raise HTTPException(status_code=403, detail="Permission denied")
     except APIKeyError as e:
-        logger.error(f"Failed to revoke API key: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error("Failed to revoke API key %s for user %s: %s", key_id, user_id, e)
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": str(e),
+                "hint": "Verify permissions or try again later.",
+            },
+        )
 
 
 @v1_router.post(
@@ -898,8 +924,11 @@ async def suspend_key(
     except APIKeyPermissionError:
         raise HTTPException(status_code=403, detail="Permission denied")
     except APIKeyError as e:
-        logger.error(f"Failed to suspend API key: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error("Failed to suspend API key %s for user %s: %s", key_id, user_id, e)
+        raise HTTPException(
+            status_code=400,
+            detail={"message": str(e), "hint": "Check user permissions and retry."},
+        )
 
 
 @v1_router.put(
@@ -922,5 +951,13 @@ async def update_permissions(
     except APIKeyPermissionError:
         raise HTTPException(status_code=403, detail="Permission denied")
     except APIKeyError as e:
-        logger.error(f"Failed to update API key permissions: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(
+            "Failed to update permissions for API key %s of user %s: %s",
+            key_id,
+            user_id,
+            e,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail={"message": str(e), "hint": "Ensure permissions list is valid."},
+        )
