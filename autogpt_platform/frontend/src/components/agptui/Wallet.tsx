@@ -140,7 +140,7 @@ export default function Wallet() {
           <span className="font-poppins font-medium text-zinc-900">
             Your wallet
           </span>
-          <div className="flex items-center font-inter text-sm font-semibold text-violet-700">
+          <div className="flex items-center text-sm font-semibold text-violet-700">
             <div className="rounded-lg bg-violet-100 px-3 py-2">
               Wallet{" "}
               <span className="font-semibold">{formatCredits(credits)}</span>

@@ -7,20 +7,20 @@ readme = "README.md"
 packages = [{ include = "autogpt_libs" }]
 
 [tool.poetry.dependencies]
+python = ">=3.10,<4.0"
 colorama = "^0.4.6"
 expiringdict = "^1.2.2"
-google-cloud-logging = "^3.11.4"
-pydantic = "^2.11.1"
-pydantic-settings = "^2.8.1"
+google-cloud-logging = "^3.12.1"
+pydantic = "^2.11.4"
+pydantic-settings = "^2.9.1"
 pyjwt = "^2.10.1"
 pytest-asyncio = "^0.26.0"
 pytest-mock = "^3.14.0"
-python = ">=3.10,<4.0"
-supabase = "^2.15.0"
+supabase = "^2.15.1"
 
 [tool.poetry.group.dev.dependencies]
 redis = "^5.2.1"
-ruff = "^0.11.0"
+ruff = "^0.11.10"
 
 [build-system]
 requires = ["poetry-core"]

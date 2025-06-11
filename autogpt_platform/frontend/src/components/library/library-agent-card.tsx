@@ -8,7 +8,7 @@ export default function LibraryAgentCard({
     id,
     name,
     description,
-    graph_id: agent_id,
+    graph_id,
     can_access_graph,
     creator_image_url,
     image_url,
@@ -79,15 +79,15 @@ export default function LibraryAgentCard({
         <div className="items-between mt-4 flex w-full justify-between gap-3">
           <Link
             href={`/library/agents/${id}`}
-            className="font-geist text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
+            className="text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
           >
             See runs
           </Link>
 
           {can_access_graph && (
             <Link
-              href={`/build?flowID=${agent_id}`}
-              className="font-geist text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
+              href={`/build?flowID=${graph_id}`}
+              className="text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
             >
               Open in builder
             </Link>
