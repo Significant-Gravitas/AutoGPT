@@ -47,10 +47,13 @@ async def list_presets(
             page_size=page_size,
         )
     except Exception as e:
-        logger.exception(f"Exception occurred while getting presets: {e}")
+        logger.exception("Failed to list presets for user %s: %s", user_id, e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get presets",
+            detail={
+                "message": str(e),
+                "hint": "Ensure the presets DB table is accessible.",
+            },
         )
 
 
@@ -85,10 +88,12 @@ async def get_preset(
             )
         return preset
     except Exception as e:
-        logger.exception(f"Exception occurred whilst getting preset: {e}")
+        logger.exception(
+            "Error retrieving preset %s for user %s: %s", preset_id, user_id, e
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get preset",
+            detail={"message": str(e), "hint": "Validate preset ID and retry."},
         )
 
 
@@ -125,10 +130,10 @@ async def create_preset(
     except NotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
-        logger.exception(f"Exception occurred while creating preset: {e}")
+        logger.exception("Preset creation failed for user %s: %s", user_id, e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create preset",
+            detail={"message": str(e), "hint": "Check preset payload format."},
         )
 
 
@@ -161,10 +166,10 @@ async def update_preset(
             user_id=user_id, preset_id=preset_id, preset=preset
         )
     except Exception as e:
-        logger.exception(f"Exception occurred whilst updating preset: {e}")
+        logger.exception("Preset update failed for user %s: %s", user_id, e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update preset",
+            detail={"message": str(e), "hint": "Check preset data and try again."},
         )
 
 
@@ -191,10 +196,12 @@ async def delete_preset(
     try:
         await db.delete_preset(user_id, preset_id)
     except Exception as e:
-        logger.exception(f"Exception occurred whilst deleting preset: {e}")
+        logger.exception(
+            "Error deleting preset %s for user %s: %s", preset_id, user_id, e
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete preset",
+            detail={"message": str(e), "hint": "Ensure preset exists before deleting."},
         )
 
 
@@ -252,8 +259,11 @@ async def execute_preset(
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception(f"Exception occurred while executing preset: {e}")
+        logger.exception("Preset execution failed for user %s: %s", user_id, e)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
+            detail={
+                "message": str(e),
+                "hint": "Review preset configuration and graph ID.",
+            },
         )
