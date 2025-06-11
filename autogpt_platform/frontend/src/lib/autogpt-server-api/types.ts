@@ -149,6 +149,7 @@ export type Credentials =
 
 // --8<-- [start:BlockIOCredentialsSubSchema]
 export const PROVIDER_NAMES = {
+  AIML_API: "aiml_api",
   ANTHROPIC: "anthropic",
   APOLLO: "apollo",
   D_ID: "d_id",
