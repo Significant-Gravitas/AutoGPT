@@ -681,13 +681,15 @@ class Executor:
             execution_stats.nodes_walltime += result.walltime
             if (err := result.error) and isinstance(err, Exception):
                 execution_stats.node_error_count += 1
-                cls.db_client.update_node_execution_status(
-                    node_exec_id=node_exec_id,
+                update_node_execution_status(
+                    db_client=cls.db_client,
+                    exec_id=node_exec_id,
                     status=ExecutionStatus.FAILED,
                 )
             else:
-                cls.db_client.update_node_execution_status(
-                    node_exec_id=node_exec_id,
+                update_node_execution_status(
+                    db_client=cls.db_client,
+                    exec_id=node_exec_id,
                     status=ExecutionStatus.COMPLETED,
                 )
 
