@@ -2,14 +2,18 @@
 // The config you add here will be used whenever a users loads a page in their browser.
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
-import { getEnvironmentStr } from "@/lib/utils";
+import { BehaveAs, getBehaveAs, getEnvironmentStr } from "@/lib/utils";
 import * as Sentry from "@sentry/nextjs";
+
+const isProductionCloud =
+  process.env.NODE_ENV === "production" && getBehaveAs() === BehaveAs.CLOUD;
 
 Sentry.init({
   dsn: "https://fe4e4aa4a283391808a5da396da20159@o4505260022104064.ingest.us.sentry.io/4507946746380288",
 
-  enabled: process.env.DISABLE_SENTRY !== "true",
   environment: getEnvironmentStr(),
+
+  enabled: isProductionCloud,
 
   // Add optional integrations for additional features
   integrations: [
@@ -57,3 +61,5 @@ Sentry.init({
     enableLogs: true,
   },
 });
+
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

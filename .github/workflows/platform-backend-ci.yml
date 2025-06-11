@@ -32,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10"]
+        python-version: ["3.11"]
     runs-on: ubuntu-latest
 
     services:
@@ -81,12 +81,12 @@ jobs:
       - name: Install Poetry (Unix)
         run: |
           # Extract Poetry version from backend/poetry.lock
-          HEAD_POETRY_VERSION=$(head -n 1 poetry.lock | grep -oP '(?<=Poetry )[0-9]+\.[0-9]+\.[0-9]+')
+          HEAD_POETRY_VERSION=$(python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry)
           echo "Found Poetry version ${HEAD_POETRY_VERSION} in backend/poetry.lock"
 
           if [ -n "$BASE_REF" ]; then
             BASE_BRANCH=${BASE_REF/refs\/heads\//}
-            BASE_POETRY_VERSION=$((git show "origin/$BASE_BRANCH":./poetry.lock; true) | head -n 1 | grep -oP '(?<=Poetry )[0-9]+\.[0-9]+\.[0-9]+')
+            BASE_POETRY_VERSION=$((git show "origin/$BASE_BRANCH":./poetry.lock; true) | python ../../.github/workflows/scripts/get_package_version_from_lockfile.py poetry -)
             echo "Found Poetry version ${BASE_POETRY_VERSION} in backend/poetry.lock on ${BASE_REF}"
             POETRY_VERSION=$(printf '%s\n' "$HEAD_POETRY_VERSION" "$BASE_POETRY_VERSION" | sort -V | tail -n1)
           else
