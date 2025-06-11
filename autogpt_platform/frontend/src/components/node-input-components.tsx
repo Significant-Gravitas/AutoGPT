@@ -229,7 +229,6 @@ const NodeFileInput: FC<{
   const handleFileChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
-      console.log(">>> file", file);
       if (!file) return;
 
       const reader = new FileReader();
