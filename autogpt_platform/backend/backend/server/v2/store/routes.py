@@ -48,11 +48,14 @@ async def get_profile(
                 content={"detail": "Profile not found"},
             )
         return profile
-    except Exception:
-        logger.exception("Exception occurred whilst getting user profile")
+    except Exception as e:
+        logger.exception("Failed to fetch user profile for %s: %s", user_id, e)
         return fastapi.responses.JSONResponse(
             status_code=500,
-            content={"detail": "An error occurred while retrieving the user profile"},
+            content={
+                "detail": "Failed to retrieve user profile",
+                "hint": "Check database connection.",
+            },
         )
 
 
@@ -86,11 +89,14 @@ async def update_or_create_profile(
             user_id=user_id, profile=profile
         )
         return updated_profile
-    except Exception:
-        logger.exception("Exception occurred whilst updating profile")
+    except Exception as e:
+        logger.exception("Failed to update profile for user %s: %s", user_id, e)
         return fastapi.responses.JSONResponse(
             status_code=500,
-            content={"detail": "An error occurred while updating the user profile"},
+            content={
+                "detail": "Failed to update user profile",
+                "hint": "Validate request data.",
+            },
         )
 
 
@@ -160,11 +166,14 @@ async def get_agents(
             page_size=page_size,
         )
         return agents
-    except Exception:
-        logger.exception("Exception occured whilst getting store agents")
+    except Exception as e:
+        logger.exception("Failed to retrieve store agents: %s", e)
         return fastapi.responses.JSONResponse(
             status_code=500,
-            content={"detail": "An error occurred while retrieving the store agents"},
+            content={
+                "detail": "Failed to retrieve store agents",
+                "hint": "Check database or search parameters.",
+            },
         )
 
 
