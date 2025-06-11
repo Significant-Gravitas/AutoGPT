@@ -53,13 +53,15 @@ const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
         )}
       </div>
       <div className="flex flex-1 flex-col items-start gap-0.5">
-        <span
-          className={cn(
-            "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
-          )}
-        >
-          {highlightText(title, highlightedText)}
-        </span>
+        {title && (
+          <span
+            className={cn(
+              "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
+            )}
+          >
+            {highlightText(title, highlightedText)}
+          </span>
+        )}
         <div className="flex items-center space-x-2.5">
           <span
             className={cn(

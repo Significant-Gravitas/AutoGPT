@@ -31,20 +31,24 @@ const Block: BlockComponent = ({
       {...rest}
     >
       <div className="flex flex-1 flex-col items-start gap-0.5">
-        <span
-          className={cn(
-            "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
-          )}
-        >
-          {title && highlightText(beautifyString(title), highlightedText)}
-        </span>
-        <span
-          className={cn(
-            "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
-          )}
-        >
-          {description && highlightText(description, highlightedText)}
-        </span>
+        {title && (
+          <span
+            className={cn(
+              "line-clamp-1 font-sans text-sm font-medium leading-[1.375rem] text-zinc-800 group-disabled:text-zinc-400",
+            )}
+          >
+            {highlightText(beautifyString(title), highlightedText)}
+          </span>
+        )}
+        {description && (
+          <span
+            className={cn(
+              "line-clamp-1 font-sans text-xs font-normal leading-5 text-zinc-500 group-disabled:text-zinc-400",
+            )}
+          >
+            {highlightText(description, highlightedText)}
+          </span>
+        )}
       </div>
       <div
         className={cn(

@@ -39,9 +39,11 @@ const IntegrationChip: IntegrationChipComponent = ({
           />
         )}
       </div>
-      <span className="truncate font-sans text-sm font-normal leading-[1.375rem] text-zinc-800">
-        {name && beautifyString(name)}
-      </span>
+      {name && (
+        <span className="truncate font-sans text-sm font-normal leading-[1.375rem] text-zinc-800">
+          {beautifyString(name)}
+        </span>
+      )}
     </Button>
   );
 };
