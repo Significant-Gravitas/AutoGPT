@@ -38,7 +38,7 @@ from backend.integrations.credentials_store import (
 # =============== Configure the cost for each LLM Model call =============== #
 
 MODEL_COST: dict[LlmModel, int] = {
-    LlmModel.O3: 7,
+    LlmModel.O3: 4,
     LlmModel.O3_MINI: 2,  # $1.10 / $4.40
     LlmModel.O1: 16,  # $15 / $60
     LlmModel.O1_PREVIEW: 16,
