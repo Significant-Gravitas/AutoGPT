@@ -1,5 +1,5 @@
 import { createContext, useCallback, useEffect, useState } from "react";
-import useSupabase from "@/lib/supabase/useSupabase";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import {
   APIKeyCredentials,
   CredentialsDeleteNeedConfirmationResponse,

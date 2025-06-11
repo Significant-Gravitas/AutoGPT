@@ -1,5 +1,5 @@
 "use server";
-import getServerSupabase from "@/lib/supabase/getServerSupabase";
+import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 import { verifyTurnstileToken } from "@/lib/turnstile";
