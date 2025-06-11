@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 class FalModel(str, Enum):
     MOCHI = "fal-ai/mochi-v1"
     LUMA = "fal-ai/luma-dream-machine"
+    VEO3 = "fal-ai/veo3"
 
 
 class AIVideoGeneratorBlock(Block):
@@ -102,6 +103,8 @@ class AIVideoGeneratorBlock(Block):
         # Submit generation request
         submit_url = f"{base_url}/{input_data.model.value}"
         submit_data = {"prompt": input_data.prompt}
+        if input_data.model == FalModel.VEO3:
+            submit_data["generate_audio"] = True  # type: ignore
 
         seen_logs = set()
 

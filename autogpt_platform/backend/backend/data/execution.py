@@ -628,15 +628,11 @@ async def update_node_execution_stats(
     data = stats.model_dump()
     if isinstance(data["error"], Exception):
         data["error"] = str(data["error"])
-        execution_status = ExecutionStatus.FAILED
-    else:
-        execution_status = ExecutionStatus.COMPLETED
 
     res = await AgentNodeExecution.prisma().update(
         where={"id": node_exec_id},
         data={
             "stats": Json(data),
-            "executionStatus": execution_status,
             "endedTime": datetime.now(tz=timezone.utc),
         },
         include=EXECUTION_RESULT_INCLUDE,

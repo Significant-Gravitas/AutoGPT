@@ -89,21 +89,22 @@ export default class BackendAPI {
     this.wsUrl = wsUrl;
   }
 
-  private get supabaseClient(): SupabaseClient | null {
+  private async getSupabaseClient(): Promise<SupabaseClient | null> {
     return isClient
       ? createBrowserClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
           { isSingleton: true },
         )
-      : getServerSupabase();
+      : await getServerSupabase();
   }
 
   async isAuthenticated(): Promise<boolean> {
-    if (!this.supabaseClient) return false;
+    const supabaseClient = await this.getSupabaseClient();
+    if (!supabaseClient) return false;
     const {
       data: { session },
-    } = await this.supabaseClient.auth.getSession();
+    } = await supabaseClient.auth.getSession();
     return session != null;
   }
 
@@ -750,9 +751,10 @@ export default class BackendAPI {
     const maxRetries = 3;
 
     while (retryCount < maxRetries) {
+      const supabaseClient = await this.getSupabaseClient();
       const {
         data: { session },
-      } = (await this.supabaseClient?.auth.getSession()) || {
+      } = (await supabaseClient?.auth.getSession()) || {
         data: { session: null },
       };
 
@@ -803,9 +805,10 @@ export default class BackendAPI {
     const maxRetries = 3;
 
     while (retryCount < maxRetries) {
+      const supabaseClient = await this.getSupabaseClient();
       const {
         data: { session },
-      } = (await this.supabaseClient?.auth.getSession()) || {
+      } = (await supabaseClient?.auth.getSession()) || {
         data: { session: null },
       };
 
@@ -980,8 +983,9 @@ export default class BackendAPI {
   async connectWebSocket(): Promise<void> {
     return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
+        const supabaseClient = await this.getSupabaseClient();
         const token =
-          (await this.supabaseClient?.auth.getSession())?.data.session
+          (await supabaseClient?.auth.getSession())?.data.session
             ?.access_token || "";
         const wsUrlWithToken = `${this.wsUrl}?token=${token}`;
         this.webSocket = new WebSocket(wsUrlWithToken);
