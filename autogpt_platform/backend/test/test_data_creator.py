@@ -1,6 +1,24 @@
+"""
+Test Data Creator for AutoGPT Platform
+
+This script creates test data for the AutoGPT platform database.
+
+Image/Video URL Domains Used:
+- Images: picsum.photos (for all image URLs - avatars, store listing images, etc.)
+- Videos: youtube.com (for store listing video URLs)
+
+Add these domains to your Next.js config:
+```javascript
+// next.config.js
+images: {
+  domains: ['picsum.photos'],
+}
+```
+"""
+
 import asyncio
 import random
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 import prisma.enums
 from faker import Faker
@@ -17,6 +35,12 @@ from prisma.types import (
     ProfileCreateInput,
     StoreListingReviewCreateInput,
     UserCreateInput,
+    StoreListingCreateInput,
+    StoreListingVersionCreateInput,
+    LibraryAgentCreateInput,
+    AgentPresetCreateInput,
+    IntegrationWebhookCreateInput,
+    UserOnboardingCreateInput,
 )
 
 faker = Faker()
@@ -53,10 +77,26 @@ MAX_REVIEWS_PER_VERSION = 5  # Total reviews depends on number of versions creat
 
 
 def get_image():
-    url = faker.image_url()
-    while "placekitten.com" in url:
-        url = faker.image_url()
-    return url
+    """Generate a consistent image URL using picsum.photos service."""
+    width = random.choice([200, 300, 400, 500, 600, 800])
+    height = random.choice([200, 300, 400, 500, 600, 800])
+    # Use a random seed to get different images
+    seed = random.randint(1, 1000)
+    return f"https://picsum.photos/seed/{seed}/{width}/{height}"
+
+
+def get_video_url():
+    """Generate a consistent video URL using a placeholder service."""
+    # Using YouTube as a consistent source for video URLs
+    video_ids = [
+        "dQw4w9WgXcQ",  # Example video IDs
+        "9bZkp7q19f0",
+        "kJQP7kiw5Fk",
+        "RgKAFK5djSk",
+        "L_jWHffIx5E",
+    ]
+    video_id = random.choice(video_ids)
+    return f"https://www.youtube.com/watch?v={video_id}"
 
 
 async def main():
@@ -362,7 +402,7 @@ async def main():
                 "agentGraphVersion": graph.version,
                 "name": graph.name or faker.sentence(nb_words=3),
                 "subHeading": faker.sentence(),
-                "videoUrl": faker.url(),
+                "videoUrl": get_video_url() if random.random() < 0.3 else None,
                 "imageUrls": [get_image() for _ in range(3)],
                 "description": faker.text(),
                 "categories": [faker.word() for _ in range(3)],
@@ -404,26 +444,50 @@ async def main():
                 )
             )
 
-    # Update StoreListingVersions with submission status (StoreListingSubmissions table no longer exists)
-    print(f"Updating {NUM_USERS} store listing versions with submission status")
-    for version in store_listing_versions:
-        reviewer = random.choice(users)
-        status: prisma.enums.SubmissionStatus = random.choice(
-            [
-                prisma.enums.SubmissionStatus.PENDING,
-                prisma.enums.SubmissionStatus.APPROVED,
-                prisma.enums.SubmissionStatus.REJECTED,
-            ]
+    # Insert UserOnboarding for some users
+    print(f"Inserting user onboarding data")
+    for user in random.sample(users, k=int(NUM_USERS * 0.7)):  # 70% of users have onboarding data
+        completed_steps = []
+        possible_steps = list(prisma.enums.OnboardingStep)
+        # Randomly complete some steps
+        if random.random() < 0.8:
+            num_steps = random.randint(1, len(possible_steps))
+            completed_steps = random.sample(possible_steps, k=num_steps)
+        
+        await db.useronboarding.create(
+            data=UserOnboardingCreateInput(
+                userId=user.id,
+                completedSteps=completed_steps,
+                notificationDot=random.choice([True, False]),
+                notified=random.sample(completed_steps, k=min(3, len(completed_steps))) if completed_steps else [],
+                rewardedFor=random.sample(completed_steps, k=min(2, len(completed_steps))) if completed_steps else [],
+                usageReason=random.choice(["personal", "business", "research", "learning"]) if random.random() < 0.7 else None,
+                integrations=random.sample(["github", "google", "discord", "slack"], k=random.randint(0, 2)),
+                otherIntegrations=faker.word() if random.random() < 0.2 else None,
+                selectedStoreListingVersionId=random.choice(store_listing_versions).id if store_listing_versions and random.random() < 0.5 else None,
+                agentInput=prisma.Json({"test": "data"}) if random.random() < 0.3 else None,
+                onboardingAgentExecutionId=random.choice(agent_graph_executions).id if agent_graph_executions and random.random() < 0.3 else None,
+                agentRuns=random.randint(0, 10),
+            )
         )
-        await db.storelistingversion.update(
-            where={"id": version.id},
-            data={
-                "submissionStatus": status,
-                "Reviewer": {"connect": {"id": reviewer.id}},
-                "reviewComments": faker.text(),
-                "reviewedAt": datetime.now(),
-            },
-        )
+    
+    # Insert IntegrationWebhooks for some users
+    print(f"Inserting integration webhooks")
+    for user in random.sample(users, k=int(NUM_USERS * 0.3)):  # 30% of users have webhooks
+        for _ in range(random.randint(1, 3)):
+            webhook = await db.integrationwebhook.create(
+                data=IntegrationWebhookCreateInput(
+                    userId=user.id,
+                    provider=random.choice(["github", "slack", "discord"]),
+                    credentialsId=str(faker.uuid4()),
+                    webhookType=random.choice(["repo", "channel", "server"]),
+                    resource=faker.slug(),
+                    events=[random.choice(["created", "updated", "deleted"]) for _ in range(random.randint(1, 3))],
+                    config=prisma.Json({"url": faker.url()}),
+                    secret=faker.sha256(),
+                    providerWebhookId=str(faker.uuid4()),
+                )
+            )
 
     # Insert APIKeys
     print(f"Inserting {NUM_USERS} api keys")
@@ -444,7 +508,12 @@ async def main():
             )
         )
 
+    # Refresh materialized views
+    print("Refreshing materialized views...")
+    await db.execute_raw("SELECT refresh_store_materialized_views();")
+    
     await db.disconnect()
+    print("Test data creation completed successfully!")
 
 
 if __name__ == "__main__":
