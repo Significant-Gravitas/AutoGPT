@@ -21,7 +21,7 @@ interface MarketplaceAgentBlockComponent extends React.FC<Props> {
   Skeleton: React.FC<{ className?: string }>;
 }
 
-const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
+export const MarketplaceAgentBlock: MarketplaceAgentBlockComponent = ({
   title,
   image_url,
   creator_name,
@@ -133,5 +133,3 @@ const MarketplaceAgentBlockSkeleton: React.FC<{ className?: string }> = ({
 };
 
 MarketplaceAgentBlock.Skeleton = MarketplaceAgentBlockSkeleton;
-
-export default MarketplaceAgentBlock;

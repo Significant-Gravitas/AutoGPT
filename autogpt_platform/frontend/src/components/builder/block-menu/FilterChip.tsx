@@ -9,7 +9,7 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   name?: string;
 }
 
-const FilterChip: React.FC<Props> = ({
+export const FilterChip: React.FC<Props> = ({
   selected = false,
   number,
   name,
@@ -53,4 +53,4 @@ const FilterChip: React.FC<Props> = ({
   );
 };
 
-export default FilterChip;
+

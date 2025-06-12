@@ -15,7 +15,7 @@ interface BlockComponent extends React.FC<Props> {
   Skeleton: React.FC<{ className?: string }>;
 }
 
-const Block: BlockComponent = ({
+export const Block: BlockComponent = ({
   title,
   description,
   highlightedText,
@@ -74,5 +74,3 @@ const BlockSkeleton = () => {
 };
 
 Block.Skeleton = BlockSkeleton;
-
-export default Block;

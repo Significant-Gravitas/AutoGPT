@@ -1,12 +1,12 @@
 import React from "react";
-import SuggestionContent from "./SuggestionContent";
-import AllBlocksContent from "./AllBlocksContent";
-import IntegrationsContent from "./IntegrationsContent";
-import MarketplaceAgentsContent from "./MarketplaceAgentsContent";
-import MyAgentsContent from "./MyAgentsContent";
-import ActionBlocksContent from "./ActionBlocksContent";
-import InputBlocksContent from "./InputBlocksContent";
-import OutputBlocksContent from "./OutputBlocksContent";
+import { SuggestionContent } from "./SuggestionContent";
+import { AllBlocksContent } from "./AllBlocksContent";
+import { IntegrationsContent } from "./IntegrationsContent";
+import { MarketplaceAgentsContent } from "./MarketplaceAgentsContent";
+import { MyAgentsContent } from "./MyAgentsContent";
+import { ActionBlocksContent } from "./ActionBlocksContent";
+import { InputBlocksContent } from "./InputBlocksContent";
+import { OutputBlocksContent } from "./OutputBlocksContent";
 import { useBlockMenuContext } from "../block-menu-provider";
 
 export interface ActionBlock {
@@ -21,7 +21,7 @@ export interface BlockListType {
   description: string;
 }
 
-const BlockMenuDefaultContent: React.FC = ({}) => {
+export const BlockMenuDefaultContent: React.FC = ({}) => {
   const { defaultState } = useBlockMenuContext();
 
   return (
@@ -38,4 +38,4 @@ const BlockMenuDefaultContent: React.FC = ({}) => {
   );
 };
 
-export default BlockMenuDefaultContent;
+

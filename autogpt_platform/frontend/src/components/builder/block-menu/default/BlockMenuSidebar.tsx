@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from "react";
-import MenuItem from "../MenuItem";
+import { MenuItem } from "../MenuItem";
 import { DefaultStateType, useBlockMenuContext } from "../block-menu-provider";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { CountResponse } from "@/lib/autogpt-server-api";
 
-const BlockMenuSidebar: React.FC = ({}) => {
+export const BlockMenuSidebar: React.FC = ({}) => {
   const { defaultState, setDefaultState, setIntegration } =
     useBlockMenuContext();
   const [blockCounts, setBlockCounts] = useState<CountResponse | undefined>(
@@ -116,4 +116,4 @@ const BlockMenuSidebar: React.FC = ({}) => {
   );
 };
 
-export default BlockMenuSidebar;
+

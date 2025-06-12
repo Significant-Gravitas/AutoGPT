@@ -15,7 +15,7 @@ interface IntegrationComponent extends React.FC<Props> {
   Skeleton: React.FC<{ className?: string }>;
 }
 
-const Integration: IntegrationComponent = ({
+export const Integration: IntegrationComponent = ({
   title,
   icon_url,
   description,
@@ -86,5 +86,3 @@ const IntegrationSkeleton: React.FC<{ className?: string }> = ({
 };
 
 Integration.Skeleton = IntegrationSkeleton;
-
-export default Integration;

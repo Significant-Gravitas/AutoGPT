@@ -19,7 +19,7 @@ interface UGCAgentBlockComponent extends React.FC<Props> {
   Skeleton: React.FC<{ className?: string }>;
 }
 
-const UGCAgentBlock: UGCAgentBlockComponent = ({
+export const UGCAgentBlock: UGCAgentBlockComponent = ({
   title,
   image_url,
   edited_time,
@@ -115,5 +115,3 @@ const UGCAgentBlockSkeleton: React.FC<{ className?: string }> = ({
 };
 
 UGCAgentBlock.Skeleton = UGCAgentBlockSkeleton;
-
-export default UGCAgentBlock;

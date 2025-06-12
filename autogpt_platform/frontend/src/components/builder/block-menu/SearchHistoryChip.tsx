@@ -12,7 +12,7 @@ interface SearchHistoryChipComponent extends React.FC<Props> {
   Skeleton: React.FC<{ className?: string }>;
 }
 
-const SearchHistoryChip: SearchHistoryChipComponent = ({
+export const SearchHistoryChip: SearchHistoryChipComponent = ({
   content,
   className,
   ...rest
@@ -45,5 +45,3 @@ const SearchHistoryChipSkeleton: React.FC<{ className?: string }> = ({
 };
 
 SearchHistoryChip.Skeleton = SearchHistoryChipSkeleton;
-
-export default SearchHistoryChip;

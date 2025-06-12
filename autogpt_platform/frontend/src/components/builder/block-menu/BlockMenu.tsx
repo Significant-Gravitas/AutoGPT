@@ -4,9 +4,9 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import ControlPanelButton from "@/components/builder/block-menu/ControlPanelButton";
+import { ControlPanelButton } from "@/components/builder/block-menu/ControlPanelButton";
 import { ToyBrick } from "lucide-react";
-import BlockMenuContent from "./BlockMenuContent";
+import { BlockMenuContent } from "./BlockMenuContent";
 import { BlockMenuStateProvider } from "./block-menu-provider";
 import { Block } from "@/lib/autogpt-server-api";
 

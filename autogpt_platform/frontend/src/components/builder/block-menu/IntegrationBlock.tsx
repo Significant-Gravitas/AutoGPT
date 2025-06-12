@@ -33,7 +33,7 @@ export const highlightText = (
   );
 };
 
-const IntegrationBlock: IntegrationBlockComponent = ({
+export const IntegrationBlock: IntegrationBlockComponent = ({
   title,
   icon_url,
   description,
@@ -110,5 +110,3 @@ const IntegrationBlockSkeleton = ({ className }: { className?: string }) => {
 };
 
 IntegrationBlock.Skeleton = IntegrationBlockSkeleton;
-
-export default IntegrationBlock;

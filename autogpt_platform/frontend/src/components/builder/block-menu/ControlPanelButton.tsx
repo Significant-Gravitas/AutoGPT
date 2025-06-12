@@ -9,7 +9,7 @@ interface Props extends React.HTMLAttributes<HTMLDivElement> {
   disabled?: boolean;
 }
 
-const ControlPanelButton: React.FC<Props> = ({
+export const ControlPanelButton: React.FC<Props> = ({
   selected = false,
   children,
   disabled,
@@ -32,4 +32,4 @@ const ControlPanelButton: React.FC<Props> = ({
   );
 };
 
-export default ControlPanelButton;
+

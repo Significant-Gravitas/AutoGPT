@@ -1,15 +1,15 @@
 import React, { useState, useEffect, Fragment, useCallback } from "react";
-import Block from "../Block";
+import { Block } from "../Block";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { BlockCategoryResponse } from "@/lib/autogpt-server-api";
 import { useBlockMenuContext } from "../block-menu-provider";
-import ErrorState from "../ErrorState";
+import { ErrorState } from "../ErrorState";
 import { beautifyString } from "@/lib/utils";
 
-const AllBlocksContent: React.FC = () => {
+export const AllBlocksContent: React.FC = () => {
   const { addNode } = useBlockMenuContext();
   const [categories, setCategories] = useState<BlockCategoryResponse[]>([]);
   const [loading, setLoading] = useState(true);
@@ -160,4 +160,4 @@ const AllBlocksContent: React.FC = () => {
   );
 };
 
-export default AllBlocksContent;
+

@@ -1,13 +1,13 @@
 import { Button } from "@/components/ui/button";
 import React, { useState, useEffect, Fragment, useCallback } from "react";
-import IntegrationBlock from "../IntegrationBlock";
+import { IntegrationBlock } from "../IntegrationBlock";
 import { useBlockMenuContext } from "../block-menu-provider";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { Block } from "@/lib/autogpt-server-api";
-import ErrorState from "../ErrorState";
+import { ErrorState } from "../ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const IntegrationBlocks: React.FC = ({}) => {
+export const IntegrationBlocks: React.FC = ({}) => {
   const { integration, setIntegration, addNode } = useBlockMenuContext();
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,4 +109,4 @@ const IntegrationBlocks: React.FC = ({}) => {
   );
 };
 
-export default IntegrationBlocks;
+

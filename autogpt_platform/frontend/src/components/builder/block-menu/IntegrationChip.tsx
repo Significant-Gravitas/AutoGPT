@@ -13,7 +13,7 @@ interface IntegrationChipComponent extends React.FC<Props> {
   Skeleton: React.FC;
 }
 
-const IntegrationChip: IntegrationChipComponent = ({
+export const IntegrationChip: IntegrationChipComponent = ({
   icon_url,
   name,
   className,
@@ -58,5 +58,3 @@ const IntegrationChipSkeleton: React.FC = () => {
 };
 
 IntegrationChip.Skeleton = IntegrationChipSkeleton;
-
-export default IntegrationChip;

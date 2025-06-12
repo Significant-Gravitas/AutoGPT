@@ -1,9 +1,9 @@
 import React from "react";
-import BlockMenuSidebar from "./BlockMenuSidebar";
+import { BlockMenuSidebar } from "./BlockMenuSidebar";
 import { Separator } from "@/components/ui/separator";
-import BlockMenuDefaultContent from "./BlockMenuDefaultContent";
+import { BlockMenuDefaultContent } from "./BlockMenuDefaultContent";
 
-const BlockMenuDefault: React.FC = () => {
+export const BlockMenuDefault: React.FC = () => {
   return (
     <div className="flex flex-1 overflow-y-auto">
       <BlockMenuSidebar />
@@ -13,4 +13,4 @@ const BlockMenuDefault: React.FC = () => {
   );
 };
 
-export default BlockMenuDefault;
+

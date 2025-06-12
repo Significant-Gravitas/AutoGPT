@@ -10,7 +10,7 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   name?: string;
 }
 
-const MenuItem: React.FC<Props> = ({
+export const MenuItem: React.FC<Props> = ({
   selected = false,
   number,
   name,
@@ -39,4 +39,4 @@ const MenuItem: React.FC<Props> = ({
   );
 };
 
-export default MenuItem;
+

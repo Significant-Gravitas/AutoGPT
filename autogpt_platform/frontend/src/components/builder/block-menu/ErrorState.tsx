@@ -13,7 +13,7 @@ interface ErrorStateProps {
   showIcon?: boolean;
 }
 
-const ErrorState: React.FC<ErrorStateProps> = ({
+export const ErrorState: React.FC<ErrorStateProps> = ({
   title = "Something went wrong",
   message,
   error,
@@ -55,4 +55,4 @@ const ErrorState: React.FC<ErrorStateProps> = ({
   );
 };
 
-export default ErrorState;
+

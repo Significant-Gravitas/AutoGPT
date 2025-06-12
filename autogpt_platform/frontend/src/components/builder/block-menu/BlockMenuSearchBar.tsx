@@ -10,7 +10,7 @@ interface BlockMenuSearchBarProps {
   className?: string;
 }
 
-const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
+export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
   className = "",
 }) => {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -90,4 +90,4 @@ const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
   );
 };
 
-export default BlockMenuSearchBar;
+
