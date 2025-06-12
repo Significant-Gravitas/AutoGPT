@@ -8,7 +8,7 @@ export default function LibraryAgentCard({
     id,
     name,
     description,
-    graph_id: agent_id,
+    graph_id,
     can_access_graph,
     creator_image_url,
     image_url,
@@ -86,7 +86,7 @@ export default function LibraryAgentCard({
 
           {can_access_graph && (
             <Link
-              href={`/build?flowID=${agent_id}`}
+              href={`/build?flowID=${graph_id}`}
               className="text-lg font-semibold text-neutral-800 hover:underline dark:text-neutral-200"
             >
               Open in builder

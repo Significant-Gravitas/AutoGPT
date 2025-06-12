@@ -1,5 +1,4 @@
 "use client";
-import { signup } from "./actions";
 import {
   Form,
   FormControl,
@@ -9,95 +8,44 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { useForm } from "react-hook-form";
 import { Input } from "@/components/ui/input";
-import type { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useCallback, useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Checkbox } from "@/components/ui/checkbox";
-import useSupabase from "@/lib/supabase/useSupabase";
 import LoadingBox from "@/components/ui/loading";
 import {
   AuthCard,
   AuthHeader,
   AuthButton,
   AuthBottomText,
+  GoogleOAuthButton,
   PasswordInput,
   Turnstile,
 } from "@/components/auth";
 import AuthFeedback from "@/components/auth/AuthFeedback";
-import { signupFormSchema } from "@/types/auth";
 import { getBehaveAs } from "@/lib/utils";
-import { useTurnstile } from "@/hooks/useTurnstile";
+import { useSignupPage } from "./useSignupPage";
 
 export default function SignupPage() {
-  const { supabase, user, isUserLoading } = useSupabase();
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
-  //TODO: Remove after closed beta
+  const {
+    form,
+    feedback,
+    turnstile,
+    captchaKey,
+    isLoggedIn,
+    isLoading,
+    isCloudEnv,
+    isUserLoading,
+    isGoogleLoading,
+    isSupabaseAvailable,
+    handleSubmit,
+    handleProviderSignup,
+  } = useSignupPage();
 
-  const turnstile = useTurnstile({
-    action: "signup",
-    autoVerify: false,
-    resetOnError: true,
-  });
-
-  const form = useForm<z.infer<typeof signupFormSchema>>({
-    resolver: zodResolver(signupFormSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-      confirmPassword: "",
-      agreeToTerms: false,
-    },
-  });
-
-  const onSignup = useCallback(
-    async (data: z.infer<typeof signupFormSchema>) => {
-      setIsLoading(true);
-
-      if (!(await form.trigger())) {
-        setIsLoading(false);
-        return;
-      }
-
-      if (!turnstile.verified) {
-        setFeedback("Please complete the CAPTCHA challenge.");
-        setIsLoading(false);
-        return;
-      }
-
-      const error = await signup(data, turnstile.token as string);
-      setIsLoading(false);
-      if (error) {
-        if (error === "user_already_exists") {
-          setFeedback("User with this email already exists");
-          turnstile.reset();
-          return;
-        } else {
-          setFeedback(error);
-          turnstile.reset();
-        }
-        return;
-      }
-      setFeedback(null);
-    },
-    [form, turnstile],
-  );
-
-  if (user) {
-    console.debug("User exists, redirecting to /");
-    router.push("/");
-  }
-
-  if (isUserLoading || user) {
+  if (isUserLoading || isLoggedIn) {
     return <LoadingBox className="h-[80vh]" />;
   }
 
-  if (!supabase) {
+  if (!isSupabaseAvailable) {
     return (
       <div>
         User accounts are disabled because Supabase client is unavailable
@@ -108,8 +56,26 @@ export default function SignupPage() {
   return (
     <AuthCard className="mx-auto mt-12">
       <AuthHeader>Create a new account</AuthHeader>
+
+      {isCloudEnv ? (
+        <>
+          <div className="mb-6">
+            <GoogleOAuthButton
+              onClick={() => handleProviderSignup("google")}
+              isLoading={isGoogleLoading}
+              disabled={isLoading}
+            />
+          </div>
+          <div className="mb-6 flex items-center">
+            <div className="flex-1 border-t border-gray-300"></div>
+            <span className="mx-3 text-sm text-gray-500">or</span>
+            <div className="flex-1 border-t border-gray-300"></div>
+          </div>
+        </>
+      ) : null}
+
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSignup)}>
+        <form onSubmit={handleSubmit}>
           <FormField
             control={form.control}
             name="email"
@@ -160,6 +126,7 @@ export default function SignupPage() {
 
           {/* Turnstile CAPTCHA Component */}
           <Turnstile
+            key={captchaKey}
             siteKey={turnstile.siteKey}
             onVerify={turnstile.handleVerify}
             onExpire={turnstile.handleExpire}
@@ -169,11 +136,7 @@ export default function SignupPage() {
             shouldRender={turnstile.shouldRender}
           />
 
-          <AuthButton
-            onClick={() => onSignup(form.getValues())}
-            isLoading={isLoading}
-            type="submit"
-          >
+          <AuthButton isLoading={isLoading} type="submit">
             Sign up
           </AuthButton>
           <FormField

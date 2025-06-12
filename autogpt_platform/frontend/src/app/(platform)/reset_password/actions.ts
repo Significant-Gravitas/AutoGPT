@@ -33,8 +33,6 @@ export async function sendResetEmail(email: string, turnstileToken: string) {
         console.error("Error sending reset email", error);
         return error.message;
       }
-
-      redirect("/reset_password");
     },
   );
 }
