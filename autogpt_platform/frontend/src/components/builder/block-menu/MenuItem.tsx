@@ -38,5 +38,3 @@ export const MenuItem: React.FC<Props> = ({
     </Button>
   );
 };
-
-

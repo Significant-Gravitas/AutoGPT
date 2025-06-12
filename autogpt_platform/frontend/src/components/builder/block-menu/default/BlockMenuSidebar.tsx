@@ -115,5 +115,3 @@ export const BlockMenuSidebar: React.FC = ({}) => {
     </div>
   );
 };
-
-

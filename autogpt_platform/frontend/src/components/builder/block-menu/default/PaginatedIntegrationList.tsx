@@ -75,5 +75,3 @@ export const PaginatedIntegrationList: React.FC = () => {
     </div>
   );
 };
-
-

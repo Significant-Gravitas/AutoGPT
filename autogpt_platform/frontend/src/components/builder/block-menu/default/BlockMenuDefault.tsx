@@ -12,5 +12,3 @@ export const BlockMenuDefault: React.FC = () => {
     </div>
   );
 };
-
-

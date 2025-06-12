@@ -169,5 +169,3 @@ export const SearchList: React.FC<SearchListProps> = ({
     </div>
   );
 };
-
-

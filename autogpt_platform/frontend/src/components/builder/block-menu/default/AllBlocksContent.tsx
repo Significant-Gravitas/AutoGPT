@@ -159,5 +159,3 @@ export const AllBlocksContent: React.FC = () => {
     </div>
   );
 };
-
-

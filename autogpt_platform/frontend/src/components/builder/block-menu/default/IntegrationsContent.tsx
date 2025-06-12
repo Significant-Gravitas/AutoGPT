@@ -18,5 +18,3 @@ export const IntegrationsContent: React.FC = () => {
     </div>
   );
 };
-
-

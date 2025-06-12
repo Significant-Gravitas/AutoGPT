@@ -37,5 +37,3 @@ export const BlockMenuDefaultContent: React.FC = ({}) => {
     </div>
   );
 };
-
-

@@ -154,5 +154,3 @@ export const SuggestionContent: React.FC = () => {
     </div>
   );
 };
-
-

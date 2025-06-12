@@ -8,7 +8,10 @@ interface BlocksListProps {
   loading?: boolean;
 }
 
-export const BlocksList: React.FC<BlocksListProps> = ({ blocks, loading = false }) => {
+export const BlocksList: React.FC<BlocksListProps> = ({
+  blocks,
+  loading = false,
+}) => {
   const { addNode } = useBlockMenuContext();
   return (
     <div className="w-full space-y-3 px-4 pb-4">
@@ -29,5 +32,3 @@ export const BlocksList: React.FC<BlocksListProps> = ({ blocks, loading = false 
     </div>
   );
 };
-
-

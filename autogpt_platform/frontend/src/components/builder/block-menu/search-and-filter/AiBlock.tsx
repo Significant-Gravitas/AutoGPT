@@ -60,5 +60,3 @@ export const AiBlock: React.FC<Props> = ({
     </Button>
   );
 };
-
-

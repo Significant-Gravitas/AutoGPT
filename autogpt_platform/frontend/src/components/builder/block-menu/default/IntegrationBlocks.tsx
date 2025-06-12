@@ -108,5 +108,3 @@ export const IntegrationBlocks: React.FC = ({}) => {
     </div>
   );
 };
-
-
