@@ -1,15 +1,15 @@
 import React, { useCallback, useEffect, useState } from "react";
-import IntegrationChip from "../IntegrationChip";
-import Block from "../Block";
+import { IntegrationChip } from "../IntegrationChip";
+import { Block } from "../Block";
 import { useBlockMenuContext } from "../block-menu-provider";
 import {
   CredentialsProviderName,
   SuggestionsResponse,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import ErrorState from "../ErrorState";
+import { ErrorState } from "../ErrorState";
 
-const SuggestionContent: React.FC = () => {
+export const SuggestionContent: React.FC = () => {
   const { setIntegration, setDefaultState, addNode } = useBlockMenuContext();
 
   const [suggestionsData, setSuggestionsData] =
@@ -155,4 +155,4 @@ const SuggestionContent: React.FC = () => {
   );
 };
 
-export default SuggestionContent;
+

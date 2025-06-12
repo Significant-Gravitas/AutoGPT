@@ -1,11 +1,11 @@
 import React from "react";
-import UGCAgentBlock from "../UGCAgentBlock";
+import { UGCAgentBlock } from "../UGCAgentBlock";
 import { usePagination } from "@/hooks/usePagination";
-import ErrorState from "../ErrorState";
+import { ErrorState } from "../ErrorState";
 import { useBlockMenuContext } from "../block-menu-provider";
 import { convertLibraryAgentIntoBlock } from "@/lib/utils";
 
-const MyAgentsContent: React.FC = () => {
+export const MyAgentsContent: React.FC = () => {
   const {
     data: agents,
     loading,
@@ -77,5 +77,3 @@ const MyAgentsContent: React.FC = () => {
     </div>
   );
 };
-
-export default MyAgentsContent;

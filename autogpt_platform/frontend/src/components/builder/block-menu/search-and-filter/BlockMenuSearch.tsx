@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import FiltersList from "./FiltersList";
-import SearchList from "./SearchList";
+import { FiltersList } from "./FiltersList";
+import { SearchList } from "./SearchList";
 import { useBlockMenuContext } from "../block-menu-provider";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
-const BlockMenuSearch: React.FC = ({}) => {
+export const BlockMenuSearch: React.FC = ({}) => {
   const {
     searchData,
     searchQuery,
@@ -143,5 +143,3 @@ const BlockMenuSearch: React.FC = ({}) => {
     </div>
   );
 };
-
-export default BlockMenuSearch;

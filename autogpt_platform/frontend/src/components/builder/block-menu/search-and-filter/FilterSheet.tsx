@@ -1,5 +1,5 @@
-import FilterChip from "../FilterChip";
-import { useState, useEffect, useCallback } from "react";
+import { FilterChip } from "../FilterChip";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { X } from "lucide-react";
 import { cn, getBlockType } from "@/lib/utils";
@@ -14,7 +14,7 @@ import { StoreAgent } from "@/lib/autogpt-server-api";
 
 const INITIAL_CREATORS_TO_SHOW = 5;
 
-export default function FilterSheet({
+export function FilterSheet({
   categories,
 }: {
   categories: Array<{ key: CategoryKey; name: string }>;

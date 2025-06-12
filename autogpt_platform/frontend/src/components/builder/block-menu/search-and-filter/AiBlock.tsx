@@ -9,7 +9,7 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   ai_name?: string;
 }
 
-const AiBlock: React.FC<Props> = ({
+export const AiBlock: React.FC<Props> = ({
   title,
   description,
   className,
@@ -61,4 +61,4 @@ const AiBlock: React.FC<Props> = ({
   );
 };
 
-export default AiBlock;
+

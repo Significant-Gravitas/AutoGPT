@@ -1,9 +1,9 @@
 import React from "react";
-import PaginatedIntegrationList from "./PaginatedIntegrationList";
-import IntegrationBlocks from "./IntegrationBlocks";
+import { PaginatedIntegrationList } from "./PaginatedIntegrationList";
+import { IntegrationBlocks } from "./IntegrationBlocks";
 import { useBlockMenuContext } from "../block-menu-provider";
 
-const IntegrationsContent: React.FC = () => {
+export const IntegrationsContent: React.FC = () => {
   const { integration } = useBlockMenuContext();
 
   if (!integration) {
@@ -19,4 +19,4 @@ const IntegrationsContent: React.FC = () => {
   );
 };
 
-export default IntegrationsContent;
+

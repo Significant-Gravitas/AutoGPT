@@ -1,10 +1,10 @@
 import React from "react";
-import MarketplaceAgentBlock from "../MarketplaceAgentBlock";
+import { MarketplaceAgentBlock } from "../MarketplaceAgentBlock";
 import { usePagination } from "@/hooks/usePagination";
-import ErrorState from "../ErrorState";
+import { ErrorState } from "../ErrorState";
 import { useBlockMenuContext } from "../block-menu-provider";
 
-const MarketplaceAgentsContent: React.FC = () => {
+export const MarketplaceAgentsContent: React.FC = () => {
   const {
     data: agents,
     loading,
@@ -80,5 +80,3 @@ const MarketplaceAgentsContent: React.FC = () => {
     </div>
   );
 };
-
-export default MarketplaceAgentsContent;

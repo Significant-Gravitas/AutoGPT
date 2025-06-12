@@ -1,9 +1,9 @@
 import { useCallback } from "react";
-import FilterChip from "../FilterChip";
-import FilterSheet from "./FilterSheet";
+import { FilterChip } from "../FilterChip";
+import { FilterSheet } from "./FilterSheet";
 import { CategoryKey, useBlockMenuContext } from "../block-menu-provider";
 
-const FiltersList = () => {
+export const FiltersList = () => {
   const { filters, setFilters, categoryCounts } = useBlockMenuContext();
   const categories: Array<{ key: CategoryKey; name: string }> = [
     { key: "blocks", name: "Blocks" },
@@ -62,4 +62,4 @@ const FiltersList = () => {
   );
 };
 
-export default FiltersList;
+

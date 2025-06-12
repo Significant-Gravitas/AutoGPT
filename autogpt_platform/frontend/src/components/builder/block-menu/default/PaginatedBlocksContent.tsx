@@ -1,16 +1,16 @@
 import React, { Fragment } from "react";
-import BlocksList from "./BlocksList";
-import Block from "../Block";
+import { BlocksList } from "./BlocksList";
+import { Block } from "../Block";
 import { BlockRequest } from "@/lib/autogpt-server-api";
 import { usePagination } from "@/hooks/usePagination";
-import ErrorState from "../ErrorState";
+import { ErrorState } from "../ErrorState";
 
 interface PaginatedBlocksContentProps {
   blockRequest: BlockRequest;
   pageSize?: number;
 }
 
-const PaginatedBlocksContent: React.FC<PaginatedBlocksContentProps> = ({
+export const PaginatedBlocksContent: React.FC<PaginatedBlocksContentProps> = ({
   blockRequest,
   pageSize = 10,
 }) => {
@@ -55,5 +55,3 @@ const PaginatedBlocksContent: React.FC<PaginatedBlocksContentProps> = ({
     </div>
   );
 };
-
-export default PaginatedBlocksContent;

@@ -1,6 +1,6 @@
 import { Frown } from "lucide-react";
 
-const NoSearchResult = () => {
+export const NoSearchResult = () => {
   return (
     <div className="flex h-full w-full flex-col items-center justify-center text-center">
       <Frown className="mb-10 h-16 w-16 text-zinc-400" strokeWidth={1} />
@@ -16,4 +16,4 @@ const NoSearchResult = () => {
   );
 };
 
-export default NoSearchResult;
+

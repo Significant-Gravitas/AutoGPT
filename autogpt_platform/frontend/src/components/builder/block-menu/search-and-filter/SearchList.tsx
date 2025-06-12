@@ -1,11 +1,11 @@
 import React from "react";
-import MarketplaceAgentBlock from "../MarketplaceAgentBlock";
-import Block from "../Block";
-import UGCAgentBlock from "../UGCAgentBlock";
-import AiBlock from "./AiBlock";
-import IntegrationBlock from "../IntegrationBlock";
+import { MarketplaceAgentBlock } from "../MarketplaceAgentBlock";
+import { Block } from "../Block";
+import { UGCAgentBlock } from "../UGCAgentBlock";
+import { AiBlock } from "./AiBlock";
+import { IntegrationBlock } from "../IntegrationBlock";
 import { useBlockMenuContext } from "../block-menu-provider";
-import NoSearchResult from "./NoSearchResult";
+import { NoSearchResult } from "./NoSearchResult";
 import { Button } from "@/components/ui/button";
 import { convertLibraryAgentIntoBlock, getBlockType } from "@/lib/utils";
 
@@ -17,7 +17,7 @@ interface SearchListProps {
   onRetry: () => void;
 }
 
-const SearchList: React.FC<SearchListProps> = ({
+export const SearchList: React.FC<SearchListProps> = ({
   isLoading,
   loadingMore,
   hasMore,
@@ -170,4 +170,4 @@ const SearchList: React.FC<SearchListProps> = ({
   );
 };
 
-export default SearchList;
+

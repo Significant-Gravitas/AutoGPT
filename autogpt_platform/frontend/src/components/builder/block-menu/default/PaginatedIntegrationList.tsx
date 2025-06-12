@@ -1,10 +1,10 @@
 import React from "react";
-import Integration from "../Integration";
+import { Integration } from "../Integration";
 import { useBlockMenuContext } from "../block-menu-provider";
 import { usePagination } from "@/hooks/usePagination";
-import ErrorState from "../ErrorState";
+import { ErrorState } from "../ErrorState";
 
-const PaginatedIntegrationList: React.FC = () => {
+export const PaginatedIntegrationList: React.FC = () => {
   const { setIntegration } = useBlockMenuContext();
   const {
     data: providers,
@@ -76,4 +76,4 @@ const PaginatedIntegrationList: React.FC = () => {
   );
 };
 
-export default PaginatedIntegrationList;
+
