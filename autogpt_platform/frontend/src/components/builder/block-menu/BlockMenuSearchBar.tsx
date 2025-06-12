@@ -5,6 +5,7 @@ import { useBlockMenuContext } from "./block-menu-provider";
 import { Button } from "@/components/ui/button";
 import debounce from "lodash/debounce";
 import { Input } from "@/components/ui/input";
+import { getDefaultFilters } from "./helpers";
 
 const SEARCH_DEBOUNCE_MS = 500;
 
@@ -48,16 +49,7 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
     setLocalQuery("");
     setSearchQuery("");
     setSearchId(undefined);
-    setFilters({
-      categories: {
-        blocks: false,
-        integrations: false,
-        marketplace_agents: false,
-        my_agents: false,
-        providers: false,
-      },
-      createdBy: [],
-    });
+    setFilters(getDefaultFilters());
     debouncedSetSearchQuery.cancel();
   };
 

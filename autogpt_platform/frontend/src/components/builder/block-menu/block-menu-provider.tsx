@@ -10,6 +10,7 @@ import {
 import { createContext, ReactNode, useContext, useState } from "react";
 import { convertLibraryAgentIntoBlock } from "@/lib/utils";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { getDefaultFilters } from "./helpers";
 
 export type SearchItem = Block | Provider | LibraryAgent | StoreAgent;
 
@@ -89,16 +90,7 @@ export function BlockMenuStateProvider({
   const [integration, setIntegration] =
     useState<CredentialsProviderName | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [filters, setFilters] = useState<Filters>({
-    categories: {
-      blocks: false,
-      integrations: false,
-      marketplace_agents: false,
-      my_agents: false,
-      providers: false,
-    },
-    createdBy: [],
-  });
+  const [filters, setFilters] = useState<Filters>(getDefaultFilters());
   const [searchData, setSearchData] = useState<SearchItem[]>([]);
 
   const [searchId, setSearchId] = useState<string | undefined>(undefined);

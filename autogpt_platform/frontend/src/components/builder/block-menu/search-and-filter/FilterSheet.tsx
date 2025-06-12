@@ -11,6 +11,7 @@ import {
   useBlockMenuContext,
 } from "../block-menu-provider";
 import { StoreAgent } from "@/lib/autogpt-server-api";
+import { getDefaultFilters } from "../helpers";
 
 const INITIAL_CREATORS_TO_SHOW = 5;
 
@@ -81,16 +82,7 @@ export function FilterSheet({
   };
 
   const handleClearFilters = () => {
-    const clearedFilters: Filters = {
-      categories: {
-        blocks: false,
-        integrations: false,
-        marketplace_agents: false,
-        my_agents: false,
-        providers: false,
-      },
-      createdBy: [],
-    };
+    const clearedFilters: Filters = getDefaultFilters();
     setFilters(clearedFilters);
     setIsOpen(false);
   };
