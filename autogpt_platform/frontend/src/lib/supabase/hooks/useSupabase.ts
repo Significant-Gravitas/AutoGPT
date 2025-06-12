@@ -82,10 +82,8 @@ export function useSupabase() {
 
     // Clear local state immediately
     setUser(null);
-
     router.refresh();
 
-    // Check redirect path and redirect if needed
     const redirectPath = getRedirectPath(window.location.pathname);
     if (redirectPath) {
       router.push(redirectPath);
@@ -139,16 +137,13 @@ export function useSupabase() {
   async function logOut(options?: SignOut) {
     if (!supabase) return;
 
-    // First broadcast to other tabs
     broadcastLogout();
 
-    // Then sign out from this tab
     const { error } = await supabase.auth.signOut({
       scope: "global",
     });
     if (error) console.error("Error logging out:", error);
 
-    // Navigate to login (this will refresh the page anyway)
     router.push("/login");
   }
 
