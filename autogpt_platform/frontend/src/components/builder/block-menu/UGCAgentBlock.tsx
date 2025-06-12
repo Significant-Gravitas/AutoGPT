@@ -37,8 +37,8 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
       )}
       {...rest}
     >
-      <div className="relative h-[3.125rem] w-[5.625rem] overflow-hidden rounded-[0.375rem] bg-white">
-        {image_url && (
+      {image_url && (
+        <div className="relative h-[3.125rem] w-[5.625rem] overflow-hidden rounded-[0.375rem] bg-white">
           <Image
             src={image_url}
             alt="integration-icon"
@@ -46,8 +46,8 @@ export const UGCAgentBlock: UGCAgentBlockComponent = ({
             sizes="5.625rem"
             className="w-full object-contain group-disabled:opacity-50"
           />
-        )}
-      </div>
+        </div>
+      )}
       <div className="flex flex-1 flex-col items-start gap-0.5">
         {title && (
           <span
