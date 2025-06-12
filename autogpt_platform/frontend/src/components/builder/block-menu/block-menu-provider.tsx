@@ -176,7 +176,9 @@ export function BlockMenuStateProvider({
 export function useBlockMenuContext(): BlockMenuContextType {
   const context = useContext(BlockMenuContext);
   if (!context) {
-    throw new Error("Error in context of Block");
+    throw new Error(
+      "useBlockMenuContext must be used within a BlockMenuStateProvider",
+    );
   }
   return context;
 }
