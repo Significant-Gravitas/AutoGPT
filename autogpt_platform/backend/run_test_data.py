@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 
-def run_command(cmd: list[str], cwd: Path = None) -> bool:
+def run_command(cmd: list[str], cwd: Path | None = None) -> bool:
     """Run a command and return True if successful."""
     try:
         result = subprocess.run(

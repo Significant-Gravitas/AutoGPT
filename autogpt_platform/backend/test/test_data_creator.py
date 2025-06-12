@@ -538,7 +538,7 @@ async def main():
                         for _ in range(random.randint(1, 3))
                     ],
                     config=prisma.Json({"url": faker.url()}),
-                    secret=faker.sha256(),
+                    secret=str(faker.sha256()),
                     providerWebhookId=str(faker.uuid4()),
                 )
             )

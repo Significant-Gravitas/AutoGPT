@@ -259,6 +259,7 @@ async def main():
 
         # 3. Add test data
         data_added = await add_test_data(db)
+        refresh_success = False
 
         if data_added:
             # Wait a moment for data to be committed
