@@ -18,7 +18,7 @@ images: {
 
 import asyncio
 import random
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 
 import prisma.enums
 from faker import Faker
@@ -32,15 +32,11 @@ from prisma.types import (
     AnalyticsMetricsCreateInput,
     APIKeyCreateInput,
     CreditTransactionCreateInput,
+    IntegrationWebhookCreateInput,
+    LibraryAgentCreateInput,
     ProfileCreateInput,
     StoreListingReviewCreateInput,
     UserCreateInput,
-    StoreListingCreateInput,
-    StoreListingVersionCreateInput,
-    LibraryAgentCreateInput,
-    AgentPresetCreateInput,
-    IntegrationWebhookCreateInput,
-    UserOnboardingCreateInput,
 )
 
 faker = Faker()
@@ -205,22 +201,24 @@ async def main():
 
     # Insert LibraryAgents
     library_agents = []
-    print(f"Inserting library agents")
+    print("Inserting library agents")
     for user in users:
         num_agents = random.randint(MIN_AGENTS_PER_USER, MAX_AGENTS_PER_USER)
         created_combinations = set()  # Track created combinations to avoid duplicates
-        
+
         for _ in range(num_agents):
             graph = random.choice(agent_graphs)
-            
+
             # Skip if we already created this combination
             combo_key = (user.id, graph.id, graph.version)
             if combo_key in created_combinations:
                 continue
-            
+
             # Get creator profile for this graph's owner
-            creator_profile = next((p for p in profiles if p.userId == graph.userId), None)
-            
+            creator_profile = next(
+                (p for p in profiles if p.userId == graph.userId), None
+            )
+
             library_agent = await db.libraryagent.create(
                 data=LibraryAgentCreateInput(
                     userId=user.id,
@@ -388,10 +386,9 @@ async def main():
                 )
             )
 
-
     # Insert StoreListings
     store_listings = []
-    print(f"Inserting store listings")
+    print("Inserting store listings")
     for graph in agent_graphs:
         user = random.choice(users)
         slug = faker.slug()
@@ -408,7 +405,7 @@ async def main():
 
     # Insert StoreListingVersions
     store_listing_versions = []
-    print(f"Inserting store listing versions")
+    print("Inserting store listing versions")
     for listing in store_listings:
         graph = [g for g in agent_graphs if g.id == listing.agentGraphId][0]
         version = await db.storelistingversion.create(
@@ -436,7 +433,7 @@ async def main():
         store_listing_versions.append(version)
 
     # Insert StoreListingReviews
-    print(f"Inserting store listing reviews")
+    print("Inserting store listing reviews")
     for version in store_listing_versions:
         # Create a copy of users list and shuffle it to avoid duplicates
         available_reviewers = users.copy()
@@ -460,29 +457,57 @@ async def main():
             )
 
     # Insert UserOnboarding for some users
-    print(f"Inserting user onboarding data")
-    for user in random.sample(users, k=int(NUM_USERS * 0.7)):  # 70% of users have onboarding data
+    print("Inserting user onboarding data")
+    for user in random.sample(
+        users, k=int(NUM_USERS * 0.7)
+    ):  # 70% of users have onboarding data
         completed_steps = []
         possible_steps = list(prisma.enums.OnboardingStep)
         # Randomly complete some steps
         if random.random() < 0.8:
             num_steps = random.randint(1, len(possible_steps))
             completed_steps = random.sample(possible_steps, k=num_steps)
-        
+
         try:
             await db.useronboarding.create(
                 data={
                     "userId": user.id,
                     "completedSteps": completed_steps,
                     "notificationDot": random.choice([True, False]),
-                    "notified": random.sample(completed_steps, k=min(3, len(completed_steps))) if completed_steps else [],
-                    "rewardedFor": random.sample(completed_steps, k=min(2, len(completed_steps))) if completed_steps else [],
-                    "usageReason": random.choice(["personal", "business", "research", "learning"]) if random.random() < 0.7 else None,
-                    "integrations": random.sample(["github", "google", "discord", "slack"], k=random.randint(0, 2)),
-                    "otherIntegrations": faker.word() if random.random() < 0.2 else None,
-                    "selectedStoreListingVersionId": random.choice(store_listing_versions).id if store_listing_versions and random.random() < 0.5 else None,
-                    "agentInput": Json({"test": "data"}) if random.random() < 0.3 else None,
-                    "onboardingAgentExecutionId": random.choice(agent_graph_executions).id if agent_graph_executions and random.random() < 0.3 else None,
+                    "notified": (
+                        random.sample(completed_steps, k=min(3, len(completed_steps)))
+                        if completed_steps
+                        else []
+                    ),
+                    "rewardedFor": (
+                        random.sample(completed_steps, k=min(2, len(completed_steps)))
+                        if completed_steps
+                        else []
+                    ),
+                    "usageReason": (
+                        random.choice(["personal", "business", "research", "learning"])
+                        if random.random() < 0.7
+                        else None
+                    ),
+                    "integrations": random.sample(
+                        ["github", "google", "discord", "slack"], k=random.randint(0, 2)
+                    ),
+                    "otherIntegrations": (
+                        faker.word() if random.random() < 0.2 else None
+                    ),
+                    "selectedStoreListingVersionId": (
+                        random.choice(store_listing_versions).id
+                        if store_listing_versions and random.random() < 0.5
+                        else None
+                    ),
+                    "agentInput": (
+                        Json({"test": "data"}) if random.random() < 0.3 else None
+                    ),
+                    "onboardingAgentExecutionId": (
+                        random.choice(agent_graph_executions).id
+                        if agent_graph_executions and random.random() < 0.3
+                        else None
+                    ),
                     "agentRuns": random.randint(0, 10),
                 }
             )
@@ -494,19 +519,24 @@ async def main():
                     "userId": user.id,
                 }
             )
-    
+
     # Insert IntegrationWebhooks for some users
-    print(f"Inserting integration webhooks")
-    for user in random.sample(users, k=int(NUM_USERS * 0.3)):  # 30% of users have webhooks
+    print("Inserting integration webhooks")
+    for user in random.sample(
+        users, k=int(NUM_USERS * 0.3)
+    ):  # 30% of users have webhooks
         for _ in range(random.randint(1, 3)):
-            webhook = await db.integrationwebhook.create(
+            await db.integrationwebhook.create(
                 data=IntegrationWebhookCreateInput(
                     userId=user.id,
                     provider=random.choice(["github", "slack", "discord"]),
                     credentialsId=str(faker.uuid4()),
                     webhookType=random.choice(["repo", "channel", "server"]),
                     resource=faker.slug(),
-                    events=[random.choice(["created", "updated", "deleted"]) for _ in range(random.randint(1, 3))],
+                    events=[
+                        random.choice(["created", "updated", "deleted"])
+                        for _ in range(random.randint(1, 3))
+                    ],
                     config=prisma.Json({"url": faker.url()}),
                     secret=faker.sha256(),
                     providerWebhookId=str(faker.uuid4()),
@@ -535,7 +565,7 @@ async def main():
     # Refresh materialized views
     print("Refreshing materialized views...")
     await db.execute_raw("SELECT refresh_store_materialized_views();")
-    
+
     await db.disconnect()
     print("Test data creation completed successfully!")
 

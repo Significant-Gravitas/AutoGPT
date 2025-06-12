@@ -9,7 +9,6 @@ Usage:
 import asyncio
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 
@@ -17,11 +16,7 @@ def run_command(cmd: list[str], cwd: Path = None) -> bool:
     """Run a command and return True if successful."""
     try:
         result = subprocess.run(
-            cmd, 
-            check=True, 
-            capture_output=True, 
-            text=True,
-            cwd=cwd
+            cmd, check=True, capture_output=True, text=True, cwd=cwd
         )
         if result.stdout:
             print(result.stdout)
@@ -50,10 +45,11 @@ async def main():
 
     print("1. Checking database connection...")
     print("-" * 40)
-    
+
     # Import here to ensure proper environment setup
     try:
         from prisma import Prisma
+
         db = Prisma()
         await db.connect()
         print("✓ Database connection successful")
@@ -69,23 +65,19 @@ async def main():
     print()
     print("2. Running test data creator...")
     print("-" * 40)
-    
+
     # Run test_data_creator.py
-    if run_command(
-        ["poetry", "run", "python", "test_data_creator.py"],
-        cwd=test_dir
-    ):
+    if run_command(["poetry", "run", "python", "test_data_creator.py"], cwd=test_dir):
         print()
         print("✅ Test data created successfully!")
-        
+
         print()
         print("3. Running test data updater...")
         print("-" * 40)
-        
+
         # Run test_data_updater.py
         if run_command(
-            ["poetry", "run", "python", "test_data_updater.py"],
-            cwd=test_dir
+            ["poetry", "run", "python", "test_data_updater.py"], cwd=test_dir
         ):
             print()
             print("✅ Test data updated successfully!")
