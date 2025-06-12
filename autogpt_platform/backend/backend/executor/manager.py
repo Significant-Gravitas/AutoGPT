@@ -4,7 +4,6 @@ import multiprocessing
 import os
 import sys
 import threading
-import time
 from collections import defaultdict
 from concurrent.futures import Future, ProcessPoolExecutor
 from contextlib import asynccontextmanager
@@ -669,7 +668,7 @@ class Executor:
                 log_metadata.debug(
                     f"Received output for {output.node.id} - {output.node_exec_id}: {output.data}"
                 )
-                running_executions[output.node.id].add_output(output)
+                running_node_execution[output.node.id].add_output(output)
 
         def drain_done_task(node_exec_id: str, result: object):
             if not isinstance(result, NodeExecutionStats):
@@ -709,15 +708,15 @@ class Executor:
                     f"triggered while graph exec status = {execution_status}"
                 )
 
-        running_executions: dict[str, NodeExecutionProgress] = defaultdict(
+        running_node_execution: dict[str, NodeExecutionProgress] = defaultdict(
             lambda: NodeExecutionProgress(
                 drain_output_queue=drain_output_queue,
                 drain_done_task=drain_done_task,
             )
         )
+        running_node_evaluation: dict[str, Future] = {}
         output_queue = ExecutionQueue[ExecutionOutputEntry]()
         execution_queue = ExecutionQueue[NodeExecutionEntry]()
-        running_output_processing = []
 
         try:
             if cls.db_client.get_credits(graph_exec.user_id) <= 0:
@@ -793,28 +792,36 @@ class Executor:
                     ),
                     cls.node_execution_loop,
                 )
-                running_executions[queued_node_exec.node_id].add_task(
+                running_node_execution[queued_node_exec.node_id].add_task(
                     node_exec_id=queued_node_exec.node_exec_id,
                     task=node_execution_task,
                 )
 
                 # Avoid terminating graph execution when some nodes are still running.
                 while execution_queue.empty() and (
-                    running_executions or running_output_processing
+                    running_node_execution or running_node_evaluation
                 ):
                     log_metadata.debug(
-                        f"Queue empty; running nodes: {list(running_executions.keys())}"
+                        f"Queue empty; running nodes: {list(running_node_execution.keys())}"
                     )
-
-                    # Register next node executions from running_executions.
-                    for node_id, execution in list(running_executions.items()):
+                    for node_id, inflight_exec in list(running_node_execution.items()):
                         if cancel.is_set():
                             execution_status = ExecutionStatus.TERMINATED
                             return execution_stats, execution_status, error
 
-                        log_metadata.debug(f"Waiting on execution of node {node_id}")
-                        while output := execution.pop_output():
-                            running_output_processing.append(
+                        if inflight_eval := running_node_evaluation.get(node_id):
+                            try:
+                                inflight_eval.result(0.01)
+                                running_node_evaluation.pop(node_id)
+                            except TimeoutError:
+                                continue
+
+                        if inflight_exec.is_done(0.01):
+                            running_node_execution.pop(node_id)
+                            continue
+
+                        if output := inflight_exec.pop_output():
+                            running_node_evaluation[node_id] = (
                                 asyncio.run_coroutine_threadsafe(
                                     cls._process_node_output(
                                         output=output,
@@ -827,27 +834,6 @@ class Executor:
                                     cls.node_execution_loop,
                                 )
                             )
-                            if not execution_queue.empty():
-                                break  # Prioritize executing next nodes than enqueuing outputs
-
-                        if execution.is_done():
-                            running_executions.pop(node_id)
-
-                        if not execution_queue.empty():
-                            continue  # Make sure each not is checked once
-
-                    while running_output_processing:
-                        if not running_output_processing[0].done():
-                            break
-                        running_output_processing.pop(0)
-
-                    if execution_queue.empty() and (
-                        running_executions or running_output_processing
-                    ):
-                        log_metadata.debug(
-                            "No more nodes to execute, waiting for outputs..."
-                        )
-                        time.sleep(3)
 
             log_metadata.info(f"Finished graph execution {graph_exec.graph_exec_id}")
             execution_status = ExecutionStatus.COMPLETED
@@ -860,10 +846,17 @@ class Executor:
             execution_status = ExecutionStatus.FAILED
 
         finally:
-            for node_id, execution in running_executions.items():
-                if execution.is_done():
+            for node_id, inflight_exec in running_node_execution.items():
+                if inflight_exec.is_done():
                     continue
                 log_metadata.info(f"Stopping node execution {node_id}")
+                inflight_exec.stop()
+
+            for node_id, inflight_eval in running_node_evaluation.items():
+                if inflight_eval.done():
+                    continue
+                log_metadata.info(f"Stopping node evaluation {node_id}")
+                inflight_eval.cancel()
 
             if execution_status in [ExecutionStatus.TERMINATED, ExecutionStatus.FAILED]:
                 inflight_executions = cls.db_client.get_node_executions(
