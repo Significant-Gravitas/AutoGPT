@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import debounce from "lodash/debounce";
 import { Input } from "@/components/ui/input";
 
+const SEARCH_DEBOUNCE_MS = 500;
+
 interface BlockMenuSearchBarProps {
   className?: string;
 }
@@ -18,17 +20,22 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
   const { setSearchQuery, searchId, setSearchId, setFilters } =
     useBlockMenuContext();
 
+  const searchIdRef = useRef(searchId);
+  useEffect(() => {
+    searchIdRef.current = searchId;
+  }, [searchId]);
+
   const debouncedSetSearchQuery = useMemo(
     () =>
       debounce((value: string) => {
         setSearchQuery(value);
         if (value.length === 0) {
           setSearchId(undefined);
-        } else if (!searchId) {
+        } else if (!searchIdRef.current) {
           setSearchId(crypto.randomUUID());
         }
-      }, 500),
-    [setSearchQuery, setSearchId, searchId],
+      }, SEARCH_DEBOUNCE_MS),
+    [setSearchQuery, setSearchId],
   );
 
   useEffect(() => {
@@ -89,5 +96,3 @@ export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
     </div>
   );
 };
-
-

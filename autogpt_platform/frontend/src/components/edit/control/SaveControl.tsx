@@ -16,7 +16,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/use-toast";
-import ControlPanelButton from "@/components/builder/block-menu/ControlPanelButton";
+import { ControlPanelButton } from "@/components/builder/block-menu/ControlPanelButton";
 
 interface SaveControlProps {
   agentMeta: GraphMeta | null;

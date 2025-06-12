@@ -1,7 +1,7 @@
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import React from "react";
-import ControlPanelButton from "@/components/builder/block-menu/ControlPanelButton";
+import { ControlPanelButton } from "@/components/builder/block-menu/ControlPanelButton";
 
 /**
  * Represents a control element for the ControlPanel Component.
