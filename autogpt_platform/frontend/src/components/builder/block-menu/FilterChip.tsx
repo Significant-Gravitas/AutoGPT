@@ -21,8 +21,9 @@ export const FilterChip: React.FC<Props> = ({
     <Button
       className={cn(
         "group w-fit space-x-1 rounded-[1.5rem] border border-zinc-300 bg-transparent px-[0.625rem] py-[0.375rem] shadow-none transition-transform duration-300 ease-in-out",
-        "hover:border-violet-500 hover:bg-transparent focus:ring-0 disabled:pointer-events-none",
+        "hover:border-violet-500 hover:bg-transparent focus:ring-0 disabled:cursor-not-allowed",
         selected && "border-0 bg-violet-700 hover:border",
+        className,
       )}
       {...rest}
       onMouseEnter={() => setIsHovering(true)}
@@ -52,5 +53,3 @@ export const FilterChip: React.FC<Props> = ({
     </Button>
   );
 };
-
-

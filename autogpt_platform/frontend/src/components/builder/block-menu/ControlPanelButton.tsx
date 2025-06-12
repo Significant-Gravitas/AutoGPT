@@ -23,7 +23,7 @@ export const ControlPanelButton: React.FC<Props> = ({
         "flex h-[4.25rem] w-[4.25rem] items-center justify-center whitespace-normal bg-white p-[1.38rem] text-zinc-800 shadow-none hover:cursor-pointer hover:bg-zinc-100 hover:text-zinc-950 focus:ring-0",
         selected &&
           "bg-violet-50 text-violet-700 hover:cursor-default hover:bg-violet-50 hover:text-violet-700 active:bg-violet-50 active:text-violet-700",
-        disabled && "",
+        disabled && "cursor-not-allowed",
         className,
       )}
       {...rest}
