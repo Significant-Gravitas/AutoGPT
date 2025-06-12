@@ -52,7 +52,7 @@ export default function FilterSheet({
     }
   }, [isOpen, filters, searchData]);
 
-  const onCategoryChange = useCallback((category: CategoryKey) => {
+  const onCategoryChange = (category: CategoryKey) => {
     setLocalFilters((prev) => ({
       ...prev,
       categories: {
@@ -60,9 +60,9 @@ export default function FilterSheet({
         [category]: !prev.categories[category],
       },
     }));
-  }, []);
+  };
 
-  const onCreatorChange = useCallback((creator: string) => {
+  const onCreatorChange = (creator: string) => {
     setLocalFilters((prev) => {
       const updatedCreators = prev.createdBy.includes(creator)
         ? prev.createdBy.filter((c) => c !== creator)
@@ -73,14 +73,14 @@ export default function FilterSheet({
         createdBy: updatedCreators,
       };
     });
-  }, []);
+  };
 
-  const handleApplyFilters = useCallback(() => {
+  const handleApplyFilters = () => {
     setFilters(localFilters);
     setIsOpen(false);
-  }, [localFilters, setFilters]);
+  };
 
-  const handleClearFilters = useCallback(() => {
+  const handleClearFilters = () => {
     const clearedFilters: Filters = {
       categories: {
         blocks: false,
@@ -93,25 +93,25 @@ export default function FilterSheet({
     };
     setFilters(clearedFilters);
     setIsOpen(false);
-  }, [setFilters]);
+  };
 
-  const hasLocalActiveFilters = useCallback(() => {
+  const hasLocalActiveFilters = () => {
     const hasCategoryFilter = Object.values(localFilters.categories).some(
       (value) => value,
     );
     const hasCreatorFilter = localFilters.createdBy.length > 0;
 
     return hasCategoryFilter || hasCreatorFilter;
-  }, [localFilters]);
+  };
 
-  const hasActiveFilters = useCallback(() => {
+  const hasActiveFilters = () => {
     const hasCategoryFilter = Object.values(filters.categories).some(
       (value) => value,
     );
     const hasCreatorFilter = filters.createdBy.length > 0;
 
     return hasCategoryFilter || hasCreatorFilter;
-  }, [filters]);
+  };
 
   const handleToggleShowMoreCreators = () => {
     if (displayedCreatorsCount < creators.length) {

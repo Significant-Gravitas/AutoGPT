@@ -26,15 +26,12 @@ export const BlockMenu: React.FC<BlockMenuProps> = ({
   setBlockMenuSelected,
 }) => {
   const [open, setOpen] = useState(false);
-  const onOpen = useCallback(
-    (newOpen: boolean) => {
-      if (!pinBlocksPopover) {
-        setOpen(newOpen);
-        setBlockMenuSelected(newOpen ? "block" : "");
-      }
-    },
-    [pinBlocksPopover, setOpen, setBlockMenuSelected],
-  );
+  const onOpen = (newOpen: boolean) => {
+    if (!pinBlocksPopover) {
+      setOpen(newOpen);
+      setBlockMenuSelected(newOpen ? "block" : "");
+    }
+  };
 
   return (
     <Popover open={pinBlocksPopover ? true : open} onOpenChange={onOpen}>
