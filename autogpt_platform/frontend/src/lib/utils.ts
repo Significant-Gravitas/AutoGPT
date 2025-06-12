@@ -450,3 +450,13 @@ export const getBlockType = (item: any) => {
 
   return null;
 };
+
+export function parseErrorMessage(error: unknown, message?: string): string {
+  const errorMessage = error
+    ? error instanceof Error
+      ? error.message
+      : String(error)
+    : message || "An unexpected error occurred. Please try again.";
+
+  return errorMessage;
+}

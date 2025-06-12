@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, parseErrorMessage } from "@/lib/utils";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import React from "react";
 
@@ -22,22 +22,20 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
   className,
   showIcon = true,
 }) => {
-  const errorMessage = error
-    ? error instanceof Error
-      ? error.message
-      : String(error)
-    : message || "An unexpected error occurred. Please try again.";
-
-  const classes =
-    "flex h-full w-full flex-col items-center justify-center text-center space-y-4";
-
   return (
-    <div className={cn(classes, className)}>
+    <div
+      className={cn(
+        "flex h-full w-full flex-col items-center justify-center space-y-4 text-center",
+        className,
+      )}
+    >
       {showIcon && <AlertCircle className="h-12 w-12" strokeWidth={1.5} />}
 
       <div className="space-y-2">
         <p className="text-sm font-medium text-zinc-800">{title}</p>
-        <p className="text-sm text-zinc-600">{errorMessage}</p>
+        <p className="text-sm text-zinc-600">
+          {parseErrorMessage(error, message)}
+        </p>
       </div>
 
       {onRetry && (
@@ -54,5 +52,3 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
     </div>
   );
 };
-
-
