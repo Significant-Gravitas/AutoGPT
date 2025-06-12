@@ -16,8 +16,11 @@ export const HeroSection: React.FC = () => {
   }, [completeStep]);
 
   function onFilterChange(selectedFilters: string[]) {
-    const encodedTerm = encodeURIComponent(selectedFilters.join(", "));
-    router.push(`/marketplace/search?searchTerm=${encodedTerm}`);
+    // Defer router navigation to avoid setState during render
+    setTimeout(() => {
+      const encodedTerm = encodeURIComponent(selectedFilters.join(", "));
+      router.push(`/marketplace/search?searchTerm=${encodedTerm}`);
+    }, 0);
   }
 
   return (

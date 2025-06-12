@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
 import { addDollars } from "@/app/(platform)/admin/spending/actions";
 import useCredits from "@/hooks/useCredits";
+import { LoadingSpinner } from "@/components/ui/loading";
 
 export function AdminAddMoneyButton({
   userId,
@@ -32,6 +33,7 @@ export function AdminAddMoneyButton({
 }) {
   const router = useRouter();
   const [isAddMoneyDialogOpen, setIsAddMoneyDialogOpen] = useState(false);
+  const [isAdding, setIsAdding] = useState(false);
   const [dollarAmount, setDollarAmount] = useState(
     defaultAmount ? Math.abs(defaultAmount / 100).toFixed(2) : "1.00",
   );
@@ -39,12 +41,15 @@ export function AdminAddMoneyButton({
   const { formatCredits } = useCredits();
 
   const handleApproveSubmit = async (formData: FormData) => {
-    setIsAddMoneyDialogOpen(false);
+    setIsAdding(true);
     try {
       await addDollars(formData);
+      setIsAddMoneyDialogOpen(false);
       router.refresh(); // Refresh the current route
     } catch (error) {
       console.error("Error adding dollars:", error);
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -52,31 +57,31 @@ export function AdminAddMoneyButton({
     <>
       <Button
         size="sm"
-        variant="default"
-        onClick={(e) => {
-          e.stopPropagation();
-          setIsAddMoneyDialogOpen(true);
-        }}
+        variant="outline"
+        onClick={() => setIsAddMoneyDialogOpen(true)}
+        disabled={isAdding}
       >
-        Add Dollars
+        {isAdding ? (
+          <>
+            <LoadingSpinner className="mr-2 h-4 w-4" />
+            Adding...
+          </>
+        ) : (
+          "Add Money"
+        )}
       </Button>
 
-      {/* Add $$$ Dialog */}
-      <Dialog
-        open={isAddMoneyDialogOpen}
-        onOpenChange={setIsAddMoneyDialogOpen}
-      >
+      <Dialog open={isAddMoneyDialogOpen} onOpenChange={setIsAddMoneyDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Dollars</DialogTitle>
-            <DialogDescription className="pt-2">
-              <div className="mb-2">
-                <span className="font-medium">User:</span> {userEmail}
-              </div>
-              <div>
-                <span className="font-medium">Current balance:</span> $
-                {(currentBalance / 100).toFixed(2)}
-              </div>
+            <DialogTitle>Add Money to {userEmail}</DialogTitle>
+            <DialogDescription>
+              Current Balance: {formatCredits(currentBalance)}
+              <br />
+              New Balance:{" "}
+              {formatCredits(
+                currentBalance + Math.round(parseFloat(dollarAmount) * 100),
+              )}
             </DialogDescription>
           </DialogHeader>
 
@@ -103,6 +108,7 @@ export function AdminAddMoneyButton({
                     value={dollarAmount}
                     onChange={(e) => setDollarAmount(e.target.value)}
                     placeholder="0.00"
+                    disabled={isAdding}
                   />
                 </div>
               </div>
@@ -116,6 +122,7 @@ export function AdminAddMoneyButton({
                   name="comments"
                   placeholder="Why are you adding dollars?"
                   defaultValue={defaultComments || "We love you!"}
+                  disabled={isAdding}
                 />
               </div>
             </div>
@@ -125,10 +132,20 @@ export function AdminAddMoneyButton({
                 type="button"
                 variant="outline"
                 onClick={() => setIsAddMoneyDialogOpen(false)}
+                disabled={isAdding}
               >
                 Cancel
               </Button>
-              <Button type="submit">Add Dollars</Button>
+              <Button type="submit" disabled={isAdding}>
+                {isAdding ? (
+                  <>
+                    <LoadingSpinner className="mr-2 h-4 w-4" />
+                    Adding...
+                  </>
+                ) : (
+                  "Add Dollars"
+                )}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

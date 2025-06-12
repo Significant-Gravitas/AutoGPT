@@ -19,6 +19,7 @@ import {
   approveAgent,
   rejectAgent,
 } from "@/app/(platform)/admin/marketplace/actions";
+import { LoadingSpinner } from "@/components/ui/loading";
 
 export function ApproveRejectButtons({
   version,
@@ -28,53 +29,75 @@ export function ApproveRejectButtons({
   const router = useRouter();
   const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
+  const [isRejecting, setIsRejecting] = useState(false);
 
   const handleApproveSubmit = async (formData: FormData) => {
-    setIsApproveDialogOpen(false);
+    setIsApproving(true);
     try {
       await approveAgent(formData);
+      setIsApproveDialogOpen(false);
       router.refresh(); // Refresh the current route
     } catch (error) {
       console.error("Error approving agent:", error);
+    } finally {
+      setIsApproving(false);
     }
   };
 
   const handleRejectSubmit = async (formData: FormData) => {
-    setIsRejectDialogOpen(false);
+    setIsRejecting(true);
     try {
       await rejectAgent(formData);
+      setIsRejectDialogOpen(false);
       router.refresh(); // Refresh the current route
     } catch (error) {
       console.error("Error rejecting agent:", error);
+    } finally {
+      setIsRejecting(false);
     }
   };
 
   return (
     <>
-      <Button
-        size="sm"
-        variant="outline"
-        className="text-green-600 hover:bg-green-50 hover:text-green-700"
-        onClick={(e) => {
-          e.stopPropagation();
-          setIsApproveDialogOpen(true);
-        }}
-      >
-        <CheckCircle className="mr-2 h-4 w-4" />
-        Approve
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        className="text-red-600 hover:bg-red-50 hover:text-red-700"
-        onClick={(e) => {
-          e.stopPropagation();
-          setIsRejectDialogOpen(true);
-        }}
-      >
-        <XCircle className="mr-2 h-4 w-4" />
-        Reject
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          onClick={() => setIsApproveDialogOpen(true)}
+          className="bg-green-600 hover:bg-green-700"
+          disabled={isApproving || isRejecting}
+        >
+          {isApproving ? (
+            <>
+              <LoadingSpinner className="mr-2 h-4 w-4" />
+              Approving...
+            </>
+          ) : (
+            <>
+              <CheckCircle className="mr-2 h-4 w-4" />
+              Approve
+            </>
+          )}
+        </Button>
+        <Button
+          size="sm"
+          variant="destructive"
+          onClick={() => setIsRejectDialogOpen(true)}
+          disabled={isApproving || isRejecting}
+        >
+          {isRejecting ? (
+            <>
+              <LoadingSpinner className="mr-2 h-4 w-4" />
+              Rejecting...
+            </>
+          ) : (
+            <>
+              <XCircle className="mr-2 h-4 w-4" />
+              Reject
+            </>
+          )}
+        </Button>
+      </div>
 
       {/* Approve Dialog */}
       <Dialog open={isApproveDialogOpen} onOpenChange={setIsApproveDialogOpen}>
@@ -102,6 +125,7 @@ export function ApproveRejectButtons({
                   name="comments"
                   placeholder="Add any comments for the agent creator"
                   defaultValue="Meets all requirements"
+                  disabled={isApproving}
                 />
               </div>
             </div>
@@ -111,10 +135,20 @@ export function ApproveRejectButtons({
                 type="button"
                 variant="outline"
                 onClick={() => setIsApproveDialogOpen(false)}
+                disabled={isApproving}
               >
                 Cancel
               </Button>
-              <Button type="submit">Approve</Button>
+              <Button type="submit" disabled={isApproving}>
+                {isApproving ? (
+                  <>
+                    <LoadingSpinner className="mr-2 h-4 w-4" />
+                    Approving...
+                  </>
+                ) : (
+                  "Approve"
+                )}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -145,6 +179,7 @@ export function ApproveRejectButtons({
                   name="comments"
                   placeholder="Provide feedback for the agent creator"
                   required
+                  disabled={isRejecting}
                 />
               </div>
 
@@ -154,6 +189,7 @@ export function ApproveRejectButtons({
                   id="internal_comments"
                   name="internal_comments"
                   placeholder="Add any internal notes (not visible to creator)"
+                  disabled={isRejecting}
                 />
               </div>
             </div>
@@ -163,11 +199,19 @@ export function ApproveRejectButtons({
                 type="button"
                 variant="outline"
                 onClick={() => setIsRejectDialogOpen(false)}
+                disabled={isRejecting}
               >
                 Cancel
               </Button>
-              <Button type="submit" variant="destructive">
-                Reject
+              <Button type="submit" variant="destructive" disabled={isRejecting}>
+                {isRejecting ? (
+                  <>
+                    <LoadingSpinner className="mr-2 h-4 w-4" />
+                    Rejecting...
+                  </>
+                ) : (
+                  "Reject"
+                )}
               </Button>
             </DialogFooter>
           </form>

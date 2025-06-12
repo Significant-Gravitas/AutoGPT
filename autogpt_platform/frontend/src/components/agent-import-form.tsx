@@ -1,3 +1,5 @@
+"use client";
+
 import { z } from "zod";
 import { cn } from "@/lib/utils";
 import { useForm } from "react-hook-form";
@@ -21,6 +23,7 @@ import {
   GraphCreatable,
   sanitizeImportedGraph,
 } from "@/lib/autogpt-server-api";
+import { LoadingSpinner } from "@/components/ui/loading";
 
 // Add this custom schema for File type
 const fileSchema = z.custom<File>((val) => val instanceof File, {
@@ -38,6 +41,7 @@ export const AgentImportForm: React.FC<
   React.FormHTMLAttributes<HTMLFormElement>
 > = ({ className, ...props }) => {
   const [agentObject, setAgentObject] = useState<GraphCreatable | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
   const api = useBackendAPI();
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -49,30 +53,32 @@ export const AgentImportForm: React.FC<
     },
   });
 
-  function onSubmit(values: z.infer<typeof formSchema>) {
+  async function onSubmit(values: z.infer<typeof formSchema>) {
     if (!agentObject) {
       form.setError("root", { message: "No Agent object to save" });
       return;
     }
-    const payload: GraphCreatable = {
-      ...agentObject,
-      name: values.agentName,
-      description: values.agentDescription,
-      is_active: !values.importAsTemplate,
-    };
 
-    api
-      .createGraph(payload)
-      .then((response) => {
-        const qID = "flowID";
-        window.location.href = `/build?${qID}=${response.id}`;
-      })
-      .catch((error) => {
-        const entity_type = "agent";
-        form.setError("root", {
-          message: `Could not create ${entity_type}: ${error}`,
-        });
+    setIsImporting(true);
+    try {
+      const payload: GraphCreatable = {
+        ...agentObject,
+        name: values.agentName,
+        description: values.agentDescription,
+        is_active: !values.importAsTemplate,
+      };
+
+      const response = await api.createGraph(payload);
+      const qID = "flowID";
+      window.location.href = `/build?${qID}=${response.id}`;
+    } catch (error) {
+      const entity_type = "agent";
+      form.setError("root", {
+        message: `Could not create ${entity_type}: ${error}`,
       });
+    } finally {
+      setIsImporting(false);
+    }
   }
 
   return (
@@ -93,6 +99,7 @@ export const AgentImportForm: React.FC<
                   type="file"
                   accept="application/json"
                   data-testid="import-agent-file-input"
+                  disabled={isImporting}
                   onChange={(e) => {
                     const file = e.target.files?.[0];
                     if (file) {
@@ -136,12 +143,12 @@ export const AgentImportForm: React.FC<
         <FormField
           control={form.control}
           name="agentName"
-          disabled={!agentObject}
+          disabled={!agentObject || isImporting}
           render={({ field }) => (
             <FormItem>
               <FormLabel>Agent name</FormLabel>
               <FormControl>
-                <Input {...field} data-testid="agent-name-input" />
+                <Input {...field} data-testid="agent-name-input" disabled={!agentObject || isImporting} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -150,12 +157,12 @@ export const AgentImportForm: React.FC<
         <FormField
           control={form.control}
           name="agentDescription"
-          disabled={!agentObject}
+          disabled={!agentObject || isImporting}
           render={({ field }) => (
             <FormItem>
               <FormLabel>Agent description</FormLabel>
               <FormControl>
-                <Textarea {...field} data-testid="agent-description-input" />
+                <Textarea {...field} data-testid="agent-description-input" disabled={!agentObject || isImporting} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -164,11 +171,26 @@ export const AgentImportForm: React.FC<
         <Button
           type="submit"
           className="w-full"
-          disabled={!agentObject}
+          disabled={!agentObject || isImporting}
           data-testid="import-agent-submit"
         >
-          <EnterIcon className="mr-2" /> Import & Edit
+          {isImporting ? (
+            <>
+              <LoadingSpinner className="mr-2 h-4 w-4" />
+              Importing & Creating...
+            </>
+          ) : (
+            <>
+              <EnterIcon className="mr-2" />
+              Import & Edit
+            </>
+          )}
         </Button>
+        {form.formState.errors.root && (
+          <div className="text-sm text-red-500">
+            {form.formState.errors.root.message}
+          </div>
+        )}
       </form>
     </Form>
   );

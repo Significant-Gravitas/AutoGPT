@@ -150,7 +150,12 @@ export default function Wallet() {
             </PopoverClose>
           </div>
         </div>
-        <ScrollArea className="max-h-[85vh] overflow-y-auto">
+        <div 
+          className="max-h-[85vh] overflow-y-auto overflow-x-hidden"
+          onWheel={(e) => {
+            e.stopPropagation();
+          }}
+        >
           {/* Top ups */}
           {process.env.NEXT_PUBLIC_SHOW_BILLING_PAGE === "true" && (
             <WalletRefill />
@@ -163,7 +168,7 @@ export default function Wallet() {
             Complete the following tasks to earn more credits!
           </p>
           <TaskGroups />
-        </ScrollArea>
+        </div>
       </PopoverContent>
     </Popover>
   );

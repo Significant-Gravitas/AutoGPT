@@ -10,7 +10,7 @@ export async function sendResetEmail(email: string, turnstileToken: string) {
     "sendResetEmail",
     {},
     async () => {
-      const supabase = getServerSupabase();
+      const supabase = await getServerSupabase();
       const headersList = await headers();
       const host = headersList.get("host");
       const protocol =
@@ -49,7 +49,7 @@ export async function changePassword(password: string, turnstileToken: string) {
     "changePassword",
     {},
     async () => {
-      const supabase = getServerSupabase();
+      const supabase = await getServerSupabase();
 
       if (!supabase) {
         redirect("/error");
