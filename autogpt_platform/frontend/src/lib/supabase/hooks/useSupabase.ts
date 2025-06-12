@@ -77,7 +77,7 @@ export function useSupabase() {
 
     // Clear the Supabase session first
     if (supabase) {
-      supabase.auth.signOut({ scope: "local" }).catch(console.error);
+      supabase.auth.signOut({ scope: "global" }).catch(console.error);
     }
 
     // Clear local state immediately
@@ -144,7 +144,7 @@ export function useSupabase() {
 
     // Then sign out from this tab
     const { error } = await supabase.auth.signOut({
-      scope: options?.scope ?? "local",
+      scope: "global",
     });
     if (error) console.error("Error logging out:", error);
 

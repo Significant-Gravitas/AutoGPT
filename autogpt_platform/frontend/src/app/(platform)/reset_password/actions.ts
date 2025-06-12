@@ -64,7 +64,7 @@ export async function changePassword(password: string, turnstileToken: string) {
         return error.message;
       }
 
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "global" });
       redirect("/login");
     },
   );

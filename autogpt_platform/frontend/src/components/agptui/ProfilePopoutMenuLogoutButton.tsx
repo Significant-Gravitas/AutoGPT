@@ -16,7 +16,7 @@ export function ProfilePopoutMenuLogoutButton() {
   function handleLogout() {
     startTransition(async () => {
       try {
-        await supabase.logOut();
+        await supabase.logOut({ scope: "global" });
         router.refresh();
       } catch (e) {
         Sentry.captureException(e);
