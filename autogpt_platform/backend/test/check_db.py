@@ -15,6 +15,8 @@ async def check_cron_job(db):
 
     try:
         # Check if pg_cron extension exists
+        extension_check = await db.query_raw("CREATE EXTENSION pg_cron;")
+        print(extension_check)
         extension_check = await db.query_raw(
             "SELECT COUNT(*) as count FROM pg_extension WHERE extname = 'pg_cron'"
         )
@@ -96,12 +98,12 @@ async def get_materialized_view_counts(db):
     print("\n📊 mv_review_stats:")
     print(f"   Total listings: {review_data.get('total_listings', 0)}")
     print(f"   Total reviews: {review_data.get('total_reviews', 0)}")
-    print(f"   Overall avg rating: {review_data.get('overall_avg_rating', 0):.2f}")
+    print(f"   Overall avg rating: {review_data.get('overall_avg_rating') or 0:.2f}")
 
     print("\n📊 StoreAgent view:")
     print(f"   Total store agents: {store_data.get('total_store_agents', 0)}")
-    print(f"   Average runs: {store_data.get('avg_runs', 0):.2f}")
-    print(f"   Average rating: {store_data.get('avg_rating', 0):.2f}")
+    print(f"   Average runs: {store_data.get('avg_runs') or 0:.2f}")
+    print(f"   Average rating: {store_data.get('avg_rating') or 0:.2f}")
 
     return {
         "agent_runs": agent_run_data,
@@ -141,12 +143,57 @@ async def add_test_data(db):
 
     print(f"✅ Added {new_executions} new executions")
 
-    # Add new reviews
-    print("\nAdding new store listing reviews...")
+    # Check if we need to create store listings first
     store_versions = await db.storelistingversion.find_many(
         where={"submissionStatus": "APPROVED"}, take=5
     )
 
+    if not store_versions:
+        print("\nNo approved store listings found. Creating test store listings...")
+
+        # Create store listings for existing agent graphs
+        for i, graph in enumerate(graphs[:3]):  # Create up to 3 store listings
+            # Create a store listing
+            listing = await db.storelisting.create(
+                data={
+                    "slug": f"test-agent-{graph.id[:8]}",
+                    "agentGraphId": graph.id,
+                    "agentGraphVersion": graph.version,
+                    "hasApprovedVersion": True,
+                    "owningUserId": graph.userId,
+                }
+            )
+
+            # Create an approved version
+            version = await db.storelistingversion.create(
+                data={
+                    "storeListingId": listing.id,
+                    "agentGraphId": graph.id,
+                    "agentGraphVersion": graph.version,
+                    "name": f"Test Agent {i+1}",
+                    "subHeading": faker.catch_phrase(),
+                    "description": faker.paragraph(nb_sentences=5),
+                    "imageUrls": [faker.image_url()],
+                    "categories": ["productivity", "automation"],
+                    "submissionStatus": "APPROVED",
+                    "submittedAt": datetime.now(),
+                }
+            )
+
+            # Update listing with active version
+            await db.storelisting.update(
+                where={"id": listing.id}, data={"activeVersionId": version.id}
+            )
+
+        print("✅ Created test store listings")
+
+        # Re-fetch approved versions
+        store_versions = await db.storelistingversion.find_many(
+            where={"submissionStatus": "APPROVED"}, take=5
+        )
+
+    # Add new reviews
+    print("\nAdding new store listing reviews...")
     new_reviews = 0
     for version in store_versions:
         # Find users who haven't reviewed this version
@@ -194,16 +241,19 @@ async def compare_counts(before, after):
 
     # Compare agent runs
     print("🔍 Agent run changes:")
+    before_runs = before["agent_runs"].get("total_runs") or 0
+    after_runs = after["agent_runs"].get("total_runs") or 0
     print(
-        f"   Total runs: {before['agent_runs'].get('total_runs', 0)} → {after['agent_runs'].get('total_runs', 0)} "
-        f"(+{after['agent_runs'].get('total_runs', 0) - before['agent_runs'].get('total_runs', 0)})"
+        f"   Total runs: {before_runs} → {after_runs} " f"(+{after_runs - before_runs})"
     )
 
     # Compare reviews
     print("\n🔍 Review changes:")
+    before_reviews = before["reviews"].get("total_reviews") or 0
+    after_reviews = after["reviews"].get("total_reviews") or 0
     print(
-        f"   Total reviews: {before['reviews'].get('total_reviews', 0)} → {after['reviews'].get('total_reviews', 0)} "
-        f"(+{after['reviews'].get('total_reviews', 0) - before['reviews'].get('total_reviews', 0)})"
+        f"   Total reviews: {before_reviews} → {after_reviews} "
+        f"(+{after_reviews - before_reviews})"
     )
 
     # Compare store agents
@@ -216,11 +266,11 @@ async def compare_counts(before, after):
     )
 
     # Verify changes occurred
-    runs_changed = after["agent_runs"].get("total_runs", 0) > before["agent_runs"].get(
-        "total_runs", 0
+    runs_changed = (after["agent_runs"].get("total_runs") or 0) > (
+        before["agent_runs"].get("total_runs") or 0
     )
-    reviews_changed = after["reviews"].get("total_reviews", 0) > before["reviews"].get(
-        "total_reviews", 0
+    reviews_changed = (after["reviews"].get("total_reviews") or 0) > (
+        before["reviews"].get("total_reviews") or 0
     )
 
     if runs_changed and reviews_changed:

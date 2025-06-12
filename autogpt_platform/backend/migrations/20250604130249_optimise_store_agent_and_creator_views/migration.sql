@@ -1,3 +1,38 @@
+-- This migration creates materialized views for performance optimization
+-- 
+-- IMPORTANT: For production environments, pg_cron is REQUIRED for automatic refresh
+-- Prerequisites for production:
+--   1. pg_cron extension must be installed: CREATE EXTENSION pg_cron;
+--   2. pg_cron must be configured in postgresql.conf:
+--      shared_preload_libraries = 'pg_cron'
+--      cron.database_name = 'your_database_name'
+--
+-- For development environments without pg_cron:
+--   The migration will succeed but you must manually refresh views with:
+--   SELECT refresh_store_materialized_views();
+
+-- Check if pg_cron extension is installed and set a flag
+DO $$
+DECLARE
+    has_pg_cron BOOLEAN;
+BEGIN
+    SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') INTO has_pg_cron;
+    
+    IF NOT has_pg_cron THEN
+        RAISE WARNING 'pg_cron extension is not installed!';
+        RAISE WARNING 'Materialized views will be created but WILL NOT refresh automatically.';
+        RAISE WARNING 'For production use, install pg_cron with: CREATE EXTENSION pg_cron;';
+        RAISE WARNING 'For development, manually refresh with: SELECT refresh_store_materialized_views();';
+        
+        -- For production deployments, uncomment the following line to make pg_cron mandatory:
+        -- RAISE EXCEPTION 'pg_cron is required for production deployments';
+    END IF;
+    
+    -- Store the flag for later use in the migration
+    PERFORM set_config('migration.has_pg_cron', has_pg_cron::text, false);
+END
+$$;
+
 -- CreateIndex
 -- Optimized: Only include owningUserId in index columns since isDeleted and hasApprovedVersion are in WHERE clause
 CREATE INDEX  "idx_store_listing_approved" ON "StoreListing"("owningUserId") WHERE "isDeleted" = false AND "hasApprovedVersion" = true;
@@ -173,12 +208,15 @@ $$;
 -- Initial refresh of materialized views
 SELECT refresh_store_materialized_views();
 
--- Schedule automatic refresh every 15 minutes (requires pg_cron extension)
--- Improved pg_cron handling with better error messages
+-- Schedule automatic refresh every 15 minutes (only if pg_cron is available)
 DO $$
+DECLARE
+    has_pg_cron BOOLEAN;
 BEGIN
-    -- Check if pg_cron extension exists
-    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+    -- Get the flag we set earlier
+    has_pg_cron := current_setting('migration.has_pg_cron', true)::boolean;
+    
+    IF has_pg_cron THEN
         -- Check if the job already exists to avoid duplicates
         IF NOT EXISTS (
             SELECT 1 FROM cron.job 
@@ -194,13 +232,9 @@ BEGIN
             RAISE NOTICE 'Materialized view refresh job already exists';
         END IF;
     ELSE
-        RAISE WARNING 'pg_cron extension not installed. Materialized views will need manual refresh.';
-        RAISE NOTICE 'To refresh manually, run: SELECT refresh_store_materialized_views();';
-        RAISE NOTICE 'To install pg_cron: CREATE EXTENSION pg_cron;';
+        RAISE WARNING '⚠️  Automatic refresh NOT configured - pg_cron is not available';
+        RAISE WARNING '⚠️  You must manually refresh views with: SELECT refresh_store_materialized_views();';
+        RAISE WARNING '⚠️  Or install pg_cron for automatic refresh in production';
     END IF;
-EXCEPTION
-    WHEN OTHERS THEN
-        RAISE WARNING 'Could not schedule automatic refresh: %', SQLERRM;
-        RAISE NOTICE 'Materialized views will need manual refresh via: SELECT refresh_store_materialized_views();';
 END;
 $$;
