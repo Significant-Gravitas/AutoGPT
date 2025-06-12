@@ -29,6 +29,19 @@ export function useSupabase() {
     }
   }, []);
 
+  async function logOut(options?: SignOut) {
+    if (!supabase) return;
+
+    broadcastLogout();
+
+    const { error } = await supabase.auth.signOut({
+      scope: "global",
+    });
+    if (error) console.error("Error logging out:", error);
+
+    router.push("/login");
+  }
+
   async function validateSession() {
     if (!supabase) return false;
 
@@ -133,19 +146,6 @@ export function useSupabase() {
       eventListeners.cleanup();
     };
   }, [supabase]);
-
-  async function logOut(options?: SignOut) {
-    if (!supabase) return;
-
-    broadcastLogout();
-
-    const { error } = await supabase.auth.signOut({
-      scope: "global",
-    });
-    if (error) console.error("Error logging out:", error);
-
-    router.push("/login");
-  }
 
   return {
     supabase,
