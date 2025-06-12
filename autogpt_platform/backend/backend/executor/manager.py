@@ -7,12 +7,12 @@ import threading
 import time
 from collections import defaultdict
 from concurrent.futures import Future, ProcessPoolExecutor
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
-from redis.lock import Lock as RedisLock
+from redis.asyncio.lock import Lock as RedisLock
 
 from backend.blocks.io import AgentOutputBlock
 from backend.data.model import (
@@ -32,7 +32,7 @@ from backend.notifications.notifications import queue_notification
 from backend.util.exceptions import InsufficientBalanceError
 
 if TYPE_CHECKING:
-    from backend.executor import DatabaseManagerClient
+    from backend.executor import DatabaseManagerClient, DatabaseManagerAsyncClient
 
 from autogpt_libs.utils.cache import thread_cached
 from prometheus_client import Gauge, start_http_server
@@ -64,6 +64,7 @@ from backend.executor.utils import (
     NodeExecutionProgress,
     block_usage_cost,
     execution_usage_cost,
+    get_async_execution_event_bus,
     get_execution_event_bus,
     get_execution_queue,
     parse_execution_output,
@@ -245,8 +246,8 @@ async def execute_node(
             execution_stats.output_size = output_size
 
 
-def _enqueue_next_nodes(
-    db_client: "DatabaseManagerClient",
+async def _enqueue_next_nodes(
+    db_client: "DatabaseManagerAsyncClient",
     node: Node,
     output: BlockData,
     user_id: str,
@@ -255,10 +256,10 @@ def _enqueue_next_nodes(
     log_metadata: LogMetadata,
     node_credentials_input_map: Optional[dict[str, dict[str, CredentialsMetaInput]]],
 ) -> list[NodeExecutionEntry]:
-    def add_enqueued_execution(
+    async def add_enqueued_execution(
         node_exec_id: str, node_id: str, block_id: str, data: BlockInput
     ) -> NodeExecutionEntry:
-        update_node_execution_status(
+        await async_update_node_execution_status(
             db_client=db_client,
             exec_id=node_exec_id,
             status=ExecutionStatus.QUEUED,
@@ -274,14 +275,14 @@ def _enqueue_next_nodes(
             inputs=data,
         )
 
-    def register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
+    async def register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
         try:
-            return _register_next_executions(node_link)
+            return await _register_next_executions(node_link)
         except Exception as e:
             log_metadata.exception(f"Failed to register next executions: {e}")
             return []
 
-    def _register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
+    async def _register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
         enqueued_executions = []
         next_output_name = node_link.source_name
         next_input_name = node_link.sink_name
@@ -290,112 +291,116 @@ def _enqueue_next_nodes(
         next_data = parse_execution_output(output, next_output_name)
         if next_data is None:
             return enqueued_executions
-        next_node = db_client.get_node(next_node_id)
+        next_node = await db_client.get_node(next_node_id)
 
-        # Add output data to the earliest incomplete execution, or create a new one.
-        next_node_exec_id, next_node_input = db_client.upsert_execution_input(
-            node_id=next_node_id,
-            graph_exec_id=graph_exec_id,
-            input_name=next_input_name,
-            input_data=next_data,
-        )
-        update_node_execution_status(
-            db_client=db_client,
-            exec_id=next_node_exec_id,
-            status=ExecutionStatus.INCOMPLETE,
-        )
-
-        # Complete missing static input pins data using the last execution input.
-        static_link_names = {
-            link.sink_name
-            for link in next_node.input_links
-            if link.is_static and link.sink_name not in next_node_input
-        }
-        if static_link_names and (
-            latest_execution := db_client.get_latest_node_execution(
-                next_node_id, graph_exec_id
-            )
-        ):
-            for name in static_link_names:
-                next_node_input[name] = latest_execution.input_data.get(name)
-
-        # Apply node credentials overrides
-        node_credentials = None
-        if node_credentials_input_map and (
-            node_credentials := node_credentials_input_map.get(next_node.id)
-        ):
-            next_node_input.update(
-                {k: v.model_dump() for k, v in node_credentials.items()}
-            )
-
-        # Validate the input data for the next node.
-        next_node_input, validation_msg = validate_exec(next_node, next_node_input)
-        suffix = (
-            f"{next_output_name}>{next_input_name}~{next_node_exec_id}:{validation_msg}"
-        )
-
-        # Incomplete input data, skip queueing the execution.
-        if not next_node_input:
-            log_metadata.warning(f"Skipped queueing {suffix}")
-            return enqueued_executions
-
-        # Input is complete, enqueue the execution.
-        log_metadata.info(f"Enqueued {suffix}")
-        enqueued_executions.append(
-            add_enqueued_execution(
-                node_exec_id=next_node_exec_id,
+        # Multiple node can register the same next node, we need this to be atomic
+        # To avoid same execution to be enqueued multiple times,
+        # Or the same input to be consumed multiple times.
+        async with synchronized(f"upsert_input-{next_node_id}-{graph_exec_id}"):
+            # Add output data to the earliest incomplete execution, or create a new one.
+            next_node_exec_id, next_node_input = await db_client.upsert_execution_input(
                 node_id=next_node_id,
-                block_id=next_node.block_id,
-                data=next_node_input,
+                graph_exec_id=graph_exec_id,
+                input_name=next_input_name,
+                input_data=next_data,
             )
-        )
+            await async_update_node_execution_status(
+                db_client=db_client,
+                exec_id=next_node_exec_id,
+                status=ExecutionStatus.INCOMPLETE,
+            )
 
-        # Next execution stops here if the link is not static.
-        if not node_link.is_static:
-            return enqueued_executions
-
-        # If link is static, there could be some incomplete executions waiting for it.
-        # Load and complete the input missing input data, and try to re-enqueue them.
-        for iexec in db_client.get_node_executions(
-            node_id=next_node_id,
-            graph_exec_id=graph_exec_id,
-            statuses=[ExecutionStatus.INCOMPLETE],
-        ):
-            idata = iexec.input_data
-            ineid = iexec.node_exec_id
-
+            # Complete missing static input pins data using the last execution input.
             static_link_names = {
                 link.sink_name
                 for link in next_node.input_links
-                if link.is_static and link.sink_name not in idata
+                if link.is_static and link.sink_name not in next_node_input
             }
-            for input_name in static_link_names:
-                idata[input_name] = next_node_input[input_name]
+            if static_link_names and (
+                latest_execution := await db_client.get_latest_node_execution(
+                    next_node_id, graph_exec_id
+                )
+            ):
+                for name in static_link_names:
+                    next_node_input[name] = latest_execution.input_data.get(name)
 
             # Apply node credentials overrides
-            if node_credentials:
-                idata.update({k: v.model_dump() for k, v in node_credentials.items()})
+            node_credentials = None
+            if node_credentials_input_map and (
+                node_credentials := node_credentials_input_map.get(next_node.id)
+            ):
+                next_node_input.update(
+                    {k: v.model_dump() for k, v in node_credentials.items()}
+                )
 
-            idata, msg = validate_exec(next_node, idata)
-            suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"
-            if not idata:
-                log_metadata.info(f"Enqueueing static-link skipped: {suffix}")
-                continue
-            log_metadata.info(f"Enqueueing static-link execution {suffix}")
+            # Validate the input data for the next node.
+            next_node_input, validation_msg = validate_exec(next_node, next_node_input)
+            suffix = f"{next_output_name}>{next_input_name}~{next_node_exec_id}:{validation_msg}"
+
+            # Incomplete input data, skip queueing the execution.
+            if not next_node_input:
+                log_metadata.warning(f"Skipped queueing {suffix}")
+                return enqueued_executions
+
+            # Input is complete, enqueue the execution.
+            log_metadata.info(f"Enqueued {suffix}")
             enqueued_executions.append(
-                add_enqueued_execution(
-                    node_exec_id=iexec.node_exec_id,
+                await add_enqueued_execution(
+                    node_exec_id=next_node_exec_id,
                     node_id=next_node_id,
                     block_id=next_node.block_id,
-                    data=idata,
+                    data=next_node_input,
                 )
             )
-        return enqueued_executions
+
+            # Next execution stops here if the link is not static.
+            if not node_link.is_static:
+                return enqueued_executions
+
+            # If link is static, there could be some incomplete executions waiting for it.
+            # Load and complete the input missing input data, and try to re-enqueue them.
+            for iexec in await db_client.get_node_executions(
+                node_id=next_node_id,
+                graph_exec_id=graph_exec_id,
+                statuses=[ExecutionStatus.INCOMPLETE],
+            ):
+                idata = iexec.input_data
+                ineid = iexec.node_exec_id
+
+                static_link_names = {
+                    link.sink_name
+                    for link in next_node.input_links
+                    if link.is_static and link.sink_name not in idata
+                }
+                for input_name in static_link_names:
+                    idata[input_name] = next_node_input[input_name]
+
+                # Apply node credentials overrides
+                if node_credentials:
+                    idata.update(
+                        {k: v.model_dump() for k, v in node_credentials.items()}
+                    )
+
+                idata, msg = validate_exec(next_node, idata)
+                suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"
+                if not idata:
+                    log_metadata.info(f"Enqueueing static-link skipped: {suffix}")
+                    continue
+                log_metadata.info(f"Enqueueing static-link execution {suffix}")
+                enqueued_executions.append(
+                    await add_enqueued_execution(
+                        node_exec_id=iexec.node_exec_id,
+                        node_id=next_node_id,
+                        block_id=next_node.block_id,
+                        data=idata,
+                    )
+                )
+            return enqueued_executions
 
     return [
         execution
         for link in node.output_links
-        for execution in register_next_executions(link)
+        for execution in await register_next_executions(link)
     ]
 
 
@@ -459,7 +464,7 @@ class Executor:
         exec_update = cls.db_client.update_node_execution_stats(
             node_exec.node_exec_id, execution_stats
         )
-        send_execution_update(exec_update)
+        await send_async_execution_update(exec_update)
         return execution_stats
 
     @classmethod
@@ -519,6 +524,7 @@ class Executor:
         set_service_name("GraphExecutor")
 
         cls.db_client = get_db_client()
+        cls.db_async_client = get_db_async_client()
         cls.pid = os.getpid()
         cls.creds_manager = IntegrationCredentialsManager()
         cls.node_execution_loop = asyncio.new_event_loop()
@@ -711,6 +717,7 @@ class Executor:
         )
         output_queue = ExecutionQueue[ExecutionOutputEntry]()
         execution_queue = ExecutionQueue[NodeExecutionEntry]()
+        running_output_processing = []
 
         try:
             if cls.db_client.get_credits(graph_exec.user_id) <= 0:
@@ -792,7 +799,9 @@ class Executor:
                 )
 
                 # Avoid terminating graph execution when some nodes are still running.
-                while execution_queue.empty() and running_executions:
+                while execution_queue.empty() and (
+                    running_executions or running_output_processing
+                ):
                     log_metadata.debug(
                         f"Queue empty; running nodes: {list(running_executions.keys())}"
                     )
@@ -805,13 +814,18 @@ class Executor:
 
                         log_metadata.debug(f"Waiting on execution of node {node_id}")
                         while output := execution.pop_output():
-                            cls._process_node_output(
-                                output=output,
-                                node_id=node_id,
-                                graph_exec=graph_exec,
-                                log_metadata=log_metadata,
-                                node_creds_map=node_creds_map,
-                                execution_queue=execution_queue,
+                            running_output_processing.append(
+                                asyncio.run_coroutine_threadsafe(
+                                    cls._process_node_output(
+                                        output=output,
+                                        node_id=node_id,
+                                        graph_exec=graph_exec,
+                                        log_metadata=log_metadata,
+                                        node_creds_map=node_creds_map,
+                                        execution_queue=execution_queue,
+                                    ),
+                                    cls.node_execution_loop,
+                                )
                             )
                             if not execution_queue.empty():
                                 break  # Prioritize executing next nodes than enqueuing outputs
@@ -822,7 +836,14 @@ class Executor:
                         if not execution_queue.empty():
                             continue  # Make sure each not is checked once
 
-                    if execution_queue.empty() and running_executions:
+                    while running_output_processing:
+                        if not running_output_processing[0].done():
+                            break
+                        running_output_processing.pop(0)
+
+                    if execution_queue.empty() and (
+                        running_executions or running_output_processing
+                    ):
                         log_metadata.debug(
                             "No more nodes to execute, waiting for outputs..."
                         )
@@ -865,7 +886,7 @@ class Executor:
             return execution_stats, execution_status, error
 
     @classmethod
-    def _process_node_output(
+    async def _process_node_output(
         cls,
         output: ExecutionOutputEntry,
         node_id: str,
@@ -886,17 +907,19 @@ class Executor:
         """
         try:
             name, data = output.data
-            cls.db_client.upsert_execution_output(
+            await cls.db_async_client.upsert_execution_output(
                 node_exec_id=output.node_exec_id,
                 output_name=name,
                 output_data=data,
             )
-            if exec_update := cls.db_client.get_node_execution(output.node_exec_id):
-                send_execution_update(exec_update)
+            if exec_update := await cls.db_async_client.get_node_execution(
+                output.node_exec_id
+            ):
+                await send_async_execution_update(exec_update)
 
             log_metadata.debug(f"Enqueue nodes for {node_id}: {output}")
-            for next_execution in _enqueue_next_nodes(
-                db_client=cls.db_client,
+            for next_execution in await _enqueue_next_nodes(
+                db_client=cls.db_async_client,
                 node=output.node,
                 output=output.data,
                 user_id=graph_exec.user_id,
@@ -908,13 +931,13 @@ class Executor:
                 execution_queue.add(next_execution)
         except Exception as e:
             log_metadata.exception(f"Failed to process node output: {e}")
-            cls.db_client.upsert_execution_output(
+            await cls.db_async_client.upsert_execution_output(
                 node_exec_id=output.node_exec_id,
                 output_name="error",
                 output_data=str(e),
             )
-            update_node_execution_status(
-                db_client=cls.db_client,
+            await async_update_node_execution_status(
+                db_client=cls.db_async_client,
                 exec_id=output.node_exec_id,
                 status=ExecutionStatus.FAILED,
             )
@@ -1177,10 +1200,41 @@ def get_db_client() -> "DatabaseManagerClient":
     return get_service_client(DatabaseManagerClient, health_check=False)
 
 
+@thread_cached
+def get_db_async_client() -> "DatabaseManagerAsyncClient":
+    from backend.executor import DatabaseManagerAsyncClient
+
+    # Disable health check for the service client to avoid breaking process initializer.
+    return get_service_client(DatabaseManagerAsyncClient, health_check=False)
+
+
+async def send_async_execution_update(
+    entry: GraphExecution | NodeExecutionResult | None,
+) -> None:
+    if entry is None:
+        return
+    await get_async_execution_event_bus().publish(entry)
+
+
 def send_execution_update(entry: GraphExecution | NodeExecutionResult | None):
     if entry is None:
         return
     return get_execution_event_bus().publish(entry)
+
+
+async def async_update_node_execution_status(
+    db_client: "DatabaseManagerAsyncClient",
+    exec_id: str,
+    status: ExecutionStatus,
+    execution_data: BlockInput | None = None,
+    stats: dict[str, Any] | None = None,
+) -> NodeExecutionResult:
+    """Sets status and fetches+broadcasts the latest state of the node execution"""
+    exec_update = await db_client.update_node_execution_status(
+        exec_id, status, execution_data, stats
+    )
+    await send_async_execution_update(exec_update)
+    return exec_update
 
 
 def update_node_execution_status(
@@ -1198,15 +1252,16 @@ def update_node_execution_status(
     return exec_update
 
 
-@contextmanager
-def synchronized(key: str, timeout: int = 60):
-    lock: RedisLock = redis.get_redis().lock(f"lock:{key}", timeout=timeout)
+@asynccontextmanager
+async def synchronized(key: str, timeout: int = 60):
+    r = await redis.get_redis_async()
+    lock: RedisLock = r.lock(f"lock:{key}", timeout=timeout)
     try:
-        lock.acquire()
+        await lock.acquire()
         yield
     finally:
-        if lock.locked() and lock.owned():
-            lock.release()
+        if await lock.locked() and await lock.owned():
+            await lock.release()
 
 
 def increment_execution_count(user_id: str) -> int:
