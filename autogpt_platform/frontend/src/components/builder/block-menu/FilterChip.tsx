@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
-import React, { ButtonHTMLAttributes, useState } from "react";
+import React, { ButtonHTMLAttributes } from "react";
 
 interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
   selected?: boolean;
@@ -16,7 +16,6 @@ export const FilterChip: React.FC<Props> = ({
   className,
   ...rest
 }) => {
-  const [isHovering, setIsHovering] = useState(false);
   return (
     <Button
       className={cn(
@@ -26,8 +25,6 @@ export const FilterChip: React.FC<Props> = ({
         className,
       )}
       {...rest}
-      onMouseEnter={() => setIsHovering(true)}
-      onMouseLeave={() => setIsHovering(false)}
     >
       <span
         className={cn(
@@ -37,19 +34,21 @@ export const FilterChip: React.FC<Props> = ({
       >
         {name}
       </span>
-      {selected &&
-        (isHovering && number !== undefined ? (
-          <span className="flex h-[1.375rem] items-center rounded-[1.25rem] bg-violet-700 p-[0.375rem] text-zinc-50 transition-all duration-300 ease-in-out animate-in fade-in zoom-in">
-            {number > 100 ? "100+" : number}
-          </span>
-        ) : (
-          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-zinc-50 transition-all duration-300 ease-in-out">
+      {selected && (
+        <>
+          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-zinc-50 transition-all duration-300 ease-in-out group-hover:hidden">
             <X
               className="h-3 w-3 rounded-full text-violet-700"
               strokeWidth={2}
             />
           </span>
-        ))}
+          {number !== undefined && (
+            <span className="hidden h-[1.375rem] items-center rounded-[1.25rem] bg-violet-700 p-[0.375rem] text-zinc-50 transition-all duration-300 ease-in-out animate-in fade-in zoom-in group-hover:flex">
+              {number > 100 ? "100+" : number}
+            </span>
+          )}
+        </>
+      )}
     </Button>
   );
 };
