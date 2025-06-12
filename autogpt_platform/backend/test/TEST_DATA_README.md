@@ -27,14 +27,25 @@ Updates existing test data to simulate real-world changes:
 - Adds credit transactions
 - Refreshes materialized views
 
+### check_db.py
+Tests and verifies materialized views functionality:
+- Checks pg_cron job status (for automatic refresh)
+- Displays current materialized view counts
+- Adds test data (executions and reviews)
+- Creates store listings if none exist
+- Manually refreshes materialized views
+- Compares before/after counts to verify updates
+- Provides a summary of test results
+
 ## Materialized Views
 
-The scripts test two materialized views:
+The scripts test three key database views:
 
 1. **mv_agent_run_counts**: Tracks execution counts by agent
 2. **mv_review_stats**: Tracks review statistics (count, average rating) by store listing
+3. **StoreAgent**: A view that combines store listing data with execution counts and ratings for display
 
-These views are automatically refreshed every 15 minutes via pg_cron, or can be manually refreshed.
+The materialized views (mv_agent_run_counts and mv_review_stats) are automatically refreshed every 15 minutes via pg_cron, or can be manually refreshed using the `refresh_store_materialized_views()` function.
 
 ## Usage
 
@@ -44,7 +55,7 @@ These views are automatically refreshed every 15 minutes via pg_cron, or can be 
 ```bash
 docker compose up -d
 # or for test database:
-docker compose -f docker-compose.test.yaml up -d
+docker compose -f docker-compose.test.yaml --env-file ../.env up -d
 ```
 
 2. Run database migrations:
@@ -59,13 +70,21 @@ poetry run prisma migrate deploy
 poetry run python run_test_data.py
 ```
 
-#### Option 2: Run individually (from backend/test directory)
+#### Option 2: Run individually
 ```bash
+# From backend/test directory:
 # Create initial test data
 poetry run python test_data_creator.py
 
 # Update data to test materialized view changes
 poetry run python test_data_updater.py
+
+# From backend directory:
+# Test materialized views functionality
+poetry run python check_db.py
+
+# Check store data status
+poetry run python check_store_data.py
 ```
 
 #### Option 3: Use the shell script (from backend directory)
@@ -104,3 +123,28 @@ Configured in `test_data_creator.py`:
 - The scripts create realistic relationships between entities
 - Materialized views are refreshed at the end of each script
 - Data is designed to test both happy paths and edge cases
+
+## Troubleshooting
+
+### Reviews and StoreAgent view showing 0
+
+If `check_db.py` shows that reviews remain at 0 and StoreAgent view shows 0 store agents:
+
+1. **No store listings exist**: The script will automatically create test store listings if none exist
+2. **No approved versions**: Store listings need approved versions to appear in the StoreAgent view
+3. **Check with `check_store_data.py`**: This script provides detailed information about:
+   - Total store listings
+   - Store listing versions by status
+   - Existing reviews
+   - StoreAgent view contents
+   - Agent graph executions
+
+### pg_cron not installed
+
+The warning "pg_cron extension is not installed" is normal in local development environments. The materialized views can still be refreshed manually using the `refresh_store_materialized_views()` function, which all scripts do automatically.
+
+### Common Issues
+
+- **Type errors with None values**: Fixed in the latest version of check_db.py by using `or 0` for nullable numeric fields
+- **Missing relations**: Ensure you're using the correct field names (e.g., `StoreListing` not `storeListing` in includes)
+- **Column name mismatches**: The database uses camelCase for column names (e.g., `agentGraphId` not `agent_graph_id`)
