@@ -148,7 +148,11 @@ export const AgentImportForm: React.FC<
             <FormItem>
               <FormLabel>Agent name</FormLabel>
               <FormControl>
-                <Input {...field} data-testid="agent-name-input" disabled={!agentObject || isImporting} />
+                <Input
+                  {...field}
+                  data-testid="agent-name-input"
+                  disabled={!agentObject || isImporting}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -162,7 +166,11 @@ export const AgentImportForm: React.FC<
             <FormItem>
               <FormLabel>Agent description</FormLabel>
               <FormControl>
-                <Textarea {...field} data-testid="agent-description-input" disabled={!agentObject || isImporting} />
+                <Textarea
+                  {...field}
+                  data-testid="agent-description-input"
+                  disabled={!agentObject || isImporting}
+                />
               </FormControl>
               <FormMessage />
             </FormItem>

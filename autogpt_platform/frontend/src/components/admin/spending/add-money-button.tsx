@@ -71,7 +71,10 @@ export function AdminAddMoneyButton({
         )}
       </Button>
 
-      <Dialog open={isAddMoneyDialogOpen} onOpenChange={setIsAddMoneyDialogOpen}>
+      <Dialog
+        open={isAddMoneyDialogOpen}
+        onOpenChange={setIsAddMoneyDialogOpen}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Add Money to {userEmail}</DialogTitle>

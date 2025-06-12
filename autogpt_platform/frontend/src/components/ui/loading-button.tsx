@@ -18,11 +18,7 @@ export function LoadingButton({
   ...props
 }: LoadingButtonProps) {
   return (
-    <Button
-      {...props}
-      disabled={loading || disabled}
-      className={cn(className)}
-    >
+    <Button {...props} disabled={loading || disabled} className={cn(className)}>
       {loading ? (
         <>
           <LoadingSpinner className="mr-2 h-4 w-4" />
@@ -33,4 +29,4 @@ export function LoadingButton({
       )}
     </Button>
   );
-} 
+}

@@ -150,7 +150,7 @@ export default function Wallet() {
             </PopoverClose>
           </div>
         </div>
-        <div 
+        <div
           className="max-h-[85vh] overflow-y-auto overflow-x-hidden"
           onWheel={(e) => {
             e.stopPropagation();

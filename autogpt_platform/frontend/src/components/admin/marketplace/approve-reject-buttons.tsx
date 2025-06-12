@@ -203,7 +203,11 @@ export function ApproveRejectButtons({
               >
                 Cancel
               </Button>
-              <Button type="submit" variant="destructive" disabled={isRejecting}>
+              <Button
+                type="submit"
+                variant="destructive"
+                disabled={isRejecting}
+              >
                 {isRejecting ? (
                   <>
                     <LoadingSpinner className="mr-2 h-4 w-4" />
