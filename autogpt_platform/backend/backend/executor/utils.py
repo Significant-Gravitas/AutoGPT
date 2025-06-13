@@ -394,7 +394,8 @@ def validate_exec(
 
     # Convert non-matching data types to the expected input schema.
     for name, data_type in schema.__annotations__.items():
-        if (value := data.get(name)) and (type(value) is not data_type):
+        value = data.get(name)
+        if (value is not None) and (type(value) is not data_type):
             data[name] = convert(value, data_type)
 
     # Input data (without default values) should contain all required fields.
