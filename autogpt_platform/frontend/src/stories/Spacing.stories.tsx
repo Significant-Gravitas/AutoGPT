@@ -1,17 +1,20 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { Text } from "@/components/_new/Text/Text";
 import { StoryCode } from "@/stories/helpers/StoryCode";
+import { SquareArrowOutUpRight } from "lucide-react";
 
 const meta: Meta = {
   title: "Design System/ Tokens /Spacing",
   parameters: {
     layout: "fullscreen",
+    controls: { disable: true },
   },
 };
 
 export default meta;
 
 // Spacing scale data with rem and px values
+// https://tailwindcss.com/docs/spacing
 const spacingScale = [
   { name: "0", value: "0", rem: "0rem", px: "0px", class: "m-0" },
   { name: "px", value: "1px", rem: "0.0625rem", px: "1px", class: "m-px" },
@@ -160,22 +163,24 @@ export function AllVariants() {
 
         <div className="grid gap-8 md:grid-cols-2">
           <div>
-            <Text variant="h2" className="mb-4 text-zinc-800">
-              Spacing Scale
+            <Text
+              variant="h2"
+              className="mb-2 text-xl font-semibold text-zinc-800"
+            >
+              Tailwind utilities
             </Text>
             <div className="space-y-4">
               <div className="rounded-lg border border-gray-200 p-4">
-                <Text variant="h3" className="mb-2 text-zinc-800">
-                  <a
-                    href="https://tailwindcss.com/docs/margin"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline"
-                  >
-                    Margin Classes
-                  </a>
-                </Text>
-                <Text variant="small" className="mb-2 text-zinc-600">
+                <a
+                  href="https://tailwindcss.com/docs/margin"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mb-2 inline-flex flex-row items-center gap-1 text-base font-semibold text-blue-600 hover:underline"
+                >
+                  Margin Classes{" "}
+                  <SquareArrowOutUpRight className="inline-block h-3 w-3" />
+                </a>
+                <Text variant="body" className="mb-2 text-zinc-600">
                   Used for external spacing between elements
                 </Text>
                 <div className="font-mono text-sm text-zinc-800">
@@ -183,17 +188,17 @@ export function AllVariants() {
                 </div>
               </div>
               <div className="rounded-lg border border-gray-200 p-4">
-                <Text variant="h3" className="mb-2 text-zinc-800">
-                  <a
-                    href="https://tailwindcss.com/docs/padding"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:underline"
-                  >
-                    Padding Classes
-                  </a>
-                </Text>
-                <Text variant="small" className="mb-2 text-zinc-600">
+                <a
+                  href="https://tailwindcss.com/docs/padding"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mb-2 inline-flex flex-row items-center gap-1 text-base font-semibold text-blue-600 hover:underline"
+                >
+                  Padding Classes
+                  <SquareArrowOutUpRight className="inline-block h-3 w-3" />
+                </a>
+
+                <Text variant="body" className="mb-2 text-zinc-600">
                   Used for internal spacing within elements (same scale as
                   margin)
                 </Text>
@@ -201,49 +206,59 @@ export function AllVariants() {
                   p-4 → padding: 1rem (16px)
                 </div>
               </div>
+              <Text variant="body" className="mb-4 text-zinc-600">
+                We follow Tailwind CSS spacing system, which means you can use
+                any spacing token available in the default Tailwind theme for
+                margins and padding.
+              </Text>
             </div>
           </div>
 
           <div>
-            <Text variant="h2" className="mb-4 text-zinc-800">
+            <Text
+              variant="h2"
+              className="mb-2 text-xl font-semibold text-zinc-800"
+            >
               FAQ
             </Text>
             <div className="space-y-4">
-              <div className="rounded-lg border border-gray-200 p-4">
-                <Text variant="h3" className="mb-2 text-zinc-800">
-                  🤔 Why use spacing tokens?
+              <Text
+                variant="h3"
+                className="mb-2 text-base font-semibold text-zinc-800"
+              >
+                🤔 Why use spacing tokens?
+              </Text>
+              <div className="space-y-3 text-zinc-600">
+                <Text variant="body">
+                  Always use spacing classes instead of arbitrary values.
+                  Reasons:
                 </Text>
-                <div className="space-y-3 text-zinc-600">
-                  <Text variant="small">
-                    Always use spacing classes instead of arbitrary values.
-                    Reasons:
-                  </Text>
-                  <ul className="ml-4 list-inside list-disc space-y-1 text-sm">
-                    <li>Ensures consistent spacing relationships</li>
-                    <li>
-                      Makes responsive design easier with consistent ratios
-                    </li>
-                    <li>Provides a harmonious visual rhythm</li>
-                    <li>Easier to maintain and update globally</li>
-                    <li>Prevents spacing inconsistencies across the app</li>
-                  </ul>
-                </div>
+                <ul className="ml-4 list-disc space-y-1 text-sm">
+                  <li>Ensures consistent spacing relationships</li>
+                  <li>Makes responsive design easier with consistent ratios</li>
+                  <li>Provides a harmonious visual rhythm</li>
+                  <li>Easier to maintain and update globally</li>
+                  <li>Prevents spacing inconsistencies across the app</li>
+                </ul>
               </div>
-              <div className="rounded-lg border border-gray-200 p-4">
-                <Text variant="h3" className="mb-2 text-zinc-800">
+              <div>
+                <Text
+                  variant="h3"
+                  className="mb-2 text-base font-semibold text-zinc-800"
+                >
                   📏 How to choose spacing values?
                 </Text>
                 <div className="space-y-2 text-zinc-600">
-                  <Text variant="small">
+                  <Text variant="body">
                     • <strong>1-2:</strong> Tight spacing, form elements
                   </Text>
-                  <Text variant="small">
+                  <Text variant="body">
                     • <strong>3-4:</strong> Default component spacing
                   </Text>
-                  <Text variant="small">
+                  <Text variant="body">
                     • <strong>6-8:</strong> Section spacing
                   </Text>
-                  <Text variant="small">
+                  <Text variant="body">
                     • <strong>12+:</strong> Major layout divisions
                   </Text>
                 </div>
@@ -253,71 +268,12 @@ export function AllVariants() {
         </div>
       </div>
 
-      {/* Common Spacing Examples */}
-      <div className="space-y-8">
-        <div>
-          <Text
-            variant="h2"
-            className="mb-4 border-b border-gray-200 pb-2 text-zinc-500"
-          >
-            Common Spacing Values
-          </Text>
-          <Text variant="body" className="mb-6 text-zinc-600">
-            These are the most frequently used spacing values in our design
-            system.
-          </Text>
-        </div>
-
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {commonSpacing.map((space) => (
-            <div
-              key={space.name}
-              className="rounded-lg border border-gray-200 p-4"
-            >
-              <div className="mb-3 flex items-center justify-between">
-                <Text variant="body-medium" className="font-mono text-zinc-800">
-                  {space.class}
-                </Text>
-                <div className="text-right">
-                  <div className="text-sm font-medium text-zinc-800">
-                    {space.rem}
-                  </div>
-                  <div className="text-xs text-zinc-500">{space.px}</div>
-                </div>
-              </div>
-              <div className="mb-3">
-                <div
-                  className="border-l-4 border-blue-500 bg-blue-100"
-                  style={{ marginLeft: space.rem }}
-                >
-                  <div className="h-4"></div>
-                </div>
-              </div>
-              <Text variant="small" className="text-zinc-600">
-                {space.usage}
-              </Text>
-            </div>
-          ))}
-        </div>
-
-        <StoryCode
-          code={`// Common spacing examples
-<div className="m-1">Tight spacing (4px)</div>
-<div className="m-4">Medium spacing (16px)</div>
-<div className="m-8">Large spacing (32px)</div>
-<div className="m-12">Section spacing (48px)</div>
-
-// Padding uses the same scale
-<div className="p-4">Internal spacing (16px)</div>`}
-        />
-      </div>
-
       {/* Complete Spacing Scale */}
       <div className="space-y-8">
         <div>
           <Text
             variant="h2"
-            className="mb-4 border-b border-gray-200 pb-2 text-zinc-500"
+            className="mb-2 text-xl font-semibold text-zinc-800"
           >
             Complete Spacing Scale
           </Text>
@@ -342,18 +298,16 @@ export function AllVariants() {
                 </Text>
               </div>
               <div className="flex w-32 flex-col text-right">
-                <Text variant="small" className="font-medium text-zinc-800">
-                  {space.rem}
-                </Text>
-                <Text variant="small" className="text-zinc-500">
-                  {space.px}
-                </Text>
+                <p className="font-mono text-xs text-zinc-500">{space.rem}</p>
+                <p className="font-mono text-xs text-zinc-500">{space.px}</p>
               </div>
               <div className="ml-8 flex-1">
-                <div
-                  className="h-4 border-l-4 border-blue-500 bg-blue-100"
-                  style={{ marginLeft: space.value }}
-                ></div>
+                <div className="relative h-6 bg-gray-50">
+                  <div
+                    className="absolute left-0 top-0 h-full bg-blue-500"
+                    style={{ width: space.value }}
+                  ></div>
+                </div>
               </div>
             </div>
           ))}
@@ -380,87 +334,6 @@ export function AllVariants() {
 // Padding uses identical values
 <div className="p-4 pt-8 px-6">Mixed padding</div>`}
         />
-      </div>
-
-      {/* Responsive Spacing */}
-      <div className="space-y-8">
-        <div>
-          <Text
-            variant="h2"
-            className="mb-4 border-b border-gray-200 pb-2 text-zinc-500"
-          >
-            Responsive Spacing
-          </Text>
-          <Text variant="body" className="mb-6 text-zinc-600">
-            Use responsive prefixes to adjust spacing at different breakpoints.
-          </Text>
-        </div>
-
-        <div className="rounded-lg border border-gray-200 p-6">
-          <Text variant="h3" className="mb-4 text-zinc-800">
-            Responsive Example
-          </Text>
-          <div className="mb-4 rounded bg-blue-50 p-4">
-            <div className="m-2 rounded bg-blue-200 p-2 md:m-4 lg:m-8">
-              <Text variant="small" className="text-blue-800">
-                This element has m-2 on mobile, m-4 on tablet, and m-8 on
-                desktop
-              </Text>
-            </div>
-          </div>
-          <StoryCode
-            code={`<div className="m-2 md:m-4 lg:m-8">
-  Responsive spacing
-</div>
-
-// Breakpoints:
-// sm: 640px and up
-// md: 768px and up  
-// lg: 1024px and up
-// xl: 1280px and up
-// 2xl: 1536px and up`}
-          />
-        </div>
-      </div>
-
-      {/* Negative Spacing */}
-      <div className="space-y-8">
-        <div>
-          <Text
-            variant="h2"
-            className="mb-4 border-b border-gray-200 pb-2 text-zinc-500"
-          >
-            Negative Spacing
-          </Text>
-          <Text variant="body" className="mb-6 text-zinc-600">
-            Negative margins can be used to pull elements closer or create
-            overlapping effects.
-          </Text>
-        </div>
-
-        <div className="rounded-lg border border-gray-200 p-6">
-          <Text variant="h3" className="mb-4 text-zinc-800">
-            Negative Margin Example
-          </Text>
-          <div className="mb-4 space-y-4">
-            <div className="rounded bg-gray-100 p-4">
-              <div className="rounded bg-blue-200 p-4">First element</div>
-              <div className="-mt-2 rounded bg-green-200 p-4">
-                Second element with -mt-2 (pulls up by 8px)
-              </div>
-            </div>
-          </div>
-          <StoryCode
-            code={`<div className="bg-blue-200 p-4">First element</div>
-<div className="bg-green-200 p-4 -mt-2">
-  Pulled up with negative margin
-</div>
-
-// Available negative values:
-// -m-px, -m-0.5, -m-1, -m-1.5, -m-2, etc.
-// Works with all directional classes: -mt-, -mr-, -mb-, -ml-, -mx-, -my-`}
-          />
-        </div>
       </div>
     </div>
   );
