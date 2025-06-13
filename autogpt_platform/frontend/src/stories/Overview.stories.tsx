@@ -4,14 +4,6 @@ import Image from "next/image";
 import Github from "./assets/github.svg";
 import Discord from "./assets/discord.svg";
 import Youtube from "./assets/youtube.svg";
-import Assets from "./assets/assets.png";
-import Docs from "./assets/docs.png";
-import Share from "./assets/share.png";
-import FigmaPlugin from "./assets/figma-plugin.png";
-import Testing from "./assets/testing.png";
-import Accessibility from "./assets/accessibility.png";
-import Theming from "./assets/theming.png";
-import AddonLibrary from "./assets/addon-library.png";
 import { FileIcon } from "lucide-react";
 
 const RightArrow = () => (
