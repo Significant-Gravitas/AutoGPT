@@ -5,6 +5,7 @@ import { SearchBar } from "@/components/agptui/SearchBar";
 import { FilterChips } from "@/components/agptui/FilterChips";
 import { useRouter } from "next/navigation";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 
 export const HeroSection: React.FC = () => {
   const router = useRouter();
