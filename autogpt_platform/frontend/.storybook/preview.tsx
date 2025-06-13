@@ -12,6 +12,7 @@ import {
   Subtitle,
   Title,
 } from "@storybook/blocks";
+import { theme } from "./theme";
 
 // Initialize MSW
 initialize();
@@ -22,6 +23,7 @@ const preview: Preview = {
       appDirectory: true,
     },
     docs: {
+      theme,
       page: () => (
         <>
           <Title />
