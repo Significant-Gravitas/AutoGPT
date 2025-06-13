@@ -1,21 +1,18 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import Image from "next/image";
 
-import Github from "./assets/github.svg";
-import Discord from "./assets/discord.svg";
-import Youtube from "./assets/youtube.svg";
-import { FileIcon } from "lucide-react";
-
-const RightArrow = () => (
-  <svg
-    viewBox="0 0 14 14"
-    width="8px"
-    height="14px"
-    className="ml-1 inline-block fill-current"
-  >
-    <path d="m11.1 7.35-5.5 5.5a.5.5 0 0 1-.7-.7L10.04 7 4.9 1.85a.5.5 0 1 1 .7-.7l5.5 5.5c.2.2.2.5 0 .7Z" />
-  </svg>
-);
+function RightArrow() {
+  return (
+    <svg
+      viewBox="0 0 14 14"
+      width="8px"
+      height="14px"
+      className="ml-1 inline-block fill-current"
+    >
+      <path d="m11.1 7.35-5.5 5.5a.5.5 0 0 1-.7-.7L10.04 7 4.9 1.85a.5.5 0 1 1 .7-.7l5.5 5.5c.2.2.2.5 0 .7Z" />
+    </svg>
+  );
+}
 
 function OverviewComponent() {
   const linkStyle = "font-bold text-blue-600 hover:text-blue-800";
@@ -401,26 +398,26 @@ function OverviewComponent() {
         <div className="grid grid-cols-1 gap-6 md:grid-cols-4">
           {[
             {
-              icon: Github,
+              icon: "/storybook/github.svg",
               title:
                 "Contribute to the AutoGPT Platform and help build the future of AI automation.",
               link: "https://github.com/Significant-Gravitas/AutoGPT",
               linkText: "Star on GitHub",
             },
             {
-              icon: Discord,
+              icon: "/storybook/discord.svg",
               title: "Get support and chat with the AutoGPT community.",
               link: "https://discord.gg/autogpt",
               linkText: "Join Discord",
             },
             {
-              icon: Youtube,
+              icon: "/storybook/youtube.svg",
               title: "Watch AutoGPT tutorials and feature demonstrations.",
               link: "https://www.youtube.com/@AutoGPT-Official",
               linkText: "Watch on YouTube",
             },
             {
-              icon: FileIcon,
+              icon: "/storybook/docs.svg",
               title: "Read the complete platform documentation and guides.",
               link: "https://docs.agpt.co",
               linkText: "View Documentation",
@@ -459,9 +456,7 @@ const meta: Meta<typeof OverviewComponent> = {
   component: OverviewComponent,
   parameters: {
     layout: "fullscreen",
-    docs: {
-      page: null,
-    },
+    controls: { disable: true },
   },
 };
 
