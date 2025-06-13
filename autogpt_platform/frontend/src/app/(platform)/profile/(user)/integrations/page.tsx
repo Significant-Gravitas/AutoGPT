@@ -26,7 +26,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import useSupabase from "@/lib/supabase/useSupabase";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import LoadingBox from "@/components/ui/loading";
 
 export default function UserIntegrationsPage() {

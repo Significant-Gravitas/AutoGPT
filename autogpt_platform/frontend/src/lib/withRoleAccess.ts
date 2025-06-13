@@ -1,7 +1,7 @@
 import React from "react";
 import * as Sentry from "@sentry/nextjs";
 import { redirect } from "next/navigation";
-import getServerUser from "./supabase/getServerUser";
+import { getServerUser } from "./supabase/server/getServerUser";
 
 export async function withRoleAccess(allowedRoles: string[]) {
   "use server";

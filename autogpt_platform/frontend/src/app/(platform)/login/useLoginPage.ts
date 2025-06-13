@@ -1,5 +1,5 @@
 import { useTurnstile } from "@/hooks/useTurnstile";
-import useSupabase from "@/lib/supabase/useSupabase";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
