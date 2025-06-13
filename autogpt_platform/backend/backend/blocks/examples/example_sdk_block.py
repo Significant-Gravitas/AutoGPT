@@ -11,8 +11,6 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockCost,
-    BlockCostType,
     BlockOutput,
     BlockSchema,
     Boolean,
@@ -22,9 +20,6 @@ from backend.sdk import (
     SchemaField,
     SecretStr,
     String,
-    cost_config,
-    default_credentials,
-    provider,
 )
 
 # Define test credentials for testing
@@ -44,21 +39,7 @@ TEST_CREDENTIALS_INPUT = {
 }
 
 
-# Example of a simple service with auto-registration
-@provider("example-service")  # Custom provider demonstrating SDK flexibility
-@cost_config(
-    BlockCost(cost_amount=2, cost_type=BlockCostType.RUN),
-    BlockCost(cost_amount=1, cost_type=BlockCostType.BYTE),
-)
-@default_credentials(
-    APIKeyCredentials(
-        id="example-service-default",
-        provider="example-service",  # Custom provider name
-        api_key=SecretStr("example-default-api-key"),
-        title="Example Service Default API Key",
-        expires_at=None,
-    )
-)
+# Example of a simple service
 class ExampleSDKBlock(Block):
     """
     Example block demonstrating the new SDK system.

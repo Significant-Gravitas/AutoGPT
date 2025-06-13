@@ -20,7 +20,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
-from backend.sdk.auto_registry import get_registry
+from backend.sdk.registry import AutoRegistry
 from backend.util.exceptions import NeedConfirmation, NotFoundError
 from backend.util.settings import Settings
 
@@ -434,8 +434,7 @@ async def list_providers() -> List[str]:
     static_providers = [member.value for member in ProviderName]
 
     # Get dynamic providers from registry
-    registry = get_registry()
-    dynamic_providers = list(registry.providers)
+    dynamic_providers = list(AutoRegistry._providers.keys())
 
     # Combine and deduplicate
     all_providers = list(set(static_providers + dynamic_providers))
@@ -461,7 +460,7 @@ async def get_providers_details() -> Dict[str, ProviderDetails]:
     Returns a dictionary mapping provider names to their details,
     including supported credential types and other metadata.
     """
-    registry = get_registry()
+    # AutoRegistry is used directly as a class with class methods
 
     # Build provider details
     provider_details: Dict[str, ProviderDetails] = {}
@@ -471,24 +470,26 @@ async def get_providers_details() -> Dict[str, ProviderDetails]:
         provider_details[member.value] = ProviderDetails(
             name=member.value,
             source="static",
-            has_oauth=member.value in registry.oauth_handlers,
-            has_webhooks=member.value in registry.webhook_managers,
+            has_oauth=member.value in AutoRegistry._oauth_handlers,
+            has_webhooks=member.value in AutoRegistry._webhook_managers,
         )
 
     # Add/update with dynamic providers
-    for provider in registry.providers:
+    for provider in AutoRegistry._providers:
         if provider not in provider_details:
             provider_details[provider] = ProviderDetails(
                 name=provider,
                 source="dynamic",
-                has_oauth=provider in registry.oauth_handlers,
-                has_webhooks=provider in registry.webhook_managers,
+                has_oauth=provider in AutoRegistry._oauth_handlers,
+                has_webhooks=provider in AutoRegistry._webhook_managers,
             )
         else:
             provider_details[provider].source = "both"
-            provider_details[provider].has_oauth = provider in registry.oauth_handlers
+            provider_details[provider].has_oauth = (
+                provider in AutoRegistry._oauth_handlers
+            )
             provider_details[provider].has_webhooks = (
-                provider in registry.webhook_managers
+                provider in AutoRegistry._webhook_managers
             )
 
     # Determine supported credential types for each provider

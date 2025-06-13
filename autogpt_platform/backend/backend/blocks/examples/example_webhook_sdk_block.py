@@ -5,13 +5,13 @@ This demonstrates webhook auto-registration without modifying
 files outside the blocks folder.
 """
 
+from enum import Enum
+
 from backend.sdk import (
     BaseModel,
     BaseWebhooksManager,
     Block,
     BlockCategory,
-    BlockCost,
-    BlockCostType,
     BlockOutput,
     BlockSchema,
     BlockType,
@@ -19,14 +19,10 @@ from backend.sdk import (
     CredentialsField,
     CredentialsMetaInput,
     Dict,
-    Enum,
     Field,
     ProviderName,
     SchemaField,
     String,
-    cost_config,
-    provider,
-    webhook_config,
 )
 
 
@@ -72,22 +68,10 @@ class ExampleWebhookManager(BaseWebhooksManager):
         pass
 
 
-# Now create the webhook block with auto-registration
-@provider("examplewebhook")
-@webhook_config("examplewebhook", ExampleWebhookManager)
-@cost_config(
-    BlockCost(
-        cost_amount=0, cost_type=BlockCostType.RUN
-    )  # Webhooks typically free to receive
-)
+# Now create the webhook block
 class ExampleWebhookSDKBlock(Block):
     """
-    Example webhook block demonstrating SDK webhook capabilities.
-
-    With the new SDK:
-    - Webhook manager registered via @webhook_config decorator
-    - No need to modify webhooks/__init__.py
-    - Fully self-contained webhook implementation
+    Example webhook block demonstrating webhook capabilities.
     """
 
     class Input(BlockSchema):

@@ -18,28 +18,21 @@ After SDK: Single import statement
 from backend.sdk import (
     Block,
     BlockCategory,
-    BlockCost,
-    BlockCostType,
     BlockOutput,
     BlockSchema,
     Integer,
     SchemaField,
     String,
-    cost_config,
-    provider,
 )
 
 
-@provider("simple_service")
-@cost_config(BlockCost(cost_amount=1, cost_type=BlockCostType.RUN))
 class SimpleExampleBlock(Block):
     """
     A simple example block showing the power of the SDK.
 
     Key benefits:
     1. Single import: from backend.sdk import *
-    2. Auto-registration via decorators
-    3. No manual config file updates needed
+    2. Clean, simple block structure
     """
 
     class Input(BlockSchema):

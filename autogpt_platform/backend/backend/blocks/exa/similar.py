@@ -7,34 +7,28 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
-    CredentialsField,
     CredentialsMetaInput,
     Integer,
     List,
     SchemaField,
     String,
-    provider,
     requests,
 )
 
+from ._config import exa
 from .helpers import ContentSettings
 
 
-@provider("exa")
 class ExaFindSimilarBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput = CredentialsField(
-            provider="exa",
-            supported_credential_types={"api_key"},
-            description="The Exa integration requires an API Key.",
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
         )
         url: String = SchemaField(
             description="The url for which you would like to find similar links"
         )
         number_of_results: Integer = SchemaField(
-            description="Number of results to return",
-            default=10,
-            advanced=True,
+            description="Number of results to return", default=10, advanced=True
         )
         include_domains: List[String] = SchemaField(
             description="Domains to include in search",
@@ -47,16 +41,16 @@ class ExaFindSimilarBlock(Block):
             advanced=True,
         )
         start_crawl_date: datetime = SchemaField(
-            description="Start date for crawled content",
+            description="Start date for crawled content"
         )
         end_crawl_date: datetime = SchemaField(
-            description="End date for crawled content",
+            description="End date for crawled content"
         )
         start_published_date: datetime = SchemaField(
-            description="Start date for published content",
+            description="Start date for published content"
         )
         end_published_date: datetime = SchemaField(
-            description="End date for published content",
+            description="End date for published content"
         )
         include_text: List[String] = SchemaField(
             description="Text patterns to include (max 1 string, up to 5 words)",

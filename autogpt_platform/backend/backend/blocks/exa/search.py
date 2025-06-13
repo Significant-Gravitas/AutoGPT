@@ -7,51 +7,38 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     Boolean,
-    CredentialsField,
     CredentialsMetaInput,
     Integer,
     List,
     SchemaField,
     String,
-    provider,
     requests,
 )
 
+from ._config import exa
 from .helpers import ContentSettings
 
 
-@provider("exa")
 class ExaSearchBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput = CredentialsField(
-            provider="exa",
-            supported_credential_types={"api_key"},
-            description="The Exa integration requires an API Key.",
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
         )
         query: String = SchemaField(description="The search query")
         use_auto_prompt: Boolean = SchemaField(
-            description="Whether to use autoprompt",
-            default=True,
-            advanced=True,
+            description="Whether to use autoprompt", default=True, advanced=True
         )
         type: String = SchemaField(
-            description="Type of search",
-            default="",
-            advanced=True,
+            description="Type of search", default="", advanced=True
         )
         category: String = SchemaField(
-            description="Category to search within",
-            default="",
-            advanced=True,
+            description="Category to search within", default="", advanced=True
         )
         number_of_results: Integer = SchemaField(
-            description="Number of results to return",
-            default=10,
-            advanced=True,
+            description="Number of results to return", default=10, advanced=True
         )
         include_domains: List[String] = SchemaField(
-            description="Domains to include in search",
-            default_factory=list,
+            description="Domains to include in search", default_factory=list
         )
         exclude_domains: List[String] = SchemaField(
             description="Domains to exclude from search",
@@ -59,26 +46,22 @@ class ExaSearchBlock(Block):
             advanced=True,
         )
         start_crawl_date: datetime = SchemaField(
-            description="Start date for crawled content",
+            description="Start date for crawled content"
         )
         end_crawl_date: datetime = SchemaField(
-            description="End date for crawled content",
+            description="End date for crawled content"
         )
         start_published_date: datetime = SchemaField(
-            description="Start date for published content",
+            description="Start date for published content"
         )
         end_published_date: datetime = SchemaField(
-            description="End date for published content",
+            description="End date for published content"
         )
         include_text: List[String] = SchemaField(
-            description="Text patterns to include",
-            default_factory=list,
-            advanced=True,
+            description="Text patterns to include", default_factory=list, advanced=True
         )
         exclude_text: List[String] = SchemaField(
-            description="Text patterns to exclude",
-            default_factory=list,
-            advanced=True,
+            description="Text patterns to exclude", default_factory=list, advanced=True
         )
         contents: ContentSettings = SchemaField(
             description="Content retrieval settings",
@@ -88,12 +71,10 @@ class ExaSearchBlock(Block):
 
     class Output(BlockSchema):
         results: List = SchemaField(
-            description="List of search results",
-            default_factory=list,
+            description="List of search results", default_factory=list
         )
         error: String = SchemaField(
-            description="Error message if the request failed",
-            default="",
+            description="Error message if the request failed", default=""
         )
 
     def __init__(self):

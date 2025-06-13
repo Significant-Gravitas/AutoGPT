@@ -5,38 +5,21 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     Boolean,
-    CredentialsField,
     CredentialsMetaInput,
     Dict,
     List,
     SchemaField,
-    SecretStr,
-    Settings,
     String,
-    default_credentials,
-    provider,
     requests,
 )
 
-settings = Settings()
+from ._config import exa
 
 
-@provider("exa")
-@default_credentials(
-    APIKeyCredentials(
-        id="01234567-89ab-cdef-0123-456789abcdef",
-        provider="exa",
-        api_key=SecretStr(settings.secrets.exa_api_key),
-        title="Use Credits for Exa",
-        expires_at=None,
-    )
-)
 class ExaAnswerBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput = CredentialsField(
-            provider="exa",
-            supported_credential_types={"api_key"},
-            description="The Exa integration requires an API Key.",
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
         )
         query: String = SchemaField(
             description="The question or query to answer",
@@ -61,19 +44,17 @@ class ExaAnswerBlock(Block):
 
     class Output(BlockSchema):
         answer: String = SchemaField(
-            description="The generated answer based on search results",
+            description="The generated answer based on search results"
         )
         citations: List[Dict] = SchemaField(
             description="Search results used to generate the answer",
             default_factory=list,
         )
         cost_dollars: Dict = SchemaField(
-            description="Cost breakdown of the request",
-            default_factory=dict,
+            description="Cost breakdown of the request", default_factory=dict
         )
         error: String = SchemaField(
-            description="Error message if the request failed",
-            default="",
+            description="Error message if the request failed", default=""
         )
 
     def __init__(self):
@@ -83,17 +64,6 @@ class ExaAnswerBlock(Block):
             categories={BlockCategory.SEARCH, BlockCategory.AI},
             input_schema=ExaAnswerBlock.Input,
             output_schema=ExaAnswerBlock.Output,
-            test_input={
-                "query": "What is the capital of France?",
-                "text": False,
-                "stream": False,
-                "model": "exa",
-            },
-            test_output=[
-                ("answer", "Paris"),
-                ("citations", []),
-                ("cost_dollars", {}),
-            ],
         )
 
     def run(

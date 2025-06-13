@@ -14,14 +14,14 @@ This module provides:
 """
 
 # Standard library imports
-import asyncio
-import logging
-from enum import Enum
-from logging import getLogger as TruncatedLogger
-from typing import Any, Dict, List
+from typing import Any
+from typing import Dict as DictType
+from typing import List as ListType
 from typing import Literal
 from typing import Literal as _Literal
-from typing import Optional, Set, Tuple, Type, TypeVar, Union
+from typing import Optional, Union
+
+import requests
 
 # Third-party imports
 from pydantic import BaseModel, Field, SecretStr
@@ -47,22 +47,14 @@ from backend.data.model import (
 
 # === INTEGRATIONS ===
 from backend.integrations.providers import ProviderName
+from backend.sdk.builder import ProviderBuilder
+from backend.sdk.provider import Provider
+
+# === NEW SDK COMPONENTS (imported early for patches) ===
+from backend.sdk.registry import AutoRegistry, BlockConfiguration
 
 # === UTILITIES ===
 from backend.util import json
-
-# === AUTO-REGISTRATION DECORATORS ===
-from .decorators import (
-    cost_config,
-    default_credentials,
-    oauth_config,
-    provider,
-    register_cost,
-    register_credentials,
-    register_oauth,
-    register_webhook_manager,
-    webhook_config,
-)
 
 # === OPTIONAL IMPORTS WITH TRY/EXCEPT ===
 # Webhooks
@@ -112,31 +104,8 @@ except ImportError:
 try:
     from backend.util.logging import TruncatedLogger
 except ImportError:
-    TruncatedLogger = TruncatedLogger  # Use the one imported at top
+    TruncatedLogger = None
 
-# GitHub components
-try:
-    from backend.blocks.github._auth import (
-        GithubCredentials,
-        GithubCredentialsField,
-        GithubCredentialsInput,
-    )
-except ImportError:
-    GithubCredentials = None
-    GithubCredentialsInput = None
-    GithubCredentialsField = None
-
-# Google components
-try:
-    from backend.blocks.google._auth import (
-        GoogleCredentials,
-        GoogleCredentialsField,
-        GoogleCredentialsInput,
-    )
-except ImportError:
-    GoogleCredentials = None
-    GoogleCredentialsInput = None
-    GoogleCredentialsField = None
 
 # OAuth handlers
 try:
@@ -144,49 +113,25 @@ try:
 except ImportError:
     BaseOAuthHandler = None
 
-try:
-    from backend.integrations.oauth.github import GitHubOAuthHandler
-except ImportError:
-    GitHubOAuthHandler = None
-
-try:
-    from backend.integrations.oauth.google import GoogleOAuthHandler
-except ImportError:
-    GoogleOAuthHandler = None
-
-# Webhook managers
-try:
-    from backend.integrations.webhooks.github import GithubWebhooksManager
-except ImportError:
-    GithubWebhooksManager = None
-
-try:
-    from backend.integrations.webhooks.generic import GenericWebhooksManager
-except ImportError:
-    GenericWebhooksManager = None
 
 # === VARIABLE ASSIGNMENTS AND TYPE ALIASES ===
-# Type aliases
+# Type aliases for block development
 String = str
 Integer = int
 Float = float
 Boolean = bool
+List = ListType
+Dict = DictType
 
 # Credential type with proper provider name
 CredentialsMetaInput = _CredentialsMetaInput[
     ProviderName, _Literal["api_key", "oauth2", "user_password"]
 ]
 
-# Webhook manager aliases
-if GithubWebhooksManager is not None:
-    GitHubWebhooksManager = GithubWebhooksManager  # Alias for consistency
-else:
-    GitHubWebhooksManager = None
 
-if GenericWebhooksManager is not None:
-    GenericWebhookManager = GenericWebhooksManager  # Alias for consistency
-else:
-    GenericWebhookManager = None
+# Initialize the registry's integration patches
+AutoRegistry.patch_integrations()
+
 
 # === COMPREHENSIVE __all__ EXPORT ===
 __all__ = [
@@ -216,19 +161,7 @@ __all__ = [
     "BaseWebhooksManager",
     "ManualWebhookManagerBase",
     # Provider-Specific (when available)
-    "GithubCredentials",
-    "GithubCredentialsInput",
-    "GithubCredentialsField",
-    "GoogleCredentials",
-    "GoogleCredentialsInput",
-    "GoogleCredentialsField",
     "BaseOAuthHandler",
-    "GitHubOAuthHandler",
-    "GoogleOAuthHandler",
-    "GitHubWebhooksManager",
-    "GithubWebhooksManager",
-    "GenericWebhookManager",
-    "GenericWebhooksManager",
     # Utilities
     "json",
     "store_media_file",
@@ -236,9 +169,7 @@ __all__ = [
     "convert",
     "TextFormatter",
     "TruncatedLogger",
-    "logging",
-    "asyncio",
-    # Types
+    # Type aliases for blocks
     "String",
     "Integer",
     "Float",
@@ -247,26 +178,17 @@ __all__ = [
     "Dict",
     "Optional",
     "Any",
-    "Literal",
     "Union",
-    "TypeVar",
-    "Type",
-    "Tuple",
-    "Set",
+    "Literal",
     "BaseModel",
-    "SecretStr",
     "Field",
-    "Enum",
-    # Auto-Registration Decorators
-    "register_credentials",
-    "register_cost",
-    "register_oauth",
-    "register_webhook_manager",
-    "provider",
-    "cost_config",
-    "webhook_config",
-    "default_credentials",
-    "oauth_config",
+    "SecretStr",
+    "requests",
+    # SDK Components
+    "AutoRegistry",
+    "BlockConfiguration",
+    "Provider",
+    "ProviderBuilder",
 ]
 
 # Remove None values from __all__

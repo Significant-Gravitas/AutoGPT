@@ -6,7 +6,6 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     Boolean,
-    CredentialsField,
     CredentialsMetaInput,
     Dict,
     Integer,
@@ -14,23 +13,20 @@ from backend.sdk import (
     Optional,
     SchemaField,
     String,
-    provider,
     requests,
 )
 
+from ._config import exa
 from .helpers import WebsetEnrichmentConfig, WebsetSearchConfig
 
 
-@provider("exa")
 class ExaCreateWebsetBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput = CredentialsField(
-            provider="exa",
-            supported_credential_types={"api_key"},
-            description="The Exa integration requires an API Key.",
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
         )
         search: WebsetSearchConfig = SchemaField(
-            description="Initial search configuration for the Webset",
+            description="Initial search configuration for the Webset"
         )
         enrichments: Optional[List[WebsetEnrichmentConfig]] = SchemaField(
             default=None,
@@ -51,21 +47,17 @@ class ExaCreateWebsetBlock(Block):
 
     class Output(BlockSchema):
         webset_id: String = SchemaField(
-            description="The unique identifier for the created webset",
+            description="The unique identifier for the created webset"
         )
-        status: String = SchemaField(
-            description="The status of the webset",
-        )
+        status: String = SchemaField(description="The status of the webset")
         external_id: Optional[String] = SchemaField(
-            description="The external identifier for the webset",
-            default=None,
+            description="The external identifier for the webset", default=None
         )
         created_at: String = SchemaField(
-            description="The date and time the webset was created",
+            description="The date and time the webset was created"
         )
         error: String = SchemaField(
-            description="Error message if the request failed",
-            default="",
+            description="Error message if the request failed", default=""
         )
 
     def __init__(self):
@@ -121,13 +113,10 @@ class ExaCreateWebsetBlock(Block):
             yield "created_at", ""
 
 
-@provider("exa")
 class ExaUpdateWebsetBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput = CredentialsField(
-            provider="exa",
-            supported_credential_types={"api_key"},
-            description="The Exa integration requires an API Key.",
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
         )
         webset_id: String = SchemaField(
             description="The ID or external ID of the Webset to update",
@@ -140,25 +129,20 @@ class ExaUpdateWebsetBlock(Block):
 
     class Output(BlockSchema):
         webset_id: String = SchemaField(
-            description="The unique identifier for the webset",
+            description="The unique identifier for the webset"
         )
-        status: String = SchemaField(
-            description="The status of the webset",
-        )
+        status: String = SchemaField(description="The status of the webset")
         external_id: Optional[String] = SchemaField(
-            description="The external identifier for the webset",
-            default=None,
+            description="The external identifier for the webset", default=None
         )
         metadata: Dict = SchemaField(
-            description="Updated metadata for the webset",
-            default_factory=dict,
+            description="Updated metadata for the webset", default_factory=dict
         )
         updated_at: String = SchemaField(
-            description="The date and time the webset was updated",
+            description="The date and time the webset was updated"
         )
         error: String = SchemaField(
-            description="Error message if the request failed",
-            default="",
+            description="Error message if the request failed", default=""
         )
 
     def __init__(self):
@@ -203,13 +187,10 @@ class ExaUpdateWebsetBlock(Block):
             yield "updated_at", ""
 
 
-@provider("exa")
 class ExaListWebsetsBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput = CredentialsField(
-            provider="exa",
-            supported_credential_types={"api_key"},
-            description="The Exa integration requires an API Key.",
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
         )
         cursor: Optional[String] = SchemaField(
             default=None,
@@ -225,21 +206,16 @@ class ExaListWebsetsBlock(Block):
         )
 
     class Output(BlockSchema):
-        websets: List = SchemaField(
-            description="List of websets",
-            default_factory=list,
-        )
+        websets: List = SchemaField(description="List of websets", default_factory=list)
         has_more: Boolean = SchemaField(
             description="Whether there are more results to paginate through",
             default=False,
         )
         next_cursor: Optional[String] = SchemaField(
-            description="Cursor for the next page of results",
-            default=None,
+            description="Cursor for the next page of results", default=None
         )
         error: String = SchemaField(
-            description="Error message if the request failed",
-            default="",
+            description="Error message if the request failed", default=""
         )
 
     def __init__(self):
@@ -280,46 +256,35 @@ class ExaListWebsetsBlock(Block):
             yield "has_more", False
 
 
-@provider("exa")
 class ExaGetWebsetBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput = CredentialsField(
-            provider="exa",
-            supported_credential_types={"api_key"},
-            description="The Exa integration requires an API Key.",
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
         )
         webset_id: String = SchemaField(
             description="The ID or external ID of the Webset to retrieve",
             placeholder="webset-id-or-external-id",
         )
         expand_items: Boolean = SchemaField(
-            default=False,
-            description="Include items in the response",
-            advanced=True,
+            default=False, description="Include items in the response", advanced=True
         )
 
     class Output(BlockSchema):
         webset_id: String = SchemaField(
-            description="The unique identifier for the webset",
+            description="The unique identifier for the webset"
         )
-        status: String = SchemaField(
-            description="The status of the webset",
-        )
+        status: String = SchemaField(description="The status of the webset")
         external_id: Optional[String] = SchemaField(
-            description="The external identifier for the webset",
-            default=None,
+            description="The external identifier for the webset", default=None
         )
         searches: List[Dict] = SchemaField(
-            description="The searches performed on the webset",
-            default_factory=list,
+            description="The searches performed on the webset", default_factory=list
         )
         enrichments: List[Dict] = SchemaField(
-            description="The enrichments applied to the webset",
-            default_factory=list,
+            description="The enrichments applied to the webset", default_factory=list
         )
         monitors: List[Dict] = SchemaField(
-            description="The monitors for the webset",
-            default_factory=list,
+            description="The monitors for the webset", default_factory=list
         )
         items: Optional[List[Dict]] = SchemaField(
             description="The items in the webset (if expand_items is true)",
@@ -330,14 +295,13 @@ class ExaGetWebsetBlock(Block):
             default_factory=dict,
         )
         created_at: String = SchemaField(
-            description="The date and time the webset was created",
+            description="The date and time the webset was created"
         )
         updated_at: String = SchemaField(
-            description="The date and time the webset was last updated",
+            description="The date and time the webset was last updated"
         )
         error: String = SchemaField(
-            description="Error message if the request failed",
-            default="",
+            description="Error message if the request failed", default=""
         )
 
     def __init__(self):
@@ -389,13 +353,10 @@ class ExaGetWebsetBlock(Block):
             yield "updated_at", ""
 
 
-@provider("exa")
 class ExaDeleteWebsetBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput = CredentialsField(
-            provider="exa",
-            supported_credential_types={"api_key"},
-            description="The Exa integration requires an API Key.",
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
         )
         webset_id: String = SchemaField(
             description="The ID or external ID of the Webset to delete",
@@ -404,22 +365,17 @@ class ExaDeleteWebsetBlock(Block):
 
     class Output(BlockSchema):
         webset_id: String = SchemaField(
-            description="The unique identifier for the deleted webset",
+            description="The unique identifier for the deleted webset"
         )
         external_id: Optional[String] = SchemaField(
-            description="The external identifier for the deleted webset",
-            default=None,
+            description="The external identifier for the deleted webset", default=None
         )
-        status: String = SchemaField(
-            description="The status of the deleted webset",
-        )
+        status: String = SchemaField(description="The status of the deleted webset")
         success: String = SchemaField(
-            description="Whether the deletion was successful",
-            default="true",
+            description="Whether the deletion was successful", default="true"
         )
         error: String = SchemaField(
-            description="Error message if the request failed",
-            default="",
+            description="Error message if the request failed", default=""
         )
 
     def __init__(self):
@@ -456,13 +412,10 @@ class ExaDeleteWebsetBlock(Block):
             yield "success", "false"
 
 
-@provider("exa")
 class ExaCancelWebsetBlock(Block):
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput = CredentialsField(
-            provider="exa",
-            supported_credential_types={"api_key"},
-            description="The Exa integration requires an API Key.",
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
         )
         webset_id: String = SchemaField(
             description="The ID or external ID of the Webset to cancel",
@@ -471,22 +424,19 @@ class ExaCancelWebsetBlock(Block):
 
     class Output(BlockSchema):
         webset_id: String = SchemaField(
-            description="The unique identifier for the webset",
+            description="The unique identifier for the webset"
         )
         status: String = SchemaField(
-            description="The status of the webset after cancellation",
+            description="The status of the webset after cancellation"
         )
         external_id: Optional[String] = SchemaField(
-            description="The external identifier for the webset",
-            default=None,
+            description="The external identifier for the webset", default=None
         )
         success: String = SchemaField(
-            description="Whether the cancellation was successful",
-            default="true",
+            description="Whether the cancellation was successful", default="true"
         )
         error: String = SchemaField(
-            description="Error message if the request failed",
-            default="",
+            description="Error message if the request failed", default=""
         )
 
     def __init__(self):
