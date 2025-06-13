@@ -32,6 +32,7 @@ poetry run test
 poetry run pytest path/to/test_file.py::test_function_name
 
 # Lint and format
+# prefer format if you want to just "fix" it and only get the errors that can't be autofixed
 poetry run format  # Black + isort
 poetry run lint    # ruff
 ```
