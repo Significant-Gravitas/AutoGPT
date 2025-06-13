@@ -31,6 +31,7 @@ from backend.data.notifications import (
 from backend.data.rabbitmq import SyncRabbitMQ
 from backend.executor.utils import create_execution_queue_config
 from backend.notifications.notifications import queue_notification
+from backend.server.v2.iffy.block_moderation import moderate_block_content
 from backend.util.exceptions import InsufficientBalanceError
 
 if TYPE_CHECKING:
@@ -478,6 +479,15 @@ class Executor:
             block_name="-",
         )
         node = cls.db_client.get_node(node_exec.node_id)
+
+        moderate_block_content(
+            graph_id=node_exec.graph_id,
+            graph_exec_id=node_exec.graph_exec_id,
+            node_id=node_exec.node_id,
+            block_id=node_exec.block_id,
+            input_data=node_exec.inputs,
+            user_id=node_exec.user_id,
+        )
 
         execution_stats = NodeExecutionStats()
         timing_info, _ = cls._on_node_execution(
