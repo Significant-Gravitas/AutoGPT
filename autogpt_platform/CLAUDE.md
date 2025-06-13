@@ -78,6 +78,7 @@ npm run type-check
 - **Queue System**: RabbitMQ for async task processing
 - **Execution Engine**: Separate executor service processes agent workflows
 - **Authentication**: JWT-based with Supabase integration
+- **Security**: Cache protection middleware prevents sensitive data caching in browsers/proxies
 
 ### Frontend Architecture
 - **Framework**: Next.js App Router with React Server Components
@@ -131,3 +132,13 @@ Key models (defined in `/backend/schema.prisma`):
 2. Use existing UI components from `/frontend/src/components/ui/`
 3. Add Storybook stories for new components
 4. Test with Playwright if user-facing
+
+### Security Implementation
+
+**Cache Protection Middleware:**
+- Located in `/backend/backend/server/middleware/security.py`
+- Automatically applies `Cache-Control: no-store, no-cache, must-revalidate, private` headers to sensitive endpoints
+- Protects authentication tokens, API keys, user credentials, and personal data from browser/proxy caching
+- Covers endpoints: `/api/auth/*`, `/api/integrations/*`, `/api/graphs/*/execute`, `/api/credits/*`, etc.
+- Add here if you need to cover more.
+- Applied to both main API server and external API applications
