@@ -430,8 +430,8 @@ class Executor:
     @async_error_logged
     async def on_node_execution(
         cls,
-        q: ExecutionQueue[ExecutionOutputEntry],
         node_exec: NodeExecutionEntry,
+        node_exec_progress: NodeExecutionProgress,
         node_credentials_input_map: Optional[
             dict[str, dict[str, CredentialsMetaInput]]
         ] = None,
@@ -448,9 +448,9 @@ class Executor:
 
         execution_stats = NodeExecutionStats()
         timing_info, _ = await cls._on_node_execution(
-            q=q,
-            node_exec=node_exec,
             node=node,
+            node_exec=node_exec,
+            node_exec_progress=node_exec_progress,
             log_metadata=log_metadata,
             stats=execution_stats,
             node_credentials_input_map=node_credentials_input_map,
@@ -470,9 +470,9 @@ class Executor:
     @async_time_measured
     async def _on_node_execution(
         cls,
-        q: ExecutionQueue[ExecutionOutputEntry],
-        node_exec: NodeExecutionEntry,
         node: Node,
+        node_exec: NodeExecutionEntry,
+        node_exec_progress: NodeExecutionProgress,
         log_metadata: LogMetadata,
         stats: NodeExecutionStats | None = None,
         node_credentials_input_map: Optional[
@@ -494,7 +494,7 @@ class Executor:
                 execution_stats=stats,
                 node_credentials_input_map=node_credentials_input_map,
             ):
-                q.add(
+                node_exec_progress.add_output(
                     ExecutionOutputEntry(
                         node=node,
                         node_exec_id=node_exec.node_exec_id,
@@ -663,14 +663,7 @@ class Executor:
         execution_status = ExecutionStatus.RUNNING
         error = None
 
-        def drain_output_queue():
-            while output := output_queue.get_or_none():
-                log_metadata.debug(
-                    f"Received output for {output.node.id} - {output.node_exec_id}: {output.data}"
-                )
-                running_node_execution[output.node.id].add_output(output)
-
-        def drain_done_task(node_exec_id: str, result: object):
+        def on_done_task(node_exec_id: str, result: object):
             if not isinstance(result, NodeExecutionStats):
                 log_metadata.error(f"Unexpected result #{node_exec_id}: {type(result)}")
                 return
@@ -709,13 +702,9 @@ class Executor:
                 )
 
         running_node_execution: dict[str, NodeExecutionProgress] = defaultdict(
-            lambda: NodeExecutionProgress(
-                drain_output_queue=drain_output_queue,
-                drain_done_task=drain_done_task,
-            )
+            lambda: NodeExecutionProgress(on_done_task=on_done_task)
         )
         running_node_evaluation: dict[str, Future] = {}
-        output_queue = ExecutionQueue[ExecutionOutputEntry]()
         execution_queue = ExecutionQueue[NodeExecutionEntry]()
 
         try:
@@ -788,7 +777,9 @@ class Executor:
                 # Initiate node execution
                 node_execution_task = asyncio.run_coroutine_threadsafe(
                     cls.on_node_execution(
-                        output_queue, queued_node_exec, node_creds_map
+                        node_exec=queued_node_exec,
+                        node_exec_progress=running_node_execution[node_id],
+                        node_credentials_input_map=node_creds_map,
                     ),
                     cls.node_execution_loop,
                 )
