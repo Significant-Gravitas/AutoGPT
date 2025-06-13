@@ -5,7 +5,7 @@ from backend.blocks.jina._auth import (
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.request import requests
+from backend.util.request import Requests
 
 
 class JinaEmbeddingBlock(Block):
@@ -38,6 +38,6 @@ class JinaEmbeddingBlock(Block):
             "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
         }
         data = {"input": input_data.texts, "model": input_data.model}
-        response = requests.post(url, headers=headers, json=data)
+        response = Requests().post(url, headers=headers, json=data)
         embeddings = [e["embedding"] for e in response.json()["data"]]
         yield "embeddings", embeddings

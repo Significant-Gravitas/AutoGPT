@@ -17,6 +17,9 @@ pyjwt = "^2.10.1"
 pytest-asyncio = "^0.26.0"
 pytest-mock = "^3.14.0"
 supabase = "^2.15.1"
+launchdarkly-server-sdk = "^9.11.1"
+fastapi = "^0.115.12"
+uvicorn = "^0.34.3"
 
 [tool.poetry.group.dev.dependencies]
 redis = "^5.2.1"
