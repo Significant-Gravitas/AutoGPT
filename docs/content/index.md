@@ -70,11 +70,11 @@ The platform comes pre-integrated with cutting-edge LLM providers:
 - Groq
 - Llama
 
-## License Overview 
+## License Overview
 
 We've adopted a dual-license approach to balance open collaboration with sustainable development:
 
-- **MIT License**: The majority of the AutoGPT repository remains under this license.
+- **MIT License**: All files outside of autogpt_platform folder are under the MIT License.
 - **Polyform Shield License**: Applies to the new `autogpt_platform` folder.
 
 This strategy allows us to share previously closed-source components, fostering a vibrant ecosystem of developers and users.
