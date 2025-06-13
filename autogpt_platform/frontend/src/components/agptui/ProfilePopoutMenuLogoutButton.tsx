@@ -1,5 +1,5 @@
 "use client";
-import useSupabase from "@/lib/supabase/useSupabase";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { IconLogOut } from "@/components/ui/icons";
 import { useTransition } from "react";
 import { LoadingSpinner } from "../ui/loading";
@@ -16,7 +16,7 @@ export function ProfilePopoutMenuLogoutButton() {
   function handleLogout() {
     startTransition(async () => {
       try {
-        await supabase.logOut();
+        await supabase.logOut({ scope: "global" });
         router.refresh();
       } catch (e) {
         Sentry.captureException(e);
