@@ -1,4 +1,4 @@
-import getServerSupabase from "@/lib/supabase/getServerSupabase";
+import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import BackendAPI from "@/lib/autogpt-server-api";
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";

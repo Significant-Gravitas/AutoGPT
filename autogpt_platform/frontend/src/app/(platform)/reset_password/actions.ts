@@ -1,5 +1,5 @@
 "use server";
-import getServerSupabase from "@/lib/supabase/getServerSupabase";
+import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
 import { verifyTurnstileToken } from "@/lib/turnstile";
@@ -64,7 +64,7 @@ export async function changePassword(password: string, turnstileToken: string) {
         return error.message;
       }
 
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "global" });
       redirect("/login");
     },
   );
