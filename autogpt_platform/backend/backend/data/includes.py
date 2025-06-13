@@ -21,8 +21,8 @@ EXECUTION_RESULT_ORDER: list[prisma.types.AgentNodeExecutionOrderByInput] = [
 ]
 
 EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
-    "Input": True,
-    "Output": True,
+    "Input": {"order_by": {"time": "asc"}},
+    "Output": {"order_by": {"time": "asc"}},
     "Node": True,
     "GraphExecution": True,
 }
@@ -31,12 +31,7 @@ MAX_NODE_EXECUTIONS_FETCH = 1000
 
 GRAPH_EXECUTION_INCLUDE_WITH_NODES: prisma.types.AgentGraphExecutionInclude = {
     "NodeExecutions": {
-        "include": {
-            "Input": True,
-            "Output": True,
-            "Node": True,
-            "GraphExecution": True,
-        },
+        "include": EXECUTION_RESULT_INCLUDE,
         "order_by": EXECUTION_RESULT_ORDER,
         "take": MAX_NODE_EXECUTIONS_FETCH,  # Avoid loading excessive node executions.
     }
