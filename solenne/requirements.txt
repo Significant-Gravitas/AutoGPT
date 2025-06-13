@@ -1,0 +1,14 @@
+flask
+openai
+numpy
+requests
+mss
+faiss-cpu
+pytest
+ruff
+black
+mypy
+pywinauto>=0.6.8
+pyautogui
+psutil
+pytesseract

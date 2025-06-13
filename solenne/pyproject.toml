@@ -1,0 +1,42 @@
+[tool.black]
+line-length = 88
+
+[tool.ruff]
+line-length = 88
+extend-exclude = ["solenne_core_loop_V2.py", "solenne_refactored.py", "companion", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E402", "E501", "I001"]
+
+[project]
+name = "solenne"
+version = "1.0.0"
+requires-python = ">=3.11"
+license = {text = "MPL-2.0"}
+dependencies = [
+    "flask==3.0.0",
+    "openai==1.3.7",
+    "faiss-cpu==1.8.0",
+    "psutil",
+    "click",
+    "requests",
+    "numpy<2.0",
+    "httpx<0.28",
+    "packaging>=25.0",
+    "pywin32>=306",
+    "wmi>=1.5.1",
+    "pywinauto>=0.6.8",
+    "pyautogui",
+    "pytesseract",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+    "black",
+]
+
+[project.scripts]
+solenne = "solenne.cli:cli"
