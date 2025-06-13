@@ -1,0 +1,90 @@
+import { cn } from "@/lib/utils";
+import { Search, X } from "lucide-react";
+import React, { useRef, useState, useEffect, useMemo } from "react";
+import { useBlockMenuContext } from "./block-menu-provider";
+import { Button } from "@/components/ui/button";
+import debounce from "lodash/debounce";
+import { Input } from "@/components/ui/input";
+import { getDefaultFilters } from "./helpers";
+
+const SEARCH_DEBOUNCE_MS = 500;
+
+interface BlockMenuSearchBarProps {
+  className?: string;
+}
+
+export const BlockMenuSearchBar: React.FC<BlockMenuSearchBarProps> = ({
+  className = "",
+}) => {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [localQuery, setLocalQuery] = useState("");
+  const { setSearchQuery, searchId, setSearchId, setFilters } =
+    useBlockMenuContext();
+
+  const searchIdRef = useRef(searchId);
+  useEffect(() => {
+    searchIdRef.current = searchId;
+  }, [searchId]);
+
+  const debouncedSetSearchQuery = useMemo(
+    () =>
+      debounce((value: string) => {
+        setSearchQuery(value);
+        if (value.length === 0) {
+          setSearchId(undefined);
+        } else if (!searchIdRef.current) {
+          setSearchId(crypto.randomUUID());
+        }
+      }, SEARCH_DEBOUNCE_MS),
+    [setSearchQuery, setSearchId],
+  );
+
+  useEffect(() => {
+    return () => {
+      debouncedSetSearchQuery.cancel();
+    };
+  }, [debouncedSetSearchQuery]);
+
+  const handleClear = () => {
+    setLocalQuery("");
+    setSearchQuery("");
+    setSearchId(undefined);
+    setFilters(getDefaultFilters());
+    debouncedSetSearchQuery.cancel();
+  };
+
+  return (
+    <div
+      className={cn(
+        "flex min-h-[3.5625rem] items-center gap-2.5 px-4",
+        className,
+      )}
+    >
+      <Search className="h-6 w-6 text-zinc-700" strokeWidth={2} />
+      <Input
+        ref={inputRef}
+        type="text"
+        value={localQuery}
+        onChange={(e) => {
+          setLocalQuery(e.target.value);
+          debouncedSetSearchQuery(e.target.value);
+        }}
+        placeholder={"Blocks, Agents, Integrations or Keywords..."}
+        className={cn(
+          "m-0 border-none p-0 font-sans text-base font-normal text-zinc-800 shadow-none outline-none",
+          "placeholder:text-zinc-400 focus:shadow-none focus:outline-none focus:ring-0",
+        )}
+      />
+      {localQuery.length > 0 && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleClear}
+          className="p-0 hover:bg-transparent"
+        >
+          <X className="h-6 w-6 text-zinc-700" strokeWidth={2} />
+        </Button>
+      )}
+    </div>
+  );
+};
