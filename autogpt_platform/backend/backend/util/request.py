@@ -3,7 +3,7 @@ import ipaddress
 import re
 import socket
 import ssl
-from io import BufferedReader
+from io import BytesIO
 from typing import Any, Callable, Optional
 from urllib.parse import ParseResult as URL
 from urllib.parse import quote, urljoin, urlparse
@@ -308,7 +308,7 @@ class Requests:
         url: str,
         *,
         headers: Optional[dict] = None,
-        files: list[tuple[str, tuple[str, BufferedReader, str]]] | None = None,
+        files: list[tuple[str, tuple[str, BytesIO, str]]] | None = None,
         data: Any | None = None,
         json: Any | None = None,
         allow_redirects: bool = True,

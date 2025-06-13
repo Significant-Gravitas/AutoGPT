@@ -1,8 +1,10 @@
 import json
 import logging
 from enum import Enum
-from io import BufferedReader
+from io import BytesIO
 from pathlib import Path
+
+import aiofiles
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
@@ -79,13 +81,13 @@ class SendWebRequestBlock(Block):
         graph_exec_id: str,
         files_name: str,
         files: list[MediaFileType],
-    ) -> tuple[list[tuple[str, tuple[str, BufferedReader, str]]], list[BufferedReader]]:
-        """Convert the `files` mapping into the structure expected by `requests`.
-
-        Returns a tuple of (**files_payload**, **open_handles**) so we can close handles later.
+    ) -> list[tuple[str, tuple[str, BytesIO, str]]]:
         """
-        files_payload: list[tuple[str, tuple[str, BufferedReader, str]]] = []
-        open_handles: list[BufferedReader] = []
+        Prepare files for the request by storing them and reading their content.
+        Returns a list of tuples in the format:
+        (files_name, (filename, BytesIO, mime_type))
+        """
+        files_payload: list[tuple[str, tuple[str, BytesIO, str]]] = []
 
         for media in files:
             # Normalise to a list so we can repeat the same key
@@ -93,21 +95,13 @@ class SendWebRequestBlock(Block):
                 graph_exec_id, media, return_content=False
             )
             abs_path = get_exec_file_path(graph_exec_id, rel_path)
-            try:
-                handle = open(abs_path, "rb")
-            except Exception as e:
-                for h in open_handles:
-                    try:
-                        h.close()
-                    except Exception:
-                        pass
-                raise RuntimeError(f"Failed to open file '{abs_path}': {e}") from e
+            async with aiofiles.open(abs_path, "rb") as f:
+                content = await f.read()
+                handle = BytesIO(content)
+                mime = get_mime_type(abs_path)
+                files_payload.append((files_name, (Path(abs_path).name, handle, mime)))
 
-            open_handles.append(handle)
-            mime = get_mime_type(abs_path)
-            files_payload.append((files_name, (Path(abs_path).name, handle, mime)))
-
-        return files_payload, open_handles
+        return files_payload
 
     async def run(
         self, input_data: Input, *, graph_exec_id: str, **kwargs
@@ -123,10 +117,9 @@ class SendWebRequestBlock(Block):
 
         # ─── Prepare files (if any) ──────────────────────────────────
         use_files = bool(input_data.files)
-        files_payload: list[tuple[str, tuple[str, BufferedReader, str]]] = []
-        open_handles: list[BufferedReader] = []
+        files_payload: list[tuple[str, tuple[str, BytesIO, str]]] = []
         if use_files:
-            files_payload, open_handles = await self._prepare_files(
+            files_payload = await self._prepare_files(
                 graph_exec_id, input_data.files_name, input_data.files
             )
 
@@ -137,35 +130,27 @@ class SendWebRequestBlock(Block):
             )
 
         # ─── Execute request ─────────────────────────────────────────
-        try:
-            response = await requests.request(
-                input_data.method.value,
-                input_data.url,
-                headers=input_data.headers,
-                files=files_payload if use_files else None,
-                # * If files → multipart ⇒ pass form‑fields via data=
-                data=body if not input_data.json_format else None,
-                # * Else, choose JSON vs url‑encoded based on flag
-                json=body if (input_data.json_format and not use_files) else None,
-            )
+        response = await requests.request(
+            input_data.method.value,
+            input_data.url,
+            headers=input_data.headers,
+            files=files_payload if use_files else None,
+            # * If files → multipart ⇒ pass form‑fields via data=
+            data=body if not input_data.json_format else None,
+            # * Else, choose JSON vs url‑encoded based on flag
+            json=body if (input_data.json_format and not use_files) else None,
+        )
 
-            # Decide how to parse the response
-            if response.headers.get("content-type", "").startswith("application/json"):
-                result = None if response.status == 204 else response.json()
-            else:
-                result = response.text()
+        # Decide how to parse the response
+        if response.headers.get("content-type", "").startswith("application/json"):
+            result = None if response.status == 204 else response.json()
+        else:
+            result = response.text()
 
-            # Yield according to status code bucket
-            if 200 <= response.status < 300:
-                yield "response", result
-            elif 400 <= response.status < 500:
-                yield "client_error", result
-            else:
-                yield "server_error", result
-
-        finally:
-            for h in open_handles:
-                try:
-                    h.close()
-                except Exception:
-                    pass
+        # Yield according to status code bucket
+        if 200 <= response.status < 300:
+            yield "response", result
+        elif 400 <= response.status < 500:
+            yield "client_error", result
+        else:
+            yield "server_error", result
