@@ -127,9 +127,8 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         try:
             response.raise_for_status()
-        except req.exceptions.HTTPError as e:
-            print("HTTP Error:", e)
-            print("Response Content:", response.text)
+        except req.exceptions.HTTPError:
+            print(f"HTTP Error: {response.status_code}")
             raise
 
         tokens = response.json()
@@ -166,9 +165,8 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         try:
             response.raise_for_status()
-        except req.exceptions.HTTPError as e:
-            print("HTTP Error:", e)
-            print("Response Content:", response.text)
+        except req.exceptions.HTTPError:
+            print(f"HTTP Error: {response.status_code}")
             raise
 
         return response.status_code == 200
