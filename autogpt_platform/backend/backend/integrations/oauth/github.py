@@ -96,7 +96,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
         response = await requests.post(
             self.token_url, data=request_body, headers=headers
         )
-        token_data: dict = await response.json()
+        token_data: dict = response.json()
 
         username = await self._request_username(token_data["access_token"])
 
@@ -144,7 +144,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
             return None
 
         # Get the login (username)
-        resp = await response.json()
+        resp = response.json()
         return resp.get("login")
 
 

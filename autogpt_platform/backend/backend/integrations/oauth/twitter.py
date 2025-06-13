@@ -80,7 +80,7 @@ class TwitterOAuthHandler(BaseOAuthHandler):
         response = await requests.post(
             self.TOKEN_URL, headers=headers, data=data, auth=auth
         )
-        tokens = await response.json()
+        tokens = response.json()
 
         username = await self._get_username(tokens["access_token"])
 
@@ -105,7 +105,7 @@ class TwitterOAuthHandler(BaseOAuthHandler):
             f"{self.USERNAME_URL}?{urllib.parse.urlencode(params)}", headers=headers
         )
 
-        return (await response.json())["data"]["username"]
+        return response.json()["data"]["username"]
 
     async def _refresh_tokens(
         self, credentials: OAuth2Credentials
@@ -132,7 +132,7 @@ class TwitterOAuthHandler(BaseOAuthHandler):
             print("Response Content:", error_text)
             raise ValueError(f"HTTP Error: {response.status} - {error_text}")
 
-        tokens = await response.json()
+        tokens = response.json()
 
         username = await self._get_username(tokens["access_token"])
 

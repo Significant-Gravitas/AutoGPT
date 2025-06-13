@@ -126,7 +126,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
                 )
             raise ValueError(f"Failed to create GitHub webhook: {error_msg}")
 
-        resp = await response.json()
+        resp = response.json()
         webhook_id = resp["id"]
         config = resp["config"]
 
@@ -169,7 +169,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
 
 async def extract_github_error_msg(response: Response) -> str:
     error_msgs = []
-    resp = await response.json()
+    resp = response.json()
     if resp.get("message"):
         error_msgs.append(resp["message"])
     if resp.get("errors"):

@@ -44,7 +44,7 @@ class Slant3DWebhooksManager(BaseWebhooksManager):
         )
 
         if not response.ok:
-            error = (await response.json()).get("error", "Unknown error")
+            error = response.json().get("error", "Unknown error")
             raise RuntimeError(f"Failed to register webhook: {error}")
 
         webhook_config = {

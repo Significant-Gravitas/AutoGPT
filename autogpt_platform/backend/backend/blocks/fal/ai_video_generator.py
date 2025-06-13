@@ -114,7 +114,7 @@ class AIVideoGeneratorBlock(Block):
             submit_response = await requests.post(
                 submit_url, headers=headers, json=submit_data
             )
-            request_data = await submit_response.json()
+            request_data = submit_response.json()
 
             # Get request_id and urls from initial response
             request_id = request_data.get("request_id")
@@ -123,6 +123,14 @@ class AIVideoGeneratorBlock(Block):
 
             if not all([request_id, status_url, result_url]):
                 raise ValueError("Missing required data in submission response")
+
+            # Ensure status_url is a string
+            if not isinstance(status_url, str):
+                raise ValueError("Invalid status URL format")
+
+            # Ensure result_url is a string
+            if not isinstance(result_url, str):
+                raise ValueError("Invalid result URL format")
 
             # Poll for status with exponential backoff
             max_attempts = 30
@@ -133,7 +141,7 @@ class AIVideoGeneratorBlock(Block):
                 status_response = await requests.get(
                     f"{status_url}?logs=1", headers=headers
                 )
-                status_data = await status_response.json()
+                status_data = status_response.json()
 
                 # Process new logs only
                 logs = status_data.get("logs", [])
@@ -156,7 +164,7 @@ class AIVideoGeneratorBlock(Block):
                 if status == "COMPLETED":
                     # Get the final result
                     result_response = await requests.get(result_url, headers=headers)
-                    result_data = await result_response.json()
+                    result_data = result_response.json()
 
                     if "video" not in result_data or not isinstance(
                         result_data["video"], dict
@@ -164,8 +172,8 @@ class AIVideoGeneratorBlock(Block):
                         raise ValueError("Invalid response format - missing video data")
 
                     video_url = result_data["video"].get("url")
-                    if not video_url:
-                        raise ValueError("No video URL in response")
+                    if not video_url or not isinstance(video_url, str):
+                        raise ValueError("No valid video URL in response")
 
                     return video_url
 

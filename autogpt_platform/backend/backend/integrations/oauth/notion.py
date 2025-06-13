@@ -55,7 +55,7 @@ class NotionOAuthHandler(BaseOAuthHandler):
         response = await requests.post(
             self.token_url, json=request_body, headers=headers
         )
-        token_data = await response.json()
+        token_data = response.json()
         # Email is only available for non-bot users
         email = (
             token_data["owner"]["person"]["email"]

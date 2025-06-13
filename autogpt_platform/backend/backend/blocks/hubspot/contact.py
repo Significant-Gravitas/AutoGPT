@@ -92,7 +92,7 @@ class HubSpotContactBlock(Block):
                     ]
                 },
             )
-            search_result = await search_response.json()
+            search_result = search_response.json()
             contact_id = search_result.get("results", [{}])[0].get("id")
 
             if contact_id:

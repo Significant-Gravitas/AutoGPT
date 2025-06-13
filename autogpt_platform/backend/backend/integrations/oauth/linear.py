@@ -58,7 +58,7 @@ class LinearOAuthHandler(BaseOAuthHandler):
         response = await requests.post(self.revoke_url, headers=headers)
         if not response.ok:
             try:
-                error_data = await response.json()
+                error_data = response.json()
                 error_message = error_data.get("error", "Unknown error")
             except json.JSONDecodeError:
                 error_message = response.text
@@ -105,9 +105,8 @@ class LinearOAuthHandler(BaseOAuthHandler):
 
         if not response.ok:
             try:
-                error_data = await response.json()
+                error_data = response.json()
                 error_message = error_data.get("error", "Unknown error")
-
             except json.JSONDecodeError:
                 error_message = response.text
             raise LinearAPIException(
@@ -115,7 +114,7 @@ class LinearOAuthHandler(BaseOAuthHandler):
                 response.status,
             )
 
-        token_data = await response.json()
+        token_data = response.json()
 
         # Note: Linear access tokens do not expire, so we set expires_at to None
         new_credentials = OAuth2Credentials(

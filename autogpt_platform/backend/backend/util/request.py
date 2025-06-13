@@ -252,13 +252,13 @@ class Response:
         self.url: str = url
         self.content: bytes = body  # raw bytes
 
-    def json(self) -> Any:
+    def json(self, encoding: str | None = None, **kwargs) -> dict:
         """
         Parse the body as JSON and return the resulting Python object.
         """
-        if not self.content:
-            return None
-        return json.loads(self.content.decode("utf-8", errors="replace"))
+        return json.loads(
+            self.content.decode(encoding or "utf-8", errors="replace"), **kwargs
+        )
 
     def text(self, encoding: str | None = None) -> str:
         """

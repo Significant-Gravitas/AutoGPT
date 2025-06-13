@@ -70,7 +70,7 @@ class HubSpotCompanyBlock(Block):
             search_response = await requests.post(
                 search_url, headers=headers, json=search_data
             )
-            search_result = await search_response.json()
+            search_result = search_response.json()
             yield "search_company", search_result.get("results", [{}])[0]
             yield "status", "retrieved"
 
@@ -93,7 +93,7 @@ class HubSpotCompanyBlock(Block):
                     ]
                 },
             )
-            search_result = await search_response.json()
+            search_result = search_response.json()
             company_id = search_result.get("results", [{}])[0].get("id")
 
             if company_id:
