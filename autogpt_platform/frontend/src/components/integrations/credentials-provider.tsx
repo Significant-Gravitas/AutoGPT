@@ -102,8 +102,9 @@ export default function CredentialsProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const [providers, setProviders] =
-    useState<CredentialsProvidersContextType | null>(null);
+  const [providers, setProviders] = useState<CredentialsProvidersContextType>(
+    {},
+  );
   const { isLoggedIn } = useSupabase();
   const api = useBackendAPI();
 
@@ -206,7 +207,7 @@ export default function CredentialsProvider({
 
   useEffect(() => {
     if (!isLoggedIn) {
-      if (isLoggedIn == false) setProviders(null);
+      if (isLoggedIn == false) setProviders({});
       return;
     }
 

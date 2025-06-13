@@ -1,10 +1,15 @@
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Annotated, Awaitable, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
-from pydantic import BaseModel, Field
-from starlette.status import HTTP_404_NOT_FOUND
+from pydantic import BaseModel, Field, SecretStr
+from starlette.status import (
+    HTTP_404_NOT_FOUND,
+    HTTP_500_INTERNAL_SERVER_ERROR,
+    HTTP_502_BAD_GATEWAY,
+)
 
 from backend.data.graph import set_node_webhook
 from backend.data.integrations import (
@@ -16,11 +21,12 @@ from backend.data.integrations import (
 )
 from backend.data.model import Credentials, CredentialsType, OAuth2Credentials
 from backend.executor.utils import add_graph_execution_async
+from backend.integrations.ayrshare import AyrshareClient, SocialPlatform
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
-from backend.util.exceptions import NeedConfirmation, NotFoundError
+from backend.util.exceptions import MissingConfigError, NeedConfirmation, NotFoundError
 from backend.util.settings import Settings
 
 if TYPE_CHECKING:
@@ -240,6 +246,11 @@ class CredentialsDeletionNeedsConfirmationResponse(BaseModel):
     message: str
 
 
+class AyrshareSSOResponse(BaseModel):
+    sso_url: str = Field(..., description="The SSO URL for Ayrshare integration")
+    expire_at: str = Field(..., description="ISO timestamp when the URL expires")
+
+
 @router.delete("/{provider}/credentials/{cred_id}")
 async def delete_credentials(
     request: Request,
@@ -432,4 +443,87 @@ def _get_provider_oauth_handler(
         client_id=client_id,
         client_secret=client_secret,
         redirect_uri=f"{frontend_base_url}/auth/integrations/oauth_callback",
+    )
+
+
+@router.get("/ayrshare/sso_url")
+async def get_ayrshare_sso_url(
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> AyrshareSSOResponse:
+    """
+    Generate an SSO URL for Ayrshare social media integration.
+
+    Returns:
+        dict: Contains the SSO URL for Ayrshare integration
+    """
+    # Generate JWT and get SSO URL
+    try:
+        client = AyrshareClient()
+    except MissingConfigError:
+        raise HTTPException(
+            status_code=HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ayrshare integration is not configured",
+        )
+
+    # Get or create profile key
+    profile_key = creds_manager.store.get_ayrshare_profile_key(user_id)
+    if not profile_key:
+        logger.debug(f"Creating new Ayrshare profile for user {user_id}")
+        # Create new profile if none exists
+        try:
+            profile = client.create_profile(
+                title=f"User {user_id}", messaging_active=True
+            )
+            profile_key = profile.profileKey
+            creds_manager.store.set_ayrshare_profile_key(user_id, profile_key)
+        except Exception as e:
+            logger.error(f"Error creating Ayrshare profile for user {user_id}: {e}")
+            raise HTTPException(
+                status_code=HTTP_502_BAD_GATEWAY,
+                detail="Failed to create Ayrshare profile",
+            )
+    else:
+        logger.debug(f"Using existing Ayrshare profile for user {user_id}")
+
+    # Convert SecretStr to string if needed
+    profile_key_str = (
+        profile_key.get_secret_value()
+        if isinstance(profile_key, SecretStr)
+        else str(profile_key)
+    )
+
+    private_key = settings.secrets.ayrshare_jwt_key
+
+    try:
+        logger.debug(f"Generating Ayrshare JWT for user {user_id}")
+        jwt_response = client.generate_jwt(
+            private_key=private_key,
+            profile_key=profile_key_str,
+            allowed_social=[
+                SocialPlatform.FACEBOOK,
+                SocialPlatform.TWITTER,
+                SocialPlatform.LINKEDIN,
+                SocialPlatform.INSTAGRAM,
+                SocialPlatform.YOUTUBE,
+                SocialPlatform.REDDIT,
+                SocialPlatform.TELEGRAM,
+                SocialPlatform.GOOGLE_MY_BUSINESS,
+                SocialPlatform.PINTEREST,
+                SocialPlatform.TIKTOK,
+                SocialPlatform.BLUESKY,
+                SocialPlatform.SNAPCHAT,
+                SocialPlatform.THREADS,
+            ],
+            expires_in=2880,
+            verify=True,
+        )
+    except Exception as e:
+        logger.error(f"Error generating Ayrshare JWT for user {user_id}: {e}")
+        raise HTTPException(
+            status_code=HTTP_502_BAD_GATEWAY, detail="Failed to generate JWT"
+        )
+
+    expire_at = datetime.now(timezone.utc) + timedelta(minutes=2880)
+    return AyrshareSSOResponse(
+        sso_url=jwt_response.url, expire_at=expire_at.isoformat()
     )
