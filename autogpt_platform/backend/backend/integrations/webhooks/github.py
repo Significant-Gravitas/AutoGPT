@@ -73,9 +73,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
         repo, github_hook_id = webhook.resource, webhook.provider_webhook_id
         ping_url = f"{self.GITHUB_API_URL}/repos/{repo}/hooks/{github_hook_id}/pings"
 
-        response = Requests().post(
-            ping_url, headers=headers
-        )
+        response = Requests().post(ping_url, headers=headers)
 
         if response.status_code != 204:
             error_msg = extract_github_error_msg(response)
@@ -155,9 +153,7 @@ class GithubWebhooksManager(BaseWebhooksManager):
                 f"Unsupported webhook type '{webhook.webhook_type}'"
             )
 
-        response = Requests().delete(
-            delete_url, headers=headers
-        )
+        response = Requests().delete(delete_url, headers=headers)
 
         if response.status_code not in [204, 404]:
             # 204 means successful deletion, 404 means the webhook was already deleted

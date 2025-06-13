@@ -66,9 +66,7 @@ class HubSpotEngagementBlock(Block):
                 }
             }
 
-            response = Requests().post(
-                email_url, headers=headers, json=email_data
-            )
+            response = Requests().post(email_url, headers=headers, json=email_data)
             result = response.json()
             yield "result", result
             yield "status", "email_sent"
@@ -82,9 +80,7 @@ class HubSpotEngagementBlock(Block):
 
             params = {"limit": 100, "after": from_date.isoformat()}
 
-            response = Requests().get(
-                engagement_url, headers=headers, params=params
-            )
+            response = Requests().get(engagement_url, headers=headers, params=params)
             engagements = response.json()
 
             # Process engagement metrics

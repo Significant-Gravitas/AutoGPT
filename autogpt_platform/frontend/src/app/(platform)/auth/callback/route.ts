@@ -29,7 +29,7 @@ export async function GET(request: Request) {
   // if "next" is in param, use it as the redirect URL
   const nextParam = searchParams.get("next") ?? "/";
   // Validate redirect URL to prevent open redirect attacks
-  const next = validateRedirectUrl(nextParam);
+  let next = validateRedirectUrl(nextParam);
 
   if (code) {
     const supabase = await getServerSupabase();

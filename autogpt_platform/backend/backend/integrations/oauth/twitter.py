@@ -77,7 +77,9 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         auth = (self.client_id, self.client_secret)
 
-        response = Requests().post(self.TOKEN_URL, headers=headers, data=data, auth=auth)
+        response = Requests().post(
+            self.TOKEN_URL, headers=headers, data=data, auth=auth
+        )
         response.raise_for_status()
 
         tokens = response.json()
@@ -101,7 +103,9 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         params = {"user.fields": "username"}
 
-        response = Requests().get(f"{self.USERNAME_URL}?{urllib.parse.urlencode(params)}", headers=headers)
+        response = Requests().get(
+            f"{self.USERNAME_URL}?{urllib.parse.urlencode(params)}", headers=headers
+        )
         response.raise_for_status()
 
         return response.json()["data"]["username"]
@@ -156,7 +160,9 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         auth = (self.client_id, self.client_secret)
 
-        response = Requests().post(self.REVOKE_URL, headers=header, data=data, auth=auth)
+        response = Requests().post(
+            self.REVOKE_URL, headers=header, data=data, auth=auth
+        )
 
         try:
             response.raise_for_status()

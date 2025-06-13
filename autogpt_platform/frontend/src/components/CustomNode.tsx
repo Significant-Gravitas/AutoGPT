@@ -27,6 +27,7 @@ import {
   cn,
   getValue,
   hasNonNullNonObjectValue,
+  isObject,
   parseKeys,
   setNestedProperty,
 } from "@/lib/utils";
@@ -436,12 +437,7 @@ export const CustomNode = React.memo(
           try {
             const parsedValue = JSON.parse(value);
             // Validate that the parsed value is safe before using it
-            if (
-              (typeof parsedValue === "object" &&
-                parsedValue !== null &&
-                !Array.isArray(parsedValue)) ||
-              Array.isArray(parsedValue)
-            ) {
+            if (isObject(parsedValue) || Array.isArray(parsedValue)) {
               handleInputChange(activeKey, parsedValue);
             } else {
               // For primitive values, use the original string

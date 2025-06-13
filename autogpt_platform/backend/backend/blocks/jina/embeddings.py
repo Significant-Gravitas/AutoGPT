@@ -38,8 +38,6 @@ class JinaEmbeddingBlock(Block):
             "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
         }
         data = {"input": input_data.texts, "model": input_data.model}
-        response = Requests().post(
-            url, headers=headers, json=data
-        )
+        response = Requests().post(url, headers=headers, json=data)
         embeddings = [e["embedding"] for e in response.json()["data"]]
         yield "embeddings", embeddings

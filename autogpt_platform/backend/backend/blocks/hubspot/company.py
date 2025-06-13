@@ -67,9 +67,7 @@ class HubSpotCompanyBlock(Block):
                     }
                 ]
             }
-            response = Requests().post(
-                search_url, headers=headers, json=search_data
-            )
+            response = Requests().post(search_url, headers=headers, json=search_data)
             result = response.json()
             yield "company", result.get("results", [{}])[0]
             yield "status", "retrieved"

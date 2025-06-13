@@ -136,9 +136,7 @@ class ExaSearchBlock(Block):
                 payload[api_field] = value
 
         try:
-            response = Requests().post(
-                url, headers=headers, json=payload
-            )
+            response = Requests().post(url, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
             # Extract just the results array from the response

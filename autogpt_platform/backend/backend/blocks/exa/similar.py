@@ -120,9 +120,7 @@ class ExaFindSimilarBlock(Block):
                 payload[api_field] = value.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
         try:
-            response = Requests().post(
-                url, headers=headers, json=payload
-            )
+            response = Requests().post(url, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
             yield "results", data.get("results", [])

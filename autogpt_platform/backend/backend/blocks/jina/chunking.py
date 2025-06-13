@@ -55,9 +55,7 @@ class JinaChunkingBlock(Block):
                 "max_chunk_length": str(input_data.max_chunk_length),
             }
 
-            response = Requests().post(
-                url, headers=headers, json=data
-            )
+            response = Requests().post(url, headers=headers, json=data)
             result = response.json()
 
             all_chunks.extend(result.get("chunks", []))

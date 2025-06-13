@@ -79,9 +79,7 @@ class ExaContentsBlock(Block):
         }
 
         try:
-            response = Requests().post(
-                url, headers=headers, json=payload
-            )
+            response = Requests().post(url, headers=headers, json=payload)
             response.raise_for_status()
             data = response.json()
             yield "results", data.get("results", [])
