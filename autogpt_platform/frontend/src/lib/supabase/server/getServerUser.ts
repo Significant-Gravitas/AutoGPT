@@ -1,6 +1,6 @@
-import getServerSupabase from "./getServerSupabase";
+import { getServerSupabase } from "./getServerSupabase";
 
-const getServerUser = async () => {
+export async function getServerUser() {
   const supabase = await getServerSupabase();
 
   if (!supabase) {
@@ -10,7 +10,7 @@ const getServerUser = async () => {
   try {
     const {
       data: { user },
-      error,
+      error: _,
     } = await supabase.auth.getUser();
     // if (error) {
     //   // FIX: Suppressing error for now. Need to stop the nav bar calling this all the time
@@ -30,6 +30,4 @@ const getServerUser = async () => {
       error: `Unexpected error: ${(error as Error).message}`,
     };
   }
-};
-
-export default getServerUser;
+}
