@@ -1,12 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import getServerSupabase from "@/lib/supabase/getServerSupabase";
+import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import BackendApi from "@/lib/autogpt-server-api";
 import { NotificationPreferenceDTO } from "@/lib/autogpt-server-api/types";
 
 export async function updateSettings(formData: FormData) {
-  const supabase = getServerSupabase();
+  const supabase = await getServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();

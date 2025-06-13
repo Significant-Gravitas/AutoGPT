@@ -7,6 +7,11 @@ export async function verifyTurnstileToken(
   token: string,
   action?: string,
 ): Promise<boolean> {
+  // Skip verification unless explicitly enabled via environment variable
+  if (process.env.NEXT_PUBLIC_TURNSTILE !== "enabled") {
+    return true;
+  }
+
   // Skip verification in local development
   const behaveAs = getBehaveAs();
   if (behaveAs !== BehaveAs.CLOUD) {

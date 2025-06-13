@@ -31,6 +31,7 @@ logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
 fmt = TextFormatter()
 
 LLMProviderName = Literal[
+    ProviderName.AIML_API,
     ProviderName.ANTHROPIC,
     ProviderName.GROQ,
     ProviderName.OLLAMA,
@@ -101,10 +102,18 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     GPT4_TURBO = "gpt-4-turbo"
     GPT3_5_TURBO = "gpt-3.5-turbo"
     # Anthropic models
+    CLAUDE_4_OPUS = "claude-opus-4-20250514"
+    CLAUDE_4_SONNET = "claude-sonnet-4-20250514"
     CLAUDE_3_7_SONNET = "claude-3-7-sonnet-20250219"
     CLAUDE_3_5_SONNET = "claude-3-5-sonnet-latest"
     CLAUDE_3_5_HAIKU = "claude-3-5-haiku-latest"
     CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
+    # AI/ML API models
+    AIML_API_QWEN2_5_72B = "Qwen/Qwen2.5-72B-Instruct-Turbo"
+    AIML_API_LLAMA3_1_70B = "nvidia/llama-3.1-nemotron-70b-instruct"
+    AIML_API_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+    AIML_API_META_LLAMA_3_1_70B = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
+    AIML_API_LLAMA_3_2_3B = "meta-llama/Llama-3.2-3B-Instruct-Turbo"
     # Groq models
     GEMMA2_9B = "gemma2-9b-it"
     LLAMA3_3_70B = "llama-3.3-70b-versatile"
@@ -184,6 +193,12 @@ MODEL_METADATA = {
     ),  # gpt-4-turbo-2024-04-09
     LlmModel.GPT3_5_TURBO: ModelMetadata("openai", 16385, 4096),  # gpt-3.5-turbo-0125
     # https://docs.anthropic.com/en/docs/about-claude/models
+    LlmModel.CLAUDE_4_OPUS: ModelMetadata(
+        "anthropic", 200000, 8192
+    ),  # claude-4-opus-20250514
+    LlmModel.CLAUDE_4_SONNET: ModelMetadata(
+        "anthropic", 200000, 8192
+    ),  # claude-4-sonnet-20250514
     LlmModel.CLAUDE_3_7_SONNET: ModelMetadata(
         "anthropic", 200000, 8192
     ),  # claude-3-7-sonnet-20250219
@@ -196,6 +211,12 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_3_HAIKU: ModelMetadata(
         "anthropic", 200000, 4096
     ),  # claude-3-haiku-20240307
+    # https://docs.aimlapi.com/api-overview/model-database/text-models
+    LlmModel.AIML_API_QWEN2_5_72B: ModelMetadata("aiml_api", 32000, 8000),
+    LlmModel.AIML_API_LLAMA3_1_70B: ModelMetadata("aiml_api", 128000, 40000),
+    LlmModel.AIML_API_LLAMA3_3_70B: ModelMetadata("aiml_api", 128000, None),
+    LlmModel.AIML_API_META_LLAMA_3_1_70B: ModelMetadata("aiml_api", 131000, 2000),
+    LlmModel.AIML_API_LLAMA_3_2_3B: ModelMetadata("aiml_api", 128000, None),
     # https://console.groq.com/docs/models
     LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192, None),
     LlmModel.LLAMA3_3_70B: ModelMetadata("groq", 128000, 32768),
@@ -607,6 +628,29 @@ def llm_call(
             tool_calls=tool_calls,
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
+        )
+    elif provider == "aiml_api":
+        client = openai.OpenAI(
+            base_url="https://api.aimlapi.com/v2",
+            api_key=credentials.api_key.get_secret_value(),
+            default_headers={"X-Project": "AutoGPT"},
+        )
+
+        completion = client.chat.completions.create(
+            model=llm_model.value,
+            messages=prompt,  # type: ignore
+            max_tokens=max_tokens,
+        )
+
+        return LLMResponse(
+            raw_response=completion.choices[0].message,
+            prompt=prompt,
+            response=completion.choices[0].message.content or "",
+            tool_calls=None,
+            prompt_tokens=completion.usage.prompt_tokens if completion.usage else 0,
+            completion_tokens=(
+                completion.usage.completion_tokens if completion.usage else 0
+            ),
         )
     else:
         raise ValueError(f"Unsupported LLM provider: {provider}")
@@ -1039,8 +1083,8 @@ class AITextSummarizerBlock(AIBlockBase):
     def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        for output in self._run(input_data, credentials):
-            yield output
+        for output_name, output_data in self._run(input_data, credentials):
+            yield output_name, output_data
 
     def _run(self, input_data: Input, credentials: APIKeyCredentials) -> BlockOutput:
         chunks = self._split_text(

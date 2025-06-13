@@ -1,19 +1,30 @@
+from typing import overload
 from urllib.parse import urlparse
 
 from backend.blocks.github._auth import (
     GithubCredentials,
     GithubFineGrainedAPICredentials,
 )
-from backend.util.request import Requests
+from backend.util.request import URL, Requests
 
 
-def _convert_to_api_url(url: str) -> str:
+@overload
+def _convert_to_api_url(url: str) -> str: ...
+
+
+@overload
+def _convert_to_api_url(url: URL) -> URL: ...
+
+
+def _convert_to_api_url(url: str | URL) -> str | URL:
     """
     Converts a standard GitHub URL to the corresponding GitHub API URL.
     Handles repository URLs, issue URLs, pull request URLs, and more.
     """
-    parsed_url = urlparse(url)
-    path_parts = parsed_url.path.strip("/").split("/")
+    if url_as_str := isinstance(url, str):
+        url = urlparse(url)
+
+    path_parts = url.path.strip("/").split("/")
 
     if len(path_parts) >= 2:
         owner, repo = path_parts[0], path_parts[1]
@@ -28,7 +39,7 @@ def _convert_to_api_url(url: str) -> str:
     else:
         raise ValueError("Invalid GitHub URL format.")
 
-    return api_url
+    return api_url if url_as_str else urlparse(api_url)
 
 
 def _get_headers(credentials: GithubCredentials) -> dict[str, str]:

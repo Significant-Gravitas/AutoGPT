@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Metadata } from "next/types";
 
 import {
   ArrowBottomRightIcon,
@@ -11,11 +12,15 @@ import LibraryActionSubHeader from "@/components/library/library-action-sub-head
 import LibraryActionHeader from "@/components/library/library-action-header";
 import LibraryAgentList from "@/components/library/library-agent-list";
 
+export const metadata: Metadata = {
+  title: "Library - AutoGPT Platform",
+  description: "Your collection of Agents on the AutoGPT Platform",
+};
+
 /**
  * LibraryPage Component
  * Main component that manages the library interface including agent listing and actions
  */
-
 export default function LibraryPage() {
   return (
     <main className="container min-h-screen space-y-4 pb-20 sm:px-8 md:px-12">
