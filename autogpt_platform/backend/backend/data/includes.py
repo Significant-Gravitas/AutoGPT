@@ -14,6 +14,12 @@ AGENT_GRAPH_INCLUDE: prisma.types.AgentGraphInclude = {
     "Nodes": {"include": AGENT_NODE_INCLUDE}
 }
 
+EXECUTION_RESULT_ORDER: list[prisma.types.AgentNodeExecutionOrderByInput] = [
+    {"queuedTime": "desc"},
+    # Fallback: Incomplete execs has no queuedTime.
+    {"addedTime": "desc"},
+]
+
 EXECUTION_RESULT_INCLUDE: prisma.types.AgentNodeExecutionInclude = {
     "Input": True,
     "Output": True,
@@ -31,11 +37,7 @@ GRAPH_EXECUTION_INCLUDE_WITH_NODES: prisma.types.AgentGraphExecutionInclude = {
             "Node": True,
             "GraphExecution": True,
         },
-        "order_by": [
-            {"queuedTime": "desc"},
-            # Fallback: Incomplete execs has no queuedTime.
-            {"addedTime": "desc"},
-        ],
+        "order_by": EXECUTION_RESULT_ORDER,
         "take": MAX_NODE_EXECUTIONS_FETCH,  # Avoid loading excessive node executions.
     }
 }
