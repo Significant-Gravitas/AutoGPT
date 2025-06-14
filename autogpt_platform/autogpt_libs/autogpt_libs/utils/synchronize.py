@@ -1,15 +1,15 @@
-from contextlib import contextmanager
-from threading import Lock
+import asyncio
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any
 
 from expiringdict import ExpiringDict
 
 if TYPE_CHECKING:
-    from redis import Redis
-    from redis.lock import Lock as RedisLock
+    from redis.asyncio import Redis as AsyncRedis
+    from redis.asyncio.lock import Lock as AsyncRedisLock
 
 
-class RedisKeyedMutex:
+class AsyncRedisKeyedMutex:
     """
     This class provides a mutex that can be locked and unlocked by a specific key,
     using Redis as a distributed locking provider.
@@ -17,41 +17,45 @@ class RedisKeyedMutex:
     in case the key is not unlocked for a specified duration, to prevent memory leaks.
     """
 
-    def __init__(self, redis: "Redis", timeout: int | None = 60):
+    def __init__(self, redis: "AsyncRedis", timeout: int | None = 60):
         self.redis = redis
         self.timeout = timeout
-        self.locks: dict[Any, "RedisLock"] = ExpiringDict(
+        self.locks: dict[Any, "AsyncRedisLock"] = ExpiringDict(
             max_len=6000, max_age_seconds=self.timeout
         )
-        self.locks_lock = Lock()
+        self.locks_lock = asyncio.Lock()
 
-    @contextmanager
-    def locked(self, key: Any):
-        lock = self.acquire(key)
+    @asynccontextmanager
+    async def locked(self, key: Any):
+        lock = await self.acquire(key)
         try:
             yield
         finally:
-            if lock.locked() and lock.owned():
-                lock.release()
+            if (await lock.locked()) and (await lock.owned()):
+                await lock.release()
 
-    def acquire(self, key: Any) -> "RedisLock":
+    async def acquire(self, key: Any) -> "AsyncRedisLock":
         """Acquires and returns a lock with the given key"""
-        with self.locks_lock:
+        async with self.locks_lock:
             if key not in self.locks:
                 self.locks[key] = self.redis.lock(
                     str(key), self.timeout, thread_local=False
                 )
             lock = self.locks[key]
-        lock.acquire()
+        await lock.acquire()
         return lock
 
-    def release(self, key: Any):
-        if (lock := self.locks.get(key)) and lock.locked() and lock.owned():
-            lock.release()
+    async def release(self, key: Any):
+        if (
+            (lock := self.locks.get(key))
+            and (await lock.locked())
+            and (await lock.owned())
+        ):
+            await lock.release()
 
-    def release_all_locks(self):
+    async def release_all_locks(self):
         """Call this on process termination to ensure all locks are released"""
-        self.locks_lock.acquire(blocking=False)
-        for lock in self.locks.values():
-            if lock.locked() and lock.owned():
-                lock.release()
+        async with self.locks_lock:
+            for lock in self.locks.values():
+                if (await lock.locked()) and (await lock.owned()):
+                    await lock.release()

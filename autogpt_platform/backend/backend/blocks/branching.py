@@ -70,7 +70,7 @@ class ConditionBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         operator = input_data.operator
 
         value1 = input_data.value1
@@ -180,7 +180,7 @@ class IfInputMatchesBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         if input_data.input == input_data.value or input_data.input is input_data.value:
             yield "result", True
             yield "yes_output", input_data.yes_value

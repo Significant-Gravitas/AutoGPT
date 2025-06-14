@@ -80,7 +80,7 @@ class GithubCommentBlock(Block):
         )
 
     @staticmethod
-    def post_comment(
+    async def post_comment(
         credentials: GithubCredentials, issue_url: str, body_text: str
     ) -> tuple[int, str]:
         api = get_api(credentials)
@@ -88,18 +88,18 @@ class GithubCommentBlock(Block):
         if "pull" in issue_url:
             issue_url = issue_url.replace("pull", "issues")
         comments_url = issue_url + "/comments"
-        response = api.post(comments_url, json=data)
+        response = await api.post(comments_url, json=data)
         comment = response.json()
         return comment["id"], comment["html_url"]
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        id, url = self.post_comment(
+        id, url = await self.post_comment(
             credentials,
             input_data.issue_url,
             input_data.comment,
@@ -171,7 +171,7 @@ class GithubUpdateCommentBlock(Block):
         )
 
     @staticmethod
-    def update_comment(
+    async def update_comment(
         credentials: GithubCredentials, comment_url: str, body_text: str
     ) -> tuple[int, str]:
         api = get_api(credentials, convert_urls=False)
@@ -179,11 +179,11 @@ class GithubUpdateCommentBlock(Block):
         url = convert_comment_url_to_api_endpoint(comment_url)
 
         logger.info(url)
-        response = api.patch(url, json=data)
+        response = await api.patch(url, json=data)
         comment = response.json()
         return comment["id"], comment["html_url"]
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -209,7 +209,7 @@ class GithubUpdateCommentBlock(Block):
             raise ValueError(
                 "Must provide either comment_url or comment_id and issue_url"
             )
-        id, url = self.update_comment(
+        id, url = await self.update_comment(
             credentials,
             input_data.comment_url,
             input_data.comment,
@@ -288,7 +288,7 @@ class GithubListCommentsBlock(Block):
         )
 
     @staticmethod
-    def list_comments(
+    async def list_comments(
         credentials: GithubCredentials, issue_url: str
     ) -> list[Output.CommentItem]:
         parsed_url = urlparse(issue_url)
@@ -305,7 +305,7 @@ class GithubListCommentsBlock(Block):
 
         # Set convert_urls=False since we're already providing an API URL
         api = get_api(credentials, convert_urls=False)
-        response = api.get(api_url)
+        response = await api.get(api_url)
         comments = response.json()
         parsed_comments: list[GithubListCommentsBlock.Output.CommentItem] = [
             {
@@ -318,18 +318,19 @@ class GithubListCommentsBlock(Block):
         ]
         return parsed_comments
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        comments = self.list_comments(
+        comments = await self.list_comments(
             credentials,
             input_data.issue_url,
         )
-        yield from (("comment", comment) for comment in comments)
+        for comment in comments:
+            yield "comment", comment
         yield "comments", comments
 
 
@@ -381,24 +382,24 @@ class GithubMakeIssueBlock(Block):
         )
 
     @staticmethod
-    def create_issue(
+    async def create_issue(
         credentials: GithubCredentials, repo_url: str, title: str, body: str
     ) -> tuple[int, str]:
         api = get_api(credentials)
         data = {"title": title, "body": body}
         issues_url = repo_url + "/issues"
-        response = api.post(issues_url, json=data)
+        response = await api.post(issues_url, json=data)
         issue = response.json()
         return issue["number"], issue["html_url"]
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        number, url = self.create_issue(
+        number, url = await self.create_issue(
             credentials,
             input_data.repo_url,
             input_data.title,
@@ -451,25 +452,25 @@ class GithubReadIssueBlock(Block):
         )
 
     @staticmethod
-    def read_issue(
+    async def read_issue(
         credentials: GithubCredentials, issue_url: str
     ) -> tuple[str, str, str]:
         api = get_api(credentials)
-        response = api.get(issue_url)
+        response = await api.get(issue_url)
         data = response.json()
         title = data.get("title", "No title found")
         body = data.get("body", "No body content found")
         user = data.get("user", {}).get("login", "No user found")
         return title, body, user
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        title, body, user = self.read_issue(
+        title, body, user = await self.read_issue(
             credentials,
             input_data.issue_url,
         )
@@ -531,30 +532,30 @@ class GithubListIssuesBlock(Block):
         )
 
     @staticmethod
-    def list_issues(
+    async def list_issues(
         credentials: GithubCredentials, repo_url: str
     ) -> list[Output.IssueItem]:
         api = get_api(credentials)
         issues_url = repo_url + "/issues"
-        response = api.get(issues_url)
+        response = await api.get(issues_url)
         data = response.json()
         issues: list[GithubListIssuesBlock.Output.IssueItem] = [
             {"title": issue["title"], "url": issue["html_url"]} for issue in data
         ]
         return issues
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        issues = self.list_issues(
+        for issue in await self.list_issues(
             credentials,
             input_data.repo_url,
-        )
-        yield from (("issue", issue) for issue in issues)
+        ):
+            yield "issue", issue
 
 
 class GithubAddLabelBlock(Block):
@@ -593,21 +594,23 @@ class GithubAddLabelBlock(Block):
         )
 
     @staticmethod
-    def add_label(credentials: GithubCredentials, issue_url: str, label: str) -> str:
+    async def add_label(
+        credentials: GithubCredentials, issue_url: str, label: str
+    ) -> str:
         api = get_api(credentials)
         data = {"labels": [label]}
         labels_url = issue_url + "/labels"
-        api.post(labels_url, json=data)
+        await api.post(labels_url, json=data)
         return "Label added successfully"
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        status = self.add_label(
+        status = await self.add_label(
             credentials,
             input_data.issue_url,
             input_data.label,
@@ -653,20 +656,22 @@ class GithubRemoveLabelBlock(Block):
         )
 
     @staticmethod
-    def remove_label(credentials: GithubCredentials, issue_url: str, label: str) -> str:
+    async def remove_label(
+        credentials: GithubCredentials, issue_url: str, label: str
+    ) -> str:
         api = get_api(credentials)
         label_url = issue_url + f"/labels/{label}"
-        api.delete(label_url)
+        await api.delete(label_url)
         return "Label removed successfully"
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        status = self.remove_label(
+        status = await self.remove_label(
             credentials,
             input_data.issue_url,
             input_data.label,
@@ -714,7 +719,7 @@ class GithubAssignIssueBlock(Block):
         )
 
     @staticmethod
-    def assign_issue(
+    async def assign_issue(
         credentials: GithubCredentials,
         issue_url: str,
         assignee: str,
@@ -722,17 +727,17 @@ class GithubAssignIssueBlock(Block):
         api = get_api(credentials)
         assignees_url = issue_url + "/assignees"
         data = {"assignees": [assignee]}
-        api.post(assignees_url, json=data)
+        await api.post(assignees_url, json=data)
         return "Issue assigned successfully"
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        status = self.assign_issue(
+        status = await self.assign_issue(
             credentials,
             input_data.issue_url,
             input_data.assignee,
@@ -780,7 +785,7 @@ class GithubUnassignIssueBlock(Block):
         )
 
     @staticmethod
-    def unassign_issue(
+    async def unassign_issue(
         credentials: GithubCredentials,
         issue_url: str,
         assignee: str,
@@ -788,17 +793,17 @@ class GithubUnassignIssueBlock(Block):
         api = get_api(credentials)
         assignees_url = issue_url + "/assignees"
         data = {"assignees": [assignee]}
-        api.delete(assignees_url, json=data)
+        await api.delete(assignees_url, json=data)
         return "Issue unassigned successfully"
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        status = self.unassign_issue(
+        status = await self.unassign_issue(
             credentials,
             input_data.issue_url,
             input_data.assignee,

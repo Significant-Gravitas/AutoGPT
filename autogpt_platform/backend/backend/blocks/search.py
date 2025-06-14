@@ -36,10 +36,10 @@ class GetWikipediaSummaryBlock(Block, GetRequest):
             test_mock={"get_request": lambda url, json: {"extract": "summary content"}},
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         topic = input_data.topic
         url = f"https://en.wikipedia.org/api/rest_v1/page/summary/{topic}"
-        response = self.get_request(url, json=True)
+        response = await self.get_request(url, json=True)
         if "extract" not in response:
             raise RuntimeError(f"Unable to parse Wikipedia response: {response}")
         yield "summary", response["extract"]
@@ -113,14 +113,14 @@ class GetWeatherInformationBlock(Block, GetRequest):
             test_credentials=TEST_CREDENTIALS,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         units = "metric" if input_data.use_celsius else "imperial"
         api_key = credentials.api_key
         location = input_data.location
         url = f"http://api.openweathermap.org/data/2.5/weather?q={quote(location)}&appid={api_key}&units={units}"
-        weather_data = self.get_request(url, json=True)
+        weather_data = await self.get_request(url, json=True)
 
         if "main" in weather_data and "weather" in weather_data:
             yield "temperature", str(weather_data["main"]["temp"])

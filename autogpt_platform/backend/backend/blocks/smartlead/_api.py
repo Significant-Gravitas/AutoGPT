@@ -27,9 +27,11 @@ class SmartLeadClient:
     def _handle_error(self, e: Exception) -> str:
         return e.__str__().replace(self.api_key, "API KEY")
 
-    def create_campaign(self, request: CreateCampaignRequest) -> CreateCampaignResponse:
+    async def create_campaign(
+        self, request: CreateCampaignRequest
+    ) -> CreateCampaignResponse:
         try:
-            response = self.requests.post(
+            response = await self.requests.post(
                 self._add_auth_to_url(f"{self.API_URL}/campaigns/create"),
                 json=request.model_dump(),
             )
@@ -40,11 +42,11 @@ class SmartLeadClient:
         except Exception as e:
             raise ValueError(f"Failed to create campaign: {self._handle_error(e)}")
 
-    def add_leads_to_campaign(
+    async def add_leads_to_campaign(
         self, request: AddLeadsRequest
     ) -> AddLeadsToCampaignResponse:
         try:
-            response = self.requests.post(
+            response = await self.requests.post(
                 self._add_auth_to_url(
                     f"{self.API_URL}/campaigns/{request.campaign_id}/leads"
                 ),
@@ -64,7 +66,7 @@ class SmartLeadClient:
                 f"Failed to add leads to campaign: {self._handle_error(e)}"
             )
 
-    def save_campaign_sequences(
+    async def save_campaign_sequences(
         self, campaign_id: int, request: SaveSequencesRequest
     ) -> SaveSequencesResponse:
         """
@@ -84,13 +86,13 @@ class SmartLeadClient:
             - MANUAL_PERCENTAGE: Requires variant_distribution_percentage in seq_variants
         """
         try:
-            response = self.requests.post(
+            response = await self.requests.post(
                 self._add_auth_to_url(
                     f"{self.API_URL}/campaigns/{campaign_id}/sequences"
                 ),
                 json=request.model_dump(exclude_none=True),
             )
-            return SaveSequencesResponse(**response.json())
+            return SaveSequencesResponse(**(response.json()))
         except Exception as e:
             raise ValueError(
                 f"Failed to save campaign sequences: {e.__str__().replace(self.api_key, 'API KEY')}"

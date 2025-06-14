@@ -52,7 +52,7 @@ class CalculatorBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         operation = input_data.operation
         a = input_data.a
         b = input_data.b
@@ -107,7 +107,7 @@ class CountItemsBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         collection = input_data.collection
 
         try:

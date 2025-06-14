@@ -146,7 +146,7 @@ class GetRedditPostsBlock(Block):
         subreddit = client.subreddit(input_data.subreddit)
         return subreddit.new(limit=input_data.post_limit or 10)
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: RedditCredentials, **kwargs
     ) -> BlockOutput:
         current_time = datetime.now(tz=timezone.utc)
@@ -207,7 +207,7 @@ class PostRedditCommentBlock(Block):
             raise ValueError("Failed to post comment.")
         return new_comment.id
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: RedditCredentials, **kwargs
     ) -> BlockOutput:
         yield "comment_id", self.reply_post(credentials, input_data.data)

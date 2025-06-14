@@ -137,10 +137,12 @@ def test_execute_graph_block(
     """Test execute block endpoint"""
     # Mock block
     mock_block = Mock()
-    mock_block.execute.return_value = [
-        ("output1", {"data": "result1"}),
-        ("output2", {"data": "result2"}),
-    ]
+
+    async def mock_execute(*args, **kwargs):
+        yield "output1", {"data": "result1"}
+        yield "output2", {"data": "result2"}
+
+    mock_block.execute = mock_execute
 
     mocker.patch(
         "backend.server.routers.v1.get_block",

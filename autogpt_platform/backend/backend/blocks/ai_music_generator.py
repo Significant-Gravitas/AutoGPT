@@ -1,5 +1,5 @@
+import asyncio
 import logging
-import time
 from enum import Enum
 from typing import Literal
 
@@ -142,7 +142,7 @@ class AIMusicGeneratorBlock(Block):
             test_credentials=TEST_CREDENTIALS,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         max_retries = 3
@@ -154,7 +154,7 @@ class AIMusicGeneratorBlock(Block):
                 logger.debug(
                     f"[AIMusicGeneratorBlock] - Running model (attempt {attempt + 1})"
                 )
-                result = self.run_model(
+                result = await self.run_model(
                     api_key=credentials.api_key,
                     music_gen_model_version=input_data.music_gen_model_version,
                     prompt=input_data.prompt,
@@ -176,13 +176,13 @@ class AIMusicGeneratorBlock(Block):
                 last_error = f"Unexpected error: {str(e)}"
                 logger.error(f"[AIMusicGeneratorBlock] - Error: {last_error}")
                 if attempt < max_retries - 1:
-                    time.sleep(retry_delay)
+                    await asyncio.sleep(retry_delay)
                     continue
 
         # If we've exhausted all retries, yield the error
         yield "error", f"Failed after {max_retries} attempts. Last error: {last_error}"
 
-    def run_model(
+    async def run_model(
         self,
         api_key: SecretStr,
         music_gen_model_version: MusicGenModelVersion,
@@ -199,7 +199,7 @@ class AIMusicGeneratorBlock(Block):
         client = ReplicateClient(api_token=api_key.get_secret_value())
 
         # Run the model with parameters
-        output = client.run(
+        output = await client.async_run(
             "meta/musicgen:671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb",
             input={
                 "prompt": prompt,

@@ -44,11 +44,11 @@ class Slant3DSlicerBlock(Slant3DBlockBase):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            result = self._make_request(
+            result = await self._make_request(
                 "POST",
                 "slicer",
                 credentials.api_key.get_secret_value(),

@@ -91,7 +91,7 @@ class ExaSearchBlock(Block):
             output_schema=ExaSearchBlock.Output,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: ExaCredentials, **kwargs
     ) -> BlockOutput:
         url = "https://api.exa.ai/search"
@@ -136,8 +136,7 @@ class ExaSearchBlock(Block):
                 payload[api_field] = value
 
         try:
-            response = requests.post(url, headers=headers, json=payload)
-            response.raise_for_status()
+            response = await requests.post(url, headers=headers, json=payload)
             data = response.json()
             # Extract just the results array from the response
             yield "results", data.get("results", [])

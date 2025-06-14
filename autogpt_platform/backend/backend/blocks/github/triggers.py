@@ -53,7 +53,7 @@ class GitHubTriggerBase:
             description="Error message if the payload could not be processed"
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "payload", input_data.payload
         yield "triggered_by_user", input_data.payload["sender"]
 
@@ -148,8 +148,9 @@ class GithubPullRequestTriggerBlock(GitHubTriggerBase, Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:  # type: ignore
-        yield from super().run(input_data, **kwargs)
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:  # type: ignore
+        async for name, value in super().run(input_data, **kwargs):
+            yield name, value
         yield "event", input_data.payload["action"]
         yield "number", input_data.payload["number"]
         yield "pull_request", input_data.payload["pull_request"]

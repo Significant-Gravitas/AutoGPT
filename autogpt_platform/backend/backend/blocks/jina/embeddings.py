@@ -29,7 +29,7 @@ class JinaEmbeddingBlock(Block):
             output_schema=JinaEmbeddingBlock.Output,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: JinaCredentials, **kwargs
     ) -> BlockOutput:
         url = "https://api.jina.ai/v1/embeddings"
@@ -38,6 +38,6 @@ class JinaEmbeddingBlock(Block):
             "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
         }
         data = {"input": input_data.texts, "model": input_data.model}
-        response = requests.post(url, headers=headers, json=data)
-        embeddings = [e["embedding"] for e in response.json()["data"]]
+        response = await requests.post(url, headers=headers, json=data)
+        embeddings = [e["embedding"] for e in (response.json())["data"]]
         yield "embeddings", embeddings

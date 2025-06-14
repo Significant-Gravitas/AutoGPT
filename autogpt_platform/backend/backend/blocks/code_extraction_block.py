@@ -49,7 +49,7 @@ class CodeExtractionBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         # List of supported programming languages with mapped aliases
         language_aliases = {
             "html": ["html", "htm"],

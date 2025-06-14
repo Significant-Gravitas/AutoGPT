@@ -373,13 +373,13 @@ class SearchPeopleBlock(Block):
         )
 
     @staticmethod
-    def search_people(
+    async def search_people(
         query: SearchPeopleRequest, credentials: ApolloCredentials
     ) -> list[Contact]:
         client = ApolloClient(credentials)
-        return client.search_people(query)
+        return await client.search_people(query)
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -388,7 +388,7 @@ class SearchPeopleBlock(Block):
     ) -> BlockOutput:
 
         query = SearchPeopleRequest(**input_data.model_dump(exclude={"credentials"}))
-        people = self.search_people(query, credentials)
+        people = await self.search_people(query, credentials)
         for person in people:
             yield "person", person
         yield "people", people

@@ -1,3 +1,5 @@
+import asyncio
+
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
@@ -68,11 +70,13 @@ class GoogleSheetsReadBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = self._build_service(credentials, **kwargs)
-        data = self._read_sheet(service, input_data.spreadsheet_id, input_data.range)
+        data = await asyncio.to_thread(
+            self._read_sheet, service, input_data.spreadsheet_id, input_data.range
+        )
         yield "result", data
 
     @staticmethod
@@ -157,11 +161,12 @@ class GoogleSheetsWriteBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = GoogleSheetsReadBlock._build_service(credentials, **kwargs)
-        result = self._write_sheet(
+        result = await asyncio.to_thread(
+            self._write_sheet,
             service,
             input_data.spreadsheet_id,
             input_data.range,

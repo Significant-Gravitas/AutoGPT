@@ -5,10 +5,13 @@ from backend.util.request import requests
 
 class GetRequest:
     @classmethod
-    def get_request(
+    async def get_request(
         cls, url: str, headers: Optional[dict] = None, json: bool = False
     ) -> Any:
         if headers is None:
             headers = {}
-        response = requests.get(url, headers=headers)
-        return response.json() if json else response.text
+        response = await requests.get(url, headers=headers)
+        if json:
+            return response.json()
+        else:
+            return response.text()

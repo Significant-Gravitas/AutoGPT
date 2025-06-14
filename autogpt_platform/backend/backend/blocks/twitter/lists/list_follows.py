@@ -68,7 +68,7 @@ class TwitterUnfollowListBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -131,7 +131,7 @@ class TwitterFollowListBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -276,7 +276,7 @@ class TwitterFollowListBlock(Block):
 #         except tweepy.TweepyException:
 #             raise
 
-#     def run(
+#     async def run(
 #         self,
 #         input_data: Input,
 #         *,
@@ -438,7 +438,7 @@ class TwitterFollowListBlock(Block):
 #         except tweepy.TweepyException:
 #             raise
 
-#     def run(
+#     async def run(
 #         self,
 #         input_data: Input,
 #         *,

@@ -90,7 +90,7 @@ class TwitterRemoveListMemberBlock(Block):
         except Exception:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -164,7 +164,7 @@ class TwitterAddListMemberBlock(Block):
         except Exception:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -327,7 +327,7 @@ class TwitterGetListMembersBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -493,7 +493,7 @@ class TwitterGetListMembershipsBlock(Block):
         except Exception:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,

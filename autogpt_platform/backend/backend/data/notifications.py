@@ -111,7 +111,14 @@ class BaseSummaryData(BaseNotificationData):
 
 
 class BaseSummaryParams(BaseModel):
-    pass
+    start_date: datetime
+    end_date: datetime
+
+    @field_validator("start_date", "end_date")
+    def validate_timezone(cls, value):
+        if value.tzinfo is None:
+            raise ValueError("datetime must have timezone information")
+        return value
 
 
 class DailySummaryParams(BaseSummaryParams):

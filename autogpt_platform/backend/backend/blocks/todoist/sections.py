@@ -96,7 +96,7 @@ class TodoistListSectionsBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -166,7 +166,7 @@ class TodoistListSectionsBlock(Block):
 #         except Exception as e:
 #             raise e
 
-#     def run(
+#     async def run(
 #         self,
 #         input_data: Input,
 #         *,
@@ -238,7 +238,7 @@ class TodoistGetSectionBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -295,7 +295,7 @@ class TodoistDeleteSectionBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,

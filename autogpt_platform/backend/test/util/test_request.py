@@ -54,14 +54,14 @@ from backend.util.request import pin_url, validate_url
         ("example.com?param=äöü", [], "http://example.com?param=äöü", False),
     ],
 )
-def test_validate_url_no_dns_rebinding(
+async def test_validate_url_no_dns_rebinding(
     raw_url: str, trusted_origins: list[str], expected_value: str, should_raise: bool
 ):
     if should_raise:
         with pytest.raises(ValueError):
-            validate_url(raw_url, trusted_origins)
+            await validate_url(raw_url, trusted_origins)
     else:
-        validated_url, _, _ = validate_url(raw_url, trusted_origins)
+        validated_url, _, _ = await validate_url(raw_url, trusted_origins)
         assert validated_url.geturl() == expected_value
 
 
@@ -78,7 +78,7 @@ def test_validate_url_no_dns_rebinding(
         ("blocked.com", ["127.0.0.1"], True, None),
     ],
 )
-def test_dns_rebinding_fix(
+async def test_dns_rebinding_fix(
     monkeypatch,
     hostname: str,
     resolved_ips: list[str],
@@ -100,10 +100,10 @@ def test_dns_rebinding_fix(
     if expect_error:
         # If any IP is blocked, we expect a ValueError
         with pytest.raises(ValueError):
-            url, _, ip_addresses = validate_url(hostname, [])
+            url, _, ip_addresses = await validate_url(hostname, [])
             pin_url(url, ip_addresses)
     else:
-        url, _, ip_addresses = validate_url(hostname, [])
+        url, _, ip_addresses = await validate_url(hostname, [])
         pinned_url = pin_url(url, ip_addresses).geturl()
         # The pinned_url should contain the first valid IP
         assert pinned_url.startswith("http://") or pinned_url.startswith("https://")

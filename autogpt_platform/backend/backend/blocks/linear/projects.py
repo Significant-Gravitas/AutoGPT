@@ -69,20 +69,20 @@ class LinearSearchProjectsBlock(Block):
         )
 
     @staticmethod
-    def search_projects(
+    async def search_projects(
         credentials: LinearCredentials,
         term: str,
     ) -> list[Project]:
         client = LinearClient(credentials=credentials)
-        response: list[Project] = client.try_search_projects(term=term)
+        response: list[Project] = await client.try_search_projects(term=term)
         return response
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: LinearCredentials, **kwargs
     ) -> BlockOutput:
         """Execute the project search"""
         try:
-            projects = self.search_projects(
+            projects = await self.search_projects(
                 credentials=credentials,
                 term=input_data.term,
             )

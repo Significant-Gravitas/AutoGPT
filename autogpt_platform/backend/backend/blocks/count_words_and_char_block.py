@@ -30,7 +30,7 @@ class WordCharacterCountBlock(Block):
             test_output=[("word_count", 4), ("character_count", 19)],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             text = input_data.text
             word_count = len(text.split())

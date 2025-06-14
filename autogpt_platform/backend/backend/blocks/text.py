@@ -43,7 +43,7 @@ class MatchTextPatternBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         output = input_data.data or input_data.text
         flags = 0
         if not input_data.case_sensitive:
@@ -133,7 +133,7 @@ class ExtractTextInformationBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         flags = 0
         if not input_data.case_sensitive:
             flags = flags | re.IGNORECASE
@@ -201,7 +201,7 @@ class FillTextTemplateBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "output", formatter.format_string(input_data.format, input_data.values)
 
 
@@ -232,7 +232,7 @@ class CombineTextsBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         combined_text = input_data.delimiter.join(input_data.input)
         yield "output", combined_text
 
@@ -267,7 +267,7 @@ class TextSplitBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         if len(input_data.text) == 0:
             yield "texts", []
         else:
@@ -301,5 +301,5 @@ class TextReplaceBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "output", input_data.text.replace(input_data.old, input_data.new)

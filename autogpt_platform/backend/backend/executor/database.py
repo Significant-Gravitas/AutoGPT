@@ -192,3 +192,22 @@ class DatabaseManagerClient(AppServiceClient):
     get_user_notification_oldest_message_in_batch = _(
         d.get_user_notification_oldest_message_in_batch
     )
+
+
+class DatabaseManagerAsyncClient(AppServiceClient):
+    d = DatabaseManager
+
+    @classmethod
+    def get_service_type(cls):
+        return DatabaseManager
+
+    get_latest_node_execution = d.get_latest_node_execution
+    get_node = d.get_node
+    get_node_execution = d.get_node_execution
+    get_node_executions = d.get_node_executions
+    get_user_integrations = d.get_user_integrations
+    upsert_execution_input = d.upsert_execution_input
+    upsert_execution_output = d.upsert_execution_output
+    update_node_execution_stats = d.update_node_execution_stats
+    update_node_execution_status = d.update_node_execution_status
+    update_user_integrations = d.update_user_integrations

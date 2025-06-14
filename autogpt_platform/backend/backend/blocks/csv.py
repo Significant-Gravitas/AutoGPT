@@ -69,7 +69,7 @@ class ReadCsvBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         import csv
         from io import StringIO
 

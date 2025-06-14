@@ -34,6 +34,6 @@ This is a "quoted" string.""",
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         decoded_text = codecs.decode(input_data.text, "unicode_escape")
         yield "decoded_text", decoded_text

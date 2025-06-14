@@ -1,3 +1,4 @@
+import asyncio
 import base64
 from email.utils import parseaddr
 from typing import List
@@ -128,11 +129,13 @@ class GmailReadBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
-        service = self._build_service(credentials, **kwargs)
-        messages = self._read_emails(service, input_data.query, input_data.max_results)
+        service = GmailReadBlock._build_service(credentials, **kwargs)
+        messages = await asyncio.to_thread(
+            self._read_emails, service, input_data.query, input_data.max_results
+        )
         for email in messages:
             yield "email", email
         yield "emails", messages
@@ -286,14 +289,18 @@ class GmailSendBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = GmailReadBlock._build_service(credentials, **kwargs)
-        send_result = self._send_email(
-            service, input_data.to, input_data.subject, input_data.body
+        result = await asyncio.to_thread(
+            self._send_email,
+            service,
+            input_data.to,
+            input_data.subject,
+            input_data.body,
         )
-        yield "result", send_result
+        yield "result", result
 
     def _send_email(self, service, to: str, subject: str, body: str) -> dict:
         if not to or not subject or not body:
@@ -358,12 +365,12 @@ class GmailListLabelsBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = GmailReadBlock._build_service(credentials, **kwargs)
-        labels = self._list_labels(service)
-        yield "result", labels
+        result = await asyncio.to_thread(self._list_labels, service)
+        yield "result", result
 
     def _list_labels(self, service) -> list[dict]:
         results = service.users().labels().list(userId="me").execute()
@@ -419,11 +426,13 @@ class GmailAddLabelBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = GmailReadBlock._build_service(credentials, **kwargs)
-        result = self._add_label(service, input_data.message_id, input_data.label_name)
+        result = await asyncio.to_thread(
+            self._add_label, service, input_data.message_id, input_data.label_name
+        )
         yield "result", result
 
     def _add_label(self, service, message_id: str, label_name: str) -> dict:
@@ -502,12 +511,12 @@ class GmailRemoveLabelBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = GmailReadBlock._build_service(credentials, **kwargs)
-        result = self._remove_label(
-            service, input_data.message_id, input_data.label_name
+        result = await asyncio.to_thread(
+            self._remove_label, service, input_data.message_id, input_data.label_name
         )
         yield "result", result
 

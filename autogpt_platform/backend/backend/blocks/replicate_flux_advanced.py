@@ -159,7 +159,7 @@ class ReplicateFluxAdvancedModelBlock(Block):
             test_credentials=TEST_CREDENTIALS,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # If the seed is not provided, generate a random seed
@@ -168,7 +168,7 @@ class ReplicateFluxAdvancedModelBlock(Block):
             seed = int.from_bytes(os.urandom(4), "big")
 
         # Run the model using the provided inputs
-        result = self.run_model(
+        result = await self.run_model(
             api_key=credentials.api_key,
             model_name=input_data.replicate_model_name.api_name,
             prompt=input_data.prompt,
@@ -183,7 +183,7 @@ class ReplicateFluxAdvancedModelBlock(Block):
         )
         yield "result", result
 
-    def run_model(
+    async def run_model(
         self,
         api_key: SecretStr,
         model_name,
@@ -201,7 +201,7 @@ class ReplicateFluxAdvancedModelBlock(Block):
         client = ReplicateClient(api_token=api_key.get_secret_value())
 
         # Run the model with additional parameters
-        output: FileOutput | list[FileOutput] = client.run(  # type: ignore This is because they changed the return type, and didn't update the type hint! It should be overloaded depending on the value of `use_file_output` to `FileOutput | list[FileOutput]` but it's `Any | Iterator[Any]`
+        output: FileOutput | list[FileOutput] = await client.async_run(  # type: ignore This is because they changed the return type, and didn't update the type hint! It should be overloaded depending on the value of `use_file_output` to `FileOutput | list[FileOutput]` but it's `Any | Iterator[Any]`
             f"{model_name}",
             input={
                 "prompt": prompt,

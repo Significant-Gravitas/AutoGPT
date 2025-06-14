@@ -201,19 +201,19 @@ To find IDs, identify the values for organization_id when you call this endpoint
         )
 
     @staticmethod
-    def search_organizations(
+    async def search_organizations(
         query: SearchOrganizationsRequest, credentials: ApolloCredentials
     ) -> list[Organization]:
         client = ApolloClient(credentials)
-        return client.search_organizations(query)
+        return await client.search_organizations(query)
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: ApolloCredentials, **kwargs
     ) -> BlockOutput:
         query = SearchOrganizationsRequest(
             **input_data.model_dump(exclude={"credentials"})
         )
-        organizations = self.search_organizations(query, credentials)
+        organizations = await self.search_organizations(query, credentials)
         for organization in organizations:
             yield "organization", organization
         yield "organizations", organizations

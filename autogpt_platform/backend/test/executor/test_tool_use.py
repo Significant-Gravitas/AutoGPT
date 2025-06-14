@@ -22,11 +22,11 @@ async def create_graph(s: SpinTestServer, g: graph.Graph, u: User) -> graph.Grap
     return await s.agent_server.test_create_graph(CreateGraph(graph=g), u.id)
 
 
-def create_credentials(s: SpinTestServer, u: User):
+async def create_credentials(s: SpinTestServer, u: User):
     provider = ProviderName.OPENAI
     credentials = llm.TEST_CREDENTIALS
     try:
-        s.agent_server.test_create_credentials(u.id, provider, credentials)
+        await s.agent_server.test_create_credentials(u.id, provider, credentials)
     except Exception:
         # ValueErrors is raised trying to recreate the same credentials
         # so hidding the error
@@ -65,7 +65,7 @@ async def execute_graph(
 async def test_graph_validation_with_tool_nodes_correct(server: SpinTestServer):
     test_user = await create_test_user()
     test_tool_graph = await create_graph(server, create_test_graph(), test_user)
-    create_credentials(server, test_user)
+    await create_credentials(server, test_user)
 
     nodes = [
         graph.Node(
@@ -116,7 +116,7 @@ async def test_graph_validation_with_tool_nodes_raises_error(server: SpinTestSer
 
     test_user = await create_test_user()
     test_tool_graph = await create_graph(server, create_test_graph(), test_user)
-    create_credentials(server, test_user)
+    await create_credentials(server, test_user)
 
     nodes = [
         graph.Node(
@@ -176,7 +176,7 @@ async def test_graph_validation_with_tool_nodes_raises_error(server: SpinTestSer
 async def test_smart_decision_maker_function_signature(server: SpinTestServer):
     test_user = await create_test_user()
     test_tool_graph = await create_graph(server, create_test_graph(), test_user)
-    create_credentials(server, test_user)
+    await create_credentials(server, test_user)
 
     nodes = [
         graph.Node(

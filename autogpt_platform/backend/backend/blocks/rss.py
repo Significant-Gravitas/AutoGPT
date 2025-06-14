@@ -1,4 +1,4 @@
-import time
+import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -87,7 +87,7 @@ class ReadRSSFeedBlock(Block):
     def parse_feed(url: str) -> dict[str, Any]:
         return feedparser.parse(url)  # type: ignore
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         keep_going = True
         start_time = datetime.now(timezone.utc) - timedelta(
             minutes=input_data.time_period
@@ -113,4 +113,4 @@ class ReadRSSFeedBlock(Block):
                         ),
                     )
 
-            time.sleep(input_data.polling_rate)
+            await asyncio.sleep(input_data.polling_rate)
