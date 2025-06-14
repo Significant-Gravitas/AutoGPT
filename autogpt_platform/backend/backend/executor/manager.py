@@ -810,6 +810,30 @@ class Executor:
                     log_metadata.debug(
                         f"Queue empty; running nodes: {list(running_node_execution.keys())}"
                     )
+
+                    # --------------------------------------------------
+                    # *** NEW BLOCK *** inspect loop for visibility ----
+                    # --------------------------------------------------
+                    def print_event_loop_thread_stack(thread: threading.Thread):
+                        import traceback
+
+                        frames = sys._current_frames()
+                        thread_id = thread.ident
+                        if thread_id in frames:
+                            log_metadata.warning(
+                                f"Stack for thread '{thread.name}' (id={thread_id}):"
+                            )
+                            traceback.print_stack(frames[thread_id])
+                        else:
+                            log_metadata.warning(
+                                "Thread ID not found in current frames."
+                            )
+
+                    log_metadata.warning(">>>>> Node Execution Thread Stack <<<<<<<")
+                    print_event_loop_thread_stack(cls.node_execution_thread)
+                    log_metadata.warning(">>>>> Node Evaluation Thread Stack <<<<<<<")
+                    print_event_loop_thread_stack(cls.node_evaluation_thread)
+
                     # --------------------------------------------------
                     # Handle inflight evaluations ---------------------
                     # --------------------------------------------------
