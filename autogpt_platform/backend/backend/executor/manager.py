@@ -8,7 +8,7 @@ import time
 from collections import defaultdict
 from concurrent.futures import CancelledError, Future, ProcessPoolExecutor
 from contextlib import asynccontextmanager
-from typing import TYPE_CHECKING, Any, Awaitable, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
@@ -283,14 +283,14 @@ async def _enqueue_next_nodes(
             return []
 
     async def _register_next_executions(node_link: Link) -> list[NodeExecutionEntry]:
-        enqueued_executions: list[Awaitable[NodeExecutionEntry]] = []
+        enqueued_executions = []
         next_output_name = node_link.source_name
         next_input_name = node_link.sink_name
         next_node_id = node_link.sink_id
 
         next_data = parse_execution_output(output, next_output_name)
         if next_data is None:
-            return []
+            return enqueued_executions
         next_node = await db_client.get_node(next_node_id)
 
         # Multiple node can register the same next node, we need this to be atomic
@@ -340,12 +340,12 @@ async def _enqueue_next_nodes(
             # Incomplete input data, skip queueing the execution.
             if not next_node_input:
                 log_metadata.warning(f"Skipped queueing {suffix}")
-                return []
+                return enqueued_executions
 
             # Input is complete, enqueue the execution.
             log_metadata.info(f"Enqueued {suffix}")
             enqueued_executions.append(
-                add_enqueued_execution(
+                await add_enqueued_execution(
                     node_exec_id=next_node_exec_id,
                     node_id=next_node_id,
                     block_id=next_node.block_id,
@@ -355,7 +355,7 @@ async def _enqueue_next_nodes(
 
             # Next execution stops here if the link is not static.
             if not node_link.is_static:
-                return await asyncio.gather(*enqueued_executions)
+                return enqueued_executions
 
             # If link is static, there could be some incomplete executions waiting for it.
             # Load and complete the input missing input data, and try to re-enqueue them.
@@ -388,20 +388,19 @@ async def _enqueue_next_nodes(
                     continue
                 log_metadata.info(f"Enqueueing static-link execution {suffix}")
                 enqueued_executions.append(
-                    add_enqueued_execution(
+                    await add_enqueued_execution(
                         node_exec_id=iexec.node_exec_id,
                         node_id=next_node_id,
                         block_id=next_node.block_id,
                         data=idata,
                     )
                 )
-            return await asyncio.gather(*enqueued_executions)
+            return enqueued_executions
 
-    next_execs_coros = [register_next_executions(link) for link in node.output_links]
     return [
-        next_exec
-        for next_execs in await asyncio.gather(*next_execs_coros)
-        for next_exec in next_execs
+        execution
+        for link in node.output_links
+        for execution in await register_next_executions(link)
     ]
 
 
