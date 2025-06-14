@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -72,10 +73,14 @@ def get_notification_client():
 
 
 def execute_graph(**kwargs):
+    asyncio.run(_execute_graph(**kwargs))
+
+
+async def _execute_graph(**kwargs):
     args = GraphExecutionJobArgs(**kwargs)
     try:
         log(f"Executing recurring job for graph #{args.graph_id}")
-        execution_utils.add_graph_execution(
+        await execution_utils.add_graph_execution_async(
             graph_id=args.graph_id,
             inputs=args.input_data,
             user_id=args.user_id,
