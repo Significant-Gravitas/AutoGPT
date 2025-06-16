@@ -480,15 +480,6 @@ class Executor:
         )
         node = cls.db_client.get_node(node_exec.node_id)
 
-        moderate_block_content(
-            graph_id=node_exec.graph_id,
-            graph_exec_id=node_exec.graph_exec_id,
-            node_id=node_exec.node_id,
-            block_id=node_exec.block_id,
-            input_data=node_exec.inputs,
-            user_id=node_exec.user_id,
-        )
-
         execution_stats = NodeExecutionStats()
         timing_info, _ = cls._on_node_execution(
             q=q,
@@ -844,6 +835,30 @@ class Executor:
                             for field_name, creds_meta in node_field_creds_map.items()
                         }
                     )
+
+                # Moderate the block before submitting to the executor pool
+                try:
+                    moderate_block_content(
+                        graph_id=queued_node_exec.graph_id,
+                        graph_exec_id=queued_node_exec.graph_exec_id,
+                        node_id=queued_node_exec.node_id,
+                        block_id=queued_node_exec.block_id,
+                        input_data=queued_node_exec.inputs,
+                        user_id=queued_node_exec.user_id,
+                    )
+                except Exception as e:
+                    logger.error(f"Moderation failed: {e}")
+                    node_exec_id = queued_node_exec.node_exec_id
+                    cls.db_client.upsert_execution_output(
+                        node_exec_id=node_exec_id,
+                        output_name="error",
+                        output_data=str(e),
+                    )
+                    exec_update = cls.db_client.update_node_execution_status(
+                        node_exec_id, ExecutionStatus.FAILED
+                    )
+                    send_execution_update(exec_update)
+                    continue  # Skip submitting this node
 
                 # Initiate node execution
                 running_executions[queued_node_exec.node_id].add_task(
