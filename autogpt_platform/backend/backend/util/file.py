@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
-from backend.util.request import requests
+from backend.util.request import Requests
 from backend.util.type import MediaFileType
 
 TEMP_DIR = Path(tempfile.gettempdir()).resolve()
@@ -114,7 +114,7 @@ async def store_media_file(
         target_path = _ensure_inside_base(base_path / filename, base_path)
 
         # Download and save
-        resp = await requests.get(file)
+        resp = await Requests().get(file)
         target_path.write_bytes(resp.content)
 
     else:

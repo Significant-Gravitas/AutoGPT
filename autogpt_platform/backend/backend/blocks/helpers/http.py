@@ -1,6 +1,6 @@
 from typing import Any, Optional
 
-from backend.util.request import requests
+from backend.util.request import Requests
 
 
 class GetRequest:
@@ -10,7 +10,7 @@ class GetRequest:
     ) -> Any:
         if headers is None:
             headers = {}
-        response = await requests.get(url, headers=headers)
+        response = await Requests().get(url, headers=headers)
         if json:
             return response.json()
         else:

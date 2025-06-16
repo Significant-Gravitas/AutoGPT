@@ -7,7 +7,7 @@ from backend.blocks.jina._auth import (
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.request import requests
+from backend.util.request import Requests
 
 
 class FactCheckerBlock(Block):
@@ -45,7 +45,7 @@ class FactCheckerBlock(Block):
             "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
         }
 
-        response = await requests.get(url, headers=headers)
+        response = await Requests().get(url, headers=headers)
         data = response.json()
 
         if "data" in data:

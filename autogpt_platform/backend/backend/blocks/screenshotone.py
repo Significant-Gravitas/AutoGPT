@@ -137,9 +137,14 @@ class ScreenshotWebPageBlock(Block):
         }
 
         # Make the API request
-        api_url = "https://api.screenshotone.com/take"
-        headers = {"Authorization": f"Bearer {credentials.api_key.get_secret_value()}"}
-        response = await api.get(api_url, headers=headers, params=params)
+        # Use header-based authentication instead of query parameter
+        headers = {
+            "X-Access-Key": credentials.api_key.get_secret_value(),
+        }
+
+        response = await api.get(
+            "https://api.screenshotone.com/take", params=params, headers=headers
+        )
         content = response.content
 
         return {

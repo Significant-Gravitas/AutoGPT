@@ -14,7 +14,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.request import requests
+from backend.util.request import Requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -220,14 +220,14 @@ class AIShortformVideoCreatorBlock(Block):
     async def create_webhook(self):
         url = "https://webhook.site/token"
         headers = {"Accept": "application/json", "Content-Type": "application/json"}
-        response = await requests.post(url, headers=headers)
+        response = await Requests().post(url, headers=headers)
         webhook_data = response.json()
         return webhook_data["uuid"], f"https://webhook.site/{webhook_data['uuid']}"
 
     async def create_video(self, api_key: SecretStr, payload: dict) -> dict:
         url = "https://www.revid.ai/api/public/v2/render"
         headers = {"key": api_key.get_secret_value()}
-        response = await requests.post(url, json=payload, headers=headers)
+        response = await Requests().post(url, json=payload, headers=headers)
         logger.debug(
             f"API Response Status Code: {response.status}, Content: {response.text}"
         )
@@ -236,7 +236,7 @@ class AIShortformVideoCreatorBlock(Block):
     async def check_video_status(self, api_key: SecretStr, pid: str) -> dict:
         url = f"https://www.revid.ai/api/public/v2/status?pid={pid}"
         headers = {"key": api_key.get_secret_value()}
-        response = await requests.get(url, headers=headers)
+        response = await Requests().get(url, headers=headers)
         return response.json()
 
     async def wait_for_video(

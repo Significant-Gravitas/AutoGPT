@@ -14,7 +14,7 @@ from backend.util.file import (
     get_mime_type,
     store_media_file,
 )
-from backend.util.request import requests
+from backend.util.request import Requests
 
 logger = logging.getLogger(name=__name__)
 
@@ -145,7 +145,7 @@ class SendWebRequestBlock(Block):
             )
 
         # ─── Execute request ─────────────────────────────────────────
-        response = await requests.request(
+        response = await Requests().request(
             input_data.method.value,
             input_data.url,
             headers=input_data.headers,

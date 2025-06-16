@@ -117,12 +117,8 @@ class Slant3DOrderWebhookBlock(Slant3DTriggerBase, Block):
             ],
         )
 
-    async def _extract_and_normalize(self, input_data: Input) -> BlockOutput:
-        yield "payload", input_data.payload
-        yield "order_id", input_data.payload["orderId"]
-
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:  # type: ignore
-        async for name, value in self._extract_and_normalize(input_data):
+        async for name, value in super().run(input_data, **kwargs):
             yield name, value
 
         # Extract and normalize values from the payload

@@ -10,7 +10,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.request import requests
+from backend.util.request import Requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -88,7 +88,7 @@ class UnrealTextToSpeechBlock(Block):
             "TimestampType": "sentence",
         }
 
-        response = await requests.post(url, headers=headers, json=data)
+        response = await Requests().post(url, headers=headers, json=data)
         return response.json()
 
     async def run(

@@ -11,7 +11,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.request import requests
+from backend.util.request import Requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -120,7 +120,7 @@ class CreateTalkingAvatarVideoBlock(Block):
             "content-type": "application/json",
             "authorization": f"Basic {api_key.get_secret_value()}",
         }
-        response = await requests.post(url, json=payload, headers=headers)
+        response = await Requests().post(url, json=payload, headers=headers)
         return response.json()
 
     async def get_clip_status(self, api_key: SecretStr, clip_id: str) -> dict:
@@ -129,7 +129,7 @@ class CreateTalkingAvatarVideoBlock(Block):
             "accept": "application/json",
             "authorization": f"Basic {api_key.get_secret_value()}",
         }
-        response = await requests.get(url, headers=headers)
+        response = await Requests().get(url, headers=headers)
         return response.json()
 
     async def run(

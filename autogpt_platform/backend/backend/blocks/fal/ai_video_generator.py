@@ -12,7 +12,7 @@ from backend.blocks.fal._auth import (
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.request import ClientResponseError, requests
+from backend.util.request import ClientResponseError, Requests
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ class AIVideoGeneratorBlock(Block):
         )
 
     def _get_headers(self, api_key: str) -> dict[str, str]:
-        """Get headers for FAL API requests."""
+        """Get headers for FAL API Requests."""
         return {
             "Authorization": f"Key {api_key}",
             "Content-Type": "application/json",
@@ -76,7 +76,7 @@ class AIVideoGeneratorBlock(Block):
     ) -> dict[str, Any]:
         """Submit a request to the FAL API."""
         try:
-            response = await requests.post(url, headers=headers, json=data)
+            response = await Requests().post(url, headers=headers, json=data)
             return response.json()
         except ClientResponseError as e:
             logger.error(f"FAL API request failed: {str(e)}")
@@ -87,7 +87,7 @@ class AIVideoGeneratorBlock(Block):
     ) -> dict[str, Any]:
         """Poll the status endpoint until completion or failure."""
         try:
-            response = await requests.get(status_url, headers=headers)
+            response = await Requests().get(status_url, headers=headers)
             return response.json()
         except ClientResponseError as e:
             logger.error(f"Failed to get status: {str(e)}")
@@ -111,7 +111,7 @@ class AIVideoGeneratorBlock(Block):
 
         try:
             # Submit request to queue
-            submit_response = await requests.post(
+            submit_response = await Requests().post(
                 submit_url, headers=headers, json=submit_data
             )
             request_data = submit_response.json()
@@ -138,7 +138,7 @@ class AIVideoGeneratorBlock(Block):
             base_wait_time = 5
 
             while attempt < max_attempts:
-                status_response = await requests.get(
+                status_response = await Requests().get(
                     f"{status_url}?logs=1", headers=headers
                 )
                 status_data = status_response.json()
@@ -163,7 +163,7 @@ class AIVideoGeneratorBlock(Block):
                 status = status_data.get("status")
                 if status == "COMPLETED":
                     # Get the final result
-                    result_response = await requests.get(result_url, headers=headers)
+                    result_response = await Requests().get(result_url, headers=headers)
                     result_data = result_response.json()
 
                     if "video" not in result_data or not isinstance(

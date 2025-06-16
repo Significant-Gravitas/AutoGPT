@@ -13,7 +13,6 @@ import idna
 from aiohttp import FormData, abc
 
 from backend.util.json import json
-from backend.util.settings import Config
 
 # List of IP networks to block
 BLOCKED_IP_NETWORKS = [
@@ -460,6 +459,3 @@ class Requests:
 
     async def patch(self, url: str, *args, **kwargs) -> Response:
         return await self.request("PATCH", url, *args, **kwargs)
-
-
-requests = Requests(trusted_origins=Config().trust_endpoints_for_requests)
