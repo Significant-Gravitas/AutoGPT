@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import * as Sentry from "@sentry/nextjs";
-import getServerSupabase from "@/lib/supabase/getServerSupabase";
+import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import BackendAPI from "@/lib/autogpt-server-api";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { verifyTurnstileToken } from "@/lib/turnstile";

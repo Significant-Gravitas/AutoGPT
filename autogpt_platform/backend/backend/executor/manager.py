@@ -711,6 +711,44 @@ class Executor:
                 )
                 running_executions[output.node.id].add_output(output)
 
+        def drain_done_task(node_exec_id: str, result: object):
+            if not isinstance(result, NodeExecutionStats):
+                log_metadata.error(f"Unexpected result #{node_exec_id}: {type(result)}")
+                return
+
+            nonlocal execution_stats
+            execution_stats.node_count += 1
+            execution_stats.nodes_cputime += result.cputime
+            execution_stats.nodes_walltime += result.walltime
+            if (err := result.error) and isinstance(err, Exception):
+                execution_stats.node_error_count += 1
+                update_node_execution_status(
+                    db_client=cls.db_client,
+                    exec_id=node_exec_id,
+                    status=ExecutionStatus.FAILED,
+                )
+            else:
+                update_node_execution_status(
+                    db_client=cls.db_client,
+                    exec_id=node_exec_id,
+                    status=ExecutionStatus.COMPLETED,
+                )
+
+            if _graph_exec := cls.db_client.update_graph_execution_stats(
+                graph_exec_id=graph_exec.graph_exec_id,
+                status=execution_status,
+                stats=execution_stats,
+            ):
+                send_execution_update(_graph_exec)
+            else:
+                logger.error(
+                    "Callback for "
+                    f"finished node execution #{node_exec_id} "
+                    "could not update execution stats "
+                    f"for graph execution #{graph_exec.graph_exec_id}; "
+                    f"triggered while graph exec status = {execution_status}"
+                )
+
         def cancel_handler():
             nonlocal execution_status
 
@@ -744,37 +782,11 @@ class Executor:
                 execution_queue.add(node_exec.to_node_execution_entry())
 
             running_executions: dict[str, NodeExecutionProgress] = defaultdict(
-                lambda: NodeExecutionProgress(drain_output_queue)
+                lambda: NodeExecutionProgress(
+                    drain_output_queue=drain_output_queue,
+                    drain_done_task=drain_done_task,
+                )
             )
-
-            def make_exec_callback(exec_data: NodeExecutionEntry):
-                def callback(result: object):
-                    if not isinstance(result, NodeExecutionStats):
-                        return
-
-                    nonlocal execution_stats
-                    execution_stats.node_count += 1
-                    execution_stats.nodes_cputime += result.cputime
-                    execution_stats.nodes_walltime += result.walltime
-                    if (err := result.error) and isinstance(err, Exception):
-                        execution_stats.node_error_count += 1
-
-                    if _graph_exec := cls.db_client.update_graph_execution_stats(
-                        graph_exec_id=exec_data.graph_exec_id,
-                        status=execution_status,
-                        stats=execution_stats,
-                    ):
-                        send_execution_update(_graph_exec)
-                    else:
-                        logger.error(
-                            "Callback for "
-                            f"finished node execution #{exec_data.node_exec_id} "
-                            "could not update execution stats "
-                            f"for graph execution #{exec_data.graph_exec_id}; "
-                            f"triggered while graph exec status = {execution_status}"
-                        )
-
-                return callback
 
             while not execution_queue.empty():
                 if cancel.is_set():
@@ -834,7 +846,6 @@ class Executor:
                     cls.executor.apply_async(
                         cls.on_node_execution,
                         (output_queue, queued_node_exec, node_creds_map),
-                        callback=make_exec_callback(queued_node_exec),
                     ),
                 )
 
@@ -850,9 +861,6 @@ class Executor:
                             execution_status = ExecutionStatus.TERMINATED
                             return execution_stats, execution_status, error
 
-                        if not execution_queue.empty():
-                            break  # yield to parent loop to execute new queue items
-
                         log_metadata.debug(f"Waiting on execution of node {node_id}")
                         while output := execution.pop_output():
                             cls._process_node_output(
@@ -863,11 +871,20 @@ class Executor:
                                 node_creds_map=node_creds_map,
                                 execution_queue=execution_queue,
                             )
+                            if not execution_queue.empty():
+                                break  # Prioritize executing next nodes than enqueuing outputs
 
-                        if execution.is_done(1):
+                        if execution.is_done():
                             running_executions.pop(node_id)
-                        else:
-                            time.sleep(0.1)
+
+                        if not execution_queue.empty():
+                            continue  # Make sure each not is checked once
+
+                    if execution_queue.empty() and running_executions:
+                        log_metadata.debug(
+                            "No more nodes to execute, waiting for outputs..."
+                        )
+                        time.sleep(0.1)
 
             log_metadata.info(f"Finished graph execution {graph_exec.graph_exec_id}")
             execution_status = ExecutionStatus.COMPLETED

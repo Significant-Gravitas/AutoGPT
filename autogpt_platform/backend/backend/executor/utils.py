@@ -394,7 +394,8 @@ def validate_exec(
 
     # Convert non-matching data types to the expected input schema.
     for name, data_type in schema.__annotations__.items():
-        if (value := data.get(name)) and (type(value) is not data_type):
+        value = data.get(name)
+        if (value is not None) and (type(value) is not data_type):
             data[name] = convert(value, data_type)
 
     # Input data (without default values) should contain all required fields.
@@ -818,10 +819,15 @@ class ExecutionOutputEntry(BaseModel):
 
 
 class NodeExecutionProgress:
-    def __init__(self, drain_output_queue: Callable[[], None]):
+    def __init__(
+        self,
+        drain_output_queue: Callable[[], None],
+        drain_done_task: Callable[[str, object], None],
+    ):
         self.output: dict[str, list[ExecutionOutputEntry]] = defaultdict(list)
         self.tasks: dict[str, AsyncResult] = {}
         self.drain_output_queue = drain_output_queue
+        self.drain_done_task = drain_done_task
 
     def add_task(self, node_exec_id: str, task: AsyncResult):
         self.tasks[node_exec_id] = task
@@ -868,7 +874,9 @@ class NodeExecutionProgress:
         if self.output[exec_id]:
             return False
 
-        self.tasks.pop(exec_id)
+        if task := self.tasks.pop(exec_id):
+            self.drain_done_task(exec_id, task.get())
+
         return True
 
     def _next_exec(self) -> str | None:

@@ -1,16 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-
-// TODO: Update the protected pages list
-const PROTECTED_PAGES = [
-  "/monitor",
-  "/build",
-  "/onboarding",
-  "/profile",
-  "/library",
-  "/monitoring",
-];
-const ADMIN_PAGES = ["/admin"];
+import {
+  PROTECTED_PAGES,
+  ADMIN_PAGES,
+  isProtectedPage,
+  isAdminPage,
+} from "./helpers";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -59,41 +54,26 @@ export async function updateSession(request: NextRequest) {
       error,
     } = await supabase.auth.getUser();
 
-    // Get the user role
     const userRole = user?.role;
     const url = request.nextUrl.clone();
+    const pathname = request.nextUrl.pathname;
+
     // AUTH REDIRECTS
     // 1. Check if user is not authenticated but trying to access protected content
     if (!user) {
-      // Check if the user is trying to access either a protected page or an admin page
-      const isAttemptingProtectedPage = PROTECTED_PAGES.some((page) =>
-        request.nextUrl.pathname.startsWith(page),
-      );
+      const attemptingProtectedPage = isProtectedPage(pathname);
+      const attemptingAdminPage = isAdminPage(pathname);
 
-      const isAttemptingAdminPage = ADMIN_PAGES.some((page) =>
-        request.nextUrl.pathname.startsWith(page),
-      );
-
-      // If trying to access any protected content without being logged in,
-      // redirect to login page
-      if (isAttemptingProtectedPage || isAttemptingAdminPage) {
-        url.pathname = `/login`;
+      if (attemptingProtectedPage || attemptingAdminPage) {
+        url.pathname = "/login";
         return NextResponse.redirect(url);
       }
     }
 
     // 2. Check if user is authenticated but lacks admin role when accessing admin pages
-    if (user && userRole !== "admin") {
-      const isAttemptingAdminPage = ADMIN_PAGES.some((page) =>
-        request.nextUrl.pathname.startsWith(page),
-      );
-
-      // If a non-admin user is trying to access admin pages,
-      // redirect to marketplace
-      if (isAttemptingAdminPage) {
-        url.pathname = `/marketplace`;
-        return NextResponse.redirect(url);
-      }
+    if (user && userRole !== "admin" && isAdminPage(pathname)) {
+      url.pathname = "/marketplace";
+      return NextResponse.redirect(url);
     }
 
     // IMPORTANT: You *must* return the supabaseResponse object as it is. If you're

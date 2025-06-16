@@ -1,5 +1,5 @@
 import { createContext, useCallback, useEffect, useState } from "react";
-import useSupabase from "@/lib/supabase/useSupabase";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import {
   APIKeyCredentials,
   CredentialsDeleteNeedConfirmationResponse,
@@ -18,6 +18,7 @@ const CREDENTIALS_PROVIDER_NAMES = Object.values(
 
 // --8<-- [start:CredentialsProviderNames]
 const providerDisplayNames: Record<CredentialsProviderName, string> = {
+  aiml_api: "AI/ML",
   anthropic: "Anthropic",
   apollo: "Apollo",
   discord: "Discord",

@@ -3,6 +3,16 @@ import type { Preview } from "@storybook/react";
 import { initialize, mswLoader } from "msw-storybook-addon";
 import "../src/app/globals.css";
 import "../src/components/styles/fonts.css";
+import {
+  Controls,
+  Description,
+  Primary,
+  Source,
+  Stories,
+  Subtitle,
+  Title,
+} from "@storybook/blocks";
+import { theme } from "./theme";
 
 // Initialize MSW
 initialize();
@@ -12,19 +22,27 @@ const preview: Preview = {
     nextjs: {
       appDirectory: true,
     },
-    controls: {
-      matchers: {
-        color: /(background|color)$/i,
-        date: /Date$/i,
-      },
+    docs: {
+      theme,
+      page: () => (
+        <>
+          <Title />
+          <Subtitle />
+          <Description />
+          <Primary />
+          <Source />
+          <Stories />
+          <Controls />
+        </>
+      ),
     },
   },
   loaders: [mswLoader],
   decorators: [
     (Story) => (
-      <>
+      <div className="bg-background p-8">
         <Story />
-      </>
+      </div>
     ),
   ],
 };
