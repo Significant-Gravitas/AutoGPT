@@ -7,6 +7,7 @@ const meta: Meta<typeof Text> = {
   component: Text,
   parameters: {
     layout: "fullscreen",
+    controls: { disable: true },
   },
 };
 

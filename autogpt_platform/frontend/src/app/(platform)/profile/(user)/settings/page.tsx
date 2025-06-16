@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Metadata } from "next";
 import SettingsForm from "@/components/profile/settings/SettingsForm";
-import getServerUser from "@/lib/supabase/getServerUser";
+import { getServerUser } from "@/lib/supabase/server/getServerUser";
 import { redirect } from "next/navigation";
 import { getUserPreferences } from "./actions";
 
