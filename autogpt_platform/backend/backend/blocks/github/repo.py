@@ -240,16 +240,30 @@ class GithubListDiscussionsBlock(Block):
         credentials: GithubCredentials, repo_url: str, num_discussions: int
     ) -> list[Output.DiscussionItem]:
         api = get_api(credentials)
-        discussions_url = repo_url + "/discussions"
-        response = await api.get(discussions_url)
-        data = response.json()
+        # GitHub GraphQL API endpoint is different; we'll use api.post with custom URL
         repo_path = repo_url.replace("https://github.com/", "")
-        discussions: list[GithubListDiscussionsBlock.Output.DiscussionItem] = [
-            {
-                "title": discussion["title"],
-                "url": f"https://github.com/{repo_path}/discussions/{discussion['number']}",
+        owner, repo = repo_path.split("/")
+        query = """
+        query($owner: String!, $repo: String!, $num: Int!) {
+            repository(owner: $owner, name: $repo) {
+                discussions(first: $num) {
+                    nodes {
+                        title
+                        url
+                    }
+                }
             }
-            for discussion in data[:num_discussions]
+        }
+        """
+        variables = {"owner": owner, "repo": repo, "num": num_discussions}
+        response = await api.post(
+            "https://api.github.com/graphql",
+            json={"query": query, "variables": variables},
+        )
+        data = response.json()
+        discussions: list[GithubListDiscussionsBlock.Output.DiscussionItem] = [
+            {"title": discussion["title"], "url": discussion["url"]}
+            for discussion in data["data"]["repository"]["discussions"]["nodes"]
         ]
         return discussions
 
@@ -327,13 +341,8 @@ class GithubListReleasesBlock(Block):
         releases_url = repo_url + "/releases"
         response = await api.get(releases_url)
         data = response.json()
-        repo_path = repo_url.replace("https://github.com/", "")
         releases: list[GithubListReleasesBlock.Output.ReleaseItem] = [
-            {
-                "name": release["name"],
-                "url": f"https://github.com/{repo_path}/releases/tag/{release['tag_name']}",
-            }
-            for release in data
+            {"name": release["name"], "url": release["html_url"]} for release in data
         ]
         return releases
 
@@ -554,7 +563,7 @@ class GithubReadFolderBlock(Block):
         files, dirs = await self.read_folder(
             credentials,
             input_data.repo_url,
-            input_data.folder_path,
+            input_data.folder_path.lstrip("/"),
             input_data.branch,
         )
         for file in files:
