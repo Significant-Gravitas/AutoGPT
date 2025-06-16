@@ -4,7 +4,7 @@ from typing import ClassVar, Optional
 
 from backend.data.model import OAuth2Credentials, ProviderName
 from backend.integrations.oauth.base import BaseOAuthHandler
-from backend.util.request import requests
+from backend.util.request import Requests
 
 
 class TwitterOAuthHandler(BaseOAuthHandler):
@@ -77,7 +77,7 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         auth = (self.client_id, self.client_secret)
 
-        response = await requests.post(
+        response = await Requests().post(
             self.TOKEN_URL, headers=headers, data=data, auth=auth
         )
         tokens = response.json()
@@ -101,7 +101,7 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         params = {"user.fields": "username"}
 
-        response = await requests.get(
+        response = await Requests().get(
             f"{self.USERNAME_URL}?{urllib.parse.urlencode(params)}", headers=headers
         )
 
@@ -122,12 +122,12 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         auth = (self.client_id, self.client_secret)
 
-        response = await requests.post(
+        response = await Requests().post(
             self.TOKEN_URL, headers=header, data=data, auth=auth
         )
 
         if not response.ok:
-            error_text = response.text()
+            error_text = response.text
             print("HTTP Error:", response.status)
             print("Response Content:", error_text)
             raise ValueError(f"HTTP Error: {response.status} - {error_text}")
@@ -160,12 +160,12 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         auth = (self.client_id, self.client_secret)
 
-        response = await requests.post(
+        response = await Requests().post(
             self.REVOKE_URL, headers=header, data=data, auth=auth
         )
 
         if not response.ok:
-            error_text = response.text()
+            error_text = response.text
             print("HTTP Error:", response.status)
             print("Response Content:", error_text)
             raise ValueError(f"HTTP Error: {response.status} - {error_text}")

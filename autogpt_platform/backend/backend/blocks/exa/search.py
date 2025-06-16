@@ -9,7 +9,7 @@ from backend.blocks.exa._auth import (
 from backend.blocks.exa.helpers import ContentSettings
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.request import requests
+from backend.util.request import Requests
 
 
 class ExaSearchBlock(Block):
@@ -136,7 +136,7 @@ class ExaSearchBlock(Block):
                 payload[api_field] = value
 
         try:
-            response = await requests.post(url, headers=headers, json=payload)
+            response = await Requests().post(url, headers=headers, json=payload)
             data = response.json()
             # Extract just the results array from the response
             yield "results", data.get("results", [])

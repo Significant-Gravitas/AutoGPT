@@ -76,7 +76,7 @@ class GoogleOAuthHandler(BaseOAuthHandler):
         logger.debug(f"Scopes granted by Google: {granted_scopes}")
 
         google_creds = flow.credentials
-        logger.debug(f"Received credentials: {google_creds}")
+        logger.debug("Received credentials")
 
         logger.debug("Requesting user email")
         username = self._request_email(google_creds)

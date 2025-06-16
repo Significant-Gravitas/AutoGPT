@@ -4,7 +4,7 @@ from urllib.parse import urlencode
 
 from backend.data.model import OAuth2Credentials
 from backend.integrations.providers import ProviderName
-from backend.util.request import requests
+from backend.util.request import Requests
 
 from .base import BaseOAuthHandler
 
@@ -61,7 +61,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
             "X-GitHub-Api-Version": "2022-11-28",
         }
 
-        await requests.delete(
+        await Requests().delete(
             url=self.revoke_url.format(client_id=self.client_id),
             auth=(self.client_id, self.client_secret),
             headers=headers,
@@ -93,7 +93,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
             **params,
         }
         headers = {"Accept": "application/json"}
-        response = await requests.post(
+        response = await Requests().post(
             self.token_url, data=request_body, headers=headers
         )
         token_data: dict = response.json()
@@ -138,7 +138,7 @@ class GitHubOAuthHandler(BaseOAuthHandler):
             "X-GitHub-Api-Version": "2022-11-28",
         }
 
-        response = await requests.get(url, headers=headers)
+        response = await Requests().get(url, headers=headers)
 
         if not response.ok:
             return None

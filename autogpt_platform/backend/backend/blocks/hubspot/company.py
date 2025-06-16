@@ -5,7 +5,7 @@ from backend.blocks.hubspot._auth import (
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.request import requests
+from backend.util.request import Requests
 
 
 class HubSpotCompanyBlock(Block):
@@ -45,7 +45,7 @@ class HubSpotCompanyBlock(Block):
         }
 
         if input_data.operation == "create":
-            response = await requests.post(
+            response = await Requests().post(
                 base_url, headers=headers, json={"properties": input_data.company_data}
             )
             result = response.json()
@@ -67,7 +67,7 @@ class HubSpotCompanyBlock(Block):
                     }
                 ]
             }
-            search_response = await requests.post(
+            search_response = await Requests().post(
                 search_url, headers=headers, json=search_data
             )
             search_result = search_response.json()
@@ -76,7 +76,7 @@ class HubSpotCompanyBlock(Block):
 
         elif input_data.operation == "update":
             # First get company ID by domain
-            search_response = await requests.post(
+            search_response = await Requests().post(
                 f"{base_url}/search",
                 headers=headers,
                 json={
@@ -97,7 +97,7 @@ class HubSpotCompanyBlock(Block):
             company_id = search_result.get("results", [{}])[0].get("id")
 
             if company_id:
-                response = await requests.patch(
+                response = await Requests().patch(
                     f"{base_url}/{company_id}",
                     headers=headers,
                     json={"properties": input_data.company_data},

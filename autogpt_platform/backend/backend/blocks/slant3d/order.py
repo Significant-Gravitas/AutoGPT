@@ -1,8 +1,6 @@
 import uuid
 from typing import List
 
-import requests as baserequests
-
 from backend.data.block import BlockOutput, BlockSchema
 from backend.data.model import APIKeyCredentials, SchemaField
 from backend.util import settings
@@ -165,25 +163,21 @@ class Slant3DEstimateOrderBlock(Slant3DBlockBase):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        try:
-            order_data = await self._format_order_data(
-                input_data.customer,
-                input_data.order_number,
-                input_data.items,
-                credentials.api_key.get_secret_value(),
-            )
-            result = await self._make_request(
-                "POST",
-                "order/estimate",
-                credentials.api_key.get_secret_value(),
-                json=order_data,
-            )
-            yield "total_price", result["totalPrice"]
-            yield "shipping_cost", result["shippingCost"]
-            yield "printing_cost", result["printingCost"]
-        except baserequests.HTTPError as e:
-            yield "error", str(f"Error estimating order: {e} {e.response.text}")
-            raise
+        order_data = await self._format_order_data(
+            input_data.customer,
+            input_data.order_number,
+            input_data.items,
+            credentials.api_key.get_secret_value(),
+        )
+        result = await self._make_request(
+            "POST",
+            "order/estimate",
+            credentials.api_key.get_secret_value(),
+            json=order_data,
+        )
+        yield "total_price", result["totalPrice"]
+        yield "shipping_cost", result["shippingCost"]
+        yield "printing_cost", result["printingCost"]
 
 
 class Slant3DEstimateShippingBlock(Slant3DBlockBase):

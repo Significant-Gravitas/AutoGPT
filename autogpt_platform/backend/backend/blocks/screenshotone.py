@@ -121,11 +121,10 @@ class ScreenshotWebPageBlock(Block):
         """
         Takes a screenshot using the ScreenshotOne API
         """
-        api = Requests(trusted_origins=["https://api.screenshotone.com"])
+        api = Requests()
 
-        # Build API URL with parameters
+        # Build API parameters
         params = {
-            "access_key": credentials.api_key.get_secret_value(),
             "url": url,
             "viewport_width": viewport_width,
             "viewport_height": viewport_height,
@@ -137,8 +136,12 @@ class ScreenshotWebPageBlock(Block):
             "cache": str(cache).lower(),
         }
 
-        response = await api.get("https://api.screenshotone.com/take", params=params)
+        # Make the API request
+        api_url = "https://api.screenshotone.com/take"
+        headers = {"Authorization": f"Bearer {credentials.api_key.get_secret_value()}"}
+        response = await api.get(api_url, headers=headers, params=params)
         content = response.content
+
         return {
             "image": await store_media_file(
                 graph_exec_id=graph_exec_id,

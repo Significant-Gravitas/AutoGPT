@@ -409,7 +409,7 @@ class IntegrationCredentialsStore:
                 (
                     state
                     for state in oauth_states
-                    if state.token == token
+                    if secrets.compare_digest(state.token, token)
                     and state.provider == provider
                     and state.expires_at > now.timestamp()
                 ),

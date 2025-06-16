@@ -13,7 +13,7 @@ from backend.data.model import (
     SecretField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.request import requests
+from backend.util.request import Requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -160,7 +160,7 @@ class PublishToMediumBlock(Block):
             "notifyFollowers": notify_followers,
         }
 
-        response = await requests.post(
+        response = await Requests().post(
             f"https://api.medium.com/v1/users/{author_id}/posts",
             headers=headers,
             json=data,

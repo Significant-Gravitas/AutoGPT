@@ -110,9 +110,24 @@ class SendWebRequestBlock(Block):
         body = input_data.body
         if isinstance(body, str):
             try:
-                body = json.loads(body)
-            except json.JSONDecodeError:
-                # plain text – treat as form‑field value instead
+                # Validate JSON string length to prevent DoS attacks
+                if len(body) > 10_000_000:  # 10MB limit
+                    raise ValueError("JSON body too large")
+
+                parsed_body = json.loads(body)
+
+                # Validate that parsed JSON is safe (basic object/array/primitive types)
+                if (
+                    isinstance(parsed_body, (dict, list, str, int, float, bool))
+                    or parsed_body is None
+                ):
+                    body = parsed_body
+                else:
+                    # Unexpected type, treat as plain text
+                    input_data.json_format = False
+
+            except (json.JSONDecodeError, ValueError):
+                # Invalid JSON or too large – treat as form‑field value instead
                 input_data.json_format = False
 
         # ─── Prepare files (if any) ──────────────────────────────────
