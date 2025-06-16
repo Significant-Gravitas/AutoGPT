@@ -2,12 +2,15 @@ import logging
 from typing import Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict
 
 import backend.server.v2.library.db as library_db
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
+from backend.data.graph import get_graph
+from backend.integrations.webhooks.utils import setup_webhook as _setup_webhook
 
 logger = logging.getLogger(__name__)
 
@@ -241,3 +244,80 @@ async def fork_library_agent(
         library_agent_id=library_agent_id,
         user_id=user_id,
     )
+
+
+class SetupWebhookRequest(BaseModel):
+    provider: str
+    credentials_id: str
+
+    name: str
+    description: str
+
+    resource: str
+
+    model_config = ConfigDict(extra="allow")
+
+
+@router.post("/{library_agent_id}/setup_webhook_trigger")
+async def setup_webhook(
+    library_agent_id: str = Path(..., description="ID of the library agent"),
+    params: SetupWebhookRequest = Body(),
+    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+) -> library_model.LibraryAgentPreset:
+    """
+    Sets up a webhook for a node and creates an AgentPreset with webhookId set.
+    """
+    library_agent = await library_db.get_library_agent(
+        id=library_agent_id, user_id=user_id
+    )
+    if not library_agent:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Library agent #{library_agent_id} not found.",
+        )
+
+    graph = await get_graph(
+        library_agent.graph_id, version=library_agent.graph_version, user_id=user_id
+    )
+    if not graph:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Graph #{library_agent.graph_id} not found.",
+        )
+    if not graph.webhook_input_node:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Graph #{library_agent.graph_id} does not have a webhook input node.",
+        )
+
+    trigger_webhook_config = graph.webhook_input_node.block.webhook_config
+    if not trigger_webhook_config:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Graph #{library_agent.graph_id} does not have a trigger webhook configured.",
+        )
+
+    new_webhook = await _setup_webhook(
+        user_id=user_id,
+        provider=params.provider,
+        webhook_type=trigger_webhook_config.webhook_type,
+        credentials_id=params.credentials_id,
+        resource=trigger_webhook_config.resource_format.format(**params.model_dump()),
+        events=["triggered"],
+        for_graph_id=library_agent.graph_id,
+    )
+    # Create preset with webhookId
+    preset = await library_db.create_preset(
+        user_id=user_id,
+        preset=library_model.LibraryAgentPresetCreatable(
+            graph_id=library_agent.graph_id,
+            graph_version=library_agent.graph_version,
+            name=params.name,
+            description=params.description,
+            inputs=params.inputs,
+            is_active=True,
+        ),
+    )
+    # Patch preset to set webhookId (Prisma: update after create)
+    preset = await library_db.set_preset_webhook(preset.id, updated_node.webhook_id)
+    return preset

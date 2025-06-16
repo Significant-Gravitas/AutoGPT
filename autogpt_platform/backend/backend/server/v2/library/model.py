@@ -216,6 +216,8 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
     id: str
     updated_at: datetime.datetime
 
+    webhook_id: Optional[str] = None
+
     @classmethod
     def from_db(cls, preset: prisma.models.AgentPreset) -> "LibraryAgentPreset":
         if preset.InputPresets is None:
@@ -235,6 +237,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             description=preset.description,
             is_active=preset.isActive,
             inputs=input_data,
+            webhook_id=preset.webhookId,
         )
 
 

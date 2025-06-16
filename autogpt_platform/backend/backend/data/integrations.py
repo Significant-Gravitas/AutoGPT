@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, AsyncGenerator, Optional
 
 from prisma import Json
 from prisma.models import IntegrationWebhook
-from prisma.types import IntegrationWebhookCreateInput
+from prisma.types import IntegrationWebhookCreateInput, IntegrationWebhookWhereInput
 from pydantic import Field, computed_field
 
 from backend.data.includes import INTEGRATION_WEBHOOK_INCLUDE
@@ -127,16 +127,35 @@ async def find_webhook_by_credentials_and_props(
 
 
 async def find_webhook_by_graph_and_props(
-    graph_id: str, provider: str, webhook_type: str, events: list[str]
+    provider: str,
+    webhook_type: str,
+    events: list[str],
+    graph_id: Optional[str] = None,
+    preset_id: Optional[str] = None,
 ) -> Webhook | None:
-    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
+    """
+    ⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints.
+
+    Either `graph_id` or `preset_id` must be provided.
+    """
+    if not graph_id and not preset_id:
+        raise ValueError("Either graph_id or preset_id must be provided")
+
+    where_clause: IntegrationWebhookWhereInput = {
+        "provider": provider,
+        "webhookType": webhook_type,
+        "events": {"has_every": events},
+    }
+
+    if preset_id:
+        where_clause["AgentPresets"] = {"some": {"id": preset_id}}
+    elif graph_id:
+        where_clause["AgentNodes"] = {"some": {"agentGraphId": graph_id}}
+    else:
+        raise ValueError("Either graph_id or preset_id must be provided")
+
     webhook = await IntegrationWebhook.prisma().find_first(
-        where={
-            "provider": provider,
-            "webhookType": webhook_type,
-            "events": {"has_every": events},
-            "AgentNodes": {"some": {"agentGraphId": graph_id}},
-        },
+        where=where_clause,
         include=INTEGRATION_WEBHOOK_INCLUDE,
     )
     return Webhook.from_db(webhook) if webhook else None

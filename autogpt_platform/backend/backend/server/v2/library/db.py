@@ -727,6 +727,23 @@ async def update_preset(
         raise store_exceptions.DatabaseError("Failed to update preset") from e
 
 
+async def set_preset_webhook(
+    preset_id: str, webhook_id: str | None
+) -> library_model.LibraryAgentPreset:
+    preset = await prisma.models.AgentPreset.prisma().update(
+        where={"id": preset_id},
+        data=(
+            {"Webhook": {"connect": {"id": webhook_id}}}
+            if webhook_id
+            else {"Webhook": {"disconnect": True}}
+        ),
+        include={"InputPresets": True},
+    )
+    if not preset:
+        raise ValueError(f"Preset #{preset_id} not found")
+    return library_model.LibraryAgentPreset.from_db(preset)
+
+
 async def delete_preset(user_id: str, preset_id: str) -> None:
     """
     Soft-deletes a preset by marking it as isDeleted = True.
