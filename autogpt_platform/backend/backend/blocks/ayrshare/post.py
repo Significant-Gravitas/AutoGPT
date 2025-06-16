@@ -625,8 +625,39 @@ class PostToLinkedInBlock(Block):
             default="",
             advanced=True,
         )
-        targeting: Optional[LinkedInTargeting] = SchemaField(
-            description="Audience targeting options (requires 300+ followers in target audience)",
+        # LinkedIn targeting options (flattened from LinkedInTargeting object)
+        targeting_countries: Optional[list[str]] = SchemaField(
+            description="Country codes for targeting (e.g., ['US', 'IN', 'DE', 'GB']). Requires 300+ followers in target audience.",
+            default=None,
+            advanced=True,
+        )
+        targeting_seniorities: Optional[list[str]] = SchemaField(
+            description="Seniority levels for targeting (e.g., ['Senior', 'VP']). Requires 300+ followers in target audience.",
+            default=None,
+            advanced=True,
+        )
+        targeting_degrees: Optional[list[str]] = SchemaField(
+            description="Education degrees for targeting. Requires 300+ followers in target audience.",
+            default=None,
+            advanced=True,
+        )
+        targeting_fields_of_study: Optional[list[str]] = SchemaField(
+            description="Fields of study for targeting. Requires 300+ followers in target audience.",
+            default=None,
+            advanced=True,
+        )
+        targeting_industries: Optional[list[str]] = SchemaField(
+            description="Industry categories for targeting. Requires 300+ followers in target audience.",
+            default=None,
+            advanced=True,
+        )
+        targeting_job_functions: Optional[list[str]] = SchemaField(
+            description="Job function categories for targeting. Requires 300+ followers in target audience.",
+            default=None,
+            advanced=True,
+        )
+        targeting_staff_count_ranges: Optional[list[str]] = SchemaField(
+            description="Company size ranges for targeting. Requires 300+ followers in target audience.",
             default=None,
             advanced=True,
         )
@@ -715,28 +746,25 @@ class PostToLinkedInBlock(Block):
         if input_data.thumbnail:
             linkedin_options["thumbNail"] = input_data.thumbnail
 
-        # Audience targeting
-        if input_data.targeting:
-            targeting_dict = {}
-            if input_data.targeting.countries:
-                targeting_dict["countries"] = input_data.targeting.countries
-            if input_data.targeting.seniorities:
-                targeting_dict["seniorities"] = input_data.targeting.seniorities
-            if input_data.targeting.degrees:
-                targeting_dict["degrees"] = input_data.targeting.degrees
-            if input_data.targeting.fields_of_study:
-                targeting_dict["fieldsOfStudy"] = input_data.targeting.fields_of_study
-            if input_data.targeting.industries:
-                targeting_dict["industries"] = input_data.targeting.industries
-            if input_data.targeting.job_functions:
-                targeting_dict["jobFunctions"] = input_data.targeting.job_functions
-            if input_data.targeting.staff_count_ranges:
-                targeting_dict["staffCountRanges"] = (
-                    input_data.targeting.staff_count_ranges
-                )
+        # Audience targeting (from flattened fields)
+        targeting_dict = {}
+        if input_data.targeting_countries:
+            targeting_dict["countries"] = input_data.targeting_countries
+        if input_data.targeting_seniorities:
+            targeting_dict["seniorities"] = input_data.targeting_seniorities
+        if input_data.targeting_degrees:
+            targeting_dict["degrees"] = input_data.targeting_degrees
+        if input_data.targeting_fields_of_study:
+            targeting_dict["fieldsOfStudy"] = input_data.targeting_fields_of_study
+        if input_data.targeting_industries:
+            targeting_dict["industries"] = input_data.targeting_industries
+        if input_data.targeting_job_functions:
+            targeting_dict["jobFunctions"] = input_data.targeting_job_functions
+        if input_data.targeting_staff_count_ranges:
+            targeting_dict["staffCountRanges"] = input_data.targeting_staff_count_ranges
 
-            if targeting_dict:
-                linkedin_options["targeting"] = targeting_dict
+        if targeting_dict:
+            linkedin_options["targeting"] = targeting_dict
 
         try:
             response = client.create_post(
@@ -1041,8 +1069,14 @@ class PostToYouTubeBlock(Block):
             default="",
             advanced=True,
         )
-        targeting: Optional[YouTubeTargeting] = SchemaField(
-            description="Country targeting (block or allow specific countries)",
+        # YouTube targeting options (flattened from YouTubeTargeting object)
+        targeting_block_countries: Optional[list[str]] = SchemaField(
+            description="Country codes to block from viewing (e.g., ['US', 'CA'])",
+            default=None,
+            advanced=True,
+        )
+        targeting_allow_countries: Optional[list[str]] = SchemaField(
+            description="Country codes to allow viewing (e.g., ['GB', 'AU'])",
             default=None,
             advanced=True,
         )
@@ -1212,16 +1246,15 @@ class PostToYouTubeBlock(Block):
         if input_data.publish_at:
             youtube_options["publishAt"] = input_data.publish_at
 
-        # Country targeting
-        if input_data.targeting:
-            targeting_dict = {}
-            if input_data.targeting.block:
-                targeting_dict["block"] = input_data.targeting.block
-            if input_data.targeting.allow:
-                targeting_dict["allow"] = input_data.targeting.allow
+        # Country targeting (from flattened fields)
+        targeting_dict = {}
+        if input_data.targeting_block_countries:
+            targeting_dict["block"] = input_data.targeting_block_countries
+        if input_data.targeting_allow_countries:
+            targeting_dict["allow"] = input_data.targeting_allow_countries
 
-            if targeting_dict:
-                youtube_options["targeting"] = targeting_dict
+        if targeting_dict:
+            youtube_options["targeting"] = targeting_dict
 
         # Subtitle options
         if input_data.subtitle_url:
@@ -1432,17 +1465,62 @@ class PostToGMBBlock(Block):
             default="",
             advanced=True,
         )
-        call_to_action: Optional[CallToAction] = SchemaField(
-            description="Call to action button for standard posts",
-            default=None,
+        # Call to action options (flattened from CallToAction object)
+        call_to_action_type: str = SchemaField(
+            description="Type of action button: 'book', 'order', 'shop', 'learn_more', 'sign_up', or 'call'",
+            default="",
             advanced=True,
         )
-        event_details: Optional[EventDetails] = SchemaField(
-            description="Event details for event posts", default=None, advanced=True
+        call_to_action_url: str = SchemaField(
+            description="URL for the action button (not required for 'call' action)",
+            default="",
+            advanced=True,
         )
-        offer_details: Optional[OfferDetails] = SchemaField(
-            description="Offer details for promotional posts",
-            default=None,
+        # Event details options (flattened from EventDetails object)
+        event_title: str = SchemaField(
+            description="Event title for event posts",
+            default="",
+            advanced=True,
+        )
+        event_start_date: str = SchemaField(
+            description="Event start date in ISO format (e.g., '2024-03-15T09:00:00Z')",
+            default="",
+            advanced=True,
+        )
+        event_end_date: str = SchemaField(
+            description="Event end date in ISO format (e.g., '2024-03-15T17:00:00Z')",
+            default="",
+            advanced=True,
+        )
+        # Offer details options (flattened from OfferDetails object)
+        offer_title: str = SchemaField(
+            description="Offer title for promotional posts",
+            default="",
+            advanced=True,
+        )
+        offer_start_date: str = SchemaField(
+            description="Offer start date in ISO format (e.g., '2024-03-15T00:00:00Z')",
+            default="",
+            advanced=True,
+        )
+        offer_end_date: str = SchemaField(
+            description="Offer end date in ISO format (e.g., '2024-04-15T23:59:59Z')",
+            default="",
+            advanced=True,
+        )
+        offer_coupon_code: str = SchemaField(
+            description="Coupon code for the offer (max 58 characters)",
+            default="",
+            advanced=True,
+        )
+        offer_redeem_online_url: str = SchemaField(
+            description="URL where customers can redeem the offer online",
+            default="",
+            advanced=True,
+        )
+        offer_terms_conditions: str = SchemaField(
+            description="Terms and conditions for the offer",
+            default="",
             advanced=True,
         )
 
@@ -1478,7 +1556,7 @@ class PostToGMBBlock(Block):
             return
 
         # Validate offer coupon code length
-        if input_data.offer_details and len(input_data.offer_details.coupon_code) > 58:
+        if input_data.offer_coupon_code and len(input_data.offer_coupon_code) > 58:
             yield "error", "GMB offer coupon code cannot exceed 58 characters"
             return
 
@@ -1496,34 +1574,45 @@ class PostToGMBBlock(Block):
             if input_data.photo_category:
                 gmb_options["category"] = input_data.photo_category
 
-        # Call to Action
-        if input_data.call_to_action:
-            cta_dict = {"actionType": input_data.call_to_action.action_type}
+        # Call to Action (from flattened fields)
+        if input_data.call_to_action_type:
+            cta_dict = {"actionType": input_data.call_to_action_type}
             # URL not required for 'call' action type
             if (
-                input_data.call_to_action.action_type != "call"
-                and input_data.call_to_action.url
+                input_data.call_to_action_type != "call"
+                and input_data.call_to_action_url
             ):
-                cta_dict["url"] = input_data.call_to_action.url
+                cta_dict["url"] = input_data.call_to_action_url
             gmb_options["callToAction"] = cta_dict
 
-        # Event details
-        if input_data.event_details:
+        # Event details (from flattened fields)
+        if (
+            input_data.event_title
+            and input_data.event_start_date
+            and input_data.event_end_date
+        ):
             gmb_options["event"] = {
-                "title": input_data.event_details.title,
-                "startDate": input_data.event_details.start_date,
-                "endDate": input_data.event_details.end_date,
+                "title": input_data.event_title,
+                "startDate": input_data.event_start_date,
+                "endDate": input_data.event_end_date,
             }
 
-        # Offer details
-        if input_data.offer_details:
+        # Offer details (from flattened fields)
+        if (
+            input_data.offer_title
+            and input_data.offer_start_date
+            and input_data.offer_end_date
+            and input_data.offer_coupon_code
+            and input_data.offer_redeem_online_url
+            and input_data.offer_terms_conditions
+        ):
             gmb_options["offer"] = {
-                "title": input_data.offer_details.title,
-                "startDate": input_data.offer_details.start_date,
-                "endDate": input_data.offer_details.end_date,
-                "couponCode": input_data.offer_details.coupon_code,
-                "redeemOnlineUrl": input_data.offer_details.redeem_online_url,
-                "termsConditions": input_data.offer_details.terms_conditions,
+                "title": input_data.offer_title,
+                "startDate": input_data.offer_start_date,
+                "endDate": input_data.offer_end_date,
+                "couponCode": input_data.offer_coupon_code,
+                "redeemOnlineUrl": input_data.offer_redeem_online_url,
+                "termsConditions": input_data.offer_terms_conditions,
             }
 
         try:
