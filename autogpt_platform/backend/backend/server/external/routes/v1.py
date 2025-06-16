@@ -12,7 +12,7 @@ from backend.data import graph as graph_db
 from backend.data.api_key import APIKey
 from backend.data.block import BlockInput, CompletedBlockOutput
 from backend.data.execution import NodeExecutionResult
-from backend.executor.utils import add_graph_execution_async
+from backend.executor.utils import add_graph_execution
 from backend.server.external.middleware import require_permission
 from backend.util.settings import Settings
 
@@ -97,7 +97,7 @@ async def execute_graph(
     api_key: APIKey = Depends(require_permission(APIKeyPermission.EXECUTE_GRAPH)),
 ) -> dict[str, Any]:
     try:
-        graph_exec = await add_graph_execution_async(
+        graph_exec = await add_graph_execution(
             graph_id=graph_id,
             user_id=api_key.user_id,
             inputs=node_input,

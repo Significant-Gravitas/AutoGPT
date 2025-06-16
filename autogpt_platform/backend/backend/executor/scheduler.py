@@ -80,11 +80,12 @@ async def _execute_graph(**kwargs):
     args = GraphExecutionJobArgs(**kwargs)
     try:
         log(f"Executing recurring job for graph #{args.graph_id}")
-        await execution_utils.add_graph_execution_async(
+        await execution_utils.add_graph_execution(
             graph_id=args.graph_id,
             inputs=args.input_data,
             user_id=args.user_id,
             graph_version=args.graph_version,
+            use_db_query=False,
         )
     except Exception as e:
         logger.exception(f"Error executing graph {args.graph_id}: {e}")

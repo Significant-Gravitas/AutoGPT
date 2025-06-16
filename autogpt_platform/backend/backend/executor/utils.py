@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections import defaultdict
 from concurrent.futures import Future
@@ -23,6 +24,7 @@ from backend.data.execution import (
     GraphExecutionWithNodes,
     RedisExecutionEventBus,
     create_graph_execution,
+    get_node_executions,
     update_graph_execution_stats,
     update_node_execution_status_batch,
 )
@@ -43,7 +45,7 @@ from backend.util.settings import Config
 from backend.util.type import convert
 
 if TYPE_CHECKING:
-    from backend.executor import DatabaseManagerClient
+    from backend.executor import DatabaseManagerAsyncClient, DatabaseManagerClient
     from backend.integrations.credentials_store import IntegrationCredentialsStore
 
 config = Config()
@@ -88,6 +90,13 @@ def get_db_client() -> "DatabaseManagerClient":
     from backend.executor import DatabaseManagerClient
 
     return get_service_client(DatabaseManagerClient)
+
+
+@thread_cached
+def get_db_async_client() -> "DatabaseManagerAsyncClient":
+    from backend.executor import DatabaseManagerAsyncClient
+
+    return get_service_client(DatabaseManagerAsyncClient)
 
 
 # ============ Execution Cost Helpers ============ #
@@ -642,7 +651,82 @@ def create_execution_queue_config() -> RabbitMQConfig:
     )
 
 
-async def add_graph_execution_async(
+async def stop_graph_execution(
+    graph_exec_id: str,
+    use_db_query: bool = True,
+):
+    """
+    Mechanism:
+    1. Set the cancel event
+    2. Graph executor's cancel handler thread detects the event, terminates workers,
+       reinitializes worker pool, and returns.
+    3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
+    """
+    queue_client = await get_async_execution_queue()
+    await queue_client.publish_message(
+        routing_key="",
+        message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
+        exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
+    )
+
+    # Update the status of the graph execution
+    if use_db_query:
+        graph_execution = await update_graph_execution_stats(
+            graph_exec_id,
+            ExecutionStatus.TERMINATED,
+        )
+    else:
+        graph_execution = await get_db_async_client().update_graph_execution_stats(
+            graph_exec_id,
+            ExecutionStatus.TERMINATED,
+        )
+
+    if graph_execution:
+        await get_async_execution_event_bus().publish(graph_execution)
+    else:
+        raise NotFoundError(
+            f"Graph execution #{graph_exec_id} not found for termination."
+        )
+
+    # Update the status of the node executions
+    if use_db_query:
+        node_executions = await get_node_executions(
+            graph_exec_id=graph_exec_id,
+            statuses=[
+                ExecutionStatus.QUEUED,
+                ExecutionStatus.RUNNING,
+                ExecutionStatus.INCOMPLETE,
+            ],
+        )
+        await update_node_execution_status_batch(
+            [v.node_exec_id for v in node_executions],
+            ExecutionStatus.TERMINATED,
+        )
+    else:
+        node_executions = await get_db_async_client().get_node_executions(
+            graph_exec_id=graph_exec_id,
+            statuses=[
+                ExecutionStatus.QUEUED,
+                ExecutionStatus.RUNNING,
+                ExecutionStatus.INCOMPLETE,
+            ],
+        )
+        await get_db_async_client().update_node_execution_status_batch(
+            [v.node_exec_id for v in node_executions],
+            ExecutionStatus.TERMINATED,
+        )
+
+    await asyncio.gather(
+        *[
+            get_async_execution_event_bus().publish(
+                v.model_copy(update={"status": ExecutionStatus.TERMINATED})
+            )
+            for v in node_executions
+        ]
+    )
+
+
+async def add_graph_execution(
     graph_id: str,
     user_id: str,
     inputs: BlockInput,
@@ -652,6 +736,7 @@ async def add_graph_execution_async(
     node_credentials_input_map: Optional[
         dict[str, dict[str, CredentialsMetaInput]]
     ] = None,
+    use_db_query: bool = True,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -670,12 +755,21 @@ async def add_graph_execution_async(
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
     """  # noqa
-    graph: GraphModel | None = await get_graph(
-        graph_id=graph_id,
-        user_id=user_id,
-        version=graph_version,
-        include_subgraphs=True,
-    )
+    if use_db_query:
+        graph: GraphModel | None = await get_graph(
+            graph_id=graph_id,
+            user_id=user_id,
+            version=graph_version,
+            include_subgraphs=True,
+        )
+    else:
+        graph: GraphModel | None = await get_db_async_client().get_graph(
+            graph_id=graph_id,
+            user_id=user_id,
+            version=graph_version,
+            include_subgraphs=True,
+        )
+
     if not graph:
         raise NotFoundError(f"Graph #{graph_id} not found.")
 
@@ -685,18 +779,33 @@ async def add_graph_execution_async(
         else None
     )
 
-    graph_exec = await create_graph_execution(
-        user_id=user_id,
-        graph_id=graph_id,
-        graph_version=graph.version,
-        starting_nodes_input=await construct_node_execution_input(
-            graph=graph,
+    if use_db_query:
+        graph_exec = await create_graph_execution(
             user_id=user_id,
-            graph_inputs=inputs,
-            node_credentials_input_map=node_credentials_input_map,
-        ),
-        preset_id=preset_id,
-    )
+            graph_id=graph_id,
+            graph_version=graph.version,
+            starting_nodes_input=await construct_node_execution_input(
+                graph=graph,
+                user_id=user_id,
+                graph_inputs=inputs,
+                node_credentials_input_map=node_credentials_input_map,
+            ),
+            preset_id=preset_id,
+        )
+    else:
+        graph_exec = await get_db_async_client().create_graph_execution(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph.version,
+            starting_nodes_input=await construct_node_execution_input(
+                graph=graph,
+                user_id=user_id,
+                graph_inputs=inputs,
+                node_credentials_input_map=node_credentials_input_map,
+            ),
+            preset_id=preset_id,
+        )
+
     try:
         queue = await get_async_execution_queue()
         graph_exec_entry = graph_exec.to_graph_execution_entry()
@@ -715,15 +824,27 @@ async def add_graph_execution_async(
     except Exception as e:
         logger.error(f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {e}")
 
-        await update_node_execution_status_batch(
-            [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
-            ExecutionStatus.FAILED,
-        )
-        await update_graph_execution_stats(
-            graph_exec_id=graph_exec.id,
-            status=ExecutionStatus.FAILED,
-            stats=GraphExecutionStats(error=str(e)),
-        )
+        if use_db_query:
+            await update_node_execution_status_batch(
+                [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
+                ExecutionStatus.FAILED,
+            )
+            await update_graph_execution_stats(
+                graph_exec_id=graph_exec.id,
+                status=ExecutionStatus.FAILED,
+                stats=GraphExecutionStats(error=str(e)),
+            )
+        else:
+            await get_db_async_client().update_node_execution_status_batch(
+                [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
+                ExecutionStatus.FAILED,
+            )
+            await get_db_async_client().update_graph_execution_stats(
+                graph_exec_id=graph_exec.id,
+                status=ExecutionStatus.FAILED,
+                stats=GraphExecutionStats(error=str(e)),
+            )
+
         raise
 
 
