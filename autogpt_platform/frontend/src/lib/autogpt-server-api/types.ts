@@ -402,6 +402,7 @@ export type LibraryAgent = {
   name: string;
   description: string;
   input_schema: BlockIOObjectSubSchema;
+  has_external_trigger: boolean;
   new_output: boolean;
   can_access_graph: boolean;
   is_latest_version: boolean;
@@ -435,6 +436,7 @@ export type LibraryAgentPreset = {
   name: string;
   description: string;
   is_active: boolean;
+  webhook_id?: string;
 };
 
 export type LibraryAgentPresetID = Brand<string, "LibraryAgentPresetID">;
