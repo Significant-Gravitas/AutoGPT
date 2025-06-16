@@ -1,5 +1,6 @@
 from typing import TYPE_CHECKING, Optional
 
+from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
 from backend.util.settings import Config
 
@@ -7,9 +8,9 @@ from . import get_webhook_manager, supports_webhooks
 
 if TYPE_CHECKING:
     from backend.data.integrations import Webhook
-    from backend.data.model import Credentials
 
 app_config = Config()
+credentials_manager = IntegrationCredentialsManager()
 
 
 # TODO: add test to assert this matches the actual API route
@@ -24,7 +25,7 @@ async def setup_webhook(
     user_id: str,
     provider: ProviderName,
     webhook_type: str,
-    credentials: Optional["Credentials"] = None,
+    credentials_id: Optional[str] = None,
     resource: Optional[str] = None,
     events: Optional[list[str]] = None,
     for_graph_id: Optional[str] = None,
@@ -39,25 +40,31 @@ async def setup_webhook(
     from ._manual_base import ManualWebhookManagerBase
 
     if not supports_webhooks(provider):
-        raise ValueError(f"Provider {provider} does not support webhooks")
+        raise ValueError(f"Provider {provider.value} does not support webhooks")
 
     webhooks_manager = get_webhook_manager(provider)
 
     auto_setup_webhook = isinstance(webhooks_manager, ManualWebhookManagerBase)
 
+    credentials = None
     if auto_setup_webhook:
         if not resource:
             raise ValueError(
-                f"Cannot auto-setup webhook for provider {provider} without resource"
+                f"Cannot auto-setup {provider.value} webhook without resource"
             )
 
-        if not credentials:
+        if not credentials_id:
             raise ValueError(
-                f"Cannot set up webhook for provider {provider} without credentials"
+                f"Cannot set up {provider.value} webhook without credentials"
+            )
+        elif not (credentials := credentials_manager.get(user_id, credentials_id)):
+            raise ValueError(
+                f"Cannot set up {provider.value} webhook without credentials: "
+                f"credentials #{credentials_id} not found for user #{user_id}"
             )
         elif credentials.provider != provider:
             raise ValueError(
-                f"Credentials #{credentials.id} do not match provider {provider}"
+                f"Credentials #{credentials.id} do not match provider {provider.value}"
             )
 
     webhooks_manager = get_webhook_manager(provider)

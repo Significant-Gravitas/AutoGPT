@@ -618,6 +618,7 @@ async def create_preset(
                 agentGraphId=preset.graph_id,
                 agentGraphVersion=preset.graph_version,
                 isActive=preset.is_active,
+                webhookId=preset.webhook_id,
                 InputPresets={
                     "create": [
                         prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa

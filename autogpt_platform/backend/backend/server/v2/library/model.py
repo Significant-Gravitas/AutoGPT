@@ -43,6 +43,10 @@ class LibraryAgent(pydantic.BaseModel):
     # Made input_schema and output_schema match GraphMeta's type
     input_schema: dict[str, Any]  # Should be BlockIOObjectSubSchema in frontend
 
+    has_external_trigger: bool = pydantic.Field(
+        description="Whether the agent has an external trigger (e.g. webhook) node"
+    )
+
     # Indicates whether there's a new output (based on recent runs)
     new_output: bool
 
@@ -105,7 +109,13 @@ class LibraryAgent(pydantic.BaseModel):
             updated_at=updated_at,
             name=graph.name,
             description=graph.description,
-            input_schema=graph.input_schema,
+            input_schema=(
+                # Bodge? Yes. Works? Also yes. Might want to clean this up later.
+                graph.input_schema
+                if not graph.webhook_input_node
+                else graph.webhook_input_node.block.input_schema.jsonschema()
+            ),
+            has_external_trigger=graph.has_webhook_trigger,
             new_output=new_output,
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,
@@ -183,6 +193,8 @@ class LibraryAgentPresetCreatable(pydantic.BaseModel):
 
     is_active: bool = True
 
+    webhook_id: Optional[str] = None
+
 
 class LibraryAgentPresetCreatableFromGraphExecution(pydantic.BaseModel):
     """
@@ -215,8 +227,6 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
 
     id: str
     updated_at: datetime.datetime
-
-    webhook_id: Optional[str] = None
 
     @classmethod
     def from_db(cls, preset: prisma.models.AgentPreset) -> "LibraryAgentPreset":

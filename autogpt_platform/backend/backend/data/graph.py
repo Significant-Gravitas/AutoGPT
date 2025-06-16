@@ -574,7 +574,7 @@ class GraphModel(Graph):
         graph: AgentGraph,
         for_export: bool = False,
         sub_graphs: list[AgentGraph] | None = None,
-    ):
+    ) -> "GraphModel":
         return GraphModel(
             id=graph.id,
             user_id=graph.userId if not for_export else "",

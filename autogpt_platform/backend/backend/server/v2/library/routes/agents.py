@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, cast
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
@@ -9,7 +9,9 @@ from pydantic import BaseModel, ConfigDict
 import backend.server.v2.library.db as library_db
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
+from backend.data.block import BlockWebhookConfig
 from backend.data.graph import get_graph
+from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.utils import setup_webhook as _setup_webhook
 
 logger = logging.getLogger(__name__)
@@ -247,13 +249,13 @@ async def fork_library_agent(
 
 
 class SetupWebhookRequest(BaseModel):
-    provider: str
+    provider: ProviderName
     credentials_id: str
 
     name: str
     description: str
 
-    resource: str
+    config: dict[str, str]
 
     model_config = ConfigDict(extra="allow")
 
@@ -273,7 +275,7 @@ async def setup_webhook(
     if not library_agent:
         raise HTTPException(
             status_code=404,
-            detail=f"Library agent #{library_agent_id} not found.",
+            detail=f"Library agent #{library_agent_id} not found",
         )
 
     graph = await get_graph(
@@ -282,31 +284,46 @@ async def setup_webhook(
     if not graph:
         raise HTTPException(
             status_code=404,
-            detail=f"Graph #{library_agent.graph_id} not found.",
+            detail=f"Graph #{library_agent.graph_id} not found",
         )
-    if not graph.webhook_input_node:
+    if not (trigger_node := graph.webhook_input_node):
         raise HTTPException(
             status_code=400,
-            detail=f"Graph #{library_agent.graph_id} does not have a webhook input node.",
+            detail=f"Graph #{library_agent.graph_id} does not have a webhook node",
         )
 
-    trigger_webhook_config = graph.webhook_input_node.block.webhook_config
-    if not trigger_webhook_config:
+    trigger_block = trigger_node.block
+    if not (trigger_webhook_config := trigger_block.webhook_config):
         raise HTTPException(
-            status_code=400,
-            detail=f"Graph #{library_agent.graph_id} does not have a trigger webhook configured.",
+            status_code=500,
+            detail=(
+                f"Block #{trigger_block.id} has type {trigger_block.block_type} "
+                f"but does not have a webhook config"
+            ),
         )
+
+    # Prepare parameters for webhook setup
+    resource = (
+        trigger_webhook_config.resource_format.format(**params.config)
+        if isinstance(trigger_webhook_config, BlockWebhookConfig)
+        else None
+    )
+    event_filter = cast(dict, params.config[trigger_webhook_config.event_filter_input])
+    events = [
+        trigger_webhook_config.event_format.format(event=event)
+        for event, enabled in event_filter.items()
+        if enabled is True
+    ]
 
     new_webhook = await _setup_webhook(
         user_id=user_id,
         provider=params.provider,
         webhook_type=trigger_webhook_config.webhook_type,
         credentials_id=params.credentials_id,
-        resource=trigger_webhook_config.resource_format.format(**params.model_dump()),
-        events=["triggered"],
+        resource=resource,
+        events=events,
         for_graph_id=library_agent.graph_id,
     )
-    # Create preset with webhookId
     preset = await library_db.create_preset(
         user_id=user_id,
         preset=library_model.LibraryAgentPresetCreatable(
@@ -314,10 +331,9 @@ async def setup_webhook(
             graph_version=library_agent.graph_version,
             name=params.name,
             description=params.description,
-            inputs=params.inputs,
+            inputs=params.config,
             is_active=True,
+            webhook_id=new_webhook.id,
         ),
     )
-    # Patch preset to set webhookId (Prisma: update after create)
-    preset = await library_db.set_preset_webhook(preset.id, updated_node.webhook_id)
     return preset
