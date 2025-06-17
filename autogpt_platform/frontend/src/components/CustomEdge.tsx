@@ -93,7 +93,7 @@ export function CustomEdge({
       return;
     }
 
-    const beadUp = data?.beadUp!;
+    const beadUp: number = data?.beadUp ?? 0;
 
     // Add beads
     setBeads(({ beads, created, destroyed }) => {
@@ -114,7 +114,7 @@ export function CustomEdge({
         const newBeads = beads
           .map((bead) => ({ ...bead }))
           .filter((bead, index) => {
-            const beadDown = data?.beadDown!;
+            const beadDown: number = data?.beadDown ?? 0;
             const removeCount = beadDown - destroyed;
             if (bead.t >= bead.targetT && index < removeCount) {
               destroyedCount++;
@@ -151,7 +151,7 @@ export function CustomEdge({
             };
           })
           .filter((bead, index) => {
-            const beadDown = data?.beadDown!;
+            const beadDown: number = data?.beadDown ?? 0;
             const removeCount = beadDown - destroyed;
             if (bead.t >= bead.targetT && index < removeCount) {
               destroyedCount++;

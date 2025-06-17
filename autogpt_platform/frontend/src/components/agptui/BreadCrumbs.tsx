@@ -1,6 +1,5 @@
 import * as React from "react";
 import Link from "next/link";
-import { IconLeftArrow, IconRightArrow } from "@/components/ui/icons";
 
 interface BreadcrumbItem {
   name: string;

@@ -1842,11 +1842,10 @@ export function getIconForSocial(
   url: string,
   props: IconProps,
 ): React.ReactNode {
-  const lowerCaseUrl = url.toLowerCase();
   let host;
   try {
     host = new URL(url).host;
-  } catch (e) {
+  } catch {
     return <IconGlobe {...props} />;
   }
 

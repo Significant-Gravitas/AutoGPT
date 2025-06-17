@@ -92,7 +92,7 @@ export default async function Page({
         </main>
       </div>
     );
-  } catch (error) {
+  } catch {
     return (
       <div className="flex h-screen w-full items-center justify-center">
         <div className="text-2xl text-neutral-900">Creator not found</div>

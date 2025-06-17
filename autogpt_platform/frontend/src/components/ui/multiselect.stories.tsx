@@ -56,7 +56,7 @@ export const Default: Story = {
   render: (args) => <MultiSelectorExample {...args} />,
   args: {
     values: [],
-    onValuesChange: (value: string[]) => {},
+    onValuesChange: () => {},
   },
 };
 
@@ -64,7 +64,7 @@ export const WithLoop: Story = {
   render: (args) => <MultiSelectorExample {...args} />,
   args: {
     values: [],
-    onValuesChange: (value: string[]) => {},
+    onValuesChange: () => {},
     loop: true,
   },
 };
@@ -73,7 +73,7 @@ export const WithInitialValues: Story = {
   render: (args) => <MultiSelectorExample {...args} />,
   args: {
     values: ["apple", "banana"],
-    onValuesChange: (value: string[]) => {},
+    onValuesChange: () => {},
   },
 };
 
@@ -98,6 +98,6 @@ export const WithDisabledItem: Story = {
   ),
   args: {
     values: [],
-    onValuesChange: (value: string[]) => {},
+    onValuesChange: () => {},
   },
 };
