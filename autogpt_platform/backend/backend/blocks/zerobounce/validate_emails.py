@@ -159,7 +159,7 @@ class ValidateEmailsBlock(Block):
         client = ZeroBounceClient(credentials.api_key.get_secret_value())
         return client.validate_email(email, ip_address)
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,

@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
-from backend.util.request import requests
+from backend.util.request import Requests
 from backend.util.type import MediaFileType
 
 TEMP_DIR = Path(tempfile.gettempdir()).resolve()
@@ -29,7 +29,7 @@ def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
         shutil.rmtree(exec_path)
 
 
-def store_media_file(
+async def store_media_file(
     graph_exec_id: str, file: MediaFileType, return_content: bool = False
 ) -> MediaFileType:
     """
@@ -114,8 +114,7 @@ def store_media_file(
         target_path = _ensure_inside_base(base_path / filename, base_path)
 
         # Download and save
-        resp = requests.get(file)
-        resp.raise_for_status()
+        resp = await Requests().get(file)
         target_path.write_bytes(resp.content)
 
     else:

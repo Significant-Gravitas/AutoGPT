@@ -109,7 +109,7 @@ class AddMemoryBlock(Block, Mem0Base):
             test_mock={"_get_client": lambda credentials: MockMemoryClient()},
         )
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -208,7 +208,7 @@ class SearchMemoryBlock(Block, Mem0Base):
             test_mock={"_get_client": lambda credentials: MockMemoryClient()},
         )
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -288,7 +288,7 @@ class GetAllMemoriesBlock(Block, Mem0Base):
             test_mock={"_get_client": lambda credentials: MockMemoryClient()},
         )
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
