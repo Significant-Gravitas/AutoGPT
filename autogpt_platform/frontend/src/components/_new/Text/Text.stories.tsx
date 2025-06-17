@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { Text, textVariants, type TextVariant } from "./Text";
+import { Text, textVariants } from "./Text";
 import { StoryCode } from "@/stories/helpers/StoryCode";
 
 const meta: Meta<typeof Text> = {

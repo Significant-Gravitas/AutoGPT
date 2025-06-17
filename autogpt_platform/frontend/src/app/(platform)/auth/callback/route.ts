@@ -38,7 +38,7 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${origin}/error`);
     }
 
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
     // data.session?.refresh_token is available if you need to store it for later use
     if (!error) {
       try {

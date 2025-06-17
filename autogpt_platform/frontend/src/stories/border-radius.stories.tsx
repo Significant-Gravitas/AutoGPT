@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta } from "@storybook/react";
 import { Text } from "@/components/_new/Text/Text";
 import { StoryCode } from "@/stories/helpers/StoryCode";
 import { SquareArrowOutUpRight } from "lucide-react";
@@ -248,5 +248,3 @@ export function AllVariants() {
     </div>
   );
 }
-
-type Story = StoryObj<typeof meta>;
