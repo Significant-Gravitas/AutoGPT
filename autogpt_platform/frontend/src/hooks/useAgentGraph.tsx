@@ -1,5 +1,8 @@
 import { CustomEdge } from "@/components/CustomEdge";
 import { CustomNode } from "@/components/CustomNode";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { InputItem } from "@/components/RunnerUIWrapper";
+import { useToast } from "@/components/ui/use-toast";
 import BackendAPI, {
   Block,
   BlockIOSubSchema,
@@ -8,6 +11,7 @@ import BackendAPI, {
   Graph,
   GraphExecutionID,
   GraphID,
+  GraphMeta,
   NodeExecutionResult,
   SpecialBlockID,
 } from "@/lib/autogpt-server-api";
@@ -19,13 +23,9 @@ import {
 } from "@/lib/utils";
 import { MarkerType } from "@xyflow/react";
 import Ajv from "ajv";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { useToast } from "@/components/ui/use-toast";
-import { InputItem } from "@/components/RunnerUIWrapper";
-import { GraphMeta } from "@/lib/autogpt-server-api";
 import { default as NextLink } from "next/link";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -901,7 +901,6 @@ export default function useAgentGraph(
     });
 
     const payload = {
-      id: savedAgent?.id,
       name: agentName || `New Agent ${new Date().toISOString()}`,
       description: agentDescription || "",
       nodes: formattedNodes,
@@ -911,7 +910,8 @@ export default function useAgentGraph(
     // To avoid saving the same graph, we compare the payload with the saved agent.
     // Differences in IDs are ignored.
     const comparedPayload = {
-      ...(({ id: _, ...rest }) => rest)(payload),
+      name: payload.name,
+      description: payload.description,
       nodes: payload.nodes.map(
         ({ id: _, data: __, input_nodes: ___, output_nodes: ____, ...rest }) =>
           rest,
@@ -947,7 +947,10 @@ export default function useAgentGraph(
       setNodesSyncedWithSavedAgent(false);
 
       newSavedAgent = savedAgent
-        ? await api.updateGraph(savedAgent.id, payload)
+        ? await api.updateGraph(savedAgent.id, {
+            ...payload,
+            id: savedAgent.id,
+          })
         : await api.createGraph(payload);
 
       console.debug("Response from the API:", newSavedAgent);
@@ -996,7 +999,7 @@ export default function useAgentGraph(
         ...edge,
         data: {
           ...edge.data,
-          edgeColor: edge.data?.edgeColor,
+          edgeColor: edge.data?.edgeColor ?? "grey",
           beadUp: 0,
           beadDown: 0,
         },
