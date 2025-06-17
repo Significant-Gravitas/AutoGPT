@@ -37,7 +37,7 @@ export const SuggestionContent: React.FC = () => {
 
   useEffect(() => {
     fetchSuggestions();
-  }, [api, fetchSuggestions]);
+  }, [fetchSuggestions]);
 
   if (error) {
     return (
@@ -52,7 +52,7 @@ export const SuggestionContent: React.FC = () => {
   }
 
   return (
-    <div className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200">
+    <div className="scrollbar-thumb-rounded scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200 h-full overflow-y-auto pt-4 transition-all duration-200">
       <div className="w-full space-y-6 pb-4">
         {/* Recent Searches */}
         {/* <div className="-mb-2 space-y-2.5">

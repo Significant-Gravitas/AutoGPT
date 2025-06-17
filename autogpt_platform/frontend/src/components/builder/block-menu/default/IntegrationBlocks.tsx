@@ -37,7 +37,7 @@ export const IntegrationBlocks: React.FC = ({}) => {
 
   useEffect(() => {
     fetchBlocks();
-  }, [api, integration, fetchBlocks]);
+  }, [fetchBlocks]);
 
   if (loading) {
     return (
