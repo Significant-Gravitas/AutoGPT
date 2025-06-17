@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { FeaturedCreators } from "./FeaturedCreators";
-import { userEvent, within, expect } from "@storybook/test";
+import { userEvent, within, expect } from "storybook/test";
 
 const meta = {
   title: "Legacy/Composite/Featured Creators",

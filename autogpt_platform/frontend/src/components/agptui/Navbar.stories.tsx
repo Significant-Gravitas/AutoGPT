@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { Navbar } from "./Navbar";
-import { userEvent, within } from "@storybook/test";
+import { userEvent, within } from "storybook/test";
 import { IconType } from "../ui/icons";
 import { ProfileDetails } from "@/lib/autogpt-server-api/types";
 // You can't import this here, jest is not available in storybook and will crash it

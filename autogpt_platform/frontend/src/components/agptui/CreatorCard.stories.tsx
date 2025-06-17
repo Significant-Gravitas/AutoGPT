@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { CreatorCard } from "./CreatorCard";
-import { userEvent, within } from "@storybook/test";
+import { userEvent, within } from "storybook/test";
 
 const meta = {
   title: "Legacy/Creator Card",

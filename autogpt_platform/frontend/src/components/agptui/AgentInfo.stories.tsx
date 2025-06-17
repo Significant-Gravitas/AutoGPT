@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { AgentInfo } from "./AgentInfo";
-import { userEvent, within } from "@storybook/test";
+import { userEvent, within } from "storybook/test";
 
 const meta = {
   title: "Legacy/Agent Info",

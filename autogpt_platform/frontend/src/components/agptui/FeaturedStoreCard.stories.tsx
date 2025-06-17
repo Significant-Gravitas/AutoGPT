@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { FeaturedAgentCard } from "./FeaturedAgentCard";
-import { userEvent, within } from "@storybook/test";
+import { userEvent, within } from "storybook/test";
 
 const meta = {
   title: "Legacy/Featured Store Card",

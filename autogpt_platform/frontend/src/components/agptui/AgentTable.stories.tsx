@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { AgentTable } from "./AgentTable";
 import { AgentTableRowProps } from "./AgentTableRow";
-import { userEvent, within, expect } from "@storybook/test";
+import { userEvent, within, expect } from "storybook/test";
 import { StatusType } from "./Status";
 
 const meta: Meta<typeof AgentTable> = {

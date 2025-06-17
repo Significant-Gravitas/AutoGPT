@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { BreadCrumbs } from "./BreadCrumbs";
-import { userEvent, within } from "@storybook/test";
+import { userEvent, within } from "storybook/test";
 
 const meta = {
   title: "Legacy/BreadCrumbs",

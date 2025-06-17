@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { FeaturedSection } from "./FeaturedSection";
-import { userEvent, within } from "@storybook/test";
+import { userEvent, within } from "storybook/test";
 import { StoreAgent } from "@/lib/autogpt-server-api";
 
 const meta = {

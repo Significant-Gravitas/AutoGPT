@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { ProfilePopoutMenu } from "./ProfilePopoutMenu";
-import { userEvent, within } from "@storybook/test";
+import { userEvent, within } from "storybook/test";
 import { IconType } from "../ui/icons";
 
 const meta = {
