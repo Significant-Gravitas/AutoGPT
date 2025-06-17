@@ -5,7 +5,7 @@ from backend.blocks.hubspot._auth import (
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.request import requests
+from backend.util.request import Requests
 
 
 class HubSpotContactBlock(Block):
@@ -45,7 +45,7 @@ class HubSpotContactBlock(Block):
         }
 
         if input_data.operation == "create":
-            response = requests.post(
+            response = Requests().post(
                 base_url, headers=headers, json={"properties": input_data.contact_data}
             )
             result = response.json()
@@ -68,13 +68,13 @@ class HubSpotContactBlock(Block):
                     }
                 ]
             }
-            response = requests.post(search_url, headers=headers, json=search_data)
+            response = Requests().post(search_url, headers=headers, json=search_data)
             result = response.json()
             yield "contact", result.get("results", [{}])[0]
             yield "status", "retrieved"
 
         elif input_data.operation == "update":
-            search_response = requests.post(
+            search_response = Requests().post(
                 f"{base_url}/search",
                 headers=headers,
                 json={
@@ -94,7 +94,7 @@ class HubSpotContactBlock(Block):
             contact_id = search_response.json().get("results", [{}])[0].get("id")
 
             if contact_id:
-                response = requests.patch(
+                response = Requests().patch(
                     f"{base_url}/{contact_id}",
                     headers=headers,
                     json={"properties": input_data.contact_data},
