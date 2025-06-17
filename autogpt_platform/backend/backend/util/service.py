@@ -24,6 +24,12 @@ import httpx
 import uvicorn
 from fastapi import FastAPI, Request, responses
 from pydantic import BaseModel, TypeAdapter, create_model
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential_jitter,
+)
 
 from backend.util.exceptions import InsufficientBalanceError
 from backend.util.json import to_dict
@@ -248,9 +254,39 @@ def get_service_client(
     service_client_type: Type[ASC],
     call_timeout: int | None = api_call_timeout,
     health_check: bool = True,
+    request_retry: bool | int = False,
 ) -> ASC:
+
+    def _maybe_retry(fn: Callable[..., R]) -> Callable[..., R]:
+        """Decorate *fn* with tenacity retry when enabled."""
+        nonlocal request_retry
+
+        if isinstance(request_retry, int):
+            retry_attempts = request_retry
+            request_retry = True
+        else:
+            retry_attempts = api_comm_retry
+
+        if not request_retry:
+            return fn
+
+        return retry(
+            reraise=True,
+            stop=stop_after_attempt(retry_attempts),
+            wait=wait_exponential_jitter(max=4.0),
+            retry=retry_if_exception_type(
+                (
+                    httpx.ConnectError,
+                    httpx.ReadTimeout,
+                    httpx.WriteTimeout,
+                    httpx.ConnectTimeout,
+                    httpx.RemoteProtocolError,
+                )
+            ),
+        )(fn)
+
     class DynamicClient:
-        def __init__(self):
+        def __init__(self) -> None:
             service_type = service_client_type.get_service_type()
             host = service_type.get_host()
             port = service_type.get_port()
@@ -271,7 +307,7 @@ def get_service_client(
             )
 
         def _handle_call_method_response(
-            self, response: httpx.Response, method_name: str
+            self, *, response: httpx.Response, method_name: str
         ) -> Any:
             try:
                 response.raise_for_status()
@@ -284,13 +320,15 @@ def get_service_client(
                     *(error.args or [str(e)])
                 )
 
-        def _call_method_sync(self, method_name: str, **kwargs) -> Any:
+        @_maybe_retry
+        def _call_method_sync(self, method_name: str, **kwargs: Any) -> Any:
             return self._handle_call_method_response(
                 method_name=method_name,
                 response=self.sync_client.post(method_name, json=to_dict(kwargs)),
             )
 
-        async def _call_method_async(self, method_name: str, **kwargs) -> Any:
+        @_maybe_retry
+        async def _call_method_async(self, method_name: str, **kwargs: Any) -> Any:
             return self._handle_call_method_response(
                 method_name=method_name,
                 response=await self.async_client.post(
@@ -298,17 +336,19 @@ def get_service_client(
                 ),
             )
 
-        async def aclose(self):
+        async def aclose(self) -> None:
             self.sync_client.close()
             await self.async_client.aclose()
 
-        def close(self):
+        def close(self) -> None:
             self.sync_client.close()
 
-        def _get_params(self, signature: inspect.Signature, *args, **kwargs) -> dict:
+        def _get_params(
+            self, signature: inspect.Signature, *args: Any, **kwargs: Any
+        ) -> dict[str, Any]:
             if args:
                 arg_names = list(signature.parameters.keys())
-                if arg_names[0] in ("self", "cls"):
+                if arg_names and arg_names[0] in ("self", "cls"):
                     arg_names = arg_names[1:]
                 kwargs.update(dict(zip(arg_names, args)))
             return kwargs
@@ -324,35 +364,34 @@ def get_service_client(
                 raise AttributeError(
                     f"Method {name} not found in {service_client_type}"
                 )
-            else:
-                name = original_func.__name__
 
+            rpc_name = original_func.__name__
             sig = inspect.signature(original_func)
             ret_ann = sig.return_annotation
-            if ret_ann != inspect.Signature.empty:
-                expected_return = TypeAdapter(ret_ann)
-            else:
-                expected_return = None
+            expected_return = (
+                None if ret_ann is inspect.Signature.empty else TypeAdapter(ret_ann)
+            )
 
             if inspect.iscoroutinefunction(original_func):
 
-                async def async_method(*args, **kwargs) -> Any:
+                async def async_method(*args: P.args, **kwargs: P.kwargs):
                     params = self._get_params(sig, *args, **kwargs)
-                    result = await self._call_method_async(name, **params)
+                    result = await self._call_method_async(rpc_name, **params)
                     return self._get_return(expected_return, result)
 
                 return async_method
+
             else:
 
-                def sync_method(*args, **kwargs) -> Any:
+                def sync_method(*args: P.args, **kwargs: P.kwargs):
                     params = self._get_params(sig, *args, **kwargs)
-                    result = self._call_method_sync(name, **params)
+                    result = self._call_method_sync(rpc_name, **params)
                     return self._get_return(expected_return, result)
 
                 return sync_method
 
     client = cast(ASC, DynamicClient())
-    if health_check:
+    if health_check and hasattr(client, "health_check"):
         client.health_check()
 
     return client
