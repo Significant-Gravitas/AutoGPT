@@ -3,6 +3,8 @@ import { FiltersList } from "./FiltersList";
 import { SearchList } from "./SearchList";
 import { useBlockMenuContext } from "../block-menu-provider";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { cn } from "@/lib/utils";
+import { scrollbarStyles } from "@/components/styles/scrollbar";
 
 export const BlockMenuSearch = () => {
   const {
@@ -124,10 +126,7 @@ export const BlockMenuSearch = () => {
   }, [searchQuery, searchId, filters, fetchSearchData, setSearchData]);
 
   return (
-    <div
-      ref={scrollRef}
-      className="scrollbar-thumb-rounded scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200 h-full space-y-4 overflow-y-auto py-4 transition-all duration-200"
-    >
+    <div ref={scrollRef} className={cn(scrollbarStyles, "space-y-4 py-4")}>
       {searchData.length !== 0 && <FiltersList />}
       <SearchList
         isLoading={isLoading}

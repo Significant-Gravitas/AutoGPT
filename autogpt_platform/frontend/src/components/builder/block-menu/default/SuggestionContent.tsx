@@ -8,6 +8,7 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { ErrorState } from "../ErrorState";
+import { scrollbarStyles } from "@/components/styles/scrollbar";
 
 export const SuggestionContent = () => {
   const { setIntegration, setDefaultState, addNode } = useBlockMenuContext();
@@ -52,7 +53,7 @@ export const SuggestionContent = () => {
   }
 
   return (
-    <div className="scrollbar-thumb-rounded scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200 h-full overflow-y-auto pt-4 transition-all duration-200">
+    <div className={scrollbarStyles}>
       <div className="w-full space-y-6 pb-4">
         {/* Recent Searches */}
         {/* <div className="-mb-2 space-y-2.5">

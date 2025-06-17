@@ -8,6 +8,7 @@ import { BlockCategoryResponse } from "@/lib/autogpt-server-api";
 import { useBlockMenuContext } from "../block-menu-provider";
 import { ErrorState } from "../ErrorState";
 import { beautifyString } from "@/lib/utils";
+import { scrollbarStyles } from "@/components/styles/scrollbar";
 
 export const AllBlocksContent = () => {
   const { addNode } = useBlockMenuContext();
@@ -68,7 +69,7 @@ export const AllBlocksContent = () => {
 
   if (loading) {
     return (
-      <div className="scrollbar-thumb-rounded scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200 h-full overflow-y-auto pt-4 transition-all duration-200">
+      <div className={scrollbarStyles}>
         <div className="w-full space-y-3 px-4 pb-4">
           {Array.from({ length: 3 }).map((_, categoryIndex) => (
             <Fragment key={categoryIndex}>
@@ -98,7 +99,7 @@ export const AllBlocksContent = () => {
   }
 
   return (
-    <div className="scrollbar-thumb-rounded scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200 h-full overflow-y-auto pt-4 transition-all duration-200">
+    <div className={scrollbarStyles}>
       <div className="w-full space-y-3 px-4 pb-4">
         {categories.map((category, index) => (
           <Fragment key={category.name}>

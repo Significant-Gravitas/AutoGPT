@@ -4,6 +4,7 @@ import { Block } from "../Block";
 import { BlockRequest } from "@/lib/autogpt-server-api";
 import { usePagination } from "@/hooks/usePagination";
 import { ErrorState } from "../ErrorState";
+import { scrollbarStyles } from "@/components/styles/scrollbar";
 
 interface PaginatedBlocksContentProps {
   blockRequest: BlockRequest;
@@ -40,10 +41,7 @@ export const PaginatedBlocksContent: React.FC<PaginatedBlocksContentProps> = ({
   }
 
   return (
-    <div
-      ref={scrollRef}
-      className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200"
-    >
+    <div ref={scrollRef} className={scrollbarStyles}>
       <BlocksList blocks={blocks} loading={loading} />
       {loadingMore && hasMore && (
         <div className="w-full space-y-3 px-4 pb-4">

@@ -12,6 +12,7 @@ import {
 } from "../block-menu-provider";
 import { StoreAgent } from "@/lib/autogpt-server-api";
 import { getDefaultFilters } from "../helpers";
+import { scrollbarStyles } from "@/components/styles/scrollbar";
 
 const INITIAL_CREATORS_TO_SHOW = 5;
 
@@ -144,12 +145,7 @@ export function FilterSheet({
                 : "-translate-x-full duration-300 ease-out",
             )}
           >
-            <div
-              className={cn(
-                "flex-1 space-y-4 pb-16",
-                "scrollbar-thumb-rounded h-full overflow-y-auto pt-4 transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200",
-              )}
-            >
+            <div className={cn("flex-1 space-y-4 pb-16", scrollbarStyles)}>
               {/* Top */}
               <div className="flex items-center justify-between px-5">
                 <p className="font-sans text-base text-[#040404]">Filters</p>
