@@ -93,9 +93,9 @@ export const IntegrationBlocks = () => {
         </span>
       </div>
       <div className="space-y-3">
-        {blocks.map((block, index) => (
+        {blocks.map((block) => (
           <IntegrationBlock
-            key={index}
+            key={block.id}
             title={block.name}
             description={block.description}
             icon_url={`/integrations/${integration}.png`}
