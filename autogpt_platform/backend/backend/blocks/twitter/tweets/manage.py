@@ -211,7 +211,7 @@ class TwitterPostTweetBlock(Block):
         except Exception:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -288,7 +288,7 @@ class TwitterDeleteTweetBlock(Block):
         except Exception:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -508,7 +508,7 @@ class TwitterSearchRecentTweetsBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,

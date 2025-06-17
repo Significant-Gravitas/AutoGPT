@@ -1,13 +1,13 @@
 import logging
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable, Coroutine
 
-from autogpt_libs.utils.synchronize import RedisKeyedMutex
-from redis.lock import Lock as RedisLock
+from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
+from redis.asyncio.lock import Lock as AsyncRedisLock
 
-from backend.data import redis
 from backend.data.model import Credentials, OAuth2Credentials
+from backend.data.redis import get_redis_async
 from backend.integrations.credentials_store import IntegrationCredentialsStore
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
@@ -54,20 +54,26 @@ class IntegrationCredentialsManager:
     """
 
     def __init__(self):
-        redis_conn = redis.get_redis()
-        self._locks = RedisKeyedMutex(redis_conn)
         self.store = IntegrationCredentialsStore()
+        self._locks = None
 
-    def create(self, user_id: str, credentials: Credentials) -> None:
-        return self.store.add_creds(user_id, credentials)
+    async def locks(self) -> AsyncRedisKeyedMutex:
+        if self._locks:
+            return self._locks
 
-    def exists(self, user_id: str, credentials_id: str) -> bool:
-        return self.store.get_creds_by_id(user_id, credentials_id) is not None
+        self._locks = AsyncRedisKeyedMutex(await get_redis_async())
+        return self._locks
 
-    def get(
+    async def create(self, user_id: str, credentials: Credentials) -> None:
+        return await self.store.add_creds(user_id, credentials)
+
+    async def exists(self, user_id: str, credentials_id: str) -> bool:
+        return (await self.store.get_creds_by_id(user_id, credentials_id)) is not None
+
+    async def get(
         self, user_id: str, credentials_id: str, lock: bool = True
     ) -> Credentials | None:
-        credentials = self.store.get_creds_by_id(user_id, credentials_id)
+        credentials = await self.store.get_creds_by_id(user_id, credentials_id)
         if not credentials:
             return None
 
@@ -78,15 +84,15 @@ class IntegrationCredentialsManager:
                 f"{datetime.fromtimestamp(credentials.access_token_expires_at)}; "
                 f"current time is {datetime.now()}"
             )
-            credentials = self.refresh_if_needed(user_id, credentials, lock)
+            credentials = await self.refresh_if_needed(user_id, credentials, lock)
         else:
             logger.debug(f"Credentials #{credentials.id} never expire")
 
         return credentials
 
-    def acquire(
+    async def acquire(
         self, user_id: str, credentials_id: str
-    ) -> tuple[Credentials, RedisLock]:
+    ) -> tuple[Credentials, AsyncRedisLock]:
         """
         ⚠️ WARNING: this locks credentials system-wide and blocks both acquiring
         and updating them elsewhere until the lock is released.
@@ -94,23 +100,25 @@ class IntegrationCredentialsManager:
         """
         # Use a low-priority (!time_sensitive) locking queue on top of the general lock
         # to allow priority access for refreshing/updating the tokens.
-        with self._locked(user_id, credentials_id, "!time_sensitive"):
-            lock = self._acquire_lock(user_id, credentials_id)
-        credentials = self.get(user_id, credentials_id, lock=False)
+        async with self._locked(user_id, credentials_id, "!time_sensitive"):
+            lock = await self._acquire_lock(user_id, credentials_id)
+        credentials = await self.get(user_id, credentials_id, lock=False)
         if not credentials:
             raise ValueError(
                 f"Credentials #{credentials_id} for user #{user_id} not found"
             )
         return credentials, lock
 
-    def cached_getter(self, user_id: str) -> Callable[[str], "Credentials | None"]:
+    def cached_getter(
+        self, user_id: str
+    ) -> Callable[[str], "Coroutine[Any, Any, Credentials | None]"]:
         all_credentials = None
 
-        def get_credentials(creds_id: str) -> "Credentials | None":
+        async def get_credentials(creds_id: str) -> "Credentials | None":
             nonlocal all_credentials
             if not all_credentials:
                 # Fetch credentials on first necessity
-                all_credentials = self.store.get_all_creds(user_id)
+                all_credentials = await self.store.get_all_creds(user_id)
 
             credential = next((c for c in all_credentials if c.id == creds_id), None)
             if not credential:
@@ -120,15 +128,15 @@ class IntegrationCredentialsManager:
                 return credential
 
             # Credential is OAuth2 credential and has expiration timestamp
-            return self.refresh_if_needed(user_id, credential)
+            return await self.refresh_if_needed(user_id, credential)
 
         return get_credentials
 
-    def refresh_if_needed(
+    async def refresh_if_needed(
         self, user_id: str, credentials: OAuth2Credentials, lock: bool = True
     ) -> OAuth2Credentials:
-        with self._locked(user_id, credentials.id, "refresh"):
-            oauth_handler = _get_provider_oauth_handler(credentials.provider)
+        async with self._locked(user_id, credentials.id, "refresh"):
+            oauth_handler = await _get_provider_oauth_handler(credentials.provider)
             if oauth_handler.needs_refresh(credentials):
                 logger.debug(
                     f"Refreshing '{credentials.provider}' "
@@ -137,50 +145,53 @@ class IntegrationCredentialsManager:
                 _lock = None
                 if lock:
                     # Wait until the credentials are no longer in use anywhere
-                    _lock = self._acquire_lock(user_id, credentials.id)
+                    _lock = await self._acquire_lock(user_id, credentials.id)
 
-                fresh_credentials = oauth_handler.refresh_tokens(credentials)
-                self.store.update_creds(user_id, fresh_credentials)
-                if _lock and _lock.locked() and _lock.owned():
-                    _lock.release()
+                fresh_credentials = await oauth_handler.refresh_tokens(credentials)
+                await self.store.update_creds(user_id, fresh_credentials)
+                if _lock and (await _lock.locked()) and (await _lock.owned()):
+                    await _lock.release()
 
                 credentials = fresh_credentials
         return credentials
 
-    def update(self, user_id: str, updated: Credentials) -> None:
-        with self._locked(user_id, updated.id):
-            self.store.update_creds(user_id, updated)
+    async def update(self, user_id: str, updated: Credentials) -> None:
+        async with self._locked(user_id, updated.id):
+            await self.store.update_creds(user_id, updated)
 
-    def delete(self, user_id: str, credentials_id: str) -> None:
-        with self._locked(user_id, credentials_id):
-            self.store.delete_creds_by_id(user_id, credentials_id)
+    async def delete(self, user_id: str, credentials_id: str) -> None:
+        async with self._locked(user_id, credentials_id):
+            await self.store.delete_creds_by_id(user_id, credentials_id)
 
     # -- Locking utilities -- #
 
-    def _acquire_lock(self, user_id: str, credentials_id: str, *args: str) -> RedisLock:
+    async def _acquire_lock(
+        self, user_id: str, credentials_id: str, *args: str
+    ) -> AsyncRedisLock:
         key = (
             f"user:{user_id}",
             f"credentials:{credentials_id}",
             *args,
         )
-        return self._locks.acquire(key)
+        locks = await self.locks()
+        return await locks.acquire(key)
 
-    @contextmanager
-    def _locked(self, user_id: str, credentials_id: str, *args: str):
-        lock = self._acquire_lock(user_id, credentials_id, *args)
+    @asynccontextmanager
+    async def _locked(self, user_id: str, credentials_id: str, *args: str):
+        lock = await self._acquire_lock(user_id, credentials_id, *args)
         try:
             yield
         finally:
-            if lock.locked() and lock.owned():
-                lock.release()
+            if (await lock.locked()) and (await lock.owned()):
+                await lock.release()
 
-    def release_all_locks(self):
+    async def release_all_locks(self):
         """Call this on process termination to ensure all locks are released"""
-        self._locks.release_all_locks()
-        self.store.locks.release_all_locks()
+        await (await self.locks()).release_all_locks()
+        await (await self.store.locks()).release_all_locks()
 
 
-def _get_provider_oauth_handler(provider_name_str: str) -> "BaseOAuthHandler":
+async def _get_provider_oauth_handler(provider_name_str: str) -> "BaseOAuthHandler":
     provider_name = ProviderName(provider_name_str)
     if provider_name not in HANDLERS_BY_NAME:
         raise KeyError(f"Unknown provider '{provider_name}'")

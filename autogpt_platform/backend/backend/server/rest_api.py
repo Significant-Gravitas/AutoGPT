@@ -323,14 +323,14 @@ class AgentServer(backend.util.service.AppProcess):
         )
 
     @staticmethod
-    def test_create_credentials(
+    async def test_create_credentials(
         user_id: str,
         provider: ProviderName,
         credentials: Credentials,
     ) -> Credentials:
         from backend.server.integrations.router import create_credentials
 
-        return create_credentials(
+        return await create_credentials(
             user_id=user_id, provider=provider, credentials=credentials
         )
 

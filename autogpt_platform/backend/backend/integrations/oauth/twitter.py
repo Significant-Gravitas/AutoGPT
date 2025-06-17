@@ -4,7 +4,7 @@ from typing import ClassVar, Optional
 
 from backend.data.model import OAuth2Credentials, ProviderName
 from backend.integrations.oauth.base import BaseOAuthHandler
-from backend.util.request import Requests, req
+from backend.util.request import Requests
 
 
 class TwitterOAuthHandler(BaseOAuthHandler):
@@ -61,7 +61,7 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         return f"{self.AUTHORIZE_URL}?{urllib.parse.urlencode(params)}"
 
-    def exchange_code_for_tokens(
+    async def exchange_code_for_tokens(
         self, code: str, scopes: list[str], code_verifier: Optional[str]
     ) -> OAuth2Credentials:
         """Exchange authorization code for access tokens"""
@@ -77,14 +77,12 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         auth = (self.client_id, self.client_secret)
 
-        response = Requests().post(
+        response = await Requests().post(
             self.TOKEN_URL, headers=headers, data=data, auth=auth
         )
-        response.raise_for_status()
-
         tokens = response.json()
 
-        username = self._get_username(tokens["access_token"])
+        username = await self._get_username(tokens["access_token"])
 
         return OAuth2Credentials(
             provider=self.PROVIDER_NAME,
@@ -97,20 +95,21 @@ class TwitterOAuthHandler(BaseOAuthHandler):
             scopes=scopes,
         )
 
-    def _get_username(self, access_token: str) -> str:
+    async def _get_username(self, access_token: str) -> str:
         """Get the username from the access token"""
         headers = {"Authorization": f"Bearer {access_token}"}
 
         params = {"user.fields": "username"}
 
-        response = Requests().get(
+        response = await Requests().get(
             f"{self.USERNAME_URL}?{urllib.parse.urlencode(params)}", headers=headers
         )
-        response.raise_for_status()
 
         return response.json()["data"]["username"]
 
-    def _refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
+    async def _refresh_tokens(
+        self, credentials: OAuth2Credentials
+    ) -> OAuth2Credentials:
         """Refresh access tokens using refresh token"""
         if not credentials.refresh_token:
             raise ValueError("No refresh token available")
@@ -123,17 +122,19 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         auth = (self.client_id, self.client_secret)
 
-        response = Requests().post(self.TOKEN_URL, headers=header, data=data, auth=auth)
+        response = await Requests().post(
+            self.TOKEN_URL, headers=header, data=data, auth=auth
+        )
 
-        try:
-            response.raise_for_status()
-        except req.exceptions.HTTPError:
-            print(f"HTTP Error: {response.status_code}")
-            raise
+        if not response.ok:
+            error_text = response.text
+            print("HTTP Error:", response.status)
+            print("Response Content:", error_text)
+            raise ValueError(f"HTTP Error: {response.status} - {error_text}")
 
         tokens = response.json()
 
-        username = self._get_username(tokens["access_token"])
+        username = await self._get_username(tokens["access_token"])
 
         return OAuth2Credentials(
             id=credentials.id,
@@ -147,7 +148,7 @@ class TwitterOAuthHandler(BaseOAuthHandler):
             refresh_token_expires_at=None,
         )
 
-    def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
+    async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
         """Revoke the access token"""
 
         header = {"Content-Type": "application/x-www-form-urlencoded"}
@@ -159,14 +160,14 @@ class TwitterOAuthHandler(BaseOAuthHandler):
 
         auth = (self.client_id, self.client_secret)
 
-        response = Requests().post(
+        response = await Requests().post(
             self.REVOKE_URL, headers=header, data=data, auth=auth
         )
 
-        try:
-            response.raise_for_status()
-        except req.exceptions.HTTPError:
-            print(f"HTTP Error: {response.status_code}")
-            raise
+        if not response.ok:
+            error_text = response.text
+            print("HTTP Error:", response.status)
+            print("Response Content:", error_text)
+            raise ValueError(f"HTTP Error: {response.status} - {error_text}")
 
-        return response.status_code == 200
+        return response.ok
