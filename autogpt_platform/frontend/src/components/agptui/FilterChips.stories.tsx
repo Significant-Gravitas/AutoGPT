@@ -46,7 +46,7 @@ export const WithSelectedFilters: Story = {
     badges: defaultBadges,
     multiSelect: true,
   },
-  play: async ({ canvasElement, args }) => {
+  play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const marketingChip = canvas.getByText("Marketing").parentElement;
     const salesChip = canvas.getByText("Sales").parentElement;
@@ -70,7 +70,7 @@ export const WithFilterChangeCallback: Story = {
       console.log("Selected filters:", selectedFilters);
     },
   },
-  play: async ({ canvasElement, args }) => {
+  play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const salesChip = canvas.getByText("Sales");
     const marketingChip = canvas.getByText("Marketing");
@@ -104,7 +104,7 @@ export const SingleSelectBehavior: Story = {
     badges: defaultBadges,
     multiSelect: false,
   },
-  play: async ({ canvasElement, args }) => {
+  play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const salesChip = canvas.getByText("Sales").parentElement;
     const marketingChip = canvas.getByText("Marketing").parentElement;

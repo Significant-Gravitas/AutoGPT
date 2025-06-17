@@ -35,7 +35,6 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { useToast } from "@/components/ui/use-toast";
 import RunnerInputUI from "@/components/runner-ui/RunnerInputUI";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
@@ -52,7 +51,6 @@ export const FlowInfo: React.FC<
     useAgentGraph(flow.graph_id, flow.graph_version, undefined, false);
 
   const api = useBackendAPI();
-  const { toast } = useToast();
 
   const [flowVersions, setFlowVersions] = useState<Graph[] | null>(null);
   const [selectedVersion, setSelectedFlowVersion] = useState(
@@ -170,7 +168,7 @@ export const FlowInfo: React.FC<
                 <DropdownMenuSeparator />
                 <DropdownMenuRadioGroup
                   value={String(selectedVersion)}
-                  onValueChange={(choice) =>
+                  onValueChange={(choice: string) =>
                     setSelectedFlowVersion(
                       choice == "all" ? choice : Number(choice),
                     )

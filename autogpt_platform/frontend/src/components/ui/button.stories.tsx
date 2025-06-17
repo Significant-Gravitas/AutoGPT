@@ -123,7 +123,6 @@ export const Sizes: Story = {
     const canvas = within(canvasElement);
     const buttons = canvas.getAllByRole("button");
     await expect(buttons).toHaveLength(5);
-    const sizes = ["sm", "default", "lg", "primary", "icon"];
     const sizeClasses = [
       "h-8 rounded-md px-3 text-xs",
       "h-9 px-4 py-2",
