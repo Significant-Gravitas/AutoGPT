@@ -6,7 +6,7 @@ const config: StorybookConfig = {
     "@storybook/addon-a11y",
     "@storybook/addon-onboarding",
     "@storybook/addon-links",
-    "@storybook/addon-docs"
+    "@storybook/addon-docs",
   ],
   features: {
     experimentalRSC: true,
