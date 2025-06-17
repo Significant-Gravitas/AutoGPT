@@ -61,6 +61,7 @@ class TruncatedLogger:
 
     def _wrap(self, msg: str, **extra):
         extra_msg = str(extra or "")
-        if len(extra_msg) > 1000:
-            extra_msg = extra_msg[:1000] + "..."
-        return f"{self.prefix} {msg} {extra_msg}"
+        text = f"{self.prefix} {msg} {extra_msg}"
+        if len(text) > self.max_length:
+            text = text[: self.max_length] + "..."
+        return text

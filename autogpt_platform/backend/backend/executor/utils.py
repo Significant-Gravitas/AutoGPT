@@ -39,6 +39,7 @@ from backend.data.rabbitmq import (
     SyncRabbitMQ,
 )
 from backend.util.exceptions import NotFoundError
+from backend.util.logging import TruncatedLogger
 from backend.util.mock import MockObject
 from backend.util.service import get_service_client
 from backend.util.settings import Config
@@ -49,7 +50,7 @@ if TYPE_CHECKING:
     from backend.integrations.credentials_store import IntegrationCredentialsStore
 
 config = Config()
-logger = logging.getLogger(__name__)
+logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
 
 # ============ Resource Helpers ============ #
 
