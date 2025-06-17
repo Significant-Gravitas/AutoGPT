@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { SignOut, User } from "@supabase/supabase-js";
+import { User } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import {
   broadcastLogout,
