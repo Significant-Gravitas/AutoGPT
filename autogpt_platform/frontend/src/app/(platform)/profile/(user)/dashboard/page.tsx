@@ -14,7 +14,7 @@ import {
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
-export default function Page({}: {}) {
+export default function Page() {
   const { supabase } = useSupabase();
   const api = useBackendAPI();
   const [submissions, setSubmissions] = useState<StoreSubmissionsResponse>();

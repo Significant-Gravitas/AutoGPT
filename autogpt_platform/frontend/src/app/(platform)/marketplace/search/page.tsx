@@ -8,6 +8,7 @@ import { Separator } from "@/components/ui/separator";
 import { SearchFilterChips } from "@/components/agptui/SearchFilterChips";
 import { SortDropdown } from "@/components/agptui/SortDropdown";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { Creator, StoreAgent } from "@/lib/autogpt-server-api";
 
 type MarketplaceSearchPageSearchParams = { searchTerm?: string; sort?: string };
 
@@ -33,8 +34,8 @@ function SearchResults({
 }): React.ReactElement {
   const [showAgents, setShowAgents] = useState(true);
   const [showCreators, setShowCreators] = useState(true);
-  const [agents, setAgents] = useState<any[]>([]);
-  const [creators, setCreators] = useState<any[]>([]);
+  const [agents, setAgents] = useState<StoreAgent[]>([]);
+  const [creators, setCreators] = useState<Creator[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const api = useBackendAPI();
 

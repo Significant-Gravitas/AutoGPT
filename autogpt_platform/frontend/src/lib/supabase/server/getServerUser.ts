@@ -10,7 +10,6 @@ export async function getServerUser() {
   try {
     const {
       data: { user },
-      error: _,
     } = await supabase.auth.getUser();
     // if (error) {
     //   // FIX: Suppressing error for now. Need to stop the nav bar calling this all the time

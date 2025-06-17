@@ -279,9 +279,6 @@ export default function useAgentGraph(
   const cleanupSourceName = (sourceName: string) =>
     isToolSourceName(sourceName) ? "tools" : sourceName;
 
-  const getToolArgName = (sourceName: string) =>
-    isToolSourceName(sourceName) ? sourceName.split("_~_")[1] : null;
-
   const getToolFuncName = (nodeId: string) => {
     const sinkNode = nodes.find((node) => node.id === nodeId);
     const sinkNodeName = sinkNode
@@ -312,7 +309,7 @@ export default function useAgentGraph(
             new Map<string, NodeExecutionResult["status"]>();
 
           // Update execution status for input edges
-          for (let key in executionData.input_data) {
+          for (const key in executionData.input_data) {
             if (
               edge.target !== getFrontendId(executionData.node_id, nodes) ||
               edge.targetHandle !== key
@@ -328,7 +325,7 @@ export default function useAgentGraph(
           let beadUp = 0;
           let beadDown = 0;
 
-          execStatus.forEach((status) => {
+          execStatus.forEach((status: NodeExecutionResult["status"]) => {
             beadUp++;
             if (status !== "INCOMPLETE") {
               // Count any non-incomplete execution as consumed
@@ -831,7 +828,7 @@ export default function useAgentGraph(
         return inputData;
       };
 
-      let inputData = getNestedData(blockSchema, node.data.hardcodedValues);
+      const inputData = getNestedData(blockSchema, node.data.hardcodedValues);
 
       console.debug(
         `Final prepared input for ${node.data.blockType} (${node.id}):`,
@@ -904,7 +901,7 @@ export default function useAgentGraph(
     });
 
     const payload = {
-      id: savedAgent?.id!,
+      id: savedAgent?.id,
       name: agentName || `New Agent ${new Date().toISOString()}`,
       description: agentDescription || "",
       nodes: formattedNodes,
@@ -914,11 +911,14 @@ export default function useAgentGraph(
     // To avoid saving the same graph, we compare the payload with the saved agent.
     // Differences in IDs are ignored.
     const comparedPayload = {
-      ...(({ id, ...rest }) => rest)(payload),
+      ...(({ id: _, ...rest }) => rest)(payload),
       nodes: payload.nodes.map(
-        ({ id, data, input_nodes, output_nodes, ...rest }) => rest,
+        ({ id: _, data: __, input_nodes: ___, output_nodes: ____, ...rest }) =>
+          rest,
       ),
-      links: payload.links.map(({ source_id, sink_id, ...rest }) => rest),
+      links: payload.links.map(
+        ({ source_id: _, sink_id: __, ...rest }) => rest,
+      ),
     };
     const comparedSavedAgent = {
       name: savedAgent?.name,
@@ -996,7 +996,7 @@ export default function useAgentGraph(
         ...edge,
         data: {
           ...edge.data,
-          edgeColor: edge.data?.edgeColor!,
+          edgeColor: edge.data?.edgeColor,
           beadUp: 0,
           beadDown: 0,
         },

@@ -1,11 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import {
-  PROTECTED_PAGES,
-  ADMIN_PAGES,
-  isProtectedPage,
-  isAdminPage,
-} from "./helpers";
+import { isProtectedPage, isAdminPage } from "./helpers";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -51,7 +46,6 @@ export async function updateSession(request: NextRequest) {
 
     const {
       data: { user },
-      error,
     } = await supabase.auth.getUser();
 
     const userRole = user?.role;

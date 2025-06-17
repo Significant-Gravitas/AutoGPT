@@ -120,7 +120,7 @@ export function Turnstile({
   ]);
 
   // Method to reset the widget manually
-  const reset = useCallback(() => {
+  useEffect(() => {
     if (loaded && widgetIdRef.current && window.turnstile && shouldRender) {
       window.turnstile.reset(widgetIdRef.current);
     }
