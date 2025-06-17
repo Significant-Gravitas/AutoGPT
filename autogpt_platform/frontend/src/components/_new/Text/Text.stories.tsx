@@ -1,6 +1,6 @@
-import type { Meta, StoryObj } from "@storybook/nextjs";
-import { Text, textVariants, type TextVariant } from "./Text";
 import { StoryCode } from "@/stories/helpers/StoryCode";
+import type { Meta, StoryObj } from "@storybook/nextjs";
+import { Text, textVariants } from "./Text";
 
 const meta: Meta<typeof Text> = {
   title: "Design System/Atoms/Text",
