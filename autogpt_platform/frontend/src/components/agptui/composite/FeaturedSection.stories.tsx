@@ -1,6 +1,7 @@
+import { StoreAgent } from "@/lib/autogpt-server-api";
 import type { Meta, StoryObj } from "@storybook/nextjs";
+import { userEvent, within } from "@storybook/test";
 import { FeaturedSection } from "./FeaturedSection";
-import { userEvent, within } from "storybook/test";
 import { StoreAgent } from "@/lib/autogpt-server-api";
 
 const meta = {
@@ -24,6 +25,7 @@ type Story = StoryObj<typeof meta>;
 
 const mockFeaturedAgents = [
   {
+    updated_at: "2024-01-10T15:30:00.000Z",
     agent_name: "Personalized Morning Coffee Newsletter example of three lines",
     sub_heading:
       "Transform ideas into breathtaking images with this AI-powered Image Generator.",
@@ -39,6 +41,7 @@ const mockFeaturedAgents = [
     slug: "personalized-morning-coffee-newsletter",
   },
   {
+    updated_at: "2024-01-10T15:30:00.000Z",
     agent_name: "Data Analyzer Lite",
     sub_heading: "Basic data analysis tool",
     creator: "DataTech",
@@ -53,6 +56,7 @@ const mockFeaturedAgents = [
     slug: "data-analyzer-lite",
   },
   {
+    updated_at: "2024-01-10T15:30:00.000Z",
     agent_name: "CodeAssist AI",
     sub_heading: "Your AI coding companion",
     creator: "DevTools Co.",
@@ -67,6 +71,7 @@ const mockFeaturedAgents = [
     slug: "codeassist-ai",
   },
   {
+    updated_at: "2024-01-10T15:30:00.000Z",
     agent_name: "MultiTasker",
     sub_heading: "All-in-one productivity suite",
     creator: "Productivity Plus",
@@ -81,6 +86,7 @@ const mockFeaturedAgents = [
     slug: "multitasker",
   },
   {
+    updated_at: "2024-01-10T15:30:00.000Z",
     agent_name: "QuickTask",
     sub_heading: "Fast task automation",
     creator: "EfficientWorks",

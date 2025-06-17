@@ -19,7 +19,7 @@ export default function LibrarySortMenu(): React.ReactNode {
     setLibrarySort(value);
     setAgentLoading(true);
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    let response = await api.listLibraryAgents({
+    const response = await api.listLibraryAgents({
       search_term: searchTerm,
       sort_by: value,
       page: 1,

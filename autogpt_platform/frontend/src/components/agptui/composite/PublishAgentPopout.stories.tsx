@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { PublishAgentPopout } from "@/components/agptui/composite/PublishAgentPopout";
-import { userEvent, within, expect } from "storybook/test";
+import { userEvent, within } from "storybook/test";
 
 const meta = {
   title: "Legacy/Composite/Publish Agent Popout",
