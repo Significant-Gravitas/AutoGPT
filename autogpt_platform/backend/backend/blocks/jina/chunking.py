@@ -35,7 +35,7 @@ class JinaChunkingBlock(Block):
             output_schema=JinaChunkingBlock.Output,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: JinaCredentials, **kwargs
     ) -> BlockOutput:
         url = "https://segment.jina.ai/"
@@ -55,7 +55,7 @@ class JinaChunkingBlock(Block):
                 "max_chunk_length": str(input_data.max_chunk_length),
             }
 
-            response = Requests().post(url, headers=headers, json=data)
+            response = await Requests().post(url, headers=headers, json=data)
             result = response.json()
 
             all_chunks.extend(result.get("chunks", []))

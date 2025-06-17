@@ -65,28 +65,31 @@ class GithubListPullRequestsBlock(Block):
         )
 
     @staticmethod
-    def list_prs(credentials: GithubCredentials, repo_url: str) -> list[Output.PRItem]:
+    async def list_prs(
+        credentials: GithubCredentials, repo_url: str
+    ) -> list[Output.PRItem]:
         api = get_api(credentials)
         pulls_url = repo_url + "/pulls"
-        response = api.get(pulls_url)
+        response = await api.get(pulls_url)
         data = response.json()
         pull_requests: list[GithubListPullRequestsBlock.Output.PRItem] = [
             {"title": pr["title"], "url": pr["html_url"]} for pr in data
         ]
         return pull_requests
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        pull_requests = self.list_prs(
+        pull_requests = await self.list_prs(
             credentials,
             input_data.repo_url,
         )
-        yield from (("pull_request", pr) for pr in pull_requests)
+        for pr in pull_requests:
+            yield "pull_request", pr
 
 
 class GithubMakePullRequestBlock(Block):
@@ -153,7 +156,7 @@ class GithubMakePullRequestBlock(Block):
         )
 
     @staticmethod
-    def create_pr(
+    async def create_pr(
         credentials: GithubCredentials,
         repo_url: str,
         title: str,
@@ -164,11 +167,11 @@ class GithubMakePullRequestBlock(Block):
         api = get_api(credentials)
         pulls_url = repo_url + "/pulls"
         data = {"title": title, "body": body, "head": head, "base": base}
-        response = api.post(pulls_url, json=data)
+        response = await api.post(pulls_url, json=data)
         pr_data = response.json()
         return pr_data["number"], pr_data["html_url"]
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -176,7 +179,7 @@ class GithubMakePullRequestBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            number, url = self.create_pr(
+            number, url = await self.create_pr(
                 credentials,
                 input_data.repo_url,
                 input_data.title,
@@ -242,39 +245,39 @@ class GithubReadPullRequestBlock(Block):
         )
 
     @staticmethod
-    def read_pr(credentials: GithubCredentials, pr_url: str) -> tuple[str, str, str]:
+    async def read_pr(
+        credentials: GithubCredentials, pr_url: str
+    ) -> tuple[str, str, str]:
         api = get_api(credentials)
-        # Adjust the URL to access the issue endpoint for PR metadata
         issue_url = pr_url.replace("/pull/", "/issues/")
-        response = api.get(issue_url)
+        response = await api.get(issue_url)
         data = response.json()
         title = data.get("title", "No title found")
         body = data.get("body", "No body content found")
-        author = data.get("user", {}).get("login", "No user found")
+        author = data.get("user", {}).get("login", "Unknown author")
         return title, body, author
 
     @staticmethod
-    def read_pr_changes(credentials: GithubCredentials, pr_url: str) -> str:
+    async def read_pr_changes(credentials: GithubCredentials, pr_url: str) -> str:
         api = get_api(credentials)
         files_url = prepare_pr_api_url(pr_url=pr_url, path="files")
-        response = api.get(files_url)
+        response = await api.get(files_url)
         files = response.json()
         changes = []
         for file in files:
-            filename = file.get("filename")
-            patch = file.get("patch")
-            if filename and patch:
-                changes.append(f"File: {filename}\n{patch}")
-        return "\n\n".join(changes)
+            filename = file.get("filename", "")
+            status = file.get("status", "")
+            changes.append(f"{filename}: {status}")
+        return "\n".join(changes)
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        title, body, author = self.read_pr(
+        title, body, author = await self.read_pr(
             credentials,
             input_data.pr_url,
         )
@@ -283,7 +286,7 @@ class GithubReadPullRequestBlock(Block):
         yield "author", author
 
         if input_data.include_pr_changes:
-            changes = self.read_pr_changes(
+            changes = await self.read_pr_changes(
                 credentials,
                 input_data.pr_url,
             )
@@ -330,16 +333,16 @@ class GithubAssignPRReviewerBlock(Block):
         )
 
     @staticmethod
-    def assign_reviewer(
+    async def assign_reviewer(
         credentials: GithubCredentials, pr_url: str, reviewer: str
     ) -> str:
         api = get_api(credentials)
         reviewers_url = prepare_pr_api_url(pr_url=pr_url, path="requested_reviewers")
         data = {"reviewers": [reviewer]}
-        api.post(reviewers_url, json=data)
+        await api.post(reviewers_url, json=data)
         return "Reviewer assigned successfully"
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -347,7 +350,7 @@ class GithubAssignPRReviewerBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            status = self.assign_reviewer(
+            status = await self.assign_reviewer(
                 credentials,
                 input_data.pr_url,
                 input_data.reviewer,
@@ -397,16 +400,16 @@ class GithubUnassignPRReviewerBlock(Block):
         )
 
     @staticmethod
-    def unassign_reviewer(
+    async def unassign_reviewer(
         credentials: GithubCredentials, pr_url: str, reviewer: str
     ) -> str:
         api = get_api(credentials)
         reviewers_url = prepare_pr_api_url(pr_url=pr_url, path="requested_reviewers")
         data = {"reviewers": [reviewer]}
-        api.delete(reviewers_url, json=data)
+        await api.delete(reviewers_url, json=data)
         return "Reviewer unassigned successfully"
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -414,7 +417,7 @@ class GithubUnassignPRReviewerBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            status = self.unassign_reviewer(
+            status = await self.unassign_reviewer(
                 credentials,
                 input_data.pr_url,
                 input_data.reviewer,
@@ -477,12 +480,12 @@ class GithubListPRReviewersBlock(Block):
         )
 
     @staticmethod
-    def list_reviewers(
+    async def list_reviewers(
         credentials: GithubCredentials, pr_url: str
     ) -> list[Output.ReviewerItem]:
         api = get_api(credentials)
         reviewers_url = prepare_pr_api_url(pr_url=pr_url, path="requested_reviewers")
-        response = api.get(reviewers_url)
+        response = await api.get(reviewers_url)
         data = response.json()
         reviewers: list[GithubListPRReviewersBlock.Output.ReviewerItem] = [
             {"username": reviewer["login"], "url": reviewer["html_url"]}
@@ -490,18 +493,18 @@ class GithubListPRReviewersBlock(Block):
         ]
         return reviewers
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        reviewers = self.list_reviewers(
+        for reviewer in await self.list_reviewers(
             credentials,
             input_data.pr_url,
-        )
-        yield from (("reviewer", reviewer) for reviewer in reviewers)
+        ):
+            yield "reviewer", reviewer
 
 
 def prepare_pr_api_url(pr_url: str, path: str) -> str:

@@ -1,12 +1,12 @@
 import functools
 import inspect
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator as AsyncGen
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
     ClassVar,
-    Generator,
     Generic,
     Optional,
     Sequence,
@@ -42,7 +42,7 @@ app_config = Config()
 
 BlockData = tuple[str, Any]  # Input & Output data should be a tuple of (name, data).
 BlockInput = dict[str, Any]  # Input: 1 input pin consumes 1 data.
-BlockOutput = Generator[BlockData, None, None]  # Output: 1 output pin produces n data.
+BlockOutput = AsyncGen[BlockData, None]  # Output: 1 output pin produces n data.
 CompletedBlockOutput = dict[str, list[Any]]  # Completed stream, collected as a dict.
 
 
@@ -388,7 +388,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         return cls()
 
     @abstractmethod
-    def run(self, input_data: BlockSchemaInputType, **kwargs) -> BlockOutput:
+    async def run(self, input_data: BlockSchemaInputType, **kwargs) -> BlockOutput:
         """
         Run the block with the given input data.
         Args:
@@ -406,10 +406,16 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             output_name: One of the output name defined in Block's output_schema.
             output_data: The data for the output_name, matching the defined schema.
         """
-        pass
+        # --- satisfy the type checker, never executed -------------
+        if False:  # noqa: SIM115
+            yield "name", "value"  # pyright: ignore[reportMissingYield]
+        raise NotImplementedError(f"{self.name} does not implement the run method.")
 
-    def run_once(self, input_data: BlockSchemaInputType, output: str, **kwargs) -> Any:
-        for name, data in self.run(input_data, **kwargs):
+    async def run_once(
+        self, input_data: BlockSchemaInputType, output: str, **kwargs
+    ) -> Any:
+        async for item in self.run(input_data, **kwargs):
+            name, data = item
             if name == output:
                 return data
         raise ValueError(f"{self.name} did not produce any output for {output}")
@@ -458,13 +464,13 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             "uiType": self.block_type.value,
         }
 
-    def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
+    async def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
         if error := self.input_schema.validate_data(input_data):
             raise ValueError(
                 f"Unable to execute block with invalid input data: {error}"
             )
 
-        for output_name, output_data in self.run(
+        async for output_name, output_data in self.run(
             self.input_schema(**input_data), **kwargs
         ):
             if output_name == "error":
