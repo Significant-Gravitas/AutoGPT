@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any, Optional
 
@@ -61,37 +62,78 @@ class AgentExecutorBlock(Block):
             categories={BlockCategory.AGENT},
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        from backend.data.execution import ExecutionEventType
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+
         from backend.executor import utils as execution_utils
 
-        event_bus = execution_utils.get_execution_event_bus()
-
-        graph_exec = execution_utils.add_graph_execution(
+        graph_exec = await execution_utils.add_graph_execution(
             graph_id=input_data.graph_id,
             graph_version=input_data.graph_version,
             user_id=input_data.user_id,
             inputs=input_data.inputs,
             node_credentials_input_map=input_data.node_credentials_input_map,
+            use_db_query=False,
         )
-        log_id = f"Graph #{input_data.graph_id}-V{input_data.graph_version}, exec-id: {graph_exec.id}"
+
+        try:
+            async for name, data in self._run(
+                graph_id=input_data.graph_id,
+                graph_version=input_data.graph_version,
+                graph_exec_id=graph_exec.id,
+                user_id=input_data.user_id,
+            ):
+                yield name, data
+        except asyncio.CancelledError:
+            logger.warning(
+                f"Execution of graph {input_data.graph_id} version {input_data.graph_version} was cancelled."
+            )
+            await execution_utils.stop_graph_execution(
+                graph_exec.id, use_db_query=False
+            )
+        except Exception as e:
+            logger.error(
+                f"Execution of graph {input_data.graph_id} version {input_data.graph_version} failed: {e}, stopping execution."
+            )
+            await execution_utils.stop_graph_execution(
+                graph_exec.id, use_db_query=False
+            )
+            raise
+
+    async def _run(
+        self,
+        graph_id: str,
+        graph_version: int,
+        graph_exec_id: str,
+        user_id: str,
+    ) -> BlockOutput:
+
+        from backend.data.execution import ExecutionEventType
+        from backend.executor import utils as execution_utils
+
+        event_bus = execution_utils.get_async_execution_event_bus()
+
+        log_id = f"Graph #{graph_id}-V{graph_version}, exec-id: {graph_exec_id}"
         logger.info(f"Starting execution of {log_id}")
 
-        for event in event_bus.listen(
-            user_id=graph_exec.user_id,
-            graph_id=graph_exec.graph_id,
-            graph_exec_id=graph_exec.id,
+        async for event in event_bus.listen(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_exec_id=graph_exec_id,
         ):
+            if event.status not in [
+                ExecutionStatus.COMPLETED,
+                ExecutionStatus.TERMINATED,
+                ExecutionStatus.FAILED,
+            ]:
+                logger.debug(
+                    f"Execution {log_id} received event {event.event_type} with status {event.status}"
+                )
+                continue
+
             if event.event_type == ExecutionEventType.GRAPH_EXEC_UPDATE:
-                if event.status in [
-                    ExecutionStatus.COMPLETED,
-                    ExecutionStatus.TERMINATED,
-                    ExecutionStatus.FAILED,
-                ]:
-                    logger.info(f"Execution {log_id} ended with status {event.status}")
-                    break
-                else:
-                    continue
+                # If the graph execution is COMPLETED, TERMINATED, or FAILED,
+                # we can stop listening for further events.
+                break
 
             logger.debug(
                 f"Execution {log_id} produced input {event.input_data} output {event.output_data}"
