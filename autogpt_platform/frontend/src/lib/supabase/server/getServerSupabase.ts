@@ -1,5 +1,5 @@
-import type { UnsafeUnwrappedCookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import { cookieSettings } from "../helpers";
 
 export async function getServerSupabase() {
   // Need require here, so Next.js doesn't complain about importing this on client side
@@ -20,9 +20,7 @@ export async function getServerSupabase() {
               cookiesToSet.forEach(({ name, value, options }) =>
                 cookieStore.set(name, value, {
                   ...options,
-                  httpOnly: true,
-                  secure: process.env.NODE_ENV === "production",
-                  sameSite: "lax",
+                  ...cookieSettings,
                 }),
               );
             } catch {

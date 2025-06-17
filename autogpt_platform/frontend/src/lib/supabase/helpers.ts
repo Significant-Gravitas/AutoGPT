@@ -1,4 +1,7 @@
-// Session management constants and utilities
+export const cookieSettings = {
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+} as const;
 
 export const PROTECTED_PAGES = [
   "/monitor",

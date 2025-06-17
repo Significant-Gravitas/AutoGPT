@@ -1,11 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import {
-  PROTECTED_PAGES,
-  ADMIN_PAGES,
-  isProtectedPage,
-  isAdminPage,
-} from "./helpers";
+import { cookieSettings, isAdminPage, isProtectedPage } from "./helpers";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -40,9 +35,7 @@ export async function updateSession(request: NextRequest) {
             cookiesToSet.forEach(({ name, value, options }) =>
               supabaseResponse.cookies.set(name, value, {
                 ...options,
-                httpOnly: true,
-                secure: process.env.NODE_ENV === "production",
-                sameSite: "lax",
+                ...cookieSettings,
               }),
             );
           },
