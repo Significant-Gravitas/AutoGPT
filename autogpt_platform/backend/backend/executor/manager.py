@@ -1165,19 +1165,21 @@ class ExecutionManager(AppProcess):
                 self.active_graph_runs.pop(graph_exec_id, None)
                 active_runs_gauge.set(len(self.active_graph_runs))
                 utilization_gauge.set(len(self.active_graph_runs) / self.pool_size)
-                if f.exception():
+                if exec_error := f.exception():
                     logger.error(
-                        f"[{self.service_name}] Execution for {graph_exec_id} failed: {f.exception()}"
+                        f"[{self.service_name}] Execution for {graph_exec_id} failed: {exec_error}"
                     )
                     channel.connection.add_callback_threadsafe(
-                        lambda: channel.basic_nack(delivery_tag, requeue=False)
+                        lambda: channel.basic_nack(delivery_tag, requeue=True)
                     )
                 else:
                     channel.connection.add_callback_threadsafe(
                         lambda: channel.basic_ack(delivery_tag)
                     )
-            except Exception as e:
-                logger.error(f"[{self.service_name}] Error acknowledging message: {e}")
+            except BaseException as e:
+                logger.exception(
+                    f"[{self.service_name}] Error acknowledging message: {e}"
+                )
 
         future.add_done_callback(_on_run_done)
 
