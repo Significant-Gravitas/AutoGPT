@@ -15,7 +15,6 @@ import {
 import { SubmissionStatus } from "@/lib/autogpt-server-api/types";
 
 export function SearchAndFilterAdminMarketplace({
-  initialStatus,
   initialSearch,
 }: {
   initialStatus?: SubmissionStatus;

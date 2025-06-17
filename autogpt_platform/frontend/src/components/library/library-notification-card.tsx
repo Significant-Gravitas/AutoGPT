@@ -24,7 +24,7 @@ interface NotificationCardProps {
 }
 
 const NotificationCard = ({
-  notification: { id, type, title, content, mediaUrl },
+  notification: { type, title, content, mediaUrl },
   onClose,
 }: NotificationCardProps) => {
   const barHeights = Array.from({ length: 60 }, () =>
