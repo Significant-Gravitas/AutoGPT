@@ -165,7 +165,7 @@ class AIImageGeneratorBlock(Block):
             },
         )
 
-    def _run_client(
+    async def _run_client(
         self, credentials: APIKeyCredentials, model_name: str, input_params: dict
     ):
         try:
@@ -173,7 +173,7 @@ class AIImageGeneratorBlock(Block):
             client = ReplicateClient(api_token=credentials.api_key.get_secret_value())
 
             # Run the model with input parameters
-            output = client.run(model_name, input=input_params, wait=False)
+            output = await client.async_run(model_name, input=input_params, wait=False)
 
             # Process output
             if isinstance(output, list) and len(output) > 0:
@@ -195,7 +195,7 @@ class AIImageGeneratorBlock(Block):
         except Exception as e:
             raise RuntimeError(f"Unexpected error during model execution: {e}")
 
-    def generate_image(self, input_data: Input, credentials: APIKeyCredentials):
+    async def generate_image(self, input_data: Input, credentials: APIKeyCredentials):
         try:
             # Handle style-based prompt modification for models without native style support
             modified_prompt = input_data.prompt
@@ -213,7 +213,7 @@ class AIImageGeneratorBlock(Block):
                     "steps": 40,
                     "cfg_scale": 7.0,
                 }
-                output = self._run_client(
+                output = await self._run_client(
                     credentials,
                     "stability-ai/stable-diffusion-3.5-medium",
                     input_params,
@@ -231,7 +231,7 @@ class AIImageGeneratorBlock(Block):
                     "output_format": "jpg",  # Set to jpg for Flux models
                     "output_quality": 90,
                 }
-                output = self._run_client(
+                output = await self._run_client(
                     credentials, "black-forest-labs/flux-1.1-pro", input_params
                 )
                 return output
@@ -246,7 +246,7 @@ class AIImageGeneratorBlock(Block):
                     "output_format": "jpg",
                     "output_quality": 90,
                 }
-                output = self._run_client(
+                output = await self._run_client(
                     credentials, "black-forest-labs/flux-1.1-pro-ultra", input_params
                 )
                 return output
@@ -257,7 +257,7 @@ class AIImageGeneratorBlock(Block):
                     "size": SIZE_TO_RECRAFT_DIMENSIONS[input_data.size],
                     "style": input_data.style.value,
                 }
-                output = self._run_client(
+                output = await self._run_client(
                     credentials, "recraft-ai/recraft-v3", input_params
                 )
                 return output
@@ -296,9 +296,9 @@ class AIImageGeneratorBlock(Block):
         style_text = style_map.get(style, "")
         return f"{style_text} of" if style_text else ""
 
-    def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
+    async def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
         try:
-            url = self.generate_image(input_data, credentials)
+            url = await self.generate_image(input_data, credentials)
             if url:
                 yield "image_url", url
             else:

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -72,14 +73,19 @@ def get_notification_client():
 
 
 def execute_graph(**kwargs):
+    asyncio.run(_execute_graph(**kwargs))
+
+
+async def _execute_graph(**kwargs):
     args = GraphExecutionJobArgs(**kwargs)
     try:
         log(f"Executing recurring job for graph #{args.graph_id}")
-        execution_utils.add_graph_execution(
+        await execution_utils.add_graph_execution(
             graph_id=args.graph_id,
             inputs=args.input_data,
             user_id=args.user_id,
             graph_version=args.graph_version,
+            use_db_query=False,
         )
     except Exception as e:
         logger.exception(f"Error executing graph {args.graph_id}: {e}")
