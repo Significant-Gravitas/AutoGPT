@@ -117,7 +117,7 @@
     "concurrently": "9.1.2",
     "eslint": "8.57.1",
     "eslint-config-next": "15.3.3",
-    "eslint-plugin-storybook": "0.12.0",
+    "eslint-plugin-storybook": "9.0.7",
     "import-in-the-middle": "1.14.0",
     "msw": "2.10.2",
     "msw-storybook-addon": "2.0.5",
