@@ -1,6 +1,8 @@
 import logging
 import os
+from functools import cache
 
+from autogpt_libs.utils.cache import thread_cached
 from dotenv import load_dotenv
 from redis import Redis
 from redis.asyncio import Redis as AsyncRedis
@@ -14,16 +16,10 @@ PORT = int(os.getenv("REDIS_PORT", "6379"))
 PASSWORD = os.getenv("REDIS_PASSWORD", "password")
 
 logger = logging.getLogger(__name__)
-connection: Redis | None = None
-connection_async: AsyncRedis | None = None
 
 
 @conn_retry("Redis", "Acquiring connection")
 def connect() -> Redis:
-    global connection
-    if connection:
-        return connection
-
     c = Redis(
         host=HOST,
         port=PORT,
@@ -31,32 +27,21 @@ def connect() -> Redis:
         decode_responses=True,
     )
     c.ping()
-    connection = c
-    return connection
+    return c
 
 
 @conn_retry("Redis", "Releasing connection")
 def disconnect():
-    global connection
-    if connection:
-        connection.close()
-    connection = None
+    get_redis().close()
 
 
-def get_redis(auto_connect: bool = True) -> Redis:
-    if connection:
-        return connection
-    if auto_connect:
-        return connect()
-    raise RuntimeError("Redis connection is not established")
+@cache
+def get_redis() -> Redis:
+    return connect()
 
 
 @conn_retry("AsyncRedis", "Acquiring connection")
 async def connect_async() -> AsyncRedis:
-    global connection_async
-    if connection_async:
-        return connection_async
-
     c = AsyncRedis(
         host=HOST,
         port=PORT,
@@ -64,21 +49,15 @@ async def connect_async() -> AsyncRedis:
         decode_responses=True,
     )
     await c.ping()
-    connection_async = c
-    return connection_async
+    return c
 
 
 @conn_retry("AsyncRedis", "Releasing connection")
 async def disconnect_async():
-    global connection_async
-    if connection_async:
-        await connection_async.close()
-    connection_async = None
+    c = await get_redis_async()
+    await c.close()
 
 
-async def get_redis_async(auto_connect: bool = True) -> AsyncRedis:
-    if connection_async:
-        return connection_async
-    if auto_connect:
-        return await connect_async()
-    raise RuntimeError("AsyncRedis connection is not established")
+@thread_cached
+async def get_redis_async() -> AsyncRedis:
+    return await connect_async()
