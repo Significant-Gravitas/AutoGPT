@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { Text, textVariants, type TextVariant } from "./Text";
 import { StoryCode } from "@/stories/helpers/StoryCode";
 
