@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/nextjs";
-import { userEvent, within } from "@storybook/test";
+import { userEvent, within } from "storybook/test";
 import { FeaturedAgentCard } from "./FeaturedAgentCard";
 
 const meta = {

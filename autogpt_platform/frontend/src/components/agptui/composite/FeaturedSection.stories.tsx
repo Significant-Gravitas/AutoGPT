@@ -1,8 +1,7 @@
 import { StoreAgent } from "@/lib/autogpt-server-api";
 import type { Meta, StoryObj } from "@storybook/nextjs";
-import { userEvent, within } from "@storybook/test";
+import { userEvent, within } from "storybook/test";
 import { FeaturedSection } from "./FeaturedSection";
-import { StoreAgent } from "@/lib/autogpt-server-api";
 
 const meta = {
   title: "Legacy/Composite/Featured Agents",
