@@ -35,7 +35,7 @@ class HubSpotContactBlock(Block):
             output_schema=HubSpotContactBlock.Output,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: HubSpotCredentials, **kwargs
     ) -> BlockOutput:
         base_url = "https://api.hubapi.com/crm/v3/objects/contacts"
@@ -45,7 +45,7 @@ class HubSpotContactBlock(Block):
         }
 
         if input_data.operation == "create":
-            response = Requests().post(
+            response = await Requests().post(
                 base_url, headers=headers, json={"properties": input_data.contact_data}
             )
             result = response.json()
@@ -53,7 +53,6 @@ class HubSpotContactBlock(Block):
             yield "status", "created"
 
         elif input_data.operation == "get":
-            # Search for contact by email
             search_url = f"{base_url}/search"
             search_data = {
                 "filterGroups": [
@@ -68,13 +67,15 @@ class HubSpotContactBlock(Block):
                     }
                 ]
             }
-            response = Requests().post(search_url, headers=headers, json=search_data)
+            response = await Requests().post(
+                search_url, headers=headers, json=search_data
+            )
             result = response.json()
             yield "contact", result.get("results", [{}])[0]
             yield "status", "retrieved"
 
         elif input_data.operation == "update":
-            search_response = Requests().post(
+            search_response = await Requests().post(
                 f"{base_url}/search",
                 headers=headers,
                 json={
@@ -91,10 +92,11 @@ class HubSpotContactBlock(Block):
                     ]
                 },
             )
-            contact_id = search_response.json().get("results", [{}])[0].get("id")
+            search_result = search_response.json()
+            contact_id = search_result.get("results", [{}])[0].get("id")
 
             if contact_id:
-                response = Requests().patch(
+                response = await Requests().patch(
                     f"{base_url}/{contact_id}",
                     headers=headers,
                     json={"properties": input_data.contact_data},

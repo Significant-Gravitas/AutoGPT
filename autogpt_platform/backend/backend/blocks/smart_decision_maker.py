@@ -417,7 +417,7 @@ class SmartDecisionMakerBlock(Block):
 
         return return_tool_functions
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -487,7 +487,7 @@ class SmartDecisionMakerBlock(Block):
         ):
             prompt.append({"role": "user", "content": prefix + input_data.prompt})
 
-        response = llm.llm_call(
+        response = await llm.llm_call(
             credentials=credentials,
             llm_model=input_data.model,
             prompt=prompt,

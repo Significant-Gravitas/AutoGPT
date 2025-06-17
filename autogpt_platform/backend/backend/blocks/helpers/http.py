@@ -1,14 +1,17 @@
 from typing import Any, Optional
 
-from backend.util.request import requests
+from backend.util.request import Requests
 
 
 class GetRequest:
     @classmethod
-    def get_request(
+    async def get_request(
         cls, url: str, headers: Optional[dict] = None, json: bool = False
     ) -> Any:
         if headers is None:
             headers = {}
-        response = requests.get(url, headers=headers)
-        return response.json() if json else response.text
+        response = await Requests().get(url, headers=headers)
+        if json:
+            return response.json()
+        else:
+            return response.text()

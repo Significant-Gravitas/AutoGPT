@@ -105,7 +105,7 @@ class ScreenshotWebPageBlock(Block):
         )
 
     @staticmethod
-    def take_screenshot(
+    async def take_screenshot(
         credentials: APIKeyCredentials,
         graph_exec_id: str,
         url: str,
@@ -136,26 +136,28 @@ class ScreenshotWebPageBlock(Block):
             "cache": str(cache).lower(),
         }
 
+        # Make the API request
         # Use header-based authentication instead of query parameter
         headers = {
             "X-Access-Key": credentials.api_key.get_secret_value(),
         }
 
-        response = api.get(
+        response = await api.get(
             "https://api.screenshotone.com/take", params=params, headers=headers
         )
+        content = response.content
 
         return {
-            "image": store_media_file(
+            "image": await store_media_file(
                 graph_exec_id=graph_exec_id,
                 file=MediaFileType(
-                    f"data:image/{format.value};base64,{b64encode(response.content).decode('utf-8')}"
+                    f"data:image/{format.value};base64,{b64encode(content).decode('utf-8')}"
                 ),
                 return_content=True,
             )
         }
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -164,7 +166,7 @@ class ScreenshotWebPageBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            screenshot_data = self.take_screenshot(
+            screenshot_data = await self.take_screenshot(
                 credentials=credentials,
                 graph_exec_id=graph_exec_id,
                 url=input_data.url,
