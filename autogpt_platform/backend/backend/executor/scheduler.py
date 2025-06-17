@@ -125,7 +125,8 @@ def report_late_executions() -> str:
         f"Late executions detected: {num_late_executions} late executions from {num_users} users "
         f"in the last {config.execution_late_notification_checkrange_secs} seconds. "
         f"Graph has been queued for more than {config.execution_late_notification_threshold_secs} seconds. "
-        f"Please check the executor status. Details:\n{'\n'.join(late_execution_details)}"
+        "Please check the executor status. Details:\n"
+        + "\n".join(late_execution_details)
     )
     msg = str(error)
     sentry_capture_error(error)
