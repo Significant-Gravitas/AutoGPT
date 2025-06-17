@@ -4,7 +4,7 @@ import { useBlockMenuContext } from "../block-menu-provider";
 import { usePagination } from "@/hooks/usePagination";
 import { ErrorState } from "../ErrorState";
 
-export const PaginatedIntegrationList: React.FC = () => {
+export const PaginatedIntegrationList = () => {
   const { setIntegration } = useBlockMenuContext();
   const {
     data: providers,
@@ -23,7 +23,7 @@ export const PaginatedIntegrationList: React.FC = () => {
     return (
       <div
         ref={scrollRef}
-        className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200"
+        className="scrollbar-thumb-rounded scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200 h-full overflow-y-auto pt-4 transition-all duration-200"
       >
         <div className="w-full space-y-3 px-4 pb-4">
           {Array.from({ length: 6 }).map((_, integrationIndex) => (
@@ -49,7 +49,7 @@ export const PaginatedIntegrationList: React.FC = () => {
   return (
     <div
       ref={scrollRef}
-      className="scrollbar-thumb-rounded h-full overflow-y-auto pt-4 transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200"
+      className="scrollbar-thumb-rounded scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200 h-full overflow-y-auto pt-4 transition-all duration-200"
     >
       <div className="w-full px-4 pb-4">
         <div className="space-y-3">

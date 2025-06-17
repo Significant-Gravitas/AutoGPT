@@ -7,7 +7,7 @@ import { Block } from "@/lib/autogpt-server-api";
 import { ErrorState } from "../ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export const IntegrationBlocks: React.FC = ({}) => {
+export const IntegrationBlocks = () => {
   const { integration, setIntegration, addNode } = useBlockMenuContext();
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [loading, setLoading] = useState(true);

@@ -6,7 +6,7 @@ import { BlockMenuDefault } from "./default/BlockMenuDefault";
 import { Separator } from "@/components/ui/separator";
 import { useBlockMenuContext } from "./block-menu-provider";
 
-export const BlockMenuContent: React.FC = () => {
+export const BlockMenuContent = () => {
   const { searchQuery } = useBlockMenuContext();
   return (
     <div className="flex h-full w-full flex-col">

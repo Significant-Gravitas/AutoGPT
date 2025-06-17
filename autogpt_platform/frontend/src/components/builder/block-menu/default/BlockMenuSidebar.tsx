@@ -4,7 +4,7 @@ import { DefaultStateType, useBlockMenuContext } from "../block-menu-provider";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { CountResponse } from "@/lib/autogpt-server-api";
 
-export const BlockMenuSidebar: React.FC = ({}) => {
+export const BlockMenuSidebar = () => {
   const { defaultState, setDefaultState, setIntegration } =
     useBlockMenuContext();
   const [blockCounts, setBlockCounts] = useState<CountResponse | undefined>(

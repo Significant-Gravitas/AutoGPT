@@ -4,7 +4,7 @@ import { SearchList } from "./SearchList";
 import { useBlockMenuContext } from "../block-menu-provider";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
-export const BlockMenuSearch: React.FC = ({}) => {
+export const BlockMenuSearch = () => {
   const {
     searchData,
     searchQuery,
@@ -126,7 +126,7 @@ export const BlockMenuSearch: React.FC = ({}) => {
   return (
     <div
       ref={scrollRef}
-      className="scrollbar-thumb-rounded h-full space-y-4 overflow-y-auto py-4 transition-all duration-200 scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200"
+      className="scrollbar-thumb-rounded scrollbar-thin scrollbar-track-transparent scrollbar-thumb-transparent hover:scrollbar-thumb-zinc-200 h-full space-y-4 overflow-y-auto py-4 transition-all duration-200"
     >
       {searchData.length !== 0 && <FiltersList />}
       <SearchList

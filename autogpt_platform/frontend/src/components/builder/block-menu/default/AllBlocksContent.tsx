@@ -9,7 +9,7 @@ import { useBlockMenuContext } from "../block-menu-provider";
 import { ErrorState } from "../ErrorState";
 import { beautifyString } from "@/lib/utils";
 
-export const AllBlocksContent: React.FC = () => {
+export const AllBlocksContent = () => {
   const { addNode } = useBlockMenuContext();
   const [categories, setCategories] = useState<BlockCategoryResponse[]>([]);
   const [loading, setLoading] = useState(true);

@@ -21,7 +21,7 @@ export interface BlockListType {
   description: string;
 }
 
-export const BlockMenuDefaultContent: React.FC = ({}) => {
+export const BlockMenuDefaultContent = () => {
   const { defaultState } = useBlockMenuContext();
 
   return (

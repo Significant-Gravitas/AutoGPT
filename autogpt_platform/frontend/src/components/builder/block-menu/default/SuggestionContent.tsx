@@ -9,7 +9,7 @@ import {
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { ErrorState } from "../ErrorState";
 
-export const SuggestionContent: React.FC = () => {
+export const SuggestionContent = () => {
   const { setIntegration, setDefaultState, addNode } = useBlockMenuContext();
 
   const [suggestionsData, setSuggestionsData] =
