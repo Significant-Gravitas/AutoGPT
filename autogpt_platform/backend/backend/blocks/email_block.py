@@ -121,7 +121,7 @@ class SendEmailBlock(Block):
 
         return "Email sent successfully"
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: SMTPCredentials, **kwargs
     ) -> BlockOutput:
         yield "status", self.send_email(

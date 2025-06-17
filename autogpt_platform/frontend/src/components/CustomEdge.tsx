@@ -115,9 +115,7 @@ export function CustomEdge({
           .map((bead) => ({ ...bead }))
           .filter((bead, index) => {
             const beadDown = data?.beadDown!;
-
-            // Remove always one less bead in case of static edge, so it stays at the connection point
-            const removeCount = beadDown - destroyed - (data?.isStatic ? 1 : 0);
+            const removeCount = beadDown - destroyed;
             if (bead.t >= bead.targetT && index < removeCount) {
               destroyedCount++;
               return false;
@@ -154,9 +152,7 @@ export function CustomEdge({
           })
           .filter((bead, index) => {
             const beadDown = data?.beadDown!;
-
-            // Remove always one less bead in case of static edge, so it stays at the connection point
-            const removeCount = beadDown - destroyed - (data?.isStatic ? 1 : 0);
+            const removeCount = beadDown - destroyed;
             if (bead.t >= bead.targetT && index < removeCount) {
               destroyedCount++;
               return false;

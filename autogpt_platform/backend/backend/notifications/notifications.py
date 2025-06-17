@@ -1,6 +1,6 @@
+import asyncio
 import logging
-import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timedelta, timezone
 from typing import Callable
 
@@ -39,9 +39,11 @@ from backend.data.user import generate_unsubscribe_link
 from backend.notifications.email import EmailSender
 from backend.util.logging import TruncatedLogger
 from backend.util.metrics import discord_send_alert
+from backend.util.retry import continuous_retry
 from backend.util.service import (
     AppService,
     AppServiceClient,
+    endpoint_to_sync,
     expose,
     get_service_client,
 )
@@ -55,7 +57,7 @@ NOTIFICATION_EXCHANGE = Exchange(name="notifications", type=ExchangeType.TOPIC)
 DEAD_LETTER_EXCHANGE = Exchange(name="dead_letter", type=ExchangeType.TOPIC)
 EXCHANGES = [NOTIFICATION_EXCHANGE, DEAD_LETTER_EXCHANGE]
 
-background_executor = ThreadPoolExecutor(max_workers=2)
+background_executor = ProcessPoolExecutor(max_workers=2)
 
 
 def create_notification_config() -> RabbitMQConfig:
@@ -231,9 +233,9 @@ class NotificationManager(AppService):
 
     @expose
     def queue_weekly_summary(self):
-        background_executor.submit(self._queue_weekly_summary)
+        background_executor.submit(lambda: asyncio.run(self._queue_weekly_summary()))
 
-    def _queue_weekly_summary(self):
+    async def _queue_weekly_summary(self):
         """Process weekly summary for specified notification types"""
         try:
             logger.info("Processing weekly summary queuing operation")
@@ -245,8 +247,7 @@ class NotificationManager(AppService):
                 start_time=start_time.isoformat(),
             )
             for user in users:
-
-                self._queue_scheduled_notification(
+                await self._queue_scheduled_notification(
                     SummaryParamsEventModel(
                         user_id=user,
                         type=NotificationType.WEEKLY_SUMMARY,
@@ -387,10 +388,10 @@ class NotificationManager(AppService):
             }
 
     @expose
-    def discord_system_alert(self, content: str):
-        discord_send_alert(content)
+    async def discord_system_alert(self, content: str):
+        await discord_send_alert(content)
 
-    def _queue_scheduled_notification(self, event: SummaryParamsEventModel):
+    async def _queue_scheduled_notification(self, event: SummaryParamsEventModel):
         """Queue a scheduled notification - exposed method for other services to call"""
         try:
             logger.debug(f"Received Request to queue scheduled notification {event=}")
@@ -399,12 +400,10 @@ class NotificationManager(AppService):
             routing_key = get_routing_key(event.type)
 
             # Publish to RabbitMQ
-            self.run_and_wait(
-                self.rabbit.publish_message(
-                    routing_key=routing_key,
-                    message=event.model_dump_json(),
-                    exchange=next(ex for ex in EXCHANGES if ex.name == exchange),
-                )
+            await self.rabbit.publish_message(
+                routing_key=routing_key,
+                message=event.model_dump_json(),
+                exchange=next(ex for ex in EXCHANGES if ex.name == exchange),
             )
 
         except Exception as e:
@@ -695,7 +694,7 @@ class NotificationManager(AppService):
             logger.exception(f"Error processing notification for summary queue: {e}")
             return False
 
-    def _run_queue(
+    async def _run_queue(
         self,
         queue: aio_pika.abc.AbstractQueue,
         process_func: Callable[[str], bool],
@@ -704,12 +703,12 @@ class NotificationManager(AppService):
         message: aio_pika.abc.AbstractMessage | None = None
         try:
             # This parameter "no_ack" is named like shit, think of it as "auto_ack"
-            message = self.run_and_wait(queue.get(timeout=1.0, no_ack=False))
+            message = await queue.get(timeout=1.0, no_ack=False)
             result = process_func(message.body.decode())
             if result:
-                self.run_and_wait(message.ack())
+                await message.ack()
             else:
-                self.run_and_wait(message.reject(requeue=False))
+                await message.reject(requeue=False)
 
         except QueueEmpty:
             logger.debug(f"Queue {error_queue_name} empty")
@@ -720,61 +719,58 @@ class NotificationManager(AppService):
                 logger.error(
                     f"Error in notification service loop, message rejected {e}"
                 )
-                self.run_and_wait(message.reject(requeue=False))
+                await message.reject(requeue=False)
             else:
                 logger.exception(
                     f"Error in notification service loop, message unable to be rejected, and will have to be manually removed to free space in the queue: {e=}"
                 )
 
+    @continuous_retry()
     def run_service(self):
+        self.run_and_wait(self._run_service())
+
+    async def _run_service(self):
         logger.info(f"[{self.service_name}] ⏳ Configuring RabbitMQ...")
         self.rabbitmq_service = rabbitmq.AsyncRabbitMQ(self.rabbitmq_config)
-        self.run_and_wait(self.rabbitmq_service.connect())
+        await self.rabbitmq_service.connect()
 
         logger.info(f"[{self.service_name}] Started notification service")
 
         # Set up queue consumers
-        channel = self.run_and_wait(self.rabbit.get_channel())
+        channel = await self.rabbit.get_channel()
 
-        immediate_queue = self.run_and_wait(
-            channel.get_queue("immediate_notifications")
-        )
-        batch_queue = self.run_and_wait(channel.get_queue("batch_notifications"))
+        immediate_queue = await channel.get_queue("immediate_notifications")
+        batch_queue = await channel.get_queue("batch_notifications")
 
-        admin_queue = self.run_and_wait(channel.get_queue("admin_notifications"))
+        admin_queue = await channel.get_queue("admin_notifications")
 
-        summary_queue = self.run_and_wait(channel.get_queue("summary_notifications"))
+        summary_queue = await channel.get_queue("summary_notifications")
 
         while self.running:
             try:
-                self._run_queue(
+                await self._run_queue(
                     queue=immediate_queue,
                     process_func=self._process_immediate,
                     error_queue_name="immediate_notifications",
                 )
-                self._run_queue(
+                await self._run_queue(
                     queue=admin_queue,
                     process_func=self._process_admin_message,
                     error_queue_name="admin_notifications",
                 )
-                self._run_queue(
+                await self._run_queue(
                     queue=batch_queue,
                     process_func=self._process_batch,
                     error_queue_name="batch_notifications",
                 )
-
-                self._run_queue(
+                await self._run_queue(
                     queue=summary_queue,
                     process_func=self._process_summary,
                     error_queue_name="summary_notifications",
                 )
-
-                time.sleep(0.1)
-
+                await asyncio.sleep(0.1)
             except QueueEmpty as e:
                 logger.debug(f"Queue empty: {e}")
-            except Exception as e:
-                logger.error(f"Error in notification service loop: {e}")
 
     def cleanup(self):
         """Cleanup service resources"""
@@ -791,4 +787,4 @@ class NotificationManagerClient(AppServiceClient):
 
     process_existing_batches = NotificationManager.process_existing_batches
     queue_weekly_summary = NotificationManager.queue_weekly_summary
-    discord_system_alert = NotificationManager.discord_system_alert
+    discord_system_alert = endpoint_to_sync(NotificationManager.discord_system_alert)
