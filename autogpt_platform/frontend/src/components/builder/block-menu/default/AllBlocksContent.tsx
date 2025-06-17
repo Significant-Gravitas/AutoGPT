@@ -118,9 +118,9 @@ export const AllBlocksContent: React.FC = () => {
               </div>
 
               <div className="space-y-2">
-                {category.blocks.map((block, idx) => (
+                {category.blocks.map((block) => (
                   <Block
-                    key={`${category.name}-${idx}`}
+                    key={`${category.name}-${block.id}`}
                     title={block.name}
                     description={block.name}
                     onClick={() => {
