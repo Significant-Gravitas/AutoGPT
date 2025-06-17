@@ -27,6 +27,7 @@ import {
   cn,
   getValue,
   hasNonNullNonObjectValue,
+  isObject,
   parseKeys,
   setNestedProperty,
 } from "@/lib/utils";
@@ -82,6 +83,7 @@ export type CustomNodeData = {
   executionResults?: {
     execId: string;
     data: NodeExecutionResult["output_data"];
+    status: NodeExecutionResult["status"];
   }[];
   block_id: string;
   backend_id?: string;
@@ -93,13 +95,7 @@ export type CustomNodeData = {
 export type CustomNode = XYNode<CustomNodeData, "custom">;
 
 export const CustomNode = React.memo(
-  function CustomNode({
-    data,
-    id,
-    width,
-    height,
-    selected,
-  }: NodeProps<CustomNode>) {
+  function CustomNode({ data, id, height, selected }: NodeProps<CustomNode>) {
     const [isOutputOpen, setIsOutputOpen] = useState(
       data.isOutputOpen || false,
     );
@@ -197,10 +193,6 @@ export const CustomNode = React.memo(
       [id, updateNodeData],
     );
 
-    const toggleOutput = (checked: boolean) => {
-      setIsOutputOpen(checked);
-    };
-
     const toggleAdvancedSettings = (checked: boolean) => {
       setIsAdvancedOpen(checked);
     };
@@ -254,7 +246,7 @@ export const CustomNode = React.memo(
       nodeType: BlockUIType,
     ) => {
       if (!schema?.properties) return null;
-      let keys = Object.entries(schema.properties);
+      const keys = Object.entries(schema.properties);
       switch (nodeType) {
         case BlockUIType.NOTE:
           // For NOTE blocks, don't render any input handles
@@ -434,8 +426,15 @@ export const CustomNode = React.memo(
         if (activeKey) {
           try {
             const parsedValue = JSON.parse(value);
-            handleInputChange(activeKey, parsedValue);
-          } catch (error) {
+            // Validate that the parsed value is safe before using it
+            if (isObject(parsedValue) || Array.isArray(parsedValue)) {
+              handleInputChange(activeKey, parsedValue);
+            } else {
+              // For primitive values, use the original string
+              handleInputChange(activeKey, value);
+            }
+          } catch {
+            // If JSON parsing fails, treat as plain text
             handleInputChange(activeKey, value);
           }
         }

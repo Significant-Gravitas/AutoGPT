@@ -9,19 +9,6 @@
   margin-bottom: 1rem;
 }
 
-.custom-node input:not([type="checkbox"]):not([type="file"]),
-.custom-node textarea,
-.custom-node select,
-.custom-node [data-id^="date-picker"],
-.custom-node [data-list-container],
-.custom-node [data-add-item],
-.custom-node [data-content-settings] .array-item-container {
-  display: flex;
-  align-items: center;
-  min-width: calc(100% - 2.5rem);
-  max-width: 100%;
-}
-
 .custom-node .custom-switch {
   padding: 0.5rem 1.25rem;
   display: flex;

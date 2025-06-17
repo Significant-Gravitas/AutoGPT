@@ -50,7 +50,6 @@ from backend.data.onboarding import (
     onboarding_enabled,
     update_user_onboarding,
 )
-from backend.data.rabbitmq import AsyncRabbitMQ
 from backend.data.user import (
     get_or_create_user,
     get_user_notification_preference,
@@ -59,7 +58,6 @@ from backend.data.user import (
 )
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
-from backend.executor.utils import create_execution_queue_config
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_activate,
     on_graph_deactivate,
@@ -81,13 +79,6 @@ from backend.util.settings import Settings
 @thread_cached
 def execution_scheduler_client() -> scheduler.SchedulerClient:
     return get_service_client(scheduler.SchedulerClient, health_check=False)
-
-
-@thread_cached
-async def execution_queue_client() -> AsyncRabbitMQ:
-    client = AsyncRabbitMQ(create_execution_queue_config())
-    await client.connect()
-    return client
 
 
 @thread_cached
@@ -224,13 +215,13 @@ def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     tags=["blocks"],
     dependencies=[Depends(auth_middleware)],
 )
-def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput:
+async def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput:
     obj = get_block(block_id)
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
 
     output = defaultdict(list)
-    for name, data in obj.execute(data):
+    async for name, data in obj.execute(data):
         output[name].append(data)
     return output
 
@@ -575,7 +566,14 @@ async def execute_graph(
     graph_version: Optional[int] = None,
     preset_id: Optional[str] = None,
 ) -> ExecuteGraphResponse:
-    graph_exec = await execution_utils.add_graph_execution_async(
+    current_balance = await _user_credit_model.get_credits(user_id)
+    if current_balance <= 0:
+        raise HTTPException(
+            status_code=402,
+            detail="Insufficient balance to execute the agent. Please top up your account.",
+        )
+
+    graph_exec = await execution_utils.add_graph_execution(
         graph_id=graph_id,
         user_id=user_id,
         inputs=inputs,
@@ -599,7 +597,7 @@ async def stop_graph_run(
     ):
         raise HTTPException(404, detail=f"Agent execution #{graph_exec_id} not found")
 
-    await _cancel_execution(graph_exec_id)
+    await execution_utils.stop_graph_execution(graph_exec_id)
 
     # Retrieve & return canceled graph execution in its final state
     result = await execution_db.get_graph_execution(
@@ -611,52 +609,6 @@ async def stop_graph_run(
             detail=f"Could not fetch graph execution #{graph_exec_id} after stopping",
         )
     return result
-
-
-async def _cancel_execution(graph_exec_id: str):
-    """
-    Mechanism:
-    1. Set the cancel event
-    2. Graph executor's cancel handler thread detects the event, terminates workers,
-       reinitializes worker pool, and returns.
-    3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
-    """
-    queue_client = await execution_queue_client()
-    await queue_client.publish_message(
-        routing_key="",
-        message=execution_utils.CancelExecutionEvent(
-            graph_exec_id=graph_exec_id
-        ).model_dump_json(),
-        exchange=execution_utils.GRAPH_EXECUTION_CANCEL_EXCHANGE,
-    )
-
-    # Update the status of the graph execution
-    graph_execution = await execution_db.update_graph_execution_stats(
-        graph_exec_id,
-        execution_db.ExecutionStatus.TERMINATED,
-    )
-    if graph_execution:
-        await execution_event_bus().publish(graph_execution)
-
-    # Update the status of the node executions
-    node_execs = [
-        node_exec.model_copy(update={"status": execution_db.ExecutionStatus.TERMINATED})
-        for node_exec in await execution_db.get_node_executions(
-            graph_exec_id=graph_exec_id,
-            statuses=[
-                execution_db.ExecutionStatus.QUEUED,
-                execution_db.ExecutionStatus.RUNNING,
-                execution_db.ExecutionStatus.INCOMPLETE,
-            ],
-        )
-    ]
-    await execution_db.update_node_execution_status_batch(
-        [node_exec.node_exec_id for node_exec in node_execs],
-        execution_db.ExecutionStatus.TERMINATED,
-    )
-    await asyncio.gather(
-        *[execution_event_bus().publish(node_exec) for node_exec in node_execs]
-    )
 
 
 @v1_router.get(
@@ -817,8 +769,15 @@ async def create_api_key(
         )
         return CreateAPIKeyResponse(api_key=api_key, plain_text_key=plain_text)
     except APIKeyError as e:
-        logger.error(f"Failed to create API key: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(
+            "Could not create API key for user %s: %s. Review input and permissions.",
+            user_id,
+            e,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail={"message": str(e), "hint": "Verify request payload and try again."},
+        )
 
 
 @v1_router.get(
@@ -834,8 +793,11 @@ async def get_api_keys(
     try:
         return await list_user_api_keys(user_id)
     except APIKeyError as e:
-        logger.error(f"Failed to list API keys: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error("Failed to list API keys for user %s: %s", user_id, e)
+        raise HTTPException(
+            status_code=400,
+            detail={"message": str(e), "hint": "Check API key service availability."},
+        )
 
 
 @v1_router.get(
@@ -854,8 +816,11 @@ async def get_api_key(
             raise HTTPException(status_code=404, detail="API key not found")
         return api_key
     except APIKeyError as e:
-        logger.error(f"Failed to get API key: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error("Error retrieving API key %s for user %s: %s", key_id, user_id, e)
+        raise HTTPException(
+            status_code=400,
+            detail={"message": str(e), "hint": "Ensure the key ID is correct."},
+        )
 
 
 @v1_router.delete(
@@ -876,8 +841,14 @@ async def delete_api_key(
     except APIKeyPermissionError:
         raise HTTPException(status_code=403, detail="Permission denied")
     except APIKeyError as e:
-        logger.error(f"Failed to revoke API key: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error("Failed to revoke API key %s for user %s: %s", key_id, user_id, e)
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "message": str(e),
+                "hint": "Verify permissions or try again later.",
+            },
+        )
 
 
 @v1_router.post(
@@ -898,8 +869,11 @@ async def suspend_key(
     except APIKeyPermissionError:
         raise HTTPException(status_code=403, detail="Permission denied")
     except APIKeyError as e:
-        logger.error(f"Failed to suspend API key: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error("Failed to suspend API key %s for user %s: %s", key_id, user_id, e)
+        raise HTTPException(
+            status_code=400,
+            detail={"message": str(e), "hint": "Check user permissions and retry."},
+        )
 
 
 @v1_router.put(
@@ -922,5 +896,13 @@ async def update_permissions(
     except APIKeyPermissionError:
         raise HTTPException(status_code=403, detail="Permission denied")
     except APIKeyError as e:
-        logger.error(f"Failed to update API key permissions: {str(e)}")
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.error(
+            "Failed to update permissions for API key %s of user %s: %s",
+            key_id,
+            user_id,
+            e,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail={"message": str(e), "hint": "Ensure permissions list is valid."},
+        )

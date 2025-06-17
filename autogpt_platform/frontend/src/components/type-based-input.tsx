@@ -91,7 +91,7 @@ export const TypeBasedInput: FC<
           <Switch
             className="ml-auto"
             checked={!!value}
-            onCheckedChange={(checked) => onChange(checked)}
+            onCheckedChange={(checked: boolean) => onChange(checked)}
             {...props}
           />
         </>
@@ -145,7 +145,10 @@ export const TypeBasedInput: FC<
         schema.enum.length > 0
       ) {
         innerInputElement = (
-          <Select value={value ?? ""} onValueChange={(val) => onChange(val)}>
+          <Select
+            value={value ?? ""}
+            onValueChange={(val: string) => onChange(val)}
+          >
             <SelectTrigger
               className={cn(
                 inputClasses,
@@ -253,7 +256,7 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
       <div className="flex flex-col items-center">
         <Select
           value={hour}
-          onValueChange={(val) => changeTime(val, minute, meridiem)}
+          onValueChange={(val: string) => changeTime(val, minute, meridiem)}
         >
           <SelectTrigger
             className={cn("agpt-border-input ml-1 text-center", inputClasses)}
@@ -277,7 +280,7 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
       <div className="flex flex-col items-center">
         <Select
           value={minute}
-          onValueChange={(val) => changeTime(hour, val, meridiem)}
+          onValueChange={(val: string) => changeTime(hour, val, meridiem)}
         >
           <SelectTrigger
             className={cn("agpt-border-input text-center", inputClasses)}
@@ -297,7 +300,7 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
       <div className="flex flex-col items-center">
         <Select
           value={meridiem}
-          onValueChange={(val) => changeTime(hour, minute, val)}
+          onValueChange={(val: string) => changeTime(hour, minute, val)}
         >
           <SelectTrigger
             className={cn("agpt-border-input text-center", inputClasses)}
@@ -357,12 +360,7 @@ interface FileInputProps {
   className?: string;
 }
 
-const FileInput: FC<FileInputProps> = ({
-  value,
-  placeholder,
-  onChange,
-  className,
-}) => {
+const FileInput: FC<FileInputProps> = ({ value, onChange, className }) => {
   const loadFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -402,7 +400,7 @@ const FileInput: FC<FileInputProps> = ({
             <Cross2Icon
               className="h-5 w-5 cursor-pointer text-black"
               onClick={() => {
-                inputRef.current && (inputRef.current.value = "");
+                if (inputRef.current) inputRef.current.value = "";
                 onChange("");
               }}
             />

@@ -2,7 +2,7 @@ import logging
 from typing import Annotated
 
 from autogpt_libs.auth.middleware import APIKeyValidator
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 
 from backend.data.user import (
@@ -36,12 +36,15 @@ logger = logging.getLogger(__name__)
 
 @router.post("/unsubscribe")
 async def unsubscribe_via_one_click(token: Annotated[str, Query()]):
-    logger.info(f"Received unsubscribe request from One Click Unsubscribe: {token}")
+    logger.info("Received unsubscribe request from One Click Unsubscribe")
     try:
         await unsubscribe_user_by_token(token)
     except Exception as e:
-        logger.error(f"Failed to unsubscribe user by token {token}: {e}")
-        raise e
+        logger.exception("Unsubscribe failed: %s", e)
+        raise HTTPException(
+            status_code=500,
+            detail={"message": str(e), "hint": "Verify Postmark token settings."},
+        )
     return JSONResponse(status_code=200, content={"status": "ok"})
 
 
@@ -67,7 +70,10 @@ async def postmark_webhook_handler(
         case PostmarkSubscriptionChangeWebhook():
             subscription_handler(webhook)
         case _:
-            logger.warning(f"Unknown webhook type: {type(webhook)}")
+            logger.warning(
+                "Unhandled Postmark webhook type %s. Update handler mappings.",
+                type(webhook),
+            )
             return
 
 
@@ -85,7 +91,10 @@ async def bounce_handler(event: PostmarkBounceWebhook):
     logger.info(f"{event.Email=}")
     user = await get_user_by_email(event.Email)
     if not user:
-        logger.error(f"User not found for email: {event.Email}")
+        logger.warning(
+            "Received bounce for unknown email %s. Ensure user records are current.",
+            event.Email,
+        )
         return
     await set_user_email_verification(user.id, False)
     logger.debug(f"Setting email verification to false for user: {user.id}")

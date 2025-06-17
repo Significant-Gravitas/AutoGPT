@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { AgentTableCard } from "./AgentTableCard";
-import { userEvent, within, expect } from "@storybook/test";
+import { userEvent, within } from "@storybook/test";
 import { type StatusType } from "./Status";
 
 const meta: Meta<typeof AgentTableCard> = {

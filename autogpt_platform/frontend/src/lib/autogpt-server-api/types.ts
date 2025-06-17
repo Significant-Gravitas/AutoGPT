@@ -214,6 +214,7 @@ export type Credentials =
 
 // --8<-- [start:BlockIOCredentialsSubSchema]
 export const PROVIDER_NAMES = {
+  AIML_API: "aiml_api",
   ANTHROPIC: "anthropic",
   APOLLO: "apollo",
   D_ID: "d_id",
@@ -346,6 +347,7 @@ export type GraphExecutionMeta = {
   started_at: Date;
   ended_at: Date;
   stats?: {
+    error?: string;
     cost: number;
     duration: number;
     duration_cpu_only: number;
@@ -694,6 +696,7 @@ export type StoreAgent = {
   description: string;
   runs: number;
   rating: number;
+  updated_at: string;
 };
 
 export type StoreAgentsResponse = {

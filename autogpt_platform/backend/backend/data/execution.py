@@ -50,6 +50,7 @@ from .block import (
 from .db import BaseDbModel
 from .includes import (
     EXECUTION_RESULT_INCLUDE,
+    EXECUTION_RESULT_ORDER,
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     graph_execution_include,
 )
@@ -628,15 +629,11 @@ async def update_node_execution_stats(
     data = stats.model_dump()
     if isinstance(data["error"], Exception):
         data["error"] = str(data["error"])
-        execution_status = ExecutionStatus.FAILED
-    else:
-        execution_status = ExecutionStatus.COMPLETED
 
     res = await AgentNodeExecution.prisma().update(
         where={"id": node_exec_id},
         data={
             "stats": Json(data),
-            "executionStatus": execution_status,
             "endedTime": datetime.now(tz=timezone.utc),
         },
         include=EXECUTION_RESULT_INCLUDE,
@@ -748,6 +745,7 @@ async def get_node_executions(
     executions = await AgentNodeExecution.prisma().find_many(
         where=where_clause,
         include=EXECUTION_RESULT_INCLUDE,
+        order=EXECUTION_RESULT_ORDER,
         take=limit,
     )
     res = [NodeExecutionResult.from_db(execution) for execution in executions]
@@ -769,11 +767,8 @@ async def get_latest_node_execution(
                 {"executionStatus": ExecutionStatus.FAILED},
             ],
         },
-        order=[
-            {"queuedTime": "desc"},
-            {"addedTime": "desc"},
-        ],
         include=EXECUTION_RESULT_INCLUDE,
+        order=EXECUTION_RESULT_ORDER,
     )
     if not execution:
         return None

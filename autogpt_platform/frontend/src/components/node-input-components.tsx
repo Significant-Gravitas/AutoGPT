@@ -77,7 +77,6 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
   handleInputChange,
   errors,
   className,
-  displayName,
 }) => {
   object ||= ("default" in schema ? schema.default : null) ?? {};
   return (
@@ -126,12 +125,10 @@ const NodeDateTimeInput: FC<{
   hideTime?: boolean;
 }> = ({
   selfKey,
-  schema,
   value = "",
   error,
   handleInputChange,
   className,
-  displayName,
   hideDate = false,
   hideTime = false,
 }) => {
@@ -219,7 +216,6 @@ const NodeFileInput: FC<{
   displayName: string;
 }> = ({
   selfKey,
-  schema,
   value = "",
   error,
   handleInputChange,
@@ -229,7 +225,6 @@ const NodeFileInput: FC<{
   const handleFileChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
-      console.log(">>> file", file);
       if (!file) return;
 
       const reader = new FileReader();
@@ -280,7 +275,7 @@ const NodeFileInput: FC<{
               variant="ghost"
               className="text-red-500 hover:text-red-700"
               onClick={() => {
-                inputRef.current && (inputRef.current!.value = "");
+                if (inputRef.current) inputRef.current.value = "";
                 handleInputChange(selfKey, "");
               }}
             >
@@ -885,13 +880,6 @@ const NodeKeyValueInput: FC<{
   );
 };
 
-// Checking if schema is type of string
-function isStringSubSchema(
-  schema: BlockIOSimpleTypeSubSchema,
-): schema is BlockIOStringSubSchema {
-  return "type" in schema && schema.type === "string";
-}
-
 const NodeArrayInput: FC<{
   nodeId: string;
   selfKey: string;
@@ -1230,15 +1218,7 @@ const NodeBooleanInput: FC<{
   handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
   className?: string;
   displayName: string;
-}> = ({
-  selfKey,
-  schema,
-  value,
-  error,
-  handleInputChange,
-  className,
-  displayName,
-}) => {
+}> = ({ selfKey, schema, value, error, handleInputChange, className }) => {
   value ||= schema.default ?? false;
   return (
     <div className={className}>
