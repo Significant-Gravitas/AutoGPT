@@ -115,7 +115,7 @@ class GithubCreateStatusBlock(Block):
         )
 
     @staticmethod
-    def create_status(
+    async def create_status(
         credentials: GithubFineGrainedAPICredentials,
         repo_url: str,
         sha: str,
@@ -144,7 +144,9 @@ class GithubCreateStatusBlock(Block):
             data.description = description
 
         status_url = f"{repo_url}/statuses/{sha}"
-        response = api.post(status_url, data=data.model_dump_json(exclude_none=True))
+        response = await api.post(
+            status_url, data=data.model_dump_json(exclude_none=True)
+        )
         result = response.json()
 
         return {
@@ -158,7 +160,7 @@ class GithubCreateStatusBlock(Block):
             "updated_at": result["updated_at"],
         }
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -166,7 +168,7 @@ class GithubCreateStatusBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
-            result = self.create_status(
+            result = await self.create_status(
                 credentials=credentials,
                 repo_url=input_data.repo_url,
                 sha=input_data.sha,

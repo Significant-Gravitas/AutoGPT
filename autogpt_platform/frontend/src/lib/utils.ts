@@ -397,7 +397,7 @@ export function isEmptyOrWhitespace(str: string | undefined | null): boolean {
   return !str || str.trim().length === 0;
 }
 
-/** Chech if a value is an object or not */
+/** Check if a value is an object or not */
 export function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

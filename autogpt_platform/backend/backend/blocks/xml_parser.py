@@ -25,7 +25,7 @@ class XMLParserBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             tokens = tokenize(input_data.input_xml)
             parser = Parser(tokens)
