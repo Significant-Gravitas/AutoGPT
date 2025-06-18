@@ -2,7 +2,7 @@
 import React, { useCallback, useMemo, useState } from "react";
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { GraphExecutionID, GraphMeta } from "@/lib/autogpt-server-api";
+import { GraphExecutionID, LibraryAgent } from "@/lib/autogpt-server-api";
 
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,19 +15,19 @@ import { IconPlay } from "@/components/ui/icons";
 import { useOnboarding } from "../onboarding/onboarding-provider";
 
 export default function AgentRunDraftView({
-  graph,
+  agent,
   onRun,
   agentActions,
 }: {
-  graph: GraphMeta;
+  agent: LibraryAgent;
   onRun: (runID: GraphExecutionID) => void;
   agentActions: ButtonAction[];
 }): React.ReactNode {
   const api = useBackendAPI();
   const toastOnFail = useToastOnFail();
 
-  const agentInputs = graph.input_schema.properties;
-  const agentCredentialsInputs = graph.credentials_input_schema.properties;
+  const agentInputs = agent.input_schema.properties;
+  const agentCredentialsInputs = agent.credentials_input_schema.properties;
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
   const [inputCredentials, setInputCredentials] = useState<Record<string, any>>(
     {},
@@ -36,7 +36,12 @@ export default function AgentRunDraftView({
 
   const doRun = useCallback(() => {
     api
-      .executeGraph(graph.id, graph.version, inputValues, inputCredentials)
+      .executeGraph(
+        agent.graph_id,
+        agent.graph_version,
+        inputValues,
+        inputCredentials,
+      )
       .then((newRun) => onRun(newRun.graph_exec_id))
       .catch(toastOnFail("execute agent"));
     // Mark run agent onboarding step as completed
@@ -45,7 +50,7 @@ export default function AgentRunDraftView({
     }
   }, [
     api,
-    graph,
+    agent,
     inputValues,
     inputCredentials,
     onRun,

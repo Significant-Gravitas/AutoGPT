@@ -423,7 +423,7 @@ export default function AgentRunsPage(): React.ReactElement {
           )
         ) : selectedView.type == "run" ? (
           <AgentRunDraftView
-            graph={graph}
+            agent={agent}
             onRun={onRun}
             agentActions={agentActions}
           />

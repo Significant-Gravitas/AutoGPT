@@ -401,7 +401,7 @@ export type LibraryAgent = {
   updated_at: Date;
   name: string;
   description: string;
-  input_schema: BlockIOObjectSubSchema;
+  input_schema: GraphIOSchema;
   credentials_input_schema: {
     type: "object";
     properties: { [key: string]: BlockIOCredentialsSubSchema };
