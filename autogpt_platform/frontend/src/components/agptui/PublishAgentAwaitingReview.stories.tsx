@@ -1,8 +1,8 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { PublishAgentAwaitingReview } from "./PublishAgentAwaitingReview";
 
 const meta: Meta<typeof PublishAgentAwaitingReview> = {
-  title: "AGPT UI/Publish Agent Awaiting Review",
+  title: "Legacy/Publish Agent Awaiting Review",
   component: PublishAgentAwaitingReview,
   tags: ["autodocs"],
   parameters: {

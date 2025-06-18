@@ -1,8 +1,8 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { AgentImages } from "./AgentImages";
 
 const meta = {
-  title: "AGPT UI/Agent Images",
+  title: "Legacy/Agent Images",
   component: AgentImages,
   parameters: {
     layout: {
