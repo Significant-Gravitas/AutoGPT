@@ -1,9 +1,9 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { Agent, AgentsSection } from "./AgentsSection";
-import { userEvent, within, expect } from "@storybook/test";
+import { userEvent, within, expect } from "storybook/test";
 
 const meta = {
-  title: "AGPT UI/Composite/Agents Section",
+  title: "Legacy/Composite/Agents Section",
   component: AgentsSection,
   parameters: {
     layout: {

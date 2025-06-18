@@ -84,7 +84,7 @@ export function APIKeysSection() {
       setIsCreateOpen(false);
       setIsKeyDialogOpen(true);
       loadAPIKeys();
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Failed to create AutoGPT Platform API key",
@@ -109,7 +109,7 @@ export function APIKeysSection() {
         description: "AutoGPT Platform API key revoked successfully",
       });
       loadAPIKeys();
-    } catch (error) {
+    } catch {
       toast({
         title: "Error",
         description: "Failed to revoke AutoGPT Platform API key",
@@ -168,7 +168,7 @@ export function APIKeysSection() {
                       <Checkbox
                         id={permission}
                         checked={selectedPermissions.includes(permission)}
-                        onCheckedChange={(checked) => {
+                        onCheckedChange={(checked: boolean) => {
                           setSelectedPermissions(
                             checked
                               ? [...selectedPermissions, permission]
