@@ -40,7 +40,6 @@ import { CustomEdge } from "./CustomEdge";
 import ConnectionLine from "./ConnectionLine";
 import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
-import { BlocksControl } from "@/components/edit/control/BlocksControl";
 import { IconUndo2, IconRedo2 } from "@/components/ui/icons";
 import { startTutorial } from "./tutorial";
 import useAgentGraph from "@/hooks/useAgentGraph";

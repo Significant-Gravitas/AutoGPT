@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   Block,

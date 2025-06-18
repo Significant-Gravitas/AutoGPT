@@ -22,7 +22,6 @@ import type {
   CredentialsDeleteResponse,
   CredentialsMetaInput,
   CredentialsMetaResponse,
-  CredentialsProviderName,
   Graph,
   GraphCreatable,
   GraphExecution,
@@ -48,7 +47,6 @@ import type {
   OttoQuery,
   OttoResponse,
   ProfileDetails,
-  Provider,
   ProviderResponse,
   RefundRequest,
   ReviewSubmissionRequest,
@@ -71,7 +69,6 @@ import type {
   UserPasswordCredentials,
   UsersBalanceHistoryResponse,
 } from "./types";
-import { DefaultStateType } from "@/components/builder/block-menu/block-menu-provider";
 
 const isClient = typeof window !== "undefined";
 

@@ -10,11 +10,6 @@ import { Button } from "@/components/ui/button";
 import { GraphMeta } from "@/lib/autogpt-server-api";
 import { Label } from "@/components/ui/label";
 import { IconSave } from "@/components/ui/icons";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/use-toast";
 import { ControlPanelButton } from "@/components/builder/block-menu/ControlPanelButton";
 

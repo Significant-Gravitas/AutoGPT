@@ -5,7 +5,6 @@ import {
   Block,
   BlockUIType,
   Category,
-  Graph,
   LibraryAgent,
   SpecialBlockID,
 } from "@/lib/autogpt-server-api/types";

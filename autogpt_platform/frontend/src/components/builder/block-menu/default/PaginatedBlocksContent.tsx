@@ -1,4 +1,4 @@
-import React, { Fragment } from "react";
+import React from "react";
 import { BlocksList } from "./BlocksList";
 import { Block } from "../Block";
 import { BlockRequest } from "@/lib/autogpt-server-api";
