@@ -104,7 +104,7 @@ export function AllVariants() {
       <div className="space-y-8">
         <div>
           <Text variant="h1" className="mb-4 text-zinc-800">
-            Color System
+            Color Palette
           </Text>
           <Text variant="large" className="text-zinc-600">
             Use only these approved colors in your components. Many are named
@@ -177,15 +177,6 @@ export function AllVariants() {
             </div>
           </div>
         </div>
-      </div>
-
-      <div>
-        <Text variant="h2" className="mb-2 text-xl font-semibold text-zinc-800">
-          Color Palette
-        </Text>
-        <Text variant="body" className="mb-6 text-zinc-600">
-          Our complete color palette with 10 shades per color family.
-        </Text>
       </div>
 
       {/* Special Colors */}
