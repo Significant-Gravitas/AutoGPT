@@ -32,12 +32,21 @@ export async function updateSession(request: NextRequest) {
             supabaseResponse = NextResponse.next({
               request,
             });
-            cookiesToSet.forEach(({ name, value, options }) =>
-              supabaseResponse.cookies.set(name, value, {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              // WebKit-specific: Use more explicit cookie settings for better compatibility
+              const webkitCompatibleOptions = {
                 ...options,
                 ...cookieSettings,
-              }),
-            );
+                // Ensure domain is not set to avoid webkit issues with localhost
+                domain: undefined,
+              };
+
+              supabaseResponse.cookies.set(
+                name,
+                value,
+                webkitCompatibleOptions,
+              );
+            });
           },
         },
       },

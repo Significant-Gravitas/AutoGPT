@@ -1,6 +1,20 @@
-export const cookieSettings = {
+import { type CookieOptions } from "@supabase/ssr";
+
+export const cookieSettings: Partial<CookieOptions> = {
   secure: process.env.NODE_ENV === "production",
   sameSite: "lax",
+  // WebKit-specific: Add explicit path for better compatibility
+  path: "/",
+  // Only use httpOnly for non-auth cookies to prevent WebKit issues
+  // Supabase auth cookies need to be accessible to JS client
+} as const;
+
+// WebKit-compatible auth cookie settings
+export const authCookieSettings: Partial<CookieOptions> = {
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+  path: "/",
+  // No httpOnly for auth cookies per Supabase recommendations
 } as const;
 
 export const PROTECTED_PAGES = [
