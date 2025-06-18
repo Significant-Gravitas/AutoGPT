@@ -11,8 +11,12 @@ from urllib.parse import quote, urljoin, urlparse
 import aiohttp
 import idna
 from aiohttp import FormData, abc
+from tenacity import retry, retry_if_result, wait_exponential_jitter
 
 from backend.util.json import json
+
+# Retry status codes for which we will automatically retry the request
+THROTTLE_RETRY_STATUS_CODES: set[int] = {429, 500, 502, 503, 504, 408}
 
 # List of IP networks to block
 BLOCKED_IP_NETWORKS = [
@@ -289,6 +293,7 @@ class Requests:
         raise_for_status: bool = True,
         extra_url_validator: Callable[[URL], URL] | None = None,
         extra_headers: dict[str, str] | None = None,
+        retry_max_wait: float = 300.0,
     ):
         self.trusted_origins = []
         for url in trusted_origins or []:
@@ -300,8 +305,42 @@ class Requests:
         self.raise_for_status = raise_for_status
         self.extra_url_validator = extra_url_validator
         self.extra_headers = extra_headers
+        self.retry_max_wait = retry_max_wait
 
     async def request(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: Optional[dict] = None,
+        files: list[tuple[str, tuple[str, BytesIO, str]]] | None = None,
+        data: Any | None = None,
+        json: Any | None = None,
+        allow_redirects: bool = True,
+        max_redirects: int = 10,
+        **kwargs,
+    ) -> Response:
+        @retry(
+            wait=wait_exponential_jitter(max=self.retry_max_wait),
+            retry=retry_if_result(lambda r: r.status in THROTTLE_RETRY_STATUS_CODES),
+            reraise=True,
+        )
+        async def _make_request() -> Response:
+            return await self._request(
+                method=method,
+                url=url,
+                headers=headers,
+                files=files,
+                data=data,
+                json=json,
+                allow_redirects=allow_redirects,
+                max_redirects=max_redirects,
+                **kwargs,
+            )
+
+        return await _make_request()
+
+    async def _request(
         self,
         method: str,
         url: str,
