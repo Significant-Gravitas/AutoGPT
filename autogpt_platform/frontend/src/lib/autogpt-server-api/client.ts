@@ -123,7 +123,7 @@ export default class BackendAPI {
   getUserCredit(): Promise<{ credits: number }> {
     try {
       return this._get("/credits");
-    } catch (error) {
+    } catch {
       return Promise.resolve({ credits: 0 });
     }
   }
@@ -223,7 +223,7 @@ export default class BackendAPI {
     version?: number,
     for_export?: boolean,
   ): Promise<Graph> {
-    let query: Record<string, any> = {};
+    const query: Record<string, any> = {};
     if (version !== undefined) {
       query["version"] = version;
     }
@@ -240,7 +240,7 @@ export default class BackendAPI {
   }
 
   createGraph(graph: GraphCreatable): Promise<Graph> {
-    let requestBody = { graph } as GraphCreateRequestBody;
+    const requestBody = { graph } as GraphCreateRequestBody;
 
     return this._request("POST", "/graphs", requestBody);
   }
@@ -872,7 +872,7 @@ export default class BackendAPI {
         } else {
           errorDetail = errorData.detail || response.statusText;
         }
-      } catch (e) {
+      } catch {
         errorDetail = response.statusText;
       }
 

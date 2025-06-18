@@ -1,10 +1,10 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { ProfilePopoutMenu } from "./ProfilePopoutMenu";
-import { userEvent, within } from "@storybook/test";
+import { userEvent, within } from "storybook/test";
 import { IconType } from "../ui/icons";
 
 const meta = {
-  title: "AGPT UI/Profile Popout Menu",
+  title: "Legacy/Profile Popout Menu",
   component: ProfilePopoutMenu,
   parameters: {
     layout: "centered",
