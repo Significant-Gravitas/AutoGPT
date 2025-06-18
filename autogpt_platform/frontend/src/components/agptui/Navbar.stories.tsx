@@ -1,10 +1,10 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { Navbar } from "./Navbar";
-import { userEvent, within } from "@storybook/test";
+import { userEvent, within } from "storybook/test";
 import { IconType } from "../ui/icons";
 
 const meta = {
-  title: "AGPT UI/Navbar",
+  title: "Legacy/Navbar",
   component: Navbar,
   parameters: {
     layout: "fullscreen",

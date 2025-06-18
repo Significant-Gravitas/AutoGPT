@@ -1,9 +1,9 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { CreatorCard } from "./CreatorCard";
-import { userEvent, within } from "@storybook/test";
+import { userEvent, within } from "storybook/test";
 
 const meta = {
-  title: "AGPT UI/Creator Card",
+  title: "Legacy/Creator Card",
   component: CreatorCard,
   parameters: {
     layout: "centered",
