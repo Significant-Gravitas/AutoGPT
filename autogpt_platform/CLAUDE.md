@@ -137,8 +137,9 @@ Key models (defined in `/backend/schema.prisma`):
 
 **Cache Protection Middleware:**
 - Located in `/backend/backend/server/middleware/security.py`
-- Automatically applies `Cache-Control: no-store, no-cache, must-revalidate, private` headers to sensitive endpoints
-- Protects authentication tokens, API keys, user credentials, and personal data from browser/proxy caching
-- Covers endpoints: `/api/auth/*`, `/api/integrations/*`, `/api/graphs/*/execute`, `/api/credits/*`, etc.
-- Add here if you need to cover more.
+- Default behavior: Disables caching for ALL endpoints with `Cache-Control: no-store, no-cache, must-revalidate, private`
+- Uses an allow list approach - only explicitly permitted paths can be cached
+- Cacheable paths include: static assets (`/static/*`, `/_next/static/*`), health checks, public store pages, documentation
+- Prevents sensitive data (auth tokens, API keys, user data) from being cached by browsers/proxies
+- To allow caching for a new endpoint, add it to `CACHEABLE_PATHS` in the middleware
 - Applied to both main API server and external API applications

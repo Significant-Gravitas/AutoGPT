@@ -8,72 +8,65 @@ from starlette.types import ASGIApp
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """
-    Middleware to add security headers to responses, including cache control
-    for sensitive endpoints to prevent caching of sensitive data.
+    Middleware to add security headers to responses, with cache control
+    disabled by default for all endpoints except those explicitly allowed.
     """
 
-    SENSITIVE_PATHS: Set[str] = {
-        # Authentication endpoints
-        "/api/auth",
-        "/api/v1/auth",
-        # OAuth endpoints
-        "/api/integrations/oauth",
-        "/api/v1/integrations/oauth",
-        # User credentials and sensitive data
-        "/api/integrations/credentials",
-        "/api/v1/integrations/credentials",
-        "/api/integrations",
-        "/api/v1/integrations",
-        # User profile and sensitive user data
-        "/api/auth/user",
-        "/api/v1/auth/user",
-        "/api/users",
-        "/api/v1/users",
-        # Credit and billing information
-        "/api/credits",
-        "/api/v1/credits",
-        # Graph execution (may contain credentials)
-        "/api/graphs/*/execute",
-        "/api/v1/graphs/*/execute",
-        # Store admin and sensitive operations
-        "/api/store/admin",
-        "/api/store/*/submissions",
-        # Library operations (may contain user data)
-        "/api/library",
-        "/api/v2/library",
-        # Otto chat (contains conversation data)
-        "/api/otto",
-        "/api/v2/otto",
-        # External API endpoints (may contain sensitive integrations)
-        "/external-api",
-        # Email endpoints (may contain personal data)
-        "/api/email",
-        # API key management
-        "/api/v1/api_keys",
-        # Graph definitions (may contain embedded credentials) - but allow public read access for basic metadata
-        "/api/graphs/*/export",
-        "/api/v1/graphs/*/export",
+    CACHEABLE_PATHS: Set[str] = {
+        # Static assets
+        "/static",
+        "/_next/static",
+        "/assets",
+        "/images",
+        "/css",
+        "/js",
+        "/fonts",
+        # Public API endpoints
+        "/api/health",
+        "/api/v1/health",
+        "/api/status",
+        # Public store/marketplace pages (read-only)
+        "/api/store/agents",
+        "/api/v1/store/agents",
+        "/api/store/categories",
+        "/api/v1/store/categories",
+        "/api/store/featured",
+        "/api/v1/store/featured",
+        # Public graph templates (read-only, no user data)
+        "/api/graphs/templates",
+        "/api/v1/graphs/templates",
+        # Documentation endpoints
+        "/api/docs",
+        "/api/v1/docs",
+        "/docs",
+        "/swagger",
+        "/openapi.json",
+        # Favicon and manifest
+        "/favicon.ico",
+        "/manifest.json",
+        "/robots.txt",
+        "/sitemap.xml",
     }
 
     def __init__(self, app: ASGIApp):
         super().__init__(app)
         # Compile regex patterns for wildcard matching
-        self.sensitive_patterns = [
+        self.cacheable_patterns = [
             re.compile(pattern.replace("*", "[^/]+"))
-            for pattern in self.SENSITIVE_PATHS
+            for pattern in self.CACHEABLE_PATHS
             if "*" in pattern
         ]
-        self.exact_paths = {path for path in self.SENSITIVE_PATHS if "*" not in path}
+        self.exact_paths = {path for path in self.CACHEABLE_PATHS if "*" not in path}
 
-    def is_sensitive_path(self, path: str) -> bool:
-        """Check if the given path should have cache protection."""
+    def is_cacheable_path(self, path: str) -> bool:
+        """Check if the given path is allowed to be cached."""
         # Check exact matches first
-        for sensitive_path in self.exact_paths:
-            if path.startswith(sensitive_path):
+        for cacheable_path in self.exact_paths:
+            if path.startswith(cacheable_path):
                 return True
 
         # Check pattern matches
-        for pattern in self.sensitive_patterns:
+        for pattern in self.cacheable_patterns:
             if pattern.match(path):
                 return True
 
@@ -88,8 +81,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
-        # Add cache control headers for sensitive endpoints
-        if self.is_sensitive_path(request.url.path):
+        # Default: Disable caching for all endpoints
+        # Only allow caching for explicitly permitted paths
+        if not self.is_cacheable_path(request.url.path):
             response.headers["Cache-Control"] = (
                 "no-store, no-cache, must-revalidate, private"
             )
