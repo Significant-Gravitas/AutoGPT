@@ -407,11 +407,23 @@ export type LibraryAgent = {
     properties: { [key: string]: BlockIOCredentialsSubSchema };
     required: (keyof LibraryAgent["credentials_input_schema"]["properties"])[];
   };
-  has_external_trigger: boolean;
   new_output: boolean;
   can_access_graph: boolean;
   is_latest_version: boolean;
-};
+} & (
+  | {
+      has_external_trigger: true;
+      trigger_setup_info: {
+        provider: CredentialsProviderName;
+        config_schema: BlockIORootSchema;
+        credentials_input_name?: string;
+      };
+    }
+  | {
+      has_external_trigger: false;
+      trigger_setup_info?: null;
+    }
+);
 
 export type LibraryAgentID = Brand<string, "LibraryAgentID">;
 

@@ -1,18 +1,19 @@
 import logging
-from typing import Optional, cast
+from typing import Any, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, Field
 
 import backend.server.v2.library.db as library_db
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
 from backend.data.block import BlockWebhookConfig
 from backend.data.graph import get_graph
+from backend.data.model import CredentialsMetaInput
 from backend.integrations.providers import ProviderName
-from backend.integrations.webhooks.utils import setup_webhook as _setup_webhook
+from backend.integrations.webhooks.utils import setup_webhook
 
 logger = logging.getLogger(__name__)
 
@@ -248,22 +249,20 @@ async def fork_library_agent(
     )
 
 
-class SetupWebhookRequest(BaseModel):
-    provider: ProviderName
-    credentials_id: str
-
+class TriggeredPresetSetupParams(BaseModel):
     name: str
-    description: str
+    description: str = ""
 
-    config: dict[str, str]
+    provider: ProviderName
+    trigger_config: dict[str, Any]
+    trigger_credentials: Optional[CredentialsMetaInput] = None
+    agent_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
 
-    model_config = ConfigDict(extra="allow")
 
-
-@router.post("/{library_agent_id}/setup_webhook_trigger")
-async def setup_webhook(
+@router.post("/{library_agent_id}/setup_trigger")
+async def setup_trigger(
     library_agent_id: str = Path(..., description="ID of the library agent"),
-    params: SetupWebhookRequest = Body(),
+    params: TriggeredPresetSetupParams = Body(),
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
 ) -> library_model.LibraryAgentPreset:
     """
@@ -304,22 +303,24 @@ async def setup_webhook(
 
     # Prepare parameters for webhook setup
     resource = (
-        trigger_webhook_config.resource_format.format(**params.config)
+        trigger_webhook_config.resource_format.format(**params.trigger_config)
         if isinstance(trigger_webhook_config, BlockWebhookConfig)
         else None
     )
-    event_filter = cast(dict, params.config[trigger_webhook_config.event_filter_input])
+    event_filter: dict = params.trigger_config[
+        trigger_webhook_config.event_filter_input
+    ]
     events = [
         trigger_webhook_config.event_format.format(event=event)
         for event, enabled in event_filter.items()
         if enabled is True
     ]
 
-    new_webhook = await _setup_webhook(
+    new_webhook = await setup_webhook(
         user_id=user_id,
         provider=params.provider,
         webhook_type=trigger_webhook_config.webhook_type,
-        credentials_id=params.credentials_id,
+        credentials_meta=params.trigger_credentials,
         resource=resource,
         events=events,
         for_graph_id=library_agent.graph_id,
@@ -331,7 +332,7 @@ async def setup_webhook(
             graph_version=library_agent.graph_version,
             name=params.name,
             description=params.description,
-            inputs=params.config,
+            inputs=params.trigger_config,
             is_active=True,
             webhook_id=new_webhook.id,
         ),

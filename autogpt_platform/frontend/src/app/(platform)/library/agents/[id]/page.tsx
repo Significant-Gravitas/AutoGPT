@@ -391,7 +391,6 @@ export default function AgentRunsPage(): React.ReactElement {
         agentRuns={agentRuns}
         schedules={schedules}
         selectedView={selectedView}
-        allowDraftNewRun={!graph.has_webhook_trigger}
         onSelectRun={selectRun}
         onSelectSchedule={selectSchedule}
         onSelectDraftNewRun={openRunDraftView}

@@ -2,7 +2,13 @@
 import React, { useCallback, useMemo, useState } from "react";
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { GraphExecutionID, LibraryAgent } from "@/lib/autogpt-server-api";
+import {
+  BlockIOCredentialsSubSchema,
+  CredentialsMetaInput,
+  GraphExecutionID,
+  LibraryAgent,
+  LibraryAgentPresetID,
+} from "@/lib/autogpt-server-api";
 
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,31 +16,51 @@ import { CredentialsInput } from "@/components/integrations/credentials-input";
 import { TypeBasedInput } from "@/components/type-based-input";
 import { useToastOnFail } from "@/components/ui/use-toast";
 import ActionButtonGroup from "@/components/agptui/action-button-group";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { IconPlay } from "@/components/ui/icons";
-import { useOnboarding } from "../onboarding/onboarding-provider";
+import { useToast } from "@/components/ui/use-toast";
+import { Input } from "@/components/ui/input";
 
 export default function AgentRunDraftView({
   agent,
   onRun,
+  onCreatePreset,
   agentActions,
 }: {
   agent: LibraryAgent;
   onRun: (runID: GraphExecutionID) => void;
+  onCreatePreset: (presetID: LibraryAgentPresetID) => void;
   agentActions: ButtonAction[];
 }): React.ReactNode {
   const api = useBackendAPI();
+  const { toast } = useToast();
   const toastOnFail = useToastOnFail();
 
-  const agentInputs = agent.input_schema.properties;
-  const agentCredentialsInputs = agent.credentials_input_schema.properties;
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
-  const [inputCredentials, setInputCredentials] = useState<Record<string, any>>(
-    {},
+  const [inputCredentials, setInputCredentials] = useState<
+    Record<string, CredentialsMetaInput>
+  >({});
+  const [presetName, setPresetName] = useState<string>("");
+  const [presetDescription, setPresetDescription] = useState<string>("");
+  const { state: onboardingState, completeStep: completeOnboardingStep } =
+    useOnboarding();
+
+  const agentInputs = useMemo(() => {
+    if (agent.has_external_trigger) {
+      return agent.trigger_setup_info.config_schema.properties;
+    }
+    return agent.input_schema.properties;
+  }, [agent]);
+  const agentCredentialsInputs = useMemo(
+    () => agent.credentials_input_schema.properties,
+    [agent],
   );
-  const { state, completeStep } = useOnboarding();
 
   const doRun = useCallback(() => {
+    // Manually running webhook-triggered agents is not supported
+    if (agent.has_external_trigger) return;
+
     api
       .executeGraph(
         agent.graph_id,
@@ -45,8 +71,8 @@ export default function AgentRunDraftView({
       .then((newRun) => onRun(newRun.graph_exec_id))
       .catch(toastOnFail("execute agent"));
     // Mark run agent onboarding step as completed
-    if (state?.completedSteps.includes("MARKETPLACE_ADD_AGENT")) {
-      completeStep("MARKETPLACE_RUN_AGENT");
+    if (onboardingState?.completedSteps.includes("MARKETPLACE_ADD_AGENT")) {
+      completeOnboardingStep("MARKETPLACE_RUN_AGENT");
     }
   }, [
     api,
@@ -55,8 +81,62 @@ export default function AgentRunDraftView({
     inputCredentials,
     onRun,
     toastOnFail,
-    state,
-    completeStep,
+    onboardingState,
+    completeOnboardingStep,
+  ]);
+
+  const doSetupTrigger = useCallback(() => {
+    // Setting up a trigger for non-webhook-triggered agents is not supported
+    if (!agent.has_external_trigger) return;
+
+    const credentialsInputName =
+      agent.trigger_setup_info.credentials_input_name;
+
+    if (!credentialsInputName) {
+      // FIXME: implement support for manual-setup webhooks
+      toast({
+        variant: "destructive",
+        title: "🚧 Feature under construction",
+        description: "Setting up non-auto-setup triggers is not yet supported.",
+      });
+      return;
+    }
+
+    api
+      .setupAgentTrigger(agent.id, {
+        name: presetName || agent.name,
+        description: presetDescription || agent.description,
+        provider: agent.trigger_setup_info.provider,
+        trigger_config: {
+          ...inputValues,
+          ...(credentialsInputName
+            ? {
+                [credentialsInputName]: inputCredentials[credentialsInputName],
+              }
+            : {}),
+        },
+        trigger_credentials: inputCredentials[credentialsInputName] ?? null, // FIXME: add this to the schema or make a mapping
+        agent_credentials: inputCredentials,
+      })
+      .then((newPreset) => onCreatePreset(newPreset.id))
+      .catch(toastOnFail("set up agent trigger"));
+
+    // Mark run agent onboarding step as completed(?)
+    if (onboardingState?.completedSteps.includes("MARKETPLACE_ADD_AGENT")) {
+      completeOnboardingStep("MARKETPLACE_RUN_AGENT");
+    }
+  }, [
+    api,
+    agent,
+    presetName,
+    presetDescription,
+    inputValues,
+    inputCredentials,
+    onCreatePreset,
+    toast,
+    toastOnFail,
+    onboardingState,
+    completeOnboardingStep,
   ]);
 
   const runActions: ButtonAction[] = useMemo(
@@ -83,6 +163,34 @@ export default function AgentRunDraftView({
             <CardTitle className="font-poppins text-lg">Input</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
+            {agent.has_external_trigger && (
+              <>
+                {/* Preset name and description */}
+                <div className="flex flex-col space-y-2">
+                  <label className="flex items-center gap-1 text-sm font-medium">
+                    Trigger Name
+                    <SchemaTooltip description="Name of the trigger you are setting up" />
+                  </label>
+                  <Input
+                    value={presetName}
+                    placeholder="Enter trigger name"
+                    onChange={(e) => setPresetName(e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col space-y-2">
+                  <label className="flex items-center gap-1 text-sm font-medium">
+                    Trigger Description
+                    <SchemaTooltip description="Description of the trigger you are setting up" />
+                  </label>
+                  <Input
+                    value={presetDescription}
+                    placeholder="Enter trigger description"
+                    onChange={(e) => setPresetDescription(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
+
             {/* Credentials inputs */}
             {Object.entries(agentCredentialsInputs).map(
               ([key, inputSubSchema]) => (
@@ -93,11 +201,19 @@ export default function AgentRunDraftView({
                     inputCredentials[key] ?? inputSubSchema.default
                   }
                   onSelectCredentials={(value) =>
-                    setInputCredentials((obj) => ({
-                      ...obj,
-                      [key]: value,
-                    }))
+                    setInputCredentials((obj) => {
+                      const newObj = { ...obj };
+                      if (value === undefined) {
+                        delete newObj[key];
+                        return newObj;
+                      }
+                      return {
+                        ...obj,
+                        [key]: value,
+                      };
+                    })
                   }
+                  hideIfSingleCredentialAvailable={!agent.has_external_trigger}
                 />
               ),
             )}

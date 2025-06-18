@@ -17,6 +17,7 @@ import type {
   CredentialsDeleteResponse,
   CredentialsMetaInput,
   CredentialsMetaResponse,
+  CredentialsProviderName,
   Graph,
   GraphCreatable,
   GraphExecution,
@@ -644,6 +645,26 @@ export default class BackendAPI {
 
   forkLibraryAgent(libraryAgentId: LibraryAgentID): Promise<LibraryAgent> {
     return this._request("POST", `/library/agents/${libraryAgentId}/fork`);
+  }
+
+  async setupAgentTrigger(
+    libraryAgentID: LibraryAgentID,
+    params: {
+      name: string;
+      description?: string;
+      provider: CredentialsProviderName;
+      trigger_config: Record<string, any>;
+      trigger_credentials?: CredentialsMetaInput;
+      agent_credentials: Record<string, CredentialsMetaInput>;
+    },
+  ): Promise<LibraryAgentPreset> {
+    return parseLibraryAgentPresetTimestamp(
+      await this._request(
+        "POST",
+        `/library/agents/${libraryAgentID}/setup_trigger`,
+        params,
+      ),
+    );
   }
 
   async listLibraryAgentPresets(params?: {

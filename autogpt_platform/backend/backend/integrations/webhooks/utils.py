@@ -8,9 +8,9 @@ from . import get_webhook_manager, supports_webhooks
 
 if TYPE_CHECKING:
     from backend.data.integrations import Webhook
+    from backend.data.model import CredentialsMetaInput
 
 app_config = Config()
-credentials_manager = IntegrationCredentialsManager()
 
 
 # TODO: add test to assert this matches the actual API route
@@ -25,7 +25,7 @@ async def setup_webhook(
     user_id: str,
     provider: ProviderName,
     webhook_type: str,
-    credentials_id: Optional[str] = None,
+    credentials_meta: Optional["CredentialsMetaInput"] = None,
     resource: Optional[str] = None,
     events: Optional[list[str]] = None,
     for_graph_id: Optional[str] = None,
@@ -53,14 +53,16 @@ async def setup_webhook(
                 f"Cannot auto-setup {provider.value} webhook without resource"
             )
 
-        if not credentials_id:
+        credentials_manager = IntegrationCredentialsManager()
+
+        if not credentials_meta:
             raise ValueError(
                 f"Cannot set up {provider.value} webhook without credentials"
             )
-        elif not (credentials := credentials_manager.get(user_id, credentials_id)):
+        elif not (credentials := credentials_manager.get(user_id, credentials_meta.id)):
             raise ValueError(
                 f"Cannot set up {provider.value} webhook without credentials: "
-                f"credentials #{credentials_id} not found for user #{user_id}"
+                f"credentials #{credentials_meta.id} not found for user #{user_id}"
             )
         elif credentials.provider != provider:
             raise ValueError(

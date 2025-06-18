@@ -9,6 +9,7 @@ import pydantic
 import backend.data.block as block_model
 import backend.data.graph as graph_model
 import backend.server.model as server_model
+from backend.integrations.providers import ProviderName
 
 
 class LibraryAgentStatus(str, Enum):
@@ -16,6 +17,14 @@ class LibraryAgentStatus(str, Enum):
     HEALTHY = "HEALTHY"  # Agent is running (not all runs have completed)
     WAITING = "WAITING"  # Agent is queued or waiting to start
     ERROR = "ERROR"  # Agent is in an error state
+
+
+class LibraryAgentTriggerInfo(pydantic.BaseModel):
+    provider: ProviderName
+    config_schema: dict[str, Any] = pydantic.Field(
+        description="Input schema for the trigger block"
+    )
+    credentials_input_name: Optional[str]
 
 
 class LibraryAgent(pydantic.BaseModel):
@@ -48,6 +57,7 @@ class LibraryAgent(pydantic.BaseModel):
     has_external_trigger: bool = pydantic.Field(
         description="Whether the agent has an external trigger (e.g. webhook) node"
     )
+    trigger_setup_info: Optional[LibraryAgentTriggerInfo] = None
 
     # Indicates whether there's a new output (based on recent runs)
     new_output: bool
@@ -111,14 +121,23 @@ class LibraryAgent(pydantic.BaseModel):
             updated_at=updated_at,
             name=graph.name,
             description=graph.description,
-            input_schema=(
-                # Bodge? Yes. Works? Also yes. Might want to clean this up later.
-                graph.input_schema
-                if not graph.webhook_input_node
-                else graph.webhook_input_node.block.input_schema.jsonschema()
-            ),
+            input_schema=graph.input_schema,
             credentials_input_schema=graph.credentials_input_schema,
             has_external_trigger=graph.has_webhook_trigger,
+            trigger_setup_info=(
+                None
+                if not (
+                    graph.webhook_input_node
+                    and graph.webhook_input_node.block.webhook_config
+                )
+                else LibraryAgentTriggerInfo(
+                    provider=graph.webhook_input_node.block.webhook_config.provider,
+                    config_schema=graph.webhook_input_node.block.input_schema.jsonschema(),
+                    credentials_input_name=graph.webhook_input_node.block.input_schema.get_credentials_fields().pop(
+                        0, None
+                    ),
+                )
+            ),
             new_output=new_output,
             can_access_graph=can_access_graph,
             is_latest_version=is_latest_version,
