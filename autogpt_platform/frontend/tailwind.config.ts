@@ -23,7 +23,7 @@ const config = {
       colors: {
         // *** APPROVED DESIGN SYSTEM COLORS ***
         // These are the ONLY colors that should be used in our app
-        colors: colors,
+        ...colors,
 
         // Legacy colors - DO NOT USE THESE IN NEW CODE
         // These are kept only to prevent breaking existing styles
