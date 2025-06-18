@@ -40,8 +40,10 @@ class LibraryAgent(pydantic.BaseModel):
     name: str
     description: str
 
-    # Made input_schema and output_schema match GraphMeta's type
     input_schema: dict[str, Any]  # Should be BlockIOObjectSubSchema in frontend
+    credentials_input_schema: dict[str, Any] = pydantic.Field(
+        description="Input schema for credentials required by the agent",
+    )
 
     has_external_trigger: bool = pydantic.Field(
         description="Whether the agent has an external trigger (e.g. webhook) node"
@@ -115,6 +117,7 @@ class LibraryAgent(pydantic.BaseModel):
                 if not graph.webhook_input_node
                 else graph.webhook_input_node.block.input_schema.jsonschema()
             ),
+            credentials_input_schema=graph.credentials_input_schema,
             has_external_trigger=graph.has_webhook_trigger,
             new_output=new_output,
             can_access_graph=can_access_graph,

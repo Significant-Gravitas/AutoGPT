@@ -402,6 +402,11 @@ export type LibraryAgent = {
   name: string;
   description: string;
   input_schema: BlockIOObjectSubSchema;
+  credentials_input_schema: {
+    type: "object";
+    properties: { [key: string]: BlockIOCredentialsSubSchema };
+    required: (keyof LibraryAgent["credentials_input_schema"]["properties"])[];
+  };
   has_external_trigger: boolean;
   new_output: boolean;
   can_access_graph: boolean;
