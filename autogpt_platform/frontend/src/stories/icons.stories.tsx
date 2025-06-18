@@ -38,7 +38,7 @@ import {
   XLogo,
   YoutubeLogo,
 } from "@phosphor-icons/react";
-import type { Meta } from "@storybook/react";
+import type { Meta } from "@storybook/nextjs";
 import { SquareArrowOutUpRight } from "lucide-react";
 
 const meta: Meta = {
