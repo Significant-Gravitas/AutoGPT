@@ -1,6 +1,6 @@
-import { colors } from "@/components/styles/colors";
 import type { Config } from "tailwindcss";
 import tailwindcssAnimate from "tailwindcss-animate";
+import { colors } from "./src/components/styles/colors";
 
 const config = {
   darkMode: ["class"],
