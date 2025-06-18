@@ -35,32 +35,32 @@ $$;
 
 -- CreateIndex
 -- Optimized: Only include owningUserId in index columns since isDeleted and hasApprovedVersion are in WHERE clause
-CREATE INDEX  "idx_store_listing_approved" ON "StoreListing"("owningUserId") WHERE "isDeleted" = false AND "hasApprovedVersion" = true;
+CREATE INDEX IF NOT EXISTS "idx_store_listing_approved" ON "StoreListing"("owningUserId") WHERE "isDeleted" = false AND "hasApprovedVersion" = true;
 
 -- CreateIndex
 -- Optimized: Only include storeListingId since submissionStatus is in WHERE clause
-CREATE INDEX  "idx_store_listing_version_status" ON "StoreListingVersion"("storeListingId") WHERE "submissionStatus" = 'APPROVED';
+CREATE INDEX IF NOT EXISTS "idx_store_listing_version_status" ON "StoreListingVersion"("storeListingId") WHERE "submissionStatus" = 'APPROVED';
 
 -- CreateIndex
-CREATE INDEX  "idx_slv_categories_gin" ON "StoreListingVersion" USING GIN ("categories") WHERE "submissionStatus" = 'APPROVED';
+CREATE INDEX IF NOT EXISTS "idx_slv_categories_gin" ON "StoreListingVersion" USING GIN ("categories") WHERE "submissionStatus" = 'APPROVED';
 
 -- CreateIndex
-CREATE INDEX  "idx_slv_agent" ON "StoreListingVersion"("agentGraphId", "agentGraphVersion") WHERE "submissionStatus" = 'APPROVED';
+CREATE INDEX IF NOT EXISTS "idx_slv_agent" ON "StoreListingVersion"("agentGraphId", "agentGraphVersion") WHERE "submissionStatus" = 'APPROVED';
 
 -- CreateIndex
-CREATE INDEX  "idx_store_listing_review_version" ON "StoreListingReview"("storeListingVersionId");
+CREATE INDEX IF NOT EXISTS "idx_store_listing_review_version" ON "StoreListingReview"("storeListingVersionId");
 
 -- CreateIndex
-CREATE INDEX  "idx_agent_graph_execution_agent" ON "AgentGraphExecution"("agentGraphId");
+CREATE INDEX IF NOT EXISTS "idx_agent_graph_execution_agent" ON "AgentGraphExecution"("agentGraphId");
 
 -- CreateIndex
-CREATE INDEX  "idx_profile_user" ON "Profile"("userId");
+CREATE INDEX IF NOT EXISTS "idx_profile_user" ON "Profile"("userId");
 
 -- Additional performance indexes
-CREATE INDEX "idx_store_listing_version_approved_listing" ON "StoreListingVersion"("storeListingId", "version") WHERE "submissionStatus" = 'APPROVED';
+CREATE INDEX IF NOT EXISTS "idx_store_listing_version_approved_listing" ON "StoreListingVersion"("storeListingId", "version") WHERE "submissionStatus" = 'APPROVED';
 
 -- Create materialized view for agent run counts
-CREATE MATERIALIZED VIEW "mv_agent_run_counts" AS
+CREATE MATERIALIZED VIEW IF NOT EXISTS "mv_agent_run_counts" AS
 SELECT 
     "agentGraphId", 
     COUNT(*) AS run_count
@@ -68,10 +68,10 @@ FROM "AgentGraphExecution"
 GROUP BY "agentGraphId";
 
 -- CreateIndex
-CREATE UNIQUE INDEX ON "mv_agent_run_counts"("agentGraphId");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_mv_agent_run_counts" ON "mv_agent_run_counts"("agentGraphId");
 
 -- Create materialized view for review statistics
-CREATE MATERIALIZED VIEW "mv_review_stats" AS
+CREATE MATERIALIZED VIEW IF NOT EXISTS "mv_review_stats" AS
 SELECT 
     sl.id AS "storeListingId",
     COUNT(sr.id) AS review_count,
@@ -84,7 +84,7 @@ WHERE sl."isDeleted" = false
 GROUP BY sl.id;
 
 -- CreateIndex
-CREATE UNIQUE INDEX ON "mv_review_stats"("storeListingId");
+CREATE UNIQUE INDEX IF NOT EXISTS "idx_mv_review_stats" ON "mv_review_stats"("storeListingId");
 
 -- DropForeignKey (if any exist on the views)
 -- None needed as views don't have foreign keys
@@ -96,7 +96,7 @@ DROP VIEW IF EXISTS "Creator";
 DROP VIEW IF EXISTS "StoreAgent";
 
 -- CreateView
-CREATE VIEW "StoreAgent" AS
+CREATE OR REPLACE VIEW "StoreAgent" AS
 WITH agent_versions AS (
     SELECT 
         "storeListingId",
@@ -141,7 +141,7 @@ WHERE sl."isDeleted" = false
   AND sl."hasApprovedVersion" = true;
 
 -- CreateView
-CREATE VIEW "Creator" AS
+CREATE OR REPLACE VIEW "Creator" AS
 WITH creator_listings AS (
     SELECT 
         sl."owningUserId",
@@ -186,22 +186,27 @@ SELECT
 FROM "Profile" p
 LEFT JOIN creator_stats cs ON cs."owningUserId" = p."userId";
 
--- Create refresh function with better concurrency handling
+-- Create refresh function that works with the current schema
 CREATE OR REPLACE FUNCTION refresh_store_materialized_views()
 RETURNS void 
 LANGUAGE plpgsql
 AS $$
+DECLARE
+    current_schema_name text;
 BEGIN
+    -- Get the current schema
+    current_schema_name := current_schema();
+    
     -- Use CONCURRENTLY for better performance during refresh
-    REFRESH MATERIALIZED VIEW CONCURRENTLY "mv_agent_run_counts";
-    REFRESH MATERIALIZED VIEW CONCURRENTLY "mv_review_stats";
-    RAISE NOTICE 'Materialized views refreshed at %', NOW();
+    EXECUTE format('REFRESH MATERIALIZED VIEW CONCURRENTLY %I."mv_agent_run_counts"', current_schema_name);
+    EXECUTE format('REFRESH MATERIALIZED VIEW CONCURRENTLY %I."mv_review_stats"', current_schema_name);
+    RAISE NOTICE 'Materialized views refreshed in schema % at %', current_schema_name, NOW();
 EXCEPTION 
     WHEN OTHERS THEN
         -- Fallback to non-concurrent refresh if concurrent fails
-        REFRESH MATERIALIZED VIEW "mv_agent_run_counts";
-        REFRESH MATERIALIZED VIEW "mv_review_stats";
-        RAISE NOTICE 'Materialized views refreshed (non-concurrent) at % due to: %', NOW(), SQLERRM;
+        EXECUTE format('REFRESH MATERIALIZED VIEW %I."mv_agent_run_counts"', current_schema_name);
+        EXECUTE format('REFRESH MATERIALIZED VIEW %I."mv_review_stats"', current_schema_name);
+        RAISE NOTICE 'Materialized views refreshed (non-concurrent) in schema % at % due to: %', current_schema_name, NOW(), SQLERRM;
 END;
 $$;
 
@@ -212,25 +217,34 @@ SELECT refresh_store_materialized_views();
 DO $$
 DECLARE
     has_pg_cron BOOLEAN;
+    current_schema_name text;
+    job_name text;
 BEGIN
     -- Get the flag we set earlier
     has_pg_cron := current_setting('migration.has_pg_cron', true)::boolean;
     
+    -- Get current schema name
+    current_schema_name := current_schema();
+    
+    -- Create a unique job name for this schema
+    job_name := format('refresh-store-views-%s', current_schema_name);
+    
     IF has_pg_cron THEN
-        -- Check if the job already exists to avoid duplicates
-        IF NOT EXISTS (
-            SELECT 1 FROM cron.job 
-            WHERE jobname = 'refresh-store-views'
-        ) THEN
-            PERFORM cron.schedule(
-                'refresh-store-views', 
-                '*/15 * * * *', 
-                'SELECT refresh_store_materialized_views();'
-            );
-            RAISE NOTICE 'Scheduled automatic refresh of materialized views every 15 minutes';
-        ELSE
-            RAISE NOTICE 'Materialized view refresh job already exists';
-        END IF;
+        -- Try to unschedule existing job (ignore errors if it doesn't exist)
+        BEGIN
+            PERFORM cron.unschedule(job_name);
+        EXCEPTION WHEN OTHERS THEN
+            -- Job doesn't exist, that's fine
+            NULL;
+        END;
+        
+        -- Schedule the refresh job with schema-specific command
+        PERFORM cron.schedule(
+            job_name,
+            '*/15 * * * *',
+            format('SELECT %I.refresh_store_materialized_views();', current_schema_name)
+        );
+        RAISE NOTICE 'Scheduled automatic refresh of materialized views every 15 minutes for schema %', current_schema_name;
     ELSE
         RAISE WARNING '⚠️  Automatic refresh NOT configured - pg_cron is not available';
         RAISE WARNING '⚠️  You must manually refresh views with: SELECT refresh_store_materialized_views();';

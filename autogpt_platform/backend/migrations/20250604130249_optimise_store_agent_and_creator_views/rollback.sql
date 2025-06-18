@@ -124,7 +124,7 @@ SELECT p.username,
           p."isFeatured", ast.num_agents, ast.agent_rating, ast.agent_runs;
 
 -- Drop function
-DROP FUNCTION IF EXISTS refresh_store_materialized_views();
+DROP FUNCTION IF EXISTS platform.refresh_store_materialized_views();
 
 -- Drop materialized views
 DROP MATERIALIZED VIEW IF EXISTS "mv_review_stats";
