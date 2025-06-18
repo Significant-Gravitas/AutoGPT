@@ -1,6 +1,6 @@
-import type { Meta } from "@storybook/nextjs";
-import { Text } from "@/components/_new/Text/Text";
+import { Text } from "@/components/atoms/Text/Text";
 import { StoryCode } from "@/stories/helpers/StoryCode";
+import type { Meta } from "@storybook/nextjs";
 
 const meta: Meta<typeof Text> = {
   title: "Design System/ Tokens /Typography",

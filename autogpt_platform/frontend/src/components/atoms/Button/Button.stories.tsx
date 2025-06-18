@@ -1,0 +1,621 @@
+import type { Meta, StoryObj } from "@storybook/nextjs";
+import { Play, Plus } from "lucide-react";
+import { Button } from "./Button";
+
+const meta: Meta<typeof Button> = {
+  title: "Design System/Atoms/Button",
+  tags: ["autodocs"],
+  component: Button,
+  parameters: {
+    layout: "centered",
+    docs: {
+      description: {
+        component:
+          "Button component with multiple variants and sizes based on our design system. Built on top of shadcn/ui button with custom styling.",
+      },
+    },
+  },
+  argTypes: {
+    variant: {
+      control: "select",
+      options: [
+        "primary",
+        "secondary",
+        "destructive",
+        "outline",
+        "ghost",
+        "loading",
+        "link",
+        "icon",
+      ],
+      description: "Button style variant",
+    },
+    size: {
+      control: "select",
+      options: ["small", "large", "icon"],
+      description: "Button size",
+    },
+    loading: {
+      control: "boolean",
+      description: "Show loading spinner and disable button",
+    },
+    disabled: {
+      control: "boolean",
+      description: "Disable the button",
+    },
+    children: {
+      control: "text",
+      description: "Button content",
+    },
+  },
+  args: {
+    children: "Button",
+    variant: "primary",
+    size: "large",
+    loading: false,
+    disabled: false,
+  },
+};
+
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+// Basic variants
+export const Primary: Story = {
+  args: {
+    variant: "primary",
+    children: "Primary Button",
+  },
+};
+
+export const Secondary: Story = {
+  args: {
+    variant: "secondary",
+    children: "Secondary Button",
+  },
+};
+
+export const Destructive: Story = {
+  args: {
+    variant: "destructive",
+    children: "Delete",
+  },
+};
+
+export const Outline: Story = {
+  args: {
+    variant: "outline",
+    children: "Outline Button",
+  },
+};
+
+export const Ghost: Story = {
+  args: {
+    variant: "ghost",
+    children: "Ghost Button",
+  },
+};
+
+export const Link: Story = {
+  args: {
+    variant: "link",
+    children: "Add to library",
+  },
+};
+
+// Loading states
+export const Loading: Story = {
+  args: {
+    loading: true,
+    children: "Processing...",
+  },
+};
+
+export const LoadingSecondary: Story = {
+  args: {
+    variant: "secondary",
+    loading: true,
+    children: "Loading...",
+  },
+};
+
+// Sizes
+export const SmallButtons: Story = {
+  render: () => (
+    <div className="flex flex-wrap gap-4">
+      <Button variant="primary" size="small">
+        Primary
+      </Button>
+      <Button variant="secondary" size="small">
+        Secondary
+      </Button>
+      <Button variant="destructive" size="small">
+        Delete
+      </Button>
+      <Button variant="outline" size="small">
+        Outline
+      </Button>
+      <Button variant="ghost" size="small">
+        Ghost
+      </Button>
+    </div>
+  ),
+};
+
+export const LargeButtons: Story = {
+  render: () => (
+    <div className="flex flex-wrap gap-4">
+      <Button variant="primary" size="large">
+        Primary
+      </Button>
+      <Button variant="secondary" size="large">
+        Secondary
+      </Button>
+      <Button variant="destructive" size="large">
+        Delete
+      </Button>
+      <Button variant="outline" size="large">
+        Outline
+      </Button>
+      <Button variant="ghost" size="large">
+        Ghost
+      </Button>
+    </div>
+  ),
+};
+
+// With icons
+export const WithLeftIcon: Story = {
+  args: {
+    variant: "primary",
+    leftIcon: <Play className="h-4 w-4" />,
+    children: "Play",
+  },
+};
+
+export const WithRightIcon: Story = {
+  args: {
+    variant: "outline",
+    rightIcon: <Plus className="h-4 w-4" />,
+    children: "Add Item",
+  },
+};
+
+export const IconOnly: Story = {
+  args: {
+    variant: "icon",
+    size: "icon",
+    children: <Plus className="h-4 w-4" />,
+    "aria-label": "Add item",
+  },
+};
+
+// States
+export const Disabled: Story = {
+  render: () => (
+    <div className="flex flex-wrap gap-4">
+      <Button variant="primary" disabled>
+        Primary Disabled
+      </Button>
+      <Button variant="secondary" disabled>
+        Secondary Disabled
+      </Button>
+      <Button variant="destructive" disabled>
+        Destructive Disabled
+      </Button>
+      <Button variant="outline" disabled>
+        Outline Disabled
+      </Button>
+      <Button variant="ghost" disabled>
+        Ghost Disabled
+      </Button>
+    </div>
+  ),
+};
+
+// Complete showcase matching Figma design
+export const AllVariants: Story = {
+  render: () => (
+    <div className="space-y-12 p-8">
+      {/* Large buttons section */}
+      <div className="space-y-8">
+        <h2 className="font-['Inter'] text-3xl font-semibold text-neutral-900">
+          Large buttons
+        </h2>
+        <div className="flex flex-wrap gap-20">
+          {/* Primary */}
+          <div className="flex flex-col gap-5">
+            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+              Primary
+            </div>
+            <div className="flex flex-col gap-3">
+              <Button variant="primary" size="large">
+                Text
+              </Button>
+              <Button
+                variant="primary"
+                size="large"
+                className="hover:bg-zinc-800"
+              >
+                Text
+              </Button>
+              <Button variant="primary" size="large" disabled>
+                Text
+              </Button>
+              <Button
+                variant="primary"
+                size="large"
+                leftIcon={<Play className="h-5 w-5" />}
+              >
+                Text
+              </Button>
+              <Button
+                variant="primary"
+                size="large"
+                leftIcon={<Play className="h-5 w-5" />}
+                className="hover:bg-zinc-800"
+              >
+                Text
+              </Button>
+              <Button
+                variant="primary"
+                size="large"
+                leftIcon={<Play className="h-5 w-5" />}
+                disabled
+              >
+                Text
+              </Button>
+            </div>
+          </div>
+
+          {/* Secondary */}
+          <div className="flex flex-col gap-5">
+            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+              Secondary
+            </div>
+            <div className="flex flex-col gap-3">
+              <Button variant="secondary" size="large">
+                Text
+              </Button>
+              <Button
+                variant="secondary"
+                size="large"
+                className="hover:bg-zinc-400"
+              >
+                Text
+              </Button>
+              <Button variant="secondary" size="large" disabled>
+                Text
+              </Button>
+              <Button
+                variant="secondary"
+                size="large"
+                leftIcon={<Play className="h-5 w-5" />}
+              >
+                Text
+              </Button>
+              <Button
+                variant="secondary"
+                size="large"
+                leftIcon={<Play className="h-5 w-5" />}
+                className="hover:bg-zinc-400"
+              >
+                Text
+              </Button>
+              <Button
+                variant="secondary"
+                size="large"
+                leftIcon={<Play className="h-5 w-5" />}
+                disabled
+              >
+                Text
+              </Button>
+            </div>
+          </div>
+
+          {/* Destructive */}
+          <div className="flex flex-col gap-5">
+            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+              Destructive
+            </div>
+            <div className="flex flex-col gap-3">
+              <Button variant="destructive" size="large">
+                Text
+              </Button>
+              <Button
+                variant="destructive"
+                size="large"
+                className="hover:bg-red-600"
+              >
+                Text
+              </Button>
+              <Button variant="destructive" size="large" disabled>
+                Text
+              </Button>
+              <Button
+                variant="destructive"
+                size="large"
+                leftIcon={<Play className="h-5 w-5" />}
+              >
+                Text
+              </Button>
+              <Button
+                variant="destructive"
+                size="large"
+                leftIcon={<Play className="h-5 w-5" />}
+                className="hover:bg-red-600"
+              >
+                Text
+              </Button>
+              <Button
+                variant="destructive"
+                size="large"
+                leftIcon={<Play className="h-5 w-5" />}
+                disabled
+              >
+                Text
+              </Button>
+            </div>
+          </div>
+
+          {/* Outline */}
+          <div className="flex flex-col gap-5">
+            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+              Outline
+            </div>
+            <div className="flex flex-col gap-3">
+              <Button variant="outline" size="large">
+                Text
+              </Button>
+              <Button
+                variant="outline"
+                size="large"
+                className="hover:bg-zinc-200"
+              >
+                Text
+              </Button>
+              <Button variant="outline" size="large" disabled>
+                Text
+              </Button>
+              <Button
+                variant="outline"
+                size="large"
+                leftIcon={<Play className="h-5 w-5" />}
+              >
+                Text
+              </Button>
+              <Button
+                variant="outline"
+                size="large"
+                leftIcon={<Play className="h-5 w-5" />}
+                className="hover:bg-zinc-200"
+              >
+                Text
+              </Button>
+              <Button
+                variant="outline"
+                size="large"
+                leftIcon={<Play className="h-5 w-5" />}
+                disabled
+              >
+                Text
+              </Button>
+            </div>
+          </div>
+
+          {/* Ghost */}
+          <div className="flex flex-col gap-5">
+            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+              Ghost
+            </div>
+            <div className="flex flex-col gap-3">
+              <Button variant="ghost" size="large">
+                Text
+              </Button>
+              <Button
+                variant="ghost"
+                size="large"
+                className="hover:bg-zinc-100"
+              >
+                Text
+              </Button>
+              <Button variant="ghost" size="large" disabled>
+                Text
+              </Button>
+              <Button
+                variant="ghost"
+                size="large"
+                leftIcon={<Play className="h-5 w-5" />}
+              >
+                Text
+              </Button>
+              <Button
+                variant="ghost"
+                size="large"
+                leftIcon={<Play className="h-5 w-5" />}
+                className="hover:bg-zinc-100"
+              >
+                Text
+              </Button>
+              <Button
+                variant="ghost"
+                size="large"
+                leftIcon={<Play className="h-5 w-5" />}
+                disabled
+              >
+                Text
+              </Button>
+            </div>
+          </div>
+
+          {/* Loading */}
+          <div className="flex flex-col gap-5">
+            <div className="font-['Poppins'] text-base font-medium text-neutral-900">
+              Loading
+            </div>
+            <div className="flex flex-col gap-3">
+              <Button loading size="large">
+                Processing
+              </Button>
+              <Button variant="ghost" loading size="large">
+                Loading
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Small buttons section */}
+      <div className="space-y-8">
+        <h2 className="font-['Inter'] text-3xl font-semibold text-neutral-900">
+          Small buttons
+        </h2>
+        <div className="flex flex-wrap gap-20">
+          {/* Primary Small */}
+          <div className="flex flex-col gap-5">
+            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+              Primary
+            </div>
+            <div className="flex flex-col gap-3">
+              <Button variant="primary" size="small">
+                Text
+              </Button>
+              <Button
+                variant="primary"
+                size="small"
+                className="hover:bg-zinc-800"
+              >
+                Text
+              </Button>
+              <Button variant="primary" size="small" disabled>
+                Text
+              </Button>
+              <Button
+                variant="primary"
+                size="small"
+                leftIcon={<Play className="h-4 w-4" />}
+              >
+                Text
+              </Button>
+              <Button
+                variant="primary"
+                size="small"
+                leftIcon={<Play className="h-4 w-4" />}
+                className="hover:bg-zinc-800"
+              >
+                Text
+              </Button>
+              <Button
+                variant="primary"
+                size="small"
+                leftIcon={<Play className="h-4 w-4" />}
+                disabled
+              >
+                Text
+              </Button>
+            </div>
+          </div>
+
+          {/* Secondary Small */}
+          <div className="flex flex-col gap-5">
+            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+              Secondary
+            </div>
+            <div className="flex flex-col gap-3">
+              <Button variant="secondary" size="small">
+                Text
+              </Button>
+              <Button
+                variant="secondary"
+                size="small"
+                className="hover:bg-zinc-400"
+              >
+                Text
+              </Button>
+              <Button variant="secondary" size="small" disabled>
+                Text
+              </Button>
+              <Button
+                variant="secondary"
+                size="small"
+                leftIcon={<Play className="h-4 w-4" />}
+              >
+                Text
+              </Button>
+              <Button
+                variant="secondary"
+                size="small"
+                leftIcon={<Play className="h-4 w-4" />}
+                className="hover:bg-zinc-400"
+              >
+                Text
+              </Button>
+              <Button
+                variant="secondary"
+                size="small"
+                leftIcon={<Play className="h-4 w-4" />}
+                disabled
+              >
+                Text
+              </Button>
+            </div>
+          </div>
+
+          {/* Loading Small */}
+          <div className="flex flex-col gap-5">
+            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+              Loading
+            </div>
+            <div className="flex flex-col gap-3">
+              <Button loading size="small">
+                Processing
+              </Button>
+              <Button variant="ghost" loading size="small">
+                Loading
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Other button types */}
+      <div className="space-y-8">
+        <h2 className="font-['Inter'] text-3xl font-semibold text-neutral-900">
+          Other button types
+        </h2>
+        <div className="flex gap-20">
+          {/* Link */}
+          <div className="flex flex-col gap-5">
+            <div className="font-['Geist'] text-base font-medium text-zinc-800">
+              Link
+            </div>
+            <div className="flex flex-col gap-3">
+              <Button variant="link">Add to library</Button>
+              <Button variant="link" className="underline">
+                Add to library
+              </Button>
+            </div>
+          </div>
+
+          {/* Icon */}
+          <div className="flex flex-col gap-5">
+            <div className="font-['Geist'] text-base font-medium text-zinc-800">
+              Icon
+            </div>
+            <div className="flex flex-col gap-3">
+              <Button variant="icon" size="icon">
+                <Plus className="h-4 w-4" />
+              </Button>
+              <Button variant="primary" size="icon" className="bg-zinc-700">
+                <Plus className="h-4 w-4" />
+              </Button>
+              <Button variant="icon" size="icon" disabled>
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  ),
+};

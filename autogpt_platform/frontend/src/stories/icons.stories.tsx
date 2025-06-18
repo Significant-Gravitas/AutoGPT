@@ -1,4 +1,4 @@
-import { Text } from "@/components/_new/Text/Text";
+import { Text } from "@/components/atoms/Text/Text";
 import { StoryCode } from "@/stories/helpers/StoryCode";
 import {
   Alien,
