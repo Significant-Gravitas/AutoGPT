@@ -1,9 +1,9 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { HeroSection } from "./HeroSection";
-import { userEvent, within, expect } from "@storybook/test";
+import { userEvent, within, expect } from "storybook/test";
 
 const meta = {
-  title: "AGPT UI/Composite/Hero Section",
+  title: "Legacy/Composite/Hero Section",
   component: HeroSection,
   parameters: {
     layout: {

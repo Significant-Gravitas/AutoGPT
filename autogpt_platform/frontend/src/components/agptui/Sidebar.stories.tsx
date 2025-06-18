@@ -1,8 +1,8 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { Sidebar } from "./Sidebar";
 
 const meta = {
-  title: "AGPT UI/Sidebar",
+  title: "Legacy/Sidebar",
   component: Sidebar,
   parameters: {
     layout: "centered",

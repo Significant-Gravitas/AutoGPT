@@ -1,10 +1,10 @@
 import { StoreAgent } from "@/lib/autogpt-server-api";
-import type { Meta, StoryObj } from "@storybook/react";
-import { userEvent, within } from "@storybook/test";
+import type { Meta, StoryObj } from "@storybook/nextjs";
+import { userEvent, within } from "storybook/test";
 import { FeaturedSection } from "./FeaturedSection";
 
 const meta = {
-  title: "AGPT UI/Composite/Featured Agents",
+  title: "Legacy/Composite/Featured Agents",
   component: FeaturedSection,
   parameters: {
     layout: {

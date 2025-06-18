@@ -85,7 +85,8 @@ from backend.util.retry import continuous_retry, func_retry
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
+logger = TruncatedLogger(_logger, prefix="[GraphExecutor]")
 settings = Settings()
 
 active_runs_gauge = Gauge(
@@ -122,7 +123,7 @@ class LogMetadata(TruncatedLogger):
         }
         prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"
         super().__init__(
-            logger,
+            _logger,
             max_length=max_length,
             prefix=prefix,
             metadata=metadata,
@@ -1214,7 +1215,9 @@ def get_db_client() -> "DatabaseManagerClient":
     from backend.executor import DatabaseManagerClient
 
     # Disable health check for the service client to avoid breaking process initializer.
-    return get_service_client(DatabaseManagerClient, health_check=False)
+    return get_service_client(
+        DatabaseManagerClient, health_check=False, request_retry=True
+    )
 
 
 @thread_cached
@@ -1222,7 +1225,9 @@ def get_db_async_client() -> "DatabaseManagerAsyncClient":
     from backend.executor import DatabaseManagerAsyncClient
 
     # Disable health check for the service client to avoid breaking process initializer.
-    return get_service_client(DatabaseManagerAsyncClient, health_check=False)
+    return get_service_client(
+        DatabaseManagerAsyncClient, health_check=False, request_retry=True
+    )
 
 
 async def send_async_execution_update(
