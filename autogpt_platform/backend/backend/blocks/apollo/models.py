@@ -1,9 +1,23 @@
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel as OriginalBaseModel
+from pydantic import ConfigDict
 
 from backend.data.model import SchemaField
+
+
+class BaseModel(OriginalBaseModel):
+    def model_dump(self, *args, exclude: set[str] | None = None, **kwargs):
+        if exclude is None:
+            exclude = set("credentials")
+        else:
+            exclude.add("credentials")
+
+        kwargs.setdefault("exclude_none", True)
+        kwargs.setdefault("exclude_unset", True)
+        kwargs.setdefault("exclude_defaults", True)
+        return super().model_dump(*args, exclude=exclude, **kwargs)
 
 
 class PrimaryPhone(BaseModel):
@@ -356,20 +370,7 @@ class Contact(BaseModel):
     contact_job_change_event: Optional[str] = None
 
 
-class ApolloRequestBaseModel(BaseModel):
-    def model_dump(self, *args, exclude: set[str] | None = None, **kwargs):
-        if exclude is None:
-            exclude = set("credentials")
-        else:
-            exclude.add("credentials")
-
-        kwargs.setdefault("exclude_none", True)
-        kwargs.setdefault("exclude_unset", True)
-        kwargs.setdefault("exclude_defaults", True)
-        return super().model_dump(*args, exclude=exclude, **kwargs)
-
-
-class SearchOrganizationsRequest(ApolloRequestBaseModel):
+class SearchOrganizationsRequest(BaseModel):
     """Request for Apollo's search organizations API"""
 
     organization_num_empoloyees_range: list[int] = SchemaField(
@@ -450,7 +451,7 @@ class SearchOrganizationsResponse(BaseModel):
     derived_params: Optional[str] = "N/A"
 
 
-class SearchPeopleRequest(ApolloRequestBaseModel):
+class SearchPeopleRequest(BaseModel):
     """Request for Apollo's search people API"""
 
     person_titles: list[str] = SchemaField(
