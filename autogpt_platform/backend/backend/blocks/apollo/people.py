@@ -107,6 +107,7 @@ class SearchPeopleBlock(Block):
             default_factory=list,
         )
         person: Contact = SchemaField(
+            title="Person",
             description="Each found person, one at a time",
         )
         error: str = SchemaField(
