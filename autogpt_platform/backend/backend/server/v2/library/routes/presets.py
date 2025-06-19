@@ -6,11 +6,15 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 
 import backend.server.v2.library.db as db
 import backend.server.v2.library.model as models
+from backend.data.integrations import get_webhook
 from backend.executor.utils import add_graph_execution
+from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.webhooks import get_webhook_manager
 from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
 
+credentials_manager = IntegrationCredentialsManager()
 router = APIRouter()
 
 
@@ -198,6 +202,19 @@ async def delete_preset(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Preset #{preset_id} not found for user #{user_id}",
+        )
+    if preset.webhook_id:
+        webhook = await get_webhook(preset.webhook_id)
+        await db.set_preset_webhook(preset_id, None)
+
+        # Clean up webhook if it is now unused
+        credentials = (
+            await credentials_manager.get(user_id, webhook.credentials_id)
+            if webhook.credentials_id
+            else None
+        )
+        await get_webhook_manager(webhook.provider).prune_webhook_if_dangling(
+            webhook.id, credentials
         )
     try:
         await db.delete_preset(user_id, preset_id)
