@@ -387,7 +387,7 @@ class SearchPeopleBlock(Block):
         **kwargs,
     ) -> BlockOutput:
 
-        query = SearchPeopleRequest(**input_data.model_dump(exclude={"credentials"}))
+        query = SearchPeopleRequest(**input_data.model_dump())
         people = await self.search_people(query, credentials)
         for person in people:
             yield "person", person
