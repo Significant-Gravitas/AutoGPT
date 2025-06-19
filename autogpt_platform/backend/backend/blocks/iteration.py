@@ -53,7 +53,7 @@ class StepThroughItemsBlock(Block):
             test_mock={},
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         for data in [input_data.items, input_data.items_object, input_data.items_str]:
             if not data:
                 continue

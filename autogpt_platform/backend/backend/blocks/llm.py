@@ -3,14 +3,13 @@ import logging
 from abc import ABC
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
-from types import MappingProxyType
 from typing import Any, Iterable, List, Literal, NamedTuple, Optional
 
 import anthropic
 import ollama
 import openai
 from anthropic.types import ToolParam
-from groq import Groq
+from groq import AsyncGroq
 from pydantic import BaseModel, SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -24,13 +23,13 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util import json
 from backend.util.logging import TruncatedLogger
-from backend.util.settings import BehaveAs, Settings
 from backend.util.text import TextFormatter
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
 fmt = TextFormatter()
 
 LLMProviderName = Literal[
+    ProviderName.AIML_API,
     ProviderName.ANTHROPIC,
     ProviderName.GROQ,
     ProviderName.OLLAMA,
@@ -72,20 +71,7 @@ class ModelMetadata(NamedTuple):
 
 
 class LlmModelMeta(EnumMeta):
-    @property
-    def __members__(self) -> MappingProxyType:
-        if Settings().config.behave_as == BehaveAs.LOCAL:
-            members = super().__members__
-            return MappingProxyType(members)
-        else:
-            removed_providers = ["ollama"]
-            existing_members = super().__members__
-            members = {
-                name: member
-                for name, member in existing_members.items()
-                if LlmModel[name].provider not in removed_providers
-            }
-            return MappingProxyType(members)
+    pass
 
 
 class LlmModel(str, Enum, metaclass=LlmModelMeta):
@@ -107,6 +93,12 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     CLAUDE_3_5_SONNET = "claude-3-5-sonnet-latest"
     CLAUDE_3_5_HAIKU = "claude-3-5-haiku-latest"
     CLAUDE_3_HAIKU = "claude-3-haiku-20240307"
+    # AI/ML API models
+    AIML_API_QWEN2_5_72B = "Qwen/Qwen2.5-72B-Instruct-Turbo"
+    AIML_API_LLAMA3_1_70B = "nvidia/llama-3.1-nemotron-70b-instruct"
+    AIML_API_LLAMA3_3_70B = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+    AIML_API_META_LLAMA_3_1_70B = "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo"
+    AIML_API_LLAMA_3_2_3B = "meta-llama/Llama-3.2-3B-Instruct-Turbo"
     # Groq models
     GEMMA2_9B = "gemma2-9b-it"
     LLAMA3_3_70B = "llama-3.3-70b-versatile"
@@ -204,6 +196,12 @@ MODEL_METADATA = {
     LlmModel.CLAUDE_3_HAIKU: ModelMetadata(
         "anthropic", 200000, 4096
     ),  # claude-3-haiku-20240307
+    # https://docs.aimlapi.com/api-overview/model-database/text-models
+    LlmModel.AIML_API_QWEN2_5_72B: ModelMetadata("aiml_api", 32000, 8000),
+    LlmModel.AIML_API_LLAMA3_1_70B: ModelMetadata("aiml_api", 128000, 40000),
+    LlmModel.AIML_API_LLAMA3_3_70B: ModelMetadata("aiml_api", 128000, None),
+    LlmModel.AIML_API_META_LLAMA_3_1_70B: ModelMetadata("aiml_api", 131000, 2000),
+    LlmModel.AIML_API_LLAMA_3_2_3B: ModelMetadata("aiml_api", 128000, None),
     # https://console.groq.com/docs/models
     LlmModel.GEMMA2_9B: ModelMetadata("groq", 8192, None),
     LlmModel.LLAMA3_3_70B: ModelMetadata("groq", 128000, 32768),
@@ -315,7 +313,7 @@ def estimate_token_count(prompt_messages: list[dict]) -> int:
     return int(estimated_tokens * 1.2)
 
 
-def llm_call(
+async def llm_call(
     credentials: APIKeyCredentials,
     llm_model: LlmModel,
     prompt: list[dict],
@@ -357,7 +355,7 @@ def llm_call(
 
     if provider == "openai":
         tools_param = tools if tools else openai.NOT_GIVEN
-        oai_client = openai.OpenAI(api_key=credentials.api_key.get_secret_value())
+        oai_client = openai.AsyncOpenAI(api_key=credentials.api_key.get_secret_value())
         response_format = None
 
         if llm_model in [LlmModel.O1_MINI, LlmModel.O1_PREVIEW]:
@@ -370,7 +368,7 @@ def llm_call(
         elif json_format:
             response_format = {"type": "json_object"}
 
-        response = oai_client.chat.completions.create(
+        response = await oai_client.chat.completions.create(
             model=llm_model.value,
             messages=prompt,  # type: ignore
             response_format=response_format,  # type: ignore
@@ -426,9 +424,11 @@ def llm_call(
                     messages.append({"role": p["role"], "content": p["content"]})
                     last_role = p["role"]
 
-        client = anthropic.Anthropic(api_key=credentials.api_key.get_secret_value())
+        client = anthropic.AsyncAnthropic(
+            api_key=credentials.api_key.get_secret_value()
+        )
         try:
-            resp = client.messages.create(
+            resp = await client.messages.create(
                 model=llm_model.value,
                 system=sysprompt,
                 messages=messages,
@@ -482,9 +482,9 @@ def llm_call(
         if tools:
             raise ValueError("Groq does not support tools.")
 
-        client = Groq(api_key=credentials.api_key.get_secret_value())
+        client = AsyncGroq(api_key=credentials.api_key.get_secret_value())
         response_format = {"type": "json_object"} if json_format else None
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model=llm_model.value,
             messages=prompt,  # type: ignore
             response_format=response_format,  # type: ignore
@@ -502,10 +502,10 @@ def llm_call(
         if tools:
             raise ValueError("Ollama does not support tools.")
 
-        client = ollama.Client(host=ollama_host)
+        client = ollama.AsyncClient(host=ollama_host)
         sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
         usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
-        response = client.generate(
+        response = await client.generate(
             model=llm_model.value,
             prompt=f"{sys_messages}\n\n{usr_messages}",
             stream=False,
@@ -521,12 +521,12 @@ def llm_call(
         )
     elif provider == "open_router":
         tools_param = tools if tools else openai.NOT_GIVEN
-        client = openai.OpenAI(
+        client = openai.AsyncOpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=credentials.api_key.get_secret_value(),
         )
 
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             extra_headers={
                 "HTTP-Referer": "https://agpt.co",
                 "X-Title": "AutoGPT",
@@ -568,12 +568,12 @@ def llm_call(
         )
     elif provider == "llama_api":
         tools_param = tools if tools else openai.NOT_GIVEN
-        client = openai.OpenAI(
+        client = openai.AsyncOpenAI(
             base_url="https://api.llama.com/compat/v1/",
             api_key=credentials.api_key.get_secret_value(),
         )
 
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             extra_headers={
                 "HTTP-Referer": "https://agpt.co",
                 "X-Title": "AutoGPT",
@@ -615,6 +615,29 @@ def llm_call(
             tool_calls=tool_calls,
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
+        )
+    elif provider == "aiml_api":
+        client = openai.OpenAI(
+            base_url="https://api.aimlapi.com/v2",
+            api_key=credentials.api_key.get_secret_value(),
+            default_headers={"X-Project": "AutoGPT"},
+        )
+
+        completion = client.chat.completions.create(
+            model=llm_model.value,
+            messages=prompt,  # type: ignore
+            max_tokens=max_tokens,
+        )
+
+        return LLMResponse(
+            raw_response=completion.choices[0].message,
+            prompt=prompt,
+            response=completion.choices[0].message.content or "",
+            tool_calls=None,
+            prompt_tokens=completion.usage.prompt_tokens if completion.usage else 0,
+            completion_tokens=(
+                completion.usage.completion_tokens if completion.usage else 0
+            ),
         )
     else:
         raise ValueError(f"Unsupported LLM provider: {provider}")
@@ -723,7 +746,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             },
         )
 
-    def llm_call(
+    async def llm_call(
         self,
         credentials: APIKeyCredentials,
         llm_model: LlmModel,
@@ -738,7 +761,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         so that it can be mocked withing the block testing framework.
         """
         self.prompt = prompt
-        return llm_call(
+        return await llm_call(
             credentials=credentials,
             llm_model=llm_model,
             prompt=prompt,
@@ -748,7 +771,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             ollama_host=ollama_host,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         logger.debug(f"Calling LLM with input data: {input_data}")
@@ -802,7 +825,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
 
         for retry_count in range(input_data.retry):
             try:
-                llm_response = self.llm_call(
+                llm_response = await self.llm_call(
                     credentials=credentials,
                     llm_model=llm_model,
                     prompt=prompt,
@@ -942,17 +965,17 @@ class AITextGeneratorBlock(AIBlockBase):
             test_mock={"llm_call": lambda *args, **kwargs: "Response text"},
         )
 
-    def llm_call(
+    async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
         credentials: APIKeyCredentials,
-    ) -> str:
+    ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
-        response = block.run_once(input_data, "response", credentials=credentials)
+        response = await block.run_once(input_data, "response", credentials=credentials)
         self.merge_llm_stats(block)
         return response["response"]
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         object_input_data = AIStructuredResponseGeneratorBlock.Input(
@@ -962,7 +985,8 @@ class AITextGeneratorBlock(AIBlockBase):
             },
             expected_format={},
         )
-        yield "response", self.llm_call(object_input_data, credentials)
+        response = await self.llm_call(object_input_data, credentials)
+        yield "response", response
         yield "prompt", self.prompt
 
 
@@ -1044,23 +1068,27 @@ class AITextSummarizerBlock(AIBlockBase):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        for output_name, output_data in self._run(input_data, credentials):
+        async for output_name, output_data in self._run(input_data, credentials):
             yield output_name, output_data
 
-    def _run(self, input_data: Input, credentials: APIKeyCredentials) -> BlockOutput:
+    async def _run(
+        self, input_data: Input, credentials: APIKeyCredentials
+    ) -> BlockOutput:
         chunks = self._split_text(
             input_data.text, input_data.max_tokens, input_data.chunk_overlap
         )
         summaries = []
 
         for chunk in chunks:
-            chunk_summary = self._summarize_chunk(chunk, input_data, credentials)
+            chunk_summary = await self._summarize_chunk(chunk, input_data, credentials)
             summaries.append(chunk_summary)
 
-        final_summary = self._combine_summaries(summaries, input_data, credentials)
+        final_summary = await self._combine_summaries(
+            summaries, input_data, credentials
+        )
         yield "summary", final_summary
         yield "prompt", self.prompt
 
@@ -1076,22 +1104,22 @@ class AITextSummarizerBlock(AIBlockBase):
 
         return chunks
 
-    def llm_call(
+    async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
         credentials: APIKeyCredentials,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
-        response = block.run_once(input_data, "response", credentials=credentials)
+        response = await block.run_once(input_data, "response", credentials=credentials)
         self.merge_llm_stats(block)
         return response
 
-    def _summarize_chunk(
+    async def _summarize_chunk(
         self, chunk: str, input_data: Input, credentials: APIKeyCredentials
     ) -> str:
         prompt = f"Summarize the following text in a {input_data.style} form. Focus your summary on the topic of `{input_data.focus}` if present, otherwise just provide a general summary:\n\n```{chunk}```"
 
-        llm_response = self.llm_call(
+        llm_response = await self.llm_call(
             AIStructuredResponseGeneratorBlock.Input(
                 prompt=prompt,
                 credentials=input_data.credentials,
@@ -1103,7 +1131,7 @@ class AITextSummarizerBlock(AIBlockBase):
 
         return llm_response["summary"]
 
-    def _combine_summaries(
+    async def _combine_summaries(
         self, summaries: list[str], input_data: Input, credentials: APIKeyCredentials
     ) -> str:
         combined_text = "\n\n".join(summaries)
@@ -1111,7 +1139,7 @@ class AITextSummarizerBlock(AIBlockBase):
         if len(combined_text.split()) <= input_data.max_tokens:
             prompt = f"Provide a final summary of the following section summaries in a {input_data.style} form, focus your summary on the topic of `{input_data.focus}` if present:\n\n ```{combined_text}```\n\n Just respond with the final_summary in the format specified."
 
-            llm_response = self.llm_call(
+            llm_response = await self.llm_call(
                 AIStructuredResponseGeneratorBlock.Input(
                     prompt=prompt,
                     credentials=input_data.credentials,
@@ -1126,7 +1154,8 @@ class AITextSummarizerBlock(AIBlockBase):
             return llm_response["final_summary"]
         else:
             # If combined summaries are still too long, recursively summarize
-            return self._run(
+            block = AITextSummarizerBlock()
+            return await block.run_once(
                 AITextSummarizerBlock.Input(
                     text=combined_text,
                     credentials=input_data.credentials,
@@ -1134,10 +1163,9 @@ class AITextSummarizerBlock(AIBlockBase):
                     max_tokens=input_data.max_tokens,
                     chunk_overlap=input_data.chunk_overlap,
                 ),
+                "summary",
                 credentials=credentials,
-            ).send(None)[
-                1
-            ]  # Get the first yielded value
+            )
 
 
 class AIConversationBlock(AIBlockBase):
@@ -1208,20 +1236,20 @@ class AIConversationBlock(AIBlockBase):
             },
         )
 
-    def llm_call(
+    async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
         credentials: APIKeyCredentials,
-    ) -> str:
+    ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
-        response = block.run_once(input_data, "response", credentials=credentials)
+        response = await block.run_once(input_data, "response", credentials=credentials)
         self.merge_llm_stats(block)
-        return response["response"]
+        return response
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        response = self.llm_call(
+        response = await self.llm_call(
             AIStructuredResponseGeneratorBlock.Input(
                 prompt=input_data.prompt,
                 credentials=input_data.credentials,
@@ -1233,7 +1261,6 @@ class AIConversationBlock(AIBlockBase):
             ),
             credentials=credentials,
         )
-
         yield "response", response
         yield "prompt", self.prompt
 
@@ -1327,13 +1354,15 @@ class AIListGeneratorBlock(AIBlockBase):
             },
         )
 
-    def llm_call(
+    async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
         credentials: APIKeyCredentials,
     ) -> dict[str, str]:
         llm_block = AIStructuredResponseGeneratorBlock()
-        response = llm_block.run_once(input_data, "response", credentials=credentials)
+        response = await llm_block.run_once(
+            input_data, "response", credentials=credentials
+        )
         self.merge_llm_stats(llm_block)
         return response
 
@@ -1356,7 +1385,7 @@ class AIListGeneratorBlock(AIBlockBase):
             logger.error(f"Failed to convert string to list: {e}")
             raise ValueError("Invalid list format. Could not convert to list.")
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         logger.debug(f"Starting AIListGeneratorBlock.run with input data: {input_data}")
@@ -1422,7 +1451,7 @@ class AIListGeneratorBlock(AIBlockBase):
         for attempt in range(input_data.max_retries):
             try:
                 logger.debug("Calling LLM")
-                llm_response = self.llm_call(
+                llm_response = await self.llm_call(
                     AIStructuredResponseGeneratorBlock.Input(
                         sys_prompt=sys_prompt,
                         prompt=prompt,

@@ -1,5 +1,4 @@
 import React from "react";
-import type { Preview } from "@storybook/react";
 import { initialize, mswLoader } from "msw-storybook-addon";
 import "../src/app/globals.css";
 import "../src/components/styles/fonts.css";
@@ -11,7 +10,9 @@ import {
   Stories,
   Subtitle,
   Title,
-} from "@storybook/blocks";
+} from "@storybook/addon-docs/blocks";
+import { theme } from "./theme";
+import { Preview } from "@storybook/nextjs";
 
 // Initialize MSW
 initialize();
@@ -22,11 +23,12 @@ const preview: Preview = {
       appDirectory: true,
     },
     docs: {
+      theme,
       page: () => (
         <>
           <Title />
           <Subtitle />
-          <Description />
+
           <Primary />
           <Source />
           <Stories />

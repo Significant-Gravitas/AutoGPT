@@ -1,10 +1,10 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { AgentTableCard } from "./AgentTableCard";
-import { userEvent, within, expect } from "@storybook/test";
+import { userEvent, within } from "storybook/test";
 import { type StatusType } from "./Status";
 
 const meta: Meta<typeof AgentTableCard> = {
-  title: "AGPT UI/Agent Table Card",
+  title: "Legacy/Agent Table Card",
   component: AgentTableCard,
   tags: ["autodocs"],
 };

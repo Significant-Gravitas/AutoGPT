@@ -37,7 +37,7 @@ async def on_graph_activate(graph: "GraphModel", user_id: str):
                 )
             )
             and (creds_meta := new_node.input_default.get(creds_field_name))
-            and not (node_credentials := get_credentials(creds_meta["id"]))
+            and not (node_credentials := await get_credentials(creds_meta["id"]))
         ):
             raise ValueError(
                 f"Node #{new_node.id} input '{creds_field_name}' updated with "
@@ -74,7 +74,7 @@ async def on_graph_deactivate(graph: "GraphModel", user_id: str):
                 )
             )
             and (creds_meta := node.input_default.get(creds_field_name))
-            and not (node_credentials := get_credentials(creds_meta["id"]))
+            and not (node_credentials := await get_credentials(creds_meta["id"]))
         ):
             logger.error(
                 f"Node #{node.id} input '{creds_field_name}' referenced non-existent "

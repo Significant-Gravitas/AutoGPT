@@ -2,7 +2,7 @@
 import LibraryUploadAgentDialog from "./library-upload-agent-dialog";
 import LibrarySearchBar from "./library-search-bar";
 
-interface LibraryActionHeaderProps {}
+type LibraryActionHeaderProps = Record<string, never>;
 
 /**
  * LibraryActionHeader component - Renders a header with search, notifications and filters

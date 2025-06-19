@@ -1,6 +1,8 @@
-import React from "react";
 import { beautifyString } from "@/lib/utils";
+import { Clipboard } from "lucide-react";
+import React from "react";
 import { Button } from "./ui/button";
+import { ContentRenderer } from "./ui/render";
 import {
   Table,
   TableBody,
@@ -9,9 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "./ui/table";
-import { Clipboard } from "lucide-react";
 import { useToast } from "./ui/use-toast";
-import { ContentRenderer } from "./ui/render";
 
 type DataTableProps = {
   title?: string;
@@ -25,7 +25,6 @@ export default function DataTable({
   data,
 }: DataTableProps) {
   const { toast } = useToast();
-  const maxChars = 100;
 
   const copyData = (pin: string, data: string) => {
     navigator.clipboard.writeText(data).then(() => {
