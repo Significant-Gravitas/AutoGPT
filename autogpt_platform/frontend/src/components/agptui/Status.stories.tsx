@@ -1,8 +1,8 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { Status, StatusType } from "./Status";
 
 const meta = {
-  title: "AGPT UI/Status",
+  title: "Legacy/Status",
   component: Status,
   parameters: {
     layout: "centered",

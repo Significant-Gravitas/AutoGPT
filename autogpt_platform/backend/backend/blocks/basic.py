@@ -30,14 +30,14 @@ class FileStoreBlock(Block):
             static_output=True,
         )
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         graph_exec_id: str,
         **kwargs,
     ) -> BlockOutput:
-        file_path = store_media_file(
+        file_path = await store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.file_in,
             return_content=False,
@@ -84,7 +84,7 @@ class StoreValueBlock(Block):
             static_output=True,
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "output", input_data.data or input_data.input
 
 
@@ -110,7 +110,7 @@ class PrintToConsoleBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "output", input_data.text
         yield "status", "printed"
 
@@ -151,7 +151,7 @@ class FindInDictionaryBlock(Block):
             categories={BlockCategory.BASIC},
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         obj = input_data.input
         key = input_data.key
 
@@ -241,7 +241,7 @@ class AddToDictionaryBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         updated_dict = input_data.dictionary.copy()
 
         if input_data.value is not None and input_data.key:
@@ -319,7 +319,7 @@ class AddToListBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         entries_added = input_data.entries.copy()
         if input_data.entry:
             entries_added.append(input_data.entry)
@@ -366,7 +366,7 @@ class FindInListBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             yield "index", input_data.list.index(input_data.value)
             yield "found", True
@@ -396,7 +396,7 @@ class NoteBlock(Block):
             block_type=BlockType.NOTE,
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "output", input_data.text
 
 
@@ -442,7 +442,7 @@ class CreateDictionaryBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             # The values are already validated by Pydantic schema
             yield "dictionary", input_data.values
@@ -490,7 +490,7 @@ class CreateListBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             # The values are already validated by Pydantic schema
             yield "list", input_data.values
@@ -525,7 +525,7 @@ class UniversalTypeConverterBlock(Block):
             output_schema=UniversalTypeConverterBlock.Output,
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             converted_value = convert(
                 input_data.value,

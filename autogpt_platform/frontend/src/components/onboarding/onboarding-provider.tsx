@@ -21,7 +21,6 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
-import { set } from "lodash";
 
 const OnboardingContext = createContext<
   | {

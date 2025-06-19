@@ -1,11 +1,10 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { AgentTable } from "./AgentTable";
 import { AgentTableRowProps } from "./AgentTableRow";
-import { userEvent, within, expect } from "@storybook/test";
-import { StatusType } from "./Status";
+import { userEvent, within, expect } from "storybook/test";
 
 const meta: Meta<typeof AgentTable> = {
-  title: "AGPT UI/Agent Table",
+  title: "Legacy/Agent Table",
   component: AgentTable,
   tags: ["autodocs"],
 };
@@ -104,6 +103,6 @@ export const EmptyTableTest: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const emptyMessage = canvas.getByText("No agents found");
-    expect(emptyMessage).toBeTruthy();
+    await expect(emptyMessage).toBeTruthy();
   },
 };

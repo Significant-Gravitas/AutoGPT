@@ -5,9 +5,9 @@
 
 "use client";
 
-import { useEffect } from "react";
-import Script from "next/script";
 import type { GAParams } from "@/types/google";
+import Script from "next/script";
+import { useEffect } from "react";
 
 let currDataLayerName: string | undefined = undefined;
 
@@ -31,7 +31,8 @@ export function GoogleAnalytics(props: GAParams) {
     <>
       <Script
         id="_custom-ga-init"
-        strategy="beforeInteractive"
+        // Using "afterInteractive" to avoid blocking the initial page rendering
+        strategy="afterInteractive"
         dangerouslySetInnerHTML={{
           __html: `
             window['${dataLayerName}'] = window['${dataLayerName}'] || [];
@@ -44,7 +45,7 @@ export function GoogleAnalytics(props: GAParams) {
       />
       <Script
         id="_custom-ga"
-        strategy="beforeInteractive"
+        strategy="afterInteractive"
         src="/gtag.js"
         nonce={nonce}
       />
@@ -52,15 +53,15 @@ export function GoogleAnalytics(props: GAParams) {
   );
 }
 
-export function sendGAEvent(..._args: any[]) {
+export function sendGAEvent(...args: any[]) {
   if (currDataLayerName === undefined) {
     console.warn(`Custom GA: GA has not been initialized`);
     return;
   }
-  //@ts-ignore
-  if (window[currDataLayerName]) {
-    //@ts-ignore
-    window[currDataLayerName].push(arguments);
+
+  const dataLayer = (window as any)[currDataLayerName];
+  if (dataLayer) {
+    dataLayer.push(...args);
   } else {
     console.warn(`Custom GA: dataLayer ${currDataLayerName} does not exist`);
   }

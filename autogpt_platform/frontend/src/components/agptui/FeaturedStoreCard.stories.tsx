@@ -1,9 +1,9 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
+import { userEvent, within } from "storybook/test";
 import { FeaturedAgentCard } from "./FeaturedAgentCard";
-import { userEvent, within } from "@storybook/test";
 
 const meta = {
-  title: "AGPT UI/Featured Store Card",
+  title: "Legacy/Featured Store Card",
   component: FeaturedAgentCard,
   parameters: {
     layout: {
@@ -35,6 +35,7 @@ type Story = StoryObj<typeof meta>;
 export const Default: Story = {
   args: {
     agent: {
+      updated_at: "2024-01-10T15:30:00.000Z",
       agent_name:
         "Personalized Morning Coffee Newsletter example of three lines",
       sub_heading:
@@ -57,6 +58,7 @@ export const Default: Story = {
 export const WithInteraction: Story = {
   args: {
     agent: {
+      updated_at: "2024-01-10T15:30:00.000Z",
       slug: "",
       agent_name: "AI Writing Assistant",
       sub_heading: "Enhance your writing",

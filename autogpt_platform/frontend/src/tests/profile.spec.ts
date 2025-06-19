@@ -13,10 +13,7 @@ test.describe("Profile", () => {
     await test.expect(page).toHaveURL("/marketplace");
   });
 
-  test("user can view their profile information", async ({
-    page,
-    testUser,
-  }) => {
+  test("user can view their profile information", async ({ page }) => {
     await profilePage.navbar.clickProfileLink();
     // workaround for #8788
     // sleep for 10 seconds to allow page to load due to bug in our system
@@ -39,7 +36,7 @@ test.describe("Profile", () => {
     await test.expect(profilePage.isLoaded()).resolves.toBeTruthy();
   });
 
-  test("profile displays user Credential providers", async ({ page }) => {
+  test("profile displays user Credential providers", async () => {
     await profilePage.navbar.clickProfileLink();
 
     // await test
