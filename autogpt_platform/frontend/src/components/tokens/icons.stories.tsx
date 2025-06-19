@@ -1,5 +1,4 @@
-import { Text } from "@/components/_new/Text/Text";
-import { StoryCode } from "@/stories/helpers/StoryCode";
+import { Text } from "@/components/atoms/Text/Text";
 import {
   Alien,
   ArrowClockwise,
@@ -40,9 +39,10 @@ import {
 } from "@phosphor-icons/react";
 import type { Meta } from "@storybook/nextjs";
 import { SquareArrowOutUpRight } from "lucide-react";
+import { StoryCode } from "./helpers/StoryCode";
 
 const meta: Meta = {
-  title: "Design System/ Tokens /Icons",
+  title: "Tokens /Icons",
   parameters: {
     layout: "fullscreen",
     controls: { disable: true },

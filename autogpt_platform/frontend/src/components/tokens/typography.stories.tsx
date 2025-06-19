@@ -1,9 +1,9 @@
+import { Text } from "@/components/atoms/Text/Text";
 import type { Meta } from "@storybook/nextjs";
-import { Text } from "@/components/_new/Text/Text";
-import { StoryCode } from "@/stories/helpers/StoryCode";
+import { StoryCode } from "./helpers/StoryCode";
 
 const meta: Meta<typeof Text> = {
-  title: "Design System/ Tokens /Typography",
+  title: "Tokens /Typography",
   component: Text,
   parameters: {
     layout: "fullscreen",
