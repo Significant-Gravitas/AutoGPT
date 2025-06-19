@@ -7,7 +7,7 @@ function makeQueryClient() {
     defaultOptions: {
       queries: {
         // Added this because if staleTime is 0 (default), the data fetched on the server becomes stale immediately on the client, and it refetches again.
-        staleTime: 60 * 1000, 
+        staleTime: 60 * 1000,
 
         // Highlighting some important defaults to avoid confusion
         // Queries are stale by default → triggers background refetch
