@@ -9,6 +9,7 @@ import pydantic
 import backend.data.block as block_model
 import backend.data.graph as graph_model
 import backend.server.model as server_model
+from backend.data.model import CredentialsMetaInput, is_credentials_field_name
 from backend.integrations.providers import ProviderName
 
 
@@ -207,6 +208,7 @@ class LibraryAgentPresetCreatable(pydantic.BaseModel):
     graph_version: int
 
     inputs: block_model.BlockInput
+    credentials: dict[str, CredentialsMetaInput]
 
     name: str
     description: str
@@ -235,6 +237,7 @@ class LibraryAgentPresetUpdatable(pydantic.BaseModel):
     """
 
     inputs: Optional[block_model.BlockInput] = None
+    credentials: Optional[dict[str, CredentialsMetaInput]] = None
 
     name: Optional[str] = None
     description: Optional[str] = None
@@ -254,9 +257,15 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             raise ValueError("Input values must be included in object")
 
         input_data: block_model.BlockInput = {}
+        input_credentials: dict[str, CredentialsMetaInput] = {}
 
         for preset_input in preset.InputPresets:
-            input_data[preset_input.name] = preset_input.data
+            if not is_credentials_field_name(preset_input.name):
+                input_data[preset_input.name] = preset_input.data
+            else:
+                input_credentials[preset_input.name] = (
+                    CredentialsMetaInput.model_validate(preset_input.data)
+                )
 
         return cls(
             id=preset.id,
@@ -267,6 +276,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             description=preset.description,
             is_active=preset.isActive,
             inputs=input_data,
+            credentials=input_credentials,
             webhook_id=preset.webhookId,
         )
 

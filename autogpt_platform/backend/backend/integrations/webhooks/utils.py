@@ -1,5 +1,7 @@
 import logging
-from typing import TYPE_CHECKING, Any, Optional, cast
+from typing import TYPE_CHECKING, Optional, cast
+
+from pydantic import JsonValue
 
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
@@ -26,7 +28,7 @@ def webhook_ingress_url(provider_name: ProviderName, webhook_id: str) -> str:
 async def setup_webhook_for_block(
     user_id: str,
     trigger_block: "Block[BlockSchema, BlockSchema]",
-    trigger_config: dict[str, Any],  # = Trigger block inputs
+    trigger_config: dict[str, JsonValue],  # = Trigger block inputs
     for_graph_id: Optional[str] = None,
     for_preset_id: Optional[str] = None,
 ) -> "Webhook":
@@ -93,14 +95,18 @@ async def setup_webhook_for_block(
             iter(trigger_block.input_schema.get_credentials_fields())
         )
 
-        if not (credentials_meta := trigger_config.get(creds_field_name, None)):
+        if not (
+            credentials_meta := cast(dict, trigger_config.get(creds_field_name, None))
+        ):
             raise ValueError(
                 f"Cannot set up {provider.value} webhook without credentials"
             )
-        elif not (credentials := credentials_manager.get(user_id, credentials_meta.id)):
+        elif not (
+            credentials := credentials_manager.get(user_id, credentials_meta["id"])
+        ):
             raise ValueError(
                 f"Cannot set up {provider.value} webhook without credentials: "
-                f"credentials #{credentials_meta.id} not found for user #{user_id}"
+                f"credentials #{credentials_meta['id']} not found for user #{user_id}"
             )
         elif credentials.provider != provider:
             raise ValueError(

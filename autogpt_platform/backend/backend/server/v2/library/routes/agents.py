@@ -312,8 +312,9 @@ async def setup_trigger(
             name=params.name,
             description=params.description,
             inputs=trigger_config_with_credentials,
+            credentials=params.agent_credentials,
             webhook_id=new_webhook.id,
-            is_active=True,  # FIXME: add endpoint to flip this switch
+            is_active=True,
         ),
     )
     return new_preset

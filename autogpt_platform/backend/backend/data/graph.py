@@ -102,19 +102,7 @@ class NodeModel(Node):
         return obj
 
     def is_triggered_by_event_type(self, event_type: str) -> bool:
-        block = self.block
-        if not block.webhook_config:
-            raise TypeError("This method can't be used on non-webhook blocks")
-        if not block.webhook_config.event_filter_input:
-            return True
-        event_filter = self.input_default.get(block.webhook_config.event_filter_input)
-        if not event_filter:
-            raise ValueError(f"Event filter is not configured on node #{self.id}")
-        return event_type in [
-            block.webhook_config.event_format.format(event=k)
-            for k in event_filter
-            if event_filter[k] is True
-        ]
+        return self.block.is_triggered_by_event_type(self.input_default, event_type)
 
     def stripped_for_export(self) -> "NodeModel":
         """

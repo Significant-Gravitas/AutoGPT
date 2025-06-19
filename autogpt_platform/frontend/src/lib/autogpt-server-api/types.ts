@@ -450,6 +450,7 @@ export type LibraryAgentPreset = {
   graph_id: GraphID;
   graph_version: number;
   inputs: { [key: string]: any };
+  credentials: Record<string, CredentialsMetaInput>;
   name: string;
   description: string;
   is_active: boolean;

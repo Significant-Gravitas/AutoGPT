@@ -4,7 +4,7 @@ from multiprocessing.pool import AsyncResult
 from typing import TYPE_CHECKING, Any, Callable, Optional, cast
 
 from autogpt_libs.utils.cache import thread_cached
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from backend.data.block import (
     Block,
@@ -425,9 +425,7 @@ def validate_exec(
 def _validate_node_input_credentials(
     graph: GraphModel,
     user_id: str,
-    node_credentials_input_map: Optional[
-        dict[str, dict[str, CredentialsMetaInput]]
-    ] = None,
+    nodes_input_overrides_map: Optional[dict[str, dict[str, JsonValue]]] = None,
 ):
     """Checks all credentials for all nodes of the graph"""
 
@@ -443,11 +441,13 @@ def _validate_node_input_credentials(
 
         for field_name, credentials_meta_type in credentials_fields.items():
             if (
-                node_credentials_input_map
-                and (node_credentials_inputs := node_credentials_input_map.get(node.id))
-                and field_name in node_credentials_inputs
+                nodes_input_overrides_map
+                and (node_input_overrides := nodes_input_overrides_map.get(node.id))
+                and field_name in node_input_overrides
             ):
-                credentials_meta = node_credentials_input_map[node.id][field_name]
+                credentials_meta = credentials_meta_type.model_validate(
+                    node_input_overrides[field_name]
+                )
             elif field_name in node.input_default:
                 credentials_meta = credentials_meta_type.model_validate(
                     node.input_default[field_name]
@@ -486,7 +486,7 @@ def _validate_node_input_credentials(
 def make_node_credentials_input_map(
     graph: GraphModel,
     graph_credentials_input: dict[str, CredentialsMetaInput],
-) -> dict[str, dict[str, CredentialsMetaInput]]:
+) -> dict[str, dict[str, JsonValue]]:
     """
     Maps credentials for an execution to the correct nodes.
 
@@ -495,9 +495,9 @@ def make_node_credentials_input_map(
         graph_credentials_input: A (graph_input_name, credentials_meta) map.
 
     Returns:
-        dict[node_id, dict[field_name, CredentialsMetaInput]]: Node credentials input map.
+        dict[node_id, dict[field_name, CredentialsMetaRaw]]: Node credentials input map.
     """
-    result: dict[str, dict[str, CredentialsMetaInput]] = {}
+    result: dict[str, dict[str, JsonValue]] = {}
 
     # Get aggregated credentials fields for the graph
     graph_cred_inputs = graph.aggregate_credentials_inputs()
@@ -511,7 +511,9 @@ def make_node_credentials_input_map(
         for node_id, node_field_name in compatible_node_fields:
             if node_id not in result:
                 result[node_id] = {}
-            result[node_id][node_field_name] = graph_credentials_input[graph_input_name]
+            result[node_id][node_field_name] = graph_credentials_input[
+                graph_input_name
+            ].model_dump(exclude_none=True)
 
     return result
 
@@ -520,9 +522,7 @@ def construct_node_execution_input(
     graph: GraphModel,
     user_id: str,
     graph_inputs: BlockInput,
-    node_credentials_input_map: Optional[
-        dict[str, dict[str, CredentialsMetaInput]]
-    ] = None,
+    nodes_input_overrides_map: Optional[dict[str, dict[str, JsonValue]]] = None,
 ) -> list[tuple[str, BlockInput]]:
     """
     Validates and prepares the input data for executing a graph.
@@ -541,7 +541,7 @@ def construct_node_execution_input(
             the corresponding input data for that node.
     """
     graph.validate_graph(for_run=True)
-    _validate_node_input_credentials(graph, user_id, node_credentials_input_map)
+    _validate_node_input_credentials(graph, user_id, nodes_input_overrides_map)
 
     nodes_input = []
     for node in graph.starting_nodes:
@@ -570,11 +570,11 @@ def construct_node_execution_input(
                 )
             input_data = {"payload": graph_inputs[webhook_payload_key]}
 
-        # Apply node credentials overrides
-        if node_credentials_input_map and (
-            node_credentials := node_credentials_input_map.get(node.id)
+        # Apply node input overrides
+        if nodes_input_overrides_map and (
+            node_input_overrides := nodes_input_overrides_map.get(node.id)
         ):
-            input_data.update({k: v.model_dump() for k, v in node_credentials.items()})
+            input_data.update(node_input_overrides)
 
         input_data, error = validate_exec(node, input_data)
         if input_data is None:
@@ -588,6 +588,20 @@ def construct_node_execution_input(
         )
 
     return nodes_input
+
+
+def _merge_nodes_input_overrides_maps(
+    overrides_map_1: dict[str, dict[str, JsonValue]],
+    overrides_map_2: dict[str, dict[str, JsonValue]],
+) -> dict[str, dict[str, JsonValue]]:
+    """Perform a per-node merge of input overrides"""
+    result = overrides_map_1.copy()
+    for node_id, overrides2 in overrides_map_2.items():
+        if node_id in result:
+            result[node_id] = {**result[node_id], **overrides2}
+        else:
+            result[node_id] = overrides2
+    return result
 
 
 # ============ Execution Queue Helpers ============ #
@@ -649,6 +663,7 @@ async def add_graph_execution_async(
     preset_id: Optional[str] = None,
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[dict[str, CredentialsMetaInput]] = None,
+    nodes_input_overrides_map: Optional[dict[str, dict[str, JsonValue]]] = None,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -661,6 +676,7 @@ async def add_graph_execution_async(
         graph_version: The version of the graph to execute.
         graph_credentials_inputs: Credentials inputs to use in the execution.
             Keys should map to the keys generated by `GraphModel.aggregate_credentials_inputs`.
+        nodes_input_overrides_map: Node inputs to use in the execution.
     Returns:
         GraphExecutionEntry: The entry for the graph execution.
     Raises:
@@ -675,10 +691,13 @@ async def add_graph_execution_async(
     if not graph:
         raise NotFoundError(f"Graph #{graph_id} not found.")
 
-    node_credentials_input_map = (
-        make_node_credentials_input_map(graph, graph_credentials_inputs)
-        if graph_credentials_inputs
-        else None
+    nodes_input_overrides_map = _merge_nodes_input_overrides_maps(
+        (
+            make_node_credentials_input_map(graph, graph_credentials_inputs)
+            if graph_credentials_inputs
+            else {}
+        ),
+        nodes_input_overrides_map or {},
     )
 
     graph_exec = await create_graph_execution(
@@ -689,15 +708,15 @@ async def add_graph_execution_async(
             graph=graph,
             user_id=user_id,
             graph_inputs=inputs,
-            node_credentials_input_map=node_credentials_input_map,
+            nodes_input_overrides_map=nodes_input_overrides_map,
         ),
         preset_id=preset_id,
     )
     try:
         queue = await get_async_execution_queue()
         graph_exec_entry = graph_exec.to_graph_execution_entry()
-        if node_credentials_input_map:
-            graph_exec_entry.node_credentials_input_map = node_credentials_input_map
+        if nodes_input_overrides_map:
+            graph_exec_entry.node_input_overrides_map = nodes_input_overrides_map
         await queue.publish_message(
             routing_key=GRAPH_EXECUTION_ROUTING_KEY,
             message=graph_exec_entry.model_dump_json(),
@@ -730,9 +749,7 @@ def add_graph_execution(
     preset_id: Optional[str] = None,
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[dict[str, CredentialsMetaInput]] = None,
-    node_credentials_input_map: Optional[
-        dict[str, dict[str, CredentialsMetaInput]]
-    ] = None,
+    nodes_input_overrides_map: Optional[dict[str, dict[str, JsonValue]]] = None,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -745,7 +762,7 @@ def add_graph_execution(
         graph_version: The version of the graph to execute.
         graph_credentials_inputs: Credentials inputs to use in the execution.
             Keys should map to the keys generated by `GraphModel.aggregate_credentials_inputs`.
-        node_credentials_input_map: Credentials inputs to use in the execution, mapped to specific nodes.
+        nodes_input_overrides_map: Node inputs to use in the execution.
     Returns:
         GraphExecutionEntry: The entry for the graph execution.
     Raises:
@@ -761,10 +778,13 @@ def add_graph_execution(
     if not graph:
         raise NotFoundError(f"Graph #{graph_id} not found.")
 
-    node_credentials_input_map = node_credentials_input_map or (
-        make_node_credentials_input_map(graph, graph_credentials_inputs)
-        if graph_credentials_inputs
-        else None
+    nodes_input_overrides_map = _merge_nodes_input_overrides_maps(
+        (
+            make_node_credentials_input_map(graph, graph_credentials_inputs)
+            if graph_credentials_inputs
+            else {}
+        ),
+        nodes_input_overrides_map or {},
     )
 
     graph_exec = db.create_graph_execution(
@@ -775,15 +795,15 @@ def add_graph_execution(
             graph=graph,
             user_id=user_id,
             graph_inputs=inputs,
-            node_credentials_input_map=node_credentials_input_map,
+            nodes_input_overrides_map=nodes_input_overrides_map,
         ),
         preset_id=preset_id,
     )
     try:
         queue = get_execution_queue()
         graph_exec_entry = graph_exec.to_graph_execution_entry()
-        if node_credentials_input_map:
-            graph_exec_entry.node_credentials_input_map = node_credentials_input_map
+        if nodes_input_overrides_map:
+            graph_exec_entry.node_input_overrides_map = nodes_input_overrides_map
         queue.publish_message(
             routing_key=GRAPH_EXECUTION_ROUTING_KEY,
             message=graph_exec_entry.model_dump_json(),

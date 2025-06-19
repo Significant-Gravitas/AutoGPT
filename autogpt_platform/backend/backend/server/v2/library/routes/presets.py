@@ -193,6 +193,12 @@ async def delete_preset(
     Raises:
         HTTPException: If an error occurs while deleting the preset.
     """
+    preset = await db.get_preset(user_id, preset_id)
+    if not preset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Preset #{preset_id} not found for user #{user_id}",
+        )
     try:
         await db.delete_preset(user_id, preset_id)
     except Exception as e:

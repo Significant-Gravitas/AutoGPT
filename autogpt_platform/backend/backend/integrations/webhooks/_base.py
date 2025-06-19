@@ -83,9 +83,11 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         self, webhook_id: str, credentials: Optional[Credentials]
     ) -> bool:
         webhook = await integrations.get_webhook(webhook_id)
-        if webhook.attached_nodes is None:
-            raise ValueError("Error retrieving webhook including attached nodes")
-        if webhook.attached_nodes:
+        if webhook.attached_nodes is None or webhook.attached_presets is None:
+            raise ValueError(
+                "Error retrieving webhook including attached nodes/presets"
+            )
+        if webhook.attached_nodes or webhook.attached_presets:
             # Don't prune webhook if in use
             return False
 

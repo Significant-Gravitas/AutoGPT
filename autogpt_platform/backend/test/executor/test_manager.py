@@ -366,6 +366,7 @@ async def test_execute_preset(server: SpinTestServer):
             "dictionary": {"key1": "Hello", "key2": "World"},
             "selected_value": "key2",
         },
+        credentials={},
         is_active=True,
     )
     created_preset = await server.agent_server.test_create_preset(preset, test_user.id)
@@ -455,6 +456,7 @@ async def test_execute_preset_with_clash(server: SpinTestServer):
             "dictionary": {"key1": "Hello", "key2": "World"},
             "selected_value": "key2",
         },
+        credentials={},
         is_active=True,
     )
     created_preset = await server.agent_server.test_create_preset(preset, test_user.id)

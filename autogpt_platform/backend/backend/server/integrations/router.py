@@ -6,7 +6,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Reques
 from pydantic import BaseModel, Field
 from starlette.status import HTTP_404_NOT_FOUND
 
-from backend.data.graph import set_node_webhook
+from backend.data.graph import get_graph, set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
     get_all_webhooks_by_creds,
@@ -14,7 +14,12 @@ from backend.data.integrations import (
     publish_webhook_event,
     wait_for_webhook_event,
 )
-from backend.data.model import Credentials, CredentialsType, OAuth2Credentials
+from backend.data.model import (
+    Credentials,
+    CredentialsType,
+    OAuth2Credentials,
+    is_credentials_field_name,
+)
 from backend.executor.utils import add_graph_execution_async
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
@@ -318,11 +323,11 @@ async def webhook_ingress_generic(
     await publish_webhook_event(webhook_event)
     logger.debug(f"Webhook event published: {webhook_event}")
 
-    if not webhook.attached_nodes:
+    if not (webhook.attached_nodes or webhook.attached_presets):
         return
 
     executions: list[Awaitable] = []
-    for node in webhook.attached_nodes:
+    for node in webhook.attached_nodes or []:
         logger.debug(f"Webhook-attached node: {node}")
         if not node.is_triggered_by_event_type(event_type):
             logger.debug(f"Node #{node.id} doesn't trigger on event {event_type}")
@@ -334,6 +339,45 @@ async def webhook_ingress_generic(
                 graph_id=node.graph_id,
                 graph_version=node.graph_version,
                 inputs={f"webhook_{webhook_id}_payload": payload},
+            )
+        )
+    for preset in webhook.attached_presets or []:
+        logger.debug(f"Webhook-attached preset: {preset}")
+        graph = await get_graph(preset.graph_id, preset.graph_version, webhook.user_id)
+        if not graph:
+            logger.error(
+                f"User #{webhook.user_id} has preset #{preset.id} for graph "
+                f"#{preset.graph_id} v{preset.graph_version}, "
+                "but no access to the graph itself"
+            )
+            # FIXME: set preset inactive if not triggerable
+            continue
+        if not (trigger_node := graph.webhook_input_node):
+            logger.error(
+                f"Preset #{preset.id} is triggered by webhook #{webhook.id}, but graph "
+                f"#{preset.graph_id} v{preset.graph_version} has no webhook input node"
+            )
+            # FIXME: set preset inactive if not triggerable
+            continue
+        if not trigger_node.block.is_triggered_by_event_type(preset.inputs, event_type):
+            logger.debug(f"Preset #{preset.id} doesn't trigger on event {event_type}")
+            continue
+        logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
+
+        graph_credentials_inputs = {
+            k: v for k, v in preset.inputs.items() if is_credentials_field_name(k)
+        }
+        trigger_block_input = {
+            k: v for k, v in preset.inputs.items() if not is_credentials_field_name(k)
+        }
+        executions.append(
+            add_graph_execution_async(
+                user_id=webhook.user_id,
+                graph_id=preset.graph_id,
+                graph_version=preset.graph_version,
+                inputs={f"webhook_{webhook_id}_payload": payload},
+                graph_credentials_inputs=graph_credentials_inputs,
+                nodes_input_overrides_map={trigger_node.id: trigger_block_input},
             )
         )
     asyncio.gather(*executions)

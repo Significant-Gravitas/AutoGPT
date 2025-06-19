@@ -10,6 +10,7 @@ from backend.data.includes import INTEGRATION_WEBHOOK_INCLUDE
 from backend.data.queue import AsyncRedisEventBus
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.utils import webhook_ingress_url
+from backend.server.v2.library.model import LibraryAgentPreset
 from backend.util.exceptions import NotFoundError
 
 from .db import BaseDbModel
@@ -33,6 +34,7 @@ class Webhook(BaseDbModel):
     provider_webhook_id: str
 
     attached_nodes: Optional[list["NodeModel"]] = None
+    attached_presets: Optional[list[LibraryAgentPreset]] = None
 
     @computed_field
     @property
@@ -57,6 +59,11 @@ class Webhook(BaseDbModel):
             attached_nodes=(
                 [NodeModel.from_db(node) for node in webhook.AgentNodes]
                 if webhook.AgentNodes is not None
+                else None
+            ),
+            attached_presets=(
+                [LibraryAgentPreset.from_db(preset) for preset in webhook.AgentPresets]
+                if webhook.AgentPresets is not None
                 else None
             ),
         )
