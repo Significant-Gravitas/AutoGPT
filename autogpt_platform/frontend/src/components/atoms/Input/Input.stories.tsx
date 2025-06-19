@@ -102,6 +102,12 @@ export const InputTypes: Story = {
     controls: {
       disable: true,
     },
+    docs: {
+      description: {
+        story:
+          "Complete showcase of all input types with their specific behaviors. Test each input type to verify filtering and formatting works correctly.",
+      },
+    },
   },
 };
 
