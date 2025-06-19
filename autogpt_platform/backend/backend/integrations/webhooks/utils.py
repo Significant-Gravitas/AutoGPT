@@ -102,7 +102,9 @@ async def setup_webhook_for_block(
                 f"Cannot set up {provider.value} webhook without credentials"
             )
         elif not (
-            credentials := credentials_manager.get(user_id, credentials_meta["id"])
+            credentials := await credentials_manager.get(
+                user_id, credentials_meta["id"]
+            )
         ):
             raise ValueError(
                 f"Cannot set up {provider.value} webhook without credentials: "

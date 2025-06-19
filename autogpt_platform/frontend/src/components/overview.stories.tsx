@@ -1,4 +1,4 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import Image from "next/image";
 
 function RightArrow() {
@@ -456,7 +456,6 @@ const meta: Meta<typeof OverviewComponent> = {
   component: OverviewComponent,
   parameters: {
     layout: "fullscreen",
-    controls: { disable: true },
   },
 };
 

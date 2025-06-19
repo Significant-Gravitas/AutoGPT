@@ -1,10 +1,10 @@
-import type { Meta, StoryObj } from "@storybook/react";
-import { Text } from "@/components/_new/Text/Text";
-import { StoryCode } from "@/stories/helpers/StoryCode";
+import { Text } from "@/components/atoms/Text/Text";
+import type { Meta } from "@storybook/nextjs";
 import { SquareArrowOutUpRight } from "lucide-react";
+import { StoryCode } from "./helpers/StoryCode";
 
 const meta: Meta = {
-  title: "Design System/ Tokens /Spacing",
+  title: "Tokens /Spacing",
   parameters: {
     layout: "fullscreen",
     controls: { disable: true },
@@ -271,5 +271,3 @@ export function AllVariants() {
     </div>
   );
 }
-
-type Story = StoryObj<typeof meta>;

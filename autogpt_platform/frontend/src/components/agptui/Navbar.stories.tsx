@@ -1,36 +1,10 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { Navbar } from "./Navbar";
-import { userEvent, within } from "@storybook/test";
+import { userEvent, within } from "storybook/test";
 import { IconType } from "../ui/icons";
-import { ProfileDetails } from "@/lib/autogpt-server-api/types";
-// You can't import this here, jest is not available in storybook and will crash it
-// import { jest } from "@jest/globals";
-
-// Mock the API responses
-const mockProfileData: ProfileDetails = {
-  name: "John Doe",
-  username: "johndoe",
-  description: "",
-  links: [],
-  avatar_url: "https://avatars.githubusercontent.com/u/123456789?v=4",
-};
-
-const mockCreditData = {
-  credits: 1500,
-};
-
-// Mock the API module
-// jest.mock("@/lib/autogpt-server-api", () => {
-//   return function () {
-//     return {
-//       getStoreProfile: () => Promise.resolve(mockProfileData),
-//       getUserCredit: () => Promise.resolve(mockCreditData),
-//     };
-//   };
-// });
 
 const meta = {
-  title: "AGPT UI/Navbar",
+  title: "Legacy/Navbar",
   component: Navbar,
   parameters: {
     layout: "fullscreen",

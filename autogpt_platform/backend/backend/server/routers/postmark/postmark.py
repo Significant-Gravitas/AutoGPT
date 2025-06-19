@@ -36,11 +36,11 @@ logger = logging.getLogger(__name__)
 
 @router.post("/unsubscribe")
 async def unsubscribe_via_one_click(token: Annotated[str, Query()]):
-    logger.info(f"Received unsubscribe request from One Click Unsubscribe: {token}")
+    logger.info("Received unsubscribe request from One Click Unsubscribe")
     try:
         await unsubscribe_user_by_token(token)
     except Exception as e:
-        logger.exception("Unsubscribe token %s failed: %s", token, e)
+        logger.exception("Unsubscribe failed: %s", e)
         raise HTTPException(
             status_code=500,
             detail={"message": str(e), "hint": "Verify Postmark token settings."},

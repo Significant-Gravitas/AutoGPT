@@ -1,4 +1,3 @@
-import asyncio
 from typing import Literal
 
 import aiohttp
@@ -74,7 +73,11 @@ class ReadDiscordMessagesBlock(Block):
                 ("username", "test_user"),
             ],
             test_mock={
-                "run_bot": lambda token: asyncio.Future()  # Create a Future object for mocking
+                "run_bot": lambda token: {
+                    "output_data": "Hello!\n\nFile from user: example.txt\nContent: This is the content of the file.",
+                    "channel_name": "general",
+                    "username": "test_user",
+                }
             },
         )
 
@@ -106,37 +109,24 @@ class ReadDiscordMessagesBlock(Block):
                 if attachment.filename.endswith((".txt", ".py")):
                     async with aiohttp.ClientSession() as session:
                         async with session.get(attachment.url) as response:
-                            file_content = await response.text()
+                            file_content = response.text()
                             self.output_data += f"\n\nFile from user: {attachment.filename}\nContent: {file_content}"
 
             await client.close()
 
         await client.start(token.get_secret_value())
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        while True:
-            for output_name, output_value in self.__run(input_data, credentials):
-                yield output_name, output_value
-            break
+        async for output_name, output_value in self.__run(input_data, credentials):
+            yield output_name, output_value
 
-    def __run(self, input_data: Input, credentials: APIKeyCredentials) -> BlockOutput:
+    async def __run(
+        self, input_data: Input, credentials: APIKeyCredentials
+    ) -> BlockOutput:
         try:
-            loop = asyncio.get_event_loop()
-            future = self.run_bot(credentials.api_key)
-
-            # If it's a Future (mock), set the result
-            if isinstance(future, asyncio.Future):
-                future.set_result(
-                    {
-                        "output_data": "Hello!\n\nFile from user: example.txt\nContent: This is the content of the file.",
-                        "channel_name": "general",
-                        "username": "test_user",
-                    }
-                )
-
-            result = loop.run_until_complete(future)
+            result = await self.run_bot(credentials.api_key)
 
             # For testing purposes, use the mocked result
             if isinstance(result, dict):
@@ -190,7 +180,7 @@ class SendDiscordMessageBlock(Block):
             },
             test_output=[("status", "Message sent")],
             test_mock={
-                "send_message": lambda token, channel_name, message_content: asyncio.Future()
+                "send_message": lambda token, channel_name, message_content: "Message sent"
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -222,22 +212,15 @@ class SendDiscordMessageBlock(Block):
         """Splits a message into chunks not exceeding the Discord limit."""
         return [message[i : i + limit] for i in range(0, len(message), limit)]
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            loop = asyncio.get_event_loop()
-            future = self.send_message(
+            result = await self.send_message(
                 credentials.api_key.get_secret_value(),
                 input_data.channel_name,
                 input_data.message_content,
             )
-
-            # If it's a Future (mock), set the result
-            if isinstance(future, asyncio.Future):
-                future.set_result("Message sent")
-
-            result = loop.run_until_complete(future)
 
             # For testing purposes, use the mocked result
             if isinstance(result, str):

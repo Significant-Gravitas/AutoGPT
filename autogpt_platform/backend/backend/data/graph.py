@@ -1073,7 +1073,7 @@ async def fix_llm_provider_credentials():
             )
             continue
 
-        store.update_creds(user_id, credentials)
+        await store.update_creds(user_id, credentials)
         await AgentNode.prisma().update(
             where={"id": node_id},
             data={"constantInput": Json(node_preset_input)},

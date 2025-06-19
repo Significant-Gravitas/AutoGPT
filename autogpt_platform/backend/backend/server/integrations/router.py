@@ -20,7 +20,7 @@ from backend.data.model import (
     OAuth2Credentials,
     is_credentials_field_name,
 )
-from backend.executor.utils import add_graph_execution_async
+from backend.executor.utils import add_graph_execution
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
@@ -46,7 +46,7 @@ class LoginResponse(BaseModel):
 
 
 @router.get("/{provider}/login")
-def login(
+async def login(
     provider: Annotated[
         ProviderName, Path(title="The provider to initiate an OAuth flow for")
     ],
@@ -61,7 +61,7 @@ def login(
     requested_scopes = scopes.split(",") if scopes else []
 
     # Generate and store a secure random state token along with the scopes
-    state_token, code_challenge = creds_manager.store.store_state_token(
+    state_token, code_challenge = await creds_manager.store.store_state_token(
         user_id, provider, requested_scopes
     )
     login_url = handler.get_login_url(
@@ -81,7 +81,7 @@ class CredentialsMetaResponse(BaseModel):
 
 
 @router.post("/{provider}/callback")
-def callback(
+async def callback(
     provider: Annotated[
         ProviderName, Path(title="The target provider for this OAuth exchange")
     ],
@@ -94,7 +94,9 @@ def callback(
     handler = _get_provider_oauth_handler(request, provider)
 
     # Verify the state token
-    valid_state = creds_manager.store.verify_state_token(user_id, state_token, provider)
+    valid_state = await creds_manager.store.verify_state_token(
+        user_id, state_token, provider
+    )
 
     if not valid_state:
         logger.warning(f"Invalid or expired state token for user {user_id}")
@@ -105,7 +107,7 @@ def callback(
 
         scopes = handler.handle_default_scopes(scopes)
 
-        credentials = handler.exchange_code_for_tokens(
+        credentials = await handler.exchange_code_for_tokens(
             code, scopes, valid_state.code_verifier
         )
 
@@ -139,7 +141,7 @@ def callback(
         )
 
     # TODO: Allow specifying `title` to set on `credentials`
-    creds_manager.create(user_id, credentials)
+    await creds_manager.create(user_id, credentials)
 
     logger.debug(
         f"Successfully processed OAuth callback for user {user_id} "
@@ -156,10 +158,10 @@ def callback(
 
 
 @router.get("/credentials")
-def list_credentials(
+async def list_credentials(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
-    credentials = creds_manager.store.get_all_creds(user_id)
+    credentials = await creds_manager.store.get_all_creds(user_id)
     return [
         CredentialsMetaResponse(
             id=cred.id,
@@ -174,13 +176,13 @@ def list_credentials(
 
 
 @router.get("/{provider}/credentials")
-def list_credentials_by_provider(
+async def list_credentials_by_provider(
     provider: Annotated[
         ProviderName, Path(title="The provider to list credentials for")
     ],
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[CredentialsMetaResponse]:
-    credentials = creds_manager.store.get_creds_by_provider(user_id, provider)
+    credentials = await creds_manager.store.get_creds_by_provider(user_id, provider)
     return [
         CredentialsMetaResponse(
             id=cred.id,
@@ -195,14 +197,14 @@ def list_credentials_by_provider(
 
 
 @router.get("/{provider}/credentials/{cred_id}")
-def get_credential(
+async def get_credential(
     provider: Annotated[
         ProviderName, Path(title="The provider to retrieve credentials for")
     ],
     cred_id: Annotated[str, Path(title="The ID of the credentials to retrieve")],
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> Credentials:
-    credential = creds_manager.get(user_id, cred_id)
+    credential = await creds_manager.get(user_id, cred_id)
     if not credential:
         raise HTTPException(status_code=404, detail="Credentials not found")
     if credential.provider != provider:
@@ -213,7 +215,7 @@ def get_credential(
 
 
 @router.post("/{provider}/credentials", status_code=201)
-def create_credentials(
+async def create_credentials(
     user_id: Annotated[str, Depends(get_user_id)],
     provider: Annotated[
         ProviderName, Path(title="The provider to create credentials for")
@@ -222,7 +224,7 @@ def create_credentials(
 ) -> Credentials:
     credentials.provider = provider
     try:
-        creds_manager.create(user_id, credentials)
+        await creds_manager.create(user_id, credentials)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to store credentials: {str(e)}"
@@ -257,7 +259,7 @@ async def delete_credentials(
         bool, Query(title="Whether to proceed if any linked webhooks are still in use")
     ] = False,
 ) -> CredentialsDeletionResponse | CredentialsDeletionNeedsConfirmationResponse:
-    creds = creds_manager.store.get_creds_by_id(user_id, cred_id)
+    creds = await creds_manager.store.get_creds_by_id(user_id, cred_id)
     if not creds:
         raise HTTPException(status_code=404, detail="Credentials not found")
     if creds.provider != provider:
@@ -270,12 +272,12 @@ async def delete_credentials(
     except NeedConfirmation as e:
         return CredentialsDeletionNeedsConfirmationResponse(message=str(e))
 
-    creds_manager.delete(user_id, cred_id)
+    await creds_manager.delete(user_id, cred_id)
 
     tokens_revoked = None
     if isinstance(creds, OAuth2Credentials):
         handler = _get_provider_oauth_handler(request, provider)
-        tokens_revoked = handler.revoke_tokens(creds)
+        tokens_revoked = await handler.revoke_tokens(creds)
 
     return CredentialsDeletionResponse(revoked=tokens_revoked)
 
@@ -334,7 +336,7 @@ async def webhook_ingress_generic(
             continue
         logger.debug(f"Executing graph #{node.graph_id} node #{node.id}")
         executions.append(
-            add_graph_execution_async(
+            add_graph_execution(
                 user_id=webhook.user_id,
                 graph_id=node.graph_id,
                 graph_version=node.graph_version,
@@ -371,7 +373,7 @@ async def webhook_ingress_generic(
             k: v for k, v in preset.inputs.items() if not is_credentials_field_name(k)
         }
         executions.append(
-            add_graph_execution_async(
+            add_graph_execution(
                 user_id=webhook.user_id,
                 graph_id=preset.graph_id,
                 graph_version=preset.graph_version,
@@ -392,7 +394,7 @@ async def webhook_ping(
     webhook_manager = get_webhook_manager(webhook.provider)
 
     credentials = (
-        creds_manager.get(user_id, webhook.credentials_id)
+        await creds_manager.get(user_id, webhook.credentials_id)
         if webhook.credentials_id
         else None
     )
