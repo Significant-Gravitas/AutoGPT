@@ -89,9 +89,6 @@ importers:
       '@tanstack/react-query':
         specifier: 5.80.7
         version: 5.80.7(react@18.3.1)
-      '@tanstack/react-query-devtools':
-        specifier: 5.80.10
-        version: 5.80.10(@tanstack/react-query@5.80.7(react@18.3.1))(react@18.3.1)
       '@tanstack/react-table':
         specifier: 8.21.3
         version: 8.21.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -231,6 +228,9 @@ importers:
       '@tanstack/eslint-plugin-query':
         specifier: 5.78.0
         version: 5.78.0(eslint@8.57.1)(typescript@5.8.3)
+      '@tanstack/react-query-devtools':
+        specifier: 5.80.10
+        version: 5.80.10(@tanstack/react-query@5.80.7(react@18.3.1))(react@18.3.1)
       '@types/canvas-confetti':
         specifier: 1.9.0
         version: 1.9.0
