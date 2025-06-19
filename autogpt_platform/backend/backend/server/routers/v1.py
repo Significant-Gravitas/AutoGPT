@@ -590,7 +590,7 @@ async def execute_graph(
     dependencies=[Depends(auth_middleware)],
 )
 async def stop_graph_run(
-   graph_id:str, graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
+    graph_id: str, graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> execution_db.GraphExecution:
     if not await execution_db.get_graph_execution_meta(
         user_id=user_id, execution_id=graph_exec_id
