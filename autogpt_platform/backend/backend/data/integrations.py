@@ -127,21 +127,19 @@ async def find_webhook_by_credentials_and_props(
 
 
 async def find_webhook_by_graph_and_props(
+    user_id: str,
     provider: str,
     webhook_type: str,
     events: list[str],
     graph_id: Optional[str] = None,
     preset_id: Optional[str] = None,
 ) -> Webhook | None:
-    """
-    ⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints.
-
-    Either `graph_id` or `preset_id` must be provided.
-    """
+    """Either `graph_id` or `preset_id` must be provided."""
     if not graph_id and not preset_id:
         raise ValueError("Either graph_id or preset_id must be provided")
 
     where_clause: IntegrationWebhookWhereInput = {
+        "userId": user_id,
         "provider": provider,
         "webhookType": webhook_type,
         "events": {"has_every": events},

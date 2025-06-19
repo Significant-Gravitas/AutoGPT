@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Optional
+import logging
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.providers import ProviderName
@@ -7,9 +8,10 @@ from backend.util.settings import Config
 from . import get_webhook_manager, supports_webhooks
 
 if TYPE_CHECKING:
+    from backend.data.block import Block, BlockSchema
     from backend.data.integrations import Webhook
-    from backend.data.model import CredentialsMetaInput
 
+logger = logging.getLogger(__name__)
 app_config = Config()
 
 
@@ -21,41 +23,77 @@ def webhook_ingress_url(provider_name: ProviderName, webhook_id: str) -> str:
     )
 
 
-async def setup_webhook(
+async def setup_webhook_for_block(
     user_id: str,
-    provider: ProviderName,
-    webhook_type: str,
-    credentials_meta: Optional["CredentialsMetaInput"] = None,
-    resource: Optional[str] = None,
-    events: Optional[list[str]] = None,
+    trigger_block: "Block[BlockSchema, BlockSchema]",
+    trigger_config: dict[str, Any],  # = Trigger block inputs
     for_graph_id: Optional[str] = None,
     for_preset_id: Optional[str] = None,
 ) -> "Webhook":
     """
     Utility function to create (and auto-setup if possible) a webhook for a given provider.
-
-    Either `for_graph_id` or `for_preset_id` must be provided if the webhook is
-    being set up manually (i.e., not auto-setup).
     """
-    from ._manual_base import ManualWebhookManagerBase
+    from backend.data.block import BlockWebhookConfig
 
+    if not (trigger_base_config := trigger_block.webhook_config):
+        # FIXME: differentiate use of ValueError into 'missing input' and 'invalid config'
+        raise ValueError(f"Block #{trigger_block.id} does not have a webhook_config")
+
+    provider = trigger_base_config.provider
     if not supports_webhooks(provider):
-        raise ValueError(f"Provider {provider.value} does not support webhooks")
+        raise NotImplementedError(
+            f"Block #{trigger_block.id} has webhook_config for provider {provider} "
+            "for which we do not have a WebhooksManager"
+        )
 
-    webhooks_manager = get_webhook_manager(provider)
+    logger.debug(
+        f"Setting up webhook for block #{trigger_block.id} with config {trigger_config}"
+    )
 
-    auto_setup_webhook = isinstance(webhooks_manager, ManualWebhookManagerBase)
-
-    credentials = None
-    if auto_setup_webhook:
-        if not resource:
+    # Check & parse the event filter input, if any
+    events: list[str] = []
+    if event_filter_input_name := trigger_base_config.event_filter_input:
+        if not (event_filter := trigger_config.get(event_filter_input_name)):
             raise ValueError(
-                f"Cannot auto-setup {provider.value} webhook without resource"
+                f"Cannot set up {provider.value} webhook without event filter input: "
+                f"missing input for '{event_filter_input_name}'"
+            )
+        elif not (
+            # Shape of the event filter is enforced in Block.__init__
+            any((event_filter := cast(dict[str, bool], event_filter)).values())
+        ):
+            raise ValueError(
+                f"Cannot set up {provider.value} webhook without any enabled events "
+                f"in event filter input '{event_filter_input_name}'"
             )
 
-        credentials_manager = IntegrationCredentialsManager()
+        events = [
+            trigger_base_config.event_format.format(event=event)
+            for event, enabled in event_filter.items()
+            if enabled is True
+        ]
+        logger.debug(f"Webhook events to subscribe to: {', '.join(events)}")
 
-        if not credentials_meta:
+    # Check & process prerequisites for auto-setup webhooks
+    if auto_setup_webhook := isinstance(trigger_base_config, BlockWebhookConfig):
+        try:
+            resource = trigger_base_config.resource_format.format(**trigger_config)
+        except KeyError as missing_key:
+            raise ValueError(
+                f"Cannot auto-setup {provider.value} webhook without resource: "
+                f"missing input for '{missing_key}'"
+            ) from None
+        logger.debug(
+            f"Constructed resource string {resource} from input {trigger_config}"
+        )
+
+        credentials_manager = IntegrationCredentialsManager()
+        creds_field_name = next(
+            # presence of this field is enforced in Block.__init__
+            iter(trigger_block.input_schema.get_credentials_fields())
+        )
+
+        if not (credentials_meta := trigger_config.get(creds_field_name, None)):
             raise ValueError(
                 f"Cannot set up {provider.value} webhook without credentials"
             )
@@ -68,27 +106,31 @@ async def setup_webhook(
             raise ValueError(
                 f"Credentials #{credentials.id} do not match provider {provider.value}"
             )
+    else:
+        # not relevant for manual webhooks:
+        resource = ""
+        credentials = None
 
     webhooks_manager = get_webhook_manager(provider)
 
     # Find/make and attach a suitable webhook to the node
     if auto_setup_webhook:
-        assert resource is not None
         assert credentials is not None
         new_webhook = await webhooks_manager.get_suitable_auto_webhook(
-            user_id,
-            credentials,
-            webhook_type,
-            resource,
-            events or [],
+            user_id=user_id,
+            credentials=credentials,
+            webhook_type=trigger_base_config.webhook_type,
+            resource=resource,
+            events=events,
         )
     else:
         # Manual webhook -> no credentials -> don't register but do create
         new_webhook = await webhooks_manager.get_manual_webhook(
-            user_id,
-            webhook_type,
-            events or [],
+            user_id=user_id,
+            webhook_type=trigger_base_config.webhook_type,
+            events=events,
             graph_id=for_graph_id,
             preset_id=for_preset_id,
         )
+    logger.debug(f"Acquired webhook: {new_webhook}")
     return new_webhook

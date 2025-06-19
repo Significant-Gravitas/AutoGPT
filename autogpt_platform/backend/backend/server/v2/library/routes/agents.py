@@ -9,11 +9,10 @@ from pydantic import BaseModel, Field
 import backend.server.v2.library.db as library_db
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
-from backend.data.block import BlockWebhookConfig
 from backend.data.graph import get_graph
 from backend.data.model import CredentialsMetaInput
-from backend.integrations.providers import ProviderName
-from backend.integrations.webhooks.utils import setup_webhook
+from backend.executor.utils import make_node_credentials_input_map
+from backend.integrations.webhooks.utils import setup_webhook_for_block
 
 logger = logging.getLogger(__name__)
 
@@ -253,9 +252,7 @@ class TriggeredPresetSetupParams(BaseModel):
     name: str
     description: str = ""
 
-    provider: ProviderName
     trigger_config: dict[str, Any]
-    trigger_credentials: Optional[CredentialsMetaInput] = None
     agent_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
 
 
@@ -266,7 +263,8 @@ async def setup_trigger(
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
 ) -> library_model.LibraryAgentPreset:
     """
-    Sets up a webhook for a node and creates an AgentPreset with webhookId set.
+    Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.
+    Returns the correspondingly created `LibraryAgentPreset` with `webhook_id` set.
     """
     library_agent = await library_db.get_library_agent(
         id=library_agent_id, user_id=user_id
@@ -291,50 +289,31 @@ async def setup_trigger(
             detail=f"Graph #{library_agent.graph_id} does not have a webhook node",
         )
 
-    trigger_block = trigger_node.block
-    if not (trigger_webhook_config := trigger_block.webhook_config):
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                f"Block #{trigger_block.id} has type {trigger_block.block_type} "
-                f"but does not have a webhook config"
-            ),
-        )
+    trigger_config_with_credentials = {
+        **params.trigger_config,
+        **(
+            make_node_credentials_input_map(graph, params.agent_credentials).get(
+                trigger_node.id
+            )
+            or {}
+        ),
+    }
 
-    # Prepare parameters for webhook setup
-    resource = (
-        trigger_webhook_config.resource_format.format(**params.trigger_config)
-        if isinstance(trigger_webhook_config, BlockWebhookConfig)
-        else None
-    )
-    event_filter: dict = params.trigger_config[
-        trigger_webhook_config.event_filter_input
-    ]
-    events = [
-        trigger_webhook_config.event_format.format(event=event)
-        for event, enabled in event_filter.items()
-        if enabled is True
-    ]
-
-    new_webhook = await setup_webhook(
+    new_webhook = await setup_webhook_for_block(
         user_id=user_id,
-        provider=params.provider,
-        webhook_type=trigger_webhook_config.webhook_type,
-        credentials_meta=params.trigger_credentials,
-        resource=resource,
-        events=events,
-        for_graph_id=library_agent.graph_id,
+        trigger_block=trigger_node.block,
+        trigger_config=trigger_config_with_credentials,
     )
-    preset = await library_db.create_preset(
+    new_preset = await library_db.create_preset(
         user_id=user_id,
         preset=library_model.LibraryAgentPresetCreatable(
             graph_id=library_agent.graph_id,
             graph_version=library_agent.graph_version,
             name=params.name,
             description=params.description,
-            inputs=params.trigger_config,
-            is_active=True,
+            inputs=trigger_config_with_credentials,
             webhook_id=new_webhook.id,
+            is_active=True,  # FIXME: add endpoint to flip this switch
         ),
     )
-    return preset
+    return new_preset

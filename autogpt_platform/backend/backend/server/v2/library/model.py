@@ -125,18 +125,16 @@ class LibraryAgent(pydantic.BaseModel):
             credentials_input_schema=graph.credentials_input_schema,
             has_external_trigger=graph.has_webhook_trigger,
             trigger_setup_info=(
-                None
-                if not (
-                    graph.webhook_input_node
-                    and graph.webhook_input_node.block.webhook_config
-                )
-                else LibraryAgentTriggerInfo(
-                    provider=graph.webhook_input_node.block.webhook_config.provider,
-                    config_schema=graph.webhook_input_node.block.input_schema.jsonschema(),
-                    credentials_input_name=graph.webhook_input_node.block.input_schema.get_credentials_fields().pop(
-                        0, None
+                LibraryAgentTriggerInfo(
+                    provider=trigger_block.webhook_config.provider,
+                    config_schema=trigger_block.input_schema.jsonschema(),
+                    credentials_input_name=next(
+                        iter(trigger_block.input_schema.get_credentials_fields()), None
                     ),
                 )
+                if graph.webhook_input_node
+                and (trigger_block := graph.webhook_input_node.block).webhook_config
+                else None
             ),
             new_output=new_output,
             can_access_graph=can_access_graph,

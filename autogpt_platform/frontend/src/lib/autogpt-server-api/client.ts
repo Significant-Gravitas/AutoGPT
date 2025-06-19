@@ -652,9 +652,7 @@ export default class BackendAPI {
     params: {
       name: string;
       description?: string;
-      provider: CredentialsProviderName;
       trigger_config: Record<string, any>;
-      trigger_credentials?: CredentialsMetaInput;
       agent_credentials: Record<string, CredentialsMetaInput>;
     },
   ): Promise<LibraryAgentPreset> {

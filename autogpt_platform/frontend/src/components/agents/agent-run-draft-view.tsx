@@ -106,16 +106,7 @@ export default function AgentRunDraftView({
       .setupAgentTrigger(agent.id, {
         name: presetName || agent.name,
         description: presetDescription || agent.description,
-        provider: agent.trigger_setup_info.provider,
-        trigger_config: {
-          ...inputValues,
-          ...(credentialsInputName
-            ? {
-                [credentialsInputName]: inputCredentials[credentialsInputName],
-              }
-            : {}),
-        },
-        trigger_credentials: inputCredentials[credentialsInputName] ?? null, // FIXME: add this to the schema or make a mapping
+        trigger_config: inputValues,
         agent_credentials: inputCredentials,
       })
       .then((newPreset) => onCreatePreset(newPreset.id))

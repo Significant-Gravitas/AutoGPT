@@ -56,14 +56,20 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         events: list[str],
         graph_id: Optional[str] = None,
         preset_id: Optional[str] = None,
-    ):
-        """Either graph_id or preset_id must be provided."""
-        if current_webhook := await integrations.find_webhook_by_graph_and_props(
-            self.PROVIDER_NAME,
-            webhook_type,
-            events,
-            graph_id=graph_id,
-            preset_id=preset_id,
+    ) -> integrations.Webhook:
+        """
+        Tries to find an existing webhook tied to `graph_id`/`preset_id`,
+        or creates a new webhook if none exists.
+        """
+        if (graph_id or preset_id) and (
+            current_webhook := await integrations.find_webhook_by_graph_and_props(
+                user_id,
+                self.PROVIDER_NAME.value,
+                webhook_type.value,
+                events,
+                graph_id=graph_id,
+                preset_id=preset_id,
+            )
         ):
             return current_webhook
         return await self._create_webhook(
