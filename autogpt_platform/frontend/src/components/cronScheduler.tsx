@@ -26,9 +26,9 @@ export function CronScheduler({
 }: CronSchedulerProps) {
   const [frequency, setFrequency] = useState<
     "minute" | "hour" | "daily" | "weekly" | "monthly" | "yearly" | "custom"
-  >("minute");
+  >("daily");
   const [selectedDays, setSelectedDays] = useState<number[]>([]);
-  const [selectedTime, setSelectedTime] = useState<string>("00:00");
+  const [selectedTime, setSelectedTime] = useState<string>("09:00");
   const [showCustomDays, setShowCustomDays] = useState<boolean>(false);
   const [selectedMinute, setSelectedMinute] = useState<string>("0");
   const [customInterval, setCustomInterval] = useState<{
@@ -77,7 +77,7 @@ export function CronScheduler({
 
             <Select
               onValueChange={(value: any) => setFrequency(value)}
-              defaultValue="minute"
+              defaultValue="daily"
             >
               <SelectTrigger>
                 <SelectValue placeholder="Select frequency" />
