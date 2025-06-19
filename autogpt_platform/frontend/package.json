@@ -98,6 +98,8 @@
     "@storybook/addon-links": "9.0.12",
     "@storybook/addon-onboarding": "9.0.12",
     "@storybook/nextjs": "9.0.12",
+    "@tanstack/eslint-plugin-query": "5.78.0",
+    "@tanstack/react-query-devtools": "5.80.10",
     "@types/canvas-confetti": "1.9.0",
     "@types/lodash": "4.17.18",
     "@types/negotiator": "0.6.4",
