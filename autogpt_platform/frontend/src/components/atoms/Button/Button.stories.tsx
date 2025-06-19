@@ -3,7 +3,7 @@ import { Play, Plus } from "lucide-react";
 import { Button } from "./Button";
 
 const meta: Meta<typeof Button> = {
-  title: "Design System/Atoms/Button",
+  title: "Atoms/Button",
   tags: ["autodocs"],
   component: Button,
   parameters: {
@@ -533,9 +533,6 @@ function renderAllVariants() {
             </div>
             <div className="flex flex-col gap-8">
               <Button variant="link">Add to library</Button>
-              <Button variant="link" className="underline">
-                Add to library
-              </Button>
             </div>
           </div>
 

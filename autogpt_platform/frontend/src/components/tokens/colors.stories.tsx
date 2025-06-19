@@ -1,10 +1,10 @@
 import { Text } from "@/components/atoms/Text/Text";
 import { colors } from "@/components/styles/colors";
-import { StoryCode } from "@/stories/helpers/StoryCode";
 import type { Meta } from "@storybook/nextjs";
+import { StoryCode } from "./helpers/StoryCode";
 
 const meta: Meta = {
-  title: "Design System/ Tokens /Colors",
+  title: "Tokens /Colors",
   parameters: {
     layout: "fullscreen",
     controls: { disable: true },

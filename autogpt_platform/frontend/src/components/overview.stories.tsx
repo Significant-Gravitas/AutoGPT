@@ -456,7 +456,6 @@ const meta: Meta<typeof OverviewComponent> = {
   component: OverviewComponent,
   parameters: {
     layout: "fullscreen",
-    controls: { disable: true },
   },
 };
 

@@ -12,17 +12,17 @@ const extendedButtonVariants = cva(
         primary:
           "bg-zinc-800 border-zinc-800 text-white hover:bg-zinc-900 hover:border-zinc-900 rounded-full disabled:text-white disabled:bg-zinc-200 disabled:border-zinc-200 disabled:opacity-1",
         secondary:
-          "bg-zinc-100 border-zinc-100 text-black hover:bg-zinc-300 hover:border-zinc-300 rounded-full disabled:text-zinc-300 disabled:bg-zinc-50 disabled:border-zinc-50  disabled:opacity-1",
+          "bg-zinc-100 border-zinc-100 text-black hover:bg-zinc-300 hover:border-zinc-300 rounded-full disabled:text-zinc-300 disabled:bg-zinc-50 disabled:border-zinc-50 disabled:opacity-1",
         destructive:
-          "bg-red-500 border-red-500 text-white hover:bg-red-600 hover:border-red-600 rounded-full disabled:text-white disabled:bg-zinc-200 disabled:border-zinc-200  disabled:opacity-1",
+          "bg-red-500 border-red-500 text-white hover:bg-red-600 hover:border-red-600 rounded-full disabled:text-white disabled:bg-zinc-200 disabled:border-zinc-200 disabled:opacity-1",
         outline:
-          "bg-transparent border-zinc-700 text-black hover:bg-zinc-100 hover:border-zinc-700 rounded-full disabled:border-zinc-200 disabled:text-zinc-200  disabled:opacity-1",
+          "bg-transparent border-zinc-700 text-black hover:bg-zinc-100 hover:border-zinc-700 rounded-full disabled:border-zinc-200 disabled:text-zinc-200 disabled:opacity-1",
         ghost:
-          "bg-transparent border-transparent text-black hover:bg-zinc-50 hover:border-zinc-50 rounded-full disabled:text-zinc-200  disabled:opacity-1",
+          "bg-transparent border-transparent text-black hover:bg-zinc-50 hover:border-zinc-50 rounded-full disabled:text-zinc-200 disabled:opacity-1",
         loading:
-          "bg-zinc-500 text-white rounded-[43px] cursor-not-allowed  disabled:opacity-1",
-        link: "bg-transparent text-neutral-900 hover:underline rounded-none p-0 h-auto min-w-0  disabled:opacity-1",
-        icon: "bg-white text-neutral-900 border border-zinc-600 hover:bg-zinc-100 rounded-[96px]  disabled:opacity-1",
+          "bg-zinc-500 text-white rounded-[43px] cursor-not-allowed disabled:opacity-1",
+        link: "bg-transparent border-transparent text-black hover:underline rounded-none p-0 h-auto min-w-auto disabled:opacity-1",
+        icon: "bg-white text-black border border-zinc-600 hover:bg-zinc-100 rounded-[96px] disabled:opacity-1",
       },
       size: {
         small: "px-3 py-2 text-sm gap-1.5 h-[2.25rem]",
