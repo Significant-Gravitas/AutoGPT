@@ -1,4 +1,6 @@
 import type { Config } from "tailwindcss";
+import tailwindcssAnimate from "tailwindcss-animate";
+import { colors } from "./src/components/styles/colors";
 
 const config = {
   darkMode: ["class"],
@@ -19,6 +21,13 @@ const config = {
         poppins: ["var(--font-poppins)"],
       },
       colors: {
+        // *** APPROVED DESIGN SYSTEM COLORS ***
+        // These are the ONLY colors that should be used in our app
+        ...colors,
+
+        // Legacy colors - DO NOT USE THESE IN NEW CODE
+        // These are kept only to prevent breaking existing styles
+        // Use the approved design system colors above instead
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
@@ -52,7 +61,6 @@ const config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        // Extend the color palette with custom colors
         customGray: {
           100: "#d9d9d9",
           200: "#a8a8a8",
@@ -141,7 +149,7 @@ const config = {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [tailwindcssAnimate],
 } satisfies Config;
 
 export default config;
