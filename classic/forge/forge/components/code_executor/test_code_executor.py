@@ -159,3 +159,108 @@ def test_execute_shell_allowlist_should_allow(
 
     result = code_executor_component.execute_shell(f"echo 'Hello {random_string}!'")
     assert "Hello" in result and random_string in result
+
+
+# SECURITY TESTS: Command Injection Prevention
+def test_command_injection_semicolon_blocked(code_executor_component: CodeExecutorComponent):
+    """Test that command injection via semicolon is blocked"""
+    code_executor_component.config.shell_command_control = "allowlist"
+    code_executor_component.config.shell_allowlist = ["echo"]
+    
+    # This should be blocked due to semicolon
+    with pytest.raises(OperationNotAllowedError, match="not allowed"):
+        code_executor_component.execute_shell("echo hello; rm -rf /")
+
+
+def test_command_injection_pipe_blocked(code_executor_component: CodeExecutorComponent):
+    """Test that command injection via pipe is blocked"""
+    code_executor_component.config.shell_command_control = "allowlist"
+    code_executor_component.config.shell_allowlist = ["echo"]
+    
+    # This should be blocked due to pipe
+    with pytest.raises(OperationNotAllowedError, match="not allowed"):
+        code_executor_component.execute_shell("echo hello | cat /etc/passwd")
+
+
+def test_command_injection_ampersand_blocked(code_executor_component: CodeExecutorComponent):
+    """Test that command injection via ampersand is blocked"""
+    code_executor_component.config.shell_command_control = "allowlist"
+    code_executor_component.config.shell_allowlist = ["echo"]
+    
+    # This should be blocked due to ampersand
+    with pytest.raises(OperationNotAllowedError, match="not allowed"):
+        code_executor_component.execute_shell("echo hello & rm important_file")
+
+
+def test_command_injection_command_substitution_blocked(code_executor_component: CodeExecutorComponent):
+    """Test that command substitution is blocked"""
+    code_executor_component.config.shell_command_control = "allowlist"
+    code_executor_component.config.shell_allowlist = ["echo"]
+    
+    # This should be blocked due to command substitution
+    with pytest.raises(OperationNotAllowedError, match="not allowed"):
+        code_executor_component.execute_shell("echo $(whoami)")
+
+
+def test_command_injection_backticks_blocked(code_executor_component: CodeExecutorComponent):
+    """Test that backtick command substitution is blocked"""
+    code_executor_component.config.shell_command_control = "allowlist"
+    code_executor_component.config.shell_allowlist = ["echo"]
+    
+    # This should be blocked due to backticks
+    with pytest.raises(OperationNotAllowedError, match="not allowed"):
+        code_executor_component.execute_shell("echo `whoami`")
+
+
+def test_command_injection_redirection_blocked(code_executor_component: CodeExecutorComponent):
+    """Test that file redirection is blocked"""
+    code_executor_component.config.shell_command_control = "allowlist"
+    code_executor_component.config.shell_allowlist = ["echo"]
+    
+    # This should be blocked due to redirection
+    with pytest.raises(OperationNotAllowedError, match="not allowed"):
+        code_executor_component.execute_shell("echo secret > /tmp/stolen_data")
+
+
+def test_malformed_command_blocked(code_executor_component: CodeExecutorComponent):
+    """Test that malformed shell commands are blocked"""
+    code_executor_component.config.shell_command_control = "allowlist"
+    code_executor_component.config.shell_allowlist = ["echo"]
+    
+    # This should be blocked due to malformed syntax
+    with pytest.raises(OperationNotAllowedError, match="not allowed"):
+        code_executor_component.execute_shell("echo 'unclosed quote")
+
+
+def test_invalid_shell_command_control_blocked(code_executor_component: CodeExecutorComponent):
+    """Test that invalid shell_command_control values default to secure mode"""
+    # Manually set an invalid value (bypassing type checking)
+    code_executor_component.config.shell_command_control = "invalid_mode"
+    
+    # This should be blocked due to invalid control mode
+    with pytest.raises(OperationNotAllowedError, match="not allowed"):
+        code_executor_component.execute_shell("echo hello")
+
+
+def test_empty_command_blocked(code_executor_component: CodeExecutorComponent):
+    """Test that empty commands are blocked"""
+    code_executor_component.config.shell_command_control = "allowlist"
+    code_executor_component.config.shell_allowlist = ["echo"]
+    
+    # This should be blocked due to empty command
+    with pytest.raises(OperationNotAllowedError, match="not allowed"):
+        code_executor_component.execute_shell("")
+
+
+def test_whitespace_only_command_blocked(code_executor_component: CodeExecutorComponent):
+    """Test that whitespace-only commands are blocked"""
+    code_executor_component.config.shell_command_control = "allowlist"
+    code_executor_component.config.shell_allowlist = ["echo"]
+    
+    # This should be blocked due to whitespace-only command
+    with pytest.raises(OperationNotAllowedError, match="not allowed"):
+        code_executor_component.execute_shell("   ")
+
+
+# NOTE: Command injection tests are limited to validation logic due to automated environment limits
+# Manual testing recommended for: Full subprocess execution, shell metacharacter handling in live environments
