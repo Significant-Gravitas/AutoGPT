@@ -7,6 +7,8 @@ import {
   GraphExecutionID,
   GraphExecutionMeta,
   LibraryAgent,
+  LibraryAgentPreset,
+  LibraryAgentPresetID,
   Schedule,
   ScheduleID,
 } from "@/lib/autogpt-server-api";
@@ -21,13 +23,16 @@ import AgentRunSummaryCard from "@/components/agents/agent-run-summary-card";
 interface AgentRunsSelectorListProps {
   agent: LibraryAgent;
   agentRuns: GraphExecutionMeta[];
+  agentPresets: LibraryAgentPreset[];
   schedules: Schedule[];
-  selectedView: { type: "run" | "schedule"; id?: string };
+  selectedView: { type: "run" | "preset" | "schedule"; id?: string };
   allowDraftNewRun?: boolean;
   onSelectRun: (id: GraphExecutionID) => void;
+  onSelectPreset: (preset: LibraryAgentPresetID) => void;
   onSelectSchedule: (schedule: Schedule) => void;
   onSelectDraftNewRun: () => void;
   onDeleteRun: (id: GraphExecutionMeta) => void;
+  onDeletePreset: (id: LibraryAgentPresetID) => void;
   onDeleteSchedule: (id: ScheduleID) => void;
   className?: string;
 }
@@ -35,13 +40,16 @@ interface AgentRunsSelectorListProps {
 export default function AgentRunsSelectorList({
   agent,
   agentRuns,
+  agentPresets,
   schedules,
   selectedView,
   allowDraftNewRun = true,
   onSelectRun,
+  onSelectPreset,
   onSelectSchedule,
   onSelectDraftNewRun,
   onDeleteRun,
+  onDeletePreset,
   onDeleteSchedule,
   className,
 }: AgentRunsSelectorListProps): React.ReactElement {
@@ -109,8 +117,26 @@ export default function AgentRunsSelectorList({
             </Button>
           )}
 
-          {activeListTab === "runs"
-            ? agentRuns
+          {activeListTab === "runs" ? (
+            <>
+              {agentPresets
+                .toSorted(
+                  (a, b) => b.updated_at.getTime() - a.updated_at.getTime(),
+                )
+                .map((preset) => (
+                  <AgentRunSummaryCard
+                    className="h-28 w-72 lg:h-32 xl:w-80"
+                    key={preset.id}
+                    type="preset"
+                    status={preset.is_active ? "active" : "inactive"}
+                    title={agent.name}
+                    // timestamp={preset.last_run_time} // TODO: implement this
+                    selected={selectedView.id === preset.id}
+                    onClick={() => onSelectPreset(preset.id)}
+                    onDelete={() => onDeletePreset(preset.id)}
+                  />
+                ))}
+              {agentRuns
                 .toSorted(
                   (a, b) => b.started_at.getTime() - a.started_at.getTime(),
                 )
@@ -118,6 +144,7 @@ export default function AgentRunsSelectorList({
                   <AgentRunSummaryCard
                     className="h-28 w-72 lg:h-32 xl:w-80"
                     key={run.id}
+                    type="run"
                     status={agentRunStatusMap[run.status]}
                     title={agent.name}
                     timestamp={run.started_at}
@@ -125,21 +152,25 @@ export default function AgentRunsSelectorList({
                     onClick={() => onSelectRun(run.id)}
                     onDelete={() => onDeleteRun(run)}
                   />
-                ))
-            : schedules
-                .filter((schedule) => schedule.graph_id === agent.graph_id)
-                .map((schedule) => (
-                  <AgentRunSummaryCard
-                    className="h-28 w-72 lg:h-32 xl:w-80"
-                    key={schedule.id}
-                    status="scheduled"
-                    title={schedule.name}
-                    timestamp={schedule.next_run_time}
-                    selected={selectedView.id === schedule.id}
-                    onClick={() => onSelectSchedule(schedule)}
-                    onDelete={() => onDeleteSchedule(schedule.id)}
-                  />
                 ))}
+            </>
+          ) : (
+            schedules
+              .filter((schedule) => schedule.graph_id === agent.graph_id)
+              .map((schedule) => (
+                <AgentRunSummaryCard
+                  className="h-28 w-72 lg:h-32 xl:w-80"
+                  key={schedule.id}
+                  type="schedule"
+                  status="scheduled" // TODO: implement active/inactive status for schedules
+                  title={schedule.name}
+                  timestamp={schedule.next_run_time}
+                  selected={selectedView.id === schedule.id}
+                  onClick={() => onSelectSchedule(schedule)}
+                  onDelete={() => onDeleteSchedule(schedule.id)}
+                />
+              ))
+          )}
         </div>
       </ScrollArea>
     </aside>

@@ -3,11 +3,10 @@ import React, { useCallback, useMemo, useState } from "react";
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
-  BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
   GraphExecutionID,
   LibraryAgent,
-  LibraryAgentPresetID,
+  LibraryAgentPreset,
 } from "@/lib/autogpt-server-api";
 
 import type { ButtonAction } from "@/components/agptui/types";
@@ -30,7 +29,7 @@ export default function AgentRunDraftView({
 }: {
   agent: LibraryAgent;
   onRun: (runID: GraphExecutionID) => void;
-  onCreatePreset: (presetID: LibraryAgentPresetID) => void;
+  onCreatePreset: (preset: LibraryAgentPreset) => void;
   agentActions: ButtonAction[];
 }): React.ReactNode {
   const api = useBackendAPI();
@@ -109,7 +108,7 @@ export default function AgentRunDraftView({
         trigger_config: inputValues,
         agent_credentials: inputCredentials,
       })
-      .then((newPreset) => onCreatePreset(newPreset.id))
+      .then((newPreset) => onCreatePreset(newPreset))
       .catch(toastOnFail("set up agent trigger"));
 
     // Mark run agent onboarding step as completed(?)
@@ -132,18 +131,29 @@ export default function AgentRunDraftView({
 
   const runActions: ButtonAction[] = useMemo(
     () => [
-      {
-        label: (
-          <>
-            <IconPlay className="mr-2 size-5" />
-            Run
-          </>
-        ),
-        variant: "accent",
-        callback: doRun,
-      },
+      !agent.has_external_trigger
+        ? {
+            label: (
+              <>
+                <IconPlay className="mr-2 size-5" />
+                Run
+              </>
+            ),
+            variant: "accent",
+            callback: doRun,
+          }
+        : {
+            label: (
+              <>
+                <IconPlay className="mr-2 size-5" />
+                Set up trigger
+              </>
+            ),
+            variant: "accent",
+            callback: doSetupTrigger,
+          },
     ],
-    [doRun],
+    [agent.has_external_trigger, doRun, doSetupTrigger],
   );
 
   return (

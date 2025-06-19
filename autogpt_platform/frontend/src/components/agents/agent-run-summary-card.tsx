@@ -16,11 +16,26 @@ import {
 import AgentRunStatusChip, {
   AgentRunStatus,
 } from "@/components/agents/agent-run-status-chip";
+import AgentStatusChip, {
+  AgentStatus,
+} from "@/components/agents/agent-status-chip";
 
-export type AgentRunSummaryProps = {
-  status: AgentRunStatus;
+export type AgentRunSummaryProps = (
+  | {
+      type: "run";
+      status: AgentRunStatus;
+    }
+  | {
+      type: "preset";
+      status: AgentStatus;
+    }
+  | {
+      type: "schedule";
+      status: "scheduled";
+    }
+) & {
   title: string;
-  timestamp: number | Date;
+  timestamp?: number | Date;
   selected?: boolean;
   onClick?: () => void;
   // onRename: () => void;
@@ -29,6 +44,7 @@ export type AgentRunSummaryProps = {
 };
 
 export default function AgentRunSummaryCard({
+  type,
   status,
   title,
   timestamp,
@@ -48,7 +64,10 @@ export default function AgentRunSummaryCard({
       onClick={onClick}
     >
       <CardContent className="relative p-2.5 lg:p-4">
-        <AgentRunStatusChip status={status} />
+        {(type == "run" || type == "schedule") && (
+          <AgentRunStatusChip status={status} />
+        )}
+        {type == "preset" && <AgentStatusChip status={status} />}
 
         <div className="mt-5 flex items-center justify-between">
           <h3 className="truncate pr-2 text-base font-medium text-neutral-900">
@@ -75,12 +94,15 @@ export default function AgentRunSummaryCard({
           </DropdownMenu>
         </div>
 
-        <p
-          className="mt-1 text-sm font-normal text-neutral-500"
-          title={moment(timestamp).toString()}
-        >
-          Ran {moment(timestamp).fromNow()}
-        </p>
+        {timestamp && (
+          <p
+            className="mt-1 text-sm font-normal text-neutral-500"
+            title={moment(timestamp).toString()}
+          >
+            {moment(timestamp).isBefore() ? "Ran" : "Runs in"}{" "}
+            {moment(timestamp).fromNow()}
+          </p>
+        )}
       </CardContent>
     </Card>
   );
