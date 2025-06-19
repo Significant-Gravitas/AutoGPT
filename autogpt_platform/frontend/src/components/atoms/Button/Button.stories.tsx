@@ -121,47 +121,11 @@ export const LoadingSecondary: Story = {
 
 // Sizes
 export const SmallButtons: Story = {
-  render: () => (
-    <div className="flex flex-wrap gap-4">
-      <Button variant="primary" size="small">
-        Primary
-      </Button>
-      <Button variant="secondary" size="small">
-        Secondary
-      </Button>
-      <Button variant="destructive" size="small">
-        Delete
-      </Button>
-      <Button variant="outline" size="small">
-        Outline
-      </Button>
-      <Button variant="ghost" size="small">
-        Ghost
-      </Button>
-    </div>
-  ),
+  render: renderSmallButtons,
 };
 
 export const LargeButtons: Story = {
-  render: () => (
-    <div className="flex flex-wrap gap-4">
-      <Button variant="primary" size="large">
-        Primary
-      </Button>
-      <Button variant="secondary" size="large">
-        Secondary
-      </Button>
-      <Button variant="destructive" size="large">
-        Delete
-      </Button>
-      <Button variant="outline" size="large">
-        Outline
-      </Button>
-      <Button variant="ghost" size="large">
-        Ghost
-      </Button>
-    </div>
-  ),
+  render: renderLargeButtons,
 };
 
 // With icons
@@ -192,7 +156,61 @@ export const IconOnly: Story = {
 
 // States
 export const Disabled: Story = {
-  render: () => (
+  render: renderDisabledButtons,
+};
+
+// Complete showcase matching Figma design
+export const AllVariants: Story = {
+  render: renderAllVariants,
+};
+
+// Render functions as function declarations
+function renderSmallButtons() {
+  return (
+    <div className="flex flex-wrap gap-4">
+      <Button variant="primary" size="small">
+        Primary
+      </Button>
+      <Button variant="secondary" size="small">
+        Secondary
+      </Button>
+      <Button variant="destructive" size="small">
+        Delete
+      </Button>
+      <Button variant="outline" size="small">
+        Outline
+      </Button>
+      <Button variant="ghost" size="small">
+        Ghost
+      </Button>
+    </div>
+  );
+}
+
+function renderLargeButtons() {
+  return (
+    <div className="flex flex-wrap gap-4">
+      <Button variant="primary" size="large">
+        Primary
+      </Button>
+      <Button variant="secondary" size="large">
+        Secondary
+      </Button>
+      <Button variant="destructive" size="large">
+        Delete
+      </Button>
+      <Button variant="outline" size="large">
+        Outline
+      </Button>
+      <Button variant="ghost" size="large">
+        Ghost
+      </Button>
+    </div>
+  );
+}
+
+function renderDisabledButtons() {
+  return (
     <div className="flex flex-wrap gap-4">
       <Button variant="primary" disabled>
         Primary Disabled
@@ -210,16 +228,15 @@ export const Disabled: Story = {
         Ghost Disabled
       </Button>
     </div>
-  ),
-};
+  );
+}
 
-// Complete showcase matching Figma design
-export const AllVariants: Story = {
-  render: () => (
+function renderAllVariants() {
+  return (
     <div className="space-y-12 p-8">
       {/* Large buttons section */}
       <div className="space-y-8">
-        <h2 className="font-['Inter'] text-3xl font-semibold text-neutral-900">
+        <h2 className="text-3xl font-semibold text-neutral-900">
           Large buttons
         </h2>
         <div className="flex flex-wrap gap-20">
@@ -228,15 +245,8 @@ export const AllVariants: Story = {
             <div className="font-['Geist'] text-base font-medium text-neutral-900">
               Primary
             </div>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-8">
               <Button variant="primary" size="large">
-                Text
-              </Button>
-              <Button
-                variant="primary"
-                size="large"
-                className="hover:bg-zinc-800"
-              >
                 Text
               </Button>
               <Button variant="primary" size="large" disabled>
@@ -246,14 +256,6 @@ export const AllVariants: Story = {
                 variant="primary"
                 size="large"
                 leftIcon={<Play className="h-5 w-5" />}
-              >
-                Text
-              </Button>
-              <Button
-                variant="primary"
-                size="large"
-                leftIcon={<Play className="h-5 w-5" />}
-                className="hover:bg-zinc-800"
               >
                 Text
               </Button>
@@ -273,15 +275,8 @@ export const AllVariants: Story = {
             <div className="font-['Geist'] text-base font-medium text-neutral-900">
               Secondary
             </div>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-8">
               <Button variant="secondary" size="large">
-                Text
-              </Button>
-              <Button
-                variant="secondary"
-                size="large"
-                className="hover:bg-zinc-400"
-              >
                 Text
               </Button>
               <Button variant="secondary" size="large" disabled>
@@ -291,14 +286,6 @@ export const AllVariants: Story = {
                 variant="secondary"
                 size="large"
                 leftIcon={<Play className="h-5 w-5" />}
-              >
-                Text
-              </Button>
-              <Button
-                variant="secondary"
-                size="large"
-                leftIcon={<Play className="h-5 w-5" />}
-                className="hover:bg-zinc-400"
               >
                 Text
               </Button>
@@ -318,15 +305,8 @@ export const AllVariants: Story = {
             <div className="font-['Geist'] text-base font-medium text-neutral-900">
               Destructive
             </div>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-8">
               <Button variant="destructive" size="large">
-                Text
-              </Button>
-              <Button
-                variant="destructive"
-                size="large"
-                className="hover:bg-red-600"
-              >
                 Text
               </Button>
               <Button variant="destructive" size="large" disabled>
@@ -336,14 +316,6 @@ export const AllVariants: Story = {
                 variant="destructive"
                 size="large"
                 leftIcon={<Play className="h-5 w-5" />}
-              >
-                Text
-              </Button>
-              <Button
-                variant="destructive"
-                size="large"
-                leftIcon={<Play className="h-5 w-5" />}
-                className="hover:bg-red-600"
               >
                 Text
               </Button>
@@ -363,15 +335,8 @@ export const AllVariants: Story = {
             <div className="font-['Geist'] text-base font-medium text-neutral-900">
               Outline
             </div>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-8">
               <Button variant="outline" size="large">
-                Text
-              </Button>
-              <Button
-                variant="outline"
-                size="large"
-                className="hover:bg-zinc-200"
-              >
                 Text
               </Button>
               <Button variant="outline" size="large" disabled>
@@ -381,14 +346,6 @@ export const AllVariants: Story = {
                 variant="outline"
                 size="large"
                 leftIcon={<Play className="h-5 w-5" />}
-              >
-                Text
-              </Button>
-              <Button
-                variant="outline"
-                size="large"
-                leftIcon={<Play className="h-5 w-5" />}
-                className="hover:bg-zinc-200"
               >
                 Text
               </Button>
@@ -408,15 +365,8 @@ export const AllVariants: Story = {
             <div className="font-['Geist'] text-base font-medium text-neutral-900">
               Ghost
             </div>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-8">
               <Button variant="ghost" size="large">
-                Text
-              </Button>
-              <Button
-                variant="ghost"
-                size="large"
-                className="hover:bg-zinc-100"
-              >
                 Text
               </Button>
               <Button variant="ghost" size="large" disabled>
@@ -426,14 +376,6 @@ export const AllVariants: Story = {
                 variant="ghost"
                 size="large"
                 leftIcon={<Play className="h-5 w-5" />}
-              >
-                Text
-              </Button>
-              <Button
-                variant="ghost"
-                size="large"
-                leftIcon={<Play className="h-5 w-5" />}
-                className="hover:bg-zinc-100"
               >
                 Text
               </Button>
@@ -453,7 +395,7 @@ export const AllVariants: Story = {
             <div className="font-['Poppins'] text-base font-medium text-neutral-900">
               Loading
             </div>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-8">
               <Button loading size="large">
                 Processing
               </Button>
@@ -467,7 +409,7 @@ export const AllVariants: Story = {
 
       {/* Small buttons section */}
       <div className="space-y-8">
-        <h2 className="font-['Inter'] text-3xl font-semibold text-neutral-900">
+        <h2 className="text-3xl font-semibold text-neutral-900">
           Small buttons
         </h2>
         <div className="flex flex-wrap gap-20">
@@ -476,7 +418,7 @@ export const AllVariants: Story = {
             <div className="font-['Geist'] text-base font-medium text-neutral-900">
               Primary
             </div>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-8">
               <Button variant="primary" size="small">
                 Text
               </Button>
@@ -521,7 +463,7 @@ export const AllVariants: Story = {
             <div className="font-['Geist'] text-base font-medium text-neutral-900">
               Secondary
             </div>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-8">
               <Button variant="secondary" size="small">
                 Text
               </Button>
@@ -566,7 +508,7 @@ export const AllVariants: Story = {
             <div className="font-['Geist'] text-base font-medium text-neutral-900">
               Loading
             </div>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-8">
               <Button loading size="small">
                 Processing
               </Button>
@@ -580,7 +522,7 @@ export const AllVariants: Story = {
 
       {/* Other button types */}
       <div className="space-y-8">
-        <h2 className="font-['Inter'] text-3xl font-semibold text-neutral-900">
+        <h2 className="text-3xl font-semibold text-neutral-900">
           Other button types
         </h2>
         <div className="flex gap-20">
@@ -589,7 +531,7 @@ export const AllVariants: Story = {
             <div className="font-['Geist'] text-base font-medium text-zinc-800">
               Link
             </div>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-8">
               <Button variant="link">Add to library</Button>
               <Button variant="link" className="underline">
                 Add to library
@@ -602,7 +544,7 @@ export const AllVariants: Story = {
             <div className="font-['Geist'] text-base font-medium text-zinc-800">
               Icon
             </div>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-8">
               <Button variant="icon" size="icon">
                 <Plus className="h-4 w-4" />
               </Button>
@@ -617,5 +559,5 @@ export const AllVariants: Story = {
         </div>
       </div>
     </div>
-  ),
-};
+  );
+}
