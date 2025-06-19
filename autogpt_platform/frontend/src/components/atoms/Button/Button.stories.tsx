@@ -25,8 +25,6 @@ const meta: Meta<typeof Button> = {
         "outline",
         "ghost",
         "loading",
-        "link",
-        "icon",
       ],
       description: "Button style variant",
     },
@@ -247,25 +245,20 @@ function renderAllVariants() {
             </div>
             <div className="flex flex-col gap-8">
               <Button variant="primary" size="large">
-                Text
+                Save
+              </Button>
+              <Button variant="primary" size="large" loading>
+                Loading
               </Button>
               <Button variant="primary" size="large" disabled>
-                Text
+                Disabled
               </Button>
               <Button
                 variant="primary"
                 size="large"
                 leftIcon={<Play className="h-5 w-5" />}
               >
-                Text
-              </Button>
-              <Button
-                variant="primary"
-                size="large"
-                leftIcon={<Play className="h-5 w-5" />}
-                disabled
-              >
-                Text
+                Play
               </Button>
             </div>
           </div>
@@ -277,25 +270,20 @@ function renderAllVariants() {
             </div>
             <div className="flex flex-col gap-8">
               <Button variant="secondary" size="large">
-                Text
+                Save
+              </Button>
+              <Button variant="secondary" size="large" loading>
+                Loading
               </Button>
               <Button variant="secondary" size="large" disabled>
-                Text
+                Disabled
               </Button>
               <Button
                 variant="secondary"
                 size="large"
                 leftIcon={<Play className="h-5 w-5" />}
               >
-                Text
-              </Button>
-              <Button
-                variant="secondary"
-                size="large"
-                leftIcon={<Play className="h-5 w-5" />}
-                disabled
-              >
-                Text
+                Play
               </Button>
             </div>
           </div>
@@ -307,25 +295,20 @@ function renderAllVariants() {
             </div>
             <div className="flex flex-col gap-8">
               <Button variant="destructive" size="large">
-                Text
+                Save
+              </Button>
+              <Button variant="destructive" size="large" loading>
+                Loading
               </Button>
               <Button variant="destructive" size="large" disabled>
-                Text
+                Disabled
               </Button>
               <Button
                 variant="destructive"
                 size="large"
                 leftIcon={<Play className="h-5 w-5" />}
               >
-                Text
-              </Button>
-              <Button
-                variant="destructive"
-                size="large"
-                leftIcon={<Play className="h-5 w-5" />}
-                disabled
-              >
-                Text
+                Play
               </Button>
             </div>
           </div>
@@ -337,25 +320,20 @@ function renderAllVariants() {
             </div>
             <div className="flex flex-col gap-8">
               <Button variant="outline" size="large">
-                Text
+                Save
+              </Button>
+              <Button variant="outline" size="large" loading>
+                Loading
               </Button>
               <Button variant="outline" size="large" disabled>
-                Text
+                Disabled
               </Button>
               <Button
                 variant="outline"
                 size="large"
                 leftIcon={<Play className="h-5 w-5" />}
               >
-                Text
-              </Button>
-              <Button
-                variant="outline"
-                size="large"
-                leftIcon={<Play className="h-5 w-5" />}
-                disabled
-              >
-                Text
+                Play
               </Button>
             </div>
           </div>
@@ -363,44 +341,24 @@ function renderAllVariants() {
           {/* Ghost */}
           <div className="flex flex-col gap-5">
             <div className="font-['Geist'] text-base font-medium text-neutral-900">
-              Ghost
+              Save
             </div>
             <div className="flex flex-col gap-8">
               <Button variant="ghost" size="large">
                 Text
               </Button>
-              <Button variant="ghost" size="large" disabled>
-                Text
-              </Button>
-              <Button
-                variant="ghost"
-                size="large"
-                leftIcon={<Play className="h-5 w-5" />}
-              >
-                Text
-              </Button>
-              <Button
-                variant="ghost"
-                size="large"
-                leftIcon={<Play className="h-5 w-5" />}
-                disabled
-              >
-                Text
-              </Button>
-            </div>
-          </div>
-
-          {/* Loading */}
-          <div className="flex flex-col gap-5">
-            <div className="font-['Poppins'] text-base font-medium text-neutral-900">
-              Loading
-            </div>
-            <div className="flex flex-col gap-8">
-              <Button loading size="large">
-                Processing
-              </Button>
-              <Button variant="ghost" loading size="large">
+              <Button variant="ghost" size="large" loading>
                 Loading
+              </Button>
+              <Button variant="ghost" size="large" disabled>
+                Disabled
+              </Button>
+              <Button
+                variant="ghost"
+                size="large"
+                leftIcon={<Play className="h-5 w-5" />}
+              >
+                Play
               </Button>
             </div>
           </div>
@@ -420,40 +378,20 @@ function renderAllVariants() {
             </div>
             <div className="flex flex-col gap-8">
               <Button variant="primary" size="small">
-                Text
+                Save
               </Button>
-              <Button
-                variant="primary"
-                size="small"
-                className="hover:bg-zinc-800"
-              >
-                Text
+              <Button variant="primary" size="small" loading>
+                Loading
               </Button>
               <Button variant="primary" size="small" disabled>
-                Text
+                Disabled
               </Button>
               <Button
                 variant="primary"
                 size="small"
                 leftIcon={<Play className="h-4 w-4" />}
               >
-                Text
-              </Button>
-              <Button
-                variant="primary"
-                size="small"
-                leftIcon={<Play className="h-4 w-4" />}
-                className="hover:bg-zinc-800"
-              >
-                Text
-              </Button>
-              <Button
-                variant="primary"
-                size="small"
-                leftIcon={<Play className="h-4 w-4" />}
-                disabled
-              >
-                Text
+                Play
               </Button>
             </div>
           </div>
@@ -465,55 +403,83 @@ function renderAllVariants() {
             </div>
             <div className="flex flex-col gap-8">
               <Button variant="secondary" size="small">
-                Text
-              </Button>
-              <Button
-                variant="secondary"
-                size="small"
-                className="hover:bg-zinc-400"
-              >
-                Text
+                Save
               </Button>
               <Button variant="secondary" size="small" disabled>
-                Text
+                Disabled
               </Button>
               <Button
                 variant="secondary"
                 size="small"
                 leftIcon={<Play className="h-4 w-4" />}
               >
-                Text
-              </Button>
-              <Button
-                variant="secondary"
-                size="small"
-                leftIcon={<Play className="h-4 w-4" />}
-                className="hover:bg-zinc-400"
-              >
-                Text
-              </Button>
-              <Button
-                variant="secondary"
-                size="small"
-                leftIcon={<Play className="h-4 w-4" />}
-                disabled
-              >
-                Text
+                Play
               </Button>
             </div>
           </div>
 
-          {/* Loading Small */}
+          {/* Destructive Small */}
           <div className="flex flex-col gap-5">
             <div className="font-['Geist'] text-base font-medium text-neutral-900">
-              Loading
+              Destructive
             </div>
             <div className="flex flex-col gap-8">
-              <Button loading size="small">
-                Processing
+              <Button variant="destructive" size="small">
+                Save
               </Button>
-              <Button variant="ghost" loading size="small">
-                Loading
+              <Button variant="destructive" size="small" disabled>
+                Disabled
+              </Button>
+              <Button
+                variant="destructive"
+                size="small"
+                leftIcon={<Play className="h-4 w-4" />}
+              >
+                Play
+              </Button>
+            </div>
+          </div>
+
+          {/* Outline Small */}
+          <div className="flex flex-col gap-5">
+            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+              Outline
+            </div>
+            <div className="flex flex-col gap-8">
+              <Button variant="outline" size="small">
+                Save
+              </Button>
+              <Button variant="outline" size="small" disabled>
+                Disabled
+              </Button>
+              <Button
+                variant="outline"
+                size="small"
+                leftIcon={<Play className="h-4 w-4" />}
+              >
+                Play
+              </Button>
+            </div>
+          </div>
+
+          {/* Ghost Small */}
+          <div className="flex flex-col gap-5">
+            <div className="font-['Geist'] text-base font-medium text-neutral-900">
+              Ghost
+            </div>
+            <div className="flex flex-col gap-8">
+              <Button variant="ghost" size="small">
+                Save
+              </Button>
+              <Button variant="ghost" size="small" disabled>
+                Disabled
+              </Button>
+              <Button
+                variant="ghost"
+                size="small"
+                leftIcon={<Play className="h-4 w-4" />}
+              >
+                Play
               </Button>
             </div>
           </div>

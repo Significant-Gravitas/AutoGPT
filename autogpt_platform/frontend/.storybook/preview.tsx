@@ -18,7 +18,6 @@ initialize();
 
 const preview: Preview = {
   parameters: {
-    options: { showPanel: false },
     nextjs: {
       appDirectory: true,
     },
