@@ -456,6 +456,11 @@ class CreateListBlock(Block):
             description="A list of values to be combined into a new list.",
             placeholder="e.g., ['Alice', 25, True]",
         )
+        max_size: int | None = SchemaField(
+            default=None,
+            description="Maximum size of the list. If provided, the list will be yielded in chunks of this size.",
+            advanced=True,
+        )
 
     class Output(BlockSchema):
         list: List[Any] = SchemaField(
@@ -493,7 +498,11 @@ class CreateListBlock(Block):
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             # The values are already validated by Pydantic schema
-            yield "list", input_data.values
+            if input_data.max_size is not None:
+                for i in range(0, len(input_data.values), input_data.max_size):
+                    yield "list", input_data.values[i : i + input_data.max_size]
+            else:
+                yield "list", input_data.values
         except Exception as e:
             yield "error", f"Failed to create list: {str(e)}"
 
