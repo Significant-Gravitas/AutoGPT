@@ -163,7 +163,7 @@ class IfInputMatchesBlock(Block):
                 },
                 {
                     "input": 10,
-                    "value": None,
+                    "value": "None",
                     "yes_value": "Yes",
                     "no_value": "No",
                 },
