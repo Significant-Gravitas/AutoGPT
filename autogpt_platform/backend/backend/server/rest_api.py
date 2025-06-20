@@ -38,6 +38,7 @@ from backend.blocks.llm import LlmModel
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.server.external.api import external_app
+from backend.server.middleware.security import SecurityHeadersMiddleware
 
 settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
@@ -113,6 +114,8 @@ app = fastapi.FastAPI(
     docs_url=docs_url,
     generate_unique_id_function=custom_generate_unique_id,
 )
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
