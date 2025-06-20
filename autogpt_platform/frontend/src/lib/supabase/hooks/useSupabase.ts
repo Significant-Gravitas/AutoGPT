@@ -7,6 +7,7 @@ import {
   getCurrentUser,
   refreshSession,
   serverLogout,
+  ServerLogoutOptions,
   validateSession,
 } from "../actions";
 import {
@@ -42,14 +43,13 @@ export function useSupabase() {
     }
   }, []);
 
-  async function logOut() {
+  async function logOut(options: ServerLogoutOptions = {}) {
     broadcastLogout();
 
     try {
-      await serverLogout();
+      await serverLogout(options);
     } catch (error) {
       console.error("Error logging out:", error);
-      // Fallback: just redirect since httpOnly cookies can't be cleared by client
       router.push("/login");
     }
   }
@@ -145,7 +145,6 @@ export function useSupabase() {
   }
 
   useEffect(() => {
-    // Initial user fetch from server
     getUserFromServer().finally(() => {
       setIsUserLoading(false);
     });
@@ -160,7 +159,7 @@ export function useSupabase() {
     return () => {
       eventListeners.cleanup();
     };
-  }, []); // Remove supabase dependency since we don't use client auth state changes
+  }, []);
 
   return {
     supabase, // Available for non-auth operations like real-time subscriptions

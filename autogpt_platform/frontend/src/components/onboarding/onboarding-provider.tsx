@@ -105,7 +105,6 @@ export default function OnboardingProvider({
 
   const updateState = useCallback(
     (newState: Omit<Partial<UserOnboarding>, "rewardedFor">) => {
-      // First update the local state
       setState((prev) => {
         if (!prev) {
           // Handle initial state
@@ -127,7 +126,7 @@ export default function OnboardingProvider({
         return { ...prev, ...newState };
       });
 
-      // Then make the API call asynchronously, outside of render
+      // Make the API call asynchronously to not block render
       setTimeout(() => {
         api.updateUserOnboarding(newState).catch((error) => {
           console.error("Failed to update user onboarding:", error);

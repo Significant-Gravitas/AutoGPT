@@ -776,7 +776,7 @@ export default class BackendAPI {
       console.debug(`${method} ${path} payload:`, payload);
     }
 
-    // Always use proxy server action for consistent, secure authentication
+    // Always use proxy server action to not expose any auth tokens to the browser
     return await proxyApiRequest({
       method,
       path,

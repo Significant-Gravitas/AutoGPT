@@ -59,9 +59,6 @@ export function createRequestHeaders(
   return headers;
 }
 
-/**
- * Serialize request body based on content type
- */
 export function serializeRequestBody(
   payload: any,
   contentType: string = "application/json",
@@ -167,6 +164,5 @@ export async function makeAuthenticatedFileUpload(
     throw new Error(`Error uploading file: ${response.statusText}`);
   }
 
-  // Parse the response
   return await response.text();
 }

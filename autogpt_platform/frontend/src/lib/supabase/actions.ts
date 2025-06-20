@@ -145,7 +145,11 @@ export async function getWebSocketToken(): Promise<{
   );
 }
 
-export async function serverLogout() {
+export type ServerLogoutOptions = {
+  globalLogout?: boolean;
+};
+
+export async function serverLogout(options: ServerLogoutOptions = {}) {
   return await Sentry.withServerActionInstrumentation(
     "serverLogout",
     {},
@@ -159,7 +163,7 @@ export async function serverLogout() {
 
       try {
         const { error } = await supabase.auth.signOut({
-          scope: "global",
+          scope: options.globalLogout ? "global" : "local",
         });
 
         if (error) {
