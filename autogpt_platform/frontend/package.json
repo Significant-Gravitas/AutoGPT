@@ -19,7 +19,7 @@
     "build-storybook": "storybook build",
     "test-storybook": "test-storybook",
     "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"pnpm run build-storybook -- --quiet && npx http-server storybook-static --port 6006 --silent\" \"wait-on tcp:6006 && pnpm run test-storybook\"",
-    "generate-client": "orval --config ./orval.config.js"
+    "generate-client": "orval --config ./orval.config.ts"
   },
   "browserslist": [
     "defaults"
