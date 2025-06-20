@@ -172,6 +172,7 @@ export const PROVIDER_NAMES = {
   OLLAMA: "ollama",
   OPENAI: "openai",
   OPENWEATHERMAP: "openweathermap",
+  PROXYCURL: "proxycurl",
   OPEN_ROUTER: "open_router",
   LLAMA_API: "llama_api",
   PINECONE: "pinecone",
