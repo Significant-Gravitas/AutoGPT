@@ -210,9 +210,7 @@ To find IDs, identify the values for organization_id when you call this endpoint
     async def run(
         self, input_data: Input, *, credentials: ApolloCredentials, **kwargs
     ) -> BlockOutput:
-        query = SearchOrganizationsRequest(
-            **input_data.model_dump(exclude={"credentials"})
-        )
+        query = SearchOrganizationsRequest(**input_data.model_dump())
         organizations = await self.search_organizations(query, credentials)
         for organization in organizations:
             yield "organization", organization
