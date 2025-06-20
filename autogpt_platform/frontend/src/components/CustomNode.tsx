@@ -46,6 +46,7 @@ import { Badge } from "./ui/badge";
 import NodeOutputs from "./NodeOutputs";
 import SchemaTooltip from "./SchemaTooltip";
 import { IconCoin } from "./ui/icons";
+import { IconRefresh } from "./ui/icons";
 import * as Separator from "@radix-ui/react-separator";
 import * as ContextMenu from "@radix-ui/react-context-menu";
 import {
@@ -90,6 +91,7 @@ export type CustomNodeData = {
   errors?: { [key: string]: string };
   isOutputStatic?: boolean;
   uiType: BlockUIType;
+  isOutdated?: boolean;
 };
 
 export type CustomNode = XYNode<CustomNodeData, "custom">;
@@ -142,6 +144,21 @@ export const CustomNode = React.memo(
     useEffect(() => {
       setIsAnyModalOpen?.(isModalOpen || isOutputModalOpen);
     }, [isModalOpen, isOutputModalOpen, data, setIsAnyModalOpen]);
+
+    useEffect(() => {
+      if (data.uiType !== BlockUIType.AGENT) return;
+      const graphId = data.hardcodedValues?.graph_id;
+      if (!graphId) return;
+      api
+        .getGraph(graphId)
+        .then((graph) => {
+          const outdated = graph.version > data.hardcodedValues.graph_version;
+          if (outdated !== !!data.isOutdated) {
+            updateNodeData(id, { isOutdated: outdated });
+          }
+        })
+        .catch(() => {});
+    }, [api, id, data.hardcodedValues.graph_id, data.hardcodedValues.graph_version]);
 
     const fillDefaults = useCallback((obj: any, schema: any) => {
       // Iterate over the schema properties
@@ -492,6 +509,29 @@ export const CustomNode = React.memo(
       });
     }, [id, data, height, addNodes, deleteElements, getNode, getNextNodeId]);
 
+    const updateAgentBlock = useCallback(async () => {
+      if (data.uiType !== BlockUIType.AGENT) return;
+      const graphId = data.hardcodedValues?.graph_id;
+      if (!graphId) return;
+      try {
+        const graph = await api.getGraph(graphId);
+        updateNodeData(id, {
+          hardcodedValues: {
+            ...data.hardcodedValues,
+            graph_version: graph.version,
+            input_schema: graph.input_schema,
+            output_schema: graph.output_schema,
+          },
+          inputSchema: graph.input_schema,
+          outputSchema: graph.output_schema,
+          blockType: graph.name || data.blockType,
+          isOutdated: false,
+        });
+      } catch (e) {
+        console.error("Failed to update block", e);
+      }
+    }, [api, data, id, updateNodeData]);
+
     const hasConfigErrors =
       data.errors && hasNonNullNonObjectValue(data.errors);
     const outputData = data.executionResults?.at(-1)?.data;
@@ -691,6 +731,15 @@ export const CustomNode = React.memo(
             <span className="dark:text-gray-100">Open agent</span>
           </ContextMenu.Item>
         )}
+        {data.uiType === BlockUIType.AGENT && data.isOutdated && (
+          <ContextMenu.Item
+            onSelect={updateAgentBlock}
+            className="flex cursor-pointer items-center rounded-md px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700"
+          >
+            <IconRefresh className="mr-2 h-5 w-5 dark:text-gray-100" />
+            <span className="dark:text-gray-100">Update block</span>
+          </ContextMenu.Item>
+        )}
         <ContextMenu.Separator className="my-1 h-px bg-gray-300 dark:bg-gray-600" />
         <ContextMenu.Item
           onSelect={deleteNode}
@@ -786,6 +835,11 @@ export const CustomNode = React.memo(
                   {beautifyString(category.category.toLowerCase())}
                 </Badge>
               ))}
+              {data.isOutdated && (
+                <Badge variant="default" className="h-6 bg-blue-600 text-white">
+                  Update available
+                </Badge>
+              )}
             </div>
           </div>
 
