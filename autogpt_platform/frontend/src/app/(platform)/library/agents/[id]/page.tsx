@@ -404,6 +404,16 @@ export default function AgentRunsPage(): React.ReactElement {
     [selectPreset],
   );
 
+  const onUpdatePreset = useCallback(
+    (updated: LibraryAgentPreset) => {
+      setAgentPresets((prev) =>
+        prev.map((p) => (p.id === updated.id ? updated : p)),
+      );
+      selectPreset(updated.id);
+    },
+    [selectPreset],
+  );
+
   if (!agent || !graph) {
     return <LoadingBox className="h-[90vh]" />;
   }
@@ -451,10 +461,22 @@ export default function AgentRunsPage(): React.ReactElement {
             />
           )
         ) : selectedView.type == "run" ? (
+          /* Draft new runs / Create new presets */
           <AgentRunDraftView
             agent={agent}
             onRun={selectRun}
             onCreatePreset={onCreatePreset}
+            agentActions={agentActions}
+          />
+        ) : selectedView.type == "preset" ? (
+          /* Edit & update presets */
+          <AgentRunDraftView
+            agent={agent}
+            agentPreset={
+              agentPresets.find((preset) => preset.id == selectedView.id)!
+            }
+            onRun={selectRun}
+            onUpdatePreset={onUpdatePreset}
             agentActions={agentActions}
           />
         ) : selectedView.type == "schedule" ? (

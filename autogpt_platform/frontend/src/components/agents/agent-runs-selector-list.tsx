@@ -129,7 +129,7 @@ export default function AgentRunsSelectorList({
                     key={preset.id}
                     type="preset"
                     status={preset.is_active ? "active" : "inactive"}
-                    title={agent.name}
+                    title={preset.name}
                     // timestamp={preset.last_run_time} // TODO: implement this
                     selected={selectedView.id === preset.id}
                     onClick={() => onSelectPreset(preset.id)}

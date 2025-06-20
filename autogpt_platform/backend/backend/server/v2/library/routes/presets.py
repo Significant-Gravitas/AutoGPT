@@ -1,5 +1,5 @@
 import logging
-from typing import Annotated, Any, Optional
+from typing import Any, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
@@ -235,24 +235,20 @@ async def delete_preset(
     description="Execute a preset with the given graph and node input for the current user.",
 )
 async def execute_preset(
-    graph_id: str,
-    graph_version: int,
     preset_id: str,
-    node_input: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+    inputs: dict[str, Any] = Body(..., embed=True, default_factory=dict),
 ) -> dict[str, Any]:  # FIXME: add proper return type
     """
     Execute a preset given graph parameters, returning the execution ID on success.
 
     Args:
-        graph_id (str): ID of the graph to execute.
-        graph_version (int): Version of the graph to execute.
         preset_id (str): ID of the preset to execute.
-        node_input (Dict[Any, Any]): Input data for the node.
         user_id (str): ID of the authenticated user.
+        inputs (dict[str, Any]): Optionally, additional input data for the graph execution.
 
     Returns:
-        Dict[str, Any]: A response containing the execution ID.
+        {id: graph_exec_id}: A response containing the execution ID.
 
     Raises:
         HTTPException: If the preset is not found or an error occurs while executing the preset.
@@ -266,14 +262,14 @@ async def execute_preset(
             )
 
         # Merge input overrides with preset inputs
-        merged_node_input = preset.inputs | node_input
+        merged_node_input = preset.inputs | inputs
 
         execution = await add_graph_execution(
-            graph_id=graph_id,
             user_id=user_id,
-            inputs=merged_node_input,
+            graph_id=preset.graph_id,
+            graph_version=preset.graph_version,
             preset_id=preset_id,
-            graph_version=graph_version,
+            inputs=merged_node_input,
         )
 
         logger.debug(f"Execution added: {execution} with input: {merged_node_input}")
