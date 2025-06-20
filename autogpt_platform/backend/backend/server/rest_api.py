@@ -76,14 +76,21 @@ def custom_generate_unique_id(route: APIRoute):
         return f"{route.name}"
 
     method = list(route.methods)[0].lower()
-    tag = ''.join(word.capitalize() for word in route.tags[0].split('_')) if route.tags else "" # v1/v2
-    summary = route.summary if route.summary else route.name # need to be unique, a different version could have the same summary
-    summary = ''.join(word.capitalize() for word in str(summary).split('_'))
+    tag = (
+        "".join(word.capitalize() for word in route.tags[0].split("_"))
+        if route.tags
+        else ""
+    )  # v1/v2
+    summary = (
+        route.summary if route.summary else route.name
+    )  # need to be unique, a different version could have the same summary
+    summary = "".join(word.capitalize() for word in str(summary).split("_"))
 
     if tag:
         return f"{method}{tag}{summary}"
     else:
         return f"{method}{summary}"
+
 
 docs_url = (
     "/docs"
@@ -100,7 +107,7 @@ app = fastapi.FastAPI(
     version="0.1",
     lifespan=lifespan_context,
     docs_url=docs_url,
-    generate_unique_id_function=custom_generate_unique_id
+    generate_unique_id_function=custom_generate_unique_id,
 )
 
 
