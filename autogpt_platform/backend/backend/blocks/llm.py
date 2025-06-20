@@ -865,13 +865,14 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                         elif len(response_obj) == 1:
                             response_obj = list(response_obj.values())
 
-                    if not isinstance(response_obj, list):
-                        response_obj = [response_obj]
-
                     response_error = "\n".join(
                         [
                             validation_error
-                            for response_item in response_obj
+                            for response_item in (
+                                response_obj
+                                if isinstance(response_obj, list)
+                                else [response_obj]
+                            )
                             if (validation_error := validate_response(response_item))
                         ]
                     )
