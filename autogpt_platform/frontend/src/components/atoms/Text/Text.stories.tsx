@@ -1,9 +1,9 @@
-import { StoryCode } from "@/stories/helpers/StoryCode";
+import { StoryCode } from "@/components/tokens/helpers/StoryCode";
 import type { Meta, StoryObj } from "@storybook/nextjs";
 import { Text, textVariants } from "./Text";
 
 const meta: Meta<typeof Text> = {
-  title: "Design System/Atoms/Text",
+  title: "Atoms/Text",
   component: Text,
   tags: ["autodocs"],
   parameters: {

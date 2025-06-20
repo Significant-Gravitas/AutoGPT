@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Providers } from "@/app/providers";
 import TallyPopupSimple from "@/components/TallyPopup";
 import { GoogleAnalytics } from "@/components/analytics/google-analytics";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
 export const metadata: Metadata = {
   title: "AutoGPT Platform",
@@ -41,6 +42,14 @@ export default async function RootLayout({
           <div className="flex min-h-screen flex-col items-stretch justify-items-stretch">
             {children}
             <TallyPopupSimple />
+
+            {/* React Query DevTools is only available in development */}
+            {process.env.NEXT_PUBLIC_REACT_QUERY_DEVTOOL && (
+              <ReactQueryDevtools
+                initialIsOpen={false}
+                buttonPosition={"bottom-left"}
+              />
+            )}
           </div>
           <Toaster />
         </Providers>
