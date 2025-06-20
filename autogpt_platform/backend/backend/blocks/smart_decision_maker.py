@@ -497,7 +497,7 @@ class SmartDecisionMakerBlock(Block):
             max_tokens=input_data.max_tokens,
             tools=tool_functions,
             ollama_host=input_data.ollama_host,
-            parallel_tool_calls=input_data.multiple_tool_calls,
+            parallel_tool_calls=True if input_data.multiple_tool_calls else None,
         )
 
         if not response.tool_calls:
