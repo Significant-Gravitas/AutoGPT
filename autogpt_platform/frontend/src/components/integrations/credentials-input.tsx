@@ -114,12 +114,14 @@ export const CredentialsInput: FC<{
   selectedCredentials?: CredentialsMetaInput;
   onSelectCredentials: (newValue?: CredentialsMetaInput) => void;
   siblingInputs?: Record<string, any>;
+  hideIfSingleCredentialAvailable?: boolean;
 }> = ({
   schema,
   className,
   selectedCredentials,
   onSelectCredentials,
   siblingInputs,
+  hideIfSingleCredentialAvailable = true,
 }) => {
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);
@@ -162,7 +164,11 @@ export const CredentialsInput: FC<{
     }
   }, [singleCredential, selectedCredentials, onSelectCredentials]);
 
-  if (!credentials || credentials.isLoading || singleCredential) {
+  if (
+    !credentials ||
+    credentials.isLoading ||
+    (singleCredential && hideIfSingleCredentialAvailable)
+  ) {
     return null;
   }
 

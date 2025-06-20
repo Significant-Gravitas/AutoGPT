@@ -10,9 +10,10 @@ from strenum import StrEnum
 from backend.data import integrations
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
-from backend.integrations.webhooks.utils import webhook_ingress_url
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Config
+
+from .utils import webhook_ingress_url
 
 logger = logging.getLogger(__name__)
 app_config = Config()
@@ -51,12 +52,24 @@ class BaseWebhooksManager(ABC, Generic[WT]):
     async def get_manual_webhook(
         self,
         user_id: str,
-        graph_id: str,
         webhook_type: WT,
         events: list[str],
-    ):
-        if current_webhook := await integrations.find_webhook_by_graph_and_props(
-            graph_id, self.PROVIDER_NAME, webhook_type, events
+        graph_id: Optional[str] = None,
+        preset_id: Optional[str] = None,
+    ) -> integrations.Webhook:
+        """
+        Tries to find an existing webhook tied to `graph_id`/`preset_id`,
+        or creates a new webhook if none exists.
+        """
+        if (graph_id or preset_id) and (
+            current_webhook := await integrations.find_webhook_by_graph_and_props(
+                user_id,
+                self.PROVIDER_NAME.value,
+                webhook_type.value,
+                events,
+                graph_id=graph_id,
+                preset_id=preset_id,
+            )
         ):
             return current_webhook
         return await self._create_webhook(
@@ -70,9 +83,11 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         self, webhook_id: str, credentials: Optional[Credentials]
     ) -> bool:
         webhook = await integrations.get_webhook(webhook_id)
-        if webhook.attached_nodes is None:
-            raise ValueError("Error retrieving webhook including attached nodes")
-        if webhook.attached_nodes:
+        if webhook.attached_nodes is None or webhook.attached_presets is None:
+            raise ValueError(
+                "Error retrieving webhook including attached nodes/presets"
+            )
+        if webhook.attached_nodes or webhook.attached_presets:
             # Don't prune webhook if in use
             return False
 

@@ -4,7 +4,8 @@ from typing import TYPE_CHECKING, Optional, cast
 from backend.data.block import BlockSchema, BlockWebhookConfig
 from backend.data.graph import set_node_webhook
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.integrations.webhooks import get_webhook_manager, supports_webhooks
+
+from . import get_webhook_manager, supports_webhooks
 
 if TYPE_CHECKING:
     from backend.data.graph import GraphModel, NodeModel
@@ -112,8 +113,6 @@ async def on_node_activate(
         f"Activating webhook node #{node.id} with config {block.webhook_config}"
     )
 
-    webhooks_manager = get_webhook_manager(provider)
-
     if auto_setup_webhook := isinstance(block.webhook_config, BlockWebhookConfig):
         try:
             resource = block.webhook_config.resource_format.format(**node.input_default)
@@ -156,6 +155,7 @@ async def on_node_activate(
                 f"credentials #{credentials_meta['id']} not available"
             )
 
+        events = []
         if event_filter_input_name:
             # Shape of the event filter is enforced in Block.__init__
             event_filter = cast(dict, node.input_default[event_filter_input_name])
@@ -165,8 +165,8 @@ async def on_node_activate(
                 if enabled is True
             ]
             logger.debug(f"Webhook events to subscribe to: {', '.join(events)}")
-        else:
-            events = []
+
+        webhooks_manager = get_webhook_manager(provider)
 
         # Find/make and attach a suitable webhook to the node
         if auto_setup_webhook:
@@ -182,9 +182,9 @@ async def on_node_activate(
             # Manual webhook -> no credentials -> don't register but do create
             new_webhook = await webhooks_manager.get_manual_webhook(
                 user_id,
-                node.graph_id,
                 block.webhook_config.webhook_type,
                 events,
+                graph_id=node.graph_id,
             )
         logger.debug(f"Acquired webhook: {new_webhook}")
         return await set_node_webhook(node.id, new_webhook.id)

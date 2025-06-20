@@ -1,16 +1,20 @@
 import logging
-from typing import Annotated, Any, Optional
+from typing import Any, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 
 import backend.server.v2.library.db as db
 import backend.server.v2.library.model as models
+from backend.data.integrations import get_webhook
 from backend.executor.utils import add_graph_execution
+from backend.integrations.creds_manager import IntegrationCredentialsManager
+from backend.integrations.webhooks import get_webhook_manager
 from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
 
+credentials_manager = IntegrationCredentialsManager()
 router = APIRouter()
 
 
@@ -193,6 +197,25 @@ async def delete_preset(
     Raises:
         HTTPException: If an error occurs while deleting the preset.
     """
+    preset = await db.get_preset(user_id, preset_id)
+    if not preset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Preset #{preset_id} not found for user #{user_id}",
+        )
+    if preset.webhook_id:
+        webhook = await get_webhook(preset.webhook_id)
+        await db.set_preset_webhook(preset_id, None)
+
+        # Clean up webhook if it is now unused
+        credentials = (
+            await credentials_manager.get(user_id, webhook.credentials_id)
+            if webhook.credentials_id
+            else None
+        )
+        await get_webhook_manager(webhook.provider).prune_webhook_if_dangling(
+            webhook.id, credentials
+        )
     try:
         await db.delete_preset(user_id, preset_id)
     except Exception as e:
@@ -212,24 +235,20 @@ async def delete_preset(
     description="Execute a preset with the given graph and node input for the current user.",
 )
 async def execute_preset(
-    graph_id: str,
-    graph_version: int,
     preset_id: str,
-    node_input: Annotated[dict[str, Any], Body(..., embed=True, default_factory=dict)],
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+    inputs: dict[str, Any] = Body(..., embed=True, default_factory=dict),
 ) -> dict[str, Any]:  # FIXME: add proper return type
     """
     Execute a preset given graph parameters, returning the execution ID on success.
 
     Args:
-        graph_id (str): ID of the graph to execute.
-        graph_version (int): Version of the graph to execute.
         preset_id (str): ID of the preset to execute.
-        node_input (Dict[Any, Any]): Input data for the node.
         user_id (str): ID of the authenticated user.
+        inputs (dict[str, Any]): Optionally, additional input data for the graph execution.
 
     Returns:
-        Dict[str, Any]: A response containing the execution ID.
+        {id: graph_exec_id}: A response containing the execution ID.
 
     Raises:
         HTTPException: If the preset is not found or an error occurs while executing the preset.
@@ -243,14 +262,14 @@ async def execute_preset(
             )
 
         # Merge input overrides with preset inputs
-        merged_node_input = preset.inputs | node_input
+        merged_node_input = preset.inputs | inputs
 
         execution = await add_graph_execution(
-            graph_id=graph_id,
             user_id=user_id,
-            inputs=merged_node_input,
+            graph_id=preset.graph_id,
+            graph_version=preset.graph_version,
             preset_id=preset_id,
-            graph_version=graph_version,
+            inputs=merged_node_input,
         )
 
         logger.debug(f"Execution added: {execution} with input: {merged_node_input}")

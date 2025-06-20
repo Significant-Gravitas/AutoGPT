@@ -17,6 +17,7 @@ import type {
   CredentialsDeleteResponse,
   CredentialsMetaInput,
   CredentialsMetaResponse,
+  CredentialsProviderName,
   Graph,
   GraphCreatable,
   GraphExecution,
@@ -646,6 +647,24 @@ export default class BackendAPI {
     return this._request("POST", `/library/agents/${libraryAgentId}/fork`);
   }
 
+  async setupAgentTrigger(
+    libraryAgentID: LibraryAgentID,
+    params: {
+      name: string;
+      description?: string;
+      trigger_config: Record<string, any>;
+      agent_credentials: Record<string, CredentialsMetaInput>;
+    },
+  ): Promise<LibraryAgentPreset> {
+    return parseLibraryAgentPresetTimestamp(
+      await this._request(
+        "POST",
+        `/library/agents/${libraryAgentID}/setup_trigger`,
+        params,
+      ),
+    );
+  }
+
   async listLibraryAgentPresets(params?: {
     graph_id?: GraphID;
     page?: number;
@@ -697,14 +716,10 @@ export default class BackendAPI {
 
   executeLibraryAgentPreset(
     presetID: LibraryAgentPresetID,
-    graphID: GraphID,
-    graphVersion: number,
-    nodeInput: { [key: string]: any },
+    inputs?: { [key: string]: any },
   ): Promise<{ id: GraphExecutionID }> {
     return this._request("POST", `/library/presets/${presetID}/execute`, {
-      graph_id: graphID,
-      graph_version: graphVersion,
-      node_input: nodeInput,
+      inputs,
     });
   }
 

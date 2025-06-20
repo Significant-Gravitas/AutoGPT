@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, AsyncGenerator, Optional
 
 from prisma import Json
 from prisma.models import IntegrationWebhook
-from prisma.types import IntegrationWebhookCreateInput
+from prisma.types import IntegrationWebhookCreateInput, IntegrationWebhookWhereInput
 from pydantic import Field, computed_field
 
 from backend.data.includes import INTEGRATION_WEBHOOK_INCLUDE
@@ -15,6 +15,8 @@ from backend.util.exceptions import NotFoundError
 from .db import BaseDbModel
 
 if TYPE_CHECKING:
+    from backend.server.v2.library.model import LibraryAgentPreset
+
     from .graph import NodeModel
 
 logger = logging.getLogger(__name__)
@@ -33,6 +35,7 @@ class Webhook(BaseDbModel):
     provider_webhook_id: str
 
     attached_nodes: Optional[list["NodeModel"]] = None
+    attached_presets: Optional[list["LibraryAgentPreset"]] = None
 
     @computed_field
     @property
@@ -41,6 +44,8 @@ class Webhook(BaseDbModel):
 
     @staticmethod
     def from_db(webhook: IntegrationWebhook):
+        from backend.server.v2.library.model import LibraryAgentPreset
+
         from .graph import NodeModel
 
         return Webhook(
@@ -57,6 +62,11 @@ class Webhook(BaseDbModel):
             attached_nodes=(
                 [NodeModel.from_db(node) for node in webhook.AgentNodes]
                 if webhook.AgentNodes is not None
+                else None
+            ),
+            attached_presets=(
+                [LibraryAgentPreset.from_db(preset) for preset in webhook.AgentPresets]
+                if webhook.AgentPresets is not None
                 else None
             ),
         )
@@ -127,16 +137,33 @@ async def find_webhook_by_credentials_and_props(
 
 
 async def find_webhook_by_graph_and_props(
-    graph_id: str, provider: str, webhook_type: str, events: list[str]
+    user_id: str,
+    provider: str,
+    webhook_type: str,
+    events: list[str],
+    graph_id: Optional[str] = None,
+    preset_id: Optional[str] = None,
 ) -> Webhook | None:
-    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
+    """Either `graph_id` or `preset_id` must be provided."""
+    if not graph_id and not preset_id:
+        raise ValueError("Either graph_id or preset_id must be provided")
+
+    where_clause: IntegrationWebhookWhereInput = {
+        "userId": user_id,
+        "provider": provider,
+        "webhookType": webhook_type,
+        "events": {"has_every": events},
+    }
+
+    if preset_id:
+        where_clause["AgentPresets"] = {"some": {"id": preset_id}}
+    elif graph_id:
+        where_clause["AgentNodes"] = {"some": {"agentGraphId": graph_id}}
+    else:
+        raise ValueError("Either graph_id or preset_id must be provided")
+
     webhook = await IntegrationWebhook.prisma().find_first(
-        where={
-            "provider": provider,
-            "webhookType": webhook_type,
-            "events": {"has_every": events},
-            "AgentNodes": {"some": {"agentGraphId": graph_id}},
-        },
+        where=where_clause,
         include=INTEGRATION_WEBHOOK_INCLUDE,
     )
     return Webhook.from_db(webhook) if webhook else None

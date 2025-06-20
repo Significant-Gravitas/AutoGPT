@@ -1,7 +1,7 @@
 import logging
 import uuid
 from collections import defaultdict
-from typing import Any, Literal, Optional, cast
+from typing import TYPE_CHECKING, Any, Literal, Optional, cast
 
 import prisma
 from prisma import Json
@@ -32,7 +32,9 @@ from backend.util import type as type_utils
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
 from .db import BaseDbModel, transaction
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
-from .integrations import Webhook
+
+if TYPE_CHECKING:
+    from .integrations import Webhook
 
 logger = logging.getLogger(__name__)
 
@@ -81,10 +83,12 @@ class NodeModel(Node):
     graph_version: int
 
     webhook_id: Optional[str] = None
-    webhook: Optional[Webhook] = None
+    webhook: Optional["Webhook"] = None
 
     @staticmethod
     def from_db(node: AgentNode, for_export: bool = False) -> "NodeModel":
+        from .integrations import Webhook
+
         obj = NodeModel(
             id=node.id,
             block_id=node.agentBlockId,
@@ -102,19 +106,7 @@ class NodeModel(Node):
         return obj
 
     def is_triggered_by_event_type(self, event_type: str) -> bool:
-        block = self.block
-        if not block.webhook_config:
-            raise TypeError("This method can't be used on non-webhook blocks")
-        if not block.webhook_config.event_filter_input:
-            return True
-        event_filter = self.input_default.get(block.webhook_config.event_filter_input)
-        if not event_filter:
-            raise ValueError(f"Event filter is not configured on node #{self.id}")
-        return event_type in [
-            block.webhook_config.event_format.format(event=k)
-            for k in event_filter
-            if event_filter[k] is True
-        ]
+        return self.block.is_triggered_by_event_type(self.input_default, event_type)
 
     def stripped_for_export(self) -> "NodeModel":
         """
@@ -160,10 +152,6 @@ class NodeModel(Node):
             else:
                 result[key] = value
         return result
-
-
-# Fix 2-way reference Node <-> Webhook
-Webhook.model_rebuild()
 
 
 class BaseGraph(BaseDbModel):
@@ -574,7 +562,7 @@ class GraphModel(Graph):
         graph: AgentGraph,
         for_export: bool = False,
         sub_graphs: list[AgentGraph] | None = None,
-    ):
+    ) -> "GraphModel":
         return GraphModel(
             id=graph.id,
             user_id=graph.userId if not for_export else "",

@@ -2,6 +2,8 @@ import asyncio
 import logging
 from typing import Any, Optional
 
+from pydantic import JsonValue
+
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -12,7 +14,7 @@ from backend.data.block import (
     get_block,
 )
 from backend.data.execution import ExecutionStatus
-from backend.data.model import CredentialsMetaInput, SchemaField
+from backend.data.model import SchemaField
 from backend.util import json
 
 logger = logging.getLogger(__name__)
@@ -28,9 +30,9 @@ class AgentExecutorBlock(Block):
         input_schema: dict = SchemaField(description="Input schema for the graph")
         output_schema: dict = SchemaField(description="Output schema for the graph")
 
-        node_credentials_input_map: Optional[
-            dict[str, dict[str, CredentialsMetaInput]]
-        ] = SchemaField(default=None, hidden=True)
+        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = SchemaField(
+            default=None, hidden=True
+        )
 
         @classmethod
         def get_input_schema(cls, data: BlockInput) -> dict[str, Any]:
@@ -71,7 +73,7 @@ class AgentExecutorBlock(Block):
             graph_version=input_data.graph_version,
             user_id=input_data.user_id,
             inputs=input_data.inputs,
-            node_credentials_input_map=input_data.node_credentials_input_map,
+            nodes_input_masks=input_data.nodes_input_masks,
             use_db_query=False,
         )
 

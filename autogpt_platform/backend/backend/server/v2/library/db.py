@@ -618,12 +618,19 @@ async def create_preset(
                 agentGraphId=preset.graph_id,
                 agentGraphVersion=preset.graph_version,
                 isActive=preset.is_active,
+                webhookId=preset.webhook_id,
                 InputPresets={
                     "create": [
                         prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
                             name=name, data=prisma.fields.Json(data)
                         )
-                        for name, data in preset.inputs.items()
+                        for name, data in {
+                            **preset.inputs,
+                            **{
+                                key: creds_meta.model_dump(exclude_none=True)
+                                for key, creds_meta in preset.credentials.items()
+                            },
+                        }.items()
                     ]
                 },
             ),
@@ -664,6 +671,7 @@ async def create_preset_from_graph_execution(
         user_id=user_id,
         preset=library_model.LibraryAgentPresetCreatable(
             inputs=graph_execution.inputs,
+            credentials={},  # FIXME
             graph_id=graph_execution.graph_id,
             graph_version=graph_execution.graph_version,
             name=create_request.name,
@@ -696,22 +704,37 @@ async def update_preset(
     logger.debug(
         f"Updating preset #{preset_id} ({repr(preset.name)}) for user #{user_id}",
     )
+    existing_preset = await get_preset(user_id, preset_id)  # assert ownership
+    if not existing_preset:
+        raise NotFoundError(f"Preset #{preset_id} not found for user #{user_id}")
     try:
         update_data: prisma.types.AgentPresetUpdateInput = {}
         if preset.name:
             update_data["name"] = preset.name
         if preset.description:
             update_data["description"] = preset.description
-        if preset.inputs:
+        if preset.inputs or preset.credentials:
+            if not (preset.inputs and preset.credentials):
+                raise ValueError(
+                    "Preset inputs and credentials must be provided together"
+                )
             update_data["InputPresets"] = {
                 "create": [
                     prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
                         name=name, data=prisma.fields.Json(data)
                     )
-                    for name, data in preset.inputs.items()
-                ]
+                    for name, data in {
+                        **preset.inputs,
+                        **{
+                            key: creds_meta.model_dump(exclude_none=True)
+                            for key, creds_meta in preset.credentials.items()
+                        },
+                    }.items()
+                ],
             }
-        if preset.is_active:
+            # Delete all existing inputs:
+            update_data["InputPresets"]["deleteMany"] = {}  # type: ignore
+        if preset.is_active is not None:
             update_data["isActive"] = preset.is_active
 
         updated = await prisma.models.AgentPreset.prisma().update(
@@ -725,6 +748,23 @@ async def update_preset(
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating preset: {e}")
         raise store_exceptions.DatabaseError("Failed to update preset") from e
+
+
+async def set_preset_webhook(
+    preset_id: str, webhook_id: str | None
+) -> library_model.LibraryAgentPreset:
+    preset = await prisma.models.AgentPreset.prisma().update(
+        where={"id": preset_id},
+        data=(
+            {"Webhook": {"connect": {"id": webhook_id}}}
+            if webhook_id
+            else {"Webhook": {"disconnect": True}}
+        ),
+        include={"InputPresets": True},
+    )
+    if not preset:
+        raise ValueError(f"Preset #{preset_id} not found")
+    return library_model.LibraryAgentPreset.from_db(preset)
 
 
 async def delete_preset(user_id: str, preset_id: str) -> None:

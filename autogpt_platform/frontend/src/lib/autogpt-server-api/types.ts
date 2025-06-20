@@ -401,11 +401,29 @@ export type LibraryAgent = {
   updated_at: Date;
   name: string;
   description: string;
-  input_schema: BlockIOObjectSubSchema;
+  input_schema: GraphIOSchema;
+  credentials_input_schema: {
+    type: "object";
+    properties: { [key: string]: BlockIOCredentialsSubSchema };
+    required: (keyof LibraryAgent["credentials_input_schema"]["properties"])[];
+  };
   new_output: boolean;
   can_access_graph: boolean;
   is_latest_version: boolean;
-};
+} & (
+  | {
+      has_external_trigger: true;
+      trigger_setup_info: {
+        provider: CredentialsProviderName;
+        config_schema: BlockIORootSchema;
+        credentials_input_name?: string;
+      };
+    }
+  | {
+      has_external_trigger: false;
+      trigger_setup_info?: null;
+    }
+);
 
 export type LibraryAgentID = Brand<string, "LibraryAgentID">;
 
@@ -432,9 +450,11 @@ export type LibraryAgentPreset = {
   graph_id: GraphID;
   graph_version: number;
   inputs: { [key: string]: any };
+  credentials: Record<string, CredentialsMetaInput>;
   name: string;
   description: string;
   is_active: boolean;
+  webhook_id?: string;
 };
 
 export type LibraryAgentPresetID = Brand<string, "LibraryAgentPresetID">;

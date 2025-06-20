@@ -169,6 +169,10 @@ model AgentPreset {
   InputPresets AgentNodeExecutionInputOutput[] @relation("AgentPresetsInputData")
   Executions   AgentGraphExecution[]
 
+  // For webhook-triggered agents: reference to the webhook that triggers the agent
+  webhookId String?
+  Webhook   IntegrationWebhook? @relation(fields: [webhookId], references: [id])
+
   isDeleted Boolean @default(false)
 
   @@index([userId])
@@ -428,7 +432,8 @@ model IntegrationWebhook {
 
   providerWebhookId String // Webhook ID assigned by the provider
 
-  AgentNodes AgentNode[]
+  AgentNodes    AgentNode[]
+  AgentPresets  AgentPreset[]
 
   @@index([userId])
 }
