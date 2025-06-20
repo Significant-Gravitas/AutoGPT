@@ -2,7 +2,7 @@ import { type CookieOptions } from "@supabase/ssr";
 
 export const cookieSettings: Partial<CookieOptions> = {
   secure: process.env.NODE_ENV === "production",
-  sameSite: process.env.NODE === "test" ? "none" : "lax",
+  sameSite: "lax",
   httpOnly: true,
 } as const;
 

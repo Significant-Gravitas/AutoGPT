@@ -33,16 +33,10 @@ export async function updateSession(request: NextRequest) {
               request,
             });
             cookiesToSet.forEach(({ name, value, options }) => {
-              const webkitCompatibleOptions = {
+              supabaseResponse.cookies.set(name, value, {
                 ...options,
                 ...cookieSettings,
-              };
-
-              supabaseResponse.cookies.set(
-                name,
-                value,
-                webkitCompatibleOptions,
-              );
+              });
             });
           },
         },

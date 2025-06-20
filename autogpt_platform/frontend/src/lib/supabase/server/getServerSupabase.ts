@@ -21,12 +21,10 @@ export async function getServerSupabase() {
           setAll(cookiesToSet: Cookies) {
             try {
               cookiesToSet.forEach(({ name, value, options }) => {
-                const webkitCompatibleOptions = {
+                cookieStore.set(name, value, {
                   ...options,
                   ...cookieSettings,
-                };
-
-                cookieStore.set(name, value, webkitCompatibleOptions);
+                });
               });
             } catch {
               // The `setAll` method was called from a Server Component.
