@@ -1,9 +1,9 @@
 "use client";
 import {
-  AuthCard,
-  AuthHeader,
   AuthButton,
+  AuthCard,
   AuthFeedback,
+  AuthHeader,
   PasswordInput,
   Turnstile,
 } from "@/components/auth";
@@ -17,16 +17,16 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import LoadingBox from "@/components/ui/loading";
+import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { sendEmailFormSchema, changePasswordFormSchema } from "@/types/auth";
+import { getBehaveAs } from "@/lib/utils";
+import { changePasswordFormSchema, sendEmailFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCallback, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { changePassword, sendResetEmail } from "./actions";
-import LoadingBox from "@/components/ui/loading";
-import { getBehaveAs } from "@/lib/utils";
-import { useTurnstile } from "@/hooks/useTurnstile";
 
 export default function ResetPasswordPage() {
   const { supabase, user, isUserLoading } = useSupabase();
