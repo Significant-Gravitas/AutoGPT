@@ -1,9 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import { cookieSettings } from "../helpers";
 
 type Cookies = { name: string; value: string; options?: CookieOptions }[];
-
-const isTest = process.env.NODE_ENV === "test";
 
 export async function getServerSupabase() {
   // Need require here, so Next.js doesn't complain about importing this on client side
@@ -23,17 +20,7 @@ export async function getServerSupabase() {
           setAll(cookiesToSet: Cookies) {
             try {
               cookiesToSet.forEach(({ name, value, options }) => {
-                // WebKit-specific: Use more explicit cookie settings for better compatibility
-                const webkitCompatibleOptions = {
-                  ...options,
-                  ...cookieSettings,
-                };
-
-                cookieStore.set(
-                  name,
-                  value,
-                  isTest ? options : webkitCompatibleOptions,
-                );
+                cookieStore.set(name, value, options);
               });
             } catch {
               // The `setAll` method was called from a Server Component.

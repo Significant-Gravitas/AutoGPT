@@ -73,15 +73,4 @@ export default defineConfig({
     //   use: { ...devices['Desktop Chrome'], channel: 'chrome' },
     // },
   ],
-
-  /* Run your local server before starting the tests */
-  webServer: {
-    command: "pnpm start",
-    url: "http://localhost:3000/",
-    reuseExistingServer: !process.env.CI,
-    timeout: 10 * 1000,
-    env: {
-      NODE_ENV: "test",
-    },
-  },
 });
