@@ -3,6 +3,8 @@ import { cookieSettings } from "../helpers";
 
 type Cookies = { name: string; value: string; options?: CookieOptions }[];
 
+const isTest = process.env.NODE_ENV === "test";
+
 export async function getServerSupabase() {
   // Need require here, so Next.js doesn't complain about importing this on client side
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -25,11 +27,13 @@ export async function getServerSupabase() {
                 const webkitCompatibleOptions = {
                   ...options,
                   ...cookieSettings,
-                  // Ensure domain is not set to avoid webkit issues with localhost
-                  domain: undefined,
                 };
 
-                cookieStore.set(name, value, webkitCompatibleOptions);
+                cookieStore.set(
+                  name,
+                  value,
+                  isTest ? options : webkitCompatibleOptions,
+                );
               });
             } catch {
               // The `setAll` method was called from a Server Component.

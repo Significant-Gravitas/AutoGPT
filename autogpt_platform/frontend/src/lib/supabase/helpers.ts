@@ -1,14 +1,9 @@
 import { type CookieOptions } from "@supabase/ssr";
 
-const isE2ETest =
-  typeof process !== "undefined" && process.env.NODE_ENV === "test";
-
-export const cookieSettings: Partial<CookieOptions> = isE2ETest
-  ? {}
-  : ({
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-    } as const);
+export const cookieSettings: Partial<CookieOptions> = {
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+} as const;
 
 export const PROTECTED_PAGES = [
   "/monitor",

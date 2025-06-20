@@ -2,6 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { cookieSettings, isAdminPage, isProtectedPage } from "./helpers";
 
+const isTest = process.env.NODE_ENV === "test";
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
     request,
@@ -34,17 +36,15 @@ export async function updateSession(request: NextRequest) {
             });
             cookiesToSet.forEach(({ name, value, options }) => {
               // WebKit-specific: Use more explicit cookie settings for better compatibility
-              const webkitCompatibleOptions = {
+              const cookieOptions = {
                 ...options,
                 ...cookieSettings,
-                // Ensure domain is not set to avoid webkit issues with localhost
-                domain: undefined,
               };
 
               supabaseResponse.cookies.set(
                 name,
                 value,
-                webkitCompatibleOptions,
+                isTest ? options : cookieOptions,
               );
             });
           },
