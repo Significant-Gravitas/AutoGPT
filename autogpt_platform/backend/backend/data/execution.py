@@ -271,7 +271,7 @@ class GraphExecutionWithNodes(GraphExecution):
             graph_id=self.graph_id,
             graph_version=self.graph_version or 0,
             graph_exec_id=self.id,
-            node_input_overrides_map={},  # FIXME
+            nodes_input_masks={},  # FIXME: store credentials on AgentGraphExecution
         )
 
 
@@ -783,7 +783,7 @@ class GraphExecutionEntry(BaseModel):
     graph_exec_id: str
     graph_id: str
     graph_version: int
-    node_input_overrides_map: Optional[dict[str, dict[str, JsonValue]]]
+    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]]
 
 
 class NodeExecutionEntry(BaseModel):

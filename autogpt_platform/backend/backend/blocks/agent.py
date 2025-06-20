@@ -30,8 +30,8 @@ class AgentExecutorBlock(Block):
         input_schema: dict = SchemaField(description="Input schema for the graph")
         output_schema: dict = SchemaField(description="Output schema for the graph")
 
-        nodes_input_overrides_map: Optional[dict[str, dict[str, JsonValue]]] = (
-            SchemaField(default=None, hidden=True)
+        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = SchemaField(
+            default=None, hidden=True
         )
 
         @classmethod
@@ -73,7 +73,7 @@ class AgentExecutorBlock(Block):
             graph_version=input_data.graph_version,
             user_id=input_data.user_id,
             inputs=input_data.inputs,
-            nodes_input_overrides_map=input_data.nodes_input_overrides_map,
+            nodes_input_masks=input_data.nodes_input_masks,
             use_db_query=False,
         )
 

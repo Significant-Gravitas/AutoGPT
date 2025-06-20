@@ -379,7 +379,7 @@ async def webhook_ingress_generic(
                 graph_version=preset.graph_version,
                 inputs={f"webhook_{webhook_id}_payload": payload},
                 graph_credentials_inputs=graph_credentials_inputs,
-                nodes_input_overrides_map={trigger_node.id: trigger_block_input},
+                nodes_input_masks={trigger_node.id: trigger_block_input},
             )
         )
     asyncio.gather(*executions)
