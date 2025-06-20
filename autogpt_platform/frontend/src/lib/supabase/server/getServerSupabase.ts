@@ -21,12 +21,9 @@ export async function getServerSupabase() {
           setAll(cookiesToSet: Cookies) {
             try {
               cookiesToSet.forEach(({ name, value, options }) => {
-                // WebKit-specific: Use more explicit cookie settings for better compatibility
                 const webkitCompatibleOptions = {
                   ...options,
                   ...cookieSettings,
-                  // Ensure domain is not set to avoid webkit issues with localhost
-                  domain: undefined,
                 };
 
                 cookieStore.set(name, value, webkitCompatibleOptions);

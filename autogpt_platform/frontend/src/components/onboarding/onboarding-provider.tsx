@@ -1,7 +1,17 @@
 "use client";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { OnboardingStep, UserOnboarding } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
@@ -11,16 +21,6 @@ import {
   useEffect,
   useState,
 } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
 
 const OnboardingContext = createContext<
   | {
@@ -105,9 +105,8 @@ export default function OnboardingProvider({
 
   const updateState = useCallback(
     (newState: Omit<Partial<UserOnboarding>, "rewardedFor">) => {
+      // First update the local state
       setState((prev) => {
-        api.updateUserOnboarding(newState);
-
         if (!prev) {
           // Handle initial state
           return {
@@ -127,8 +126,15 @@ export default function OnboardingProvider({
         }
         return { ...prev, ...newState };
       });
+
+      // Then make the API call asynchronously, outside of render
+      setTimeout(() => {
+        api.updateUserOnboarding(newState).catch((error) => {
+          console.error("Failed to update user onboarding:", error);
+        });
+      }, 0);
     },
-    [api, setState],
+    [api],
   );
 
   const completeStep = useCallback(
@@ -153,7 +159,7 @@ export default function OnboardingProvider({
         completedSteps: [...state.completedSteps, "RUN_AGENTS"],
       }),
     });
-  }, [api, state]);
+  }, [state, updateState]);
 
   return (
     <OnboardingContext.Provider

@@ -33,12 +33,9 @@ export async function updateSession(request: NextRequest) {
               request,
             });
             cookiesToSet.forEach(({ name, value, options }) => {
-              // WebKit-specific: Use more explicit cookie settings for better compatibility
               const webkitCompatibleOptions = {
                 ...options,
                 ...cookieSettings,
-                // Ensure domain is not set to avoid webkit issues with localhost
-                domain: undefined,
               };
 
               supabaseResponse.cookies.set(
