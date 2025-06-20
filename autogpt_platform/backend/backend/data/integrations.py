@@ -10,12 +10,13 @@ from backend.data.includes import INTEGRATION_WEBHOOK_INCLUDE
 from backend.data.queue import AsyncRedisEventBus
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.utils import webhook_ingress_url
-from backend.server.v2.library.model import LibraryAgentPreset
 from backend.util.exceptions import NotFoundError
 
 from .db import BaseDbModel
 
 if TYPE_CHECKING:
+    from backend.server.v2.library.model import LibraryAgentPreset
+
     from .graph import NodeModel
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ class Webhook(BaseDbModel):
     provider_webhook_id: str
 
     attached_nodes: Optional[list["NodeModel"]] = None
-    attached_presets: Optional[list[LibraryAgentPreset]] = None
+    attached_presets: Optional[list["LibraryAgentPreset"]] = None
 
     @computed_field
     @property
@@ -43,6 +44,8 @@ class Webhook(BaseDbModel):
 
     @staticmethod
     def from_db(webhook: IntegrationWebhook):
+        from backend.server.v2.library.model import LibraryAgentPreset
+
         from .graph import NodeModel
 
         return Webhook(

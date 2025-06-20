@@ -1,7 +1,7 @@
 import logging
 import uuid
 from collections import defaultdict
-from typing import Any, Literal, Optional, cast
+from typing import TYPE_CHECKING, Any, Literal, Optional, cast
 
 import prisma
 from prisma import Json
@@ -32,7 +32,9 @@ from backend.util import type as type_utils
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
 from .db import BaseDbModel, transaction
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
-from .integrations import Webhook
+
+if TYPE_CHECKING:
+    from .integrations import Webhook
 
 logger = logging.getLogger(__name__)
 
@@ -81,10 +83,12 @@ class NodeModel(Node):
     graph_version: int
 
     webhook_id: Optional[str] = None
-    webhook: Optional[Webhook] = None
+    webhook: Optional["Webhook"] = None
 
     @staticmethod
     def from_db(node: AgentNode, for_export: bool = False) -> "NodeModel":
+        from .integrations import Webhook
+
         obj = NodeModel(
             id=node.id,
             block_id=node.agentBlockId,
@@ -148,10 +152,6 @@ class NodeModel(Node):
             else:
                 result[key] = value
         return result
-
-
-# Fix 2-way reference Node <-> Webhook
-Webhook.model_rebuild()
 
 
 class BaseGraph(BaseDbModel):
