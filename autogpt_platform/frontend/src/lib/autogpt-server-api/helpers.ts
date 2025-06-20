@@ -116,6 +116,41 @@ export async function parseApiResponse(response: Response): Promise<any> {
   }
 }
 
+function isAuthenticationError(
+  response: Response,
+  errorDetail: string,
+): boolean {
+  return (
+    response.status === 401 ||
+    response.status === 403 ||
+    errorDetail.toLowerCase().includes("not authenticated") ||
+    errorDetail.toLowerCase().includes("unauthorized") ||
+    errorDetail.toLowerCase().includes("authentication failed")
+  );
+}
+
+function isLogoutInProgress(): boolean {
+  if (typeof window === "undefined") return false;
+
+  try {
+    // Check if logout was recently triggered
+    const logoutTimestamp = window.localStorage.getItem("supabase-logout");
+    if (logoutTimestamp) {
+      const timeDiff = Date.now() - parseInt(logoutTimestamp);
+      // Consider logout in progress for 5 seconds after trigger
+      return timeDiff < 5000;
+    }
+
+    // Check if we're being redirected to login
+    return (
+      window.location.pathname.includes("/login") ||
+      window.location.pathname.includes("/logout")
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function makeAuthenticatedRequest(
   method: string,
   url: string,
@@ -136,6 +171,25 @@ export async function makeAuthenticatedRequest(
 
   if (!response.ok) {
     const errorDetail = await parseApiError(response);
+
+    // Handle authentication errors gracefully during logout
+    if (isAuthenticationError(response, errorDetail)) {
+      if (isLogoutInProgress()) {
+        // Silently return null during logout to prevent error noise
+        console.debug(
+          "Authentication request failed during logout, ignoring:",
+          errorDetail,
+        );
+        return null;
+      }
+
+      // For authentication errors outside logout, log but don't throw
+      // This prevents crashes when session expires naturally
+      console.warn("Authentication failed:", errorDetail);
+      return null;
+    }
+
+    // For other errors, throw as normal
     throw new Error(errorDetail);
   }
 
@@ -161,7 +215,21 @@ export async function makeAuthenticatedFileUpload(
   });
 
   if (!response.ok) {
-    throw new Error(`Error uploading file: ${response.statusText}`);
+    // Handle authentication errors gracefully for file uploads too
+    const errorMessage = `Error uploading file: ${response.statusText}`;
+
+    if (response.status === 401 || response.status === 403) {
+      if (isLogoutInProgress()) {
+        console.debug(
+          "File upload authentication failed during logout, ignoring",
+        );
+        return "";
+      }
+      console.warn("File upload authentication failed:", errorMessage);
+      return "";
+    }
+
+    throw new Error(errorMessage);
   }
 
   return await response.text();
