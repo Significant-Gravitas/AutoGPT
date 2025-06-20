@@ -1,17 +1,31 @@
 from enum import Enum
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel as OriginalBaseModel
+from pydantic import ConfigDict
 
 from backend.data.model import SchemaField
+
+
+class BaseModel(OriginalBaseModel):
+    def model_dump(self, *args, exclude: set[str] | None = None, **kwargs):
+        if exclude is None:
+            exclude = set("credentials")
+        else:
+            exclude.add("credentials")
+
+        kwargs.setdefault("exclude_none", True)
+        kwargs.setdefault("exclude_unset", True)
+        kwargs.setdefault("exclude_defaults", True)
+        return super().model_dump(*args, exclude=exclude, **kwargs)
 
 
 class PrimaryPhone(BaseModel):
     """A primary phone in Apollo"""
 
-    number: str
-    source: str
-    sanitized_number: str
+    number: str = ""
+    source: str = ""
+    sanitized_number: str = ""
 
 
 class SenorityLevels(str, Enum):
@@ -42,88 +56,88 @@ class ContactEmailStatuses(str, Enum):
 class RuleConfigStatus(BaseModel):
     """A rule config status in Apollo"""
 
-    _id: str
-    created_at: str
-    rule_action_config_id: str
-    rule_config_id: str
-    status_cd: str
-    updated_at: str
-    id: str
-    key: str
+    _id: str = ""
+    created_at: str = ""
+    rule_action_config_id: str = ""
+    rule_config_id: str = ""
+    status_cd: str = ""
+    updated_at: str = ""
+    id: str = ""
+    key: str = ""
 
 
 class ContactCampaignStatus(BaseModel):
     """A contact campaign status in Apollo"""
 
-    id: str
-    emailer_campaign_id: str
-    send_email_from_user_id: str
-    inactive_reason: str
-    status: str
-    added_at: str
-    added_by_user_id: str
-    finished_at: str
-    paused_at: str
-    auto_unpause_at: str
-    send_email_from_email_address: str
-    send_email_from_email_account_id: str
-    manually_set_unpause: str
-    failure_reason: str
-    current_step_id: str
-    in_response_to_emailer_message_id: str
-    cc_emails: str
-    bcc_emails: str
-    to_emails: str
+    id: str = ""
+    emailer_campaign_id: str = ""
+    send_email_from_user_id: str = ""
+    inactive_reason: str = ""
+    status: str = ""
+    added_at: str = ""
+    added_by_user_id: str = ""
+    finished_at: str = ""
+    paused_at: str = ""
+    auto_unpause_at: str = ""
+    send_email_from_email_address: str = ""
+    send_email_from_email_account_id: str = ""
+    manually_set_unpause: str = ""
+    failure_reason: str = ""
+    current_step_id: str = ""
+    in_response_to_emailer_message_id: str = ""
+    cc_emails: str = ""
+    bcc_emails: str = ""
+    to_emails: str = ""
 
 
 class Account(BaseModel):
     """An account in Apollo"""
 
-    id: str
-    name: str
-    website_url: str
-    blog_url: str
-    angellist_url: str
-    linkedin_url: str
-    twitter_url: str
-    facebook_url: str
-    primary_phone: PrimaryPhone
+    id: str = ""
+    name: str = ""
+    website_url: str = ""
+    blog_url: str = ""
+    angellist_url: str = ""
+    linkedin_url: str = ""
+    twitter_url: str = ""
+    facebook_url: str = ""
+    primary_phone: PrimaryPhone = PrimaryPhone()
     languages: list[str]
-    alexa_ranking: int
-    phone: str
-    linkedin_uid: str
-    founded_year: int
-    publicly_traded_symbol: str
-    publicly_traded_exchange: str
-    logo_url: str
-    chrunchbase_url: str
-    primary_domain: str
-    domain: str
-    team_id: str
-    organization_id: str
-    account_stage_id: str
-    source: str
-    original_source: str
-    creator_id: str
-    owner_id: str
-    created_at: str
-    phone_status: str
-    hubspot_id: str
-    salesforce_id: str
-    crm_owner_id: str
-    parent_account_id: str
-    sanitized_phone: str
+    alexa_ranking: int = 0
+    phone: str = ""
+    linkedin_uid: str = ""
+    founded_year: int = 0
+    publicly_traded_symbol: str = ""
+    publicly_traded_exchange: str = ""
+    logo_url: str = ""
+    chrunchbase_url: str = ""
+    primary_domain: str = ""
+    domain: str = ""
+    team_id: str = ""
+    organization_id: str = ""
+    account_stage_id: str = ""
+    source: str = ""
+    original_source: str = ""
+    creator_id: str = ""
+    owner_id: str = ""
+    created_at: str = ""
+    phone_status: str = ""
+    hubspot_id: str = ""
+    salesforce_id: str = ""
+    crm_owner_id: str = ""
+    parent_account_id: str = ""
+    sanitized_phone: str = ""
     # no listed type on the API docs
-    account_playbook_statues: list[Any]
-    account_rule_config_statuses: list[RuleConfigStatus]
-    existence_level: str
-    label_ids: list[str]
+    account_playbook_statues: list[Any] = []
+    account_rule_config_statuses: list[RuleConfigStatus] = []
+    existence_level: str = ""
+    label_ids: list[str] = []
     typed_custom_fields: Any
     custom_field_errors: Any
-    modality: str
-    source_display_name: str
-    salesforce_record_id: str
-    crm_record_url: str
+    modality: str = ""
+    source_display_name: str = ""
+    salesforce_record_id: str = ""
+    crm_record_url: str = ""
 
 
 class ContactEmail(BaseModel):
@@ -205,7 +219,7 @@ class Pagination(BaseModel):
 class DialerFlags(BaseModel):
     """A dialer flags in Apollo"""
 
-    country_name: str
+    country_name: str = ""
     country_enabled: bool
     high_risk_calling_enabled: bool
     potential_high_risk_number: bool

@@ -29,10 +29,10 @@ class ApolloClient:
 
     async def search_people(self, query: SearchPeopleRequest) -> List[Contact]:
         """Search for people in Apollo"""
-        response = await self.requests.get(
+        response = await self.requests.post(
             f"{self.API_URL}/mixed_people/search",
             headers=self._get_headers(),
-            params=query.model_dump(exclude={"credentials", "max_results"}),
+            json=query.model_dump(exclude={"max_results"}),
         )
         data = response.json()
         parsed_response = SearchPeopleResponse(**data)
@@ -53,10 +53,10 @@ class ApolloClient:
                 and len(parsed_response.people) > 0
             ):
                 query.page += 1
-                response = await self.requests.get(
+                response = await self.requests.post(
                     f"{self.API_URL}/mixed_people/search",
                     headers=self._get_headers(),
-                    params=query.model_dump(exclude={"credentials", "max_results"}),
+                    json=query.model_dump(exclude={"max_results"}),
                 )
                 data = response.json()
                 parsed_response = SearchPeopleResponse(**data)
@@ -69,10 +69,10 @@ class ApolloClient:
         self, query: SearchOrganizationsRequest
     ) -> List[Organization]:
         """Search for organizations in Apollo"""
-        response = await self.requests.get(
+        response = await self.requests.post(
             f"{self.API_URL}/mixed_companies/search",
             headers=self._get_headers(),
-            params=query.model_dump(exclude={"credentials", "max_results"}),
+            json=query.model_dump(exclude={"max_results"}),
         )
         data = response.json()
         parsed_response = SearchOrganizationsResponse(**data)
@@ -93,10 +93,10 @@ class ApolloClient:
                 and len(parsed_response.organizations) > 0
             ):
                 query.page += 1
-                response = await self.requests.get(
+                response = await self.requests.post(
                     f"{self.API_URL}/mixed_companies/search",
                     headers=self._get_headers(),
-                    params=query.model_dump(exclude={"credentials", "max_results"}),
+                    json=query.model_dump(exclude={"max_results"}),
                 )
                 data = response.json()
                 parsed_response = SearchOrganizationsResponse(**data)
