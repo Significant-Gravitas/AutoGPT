@@ -13,8 +13,10 @@ def wait_for_postgres(max_retries=5, delay=5):
                     "compose",
                     "-f",
                     "docker-compose.test.yaml",
+                    "--env-file",
+                    "../.env",
                     "exec",
-                    "postgres-test",
+                    "db",
                     "pg_isready",
                     "-U",
                     "postgres",
@@ -51,6 +53,8 @@ def test():
             "compose",
             "-f",
             "docker-compose.test.yaml",
+            "--env-file",
+            "../.env",
             "up",
             "-d",
         ]
@@ -74,11 +78,20 @@ def test():
     # to their development database, running tests would wipe their local data!
     test_env = os.environ.copy()
 
-    # Use environment variables if set, otherwise use defaults that match docker-compose.test.yaml
-    db_user = os.getenv("DB_USER", "postgres")
-    db_pass = os.getenv("DB_PASS", "postgres")
-    db_name = os.getenv("DB_NAME", "postgres")
-    db_port = os.getenv("DB_PORT", "5432")
+    # Load database configuration from .env file
+    dotenv_path = os.path.join(os.path.dirname(__file__), "../.env")
+    if os.path.exists(dotenv_path):
+        with open(dotenv_path) as f:
+            for line in f:
+                if line.strip() and not line.startswith("#"):
+                    key, value = line.strip().split("=", 1)
+                    os.environ[key] = value
+
+    # Get database config from environment (now populated from .env)
+    db_user = os.getenv("POSTGRES_USER", "postgres")
+    db_pass = os.getenv("POSTGRES_PASSWORD", "postgres")
+    db_name = os.getenv("POSTGRES_DB", "postgres")
+    db_port = os.getenv("POSTGRES_PORT", "5432")
 
     # Construct the test database URL - this ensures we're always pointing to the test container
     test_env["DATABASE_URL"] = (
