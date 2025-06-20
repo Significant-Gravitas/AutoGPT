@@ -497,12 +497,9 @@ class CreateListBlock(Block):
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
-            # The values are already validated by Pydantic schema
-            if input_data.max_size is not None:
-                for i in range(0, len(input_data.values), input_data.max_size):
-                    yield "list", input_data.values[i : i + input_data.max_size]
-            else:
-                yield "list", input_data.values
+            max_size = input_data.max_size or len(input_data.values)
+            for i in range(0, len(input_data.values), max_size):
+                yield "list", input_data.values[i : i + max_size]
         except Exception as e:
             yield "error", f"Failed to create list: {str(e)}"
 
