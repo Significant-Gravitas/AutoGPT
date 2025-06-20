@@ -760,7 +760,6 @@ export default class BackendAPI {
   }
 
   private async _uploadFile(path: string, file: File): Promise<string> {
-    // Create a FormData object and append the file
     const formData = new FormData();
     formData.append("file", file);
 
@@ -871,7 +870,6 @@ export default class BackendAPI {
   async connectWebSocket(): Promise<void> {
     return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
-        // Get token from server action for WebSocket authentication
         let token = "";
         try {
           const { token: serverToken, error } = await getWebSocketToken();

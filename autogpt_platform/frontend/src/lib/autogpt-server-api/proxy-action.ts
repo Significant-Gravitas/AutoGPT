@@ -1,10 +1,13 @@
 "use server";
+
 import * as Sentry from "@sentry/nextjs";
 import {
   buildRequestUrl,
   makeAuthenticatedFileUpload,
   makeAuthenticatedRequest,
 } from "./helpers";
+
+const DEFAULT_BASE_URL = "http://localhost:8006/api";
 
 export interface ProxyRequestOptions {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -18,8 +21,7 @@ export async function proxyApiRequest({
   method,
   path,
   payload,
-  baseUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_URL ||
-    "http://localhost:8006/api",
+  baseUrl = process.env.NEXT_PUBLIC_AGPT_SERVER_URL || DEFAULT_BASE_URL,
   contentType = "application/json",
 }: ProxyRequestOptions) {
   return await Sentry.withServerActionInstrumentation(
