@@ -18,7 +18,8 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "test-storybook": "test-storybook",
-    "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"pnpm run build-storybook -- --quiet && npx http-server storybook-static --port 6006 --silent\" \"wait-on tcp:6006 && pnpm run test-storybook\""
+    "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"pnpm run build-storybook -- --quiet && npx http-server storybook-static --port 6006 --silent\" \"wait-on tcp:6006 && pnpm run test-storybook\"",
+    "generate-client": "orval --config ./orval.config.js"
   },
   "browserslist": [
     "defaults"
@@ -116,6 +117,7 @@
     "import-in-the-middle": "1.14.2",
     "msw": "2.10.2",
     "msw-storybook-addon": "2.0.5",
+    "orval": "7.10.0",
     "postcss": "8.5.6",
     "prettier": "3.5.3",
     "prettier-plugin-tailwindcss": "0.6.12",
