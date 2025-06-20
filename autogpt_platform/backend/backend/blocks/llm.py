@@ -348,10 +348,10 @@ async def llm_call(
     # Calculate available tokens based on context window and input length
     estimated_input_tokens = estimate_token_count(prompt)
     context_window = llm_model.context_window
-    model_max_output = llm_model.max_output_tokens or 4096
+    model_max_output = llm_model.max_output_tokens or int(2**15)
     user_max = max_tokens or model_max_output
     available_tokens = max(context_window - estimated_input_tokens, 0)
-    max_tokens = max(min(available_tokens, model_max_output, user_max), 0)
+    max_tokens = max(min(available_tokens, model_max_output, user_max), 1)
 
     if provider == "openai":
         tools_param = tools if tools else openai.NOT_GIVEN
