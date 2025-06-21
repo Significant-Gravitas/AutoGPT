@@ -402,12 +402,6 @@ def validate_exec(
         return None, f"Block for {node.block_id} not found."
     schema = node_block.input_schema
 
-    # Convert non-matching data types to the expected input schema.
-    for name, data_type in schema.__annotations__.items():
-        value = data.get(name)
-        if (value is not None) and (type(value) is not data_type):
-            data[name] = convert(value, data_type)
-
     # Input data (without default values) should contain all required fields.
     error_prefix = f"Input data missing or mismatch for `{node_block.name}`:"
     if missing_links := schema.get_missing_links(data, node.input_links):
@@ -418,6 +412,12 @@ def validate_exec(
     data = {**input_default, **data}
     if resolve_input:
         data = merge_execution_input(data)
+
+    # Convert non-matching data types to the expected input schema.
+    for name, data_type in schema.__annotations__.items():
+        value = data.get(name)
+        if (value is not None) and (type(value) is not data_type):
+            data[name] = convert(value, data_type)
 
     # Input data post-merge should contain all required fields from the schema.
     if missing_input := schema.get_missing_input(data):
