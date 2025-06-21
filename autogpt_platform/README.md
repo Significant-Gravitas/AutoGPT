@@ -62,6 +62,12 @@ To run the AutoGPT Platform, follow these steps:
    pnpm i
    ```
 
+   Generate the API client (this step is required before running the frontend):
+
+   ```
+   pnpm generate-client
+   ```
+
    Then start the frontend application in development mode:
 
    ```
