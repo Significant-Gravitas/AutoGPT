@@ -1,7 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+import { getSupabaseClient } from "@/lib/supabase/getSupabaseClient";
 
 export const customMutator = async ({
   url,
@@ -14,12 +11,14 @@ export const customMutator = async ({
   params?: any;
   data?: FormData | any;
 }) => {
-  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  const headers: Record<string, string> = {};
+  const supabase = await getSupabaseClient();
+
   const {
     data: { session },
-  } = await supabase.auth.getSession();
-
-  const headers: Record<string, string> = {};
+  } = (await supabase?.auth.getSession()) || {
+    data: { session: null },
+  };
 
   if (session?.access_token) {
     headers["Authorization"] = `Bearer ${session.access_token}`;
