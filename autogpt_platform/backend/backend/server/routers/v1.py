@@ -236,7 +236,7 @@ async def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlock
 ########################################################
 
 
-@v1_router.get(path="/credits", summary="Get user credits", dependencies=[Depends(auth_middleware)])
+@v1_router.get(path="/credits", tags=["credits"], summary="Get user credits", dependencies=[Depends(auth_middleware)])
 async def get_user_credits(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, int]:
@@ -353,14 +353,14 @@ async def stripe_webhook(request: Request):
     return Response(status_code=200)
 
 
-@v1_router.get(path="/credits/manage", summary="Manage payment methods", dependencies=[Depends(auth_middleware)])
+@v1_router.get(path="/credits/manage", tags=["credits"], summary="Manage payment methods", dependencies=[Depends(auth_middleware)])
 async def manage_payment_method(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, str]:
     return {"url": await _user_credit_model.create_billing_portal_session(user_id)}
 
 
-@v1_router.get(path="/credits/transactions", summary="Get credit history", dependencies=[Depends(auth_middleware)])
+@v1_router.get(path="/credits/transactions", tags=["credits"], summary="Get credit history", dependencies=[Depends(auth_middleware)])
 async def get_credit_history(
     user_id: Annotated[str, Depends(get_user_id)],
     transaction_time: datetime | None = None,
@@ -378,7 +378,7 @@ async def get_credit_history(
     )
 
 
-@v1_router.get(path="/credits/refunds", summary="Get refund requests", dependencies=[Depends(auth_middleware)])
+@v1_router.get(path="/credits/refunds", tags=["credits"], summary="Get refund requests", dependencies=[Depends(auth_middleware)])
 async def get_refund_requests(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[RefundRequest]:
