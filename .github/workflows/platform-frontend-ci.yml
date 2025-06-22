@@ -29,10 +29,18 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install and enable corepack
+      - name: Cache pnpm
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm
+          key: pnpm-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
+
+      - name: Install pnpm
         run: |
-          npm install -g corepack
           corepack enable
+          corepack prepare pnpm --activate
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -51,10 +59,18 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install and enable corepack
+      - name: Cache pnpm
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm
+          key: pnpm-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
+
+      - name: Install pnpm
         run: |
-          npm install -g corepack
           corepack enable
+          corepack prepare pnpm --activate
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -77,18 +93,18 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install and enable corepack
-        run: |
-          npm install -g corepack
-          corepack enable
-
-      - name: Cache pnpm store
+      - name: Cache pnpm
         uses: actions/cache@v4
         with:
-          path: ~/.pnpm-store
-          key: pnpm-store-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
+          path: ~/.local/share/pnpm
+          key: pnpm-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
           restore-keys: |
-            pnpm-store-${{ runner.os }}-
+            pnpm-${{ runner.os }}-
+
+      - name: Install pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm --activate
 
       - name: Copy default supabase .env
         run: |
@@ -124,6 +140,7 @@ jobs:
           path: |
             .next
             node_modules
+            .next/cache
           key: build-${{ runner.os }}-${{ github.sha }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
 
   test:
@@ -145,10 +162,18 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install and enable corepack
+      - name: Cache pnpm
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm
+          key: pnpm-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-${{ runner.os }}-
+
+      - name: Install pnpm
         run: |
-          npm install -g corepack
           corepack enable
+          corepack prepare pnpm --activate
 
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
@@ -168,14 +193,6 @@ jobs:
         run: |
           docker compose -f ../docker-compose.yml up -d
 
-      - name: Cache Next.js build cache
-        uses: actions/cache@v4
-        with:
-          path: .next/cache
-          key: nextjs-cache-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
-          restore-keys: |
-            nextjs-cache-${{ runner.os }}-
-
       - name: Restore build artifacts
         id: restore-build-artifacts
         uses: actions/cache/restore@v4
@@ -183,20 +200,11 @@ jobs:
           path: |
             .next
             node_modules
+            .next/cache
           key: build-${{ runner.os }}-${{ github.sha }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
           restore-keys: |
             build-${{ runner.os }}-
-          fail-on-cache-miss: false
-
-      - name: Install dependencies (fallback)
-        if: steps.restore-build-artifacts.outputs.cache-hit != 'true'
-        run: pnpm install --frozen-lockfile
-
-      - name: Build frontend (fallback)
-        if: steps.restore-build-artifacts.outputs.cache-hit != 'true'
-        run: pnpm build
-        env:
-          NEXT_PUBLIC_PW_TEST: "true"
+          fail-on-cache-miss: true
 
       - name: Setup .env
         run: cp .env.example .env
