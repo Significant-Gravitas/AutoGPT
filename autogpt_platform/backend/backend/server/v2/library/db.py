@@ -534,7 +534,7 @@ async def list_presets(
             where=query_filter,
             skip=(page - 1) * page_size,
             take=page_size,
-            include={"InputPresets": True},
+            include={"InputPresets": True, "Webhook": True},
         )
         total_items = await prisma.models.AgentPreset.prisma().count(where=query_filter)
         total_pages = (total_items + page_size - 1) // page_size
@@ -579,7 +579,7 @@ async def get_preset(
     try:
         preset = await prisma.models.AgentPreset.prisma().find_unique(
             where={"id": preset_id},
-            include={"InputPresets": True},
+            include={"InputPresets": True, "Webhook": True},
         )
         if not preset or preset.userId != user_id:
             return None
@@ -595,7 +595,7 @@ async def get_presets_triggered_by_webhook(
     # FIXME: add user_id check
     presets = await prisma.models.AgentPreset.prisma().find_many(
         where={"Webhook": {"is": {"id": webhook_id}}},
-        include={"InputPresets": True},
+        include={"InputPresets": True, "Webhook": True},
     )
     return [library_model.LibraryAgentPreset.from_db(preset) for preset in presets]
 
@@ -645,7 +645,7 @@ async def create_preset(
                     ]
                 },
             ),
-            include={"InputPresets": True},
+            include={"InputPresets": True, "Webhook": True},
         )
         return library_model.LibraryAgentPreset.from_db(new_preset)
     except prisma.errors.PrismaError as e:
@@ -751,7 +751,7 @@ async def update_preset(
         updated = await prisma.models.AgentPreset.prisma().update(
             where={"id": preset_id},
             data=update_data,
-            include={"InputPresets": True},
+            include={"InputPresets": True, "Webhook": True},
         )
         if not updated:
             raise ValueError(f"AgentPreset #{preset_id} not found")
@@ -772,7 +772,7 @@ async def set_preset_webhook(
             if webhook_id
             else {"Webhook": {"disconnect": True}}
         ),
-        include={"InputPresets": True},
+        include={"InputPresets": True, "Webhook": True},
     )
     if not preset:
         raise ValueError(f"Preset #{preset_id} not found")
