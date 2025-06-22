@@ -27,10 +27,12 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
-      - name: Enable corepack
-        run: corepack enable
+      - name: Install and enable corepack
+        run: |
+          npm install -g corepack
+          corepack enable
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -47,10 +49,12 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
 
-      - name: Enable corepack
-        run: corepack enable
+      - name: Install and enable corepack
+        run: |
+          npm install -g corepack
+          corepack enable
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -71,12 +75,14 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "21"
+          node-version: "22"
           cache: "pnpm"
           cache-dependency-path: "autogpt_platform/frontend/pnpm-lock.yaml"
 
-      - name: Enable corepack
-        run: corepack enable
+      - name: Install and enable corepack
+        run: |
+          npm install -g corepack
+          corepack enable
 
       - name: Copy default supabase .env
         run: |
@@ -123,12 +129,14 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "pnpm"
           cache-dependency-path: "autogpt_platform/frontend/pnpm-lock.yaml"
 
-      - name: Enable corepack
-        run: corepack enable
+      - name: Install and enable corepack
+        run: |
+          npm install -g corepack
+          corepack enable
 
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
