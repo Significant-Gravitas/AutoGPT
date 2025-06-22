@@ -57,6 +57,8 @@ export default function AgentRunsSelectorList({
     "runs",
   );
 
+  const listItemClasses = "h-28 w-72 lg:h-32 xl:w-80";
+
   return (
     <aside className={cn("flex flex-col gap-4", className)}>
       {allowDraftNewRun && (
@@ -125,7 +127,7 @@ export default function AgentRunsSelectorList({
                 )
                 .map((preset) => (
                   <AgentRunSummaryCard
-                    className="h-28 w-72 lg:h-32 xl:w-80"
+                    className={cn(listItemClasses, "lg:h-auto")}
                     key={preset.id}
                     type="preset"
                     status={preset.is_active ? "active" : "inactive"}
@@ -142,7 +144,7 @@ export default function AgentRunsSelectorList({
                 )
                 .map((run) => (
                   <AgentRunSummaryCard
-                    className="h-28 w-72 lg:h-32 xl:w-80"
+                    className={listItemClasses}
                     key={run.id}
                     type="run"
                     status={agentRunStatusMap[run.status]}
@@ -159,7 +161,7 @@ export default function AgentRunsSelectorList({
               .filter((schedule) => schedule.graph_id === agent.graph_id)
               .map((schedule) => (
                 <AgentRunSummaryCard
-                  className="h-28 w-72 lg:h-32 xl:w-80"
+                  className={listItemClasses}
                   key={schedule.id}
                   type="schedule"
                   status="scheduled" // TODO: implement active/inactive status for schedules
