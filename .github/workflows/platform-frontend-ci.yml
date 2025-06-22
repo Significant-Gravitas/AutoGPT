@@ -86,7 +86,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.pnpm-store
-          key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
           restore-keys: |
             pnpm-store-${{ runner.os }}-
 
@@ -116,7 +116,7 @@ jobs:
           path: |
             .next
             node_modules
-          key: build-${{ runner.os }}-${{ github.sha }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: build-${{ runner.os }}-${{ github.sha }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
 
   test:
     runs-on: ubuntu-latest
@@ -146,7 +146,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.pnpm-store
-          key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
           restore-keys: |
             pnpm-store-${{ runner.os }}-
 
@@ -174,7 +174,7 @@ jobs:
           path: |
             .next
             node_modules
-          key: build-${{ runner.os }}-${{ github.sha }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: build-${{ runner.os }}-${{ github.sha }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
           fail-on-cache-miss: true
 
       - name: Setup .env
@@ -184,7 +184,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-browsers-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          key: playwright-browsers-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
           restore-keys: |
             playwright-browsers-${{ runner.os }}-
 
