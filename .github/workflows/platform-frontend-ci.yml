@@ -27,7 +27,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "21"
+          node-version: "20"
 
       - name: Enable corepack
         run: corepack enable
@@ -47,7 +47,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "21"
+          node-version: "20"
 
       - name: Enable corepack
         run: corepack enable
@@ -123,7 +123,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "21"
+          node-version: "20"
           cache: "pnpm"
           cache-dependency-path: "autogpt_platform/frontend/pnpm-lock.yaml"
 
