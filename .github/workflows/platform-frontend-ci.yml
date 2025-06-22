@@ -104,6 +104,14 @@ jobs:
       - name: Setup .env
         run: cp .env.example .env
 
+      - name: Cache Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: nextjs-cache-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
+          restore-keys: |
+            nextjs-cache-${{ runner.os }}-
+
       - name: Build frontend (production)
         run: pnpm build
         env:
@@ -159,6 +167,14 @@ jobs:
       - name: Run docker compose
         run: |
           docker compose -f ../docker-compose.yml up -d
+
+      - name: Cache Next.js build cache
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: nextjs-cache-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
+          restore-keys: |
+            nextjs-cache-${{ runner.os }}-
 
       - name: Restore build artifacts
         id: restore-build-artifacts
