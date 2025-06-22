@@ -78,7 +78,6 @@ export default defineConfig({
   webServer: {
     command: "next start -p 3000",
     url: "http://localhost:3000/",
-    port: 3000,
     reuseExistingServer: !process.env.CI, // speeds up local runs
     timeout: 60 * 1000, // increased timeout for production builds
     env: {
