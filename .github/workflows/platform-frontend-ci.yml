@@ -76,13 +76,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "pnpm"
-          cache-dependency-path: "autogpt_platform/frontend/pnpm-lock.yaml"
 
       - name: Install and enable corepack
         run: |
           npm install -g corepack
           corepack enable
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
 
       - name: Copy default supabase .env
         run: |
@@ -130,13 +136,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "pnpm"
-          cache-dependency-path: "autogpt_platform/frontend/pnpm-lock.yaml"
 
       - name: Install and enable corepack
         run: |
           npm install -g corepack
           corepack enable
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-store-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            pnpm-store-${{ runner.os }}-
 
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
