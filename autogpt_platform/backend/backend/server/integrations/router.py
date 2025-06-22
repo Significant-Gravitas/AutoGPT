@@ -366,6 +366,7 @@ async def webhook_ingress_generic(
             add_graph_execution(
                 user_id=webhook.user_id,
                 graph_id=preset.graph_id,
+                preset_id=preset.id,
                 graph_version=preset.graph_version,
                 graph_credentials_inputs=preset.credentials,
                 nodes_input_masks={
