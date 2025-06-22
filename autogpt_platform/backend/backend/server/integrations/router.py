@@ -341,6 +341,10 @@ async def webhook_ingress_generic(
         )
     for preset in webhook.triggered_presets:
         logger.debug(f"Webhook-attached preset: {preset}")
+        if not preset.is_active:
+            logger.debug(f"Preset #{preset.id} is inactive")
+            continue
+
         graph = await get_graph(preset.graph_id, preset.graph_version, webhook.user_id)
         if not graph:
             logger.error(

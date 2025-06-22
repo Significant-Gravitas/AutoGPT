@@ -245,6 +245,17 @@ export default function AgentRunDraftView({
     completeOnboardingStep,
   ]);
 
+  const doSetPresetActive = useCallback(
+    async (active: boolean) => {
+      if (!agentPreset) return;
+      const updatedPreset = await api.updateLibraryAgentPreset(agentPreset.id, {
+        is_active: active,
+      });
+      onUpdatePreset(updatedPreset);
+    },
+    [agentPreset, api, onUpdatePreset],
+  );
+
   const doSetupTrigger = useCallback(() => {
     // Setting up a trigger for non-webhook-triggered agents is not supported
     if (!agent.has_external_trigger || !onCreatePreset) return;
@@ -336,10 +347,7 @@ export default function AgentRunDraftView({
                   </>
                 ),
                 variant: "destructive",
-                callback: () =>
-                  api.updateLibraryAgentPreset(agentPreset.id, {
-                    is_active: false,
-                  }),
+                callback: () => doSetPresetActive(false),
               }
             : {
                 label: (
@@ -349,10 +357,7 @@ export default function AgentRunDraftView({
                   </>
                 ),
                 variant: "accent",
-                callback: () =>
-                  api.updateLibraryAgentPreset(agentPreset.id, {
-                    is_active: true,
-                  }),
+                callback: () => doSetPresetActive(true),
               },
       !agentPreset
         ? {
