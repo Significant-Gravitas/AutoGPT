@@ -3,14 +3,6 @@ import { type CookieOptions } from "@supabase/ssr";
 // Detect if we're in a Playwright test environment
 const isTest = process.env.NEXT_PUBLIC_PW_TEST === "true";
 
-export const cookieSettings: Partial<CookieOptions> = isE2ETest
-  ? {}
-  : ({
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      httpOnly: true,
-    } as const);
-
 export const PROTECTED_PAGES = [
   "/monitor",
   "/build",
