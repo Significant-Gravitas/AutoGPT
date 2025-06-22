@@ -148,7 +148,11 @@ export default function AgentRunsSelectorList({
                     key={run.id}
                     type="run"
                     status={agentRunStatusMap[run.status]}
-                    title={agent.name}
+                    title={
+                      (run.preset_id
+                        ? agentPresets.find((p) => p.id == run.preset_id)?.name
+                        : null) ?? agent.name
+                    }
                     timestamp={run.started_at}
                     selected={selectedView.id === run.id}
                     onClick={() => onSelectRun(run.id)}
