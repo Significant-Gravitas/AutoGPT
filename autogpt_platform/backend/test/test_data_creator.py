@@ -152,14 +152,14 @@ async def main():
     print(f"Inserting {NUM_USERS * MAX_AGENTS_PER_USER} user agents")
     for user in users:
         num_agents = random.randint(MIN_AGENTS_PER_USER, MAX_AGENTS_PER_USER)
-        
+
         # Get a shuffled list of graphs to ensure uniqueness per user
         available_graphs = agent_graphs.copy()
         random.shuffle(available_graphs)
-        
+
         # Limit to available unique graphs
         num_agents = min(num_agents, len(available_graphs))
-        
+
         for i in range(num_agents):
             graph = available_graphs[i]  # Use unique graph for each library agent
             user_agent = await db.libraryagent.create(
