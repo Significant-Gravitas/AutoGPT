@@ -153,33 +153,54 @@ export default function AgentRunsPage(): React.ReactElement {
         (_graph) =>
           (graph && graph.version == _graph.version) || setGraph(_graph),
       );
-      api.getGraphExecutions(agent.graph_id).then((agentRuns) => {
-        setAgentRuns(agentRuns);
+      Promise.all([
+        api.getGraphExecutions(agent.graph_id),
+        api.listLibraryAgentPresets({
+          graph_id: agent.graph_id,
+          page_size: 100,
+        }),
+      ]).then(([runs, presets]) => {
+        setAgentRuns(runs);
+        setAgentPresets(presets.presets);
 
-        // Preload the corresponding graph versions
-        new Set(agentRuns.map((run) => run.graph_version)).forEach((version) =>
-          getGraphVersion(agent.graph_id, version),
+        // Preload the corresponding graph versions for the latest 10 runs
+        new Set(runs.slice(0, 10).map((run) => run.graph_version)).forEach(
+          (version) => getGraphVersion(agent.graph_id, version),
         );
       });
-      api
-        .listLibraryAgentPresets({ graph_id: agent.graph_id, page_size: 100 })
-        .then((presets) => setAgentPresets(presets.presets));
     });
   }, [api, agentID, getGraphVersion, graph]);
 
   // On first load: select the latest run
   useEffect(() => {
     // Only for first load or first execution
-    if (selectedView.id || !isFirstLoad || agentRuns.length == 0) return;
-    setIsFirstLoad(false);
+    if (selectedView.id || !isFirstLoad) return;
+    if (agentRuns.length == 0 && agentPresets.length == 0) return;
 
-    const latestRun = agentRuns.reduce((latest, current) => {
-      if (latest.started_at && !current.started_at) return current;
-      else if (!latest.started_at) return latest;
-      return latest.started_at > current.started_at ? latest : current;
-    }, agentRuns[0]);
-    selectView({ type: "run", id: latestRun.id });
-  }, [agentRuns, isFirstLoad, selectedView.id, selectView]);
+    setIsFirstLoad(false);
+    if (agentRuns.length > 0) {
+      // select latest run
+      const latestRun = agentRuns.reduce((latest, current) => {
+        if (latest.started_at && !current.started_at) return current;
+        else if (!latest.started_at) return latest;
+        return latest.started_at > current.started_at ? latest : current;
+      }, agentRuns[0]);
+      selectRun(latestRun.id);
+    } else {
+      // select top preset
+      const latestPreset = agentPresets.toSorted(
+        (a, b) => b.updated_at.getTime() - a.updated_at.getTime(),
+      )[0];
+      selectPreset(latestPreset.id);
+    }
+  }, [
+    isFirstLoad,
+    selectedView.id,
+    agentRuns,
+    agentPresets,
+    selectRun,
+    selectPreset,
+  ]);
 
   // Initial load
   useEffect(() => {
