@@ -131,7 +131,19 @@ class LibraryAgent(pydantic.BaseModel):
             trigger_setup_info=(
                 LibraryAgentTriggerInfo(
                     provider=trigger_block.webhook_config.provider,
-                    config_schema=trigger_block.input_schema.jsonschema(),
+                    config_schema={
+                        **(json_schema := trigger_block.input_schema.jsonschema()),
+                        "properties": {
+                            pn: sub_schema
+                            for pn, sub_schema in json_schema["properties"].items()
+                            if not is_credentials_field_name(pn)
+                        },
+                        "required": [
+                            pn
+                            for pn in json_schema["required"] or []
+                            if not is_credentials_field_name(pn)
+                        ],
+                    },
                     credentials_input_name=next(
                         iter(trigger_block.input_schema.get_credentials_fields()), None
                     ),
