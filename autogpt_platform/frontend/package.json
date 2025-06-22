@@ -10,8 +10,8 @@
     "lint": "next lint && prettier --check .",
     "format": "prettier --write .",
     "type-check": "tsc --noEmit",
-    "test": "start-server-and-test 'NEXT_PUBLIC_PW_TEST=true pnpm dev' http://localhost:3000 'playwright test'",
-    "test-ui": "start-server-and-test 'NEXT_PUBLIC_PW_TEST=true pnpm dev' http://localhost:3000 'playwright test --ui'",
+    "test": "playwright test",
+    "test-ui": "playwright test --ui",
     "test:no-build": "playwright test",
     "gentests": "playwright codegen http://localhost:3000",
     "storybook": "storybook dev -p 6006",
@@ -117,7 +117,6 @@
     "prettier": "3.5.3",
     "prettier-plugin-tailwindcss": "0.6.12",
     "require-in-the-middle": "7.5.2",
-    "start-server-and-test": "2.0.12",
     "storybook": "9.0.12",
     "tailwindcss": "3.4.17",
     "typescript": "5.8.3"

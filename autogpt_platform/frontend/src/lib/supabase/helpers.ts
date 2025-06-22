@@ -18,10 +18,14 @@ export const STORAGE_KEYS = {
 } as const;
 
 export function getCookieSettings(): Partial<CookieOptions> {
-  if (isTest) return {};
+  if (isTest)
+    return {
+      secure: false,
+      sameSite: "lax",
+    };
 
   return {
-    secure: process.env.NODE_ENV === "production",
+    secure: true,
     sameSite: "lax",
   } as const;
 }
