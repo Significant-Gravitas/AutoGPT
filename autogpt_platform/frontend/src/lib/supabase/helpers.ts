@@ -1,4 +1,6 @@
-// Session management constants and utilities
+import { type CookieOptions } from "@supabase/ssr";
+
+const isTest = process.env.NEXT_PUBLIC_PW_TEST === "true";
 
 export const PROTECTED_PAGES = [
   "/monitor",
@@ -14,6 +16,19 @@ export const ADMIN_PAGES = ["/admin"] as const;
 export const STORAGE_KEYS = {
   LOGOUT: "supabase-logout",
 } as const;
+
+export function getCookieSettings(): Partial<CookieOptions> {
+  if (isTest)
+    return {
+      secure: false,
+      sameSite: "lax",
+    };
+
+  return {
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+  } as const;
+}
 
 // Page protection utilities
 export function isProtectedPage(pathname: string): boolean {
