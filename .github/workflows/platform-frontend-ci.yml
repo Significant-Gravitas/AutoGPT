@@ -32,7 +32,7 @@ jobs:
       - name: Cache pnpm
         uses: actions/cache@v4
         with:
-          path: ~/.local/share/pnpm
+          path: ~/.pnpm-store
           key: pnpm-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
           restore-keys: |
             pnpm-${{ runner.os }}-
@@ -41,6 +41,7 @@ jobs:
         run: |
           corepack enable
           corepack prepare pnpm --activate
+          pnpm config set store-dir ~/.pnpm-store
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -62,7 +63,7 @@ jobs:
       - name: Cache pnpm
         uses: actions/cache@v4
         with:
-          path: ~/.local/share/pnpm
+          path: ~/.pnpm-store
           key: pnpm-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
           restore-keys: |
             pnpm-${{ runner.os }}-
@@ -71,6 +72,7 @@ jobs:
         run: |
           corepack enable
           corepack prepare pnpm --activate
+          pnpm config set store-dir ~/.pnpm-store
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -96,7 +98,7 @@ jobs:
       - name: Cache pnpm
         uses: actions/cache@v4
         with:
-          path: ~/.local/share/pnpm
+          path: ~/.pnpm-store
           key: pnpm-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
           restore-keys: |
             pnpm-${{ runner.os }}-
@@ -105,6 +107,7 @@ jobs:
         run: |
           corepack enable
           corepack prepare pnpm --activate
+          pnpm config set store-dir ~/.pnpm-store
 
       - name: Copy default supabase .env
         run: |
@@ -119,14 +122,6 @@ jobs:
 
       - name: Setup .env
         run: cp .env.example .env
-
-      - name: Cache Next.js build cache
-        uses: actions/cache@v4
-        with:
-          path: .next/cache
-          key: nextjs-cache-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
-          restore-keys: |
-            nextjs-cache-${{ runner.os }}-
 
       - name: Build frontend (production)
         run: pnpm build
@@ -165,7 +160,7 @@ jobs:
       - name: Cache pnpm
         uses: actions/cache@v4
         with:
-          path: ~/.local/share/pnpm
+          path: ~/.pnpm-store
           key: pnpm-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
           restore-keys: |
             pnpm-${{ runner.os }}-
@@ -174,6 +169,7 @@ jobs:
         run: |
           corepack enable
           corepack prepare pnpm --activate
+          pnpm config set store-dir ~/.pnpm-store
 
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
@@ -204,7 +200,10 @@ jobs:
           key: build-${{ runner.os }}-${{ github.sha }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
           restore-keys: |
             build-${{ runner.os }}-
-          fail-on-cache-miss: true
+
+      - name: Install dependencies (fallback)
+        if: steps.restore-build-artifacts.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
 
       - name: Setup .env
         run: cp .env.example .env
@@ -213,8 +212,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-browsers-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
+          key: playwright-browsers-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
           restore-keys: |
+            playwright-browsers-${{ runner.os }}-${{ matrix.browser }}-
             playwright-browsers-${{ runner.os }}-
 
       - name: Install Browser '${{ matrix.browser }}'
