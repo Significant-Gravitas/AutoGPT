@@ -8,10 +8,8 @@ from fastapi import Request
 from strenum import StrEnum
 
 import backend.data.integrations as integrations
-from backend.data.graph import get_nodes_triggered_by_webhook
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
-from backend.server.v2.library.db import get_presets_triggered_by_webhook
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Config
 
@@ -84,10 +82,8 @@ class BaseWebhooksManager(ABC, Generic[WT]):
     async def prune_webhook_if_dangling(
         self, webhook_id: str, credentials: Optional[Credentials]
     ) -> bool:
-        webhook = await integrations.get_webhook(webhook_id)
-        triggered_nodes = await get_nodes_triggered_by_webhook(webhook_id)
-        triggered_presets = await get_presets_triggered_by_webhook(webhook_id)
-        if triggered_nodes or triggered_presets:
+        webhook = await integrations.get_webhook(webhook_id, include_relations=True)
+        if webhook.triggered_nodes or webhook.triggered_presets:
             # Don't prune webhook if in use
             return False
 

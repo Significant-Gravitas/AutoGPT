@@ -6,11 +6,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Reques
 from pydantic import BaseModel, Field
 from starlette.status import HTTP_404_NOT_FOUND
 
-from backend.data.graph import (
-    get_graph,
-    get_nodes_triggered_by_webhook,
-    set_node_webhook,
-)
+from backend.data.graph import get_graph, set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
     get_all_webhooks_by_creds,
@@ -29,10 +25,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
-from backend.server.v2.library.db import (
-    get_presets_triggered_by_webhook,
-    set_preset_webhook,
-)
+from backend.server.v2.library.db import set_preset_webhook
 from backend.util.exceptions import NeedConfirmation, NotFoundError
 from backend.util.settings import Settings
 
@@ -307,7 +300,7 @@ async def webhook_ingress_generic(
     logger.debug(f"Received {provider.value} webhook ingress for ID {webhook_id}")
     webhook_manager = get_webhook_manager(provider)
     try:
-        webhook = await get_webhook(webhook_id)
+        webhook = await get_webhook(webhook_id, include_relations=True)
     except NotFoundError as e:
         logger.warning(
             "Webhook payload received for unknown webhook %s. Confirm the webhook ID.",
@@ -333,13 +326,11 @@ async def webhook_ingress_generic(
     await publish_webhook_event(webhook_event)
     logger.debug(f"Webhook event published: {webhook_event}")
 
-    triggered_nodes = await get_nodes_triggered_by_webhook(webhook_id)
-    triggered_presets = await get_presets_triggered_by_webhook(webhook_id)
-    if not (triggered_nodes or triggered_presets):
+    if not (webhook.triggered_nodes or webhook.triggered_presets):
         return
 
     executions: list[Awaitable] = []
-    for node in triggered_nodes or []:
+    for node in webhook.triggered_nodes:
         logger.debug(f"Webhook-attached node: {node}")
         if not node.is_triggered_by_event_type(event_type):
             logger.debug(f"Node #{node.id} doesn't trigger on event {event_type}")
@@ -353,7 +344,7 @@ async def webhook_ingress_generic(
                 inputs={f"webhook_{webhook_id}_payload": payload},
             )
         )
-    for preset in triggered_presets or []:
+    for preset in webhook.triggered_presets:
         logger.debug(f"Webhook-attached preset: {preset}")
         graph = await get_graph(preset.graph_id, preset.graph_version, webhook.user_id)
         if not graph:
@@ -435,20 +426,16 @@ async def remove_all_webhooks_for_credentials(
     Raises:
         NeedConfirmation: If any of the webhooks are still in use and `force` is `False`
     """
-    webhooks = await get_all_webhooks_by_creds(credentials.id)
-    linked_nodes, linked_presets = {}, {}
-    for webhook in webhooks:
-        linked_nodes[webhook.id] = await get_nodes_triggered_by_webhook(webhook.id)
-        linked_presets[webhook.id] = await get_presets_triggered_by_webhook(webhook.id)
-        if (linked_nodes[webhook.id] or linked_presets[webhook.id]) and not force:
-            raise NeedConfirmation(
-                "Some webhooks linked to these credentials are still in use by an agent"
-            )
+    webhooks = await get_all_webhooks_by_creds(credentials.id, include_relations=True)
+    if any(w.triggered_nodes or w.triggered_presets for w in webhooks) and not force:
+        raise NeedConfirmation(
+            "Some webhooks linked to these credentials are still in use by an agent"
+        )
     for webhook in webhooks:
         # Unlink all nodes & presets
-        for node in linked_nodes[webhook.id]:
+        for node in webhook.triggered_nodes:
             await set_node_webhook(node.id, None)
-        for preset in linked_presets[webhook.id]:
+        for preset in webhook.triggered_presets:
             await set_preset_webhook(preset.id, None)
 
         # Prune the webhook
