@@ -6,7 +6,11 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Reques
 from pydantic import BaseModel, Field
 from starlette.status import HTTP_404_NOT_FOUND
 
-from backend.data.graph import get_graph, set_node_webhook
+from backend.data.graph import (
+    get_graph,
+    get_nodes_triggered_by_webhook,
+    set_node_webhook,
+)
 from backend.data.integrations import (
     WebhookEvent,
     get_all_webhooks_by_creds,
@@ -25,6 +29,10 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
+from backend.server.v2.library.db import (
+    get_presets_triggered_by_webhook,
+    set_preset_webhook,
+)
 from backend.util.exceptions import NeedConfirmation, NotFoundError
 from backend.util.settings import Settings
 
@@ -325,11 +333,13 @@ async def webhook_ingress_generic(
     await publish_webhook_event(webhook_event)
     logger.debug(f"Webhook event published: {webhook_event}")
 
-    if not (webhook.attached_nodes or webhook.attached_presets):
+    triggered_nodes = await get_nodes_triggered_by_webhook(webhook_id)
+    triggered_presets = await get_presets_triggered_by_webhook(webhook_id)
+    if not (triggered_nodes or triggered_presets):
         return
 
     executions: list[Awaitable] = []
-    for node in webhook.attached_nodes or []:
+    for node in triggered_nodes or []:
         logger.debug(f"Webhook-attached node: {node}")
         if not node.is_triggered_by_event_type(event_type):
             logger.debug(f"Node #{node.id} doesn't trigger on event {event_type}")
@@ -343,7 +353,7 @@ async def webhook_ingress_generic(
                 inputs={f"webhook_{webhook_id}_payload": payload},
             )
         )
-    for preset in webhook.attached_presets or []:
+    for preset in triggered_presets or []:
         logger.debug(f"Webhook-attached preset: {preset}")
         graph = await get_graph(preset.graph_id, preset.graph_version, webhook.user_id)
         if not graph:
@@ -426,14 +436,20 @@ async def remove_all_webhooks_for_credentials(
         NeedConfirmation: If any of the webhooks are still in use and `force` is `False`
     """
     webhooks = await get_all_webhooks_by_creds(credentials.id)
-    if any(w.attached_nodes for w in webhooks) and not force:
-        raise NeedConfirmation(
-            "Some webhooks linked to these credentials are still in use by an agent"
-        )
+    linked_nodes, linked_presets = {}, {}
     for webhook in webhooks:
-        # Unlink all nodes
-        for node in webhook.attached_nodes or []:
+        linked_nodes[webhook.id] = await get_nodes_triggered_by_webhook(webhook.id)
+        linked_presets[webhook.id] = await get_presets_triggered_by_webhook(webhook.id)
+        if (linked_nodes[webhook.id] or linked_presets[webhook.id]) and not force:
+            raise NeedConfirmation(
+                "Some webhooks linked to these credentials are still in use by an agent"
+            )
+    for webhook in webhooks:
+        # Unlink all nodes & presets
+        for node in linked_nodes[webhook.id]:
             await set_node_webhook(node.id, None)
+        for preset in linked_presets[webhook.id]:
+            await set_preset_webhook(preset.id, None)
 
         # Prune the webhook
         webhook_manager = get_webhook_manager(ProviderName(credentials.provider))

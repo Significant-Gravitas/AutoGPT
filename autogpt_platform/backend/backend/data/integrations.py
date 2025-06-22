@@ -1,23 +1,17 @@
 import logging
-from typing import TYPE_CHECKING, AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional
 
 from prisma import Json
 from prisma.models import IntegrationWebhook
 from prisma.types import IntegrationWebhookCreateInput, IntegrationWebhookWhereInput
 from pydantic import Field, computed_field
 
-from backend.data.includes import INTEGRATION_WEBHOOK_INCLUDE
 from backend.data.queue import AsyncRedisEventBus
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.utils import webhook_ingress_url
 from backend.util.exceptions import NotFoundError
 
 from .db import BaseDbModel
-
-if TYPE_CHECKING:
-    from backend.server.v2.library.model import LibraryAgentPreset
-
-    from .graph import NodeModel
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +28,6 @@ class Webhook(BaseDbModel):
 
     provider_webhook_id: str
 
-    attached_nodes: Optional[list["NodeModel"]] = None
-    attached_presets: Optional[list["LibraryAgentPreset"]] = None
-
     @computed_field
     @property
     def url(self) -> str:
@@ -44,10 +35,6 @@ class Webhook(BaseDbModel):
 
     @staticmethod
     def from_db(webhook: IntegrationWebhook):
-        from backend.server.v2.library.model import LibraryAgentPreset
-
-        from .graph import NodeModel
-
         return Webhook(
             id=webhook.id,
             user_id=webhook.userId,
@@ -59,16 +46,6 @@ class Webhook(BaseDbModel):
             config=dict(webhook.config),
             secret=webhook.secret,
             provider_webhook_id=webhook.providerWebhookId,
-            attached_nodes=(
-                [NodeModel.from_db(node) for node in webhook.AgentNodes]
-                if webhook.AgentNodes is not None
-                else None
-            ),
-            attached_presets=(
-                [LibraryAgentPreset.from_db(preset) for preset in webhook.AgentPresets]
-                if webhook.AgentPresets is not None
-                else None
-            ),
         )
 
 
@@ -102,7 +79,6 @@ async def get_webhook(webhook_id: str) -> Webhook:
     """
     webhook = await IntegrationWebhook.prisma().find_unique(
         where={"id": webhook_id},
-        include=INTEGRATION_WEBHOOK_INCLUDE,
     )
     if not webhook:
         raise NotFoundError(f"Webhook #{webhook_id} not found")
@@ -115,7 +91,6 @@ async def get_all_webhooks_by_creds(credentials_id: str) -> list[Webhook]:
         raise ValueError("credentials_id must not be empty")
     webhooks = await IntegrationWebhook.prisma().find_many(
         where={"credentialsId": credentials_id},
-        include=INTEGRATION_WEBHOOK_INCLUDE,
     )
     return [Webhook.from_db(webhook) for webhook in webhooks]
 
@@ -131,7 +106,6 @@ async def find_webhook_by_credentials_and_props(
             "resource": resource,
             "events": {"has_every": events},
         },
-        include=INTEGRATION_WEBHOOK_INCLUDE,
     )
     return Webhook.from_db(webhook) if webhook else None
 
@@ -164,7 +138,6 @@ async def find_webhook_by_graph_and_props(
 
     webhook = await IntegrationWebhook.prisma().find_first(
         where=where_clause,
-        include=INTEGRATION_WEBHOOK_INCLUDE,
     )
     return Webhook.from_db(webhook) if webhook else None
 
@@ -174,7 +147,6 @@ async def update_webhook_config(webhook_id: str, updated_config: dict) -> Webhoo
     _updated_webhook = await IntegrationWebhook.prisma().update(
         where={"id": webhook_id},
         data={"config": Json(updated_config)},
-        include=INTEGRATION_WEBHOOK_INCLUDE,
     )
     if _updated_webhook is None:
         raise ValueError(f"Webhook #{webhook_id} not found")

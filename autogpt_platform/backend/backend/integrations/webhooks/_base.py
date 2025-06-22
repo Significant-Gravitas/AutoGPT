@@ -7,9 +7,11 @@ from uuid import uuid4
 from fastapi import Request
 from strenum import StrEnum
 
-from backend.data import integrations
+import backend.data.integrations as integrations
+from backend.data.graph import get_nodes_triggered_by_webhook
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
+from backend.server.v2.library.db import get_presets_triggered_by_webhook
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Config
 
@@ -83,11 +85,9 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         self, webhook_id: str, credentials: Optional[Credentials]
     ) -> bool:
         webhook = await integrations.get_webhook(webhook_id)
-        if webhook.attached_nodes is None or webhook.attached_presets is None:
-            raise ValueError(
-                "Error retrieving webhook including attached nodes/presets"
-            )
-        if webhook.attached_nodes or webhook.attached_presets:
+        triggered_nodes = await get_nodes_triggered_by_webhook(webhook_id)
+        triggered_presets = await get_presets_triggered_by_webhook(webhook_id)
+        if triggered_nodes or triggered_presets:
             # Don't prune webhook if in use
             return False
 

@@ -589,6 +589,17 @@ async def get_preset(
         raise store_exceptions.DatabaseError("Failed to fetch preset") from e
 
 
+async def get_presets_triggered_by_webhook(
+    webhook_id: str,
+) -> list[library_model.LibraryAgentPreset]:
+    # FIXME: add user_id check
+    presets = await prisma.models.AgentPreset.prisma().find_many(
+        where={"Webhook": {"is": {"id": webhook_id}}},
+        include={"InputPresets": True},
+    )
+    return [library_model.LibraryAgentPreset.from_db(preset) for preset in presets]
+
+
 async def create_preset(
     user_id: str,
     preset: library_model.LibraryAgentPresetCreatable,
@@ -753,6 +764,7 @@ async def update_preset(
 async def set_preset_webhook(
     preset_id: str, webhook_id: str | None
 ) -> library_model.LibraryAgentPreset:
+    # FIXME: add user_id check
     preset = await prisma.models.AgentPreset.prisma().update(
         where={"id": preset_id},
         data=(

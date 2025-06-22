@@ -599,6 +599,7 @@ async def get_node(node_id: str) -> NodeModel:
 
 
 async def set_node_webhook(node_id: str, webhook_id: str | None) -> NodeModel:
+    # FIXME: add user_id check
     node = await AgentNode.prisma().update(
         where={"id": node_id},
         data=(
@@ -611,6 +612,15 @@ async def set_node_webhook(node_id: str, webhook_id: str | None) -> NodeModel:
     if not node:
         raise ValueError(f"Node #{node_id} not found")
     return NodeModel.from_db(node)
+
+
+async def get_nodes_triggered_by_webhook(webhook_id: str) -> list[NodeModel]:
+    # FIXME: add user_id check
+    nodes = await AgentNode.prisma().find_many(
+        where={"Webhook": {"is": {"id": webhook_id}}},
+        include=AGENT_NODE_INCLUDE,
+    )
+    return [NodeModel.from_db(node) for node in nodes]
 
 
 async def get_graphs(
