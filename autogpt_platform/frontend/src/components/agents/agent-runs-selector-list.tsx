@@ -14,6 +14,7 @@ import {
 } from "@/lib/autogpt-server-api";
 
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/agptui/Button";
 import { Badge } from "@/components/ui/badge";
 
@@ -127,7 +128,10 @@ export default function AgentRunsSelectorList({
                 )
                 .map((preset) => (
                   <AgentRunSummaryCard
-                    className={cn(listItemClasses, "lg:h-auto")}
+                    className={cn(
+                      listItemClasses,
+                      "border-2 border-dashed p-0 lg:h-auto",
+                    )}
                     key={preset.id}
                     type="preset"
                     status={preset.is_active ? "active" : "inactive"}
@@ -138,6 +142,7 @@ export default function AgentRunsSelectorList({
                     onDelete={() => onDeletePreset(preset.id)}
                   />
                 ))}
+              {agentPresets && <Separator className="my-1" />}
               {agentRuns
                 .toSorted(
                   (a, b) => b.started_at.getTime() - a.started_at.getTime(),

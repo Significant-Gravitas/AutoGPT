@@ -1,11 +1,11 @@
 import React from "react";
 import moment from "moment";
-import { MoreVertical } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-import { Button } from "@/components/ui/button";
+import { Link2Icon, Link2OffIcon, MoreVertical } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -67,7 +67,20 @@ export default function AgentRunSummaryCard({
         {(type == "run" || type == "schedule") && (
           <AgentRunStatusChip status={status} />
         )}
-        {type == "preset" && <AgentStatusChip status={status} />}
+        {type == "preset" && (
+          <div className="flex items-center justify-between">
+            <AgentStatusChip status={status} />
+
+            <div className="flex items-center text-sm text-zinc-400">
+              {status == "inactive" ? (
+                <Link2OffIcon className="mr-1 size-4" />
+              ) : (
+                <Link2Icon className="mr-1 size-4" />
+              )}{" "}
+              Trigger
+            </div>
+          </div>
+        )}
 
         <div className="mt-5 flex items-center justify-between">
           <h3 className="truncate pr-2 text-base font-medium text-neutral-900">
