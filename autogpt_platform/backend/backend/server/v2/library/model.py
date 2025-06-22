@@ -274,8 +274,6 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
 
         if preset.InputPresets is None:
             raise ValueError("InputPresets must be included in AgentPreset query")
-        if preset.webhookId and not preset.Webhook:
-            raise ValueError("Webhook must be included in AgentPreset query")
 
         input_data: block_model.BlockInput = {}
         input_credentials: dict[str, CredentialsMetaInput] = {}

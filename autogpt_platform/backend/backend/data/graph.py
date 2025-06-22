@@ -14,7 +14,7 @@ from prisma.types import (
     AgentNodeLinkCreateInput,
     StoreListingVersionWhereInput,
 )
-from pydantic import create_model
+from pydantic import JsonValue, create_model
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -394,13 +394,21 @@ class GraphModel(Graph):
             if (graph_id := node.input_default.get("graph_id")) in graph_id_map:
                 node.input_default["graph_id"] = graph_id_map[graph_id]
 
-    def validate_graph(self, for_run: bool = False):
-        self._validate_graph(self, for_run)
+    def validate_graph(
+        self,
+        for_run: bool = False,
+        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+    ):
+        self._validate_graph(self, for_run, nodes_input_masks)
         for sub_graph in self.sub_graphs:
-            self._validate_graph(sub_graph, for_run)
+            self._validate_graph(sub_graph, for_run, nodes_input_masks)
 
     @staticmethod
-    def _validate_graph(graph: BaseGraph, for_run: bool = False):
+    def _validate_graph(
+        graph: BaseGraph,
+        for_run: bool = False,
+        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+    ):
         def is_tool_pin(name: str) -> bool:
             return name.startswith("tools_^_")
 
@@ -427,20 +435,18 @@ class GraphModel(Graph):
             if (block := nodes_block.get(node.id)) is None:
                 raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
 
+            node_input_mask = (
+                nodes_input_masks.get(node.id, {}) if nodes_input_masks else {}
+            )
             provided_inputs = set(
                 [sanitize(name) for name in node.input_default]
                 + [sanitize(link.sink_name) for link in input_links.get(node.id, [])]
+                + ([name for name in node_input_mask] if node_input_mask else [])
             )
             InputSchema = block.input_schema
             for name in (required_fields := InputSchema.get_required_fields()):
                 if (
                     name not in provided_inputs
-                    # Webhook payload is passed in by ExecutionManager
-                    and not (
-                        name == "payload"
-                        and block.block_type
-                        in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
-                    )
                     # Checking availability of credentials is done by ExecutionManager
                     and name not in InputSchema.get_credentials_fields()
                     # Validate only I/O nodes, or validate everything when executing
@@ -473,10 +479,18 @@ class GraphModel(Graph):
 
             def has_value(node: Node, name: str):
                 return (
-                    name in node.input_default
-                    and node.input_default[name] is not None
-                    and str(node.input_default[name]).strip() != ""
-                ) or (name in input_fields and input_fields[name].default is not None)
+                    (
+                        name in node.input_default
+                        and node.input_default[name] is not None
+                        and str(node.input_default[name]).strip() != ""
+                    )
+                    or (name in input_fields and input_fields[name].default is not None)
+                    or (
+                        name in node_input_mask
+                        and node_input_mask[name] is not None
+                        and str(node_input_mask[name]).strip() != ""
+                    )
+                )
 
             # Validate dependencies between fields
             for field_name in input_fields.keys():

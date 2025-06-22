@@ -550,7 +550,7 @@ async def construct_node_execution_input(
         list[tuple[str, BlockInput]]: A list of tuples, each containing the node ID and
             the corresponding input data for that node.
     """
-    graph.validate_graph(for_run=True)
+    graph.validate_graph(for_run=True, nodes_input_masks=nodes_input_masks)
     await _validate_node_input_credentials(graph, user_id, nodes_input_masks)
 
     nodes_input = []
@@ -567,18 +567,6 @@ async def construct_node_execution_input(
             input_name = node.input_default.get("name")
             if input_name and input_name in graph_inputs:
                 input_data = {"value": graph_inputs[input_name]}
-
-        # Extract webhook payload, and assign it to the input pin
-        webhook_payload_key = f"webhook_{node.webhook_id}_payload"
-        if (
-            block.block_type in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
-            and node.webhook_id
-        ):
-            if webhook_payload_key not in graph_inputs:
-                raise ValueError(
-                    f"Node {block.name} #{node.id} webhook payload is missing"
-                )
-            input_data = {"payload": graph_inputs[webhook_payload_key]}
 
         # Apply node input overrides
         if nodes_input_masks and (node_input_mask := nodes_input_masks.get(node.id)):
@@ -742,7 +730,7 @@ async def stop_graph_execution(
 async def add_graph_execution(
     graph_id: str,
     user_id: str,
-    inputs: BlockInput,
+    inputs: Optional[BlockInput] = None,
     preset_id: Optional[str] = None,
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[dict[str, CredentialsMetaInput]] = None,
@@ -792,18 +780,19 @@ async def add_graph_execution(
         ),
         nodes_input_masks or {},
     )
+    starting_nodes_input = await construct_node_execution_input(
+        graph=graph,
+        user_id=user_id,
+        graph_inputs=inputs or {},
+        nodes_input_masks=nodes_input_masks,
+    )
 
     if use_db_query:
         graph_exec = await create_graph_execution(
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph.version,
-            starting_nodes_input=await construct_node_execution_input(
-                graph=graph,
-                user_id=user_id,
-                graph_inputs=inputs,
-                nodes_input_masks=nodes_input_masks,
-            ),
+            starting_nodes_input=starting_nodes_input,
             preset_id=preset_id,
         )
     else:
@@ -811,12 +800,7 @@ async def add_graph_execution(
             user_id=user_id,
             graph_id=graph_id,
             graph_version=graph.version,
-            starting_nodes_input=await construct_node_execution_input(
-                graph=graph,
-                user_id=user_id,
-                graph_inputs=inputs,
-                nodes_input_masks=nodes_input_masks,
-            ),
+            starting_nodes_input=starting_nodes_input,
             preset_id=preset_id,
         )
 

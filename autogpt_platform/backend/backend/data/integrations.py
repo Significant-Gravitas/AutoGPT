@@ -123,7 +123,7 @@ async def get_webhook(
     )
     if not webhook:
         raise NotFoundError(f"Webhook #{webhook_id} not found")
-    return Webhook.from_db(webhook)
+    return (WebhookWithRelations if include_relations else Webhook).from_db(webhook)
 
 
 @overload
@@ -146,7 +146,10 @@ async def get_all_webhooks_by_creds(
         where={"credentialsId": credentials_id},
         include=INTEGRATION_WEBHOOK_INCLUDE if include_relations else None,
     )
-    return [Webhook.from_db(webhook) for webhook in webhooks]
+    return [
+        (WebhookWithRelations if include_relations else Webhook).from_db(webhook)
+        for webhook in webhooks
+    ]
 
 
 async def find_webhook_by_credentials_and_props(

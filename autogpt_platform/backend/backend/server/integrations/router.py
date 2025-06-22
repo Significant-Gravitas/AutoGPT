@@ -14,12 +14,7 @@ from backend.data.integrations import (
     publish_webhook_event,
     wait_for_webhook_event,
 )
-from backend.data.model import (
-    Credentials,
-    CredentialsType,
-    OAuth2Credentials,
-    is_credentials_field_name,
-)
+from backend.data.model import Credentials, CredentialsType, OAuth2Credentials
 from backend.executor.utils import add_graph_execution
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
@@ -341,7 +336,7 @@ async def webhook_ingress_generic(
                 user_id=webhook.user_id,
                 graph_id=node.graph_id,
                 graph_version=node.graph_version,
-                inputs={f"webhook_{webhook_id}_payload": payload},
+                nodes_input_masks={node.id: {"payload": payload}},
             )
         )
     for preset in webhook.triggered_presets:
@@ -367,20 +362,15 @@ async def webhook_ingress_generic(
             continue
         logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
 
-        graph_credentials_inputs = {
-            k: v for k, v in preset.inputs.items() if is_credentials_field_name(k)
-        }
-        trigger_block_input = {
-            k: v for k, v in preset.inputs.items() if not is_credentials_field_name(k)
-        }
         executions.append(
             add_graph_execution(
                 user_id=webhook.user_id,
                 graph_id=preset.graph_id,
                 graph_version=preset.graph_version,
-                inputs={f"webhook_{webhook_id}_payload": payload},
-                graph_credentials_inputs=graph_credentials_inputs,
-                nodes_input_masks={trigger_node.id: trigger_block_input},
+                graph_credentials_inputs=preset.credentials,
+                nodes_input_masks={
+                    trigger_node.id: {**preset.inputs, "payload": payload}
+                },
             )
         )
     asyncio.gather(*executions)
