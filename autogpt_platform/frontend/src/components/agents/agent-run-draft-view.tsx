@@ -1,5 +1,5 @@
 "use client";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
@@ -50,21 +50,26 @@ export default function AgentRunDraftView({
   const { toast } = useToast();
   const toastOnFail = useToastOnFail();
 
-  const [inputValues, setInputValues] = useState<Record<string, any>>(
-    agentPreset?.inputs ?? {},
-  );
+  const [inputValues, setInputValues] = useState<Record<string, any>>({});
   const [inputCredentials, setInputCredentials] = useState<
     Record<string, CredentialsMetaInput>
-  >(agentPreset?.credentials ?? {});
-  const [presetName, setPresetName] = useState<string>(agentPreset?.name ?? "");
-  const [presetDescription, setPresetDescription] = useState<string>(
-    agentPreset?.description ?? "",
-  );
+  >({});
+  const [presetName, setPresetName] = useState<string>("");
+  const [presetDescription, setPresetDescription] = useState<string>("");
   const [changedPresetAttributes, setChangedPresetAttributes] = useState<
     Set<keyof LibraryAgentPresetUpdatable>
   >(new Set());
   const { state: onboardingState, completeStep: completeOnboardingStep } =
     useOnboarding();
+
+  // Update values if agentPreset parameter is changed
+  useEffect(() => {
+    setInputValues(agentPreset?.inputs ?? {});
+    setInputCredentials(agentPreset?.credentials ?? {});
+    setPresetName(agentPreset?.name ?? "");
+    setPresetDescription(agentPreset?.description ?? "");
+    setChangedPresetAttributes(new Set());
+  }, [agentPreset]);
 
   const agentInputSchema = useMemo(
     () =>
