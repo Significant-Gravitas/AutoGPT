@@ -1,5 +1,5 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
-import { cookieSettings } from "../helpers";
+import { getCookieSettings } from "../helpers";
 
 type Cookies = { name: string; value: string; options?: CookieOptions }[];
 
@@ -23,7 +23,7 @@ export async function getServerSupabase() {
               cookiesToSet.forEach(({ name, value, options }) => {
                 cookieStore.set(name, value, {
                   ...options,
-                  ...cookieSettings,
+                  ...getCookieSettings(),
                 });
               });
             } catch {

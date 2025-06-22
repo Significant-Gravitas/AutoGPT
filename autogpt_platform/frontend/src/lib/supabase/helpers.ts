@@ -1,8 +1,7 @@
 import { type CookieOptions } from "@supabase/ssr";
 
 // Detect if we're in a Playwright test environment
-const isE2ETest =
-  typeof process !== "undefined" && process.env.NODE_ENV === "test";
+const isTest = process.env.NEXT_PUBLIC_PW_TEST === "true";
 
 export const cookieSettings: Partial<CookieOptions> = isE2ETest
   ? {}
@@ -26,6 +25,19 @@ export const ADMIN_PAGES = ["/admin"] as const;
 export const STORAGE_KEYS = {
   LOGOUT: "supabase-logout",
 } as const;
+
+export function getCookieSettings(): Partial<CookieOptions> {
+  if (isTest)
+    return {
+      secure: false,
+      sameSite: "lax",
+    };
+
+  return {
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+  } as const;
+}
 
 // Page protection utilities
 export function isProtectedPage(pathname: string): boolean {
