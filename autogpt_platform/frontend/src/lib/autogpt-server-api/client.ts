@@ -17,7 +17,6 @@ import type {
   CredentialsDeleteResponse,
   CredentialsMetaInput,
   CredentialsMetaResponse,
-  CredentialsProviderName,
   Graph,
   GraphCreatable,
   GraphExecution,
