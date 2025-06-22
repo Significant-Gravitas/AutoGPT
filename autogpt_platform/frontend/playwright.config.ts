@@ -23,8 +23,6 @@ export default defineConfig({
   workers: process.env.CI ? 2 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-re porters */
   reporter: [["html"], ["line"]],
-  /* Global setup to create test users */
-  globalSetup: require.resolve("./src/tests/global-setup.ts"),
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
