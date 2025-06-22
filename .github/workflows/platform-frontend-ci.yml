@@ -142,14 +142,6 @@ jobs:
           npm install -g corepack
           corepack enable
 
-      - name: Cache pnpm store
-        uses: actions/cache@v4
-        with:
-          path: ~/.pnpm-store
-          key: pnpm-store-${{ runner.os }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
-          restore-keys: |
-            pnpm-store-${{ runner.os }}-
-
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
         with:
@@ -169,13 +161,26 @@ jobs:
           docker compose -f ../docker-compose.yml up -d
 
       - name: Restore build artifacts
+        id: restore-build-artifacts
         uses: actions/cache/restore@v4
         with:
           path: |
             .next
             node_modules
           key: build-${{ runner.os }}-${{ github.sha }}-${{ hashFiles('autogpt_platform/frontend/pnpm-lock.yaml') }}
-          fail-on-cache-miss: true
+          restore-keys: |
+            build-${{ runner.os }}-
+          fail-on-cache-miss: false
+
+      - name: Install dependencies (fallback)
+        if: steps.restore-build-artifacts.outputs.cache-hit != 'true'
+        run: pnpm install --frozen-lockfile
+
+      - name: Build frontend (fallback)
+        if: steps.restore-build-artifacts.outputs.cache-hit != 'true'
+        run: pnpm build
+        env:
+          NEXT_PUBLIC_PW_TEST: "true"
 
       - name: Setup .env
         run: cp .env.example .env
