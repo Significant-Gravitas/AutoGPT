@@ -556,18 +556,18 @@ async def upsert_execution_input(
 async def upsert_execution_output(
     node_exec_id: str,
     output_name: str,
-    output_data: Any,
+    output_data: Any | None,
 ) -> None:
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Output.
     """
-    await AgentNodeExecutionInputOutput.prisma().create(
-        data=AgentNodeExecutionInputOutputCreateInput(
-            name=output_name,
-            data=Json(output_data),
-            referencedByOutputExecId=node_exec_id,
-        )
+    data = AgentNodeExecutionInputOutputCreateInput(
+        name=output_name,
+        referencedByOutputExecId=node_exec_id,
     )
+    if output_data is not None:
+        data["data"] = Json(output_data)
+    await AgentNodeExecutionInputOutput.prisma().create(data=data)
 
 
 async def update_graph_execution_start_time(

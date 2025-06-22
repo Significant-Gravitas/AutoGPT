@@ -26,15 +26,23 @@ export default function NodeOutputs({
           <div className="mt-2">
             <strong className="mr-2">Data:</strong>
             <div className="mt-1">
-              {dataArray.map((item, index) => (
+              {dataArray.slice(0, 10).map((item, index) => (
                 <React.Fragment key={index}>
                   <ContentRenderer
                     value={item}
                     truncateLongData={truncateLongData}
                   />
-                  {index < dataArray.length - 1 && ", "}
+                  {index < Math.min(dataArray.length, 10) - 1 && ", "}
                 </React.Fragment>
               ))}
+              {dataArray.length > 10 && (
+                <span style={{ color: "#888" }}>
+                  <br />
+                  <b>⋮</b>
+                  <br />
+                  <span>and {dataArray.length - 10} more</span>
+                </span>
+              )}
             </div>
             <Separator.Root className="my-4 h-[1px] bg-gray-300" />
           </div>

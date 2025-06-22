@@ -118,7 +118,10 @@ class BlockSchema(BaseModel):
 
     @classmethod
     def validate_data(cls, data: BlockInput) -> str | None:
-        return json.validate_with_jsonschema(schema=cls.jsonschema(), data=data)
+        return json.validate_with_jsonschema(
+            schema=cls.jsonschema(),
+            data={k: v for k, v in data.items() if v is not None},
+        )
 
     @classmethod
     def get_mismatch_error(cls, data: BlockInput) -> str | None:
@@ -471,7 +474,8 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             )
 
         async for output_name, output_data in self.run(
-            self.input_schema(**input_data), **kwargs
+            self.input_schema(**{k: v for k, v in input_data.items() if v is not None}),
+            **kwargs,
         ):
             if output_name == "error":
                 raise RuntimeError(output_data)

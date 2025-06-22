@@ -1,5 +1,6 @@
 import contextlib
 import logging
+from enum import Enum
 from typing import Any, Optional
 
 import autogpt_libs.auth.models
@@ -14,6 +15,7 @@ from autogpt_libs.feature_flag.client import (
 )
 from autogpt_libs.logging.utils import generate_uvicorn_config
 from fastapi.exceptions import RequestValidationError
+from fastapi.routing import APIRoute
 
 import backend.data.block
 import backend.data.db
@@ -36,6 +38,7 @@ from backend.blocks.llm import LlmModel
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.server.external.api import external_app
+from backend.server.middleware.security import SecurityHeadersMiddleware
 
 settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
@@ -67,6 +70,33 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.db.disconnect()
 
 
+def custom_generate_unique_id(route: APIRoute):
+    """Generate clean operation IDs for OpenAPI spec following the format:
+    {method}{tag}{summary}
+    """
+    if not route.tags or not route.methods:
+        return f"{route.name}"
+
+    method = list(route.methods)[0].lower()
+    first_tag = route.tags[0]
+    if isinstance(first_tag, Enum):
+        tag_str = first_tag.name
+    else:
+        tag_str = str(first_tag)
+
+    tag = "".join(word.capitalize() for word in tag_str.split("_"))  # v1/v2
+
+    summary = (
+        route.summary if route.summary else route.name
+    )  # need to be unique, a different version could have the same summary
+    summary = "".join(word.capitalize() for word in str(summary).split("_"))
+
+    if tag:
+        return f"{method}{tag}{summary}"
+    else:
+        return f"{method}{summary}"
+
+
 docs_url = (
     "/docs"
     if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL
@@ -82,7 +112,10 @@ app = fastapi.FastAPI(
     version="0.1",
     lifespan=lifespan_context,
     docs_url=docs_url,
+    generate_unique_id_function=custom_generate_unique_id,
 )
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
