@@ -1,9 +1,9 @@
 "use client";
 
-import * as React from "react";
-import { AgentTableRow, AgentTableRowProps } from "./AgentTableRow";
-import { AgentTableCard } from "./AgentTableCard";
 import { StoreSubmissionRequest } from "@/lib/autogpt-server-api/types";
+import * as React from "react";
+import { AgentTableCard } from "./AgentTableCard";
+import { AgentTableRow, AgentTableRowProps } from "./AgentTableRow";
 
 export interface AgentTableProps {
   agents: Omit<
@@ -17,11 +17,11 @@ export interface AgentTableProps {
   onDeleteSubmission: (submission_id: string) => void;
 }
 
-export const AgentTable: React.FC<AgentTableProps> = ({
+export function AgentTable({
   agents,
   onEditSubmission,
   onDeleteSubmission,
-}) => {
+}: AgentTableProps) {
   // Use state to track selected agents
   const [selectedAgents, setSelectedAgents] = React.useState<Set<string>>(
     new Set(),
@@ -115,4 +115,4 @@ export const AgentTable: React.FC<AgentTableProps> = ({
       )}
     </div>
   );
-};
+}
