@@ -189,8 +189,17 @@ export const TypeBasedInput: FC<
       innerInputElement = (
         <MultiSelector
           className="nodrag"
-          values={value ?? []}
-          onValuesChange={onChange}
+          values={Object.entries(value || {})
+            .filter(([_, v]) => v)
+            .map(([k, _]) => k)}
+          onValuesChange={(values: string[]) => {
+            const allKeys = Object.keys(_schema.properties);
+            onChange(
+              Object.fromEntries(
+                allKeys.map((opt) => [opt, values.includes(opt)]),
+              ),
+            );
+          }}
         >
           <MultiSelectorTrigger className={inputClasses}>
             <MultiSelectorInput
