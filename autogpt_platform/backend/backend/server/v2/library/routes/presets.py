@@ -216,7 +216,7 @@ async def update_preset(
     # Update the webhook as well, if necessary
     if trigger_inputs_updated:
         updated = await db.set_preset_webhook(
-            preset_id, new_webhook.id if new_webhook else None
+            user_id, preset_id, new_webhook.id if new_webhook else None
         )
 
         # Clean up webhook if it is now unused
@@ -230,7 +230,7 @@ async def update_preset(
             )
             await get_webhook_manager(
                 current.webhook.provider
-            ).prune_webhook_if_dangling(current.webhook.id, credentials)
+            ).prune_webhook_if_dangling(user_id, current.webhook.id, credentials)
 
     return updated
 
@@ -269,7 +269,7 @@ async def delete_preset(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Webhook must be included in AgentPreset query",
             )
-        await db.set_preset_webhook(preset_id, None)
+        await db.set_preset_webhook(user_id, preset_id, None)
 
         # Clean up webhook if it is now unused
         credentials = (
@@ -278,7 +278,7 @@ async def delete_preset(
             else None
         )
         await get_webhook_manager(preset.webhook.provider).prune_webhook_if_dangling(
-            preset.webhook.id, credentials
+            user_id, preset.webhook.id, credentials
         )
 
     try:

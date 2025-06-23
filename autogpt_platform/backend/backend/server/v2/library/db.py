@@ -592,17 +592,6 @@ async def get_preset(
         raise store_exceptions.DatabaseError("Failed to fetch preset") from e
 
 
-async def get_presets_triggered_by_webhook(
-    webhook_id: str,
-) -> list[library_model.LibraryAgentPreset]:
-    # FIXME: add user_id check
-    presets = await prisma.models.AgentPreset.prisma().find_many(
-        where={"Webhook": {"is": {"id": webhook_id}}, "isDeleted": False},
-        include={"InputPresets": True, "Webhook": True},
-    )
-    return [library_model.LibraryAgentPreset.from_db(preset) for preset in presets]
-
-
 async def create_preset(
     user_id: str,
     preset: library_model.LibraryAgentPresetCreatable,
@@ -760,7 +749,7 @@ async def update_preset(
                 include={"InputPresets": True, "Webhook": True},
             )
         if not updated:
-            raise ValueError(f"AgentPreset #{preset_id} vanished while updating")
+            raise RuntimeError(f"AgentPreset #{preset_id} vanished while updating")
         return library_model.LibraryAgentPreset.from_db(updated)
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating preset: {e}")
@@ -768,10 +757,16 @@ async def update_preset(
 
 
 async def set_preset_webhook(
-    preset_id: str, webhook_id: str | None
+    user_id: str, preset_id: str, webhook_id: str | None
 ) -> library_model.LibraryAgentPreset:
-    # FIXME: add user_id check
-    preset = await prisma.models.AgentPreset.prisma().update(
+    current = await prisma.models.AgentPreset.prisma().find_unique(
+        where={"id": preset_id},
+        include={"InputPresets": True, "Webhook": True},
+    )
+    if not current or current.userId != user_id:
+        raise NotFoundError(f"Preset #{preset_id} not found")
+
+    updated = await prisma.models.AgentPreset.prisma().update(
         where={"id": preset_id},
         data=(
             {"Webhook": {"connect": {"id": webhook_id}}}
@@ -780,9 +775,9 @@ async def set_preset_webhook(
         ),
         include={"InputPresets": True, "Webhook": True},
     )
-    if not preset:
-        raise ValueError(f"Preset #{preset_id} not found")
-    return library_model.LibraryAgentPreset.from_db(preset)
+    if not updated:
+        raise RuntimeError(f"AgentPreset #{preset_id} vanished while updating")
+    return library_model.LibraryAgentPreset.from_db(updated)
 
 
 async def delete_preset(user_id: str, preset_id: str) -> None:

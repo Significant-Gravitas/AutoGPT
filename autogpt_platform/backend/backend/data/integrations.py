@@ -133,22 +133,21 @@ async def get_webhook(
 
 @overload
 async def get_all_webhooks_by_creds(
-    credentials_id: str, *, include_relations: Literal[True]
+    user_id: str, credentials_id: str, *, include_relations: Literal[True]
 ) -> list[WebhookWithRelations]: ...
 @overload
 async def get_all_webhooks_by_creds(
-    credentials_id: str, *, include_relations: Literal[False] = False
+    user_id: str, credentials_id: str, *, include_relations: Literal[False] = False
 ) -> list[Webhook]: ...
 
 
 async def get_all_webhooks_by_creds(
-    credentials_id: str, *, include_relations: bool = False
+    user_id: str, credentials_id: str, *, include_relations: bool = False
 ) -> list[Webhook] | list[WebhookWithRelations]:
-    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     if not credentials_id:
         raise ValueError("credentials_id must not be empty")
     webhooks = await IntegrationWebhook.prisma().find_many(
-        where={"credentialsId": credentials_id},
+        where={"userId": user_id, "credentialsId": credentials_id},
         include=INTEGRATION_WEBHOOK_INCLUDE if include_relations else None,
     )
     return [
@@ -158,11 +157,15 @@ async def get_all_webhooks_by_creds(
 
 
 async def find_webhook_by_credentials_and_props(
-    credentials_id: str, webhook_type: str, resource: str, events: list[str]
+    user_id: str,
+    credentials_id: str,
+    webhook_type: str,
+    resource: str,
+    events: list[str],
 ) -> Webhook | None:
-    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     webhook = await IntegrationWebhook.prisma().find_first(
         where={
+            "userId": user_id,
             "credentialsId": credentials_id,
             "webhookType": webhook_type,
             "resource": resource,
@@ -222,10 +225,11 @@ async def update_webhook(
     return Webhook.from_db(_updated_webhook)
 
 
-async def delete_webhook(webhook_id: str) -> None:
-    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
-    deleted = await IntegrationWebhook.prisma().delete(where={"id": webhook_id})
-    if not deleted:
+async def delete_webhook(user_id: str, webhook_id: str) -> None:
+    deleted = await IntegrationWebhook.prisma().delete_many(
+        where={"id": webhook_id, "userId": user_id}
+    )
+    if deleted < 1:
         raise NotFoundError(f"Webhook #{webhook_id} not found")
 
 

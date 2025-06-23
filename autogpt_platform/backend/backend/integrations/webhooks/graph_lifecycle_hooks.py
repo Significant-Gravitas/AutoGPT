@@ -83,7 +83,9 @@ async def on_graph_deactivate(graph: "GraphModel", user_id: str):
                 f"credentials #{creds_meta['id']}"
             )
 
-        updated_node = await on_node_deactivate(node, credentials=node_credentials)
+        updated_node = await on_node_deactivate(
+            user_id, node, credentials=node_credentials
+        )
         updated_nodes.append(updated_node)
 
     graph.nodes = updated_nodes
@@ -116,6 +118,7 @@ async def on_node_activate(
 
 
 async def on_node_deactivate(
+    user_id: str,
     node: "NodeModel",
     *,
     credentials: Optional["Credentials"] = None,
@@ -154,7 +157,9 @@ async def on_node_deactivate(
             f"Pruning{' and deregistering' if credentials else ''} "
             f"webhook #{webhook.id}"
         )
-        await webhooks_manager.prune_webhook_if_dangling(webhook.id, credentials)
+        await webhooks_manager.prune_webhook_if_dangling(
+            user_id, webhook.id, credentials
+        )
         if (
             cast(BlockSchema, block.input_schema).get_credentials_fields()
             and not credentials

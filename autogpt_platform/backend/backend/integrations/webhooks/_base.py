@@ -42,11 +42,20 @@ class BaseWebhooksManager(ABC, Generic[WT]):
             )
 
         if webhook := await integrations.find_webhook_by_credentials_and_props(
-            credentials.id, webhook_type, resource, events
+            user_id=user_id,
+            credentials_id=credentials.id,
+            webhook_type=webhook_type,
+            resource=resource,
+            events=events,
         ):
             return webhook
+
         return await self._create_webhook(
-            user_id, webhook_type, events, resource, credentials
+            user_id=user_id,
+            webhook_type=webhook_type,
+            events=events,
+            resource=resource,
+            credentials=credentials,
         )
 
     async def get_manual_webhook(
@@ -70,9 +79,9 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         """
         if (graph_id or preset_id) and (
             current_webhook := await integrations.find_webhook_by_graph_and_props(
-                user_id,
-                self.PROVIDER_NAME.value,
-                webhook_type.value,
+                user_id=user_id,
+                provider=self.PROVIDER_NAME.value,
+                webhook_type=webhook_type.value,
                 graph_id=graph_id,
                 preset_id=preset_id,
             )
@@ -84,14 +93,14 @@ class BaseWebhooksManager(ABC, Generic[WT]):
             return current_webhook
 
         return await self._create_webhook(
-            user_id,
-            webhook_type,
-            events,
+            user_id=user_id,
+            webhook_type=webhook_type,
+            events=events,
             register=False,
         )
 
     async def prune_webhook_if_dangling(
-        self, webhook_id: str, credentials: Optional[Credentials]
+        self, user_id: str, webhook_id: str, credentials: Optional[Credentials]
     ) -> bool:
         webhook = await integrations.get_webhook(webhook_id, include_relations=True)
         if webhook.triggered_nodes or webhook.triggered_presets:
@@ -100,7 +109,7 @@ class BaseWebhooksManager(ABC, Generic[WT]):
 
         if credentials:
             await self._deregister_webhook(webhook, credentials)
-        await integrations.delete_webhook(webhook.id)
+        await integrations.delete_webhook(user_id, webhook.id)
         return True
 
     # --8<-- [start:BaseWebhooksManager3]
