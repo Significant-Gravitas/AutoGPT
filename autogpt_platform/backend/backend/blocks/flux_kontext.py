@@ -108,7 +108,7 @@ class AIImageEditorBlock(Block):
             output_schema=AIImageEditorBlock.Output,
             test_input={
                 "prompt": "Add a hat to the cat",
-                "input_image": "https://example.com/cat.png",
+                "input_image": "data:image/png;base64,MQ==",
                 "aspect_ratio": AspectRatio.MATCH_INPUT_IMAGE,
                 "seed": None,
                 "model": FluxKontextModelName.PRO,
