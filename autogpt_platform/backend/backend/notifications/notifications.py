@@ -711,7 +711,7 @@ class NotificationManager(AppService):
                 await message.reject(requeue=False)
 
         except QueueEmpty:
-            logger.debug(f"Queue {error_queue_name} empty")
+            pass  # logger.debug(f"Queue {error_queue_name} empty")
         except TimeoutError:
             logger.debug(f"Queue {error_queue_name} timed out")
         except Exception as e:

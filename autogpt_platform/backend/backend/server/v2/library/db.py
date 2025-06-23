@@ -525,7 +525,10 @@ async def list_presets(
         )
         raise store_exceptions.DatabaseError("Invalid pagination parameters")
 
-    query_filter: prisma.types.AgentPresetWhereInput = {"userId": user_id}
+    query_filter: prisma.types.AgentPresetWhereInput = {
+        "userId": user_id,
+        "isDeleted": False,
+    }
     if graph_id:
         query_filter["agentGraphId"] = graph_id
 
@@ -581,7 +584,7 @@ async def get_preset(
             where={"id": preset_id},
             include={"InputPresets": True, "Webhook": True},
         )
-        if not preset or preset.userId != user_id:
+        if not preset or preset.userId != user_id or preset.isDeleted:
             return None
         return library_model.LibraryAgentPreset.from_db(preset)
     except prisma.errors.PrismaError as e:
@@ -594,7 +597,7 @@ async def get_presets_triggered_by_webhook(
 ) -> list[library_model.LibraryAgentPreset]:
     # FIXME: add user_id check
     presets = await prisma.models.AgentPreset.prisma().find_many(
-        where={"Webhook": {"is": {"id": webhook_id}}},
+        where={"Webhook": {"is": {"id": webhook_id}}, "isDeleted": False},
         include={"InputPresets": True, "Webhook": True},
     )
     return [library_model.LibraryAgentPreset.from_db(preset) for preset in presets]
@@ -754,7 +757,7 @@ async def update_preset(
             include={"InputPresets": True, "Webhook": True},
         )
         if not updated:
-            raise ValueError(f"AgentPreset #{preset_id} not found")
+            raise ValueError(f"AgentPreset #{preset_id} vanished while updating")
         return library_model.LibraryAgentPreset.from_db(updated)
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating preset: {e}")
@@ -790,7 +793,7 @@ async def delete_preset(user_id: str, preset_id: str) -> None:
     Raises:
         DatabaseError: If there's a database error during deletion.
     """
-    logger.info(f"Deleting preset {preset_id} for user {user_id}")
+    logger.debug(f"Setting preset #{preset_id} for user #{user_id} to deleted")
     try:
         await prisma.models.AgentPreset.prisma().update_many(
             where={"id": preset_id, "userId": user_id},

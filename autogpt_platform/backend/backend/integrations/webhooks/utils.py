@@ -31,14 +31,13 @@ async def setup_webhook_for_block(
     trigger_config: dict[str, JsonValue],  # = Trigger block inputs
     for_graph_id: Optional[str] = None,
     for_preset_id: Optional[str] = None,
-) -> "Webhook":
+) -> tuple["Webhook", None] | tuple[None, str]:
     """
     Utility function to create (and auto-setup if possible) a webhook for a given provider.
     """
     from backend.data.block import BlockWebhookConfig
 
     if not (trigger_base_config := trigger_block.webhook_config):
-        # FIXME: differentiate use of ValueError into 'missing input' and 'invalid config'
         raise ValueError(f"Block #{trigger_block.id} does not have a webhook_config")
 
     provider = trigger_base_config.provider
@@ -56,7 +55,7 @@ async def setup_webhook_for_block(
     events: list[str] = []
     if event_filter_input_name := trigger_base_config.event_filter_input:
         if not (event_filter := trigger_config.get(event_filter_input_name)):
-            raise ValueError(
+            return None, (
                 f"Cannot set up {provider.value} webhook without event filter input: "
                 f"missing input for '{event_filter_input_name}'"
             )
@@ -64,7 +63,7 @@ async def setup_webhook_for_block(
             # Shape of the event filter is enforced in Block.__init__
             any((event_filter := cast(dict[str, bool], event_filter)).values())
         ):
-            raise ValueError(
+            return None, (
                 f"Cannot set up {provider.value} webhook without any enabled events "
                 f"in event filter input '{event_filter_input_name}'"
             )
@@ -81,10 +80,10 @@ async def setup_webhook_for_block(
         try:
             resource = trigger_base_config.resource_format.format(**trigger_config)
         except KeyError as missing_key:
-            raise ValueError(
+            return None, (
                 f"Cannot auto-setup {provider.value} webhook without resource: "
                 f"missing input for '{missing_key}'"
-            ) from None
+            )
         logger.debug(
             f"Constructed resource string {resource} from input {trigger_config}"
         )
@@ -98,9 +97,7 @@ async def setup_webhook_for_block(
         if not (
             credentials_meta := cast(dict, trigger_config.get(creds_field_name, None))
         ):
-            raise ValueError(
-                f"Cannot set up {provider.value} webhook without credentials"
-            )
+            return None, f"Cannot set up {provider.value} webhook without credentials"
         elif not (
             credentials := await credentials_manager.get(
                 user_id, credentials_meta["id"]
@@ -124,7 +121,7 @@ async def setup_webhook_for_block(
     # Find/make and attach a suitable webhook to the node
     if auto_setup_webhook:
         assert credentials is not None
-        new_webhook = await webhooks_manager.get_suitable_auto_webhook(
+        webhook = await webhooks_manager.get_suitable_auto_webhook(
             user_id=user_id,
             credentials=credentials,
             webhook_type=trigger_base_config.webhook_type,
@@ -133,12 +130,12 @@ async def setup_webhook_for_block(
         )
     else:
         # Manual webhook -> no credentials -> don't register but do create
-        new_webhook = await webhooks_manager.get_manual_webhook(
+        webhook = await webhooks_manager.get_manual_webhook(
             user_id=user_id,
             webhook_type=trigger_base_config.webhook_type,
             events=events,
             graph_id=for_graph_id,
             preset_id=for_preset_id,
         )
-    logger.debug(f"Acquired webhook: {new_webhook}")
-    return new_webhook
+    logger.debug(f"Acquired webhook: {webhook}")
+    return webhook, None

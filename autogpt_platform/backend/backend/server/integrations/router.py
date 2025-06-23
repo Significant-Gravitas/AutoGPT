@@ -2,9 +2,17 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Annotated, Awaitable, Literal
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+    status,
+)
 from pydantic import BaseModel, Field
-from starlette.status import HTTP_404_NOT_FOUND
 
 from backend.data.graph import get_graph, set_node_webhook
 from backend.data.integrations import (
@@ -96,7 +104,10 @@ async def callback(
 
     if not valid_state:
         logger.warning(f"Invalid or expired state token for user {user_id}")
-        raise HTTPException(status_code=400, detail="Invalid or expired state token")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired state token",
+        )
     try:
         scopes = valid_state.scopes
         logger.debug(f"Retrieved scopes from state token: {scopes}")
@@ -123,17 +134,12 @@ async def callback(
             )
 
     except Exception as e:
-        logger.exception(
-            "OAuth callback for provider %s failed during code exchange: %s. Confirm provider credentials.",
-            provider.value,
-            e,
+        logger.error(
+            f"OAuth2 Code->Token exchange failed for provider {provider.value}: {e}"
         )
         raise HTTPException(
-            status_code=400,
-            detail={
-                "message": str(e),
-                "hint": "Verify OAuth configuration and try again.",
-            },
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"OAuth2 callback failed to exchange code for tokens: {str(e)}",
         )
 
     # TODO: Allow specifying `title` to set on `credentials`
@@ -202,10 +208,13 @@ async def get_credential(
 ) -> Credentials:
     credential = await creds_manager.get(user_id, cred_id)
     if not credential:
-        raise HTTPException(status_code=404, detail="Credentials not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
     if credential.provider != provider:
         raise HTTPException(
-            status_code=404, detail="Credentials do not match the specified provider"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Credentials do not match the specified provider",
         )
     return credential
 
@@ -223,7 +232,8 @@ async def create_credentials(
         await creds_manager.create(user_id, credentials)
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to store credentials: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to store credentials: {str(e)}",
         )
     return credentials
 
@@ -257,10 +267,13 @@ async def delete_credentials(
 ) -> CredentialsDeletionResponse | CredentialsDeletionNeedsConfirmationResponse:
     creds = await creds_manager.store.get_creds_by_id(user_id, cred_id)
     if not creds:
-        raise HTTPException(status_code=404, detail="Credentials not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
     if creds.provider != provider:
         raise HTTPException(
-            status_code=404, detail="Credentials do not match the specified provider"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Credentials do not match the specified provider",
         )
 
     try:
@@ -297,14 +310,8 @@ async def webhook_ingress_generic(
     try:
         webhook = await get_webhook(webhook_id, include_relations=True)
     except NotFoundError as e:
-        logger.warning(
-            "Webhook payload received for unknown webhook %s. Confirm the webhook ID.",
-            webhook_id,
-        )
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND,
-            detail={"message": str(e), "hint": "Check if the webhook ID is correct."},
-        ) from e
+        logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     logger.debug(f"Webhook #{webhook_id}: {webhook}")
     payload, event_type = await webhook_manager.validate_payload(webhook, request)
     logger.debug(
@@ -400,7 +407,9 @@ async def webhook_ping(
         return False
 
     if not await wait_for_webhook_event(webhook_id, event_type="ping", timeout=10):
-        raise HTTPException(status_code=504, detail="Webhook ping timed out")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="Webhook ping timed out"
+        )
 
     return True
 
@@ -447,7 +456,7 @@ def _get_provider_oauth_handler(
 ) -> "BaseOAuthHandler":
     if provider_name not in HANDLERS_BY_NAME:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Provider '{provider_name.value}' does not support OAuth",
         )
 
@@ -455,14 +464,13 @@ def _get_provider_oauth_handler(
     client_secret = getattr(settings.secrets, f"{provider_name.value}_client_secret")
     if not (client_id and client_secret):
         logger.error(
-            "OAuth credentials for provider %s are missing. Check environment configuration.",
-            provider_name.value,
+            f"Attempt to use unconfigured {provider_name.value} OAuth integration"
         )
         raise HTTPException(
-            status_code=501,
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail={
-                "message": f"Integration with provider '{provider_name.value}' is not configured",
-                "hint": "Set client ID and secret in the environment.",
+                "message": f"Integration with provider '{provider_name.value}' is not configured.",
+                "hint": "Set client ID and secret in the application's deployment environment",
             },
         )
 

@@ -60,18 +60,29 @@ class BaseWebhooksManager(ABC, Generic[WT]):
         """
         Tries to find an existing webhook tied to `graph_id`/`preset_id`,
         or creates a new webhook if none exists.
+
+        Existing webhooks are matched by `user_id`, `webhook_type`,
+        and `graph_id`/`preset_id`.
+
+        If an existing webhook is found, we check if the events match and update them
+        if necessary. We do this rather than creating a new webhook
+        to avoid changing the webhook URL for existing manual webhooks.
         """
         if (graph_id or preset_id) and (
             current_webhook := await integrations.find_webhook_by_graph_and_props(
                 user_id,
                 self.PROVIDER_NAME.value,
                 webhook_type.value,
-                events,
                 graph_id=graph_id,
                 preset_id=preset_id,
             )
         ):
+            if set(current_webhook.events) != set(events):
+                current_webhook = await integrations.update_webhook(
+                    current_webhook.id, events=events
+                )
             return current_webhook
+
         return await self._create_webhook(
             user_id,
             webhook_type,

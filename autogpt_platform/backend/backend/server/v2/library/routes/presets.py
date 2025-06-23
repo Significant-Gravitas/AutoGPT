@@ -6,10 +6,11 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 
 import backend.server.v2.library.db as db
 import backend.server.v2.library.model as models
-from backend.data.integrations import get_webhook
-from backend.executor.utils import add_graph_execution
+from backend.data.graph import get_graph
+from backend.executor.utils import add_graph_execution, make_node_credentials_input_map
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks import get_webhook_manager
+from backend.integrations.webhooks.utils import setup_webhook_for_block
 from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -53,11 +54,7 @@ async def list_presets(
     except Exception as e:
         logger.exception("Failed to list presets for user %s: %s", user_id, e)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "message": str(e),
-                "hint": "Ensure the presets DB table is accessible.",
-            },
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
 
 
@@ -85,20 +82,20 @@ async def get_preset(
     """
     try:
         preset = await db.get_preset(user_id, preset_id)
-        if not preset:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Preset {preset_id} not found",
-            )
-        return preset
     except Exception as e:
         logger.exception(
             "Error retrieving preset %s for user %s: %s", preset_id, user_id, e
         )
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": str(e), "hint": "Validate preset ID and retry."},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+
+    if not preset:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Preset #{preset_id} not found",
+        )
+    return preset
 
 
 @router.post(
@@ -136,8 +133,7 @@ async def create_preset(
     except Exception as e:
         logger.exception("Preset creation failed for user %s: %s", user_id, e)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": str(e), "hint": "Check preset payload format."},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
 
 
@@ -165,16 +161,72 @@ async def update_preset(
     Raises:
         HTTPException: If an error occurs while updating the preset.
     """
+    current = await get_preset(preset_id, user_id=user_id)
+    if not current:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"Preset #{preset_id} not found")
+
+    graph = await get_graph(
+        current.graph_id,
+        current.graph_version,
+        user_id=user_id,
+    )
+    if not graph:
+        raise HTTPException(
+            status.HTTP_410_GONE,
+            f"Graph #{current.graph_id} not accessible (anymore)",
+        )
+
+    trigger_inputs_updated, new_webhook, feedback = False, None, None
+    if (trigger_node := graph.webhook_input_node) and (
+        preset.inputs is not None and preset.credentials is not None
+    ):
+        trigger_config_with_credentials = {
+            **preset.inputs,
+            **(
+                make_node_credentials_input_map(graph, preset.credentials).get(
+                    trigger_node.id
+                )
+                or {}
+            ),
+        }
+        new_webhook, feedback = await setup_webhook_for_block(
+            user_id=user_id,
+            trigger_block=graph.webhook_input_node.block,
+            trigger_config=trigger_config_with_credentials,
+            for_preset_id=preset_id,
+        )
+        trigger_inputs_updated = True
+
     try:
-        return await db.update_preset(
+        updated = await db.update_preset(
             user_id=user_id, preset_id=preset_id, preset=preset
         )
     except Exception as e:
         logger.exception("Preset update failed for user %s: %s", user_id, e)
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": str(e), "hint": "Check preset data and try again."},
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
+
+    # Update the webhook as well, if necessary
+    if trigger_inputs_updated:
+        updated = await db.set_preset_webhook(
+            preset_id, new_webhook.id if new_webhook else None
+        )
+
+        # Clean up webhook if it is now unused
+        if current.webhook and (
+            current.webhook.id != (new_webhook.id if new_webhook else None)
+        ):
+            credentials = (
+                await credentials_manager.get(user_id, current.webhook.credentials_id)
+                if current.webhook.credentials_id
+                else None
+            )
+            await get_webhook_manager(
+                current.webhook.provider
+            ).prune_webhook_if_dangling(current.webhook.id, credentials)
+
+    return updated
 
 
 @router.delete(
@@ -203,19 +255,26 @@ async def delete_preset(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Preset #{preset_id} not found for user #{user_id}",
         )
+
+    # Detach and clean up the attached webhook, if any
     if preset.webhook_id:
-        webhook = await get_webhook(preset.webhook_id)
+        if not preset.webhook:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Webhook must be included in AgentPreset query",
+            )
         await db.set_preset_webhook(preset_id, None)
 
         # Clean up webhook if it is now unused
         credentials = (
-            await credentials_manager.get(user_id, webhook.credentials_id)
-            if webhook.credentials_id
+            await credentials_manager.get(user_id, preset.webhook.credentials_id)
+            if preset.webhook.credentials_id
             else None
         )
-        await get_webhook_manager(webhook.provider).prune_webhook_if_dangling(
-            webhook.id, credentials
+        await get_webhook_manager(preset.webhook.provider).prune_webhook_if_dangling(
+            preset.webhook.id, credentials
         )
+
     try:
         await db.delete_preset(user_id, preset_id)
     except Exception as e:
@@ -224,7 +283,7 @@ async def delete_preset(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": str(e), "hint": "Ensure preset exists before deleting."},
+            detail=str(e),
         )
 
 
@@ -258,7 +317,7 @@ async def execute_preset(
         if not preset:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Preset not found",
+                detail=f"Preset #{preset_id} not found",
             )
 
         # Merge input overrides with preset inputs
@@ -280,9 +339,6 @@ async def execute_preset(
     except Exception as e:
         logger.exception("Preset execution failed for user %s: %s", user_id, e)
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "message": str(e),
-                "hint": "Review preset configuration and graph ID.",
-            },
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e),
         )
