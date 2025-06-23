@@ -5,7 +5,7 @@ export default defineConfig({
     input: {
       target: `http://localhost:8006/openapi.json`,
       override: {
-        transformer: "./src/api/transformers/fix-tags.js",
+        transformer: "./src/api/transformers/fix-tags.mjs",
       },
     },
     output: {
@@ -41,7 +41,7 @@ export default defineConfig({
     input: {
       target: `http://localhost:8006/openapi.json`,
       override: {
-        transformer: "./src/api/transformers/fix-tags.js",
+        transformer: "./src/api/transformers/fix-tags.mjs",
       },
     },
     output: {
