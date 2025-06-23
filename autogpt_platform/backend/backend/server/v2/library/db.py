@@ -15,7 +15,7 @@ import backend.server.v2.store.image_gen as store_image_gen
 import backend.server.v2.store.media as store_media
 from backend.data import db
 from backend.data import graph as graph_db
-from backend.data.db import locked_transaction
+from backend.data.db import locked_transaction, transaction
 from backend.data.execution import get_graph_execution
 from backend.data.includes import library_agent_include
 from backend.integrations.creds_manager import IntegrationCredentialsManager
@@ -722,40 +722,43 @@ async def update_preset(
     if not existing_preset:
         raise NotFoundError(f"Preset #{preset_id} not found for user #{user_id}")
     try:
-        update_data: prisma.types.AgentPresetUpdateInput = {}
-        if preset.name:
-            update_data["name"] = preset.name
-        if preset.description:
-            update_data["description"] = preset.description
-        if preset.inputs or preset.credentials:
-            if not (preset.inputs and preset.credentials):
-                raise ValueError(
-                    "Preset inputs and credentials must be provided together"
-                )
-            update_data["InputPresets"] = {
-                "create": [
-                    prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
-                        name=name, data=prisma.fields.Json(data)
+        async with transaction() as tx:
+            update_data: prisma.types.AgentPresetUpdateInput = {}
+            if preset.name:
+                update_data["name"] = preset.name
+            if preset.description:
+                update_data["description"] = preset.description
+            if preset.is_active is not None:
+                update_data["isActive"] = preset.is_active
+            if preset.inputs or preset.credentials:
+                if not (preset.inputs and preset.credentials):
+                    raise ValueError(
+                        "Preset inputs and credentials must be provided together"
                     )
-                    for name, data in {
-                        **preset.inputs,
-                        **{
-                            key: creds_meta.model_dump(exclude_none=True)
-                            for key, creds_meta in preset.credentials.items()
-                        },
-                    }.items()
-                ],
-            }
-            # Delete all existing inputs:
-            update_data["InputPresets"]["deleteMany"] = {}  # type: ignore
-        if preset.is_active is not None:
-            update_data["isActive"] = preset.is_active
+                update_data["InputPresets"] = {
+                    "create": [
+                        prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
+                            name=name, data=prisma.fields.Json(data)
+                        )
+                        for name, data in {
+                            **preset.inputs,
+                            **{
+                                key: creds_meta.model_dump(exclude_none=True)
+                                for key, creds_meta in preset.credentials.items()
+                            },
+                        }.items()
+                    ],
+                }
+                # Existing InputPresets must be deleted, in a separate query
+                await prisma.models.AgentNodeExecutionInputOutput.prisma(
+                    tx
+                ).delete_many(where={"agentPresetId": preset_id})
 
-        updated = await prisma.models.AgentPreset.prisma().update(
-            where={"id": preset_id},
-            data=update_data,
-            include={"InputPresets": True, "Webhook": True},
-        )
+            updated = await prisma.models.AgentPreset.prisma(tx).update(
+                where={"id": preset_id},
+                data=update_data,
+                include={"InputPresets": True, "Webhook": True},
+            )
         if not updated:
             raise ValueError(f"AgentPreset #{preset_id} vanished while updating")
         return library_model.LibraryAgentPreset.from_db(updated)
