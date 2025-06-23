@@ -205,7 +205,13 @@ async def update_preset(
 
     try:
         updated = await db.update_preset(
-            user_id=user_id, preset_id=preset_id, preset=preset
+            user_id=user_id,
+            preset_id=preset_id,
+            inputs=preset.inputs,
+            credentials=preset.credentials,
+            name=preset.name,
+            description=preset.description,
+            is_active=preset.is_active,
         )
     except Exception as e:
         logger.exception("Preset update failed for user %s: %s", user_id, e)

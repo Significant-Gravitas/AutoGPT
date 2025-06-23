@@ -7,17 +7,17 @@ import prisma.fields
 import prisma.models
 import prisma.types
 
-import backend.data.graph
+import backend.data.graph as graph_db
 import backend.server.model
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
 import backend.server.v2.store.image_gen as store_image_gen
 import backend.server.v2.store.media as store_media
-from backend.data import db
-from backend.data import graph as graph_db
+from backend.data.block import BlockInput
 from backend.data.db import locked_transaction, transaction
 from backend.data.execution import get_graph_execution
 from backend.data.includes import library_agent_include
+from backend.data.model import CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
 from backend.util.exceptions import NotFoundError
@@ -216,7 +216,7 @@ async def get_library_agent_by_store_version_id(
 
 
 async def add_generated_agent_image(
-    graph: backend.data.graph.GraphModel,
+    graph: graph_db.GraphModel,
     library_agent_id: str,
 ) -> Optional[prisma.models.LibraryAgent]:
     """
@@ -249,7 +249,7 @@ async def add_generated_agent_image(
 
 
 async def create_library_agent(
-    graph: backend.data.graph.GraphModel,
+    graph: graph_db.GraphModel,
     user_id: str,
 ) -> library_model.LibraryAgent:
     """
@@ -687,7 +687,11 @@ async def create_preset_from_graph_execution(
 async def update_preset(
     user_id: str,
     preset_id: str,
-    preset: library_model.LibraryAgentPresetUpdatable,
+    inputs: Optional[BlockInput] = None,
+    credentials: Optional[dict[str, CredentialsMetaInput]] = None,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    is_active: Optional[bool] = None,
 ) -> library_model.LibraryAgentPreset:
     """
     Updates an existing AgentPreset for a user.
@@ -695,32 +699,36 @@ async def update_preset(
     Args:
         user_id: The ID of the user updating the preset.
         preset_id: The ID of the preset to update.
-        preset: The preset data used for the update.
+        inputs: New inputs object to set on the preset.
+        credentials: New credentials to set on the preset.
+        name: New name for the preset.
+        description: New description for the preset.
+        is_active: New active status for the preset.
 
     Returns:
         The updated LibraryAgentPreset.
 
     Raises:
         DatabaseError: If there's a database error in updating the preset.
-        ValueError: If attempting to update a non-existent preset.
+        NotFoundError: If attempting to update a non-existent preset.
     """
-    logger.debug(
-        f"Updating preset #{preset_id} ({repr(preset.name)}) for user #{user_id}",
-    )
-    existing_preset = await get_preset(user_id, preset_id)  # assert ownership
-    if not existing_preset:
+    current = await get_preset(user_id, preset_id)  # assert ownership
+    if not current:
         raise NotFoundError(f"Preset #{preset_id} not found for user #{user_id}")
+    logger.debug(
+        f"Updating preset #{preset_id} ({repr(current.name)}) for user #{user_id}",
+    )
     try:
         async with transaction() as tx:
             update_data: prisma.types.AgentPresetUpdateInput = {}
-            if preset.name:
-                update_data["name"] = preset.name
-            if preset.description:
-                update_data["description"] = preset.description
-            if preset.is_active is not None:
-                update_data["isActive"] = preset.is_active
-            if preset.inputs or preset.credentials:
-                if not (preset.inputs and preset.credentials):
+            if name:
+                update_data["name"] = name
+            if description:
+                update_data["description"] = description
+            if is_active is not None:
+                update_data["isActive"] = is_active
+            if inputs or credentials:
+                if not (inputs and credentials):
                     raise ValueError(
                         "Preset inputs and credentials must be provided together"
                     )
@@ -730,10 +738,10 @@ async def update_preset(
                             name=name, data=prisma.fields.Json(data)
                         )
                         for name, data in {
-                            **preset.inputs,
+                            **inputs,
                             **{
                                 key: creds_meta.model_dump(exclude_none=True)
-                                for key, creds_meta in preset.credentials.items()
+                                for key, creds_meta in credentials.items()
                             },
                         }.items()
                     ],
@@ -818,7 +826,7 @@ async def fork_library_agent(library_agent_id: str, user_id: str):
     """
     logger.debug(f"Forking library agent {library_agent_id} for user {user_id}")
     try:
-        async with db.locked_transaction(f"usr_trx_{user_id}-fork_agent"):
+        async with locked_transaction(f"usr_trx_{user_id}-fork_agent"):
             # Fetch the original agent
             original_agent = await get_library_agent(library_agent_id, user_id)
 

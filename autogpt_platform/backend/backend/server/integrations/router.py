@@ -28,7 +28,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
-from backend.server.v2.library.db import set_preset_webhook
+from backend.server.v2.library.db import set_preset_webhook, update_preset
 from backend.util.exceptions import NeedConfirmation, NotFoundError
 from backend.util.settings import Settings
 
@@ -357,16 +357,18 @@ async def webhook_ingress_generic(
             logger.error(
                 f"User #{webhook.user_id} has preset #{preset.id} for graph "
                 f"#{preset.graph_id} v{preset.graph_version}, "
-                "but no access to the graph itself"
+                "but no access to the graph itself."
             )
-            # FIXME: set preset inactive if not triggerable
+            logger.info(f"Automatically deactivating broken preset #{preset.id}")
+            await update_preset(preset.user_id, preset.id, is_active=False)
             continue
         if not (trigger_node := graph.webhook_input_node):
+            # NOTE: this should NEVER happen, but we log and handle it gracefully
             logger.error(
                 f"Preset #{preset.id} is triggered by webhook #{webhook.id}, but graph "
                 f"#{preset.graph_id} v{preset.graph_version} has no webhook input node"
             )
-            # FIXME: set preset inactive if not triggerable
+            await set_preset_webhook(preset.user_id, preset.id, None)
             continue
         if not trigger_node.block.is_triggered_by_event_type(preset.inputs, event_type):
             logger.debug(f"Preset #{preset.id} doesn't trigger on event {event_type}")

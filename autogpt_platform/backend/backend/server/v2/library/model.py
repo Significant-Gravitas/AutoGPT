@@ -264,6 +264,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
     """Represents a preset configuration for a library agent."""
 
     id: str
+    user_id: str
     updated_at: datetime.datetime
 
     webhook: "Webhook | None"
@@ -288,6 +289,7 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
 
         return cls(
             id=preset.id,
+            user_id=preset.userId,
             updated_at=preset.updatedAt,
             graph_id=preset.agentGraphId,
             graph_version=preset.agentGraphVersion,
