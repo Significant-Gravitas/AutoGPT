@@ -17,6 +17,7 @@ router = APIRouter(
     dependencies=[Depends(autogpt_auth_lib.auth_middleware)],
 )
 
+
 @router.get(
     "",
     summary="List Library Agents",
@@ -77,10 +78,7 @@ async def list_library_agents(
         ) from e
 
 
-@router.get(
-    "/{library_agent_id}",
-    summary="Get Library Agent"
-)
+@router.get("/{library_agent_id}", summary="Get Library Agent")
 async def get_library_agent(
     library_agent_id: str,
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
@@ -238,10 +236,7 @@ async def update_library_agent(
         ) from e
 
 
-@router.post(
-    "/{library_agent_id}/fork",
-    summary="Fork Library Agent"
-)
+@router.post("/{library_agent_id}/fork", summary="Fork Library Agent")
 async def fork_library_agent(
     library_agent_id: str,
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),

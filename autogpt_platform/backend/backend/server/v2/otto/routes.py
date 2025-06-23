@@ -12,8 +12,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
 @router.post(
-    "/ask", response_model=ApiResponse, dependencies=[Depends(auth_middleware)], summary="Proxy Otto Chat Request"
+    "/ask",
+    response_model=ApiResponse,
+    dependencies=[Depends(auth_middleware)],
+    summary="Proxy Otto Chat Request",
 )
 async def proxy_otto_request(
     request: ChatRequest, user_id: str = Depends(get_user_id)

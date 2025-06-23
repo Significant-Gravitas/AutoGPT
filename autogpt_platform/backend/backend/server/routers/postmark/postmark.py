@@ -48,7 +48,11 @@ async def unsubscribe_via_one_click(token: Annotated[str, Query()]):
     return JSONResponse(status_code=200, content={"status": "ok"})
 
 
-@router.post("/", dependencies=[Depends(postmark_validator.get_dependency())], summary="Handle Postmark Email Webhooks")
+@router.post(
+    "/",
+    dependencies=[Depends(postmark_validator.get_dependency())],
+    summary="Handle Postmark Email Webhooks",
+)
 async def postmark_webhook_handler(
     webhook: Annotated[
         PostmarkWebhook,

@@ -191,10 +191,12 @@ app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
 )
 app.include_router(
-    backend.server.v2.otto.routes.router, tags=["v2","otto"], prefix="/api/otto"
+    backend.server.v2.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )
 app.include_router(
-    backend.server.v2.turnstile.routes.router, tags=["v2","turnstile"], prefix="/api/turnstile"
+    backend.server.v2.turnstile.routes.router,
+    tags=["v2", "turnstile"],
+    prefix="/api/turnstile",
 )
 
 app.include_router(
