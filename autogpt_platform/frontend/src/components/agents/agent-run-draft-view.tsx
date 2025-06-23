@@ -133,7 +133,7 @@ export default function AgentRunDraftView({
     // Manually running webhook-triggered agents is not supported
     if (agent.has_external_trigger) return;
 
-    if (!agentPreset || changedPresetAttributes) {
+    if (!agentPreset || changedPresetAttributes.size > 0) {
       if (!allRequiredInputsAreSet || !allCredentialsAreSet) {
         notifyMissingInputs(false);
         return;
@@ -206,7 +206,7 @@ export default function AgentRunDraftView({
   ]);
 
   const doUpdatePreset = useCallback(() => {
-    if (!agentPreset || !changedPresetAttributes) return;
+    if (!agentPreset || changedPresetAttributes.size == 0) return;
 
     if (!presetName || !allRequiredInputsAreSet || !allCredentialsAreSet) {
       notifyMissingInputs();
@@ -381,7 +381,7 @@ export default function AgentRunDraftView({
             ),
             callback: doUpdatePreset,
             disabled: !(
-              changedPresetAttributes &&
+              changedPresetAttributes.size > 0 &&
               presetName &&
               allRequiredInputsAreSet &&
               allCredentialsAreSet
@@ -396,6 +396,9 @@ export default function AgentRunDraftView({
       doSetupTrigger,
       doUpdatePreset,
       changedPresetAttributes,
+      presetName,
+      allRequiredInputsAreSet,
+      allCredentialsAreSet,
     ],
   );
 
