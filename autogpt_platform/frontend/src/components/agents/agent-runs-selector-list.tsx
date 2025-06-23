@@ -74,7 +74,7 @@ export default function AgentRunsSelectorList({
           onClick={onSelectDraftNewRun}
         >
           <Plus className="h-6 w-6" />
-          <span>New run</span>
+          <span>New {agent.has_external_trigger ? "trigger" : "run"}</span>
         </Button>
       )}
 
@@ -116,7 +116,7 @@ export default function AgentRunsSelectorList({
               onClick={onSelectDraftNewRun}
             >
               <Plus className="h-6 w-6" />
-              <span>New run</span>
+              <span>New {agent.has_external_trigger ? "trigger" : "run"}</span>
             </Button>
           )}
 

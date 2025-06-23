@@ -12,7 +12,7 @@ import {
 
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { IconPlay, IconSave, IconSquare } from "@/components/ui/icons";
+import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
 import { CredentialsInput } from "@/components/integrations/credentials-input";
 import { TypeBasedInput } from "@/components/type-based-input";
 import { useToastOnFail } from "@/components/ui/use-toast";
@@ -315,7 +315,7 @@ export default function AgentRunDraftView({
         ? {
             label: (
               <>
-                <IconPlay className="mr-2 size-5" />
+                <IconPlay className="mr-2 size-4" />
                 Run
               </>
             ),
@@ -326,7 +326,7 @@ export default function AgentRunDraftView({
           ? {
               label: (
                 <>
-                  <IconPlay className="mr-2 size-5" />
+                  <IconPlay className="mr-2 size-4" />
                   Set up trigger
                 </>
               ),
@@ -342,7 +342,7 @@ export default function AgentRunDraftView({
             ? {
                 label: (
                   <>
-                    <IconSquare className="mr-2 size-5" />
+                    <IconCross className="mr-2.5 size-3.5" />
                     Disable trigger
                   </>
                 ),
@@ -352,7 +352,7 @@ export default function AgentRunDraftView({
             : {
                 label: (
                   <>
-                    <IconPlay className="mr-2 size-5" />
+                    <IconPlay className="mr-2 size-4" />
                     Enable trigger
                   </>
                 ),
@@ -363,7 +363,7 @@ export default function AgentRunDraftView({
         ? {
             label: (
               <>
-                <IconSave className="mr-2 size-5" /> Save as a preset
+                <IconSave className="mr-2 size-4" /> Save as a preset
               </>
             ),
             callback: doCreatePreset,
@@ -376,7 +376,7 @@ export default function AgentRunDraftView({
         : {
             label: (
               <>
-                <IconSave className="mr-2 size-5" /> Save changes
+                <IconSave className="mr-2 size-4" /> Save changes
               </>
             ),
             callback: doUpdatePreset,
@@ -509,7 +509,10 @@ export default function AgentRunDraftView({
       {/* Actions */}
       <aside className="w-48 xl:w-56">
         <div className="flex flex-col gap-8">
-          <ActionButtonGroup title="Run actions" actions={runActions} />
+          <ActionButtonGroup
+            title={`${agent.has_external_trigger ? "Trigger" : agentPreset ? "Preset" : "Run"} actions`}
+            actions={runActions}
+          />
 
           <ActionButtonGroup title="Agent actions" actions={agentActions} />
         </div>
