@@ -179,7 +179,4 @@ autogpt_platform/backend/settings.py
 .claude/settings.local.json
 
 # Auto generated client
-autogpt_platform/frontend/src/api/endpoints
-autogpt_platform/frontend/src/api/model
-autogpt_platform/frontend/src/api/zod-schema
-autogpt_platform/frontend/src/api/index.ts
+autogpt_platform/frontend/src/api/__gen__

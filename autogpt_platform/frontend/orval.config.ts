@@ -10,14 +10,16 @@ export default defineConfig({
     },
     output: {
       workspace: "./src/api",
-      target: `./endpoints`,
-      schemas: "./model",
+      target: `./__gen__/endpoints`,
+      schemas: "./__gen__/models",
       mode: "tags-split",
       client: "react-query",
       httpClient: "fetch",
+      indexFiles: false,
       mock: {
         type: "msw",
-        delay: 1000,
+        delay: 1000, // artifical latency
+        generateEachHttpStatus: true, // helps us test error-handling scenarios and generate mocks for all HTTP statuses
       },
       override: {
         mutator: {
@@ -26,8 +28,8 @@ export default defineConfig({
         },
         query: {
           useQuery: true,
-          useInfinite: true,
-          useInfiniteQueryParam: "nextId",
+          useMutation: true,
+          // Will add more as their use cases arise
         },
       },
     },
@@ -44,10 +46,11 @@ export default defineConfig({
     },
     output: {
       workspace: "./src/api",
-      target: `./zod-schema`,
-      schemas: "./model",
+      target: `./__gen__/zod-schema`,
+      schemas: "./__gen__/models",
       mode: "tags-split",
       client: "zod",
+      indexFiles: false,
     },
     hooks: {
       afterAllFilesWrite: "prettier --write",
