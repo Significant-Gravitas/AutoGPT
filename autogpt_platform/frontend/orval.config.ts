@@ -3,7 +3,7 @@ import { defineConfig } from "orval";
 export default defineConfig({
   autogpt_api_client: {
     input: {
-      target: `http://localhost:8006/openapi.json`,
+      target: `./src/api/openapi.json`,
       override: {
         transformer: "./src/api/transformers/fix-tags.mjs",
       },
@@ -39,7 +39,7 @@ export default defineConfig({
   },
   autogpt_zod_schema: {
     input: {
-      target: `http://localhost:8006/openapi.json`,
+      target: `./src/api/openapi.json`,
       override: {
         transformer: "./src/api/transformers/fix-tags.mjs",
       },
