@@ -12,9 +12,11 @@ from . import get_webhook_manager, supports_webhooks
 if TYPE_CHECKING:
     from backend.data.block import Block, BlockSchema
     from backend.data.integrations import Webhook
+    from backend.data.model import Credentials
 
 logger = logging.getLogger(__name__)
 app_config = Config()
+credentials_manager = IntegrationCredentialsManager()
 
 
 # TODO: add test to assert this matches the actual API route
@@ -31,9 +33,14 @@ async def setup_webhook_for_block(
     trigger_config: dict[str, JsonValue],  # = Trigger block inputs
     for_graph_id: Optional[str] = None,
     for_preset_id: Optional[str] = None,
+    credentials: Optional["Credentials"] = None,
 ) -> tuple["Webhook", None] | tuple[None, str]:
     """
     Utility function to create (and auto-setup if possible) a webhook for a given provider.
+
+    Returns:
+        Webhook: The created or found webhook object, if successful.
+        str: A feedback message, if any required inputs are missing.
     """
     from backend.data.block import BlockWebhookConfig
 
@@ -88,7 +95,6 @@ async def setup_webhook_for_block(
             f"Constructed resource string {resource} from input {trigger_config}"
         )
 
-        credentials_manager = IntegrationCredentialsManager()
         creds_field_name = next(
             # presence of this field is enforced in Block.__init__
             iter(trigger_block.input_schema.get_credentials_fields())
@@ -99,9 +105,8 @@ async def setup_webhook_for_block(
         ):
             return None, f"Cannot set up {provider.value} webhook without credentials"
         elif not (
-            credentials := await credentials_manager.get(
-                user_id, credentials_meta["id"]
-            )
+            credentials := credentials
+            or await credentials_manager.get(user_id, credentials_meta["id"])
         ):
             raise ValueError(
                 f"Cannot set up {provider.value} webhook without credentials: "
