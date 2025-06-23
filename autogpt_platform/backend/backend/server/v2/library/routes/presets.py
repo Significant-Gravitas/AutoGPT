@@ -196,12 +196,11 @@ async def update_preset(
             for_preset_id=preset_id,
         )
         trigger_inputs_updated = True
-        # TODO: should this refuse to update if it fails to set up the webhook?
-        # if not new_webhook:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_400_BAD_REQUEST,
-        #         detail=f"Could not update trigger configuration: {feedback}",
-        #     )
+        if not new_webhook:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Could not update trigger configuration: {feedback}",
+            )
 
     try:
         updated = await db.update_preset(
