@@ -78,5 +78,3 @@ export const customMutator = async <T = any>(
     data: response_data,
   } as T;
 };
-
-export type BodyType = FormData | any;
