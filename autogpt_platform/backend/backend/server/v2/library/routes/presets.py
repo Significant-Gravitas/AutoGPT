@@ -11,7 +11,9 @@ from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter()
+router = APIRouter(
+    tags=["presets"],
+)
 
 
 @router.get(
