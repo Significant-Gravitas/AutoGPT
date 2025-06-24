@@ -323,18 +323,14 @@ class AgentServer(backend.util.service.AppProcess):
 
     @staticmethod
     async def test_execute_preset(
-        graph_id: str,
-        graph_version: int,
         preset_id: str,
         user_id: str,
-        node_input: Optional[dict[str, Any]] = None,
+        inputs: Optional[dict[str, Any]] = None,
     ):
         return await backend.server.v2.library.routes.presets.execute_preset(
-            graph_id=graph_id,
-            graph_version=graph_version,
             preset_id=preset_id,
-            node_input=node_input or {},
             user_id=user_id,
+            inputs=inputs or {},
         )
 
     @staticmethod
