@@ -55,6 +55,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate API client
+        run: pnpm generate:api-client
+
       - name: Run tsc check
         run: pnpm type-check
 

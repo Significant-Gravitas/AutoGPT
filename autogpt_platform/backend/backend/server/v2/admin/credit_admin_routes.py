@@ -22,7 +22,9 @@ router = APIRouter(
 )
 
 
-@router.post("/add_credits", response_model=AddUserCreditsResponse)
+@router.post(
+    "/add_credits", response_model=AddUserCreditsResponse, summary="Add Credits to User"
+)
 async def add_user_credits(
     user_id: typing.Annotated[str, Body()],
     amount: typing.Annotated[int, Body()],
@@ -49,6 +51,7 @@ async def add_user_credits(
 @router.get(
     "/users_history",
     response_model=UserHistoryResponse,
+    summary="Get All Users History",
 )
 async def admin_get_all_user_history(
     admin_user: typing.Annotated[

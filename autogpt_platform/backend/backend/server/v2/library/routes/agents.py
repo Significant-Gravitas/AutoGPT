@@ -1,13 +1,19 @@
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 import backend.server.v2.library.db as library_db
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
+from backend.data.graph import get_graph
+from backend.data.model import CredentialsMetaInput
+from backend.executor.utils import make_node_credentials_input_map
+from backend.integrations.webhooks.utils import setup_webhook_for_block
+from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +26,7 @@ router = APIRouter(
 
 @router.get(
     "",
+    summary="List Library Agents",
     responses={
         500: {"description": "Server error", "content": {"application/json": {}}},
     },
@@ -70,14 +77,14 @@ async def list_library_agents(
             page_size=page_size,
         )
     except Exception as e:
-        logger.exception("Listing library agents failed for user %s: %s", user_id, e)
+        logger.error(f"Could not list library agents for user #{user_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": str(e), "hint": "Inspect database connectivity."},
+            detail=str(e),
         ) from e
 
 
-@router.get("/{library_agent_id}")
+@router.get("/{library_agent_id}", summary="Get Library Agent")
 async def get_library_agent(
     library_agent_id: str,
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
@@ -87,6 +94,7 @@ async def get_library_agent(
 
 @router.get(
     "/marketplace/{store_listing_version_id}",
+    summary="Get Agent By Store ID",
     tags=["store, library"],
     response_model=library_model.LibraryAgent | None,
 )
@@ -101,23 +109,22 @@ async def get_library_agent_by_store_listing_version_id(
         return await library_db.get_library_agent_by_store_version_id(
             store_listing_version_id, user_id
         )
-    except Exception as e:
-        logger.exception(
-            "Retrieving library agent by store version failed for user %s: %s",
-            user_id,
-            e,
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
         )
+    except Exception as e:
+        logger.error(f"Could not fetch library agent from store version ID: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "message": str(e),
-                "hint": "Check if the store listing ID is valid.",
-            },
+            detail=str(e),
         ) from e
 
 
 @router.post(
     "",
+    summary="Add Marketplace Agent",
     status_code=status.HTTP_201_CREATED,
     responses={
         201: {"description": "Agent added successfully"},
@@ -149,26 +156,20 @@ async def add_marketplace_agent_to_library(
             user_id=user_id,
         )
 
-    except store_exceptions.AgentNotFoundError:
+    except store_exceptions.AgentNotFoundError as e:
         logger.warning(
-            "Store listing version %s not found when adding to library",
-            store_listing_version_id,
+            f"Could not find store listing version {store_listing_version_id} "
+            "to add to library"
         )
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "message": f"Store listing version {store_listing_version_id} not found",
-                "hint": "Confirm the ID provided.",
-            },
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except store_exceptions.DatabaseError as e:
-        logger.exception("Database error whilst adding agent to library: %s", e)
+        logger.error(f"Database error while adding agent to library: {e}", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": str(e), "hint": "Inspect DB logs for details."},
         ) from e
     except Exception as e:
-        logger.exception("Unexpected error while adding agent to library: %s", e)
+        logger.error(f"Unexpected error while adding agent to library: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
@@ -180,6 +181,7 @@ async def add_marketplace_agent_to_library(
 
 @router.put(
     "/{library_agent_id}",
+    summary="Update Library Agent",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         204: {"description": "Agent updated successfully"},
@@ -219,20 +221,20 @@ async def update_library_agent(
             content={"message": "Agent updated successfully"},
         )
     except store_exceptions.DatabaseError as e:
-        logger.exception("Database error while updating library agent: %s", e)
+        logger.error(f"Database error while updating library agent: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": str(e), "hint": "Verify DB connection."},
         ) from e
     except Exception as e:
-        logger.exception("Unexpected error while updating library agent: %s", e)
+        logger.error(f"Unexpected error while updating library agent: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": str(e), "hint": "Check server logs."},
         ) from e
 
 
-@router.post("/{library_agent_id}/fork")
+@router.post("/{library_agent_id}/fork", summary="Fork Library Agent")
 async def fork_library_agent(
     library_agent_id: str,
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
@@ -241,3 +243,81 @@ async def fork_library_agent(
         library_agent_id=library_agent_id,
         user_id=user_id,
     )
+
+
+class TriggeredPresetSetupParams(BaseModel):
+    name: str
+    description: str = ""
+
+    trigger_config: dict[str, Any]
+    agent_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
+
+
+@router.post("/{library_agent_id}/setup-trigger")
+async def setup_trigger(
+    library_agent_id: str = Path(..., description="ID of the library agent"),
+    params: TriggeredPresetSetupParams = Body(),
+    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+) -> library_model.LibraryAgentPreset:
+    """
+    Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.
+    Returns the correspondingly created `LibraryAgentPreset` with `webhook_id` set.
+    """
+    library_agent = await library_db.get_library_agent(
+        id=library_agent_id, user_id=user_id
+    )
+    if not library_agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Library agent #{library_agent_id} not found",
+        )
+
+    graph = await get_graph(
+        library_agent.graph_id, version=library_agent.graph_version, user_id=user_id
+    )
+    if not graph:
+        raise HTTPException(
+            status.HTTP_410_GONE,
+            f"Graph #{library_agent.graph_id} not accessible (anymore)",
+        )
+    if not (trigger_node := graph.webhook_input_node):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Graph #{library_agent.graph_id} does not have a webhook node",
+        )
+
+    trigger_config_with_credentials = {
+        **params.trigger_config,
+        **(
+            make_node_credentials_input_map(graph, params.agent_credentials).get(
+                trigger_node.id
+            )
+            or {}
+        ),
+    }
+
+    new_webhook, feedback = await setup_webhook_for_block(
+        user_id=user_id,
+        trigger_block=trigger_node.block,
+        trigger_config=trigger_config_with_credentials,
+    )
+    if not new_webhook:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Could not set up webhook: {feedback}",
+        )
+
+    new_preset = await library_db.create_preset(
+        user_id=user_id,
+        preset=library_model.LibraryAgentPresetCreatable(
+            graph_id=library_agent.graph_id,
+            graph_version=library_agent.graph_version,
+            name=params.name,
+            description=params.description,
+            inputs=trigger_config_with_credentials,
+            credentials=params.agent_credentials,
+            webhook_id=new_webhook.id,
+            is_active=True,
+        ),
+    )
+    return new_preset

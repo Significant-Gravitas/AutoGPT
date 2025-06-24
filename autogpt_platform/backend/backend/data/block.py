@@ -485,6 +485,22 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
                 raise ValueError(f"Block produced an invalid output data: {error}")
             yield output_name, output_data
 
+    def is_triggered_by_event_type(
+        self, trigger_config: dict[str, Any], event_type: str
+    ) -> bool:
+        if not self.webhook_config:
+            raise TypeError("This method can't be used on non-trigger blocks")
+        if not self.webhook_config.event_filter_input:
+            return True
+        event_filter = trigger_config.get(self.webhook_config.event_filter_input)
+        if not event_filter:
+            raise ValueError("Event filter is not configured on trigger")
+        return event_type in [
+            self.webhook_config.event_format.format(event=k)
+            for k in event_filter
+            if event_filter[k] is True
+        ]
+
 
 # ======================= Block Helper Functions ======================= #
 
