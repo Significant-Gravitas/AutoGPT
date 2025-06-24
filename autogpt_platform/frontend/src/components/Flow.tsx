@@ -34,7 +34,9 @@ import {
   formatEdgeID,
   GraphExecutionID,
   GraphID,
+  LibraryAgent,
 } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { getTypeColor, findNewlyAddedBlockCoordinates } from "@/lib/utils";
 import { history } from "./history";
 import { CustomEdge } from "./CustomEdge";
@@ -81,7 +83,7 @@ export const FlowContext = createContext<FlowContextType | null>(null);
 
 const FlowEditor: React.FC<{
   flowID?: GraphID;
-  flowVersion?: string;
+  flowVersion?: number;
   className?: string;
 }> = ({ flowID, flowVersion, className }) => {
   const {
@@ -122,10 +124,24 @@ const FlowEditor: React.FC<{
     setEdges,
   } = useAgentGraph(
     flowID,
-    flowVersion ? parseInt(flowVersion) : undefined,
+    flowVersion,
     flowExecutionID,
     visualizeBeads !== "no",
   );
+  const api = useBackendAPI();
+  const [libraryAgent, setLibraryAgent] = useState<LibraryAgent | null>(null);
+  useEffect(() => {
+    if (!flowID) return;
+    api
+      .getLibraryAgentByGraphID(flowID, flowVersion)
+      .then((libraryAgent) => setLibraryAgent(libraryAgent))
+      .catch((error) => {
+        console.warn(
+          `Failed to fetch LibraryAgent for graph #${flowID} v${flowVersion}`,
+          error,
+        );
+      });
+  }, [api, flowID, flowVersion]);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -760,7 +776,14 @@ const FlowEditor: React.FC<{
                   <br />
                   Instead, after setting up and saving your agent, check out the
                   triggered runs in your{" "}
-                  <Link href="/library" className="underline">
+                  <Link
+                    href={
+                      libraryAgent
+                        ? `/library/agents/${libraryAgent.id}`
+                        : "/library"
+                    }
+                    className="underline"
+                  >
                     Agent Library
                   </Link>
                   !

@@ -14,11 +14,13 @@ export default function BuilderPage() {
     completeStep("BUILDER_OPEN");
   }, [completeStep]);
 
+  const _graphVersion = query.get("flowVersion");
+  const graphVersion = _graphVersion ? parseInt(_graphVersion) : undefined
   return (
     <FlowEditor
       className="flow-container"
       flowID={query.get("flowID") as GraphID | null ?? undefined}
-      flowVersion={query.get("flowVersion") ?? undefined}
+      flowVersion={graphVersion}
     />
   );
 }

@@ -622,6 +622,15 @@ export default class BackendAPI {
     return this._get(`/library/agents/marketplace/${storeListingVersionId}`);
   }
 
+  getLibraryAgentByGraphID(
+    graphID: GraphID,
+    graphVersion?: number,
+  ): Promise<LibraryAgent> {
+    return this._get(`/library/agents/by-graph/${graphID}`, {
+      version: graphVersion,
+    });
+  }
+
   addMarketplaceAgentToLibrary(
     storeListingVersionID: string,
   ): Promise<LibraryAgent> {
