@@ -35,8 +35,8 @@ class UnrealTextToSpeechBlock(Block):
         )
         voice_id: str = SchemaField(
             description="The voice ID to use for text-to-speech conversion",
-            placeholder="Scarlett",
-            default="Scarlett",
+            placeholder="Sierra",
+            default="Sierra",
         )
         credentials: CredentialsMetaInput[
             Literal[ProviderName.UNREAL_SPEECH], Literal["api_key"]
@@ -58,7 +58,7 @@ class UnrealTextToSpeechBlock(Block):
             output_schema=UnrealTextToSpeechBlock.Output,
             test_input={
                 "text": "This is a test of the text to speech API.",
-                "voice_id": "Scarlett",
+                "voice_id": "Sierra",
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
             test_output=[("mp3_url", "https://example.com/test.mp3")],
@@ -74,7 +74,7 @@ class UnrealTextToSpeechBlock(Block):
     def call_unreal_speech_api(
         api_key: SecretStr, text: str, voice_id: str
     ) -> dict[str, Any]:
-        url = "https://api.v7.unrealspeech.com/speech"
+        url = "https://api.v8.unrealspeech.com/speech"
         headers = {
             "Authorization": f"Bearer {api_key.get_secret_value()}",
             "Content-Type": "application/json",
