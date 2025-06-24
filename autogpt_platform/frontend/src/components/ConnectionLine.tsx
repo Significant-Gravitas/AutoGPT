@@ -17,8 +17,8 @@ export default function ConnectionLine<NodeType extends Node>({
 }: ConnectionLineComponentProps<NodeType>) {
   const sourceX =
     fromPosition === Position.Right
-      ? fromX + (fromHandle?.width! / 2 - 5)
-      : fromX - (fromHandle?.width! / 2 - 5);
+      ? fromX + ((fromHandle?.width ?? 0) / 2 - 5)
+      : fromX - ((fromHandle?.width ?? 0) / 2 - 5);
 
   const [path] = getBezierPath({
     sourceX: sourceX,

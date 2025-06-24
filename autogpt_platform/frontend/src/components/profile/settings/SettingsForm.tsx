@@ -20,10 +20,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { updateSettings } from "@/app/(platform)/profile/(user)/settings/actions";
 import { toast } from "@/components/ui/use-toast";
-import {
-  NotificationPreference,
-  NotificationPreferenceDTO,
-} from "@/lib/autogpt-server-api";
+import { NotificationPreferenceDTO } from "@/lib/autogpt-server-api";
 
 const formSchema = z
   .object({

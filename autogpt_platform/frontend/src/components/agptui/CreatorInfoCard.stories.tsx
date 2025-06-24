@@ -1,8 +1,8 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { CreatorInfoCard } from "./CreatorInfoCard";
 
 const meta = {
-  title: "AGPT UI/Creator Info Card",
+  title: "Legacy/Creator Info Card",
   component: CreatorInfoCard,
   parameters: {
     layout: "centered",

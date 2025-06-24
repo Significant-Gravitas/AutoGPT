@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState, useRef } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { SignOut, User } from "@supabase/supabase-js";
+import { User } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import {
   broadcastLogout,
@@ -29,7 +29,7 @@ export function useSupabase() {
     }
   }, []);
 
-  async function logOut(options?: SignOut) {
+  async function logOut() {
     if (!supabase) return;
 
     broadcastLogout();
@@ -121,7 +121,7 @@ export function useSupabase() {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    } = supabase.auth.onAuthStateChange((_, session) => {
       const newUser = session?.user ?? null;
 
       // Only update if user actually changed to prevent unnecessary re-renders

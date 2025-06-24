@@ -47,7 +47,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     inputStep,
   );
   const [myAgents, setMyAgents] = React.useState<MyAgentsResponse | null>(null);
-  const [selectedAgent, setSelectedAgent] = React.useState<string | null>(null);
+  const [_, setSelectedAgent] = React.useState<string | null>(null);
   const [initialData, setInitialData] =
     React.useState<PublishAgentInfoInitialData>({
       agent_id: "",
@@ -181,7 +181,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
 
     // Create store submission
     try {
-      const submission = await api.createStoreSubmission({
+      await api.createStoreSubmission({
         name: name,
         sub_heading: subHeading,
         description: description,
