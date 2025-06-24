@@ -279,6 +279,7 @@ class AgentServer(backend.util.service.AppProcess):
 
     @staticmethod
     async def test_delete_graph(graph_id: str, user_id: str):
+        """Used for clean-up after a test run"""
         await backend.server.v2.library.db.delete_library_agent_by_graph_id(
             graph_id=graph_id, user_id=user_id
         )

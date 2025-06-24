@@ -630,16 +630,19 @@ export default class BackendAPI {
     });
   }
 
-  async updateLibraryAgent(
+  updateLibraryAgent(
     libraryAgentId: LibraryAgentID,
     params: {
       auto_update_version?: boolean;
       is_favorite?: boolean;
       is_archived?: boolean;
-      is_deleted?: boolean;
     },
-  ): Promise<void> {
-    await this._request("PUT", `/library/agents/${libraryAgentId}`, params);
+  ): Promise<LibraryAgent> {
+    return this._request("PATCH", `/library/agents/${libraryAgentId}`, params);
+  }
+
+  async deleteLibraryAgent(libraryAgentId: LibraryAgentID): Promise<void> {
+    await this._request("DELETE", `/library/agents/${libraryAgentId}`);
   }
 
   forkLibraryAgent(libraryAgentId: LibraryAgentID): Promise<LibraryAgent> {
