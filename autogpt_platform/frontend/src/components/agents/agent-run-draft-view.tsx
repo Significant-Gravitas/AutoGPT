@@ -18,6 +18,7 @@ import { TypeBasedInput } from "@/components/type-based-input";
 import { useToastOnFail } from "@/components/ui/use-toast";
 import ActionButtonGroup from "@/components/agptui/action-button-group";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { Trash2Icon } from "lucide-react";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { useToast } from "@/components/ui/use-toast";
 import { isEmpty } from "lodash";
@@ -309,25 +310,50 @@ export default function AgentRunDraftView({
     completeOnboardingStep,
   ]);
 
+  const doDeletePreset = useCallback(() => {
+    if (!agentPreset) return;
+
+    return api
+      .deleteLibraryAgentPreset(agentPreset.id)
+      .catch(toastOnFail("delete agent preset"));
+  }, [api, agentPreset, toastOnFail]);
+
   const runActions: ButtonAction[] = useMemo(
     () => [
-      !agent.has_external_trigger
-        ? {
-            label: (
-              <>
-                <IconPlay className="mr-2 size-4" />
-                Run
-              </>
-            ),
-            variant: "accent",
-            callback: doRun,
-          }
-        : !agentPreset?.webhook_id
-          ? {
+      // "Regular" agent: [run] + [save as preset] buttons
+      ...(!agent.has_external_trigger
+        ? ([
+            {
               label: (
                 <>
-                  <IconPlay className="mr-2 size-4" />
-                  Set up trigger
+                  <IconPlay className="mr-2 size-4" /> Run
+                </>
+              ),
+              variant: "accent",
+              callback: doRun,
+            },
+            // {
+            //   label: (
+            //     <>
+            //       <IconSave className="mr-2 size-4" /> Save as a preset
+            //     </>
+            //   ),
+            //   callback: doCreatePreset,
+            //   disabled: !(
+            //     presetName &&
+            //     allRequiredInputsAreSet &&
+            //     allCredentialsAreSet
+            //   ),
+            // },
+          ] satisfies ButtonAction[])
+        : []),
+      // Triggered agent: [setup] button
+      ...(agent.has_external_trigger && !agentPreset?.webhook_id
+        ? ([
+            {
+              label: (
+                <>
+                  <IconPlay className="mr-2 size-4" /> Set up trigger
                 </>
               ),
               variant: "accent",
@@ -337,56 +363,61 @@ export default function AgentRunDraftView({
                 allRequiredInputsAreSet &&
                 allCredentialsAreSet
               ),
-            }
-          : agentPreset.is_active
-            ? {
-                label: (
-                  <>
-                    <IconCross className="mr-2.5 size-3.5" />
-                    Disable trigger
-                  </>
-                ),
-                variant: "destructive",
-                callback: () => doSetPresetActive(false),
-              }
-            : {
-                label: (
-                  <>
-                    <IconPlay className="mr-2 size-4" />
-                    Enable trigger
-                  </>
-                ),
-                variant: "accent",
-                callback: () => doSetPresetActive(true),
-              },
-      !agentPreset
-        ? {
-            label: (
-              <>
-                <IconSave className="mr-2 size-4" /> Save as a preset
-              </>
-            ),
-            callback: doCreatePreset,
-            disabled: !(
-              presetName &&
-              allRequiredInputsAreSet &&
-              allCredentialsAreSet
-            ),
-          }
-        : {
-            label: (
-              <>
-                <IconSave className="mr-2 size-4" /> Save changes
-              </>
-            ),
-            callback: doUpdatePreset,
-            disabled: !(
-              changedPresetAttributes.size > 0 &&
-              presetName &&
-              allRequiredInputsAreSet &&
-              allCredentialsAreSet
-            ),
-          },
+            },
+          ] satisfies ButtonAction[])
+        : []),
+      // Existing agent trigger: [enable]/[disable] button
+      ...(agentPreset?.webhook_id
+        ? ([
+            agentPreset.is_active
+              ? {
+                  label: (
+                    <>
+                      <IconCross className="mr-2.5 size-3.5" /> Disable trigger
+                    </>
+                  ),
+                  variant: "destructive",
+                  callback: () => doSetPresetActive(false),
+                }
+              : {
+                  label: (
+                    <>
+                      <IconPlay className="mr-2 size-4" /> Enable trigger
+                    </>
+                  ),
+                  variant: "accent",
+                  callback: () => doSetPresetActive(true),
+                },
+          ] satisfies ButtonAction[])
+        : []),
+      // Existing agent preset/trigger: [save] and [delete] buttons
+      ...(agentPreset
+        ? ([
+            {
+              label: (
+                <>
+                  <IconSave className="mr-2 size-4" /> Save changes
+                </>
+              ),
+              callback: doUpdatePreset,
+              disabled: !(
+                changedPresetAttributes.size > 0 &&
+                presetName &&
+                allRequiredInputsAreSet &&
+                allCredentialsAreSet
+              ),
+            },
+            {
+              label: (
+                <>
+                  <Trash2Icon className="mr-2 size-4" />
+                  Delete {agent.has_external_trigger ? "trigger" : "preset"}
+                </>
+              ),
+              callback: doDeletePreset,
+            },
+          ] satisfies ButtonAction[])
+        : []),
     ],
     [
       agent.has_external_trigger,
@@ -394,7 +425,9 @@ export default function AgentRunDraftView({
       api,
       doRun,
       doSetupTrigger,
+      doCreatePreset,
       doUpdatePreset,
+      doDeletePreset,
       changedPresetAttributes,
       presetName,
       allRequiredInputsAreSet,
