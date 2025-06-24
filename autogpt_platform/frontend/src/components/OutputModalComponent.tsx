@@ -10,6 +10,7 @@ interface OutputModalProps {
   executionResults: {
     execId: string;
     data: NodeExecutionResult["output_data"];
+    timestamp: Date | string;
   }[];
 }
 
@@ -31,7 +32,7 @@ const OutputModalComponent: FC<OutputModalProps> = ({
             <>
               <DataTable
                 key={i}
-                title={data.execId}
+                title={new Date(data.timestamp).toLocaleString()}
                 data={data.data}
                 truncateLongData={true}
               />

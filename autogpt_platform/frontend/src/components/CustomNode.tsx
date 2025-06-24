@@ -82,6 +82,7 @@ export type CustomNodeData = {
   executionResults?: {
     execId: string;
     data: NodeExecutionResult["output_data"];
+    timestamp: Date | string;
     status: NodeExecutionResult["status"];
   }[];
   block_id: string;

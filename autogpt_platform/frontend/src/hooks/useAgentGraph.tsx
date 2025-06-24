@@ -374,6 +374,12 @@ export default function useAgentGraph(
             "[Input]": [executionData.input_data],
             ...executionData.output_data,
           },
+          timestamp:
+            executionData.end_time ||
+            executionData.start_time ||
+            executionData.queue_time ||
+            executionData.add_time ||
+            new Date(),
           status: executionData.status,
         },
       ];
