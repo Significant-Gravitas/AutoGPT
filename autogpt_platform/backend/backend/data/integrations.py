@@ -77,9 +77,8 @@ class WebhookWithRelations(Webhook):
         )
 
 
-# Fix Webhook <- NodeModel/LibraryAgentPreset relations
+# Fix Webhook <- NodeModel relations
 NodeModel.model_rebuild()
-LibraryAgentPreset.model_rebuild()
 
 
 # --------------------- CRUD functions --------------------- #

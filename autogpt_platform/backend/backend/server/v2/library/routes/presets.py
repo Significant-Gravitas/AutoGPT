@@ -7,6 +7,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 import backend.server.v2.library.db as db
 import backend.server.v2.library.model as models
 from backend.data.graph import get_graph
+from backend.data.integrations import get_webhook
 from backend.executor.utils import add_graph_execution, make_node_credentials_input_map
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks import get_webhook_manager
@@ -225,17 +226,18 @@ async def update_preset(
         )
 
         # Clean up webhook if it is now unused
-        if current.webhook and (
-            current.webhook.id != (new_webhook.id if new_webhook else None)
+        if current.webhook_id and (
+            current.webhook_id != (new_webhook.id if new_webhook else None)
         ):
+            current_webhook = await get_webhook(current.webhook_id)
             credentials = (
-                await credentials_manager.get(user_id, current.webhook.credentials_id)
-                if current.webhook.credentials_id
+                await credentials_manager.get(user_id, current_webhook.credentials_id)
+                if current_webhook.credentials_id
                 else None
             )
             await get_webhook_manager(
-                current.webhook.provider
-            ).prune_webhook_if_dangling(user_id, current.webhook.id, credentials)
+                current_webhook.provider
+            ).prune_webhook_if_dangling(user_id, current_webhook.id, credentials)
 
     return updated
 
@@ -269,21 +271,17 @@ async def delete_preset(
 
     # Detach and clean up the attached webhook, if any
     if preset.webhook_id:
-        if not preset.webhook:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Webhook must be included in AgentPreset query",
-            )
+        webhook = await get_webhook(preset.webhook_id)
         await db.set_preset_webhook(user_id, preset_id, None)
 
         # Clean up webhook if it is now unused
         credentials = (
-            await credentials_manager.get(user_id, preset.webhook.credentials_id)
-            if preset.webhook.credentials_id
+            await credentials_manager.get(user_id, webhook.credentials_id)
+            if webhook.credentials_id
             else None
         )
-        await get_webhook_manager(preset.webhook.provider).prune_webhook_if_dangling(
-            user_id, preset.webhook.id, credentials
+        await get_webhook_manager(webhook.provider).prune_webhook_if_dangling(
+            user_id, webhook.id, credentials
         )
 
     try:

@@ -537,7 +537,7 @@ async def list_presets(
             where=query_filter,
             skip=(page - 1) * page_size,
             take=page_size,
-            include={"InputPresets": True, "Webhook": True},
+            include={"InputPresets": True},
         )
         total_items = await prisma.models.AgentPreset.prisma().count(where=query_filter)
         total_pages = (total_items + page_size - 1) // page_size
@@ -582,7 +582,7 @@ async def get_preset(
     try:
         preset = await prisma.models.AgentPreset.prisma().find_unique(
             where={"id": preset_id},
-            include={"InputPresets": True, "Webhook": True},
+            include={"InputPresets": True},
         )
         if not preset or preset.userId != user_id or preset.isDeleted:
             return None
@@ -637,7 +637,7 @@ async def create_preset(
                     ]
                 },
             ),
-            include={"InputPresets": True, "Webhook": True},
+            include={"InputPresets": True},
         )
         return library_model.LibraryAgentPreset.from_db(new_preset)
     except prisma.errors.PrismaError as e:
@@ -754,7 +754,7 @@ async def update_preset(
             updated = await prisma.models.AgentPreset.prisma(tx).update(
                 where={"id": preset_id},
                 data=update_data,
-                include={"InputPresets": True, "Webhook": True},
+                include={"InputPresets": True},
             )
         if not updated:
             raise RuntimeError(f"AgentPreset #{preset_id} vanished while updating")
@@ -769,7 +769,7 @@ async def set_preset_webhook(
 ) -> library_model.LibraryAgentPreset:
     current = await prisma.models.AgentPreset.prisma().find_unique(
         where={"id": preset_id},
-        include={"InputPresets": True, "Webhook": True},
+        include={"InputPresets": True},
     )
     if not current or current.userId != user_id:
         raise NotFoundError(f"Preset #{preset_id} not found")
@@ -781,7 +781,7 @@ async def set_preset_webhook(
             if webhook_id
             else {"Webhook": {"disconnect": True}}
         ),
-        include={"InputPresets": True, "Webhook": True},
+        include={"InputPresets": True},
     )
     if not updated:
         raise RuntimeError(f"AgentPreset #{preset_id} vanished while updating")

@@ -1,6 +1,6 @@
 import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Optional
+from typing import Any, Optional
 
 import prisma.enums
 import prisma.models
@@ -11,9 +11,6 @@ import backend.data.graph as graph_model
 import backend.server.model as server_model
 from backend.data.model import CredentialsMetaInput, is_credentials_field_name
 from backend.integrations.providers import ProviderName
-
-if TYPE_CHECKING:
-    from backend.data.integrations import Webhook
 
 
 class LibraryAgentStatus(str, Enum):
@@ -267,12 +264,8 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
     user_id: str
     updated_at: datetime.datetime
 
-    webhook: "Webhook | None"
-
     @classmethod
     def from_db(cls, preset: prisma.models.AgentPreset) -> "LibraryAgentPreset":
-        from backend.data.integrations import Webhook
-
         if preset.InputPresets is None:
             raise ValueError("InputPresets must be included in AgentPreset query")
 
@@ -299,7 +292,6 @@ class LibraryAgentPreset(LibraryAgentPresetCreatable):
             inputs=input_data,
             credentials=input_credentials,
             webhook_id=preset.webhookId,
-            webhook=Webhook.from_db(preset.Webhook) if preset.Webhook else None,
         )
 
 
