@@ -107,6 +107,7 @@ class SearchPeopleBlock(Block):
             default_factory=list,
         )
         person: Contact = SchemaField(
+            title="Person",
             description="Each found person, one at a time",
         )
         error: str = SchemaField(
@@ -373,13 +374,13 @@ class SearchPeopleBlock(Block):
         )
 
     @staticmethod
-    def search_people(
+    async def search_people(
         query: SearchPeopleRequest, credentials: ApolloCredentials
     ) -> list[Contact]:
         client = ApolloClient(credentials)
-        return client.search_people(query)
+        return await client.search_people(query)
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -387,8 +388,8 @@ class SearchPeopleBlock(Block):
         **kwargs,
     ) -> BlockOutput:
 
-        query = SearchPeopleRequest(**input_data.model_dump(exclude={"credentials"}))
-        people = self.search_people(query, credentials)
+        query = SearchPeopleRequest(**input_data.model_dump())
+        people = await self.search_people(query, credentials)
         for person in people:
             yield "person", person
         yield "people", people

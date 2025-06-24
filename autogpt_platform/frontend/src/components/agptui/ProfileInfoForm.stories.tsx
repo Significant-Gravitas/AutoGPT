@@ -1,8 +1,8 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { ProfileInfoForm } from "./ProfileInfoForm";
 
 const meta: Meta<typeof ProfileInfoForm> = {
-  title: "AGPT UI/Profile/Profile Info Form",
+  title: "Legacy/Profile/Profile Info Form",
   component: ProfileInfoForm,
   parameters: {
     layout: "fullscreen",

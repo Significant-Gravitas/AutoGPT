@@ -1,9 +1,9 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { BreadCrumbs } from "./BreadCrumbs";
-import { userEvent, within } from "@storybook/test";
+import { userEvent, within } from "storybook/test";
 
 const meta = {
-  title: "AGPT UI/BreadCrumbs",
+  title: "Legacy/BreadCrumbs",
   component: BreadCrumbs,
   parameters: {
     layout: "centered",

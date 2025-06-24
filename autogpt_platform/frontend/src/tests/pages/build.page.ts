@@ -1,4 +1,4 @@
-import { ElementHandle, Locator, Page } from "@playwright/test";
+import { Locator, Page } from "@playwright/test";
 import { BasePage } from "./base.page";
 
 export interface Block {
@@ -136,7 +136,7 @@ export class BuildPage extends BasePage {
     }
   }
 
-  async getBlockOutputs(blockId: string): Promise<string[]> {
+  async getBlockOutputs(): Promise<string[]> {
     throw new Error("Not implemented");
     // try {
     //   const node = await this.page
@@ -151,7 +151,7 @@ export class BuildPage extends BasePage {
   }
 
   async _buildBlockSelector(blockId: string, dataId?: string): Promise<string> {
-    let selector = dataId
+    const selector = dataId
       ? `[data-id="${dataId}"] [data-blockid="${blockId}"]`
       : `[data-blockid="${blockId}"]`;
     return selector;
@@ -283,7 +283,7 @@ export class BuildPage extends BasePage {
     try {
       await this.page.waitForLoadState("domcontentloaded", { timeout: 10_000 });
       return true;
-    } catch (error) {
+    } catch {
       return false;
     }
   }
@@ -432,8 +432,8 @@ export class BuildPage extends BasePage {
     }
 
     // Parse current coordinates
-    let currentX = parseFloat(matches[1]);
-    let currentY = parseFloat(matches[2]);
+    const currentX = parseFloat(matches[1]);
+    const currentY = parseFloat(matches[2]);
 
     // Calculate new position
     let newX = currentX;

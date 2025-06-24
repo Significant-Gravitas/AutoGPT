@@ -1,7 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
-import { Category, Graph } from "@/lib/autogpt-server-api/types";
+import { Category } from "@/lib/autogpt-server-api/types";
 import { NodeDimension } from "@/components/Flow";
 
 export function cn(...inputs: ClassValue[]) {
@@ -395,4 +395,9 @@ export function getValue(key: string, value: any) {
 /** Check if a string is empty or whitespace */
 export function isEmptyOrWhitespace(str: string | undefined | null): boolean {
   return !str || str.trim().length === 0;
+}
+
+/** Check if a value is an object or not */
+export function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

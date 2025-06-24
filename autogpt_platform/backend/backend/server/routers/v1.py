@@ -50,7 +50,6 @@ from backend.data.onboarding import (
     onboarding_enabled,
     update_user_onboarding,
 )
-from backend.data.rabbitmq import AsyncRabbitMQ
 from backend.data.user import (
     get_or_create_user,
     get_user_notification_preference,
@@ -59,7 +58,6 @@ from backend.data.user import (
 )
 from backend.executor import scheduler
 from backend.executor import utils as execution_utils
-from backend.executor.utils import create_execution_queue_config
 from backend.integrations.webhooks.graph_lifecycle_hooks import (
     on_graph_activate,
     on_graph_deactivate,
@@ -81,13 +79,6 @@ from backend.util.settings import Settings
 @thread_cached
 def execution_scheduler_client() -> scheduler.SchedulerClient:
     return get_service_client(scheduler.SchedulerClient, health_check=False)
-
-
-@thread_cached
-async def execution_queue_client() -> AsyncRabbitMQ:
-    client = AsyncRabbitMQ(create_execution_queue_config())
-    await client.connect()
-    return client
 
 
 @thread_cached
@@ -122,14 +113,22 @@ v1_router.include_router(
 ########################################################
 
 
-@v1_router.post("/auth/user", tags=["auth"], dependencies=[Depends(auth_middleware)])
+@v1_router.post(
+    "/auth/user",
+    summary="Get or create user",
+    tags=["auth"],
+    dependencies=[Depends(auth_middleware)],
+)
 async def get_or_create_user_route(user_data: dict = Depends(auth_middleware)):
     user = await get_or_create_user(user_data)
     return user.model_dump()
 
 
 @v1_router.post(
-    "/auth/user/email", tags=["auth"], dependencies=[Depends(auth_middleware)]
+    "/auth/user/email",
+    summary="Update user email",
+    tags=["auth"],
+    dependencies=[Depends(auth_middleware)],
 )
 async def update_user_email_route(
     user_id: Annotated[str, Depends(get_user_id)], email: str = Body(...)
@@ -141,6 +140,7 @@ async def update_user_email_route(
 
 @v1_router.get(
     "/auth/user/preferences",
+    summary="Get notification preferences",
     tags=["auth"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -153,6 +153,7 @@ async def get_preferences(
 
 @v1_router.post(
     "/auth/user/preferences",
+    summary="Update notification preferences",
     tags=["auth"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -170,14 +171,20 @@ async def update_preferences(
 
 
 @v1_router.get(
-    "/onboarding", tags=["onboarding"], dependencies=[Depends(auth_middleware)]
+    "/onboarding",
+    summary="Get onboarding status",
+    tags=["onboarding"],
+    dependencies=[Depends(auth_middleware)],
 )
 async def get_onboarding(user_id: Annotated[str, Depends(get_user_id)]):
     return await get_user_onboarding(user_id)
 
 
 @v1_router.patch(
-    "/onboarding", tags=["onboarding"], dependencies=[Depends(auth_middleware)]
+    "/onboarding",
+    summary="Update onboarding progress",
+    tags=["onboarding"],
+    dependencies=[Depends(auth_middleware)],
 )
 async def update_onboarding(
     user_id: Annotated[str, Depends(get_user_id)], data: UserOnboardingUpdate
@@ -187,6 +194,7 @@ async def update_onboarding(
 
 @v1_router.get(
     "/onboarding/agents",
+    summary="Get recommended agents",
     tags=["onboarding"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -198,6 +206,7 @@ async def get_onboarding_agents(
 
 @v1_router.get(
     "/onboarding/enabled",
+    summary="Check onboarding enabled",
     tags=["onboarding", "public"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -210,7 +219,12 @@ async def is_onboarding_enabled():
 ########################################################
 
 
-@v1_router.get(path="/blocks", tags=["blocks"], dependencies=[Depends(auth_middleware)])
+@v1_router.get(
+    path="/blocks",
+    summary="List available blocks",
+    tags=["blocks"],
+    dependencies=[Depends(auth_middleware)],
+)
 def get_graph_blocks() -> Sequence[dict[Any, Any]]:
     blocks = [block() for block in get_blocks().values()]
     costs = get_block_costs()
@@ -221,16 +235,17 @@ def get_graph_blocks() -> Sequence[dict[Any, Any]]:
 
 @v1_router.post(
     path="/blocks/{block_id}/execute",
+    summary="Execute graph block",
     tags=["blocks"],
     dependencies=[Depends(auth_middleware)],
 )
-def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput:
+async def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput:
     obj = get_block(block_id)
     if not obj:
         raise HTTPException(status_code=404, detail=f"Block #{block_id} not found.")
 
     output = defaultdict(list)
-    for name, data in obj.execute(data):
+    async for name, data in obj.execute(data):
         output[name].append(data)
     return output
 
@@ -240,7 +255,12 @@ def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlockOutput
 ########################################################
 
 
-@v1_router.get(path="/credits", dependencies=[Depends(auth_middleware)])
+@v1_router.get(
+    path="/credits",
+    tags=["credits"],
+    summary="Get user credits",
+    dependencies=[Depends(auth_middleware)],
+)
 async def get_user_credits(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, int]:
@@ -248,7 +268,10 @@ async def get_user_credits(
 
 
 @v1_router.post(
-    path="/credits", tags=["credits"], dependencies=[Depends(auth_middleware)]
+    path="/credits",
+    summary="Request credit top up",
+    tags=["credits"],
+    dependencies=[Depends(auth_middleware)],
 )
 async def request_top_up(
     request: RequestTopUp, user_id: Annotated[str, Depends(get_user_id)]
@@ -261,6 +284,7 @@ async def request_top_up(
 
 @v1_router.post(
     path="/credits/{transaction_key}/refund",
+    summary="Refund credit transaction",
     tags=["credits"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -273,7 +297,10 @@ async def refund_top_up(
 
 
 @v1_router.patch(
-    path="/credits", tags=["credits"], dependencies=[Depends(auth_middleware)]
+    path="/credits",
+    summary="Fulfill checkout session",
+    tags=["credits"],
+    dependencies=[Depends(auth_middleware)],
 )
 async def fulfill_checkout(user_id: Annotated[str, Depends(get_user_id)]):
     await _user_credit_model.fulfill_checkout(user_id=user_id)
@@ -282,6 +309,7 @@ async def fulfill_checkout(user_id: Annotated[str, Depends(get_user_id)]):
 
 @v1_router.post(
     path="/credits/auto-top-up",
+    summary="Configure auto top up",
     tags=["credits"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -310,6 +338,7 @@ async def configure_user_auto_top_up(
 
 @v1_router.get(
     path="/credits/auto-top-up",
+    summary="Get auto top up",
     tags=["credits"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -319,7 +348,9 @@ async def get_user_auto_top_up(
     return await get_auto_top_up(user_id)
 
 
-@v1_router.post(path="/credits/stripe_webhook", tags=["credits"])
+@v1_router.post(
+    path="/credits/stripe_webhook", summary="Handle Stripe webhooks", tags=["credits"]
+)
 async def stripe_webhook(request: Request):
     # Get the raw request body
     payload = await request.body()
@@ -354,14 +385,24 @@ async def stripe_webhook(request: Request):
     return Response(status_code=200)
 
 
-@v1_router.get(path="/credits/manage", dependencies=[Depends(auth_middleware)])
+@v1_router.get(
+    path="/credits/manage",
+    tags=["credits"],
+    summary="Manage payment methods",
+    dependencies=[Depends(auth_middleware)],
+)
 async def manage_payment_method(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> dict[str, str]:
     return {"url": await _user_credit_model.create_billing_portal_session(user_id)}
 
 
-@v1_router.get(path="/credits/transactions", dependencies=[Depends(auth_middleware)])
+@v1_router.get(
+    path="/credits/transactions",
+    tags=["credits"],
+    summary="Get credit history",
+    dependencies=[Depends(auth_middleware)],
+)
 async def get_credit_history(
     user_id: Annotated[str, Depends(get_user_id)],
     transaction_time: datetime | None = None,
@@ -379,7 +420,12 @@ async def get_credit_history(
     )
 
 
-@v1_router.get(path="/credits/refunds", dependencies=[Depends(auth_middleware)])
+@v1_router.get(
+    path="/credits/refunds",
+    tags=["credits"],
+    summary="Get refund requests",
+    dependencies=[Depends(auth_middleware)],
+)
 async def get_refund_requests(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> list[RefundRequest]:
@@ -395,7 +441,12 @@ class DeleteGraphResponse(TypedDict):
     version_counts: int
 
 
-@v1_router.get(path="/graphs", tags=["graphs"], dependencies=[Depends(auth_middleware)])
+@v1_router.get(
+    path="/graphs",
+    summary="List user graphs",
+    tags=["graphs"],
+    dependencies=[Depends(auth_middleware)],
+)
 async def get_graphs(
     user_id: Annotated[str, Depends(get_user_id)],
 ) -> Sequence[graph_db.GraphModel]:
@@ -403,10 +454,14 @@ async def get_graphs(
 
 
 @v1_router.get(
-    path="/graphs/{graph_id}", tags=["graphs"], dependencies=[Depends(auth_middleware)]
+    path="/graphs/{graph_id}",
+    summary="Get specific graph",
+    tags=["graphs"],
+    dependencies=[Depends(auth_middleware)],
 )
 @v1_router.get(
     path="/graphs/{graph_id}/versions/{version}",
+    summary="Get graph version",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -430,6 +485,7 @@ async def get_graph(
 
 @v1_router.get(
     path="/graphs/{graph_id}/versions",
+    summary="Get all graph versions",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -443,7 +499,10 @@ async def get_graph_all_versions(
 
 
 @v1_router.post(
-    path="/graphs", tags=["graphs"], dependencies=[Depends(auth_middleware)]
+    path="/graphs",
+    summary="Create new graph",
+    tags=["graphs"],
+    dependencies=[Depends(auth_middleware)],
 )
 async def create_new_graph(
     create_graph: CreateGraph,
@@ -466,7 +525,10 @@ async def create_new_graph(
 
 
 @v1_router.delete(
-    path="/graphs/{graph_id}", tags=["graphs"], dependencies=[Depends(auth_middleware)]
+    path="/graphs/{graph_id}",
+    summary="Delete graph permanently",
+    tags=["graphs"],
+    dependencies=[Depends(auth_middleware)],
 )
 async def delete_graph(
     graph_id: str, user_id: Annotated[str, Depends(get_user_id)]
@@ -478,7 +540,10 @@ async def delete_graph(
 
 
 @v1_router.put(
-    path="/graphs/{graph_id}", tags=["graphs"], dependencies=[Depends(auth_middleware)]
+    path="/graphs/{graph_id}",
+    summary="Update graph version",
+    tags=["graphs"],
+    dependencies=[Depends(auth_middleware)],
 )
 async def update_graph(
     graph_id: str,
@@ -524,6 +589,7 @@ async def update_graph(
 
 @v1_router.put(
     path="/graphs/{graph_id}/versions/active",
+    summary="Set active graph version",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -562,6 +628,7 @@ async def set_graph_active_version(
 
 @v1_router.post(
     path="/graphs/{graph_id}/execute/{graph_version}",
+    summary="Execute graph agent",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -582,7 +649,7 @@ async def execute_graph(
             detail="Insufficient balance to execute the agent. Please top up your account.",
         )
 
-    graph_exec = await execution_utils.add_graph_execution_async(
+    graph_exec = await execution_utils.add_graph_execution(
         graph_id=graph_id,
         user_id=user_id,
         inputs=inputs,
@@ -595,18 +662,19 @@ async def execute_graph(
 
 @v1_router.post(
     path="/graphs/{graph_id}/executions/{graph_exec_id}/stop",
+    summary="Stop graph execution",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
 async def stop_graph_run(
-    graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
+    graph_id: str, graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
 ) -> execution_db.GraphExecution:
     if not await execution_db.get_graph_execution_meta(
         user_id=user_id, execution_id=graph_exec_id
     ):
         raise HTTPException(404, detail=f"Agent execution #{graph_exec_id} not found")
 
-    await _cancel_execution(graph_exec_id)
+    await execution_utils.stop_graph_execution(graph_exec_id)
 
     # Retrieve & return canceled graph execution in its final state
     result = await execution_db.get_graph_execution(
@@ -620,54 +688,9 @@ async def stop_graph_run(
     return result
 
 
-async def _cancel_execution(graph_exec_id: str):
-    """
-    Mechanism:
-    1. Set the cancel event
-    2. Graph executor's cancel handler thread detects the event, terminates workers,
-       reinitializes worker pool, and returns.
-    3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
-    """
-    queue_client = await execution_queue_client()
-    await queue_client.publish_message(
-        routing_key="",
-        message=execution_utils.CancelExecutionEvent(
-            graph_exec_id=graph_exec_id
-        ).model_dump_json(),
-        exchange=execution_utils.GRAPH_EXECUTION_CANCEL_EXCHANGE,
-    )
-
-    # Update the status of the graph execution
-    graph_execution = await execution_db.update_graph_execution_stats(
-        graph_exec_id,
-        execution_db.ExecutionStatus.TERMINATED,
-    )
-    if graph_execution:
-        await execution_event_bus().publish(graph_execution)
-
-    # Update the status of the node executions
-    node_execs = [
-        node_exec.model_copy(update={"status": execution_db.ExecutionStatus.TERMINATED})
-        for node_exec in await execution_db.get_node_executions(
-            graph_exec_id=graph_exec_id,
-            statuses=[
-                execution_db.ExecutionStatus.QUEUED,
-                execution_db.ExecutionStatus.RUNNING,
-                execution_db.ExecutionStatus.INCOMPLETE,
-            ],
-        )
-    ]
-    await execution_db.update_node_execution_status_batch(
-        [node_exec.node_exec_id for node_exec in node_execs],
-        execution_db.ExecutionStatus.TERMINATED,
-    )
-    await asyncio.gather(
-        *[execution_event_bus().publish(node_exec) for node_exec in node_execs]
-    )
-
-
 @v1_router.get(
     path="/executions",
+    summary="Get all executions",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -679,6 +702,7 @@ async def get_graphs_executions(
 
 @v1_router.get(
     path="/graphs/{graph_id}/executions",
+    summary="Get graph executions",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -691,6 +715,7 @@ async def get_graph_executions(
 
 @v1_router.get(
     path="/graphs/{graph_id}/executions/{graph_exec_id}",
+    summary="Get execution details",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -720,6 +745,7 @@ async def get_graph_execution(
 
 @v1_router.delete(
     path="/executions/{graph_exec_id}",
+    summary="Delete graph execution",
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
     status_code=HTTP_204_NO_CONTENT,
@@ -747,6 +773,7 @@ class ScheduleCreationRequest(pydantic.BaseModel):
 
 @v1_router.post(
     path="/schedules",
+    summary="Create execution schedule",
     tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -774,6 +801,7 @@ async def create_schedule(
 
 @v1_router.delete(
     path="/schedules/{schedule_id}",
+    summary="Delete execution schedule",
     tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -787,6 +815,7 @@ async def delete_schedule(
 
 @v1_router.get(
     path="/schedules",
+    summary="List execution schedules",
     tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
@@ -807,6 +836,7 @@ async def get_execution_schedules(
 
 @v1_router.post(
     "/api-keys",
+    summary="Create new API key",
     response_model=CreateAPIKeyResponse,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
@@ -837,6 +867,7 @@ async def create_api_key(
 
 @v1_router.get(
     "/api-keys",
+    summary="List user API keys",
     response_model=list[APIKeyWithoutHash] | dict[str, str],
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
@@ -857,6 +888,7 @@ async def get_api_keys(
 
 @v1_router.get(
     "/api-keys/{key_id}",
+    summary="Get specific API key",
     response_model=APIKeyWithoutHash,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
@@ -880,6 +912,7 @@ async def get_api_key(
 
 @v1_router.delete(
     "/api-keys/{key_id}",
+    summary="Revoke API key",
     response_model=APIKeyWithoutHash,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
@@ -908,6 +941,7 @@ async def delete_api_key(
 
 @v1_router.post(
     "/api-keys/{key_id}/suspend",
+    summary="Suspend API key",
     response_model=APIKeyWithoutHash,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
@@ -933,6 +967,7 @@ async def suspend_key(
 
 @v1_router.put(
     "/api-keys/{key_id}/permissions",
+    summary="Update key permissions",
     response_model=APIKeyWithoutHash,
     tags=["api-keys"],
     dependencies=[Depends(auth_middleware)],
