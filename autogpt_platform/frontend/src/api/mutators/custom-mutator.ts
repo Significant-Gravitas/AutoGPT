@@ -75,6 +75,7 @@ export const customMutator = async <T = any>(
 
   return {
     status: response.status,
-    data: response_data,
+    response_data,
+    headers: response.headers,
   } as T;
 };
