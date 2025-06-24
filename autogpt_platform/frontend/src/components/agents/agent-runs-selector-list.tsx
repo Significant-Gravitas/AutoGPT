@@ -128,10 +128,7 @@ export default function AgentRunsSelectorList({
                 )
                 .map((preset) => (
                   <AgentRunSummaryCard
-                    className={cn(
-                      listItemClasses,
-                      "border-2 border-dashed p-0 lg:h-auto",
-                    )}
+                    className={cn(listItemClasses, "lg:h-auto")}
                     key={preset.id}
                     type="preset"
                     status={preset.is_active ? "active" : "inactive"}
