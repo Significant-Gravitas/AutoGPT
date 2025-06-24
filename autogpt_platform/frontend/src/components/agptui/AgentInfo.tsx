@@ -2,6 +2,7 @@
 
 import { StarRatingIcons } from "@/components/ui/icons";
 import { Separator } from "@/components/ui/separator";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import BackendAPI, { LibraryAgent } from "@/lib/autogpt-server-api";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -47,6 +48,7 @@ export const AgentInfo: FC<AgentInfoProps> = ({
   const { completeStep } = useOnboarding();
   const [adding, setAdding] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const showRatings = useFeatureFlag("marketplace-agent-ratings");
 
   const libraryAction = useCallback(async () => {
     setAdding(true);
@@ -181,12 +183,14 @@ export const AgentInfo: FC<AgentInfoProps> = ({
 
       {/* Rating and Runs */}
       <div className="mb-4 flex w-full items-center justify-between lg:mb-[44px]">
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          <span className="whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
-            {rating.toFixed(1)}
-          </span>
-          <div className="flex gap-0.5">{StarRatingIcons(rating)}</div>
-        </div>
+        {showRatings && (
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <span className="whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
+              {rating.toFixed(1)}
+            </span>
+            <div className="flex gap-0.5">{StarRatingIcons(rating)}</div>
+          </div>
+        )}
         <div className="whitespace-nowrap text-base font-semibold text-neutral-800 dark:text-neutral-200 sm:text-lg">
           {runs.toLocaleString()} runs
         </div>

@@ -2,6 +2,7 @@ import * as React from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import Image from "next/image";
 import { StarRatingIcons } from "@/components/ui/icons";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 
 interface StoreCardProps {
   agentName: string;
@@ -26,6 +27,7 @@ export const StoreCard: React.FC<StoreCardProps> = ({
   hideAvatar = false,
   creatorName,
 }) => {
+  const showRatings = useFeatureFlag("marketplace-agent-ratings");
   const handleClick = () => {
     onClick();
   };
@@ -101,18 +103,20 @@ export const StoreCard: React.FC<StoreCardProps> = ({
             <div className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
               {runs.toLocaleString()} runs
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
-                {rating.toFixed(1)}
-              </span>
-              <div
-                className="inline-flex items-center"
-                role="img"
-                aria-label={`Rating: ${rating.toFixed(1)} out of 5 stars`}
-              >
-                {StarRatingIcons(rating)}
+            {showRatings && (
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-semibold text-neutral-800 dark:text-neutral-200">
+                  {rating.toFixed(1)}
+                </span>
+                <div
+                  className="inline-flex items-center"
+                  role="img"
+                  aria-label={`Rating: ${rating.toFixed(1)} out of 5 stars`}
+                >
+                  {StarRatingIcons(rating)}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

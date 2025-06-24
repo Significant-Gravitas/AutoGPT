@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { StarRatingIcons } from "@/components/ui/icons";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import {
   Card,
   CardContent,
@@ -21,6 +22,7 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
   backgroundColor,
 }) => {
   const [isHovered, setIsHovered] = useState(false);
+  const showRatings = useFeatureFlag("marketplace-agent-ratings");
 
   return (
     <Card
@@ -63,10 +65,12 @@ export const FeaturedAgentCard: React.FC<FeaturedStoreCardProps> = ({
         <div className="font-semibold">
           {agent.runs?.toLocaleString() ?? "0"} runs
         </div>
-        <div className="flex items-center gap-1.5">
-          <p>{agent.rating.toFixed(1) ?? "0.0"}</p>
-          {StarRatingIcons(agent.rating)}
-        </div>
+        {showRatings && (
+          <div className="flex items-center gap-1.5">
+            <p>{agent.rating.toFixed(1) ?? "0.0"}</p>
+            {StarRatingIcons(agent.rating)}
+          </div>
+        )}
       </CardFooter>
     </Card>
   );

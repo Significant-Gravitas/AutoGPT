@@ -3,6 +3,7 @@
 import * as React from "react";
 import Image from "next/image";
 import { IconStarFilled, IconMore, IconEdit } from "@/components/ui/icons";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { Status, StatusType } from "./Status";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { TrashIcon } from "@radix-ui/react-icons";
@@ -46,6 +47,7 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
 }) => {
   // Create a unique ID for the checkbox
   const checkboxId = `agent-${id}-checkbox`;
+  const showRatings = useFeatureFlag("marketplace-agent-ratings");
 
   const handleEdit = React.useCallback(() => {
     onEditSubmission({
@@ -138,7 +140,7 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
 
         {/* Reviews column */}
         <div className="text-right">
-          {rating ? (
+          {showRatings && rating ? (
             <div className="flex items-center justify-end gap-1">
               <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
                 {rating.toFixed(1)}
@@ -147,7 +149,7 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
             </div>
           ) : (
             <span className="text-sm text-neutral-600 dark:text-neutral-400">
-              No reviews
+              {showRatings ? "No reviews" : ""}
             </span>
           )}
         </div>
