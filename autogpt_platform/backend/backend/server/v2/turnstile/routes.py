@@ -13,7 +13,9 @@ router = APIRouter()
 settings = Settings()
 
 
-@router.post("/verify", response_model=TurnstileVerifyResponse)
+@router.post(
+    "/verify", response_model=TurnstileVerifyResponse, summary="Verify Turnstile Token"
+)
 async def verify_turnstile_token(
     request: TurnstileVerifyRequest,
 ) -> TurnstileVerifyResponse:
