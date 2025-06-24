@@ -1,7 +1,7 @@
 import logging
 import uuid
 from collections import defaultdict
-from typing import Any, Literal, Optional, cast
+from typing import TYPE_CHECKING, Any, Literal, Optional, cast
 
 import prisma
 from prisma import Json
@@ -14,7 +14,7 @@ from prisma.types import (
     AgentNodeLinkCreateInput,
     StoreListingVersionWhereInput,
 )
-from pydantic import create_model
+from pydantic import JsonValue, create_model
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -32,7 +32,9 @@ from backend.util import type as type_utils
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
 from .db import BaseDbModel, transaction
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
-from .integrations import Webhook
+
+if TYPE_CHECKING:
+    from .integrations import Webhook
 
 logger = logging.getLogger(__name__)
 
@@ -81,10 +83,12 @@ class NodeModel(Node):
     graph_version: int
 
     webhook_id: Optional[str] = None
-    webhook: Optional[Webhook] = None
+    webhook: Optional["Webhook"] = None
 
     @staticmethod
     def from_db(node: AgentNode, for_export: bool = False) -> "NodeModel":
+        from .integrations import Webhook
+
         obj = NodeModel(
             id=node.id,
             block_id=node.agentBlockId,
@@ -102,19 +106,7 @@ class NodeModel(Node):
         return obj
 
     def is_triggered_by_event_type(self, event_type: str) -> bool:
-        block = self.block
-        if not block.webhook_config:
-            raise TypeError("This method can't be used on non-webhook blocks")
-        if not block.webhook_config.event_filter_input:
-            return True
-        event_filter = self.input_default.get(block.webhook_config.event_filter_input)
-        if not event_filter:
-            raise ValueError(f"Event filter is not configured on node #{self.id}")
-        return event_type in [
-            block.webhook_config.event_format.format(event=k)
-            for k in event_filter
-            if event_filter[k] is True
-        ]
+        return self.block.is_triggered_by_event_type(self.input_default, event_type)
 
     def stripped_for_export(self) -> "NodeModel":
         """
@@ -160,10 +152,6 @@ class NodeModel(Node):
             else:
                 result[key] = value
         return result
-
-
-# Fix 2-way reference Node <-> Webhook
-Webhook.model_rebuild()
 
 
 class BaseGraph(BaseDbModel):
@@ -406,13 +394,21 @@ class GraphModel(Graph):
             if (graph_id := node.input_default.get("graph_id")) in graph_id_map:
                 node.input_default["graph_id"] = graph_id_map[graph_id]
 
-    def validate_graph(self, for_run: bool = False):
-        self._validate_graph(self, for_run)
+    def validate_graph(
+        self,
+        for_run: bool = False,
+        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+    ):
+        self._validate_graph(self, for_run, nodes_input_masks)
         for sub_graph in self.sub_graphs:
-            self._validate_graph(sub_graph, for_run)
+            self._validate_graph(sub_graph, for_run, nodes_input_masks)
 
     @staticmethod
-    def _validate_graph(graph: BaseGraph, for_run: bool = False):
+    def _validate_graph(
+        graph: BaseGraph,
+        for_run: bool = False,
+        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+    ):
         def is_tool_pin(name: str) -> bool:
             return name.startswith("tools_^_")
 
@@ -439,20 +435,18 @@ class GraphModel(Graph):
             if (block := nodes_block.get(node.id)) is None:
                 raise ValueError(f"Invalid block {node.block_id} for node #{node.id}")
 
+            node_input_mask = (
+                nodes_input_masks.get(node.id, {}) if nodes_input_masks else {}
+            )
             provided_inputs = set(
                 [sanitize(name) for name in node.input_default]
                 + [sanitize(link.sink_name) for link in input_links.get(node.id, [])]
+                + ([name for name in node_input_mask] if node_input_mask else [])
             )
             InputSchema = block.input_schema
             for name in (required_fields := InputSchema.get_required_fields()):
                 if (
                     name not in provided_inputs
-                    # Webhook payload is passed in by ExecutionManager
-                    and not (
-                        name == "payload"
-                        and block.block_type
-                        in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
-                    )
                     # Checking availability of credentials is done by ExecutionManager
                     and name not in InputSchema.get_credentials_fields()
                     # Validate only I/O nodes, or validate everything when executing
@@ -485,10 +479,18 @@ class GraphModel(Graph):
 
             def has_value(node: Node, name: str):
                 return (
-                    name in node.input_default
-                    and node.input_default[name] is not None
-                    and str(node.input_default[name]).strip() != ""
-                ) or (name in input_fields and input_fields[name].default is not None)
+                    (
+                        name in node.input_default
+                        and node.input_default[name] is not None
+                        and str(node.input_default[name]).strip() != ""
+                    )
+                    or (name in input_fields and input_fields[name].default is not None)
+                    or (
+                        name in node_input_mask
+                        and node_input_mask[name] is not None
+                        and str(node_input_mask[name]).strip() != ""
+                    )
+                )
 
             # Validate dependencies between fields
             for field_name in input_fields.keys():
@@ -574,7 +576,7 @@ class GraphModel(Graph):
         graph: AgentGraph,
         for_export: bool = False,
         sub_graphs: list[AgentGraph] | None = None,
-    ):
+    ) -> "GraphModel":
         return GraphModel(
             id=graph.id,
             user_id=graph.userId if not for_export else "",
@@ -603,6 +605,7 @@ class GraphModel(Graph):
 
 
 async def get_node(node_id: str) -> NodeModel:
+    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     node = await AgentNode.prisma().find_unique_or_raise(
         where={"id": node_id},
         include=AGENT_NODE_INCLUDE,
@@ -611,6 +614,7 @@ async def get_node(node_id: str) -> NodeModel:
 
 
 async def set_node_webhook(node_id: str, webhook_id: str | None) -> NodeModel:
+    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     node = await AgentNode.prisma().update(
         where={"id": node_id},
         data=(
