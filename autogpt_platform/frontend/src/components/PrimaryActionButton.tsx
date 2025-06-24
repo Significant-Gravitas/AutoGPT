@@ -7,9 +7,9 @@ import { IconPlay, IconSquare } from "@/components/ui/icons";
 
 interface PrimaryActionBarProps {
   onClickAgentOutputs: () => void;
-  onClickRunAgent: () => void;
+  onClickRunAgent?: () => void;
   onClickStopRun: () => void;
-  onClickScheduleButton: () => void;
+  onClickScheduleButton?: () => void;
   isRunning: boolean;
   isDisabled: boolean;
   isScheduling: boolean;
@@ -47,19 +47,21 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
         </Button>
 
         {!isRunning ? (
-          <Button
-            className={cn(
-              buttonClasses,
-              isDisabled ? "cursor-default opacity-50 hover:bg-accent" : "",
-            )}
-            variant="accent"
-            size="primary"
-            onClick={onClickRunAgent}
-            title="Run the agent"
-            data-id="primary-action-run-agent"
-          >
-            <IconPlay /> Run
-          </Button>
+          onClickRunAgent && (
+            <Button
+              className={cn(
+                buttonClasses,
+                isDisabled ? "cursor-default opacity-50 hover:bg-accent" : "",
+              )}
+              variant="accent"
+              size="primary"
+              onClick={onClickRunAgent}
+              title="Run the agent"
+              data-id="primary-action-run-agent"
+            >
+              <IconPlay /> Run
+            </Button>
+          )
         ) : (
           <Button
             className={buttonClasses}
@@ -73,22 +75,24 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
           </Button>
         )}
 
-        <Button
-          className={buttonClasses}
-          variant="outline"
-          size="primary"
-          onClick={onClickScheduleButton}
-          disabled={isScheduling}
-          title="Set up a run schedule for the agent"
-          data-id="primary-action-schedule-agent"
-        >
-          {isScheduling ? (
-            <FaSpinner className="animate-spin" />
-          ) : (
-            <Clock className="hidden h-5 w-5 md:flex" />
-          )}
-          Schedule Run
-        </Button>
+        {onClickScheduleButton && (
+          <Button
+            className={buttonClasses}
+            variant="outline"
+            size="primary"
+            onClick={onClickScheduleButton}
+            disabled={isScheduling}
+            title="Set up a run schedule for the agent"
+            data-id="primary-action-schedule-agent"
+          >
+            {isScheduling ? (
+              <FaSpinner className="animate-spin" />
+            ) : (
+              <Clock className="hidden h-5 w-5 md:flex" />
+            )}
+            Schedule Run
+          </Button>
+        )}
       </div>
     </div>
   );

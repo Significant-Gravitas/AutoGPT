@@ -4,6 +4,7 @@ import React, {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   MouseEvent,
   Suspense,
@@ -153,6 +154,11 @@ const FlowEditor: React.FC<{
       ? `${savedAgent.name} - Builder - AutoGPT Platform`
       : `Builder - AutoGPT Platform`;
   }, [savedAgent]);
+
+  const graphHasWebhookNodes = useMemo(
+    () => nodes.some((n) => n.data.uiType == BlockUIType.WEBHOOK),
+    [nodes],
+  );
 
   useEffect(() => {
     if (params.get("resetTutorial") === "true") {
@@ -707,19 +713,25 @@ const FlowEditor: React.FC<{
           <PrimaryActionBar
             className="absolute bottom-0 left-1/2 z-20 -translate-x-1/2"
             onClickAgentOutputs={() => runnerUIRef.current?.openRunnerOutput()}
-            onClickRunAgent={() => {
-              if (isRunning) return;
-              if (!savedAgent) {
-                toast({
-                  title: `Please save the agent using the button in the left sidebar before running it.`,
-                  duration: 2000,
-                });
-                return;
-              }
-              runnerUIRef.current?.runOrOpenInput();
-            }}
+            onClickRunAgent={
+              !graphHasWebhookNodes
+                ? () => {
+                    if (isRunning) return;
+                    if (!savedAgent) {
+                      toast({
+                        title: `Please save the agent using the button in the left sidebar before running it.`,
+                        duration: 2000,
+                      });
+                      return;
+                    }
+                    runnerUIRef.current?.runOrOpenInput();
+                  }
+                : undefined
+            }
             onClickStopRun={requestStopRun}
-            onClickScheduleButton={handleScheduleButton}
+            onClickScheduleButton={
+              !graphHasWebhookNodes ? handleScheduleButton : undefined
+            }
             isScheduling={isScheduling}
             isDisabled={!savedAgent}
             isRunning={isRunning}
