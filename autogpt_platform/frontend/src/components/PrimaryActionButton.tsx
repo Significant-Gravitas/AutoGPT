@@ -47,21 +47,22 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
         </Button>
 
         {!isRunning ? (
-          onClickRunAgent && (
-            <Button
-              className={cn(
-                buttonClasses,
-                isDisabled ? "cursor-default opacity-50 hover:bg-accent" : "",
-              )}
-              variant="accent"
-              size="primary"
-              onClick={onClickRunAgent}
-              title="Run the agent"
-              data-id="primary-action-run-agent"
-            >
-              <IconPlay /> Run
-            </Button>
-          )
+          <Button
+            className={cn(
+              buttonClasses,
+              onClickRunAgent && isDisabled
+                ? "cursor-default opacity-50 hover:bg-accent"
+                : "",
+            )}
+            variant="accent"
+            size="primary"
+            onClick={onClickRunAgent}
+            disabled={!onClickRunAgent}
+            title="Run the agent"
+            data-id="primary-action-run-agent"
+          >
+            <IconPlay /> Run
+          </Button>
         ) : (
           <Button
             className={buttonClasses}

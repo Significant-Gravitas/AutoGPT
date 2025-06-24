@@ -9,6 +9,7 @@ import React, {
   MouseEvent,
   Suspense,
 } from "react";
+import Link from "next/link";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -42,6 +43,7 @@ import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
 import { IconUndo2, IconRedo2 } from "@/components/ui/icons";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { startTutorial } from "./tutorial";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { v4 as uuidv4 } from "uuid";
@@ -54,6 +56,7 @@ import OttoChatWidget from "@/components/OttoChatWidget";
 import { useToast } from "@/components/ui/use-toast";
 import { useCopyPaste } from "../hooks/useCopyPaste";
 import { CronScheduler } from "./cronScheduler";
+import { PlayIcon } from "lucide-react";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -715,37 +718,56 @@ const FlowEditor: React.FC<{
               />
             }
           ></ControlPanel>
-          <PrimaryActionBar
-            className="absolute bottom-0 left-1/2 z-20 -translate-x-1/2"
-            onClickAgentOutputs={() => runnerUIRef.current?.openRunnerOutput()}
-            onClickRunAgent={
-              !graphHasWebhookNodes
-                ? () => {
-                    if (isRunning) return;
-                    if (!savedAgent) {
-                      toast({
-                        title: `Please save the agent using the button in the left sidebar before running it.`,
-                        duration: 2000,
-                      });
-                      return;
-                    }
-                    runnerUIRef.current?.runOrOpenInput();
+          {!graphHasWebhookNodes ? (
+            <>
+              <PrimaryActionBar
+                className="absolute bottom-0 left-1/2 z-20 -translate-x-1/2"
+                onClickAgentOutputs={() =>
+                  runnerUIRef.current?.openRunnerOutput()
+                }
+                onClickRunAgent={() => {
+                  if (isRunning) return;
+                  if (!savedAgent) {
+                    toast({
+                      title: `Please save the agent using the button in the left sidebar before running it.`,
+                      duration: 2000,
+                    });
+                    return;
                   }
-                : undefined
-            }
-            onClickStopRun={requestStopRun}
-            onClickScheduleButton={
-              !graphHasWebhookNodes ? handleScheduleButton : undefined
-            }
-            isScheduling={isScheduling}
-            isDisabled={!savedAgent}
-            isRunning={isRunning}
-          />
-          <CronScheduler
-            afterCronCreation={afterCronCreation}
-            open={openCron}
-            setOpen={setOpenCron}
-          />
+                  runnerUIRef.current?.runOrOpenInput();
+                }}
+                onClickStopRun={requestStopRun}
+                onClickScheduleButton={handleScheduleButton}
+                isScheduling={isScheduling}
+                isDisabled={!savedAgent}
+                isRunning={isRunning}
+              />
+              <CronScheduler
+                afterCronCreation={afterCronCreation}
+                open={openCron}
+                setOpen={setOpenCron}
+              />
+            </>
+          ) : (
+            <Alert
+              variant="default"
+              className="absolute bottom-4 left-1/2 z-20 w-auto -translate-x-1/2"
+            >
+              <AlertDescription className="flex select-none items-center">
+                <PlayIcon className="ml-2 mr-5 inline-block size-6 rounded-full text-zinc-700" />
+                <div>
+                  Agents with a trigger block can not be run manually.
+                  <br />
+                  Instead, after setting up and saving your agent, check out the
+                  triggered runs in your{" "}
+                  <Link href="/library" className="underline">
+                    Agent Library
+                  </Link>
+                  !
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
         </ReactFlow>
       </div>
       <RunnerUIWrapper
