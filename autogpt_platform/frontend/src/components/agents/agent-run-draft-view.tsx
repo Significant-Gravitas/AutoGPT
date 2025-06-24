@@ -7,6 +7,7 @@ import {
   GraphExecutionID,
   LibraryAgent,
   LibraryAgentPreset,
+  LibraryAgentPresetID,
   LibraryAgentPresetUpdatable,
 } from "@/lib/autogpt-server-api";
 
@@ -30,6 +31,7 @@ export default function AgentRunDraftView({
   onRun,
   onCreatePreset,
   onUpdatePreset,
+  doDeletePreset,
   agentActions,
 }: {
   agent: LibraryAgent;
@@ -40,11 +42,13 @@ export default function AgentRunDraftView({
       onCreatePreset: (preset: LibraryAgentPreset) => void;
       agentPreset?: never;
       onUpdatePreset?: never;
+      doDeletePreset?: never;
     }
   | {
       onCreatePreset?: never;
       agentPreset: LibraryAgentPreset;
       onUpdatePreset: (preset: LibraryAgentPreset) => void;
+      doDeletePreset: (presetID: LibraryAgentPresetID) => void;
     }
 )): React.ReactNode {
   const api = useBackendAPI();
@@ -310,14 +314,6 @@ export default function AgentRunDraftView({
     completeOnboardingStep,
   ]);
 
-  const doDeletePreset = useCallback(() => {
-    if (!agentPreset) return;
-
-    return api
-      .deleteLibraryAgentPreset(agentPreset.id)
-      .catch(toastOnFail("delete agent preset"));
-  }, [api, agentPreset, toastOnFail]);
-
   const runActions: ButtonAction[] = useMemo(
     () => [
       // "Regular" agent: [run] + [save as preset] buttons
@@ -414,7 +410,7 @@ export default function AgentRunDraftView({
                   Delete {agent.has_external_trigger ? "trigger" : "preset"}
                 </>
               ),
-              callback: doDeletePreset,
+              callback: () => doDeletePreset(agentPreset.id),
             },
           ] satisfies ButtonAction[])
         : []),

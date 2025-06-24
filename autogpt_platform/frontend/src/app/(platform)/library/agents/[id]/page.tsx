@@ -498,6 +498,7 @@ export default function AgentRunsPage(): React.ReactElement {
             }
             onRun={selectRun}
             onUpdatePreset={onUpdatePreset}
+            doDeletePreset={setConfirmingDeleteAgentPreset}
             agentActions={agentActions}
           />
         ) : selectedView.type == "schedule" ? (
@@ -532,7 +533,7 @@ export default function AgentRunsPage(): React.ReactElement {
           }
         />
         <DeleteConfirmDialog
-          entityType="agent preset"
+          entityType={agent.has_external_trigger ? "trigger" : "agent preset"}
           open={!!confirmingDeleteAgentPreset}
           onOpenChange={(open) => !open && setConfirmingDeleteAgentPreset(null)}
           onDoDelete={() =>
