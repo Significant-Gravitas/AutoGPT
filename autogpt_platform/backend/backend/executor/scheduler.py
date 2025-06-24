@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from datetime import datetime, timedelta, timezone
@@ -71,15 +72,25 @@ def get_notification_client():
     return get_service_client(NotificationManagerClient)
 
 
+@thread_cached
+def get_event_loop():
+    return asyncio.new_event_loop()
+
+
 def execute_graph(**kwargs):
+    get_event_loop().run_until_complete(_execute_graph(**kwargs))
+
+
+async def _execute_graph(**kwargs):
     args = GraphExecutionJobArgs(**kwargs)
     try:
         log(f"Executing recurring job for graph #{args.graph_id}")
-        execution_utils.add_graph_execution(
+        await execution_utils.add_graph_execution(
             graph_id=args.graph_id,
             inputs=args.input_data,
             user_id=args.user_id,
             graph_version=args.graph_version,
+            use_db_query=False,
         )
     except Exception as e:
         logger.exception(f"Error executing graph {args.graph_id}: {e}")
@@ -104,11 +115,18 @@ def report_late_executions() -> str:
 
     num_late_executions = len(late_executions)
     num_users = len(set([r.user_id for r in late_executions]))
+
+    late_execution_details = [
+        f"* `Execution ID: {exec.id}, Graph ID: {exec.graph_id}v{exec.graph_version}, User ID: {exec.user_id}, Created At: {exec.started_at.isoformat()}`"
+        for exec in late_executions
+    ]
+
     error = LateExecutionException(
         f"Late executions detected: {num_late_executions} late executions from {num_users} users "
         f"in the last {config.execution_late_notification_checkrange_secs} seconds. "
         f"Graph has been queued for more than {config.execution_late_notification_threshold_secs} seconds. "
-        "Please check the executor status."
+        "Please check the executor status. Details:\n"
+        + "\n".join(late_execution_details)
     )
     msg = str(error)
     sentry_capture_error(error)

@@ -31,4 +31,5 @@ class APIKeyManager:
         """Verify if a provided API key matches the stored hash."""
         if not provided_key.startswith(self.PREFIX):
             return False
-        return hashlib.sha256(provided_key.encode()).hexdigest() == stored_hash
+        provided_hash = hashlib.sha256(provided_key.encode()).hexdigest()
+        return secrets.compare_digest(provided_hash, stored_hash)

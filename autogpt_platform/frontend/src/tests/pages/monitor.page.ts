@@ -1,4 +1,4 @@
-import { ElementHandle, Locator, Page } from "@playwright/test";
+import { Page } from "@playwright/test";
 import { BasePage } from "./base.page";
 import path from "path";
 
@@ -16,10 +16,6 @@ interface Run {
   started: string;
   duration: number;
   status: string;
-}
-
-interface AgentRun extends Agent {
-  runs: Run[];
 }
 
 interface Schedule {
@@ -72,7 +68,7 @@ export class MonitorPage extends BasePage {
       ]);
 
       return true;
-    } catch (error) {
+    } catch {
       return false;
     }
   }

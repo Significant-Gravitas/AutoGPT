@@ -1,9 +1,9 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { FeaturedCreators } from "./FeaturedCreators";
-import { userEvent, within, expect } from "@storybook/test";
+import { userEvent, within, expect } from "storybook/test";
 
 const meta = {
-  title: "AGPT UI/Composite/Featured Creators",
+  title: "Legacy/Composite/Featured Creators",
   component: FeaturedCreators,
   parameters: {
     layout: {

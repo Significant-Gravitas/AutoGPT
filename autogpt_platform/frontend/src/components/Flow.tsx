@@ -90,9 +90,7 @@ const FlowEditor: React.FC<{
   } = useReactFlow<CustomNode, CustomEdge>();
   const [nodeId, setNodeId] = useState<number>(1);
   const [isAnyModalOpen, setIsAnyModalOpen] = useState(false);
-  const [visualizeBeads, setVisualizeBeads] = useState<
-    "no" | "static" | "animate"
-  >("animate");
+  const [visualizeBeads] = useState<"no" | "static" | "animate">("animate");
   const [flowExecutionID, setFlowExecutionID] = useState<
     GraphExecutionID | undefined
   >();
@@ -366,10 +364,7 @@ const FlowEditor: React.FC<{
         replaceEdges = edgeChanges.filter(
           (change) => change.type === "replace",
         ),
-        removedEdges = edgeChanges.filter((change) => change.type === "remove"),
-        selectedEdges = edgeChanges.filter(
-          (change) => change.type === "select",
-        );
+        removedEdges = edgeChanges.filter((change) => change.type === "remove");
 
       if (addedEdges.length > 0 || removedEdges.length > 0) {
         setNodes((nds) => {
