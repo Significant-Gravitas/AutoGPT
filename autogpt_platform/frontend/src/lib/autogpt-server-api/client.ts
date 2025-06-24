@@ -658,7 +658,7 @@ export default class BackendAPI {
     return parseLibraryAgentPresetTimestamp(
       await this._request(
         "POST",
-        `/library/agents/${libraryAgentID}/setup_trigger`,
+        `/library/agents/${libraryAgentID}/setup-trigger`,
         params,
       ),
     );

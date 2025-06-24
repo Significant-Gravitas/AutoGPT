@@ -249,7 +249,7 @@ class TriggeredPresetSetupParams(BaseModel):
     agent_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
 
 
-@router.post("/{library_agent_id}/setup_trigger")
+@router.post("/{library_agent_id}/setup-trigger")
 async def setup_trigger(
     library_agent_id: str = Path(..., description="ID of the library agent"),
     params: TriggeredPresetSetupParams = Body(),
