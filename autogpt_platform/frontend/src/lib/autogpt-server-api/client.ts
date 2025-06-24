@@ -60,6 +60,7 @@ import type {
   User,
   UserOnboarding,
   UserPasswordCredentials,
+  HostScopedCredentials,
   UsersBalanceHistoryResponse,
 } from "./types";
 
@@ -342,6 +343,16 @@ export default class BackendAPI {
       "POST",
       `/integrations/${credentials.provider}/credentials`,
       { ...credentials, type: "user_password" },
+    );
+  }
+
+  createHostScopedCredentials(
+    credentials: Omit<HostScopedCredentials, "id" | "type">,
+  ): Promise<HostScopedCredentials> {
+    return this._request(
+      "POST",
+      `/integrations/${credentials.provider}/credentials`,
+      { ...credentials, type: "host_scoped" },
     );
   }
 

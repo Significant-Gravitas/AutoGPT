@@ -140,12 +140,17 @@ export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
   secret?: boolean;
 };
 
-export type CredentialsType = "api_key" | "oauth2" | "user_password";
+export type CredentialsType =
+  | "api_key"
+  | "oauth2"
+  | "user_password"
+  | "host_scoped";
 
 export type Credentials =
   | APIKeyCredentials
   | OAuth2Credentials
-  | UserPasswordCredentials;
+  | UserPasswordCredentials
+  | HostScopedCredentials;
 
 // --8<-- [start:BlockIOCredentialsSubSchema]
 export const PROVIDER_NAMES = {
@@ -161,6 +166,7 @@ export const PROVIDER_NAMES = {
   GOOGLE: "google",
   GOOGLE_MAPS: "google_maps",
   GROQ: "groq",
+  HTTP: "http",
   HUBSPOT: "hubspot",
   IDEOGRAM: "ideogram",
   JINA: "jina",
@@ -199,6 +205,7 @@ export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   credentials_types: Array<CredentialsType>;
   discriminator?: string;
   discriminator_mapping?: { [key: string]: CredentialsProviderName };
+  sibling_inputs?: { [key: string]: any };
   secret?: boolean;
 };
 
@@ -537,6 +544,14 @@ export type UserPasswordCredentials = BaseCredentials & {
   title: string;
   username: string;
   password: string;
+};
+
+/* Mirror of backend/backend/data/model.py:HostScopedCredentials */
+export type HostScopedCredentials = BaseCredentials & {
+  type: "host_scoped";
+  title: string;
+  host: string;
+  headers: Record<string, string>;
 };
 
 // Mirror of backend/backend/data/notifications.py:NotificationType

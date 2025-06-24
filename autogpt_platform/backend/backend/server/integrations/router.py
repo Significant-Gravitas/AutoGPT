@@ -14,7 +14,12 @@ from backend.data.integrations import (
     publish_webhook_event,
     wait_for_webhook_event,
 )
-from backend.data.model import Credentials, CredentialsType, OAuth2Credentials
+from backend.data.model import (
+    Credentials,
+    CredentialsType,
+    HostScopedCredentials,
+    OAuth2Credentials,
+)
 from backend.executor.utils import add_graph_execution
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
@@ -73,6 +78,9 @@ class CredentialsMetaResponse(BaseModel):
     title: str | None
     scopes: list[str] | None
     username: str | None
+    host: str | None = Field(
+        default=None, description="Host pattern for host-scoped credentials"
+    )
 
 
 @router.post("/{provider}/callback")
@@ -149,6 +157,9 @@ async def callback(
         title=credentials.title,
         scopes=credentials.scopes,
         username=credentials.username,
+        host=(
+            credentials.host if isinstance(credentials, HostScopedCredentials) else None
+        ),
     )
 
 
@@ -165,6 +176,7 @@ async def list_credentials(
             title=cred.title,
             scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
             username=cred.username if isinstance(cred, OAuth2Credentials) else None,
+            host=cred.host if isinstance(cred, HostScopedCredentials) else None,
         )
         for cred in credentials
     ]
@@ -186,6 +198,7 @@ async def list_credentials_by_provider(
             title=cred.title,
             scopes=cred.scopes if isinstance(cred, OAuth2Credentials) else None,
             username=cred.username if isinstance(cred, OAuth2Credentials) else None,
+            host=cred.host if isinstance(cred, HostScopedCredentials) else None,
         )
         for cred in credentials
     ]

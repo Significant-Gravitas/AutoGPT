@@ -276,6 +276,7 @@ class Graph(BaseGraph):
                     required_scopes=set(field_info.required_scopes or []),
                     discriminator=field_info.discriminator,
                     discriminator_mapping=field_info.discriminator_mapping,
+                    sibling_inputs=field_info.sibling_inputs,
                 ),
             )
             for agg_field_key, (field_info, _) in graph_credentials_inputs.items()
@@ -294,36 +295,49 @@ class Graph(BaseGraph):
         Returns:
             dict[aggregated_field_key, tuple(
                 CredentialsFieldInfo: A spec for one aggregated credentials field
+                    (now includes sibling_inputs from matching nodes)
                 set[(node_id, field_name)]: Node credentials fields that are
                     compatible with this aggregated field spec
             )]
         """
+        # First collect all credential field data with input defaults
+        credential_data = []
+
+        for graph in [self] + self.sub_graphs:
+            for node in graph.nodes:
+                for (
+                    field_name,
+                    field_info,
+                ) in node.block.input_schema.get_credentials_fields_info().items():
+                    # Apply discrimination before aggregating credentials inputs
+                    discriminated_field_info = (
+                        field_info.discriminate(
+                            node.input_default[field_info.discriminator]
+                        )
+                        if (
+                            field_info.discriminator
+                            and node.input_default.get(field_info.discriminator)
+                        )
+                        else field_info
+                    )
+
+                    # Add input defaults to the field info before combining
+                    discriminated_field_info.sibling_inputs.update(node.input_default)
+
+                    credential_data.append(
+                        (discriminated_field_info, (node.id, field_name))
+                    )
+
+        # Combine credential field info (this will merge input_defaults automatically)
+        combined_fields = CredentialsFieldInfo.combine(*credential_data)
+
+        # Build final result
         return {
             "_".join(sorted(agg_field_info.provider))
             + "_"
             + "_".join(sorted(agg_field_info.supported_types))
             + "_credentials": (agg_field_info, node_fields)
-            for agg_field_info, node_fields in CredentialsFieldInfo.combine(
-                *(
-                    (
-                        # Apply discrimination before aggregating credentials inputs
-                        (
-                            field_info.discriminate(
-                                node.input_default[field_info.discriminator]
-                            )
-                            if (
-                                field_info.discriminator
-                                and node.input_default.get(field_info.discriminator)
-                            )
-                            else field_info
-                        ),
-                        (node.id, field_name),
-                    )
-                    for graph in [self] + self.sub_graphs
-                    for node in graph.nodes
-                    for field_name, field_info in node.block.input_schema.get_credentials_fields_info().items()
-                )
-            )
+            for agg_field_info, node_fields in combined_fields
         }
 
 

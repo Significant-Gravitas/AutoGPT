@@ -6,6 +6,7 @@ import {
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
   CredentialsProviderName,
+  HostScopedCredentials,
   PROVIDER_NAMES,
   UserPasswordCredentials,
 } from "@/lib/autogpt-server-api";
@@ -30,6 +31,7 @@ const providerDisplayNames: Record<CredentialsProviderName, string> = {
   google: "Google",
   google_maps: "Google Maps",
   groq: "Groq",
+  http: "HTTP",
   hubspot: "Hubspot",
   ideogram: "Ideogram",
   jina: "Jina",
@@ -68,6 +70,11 @@ type UserPasswordCredentialsCreatable = Omit<
   "id" | "provider" | "type"
 >;
 
+type HostScopedCredentialsCreatable = Omit<
+  HostScopedCredentials,
+  "id" | "provider" | "type"
+>;
+
 export type CredentialsProviderData = {
   provider: CredentialsProviderName;
   providerName: string;
@@ -81,6 +88,9 @@ export type CredentialsProviderData = {
   ) => Promise<CredentialsMetaResponse>;
   createUserPasswordCredentials: (
     credentials: UserPasswordCredentialsCreatable,
+  ) => Promise<CredentialsMetaResponse>;
+  createHostScopedCredentials: (
+    credentials: HostScopedCredentialsCreatable,
   ) => Promise<CredentialsMetaResponse>;
   deleteCredentials: (
     id: string,
@@ -173,6 +183,22 @@ export default function CredentialsProvider({
     [api, addCredentials],
   );
 
+  /** Wraps `BackendAPI.createHostScopedCredentials`, and adds the result to the internal credentials store. */
+  const createHostScopedCredentials = useCallback(
+    async (
+      provider: CredentialsProviderName,
+      credentials: HostScopedCredentialsCreatable,
+    ): Promise<CredentialsMetaResponse> => {
+      const credsMeta = await api.createHostScopedCredentials({
+        provider,
+        ...credentials,
+      });
+      addCredentials(provider, credsMeta);
+      return credsMeta;
+    },
+    [api, addCredentials],
+  );
+
   /** Wraps `BackendAPI.deleteCredentials`, and removes the credentials from the internal store. */
   const deleteCredentials = useCallback(
     async (
@@ -239,6 +265,9 @@ export default function CredentialsProvider({
               createUserPasswordCredentials: (
                 credentials: UserPasswordCredentialsCreatable,
               ) => createUserPasswordCredentials(provider, credentials),
+              createHostScopedCredentials: (
+                credentials: HostScopedCredentialsCreatable,
+              ) => createHostScopedCredentials(provider, credentials),
               deleteCredentials: (id: string, force: boolean = false) =>
                 deleteCredentials(provider, id, force),
             } satisfies CredentialsProviderData,
@@ -251,6 +280,7 @@ export default function CredentialsProvider({
     isLoggedIn,
     createAPIKeyCredentials,
     createUserPasswordCredentials,
+    createHostScopedCredentials,
     deleteCredentials,
     oAuthCallback,
   ]);

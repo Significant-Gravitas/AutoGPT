@@ -28,11 +28,22 @@ export default function AgentRunDraftView({
 
   const agentInputs = graph.input_schema.properties;
   const agentCredentialsInputs = graph.credentials_input_schema.properties;
+  const requiredCredentials = graph.credentials_input_schema.required || [];
   const [inputValues, setInputValues] = useState<Record<string, any>>({});
   const [inputCredentials, setInputCredentials] = useState<Record<string, any>>(
     {},
   );
   const { state, completeStep } = useOnboarding();
+
+  // Check if all required credentials are present (not null/undefined)
+  const allRequiredCredentialsPresent = useMemo(() => {
+    return requiredCredentials.every(
+      (key) =>
+        inputCredentials[key] !== undefined &&
+        inputCredentials[key] !== null &&
+        inputCredentials[key]?.id, // must have an id (from CredentialsMetaInput)
+    );
+  }, [requiredCredentials, inputCredentials]);
 
   const doRun = useCallback(() => {
     api
@@ -65,9 +76,10 @@ export default function AgentRunDraftView({
         ),
         variant: "accent",
         callback: doRun,
+        disabled: !allRequiredCredentialsPresent,
       },
     ],
-    [doRun],
+    [doRun, allRequiredCredentialsPresent],
   );
 
   return (
@@ -93,6 +105,7 @@ export default function AgentRunDraftView({
                       [key]: value,
                     }))
                   }
+                  siblingInputs={inputSubSchema.sibling_inputs}
                 />
               ),
             )}

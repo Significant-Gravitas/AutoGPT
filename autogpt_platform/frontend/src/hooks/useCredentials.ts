@@ -17,6 +17,7 @@ export type CredentialsData =
       supportsApiKey: boolean;
       supportsOAuth2: boolean;
       supportsUserPassword: boolean;
+      supportsHostScoped: boolean;
       isLoading: true;
     }
   | (CredentialsProviderData & {
@@ -24,6 +25,7 @@ export type CredentialsData =
       supportsApiKey: boolean;
       supportsOAuth2: boolean;
       supportsUserPassword: boolean;
+      supportsHostScoped: boolean;
       isLoading: false;
     });
 
@@ -69,6 +71,8 @@ export default function useCredentials(
   const supportsOAuth2 = credsInputSchema.credentials_types.includes("oauth2");
   const supportsUserPassword =
     credsInputSchema.credentials_types.includes("user_password");
+  const supportsHostScoped =
+    credsInputSchema.credentials_types.includes("host_scoped");
 
   // No provider means maybe it's still loading
   if (!provider) {
@@ -99,6 +103,7 @@ export default function useCredentials(
     supportsApiKey,
     supportsOAuth2,
     supportsUserPassword,
+    supportsHostScoped,
     savedCredentials,
     isLoading: false,
   };

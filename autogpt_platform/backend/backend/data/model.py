@@ -19,6 +19,7 @@ from typing import (
     TypeVar,
     get_args,
 )
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from prisma.enums import CreditTransactionType
@@ -240,13 +241,61 @@ class UserPasswordCredentials(_BaseCredentials):
         return f"Basic {base64.b64encode(f'{self.username.get_secret_value()}:{self.password.get_secret_value()}'.encode()).decode()}"
 
 
+class HostScopedCredentials(_BaseCredentials):
+    type: Literal["host_scoped"] = "host_scoped"
+    host: str = Field(description="The host/URI pattern to match against request URLs")
+    headers: dict[str, SecretStr] = Field(
+        description="Key-value header map to add to matching requests",
+        default_factory=dict,
+    )
+
+    @field_serializer("headers")
+    def serialize_headers(self, headers: dict[str, SecretStr]) -> dict[str, str]:
+        """Serialize headers by extracting secret values."""
+        return {key: value.get_secret_value() for key, value in headers.items()}
+
+    def get_headers_dict(self) -> dict[str, str]:
+        """Get headers with secret values extracted."""
+        return {key: value.get_secret_value() for key, value in self.headers.items()}
+
+    def auth_header(self) -> str:
+        """Get authorization header for backward compatibility."""
+        auth_headers = self.get_headers_dict()
+        if "Authorization" in auth_headers:
+            return auth_headers["Authorization"]
+        return ""
+
+    def matches_url(self, url: str) -> bool:
+        """Check if this credential should be applied to the given URL."""
+
+        parsed_url = urlparse(url)
+        # Extract hostname without port
+        request_host = parsed_url.hostname
+        if not request_host:
+            return False
+
+        # Simple host matching - exact match or wildcard subdomain match
+        if self.host == request_host:
+            return True
+
+        # Support wildcard matching (e.g., "*.example.com" matches "api.example.com")
+        if self.host.startswith("*."):
+            domain = self.host[2:]  # Remove "*."
+            return request_host.endswith(f".{domain}") or request_host == domain
+
+        return False
+
+
 Credentials = Annotated[
-    OAuth2Credentials | APIKeyCredentials | UserPasswordCredentials,
+    OAuth2Credentials
+    | APIKeyCredentials
+    | UserPasswordCredentials
+    | HostScopedCredentials,
     Field(discriminator="type"),
 ]
 
 
-CredentialsType = Literal["api_key", "oauth2", "user_password"]
+CredentialsType = Literal["api_key", "oauth2", "user_password", "host_scoped"]
 
 
 class OAuthState(BaseModel):
@@ -336,6 +385,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
     required_scopes: Optional[frozenset[str]] = Field(None, alias="credentials_scopes")
     discriminator: Optional[str] = None
     discriminator_mapping: Optional[dict[str, CP]] = None
+    sibling_inputs: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
     def combine(
@@ -386,6 +436,11 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                 if field.required_scopes:
                     all_scopes.update(field.required_scopes)
 
+            # Combine input_defaults from all fields in the group
+            all_sibling_inputs = {}
+            for _, field in group:
+                all_sibling_inputs.update(field.sibling_inputs)
+
             # Create a new combined field
             result.append(
                 (
@@ -395,6 +450,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                         credentials_scopes=frozenset(all_scopes) or None,
                         discriminator=combined.discriminator,
                         discriminator_mapping=combined.discriminator_mapping,
+                        sibling_inputs=all_sibling_inputs,
                     ),
                     combined_keys,
                 )
@@ -411,6 +467,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
             credentials_provider=frozenset([discriminator_value]),
             credentials_types=self.supported_types,
             credentials_scopes=self.required_scopes,
+            sibling_inputs=self.sibling_inputs,
         )
 
 
@@ -419,6 +476,7 @@ def CredentialsField(
     *,
     discriminator: Optional[str] = None,
     discriminator_mapping: Optional[dict[str, Any]] = None,
+    sibling_inputs: Optional[dict[str, Any]] = None,
     title: Optional[str] = None,
     description: Optional[str] = None,
     **kwargs,
@@ -434,6 +492,7 @@ def CredentialsField(
             "credentials_scopes": list(required_scopes) or None,
             "discriminator": discriminator,
             "discriminator_mapping": discriminator_mapping,
+            "sibling_inputs": sibling_inputs,
         }.items()
         if v is not None
     }
