@@ -81,7 +81,7 @@ class BaseWebhooksManager(ABC, Generic[WT]):
             current_webhook := await integrations.find_webhook_by_graph_and_props(
                 user_id=user_id,
                 provider=self.PROVIDER_NAME.value,
-                webhook_type=webhook_type.value,
+                webhook_type=webhook_type,
                 graph_id=graph_id,
                 preset_id=preset_id,
             )

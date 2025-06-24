@@ -137,7 +137,7 @@ class LibraryAgent(pydantic.BaseModel):
                         },
                         "required": [
                             pn
-                            for pn in json_schema["required"] or []
+                            for pn in json_schema.get("required", [])
                             if not is_credentials_field_name(pn)
                         ],
                     },
