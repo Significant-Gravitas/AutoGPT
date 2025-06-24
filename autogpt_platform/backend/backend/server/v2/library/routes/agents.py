@@ -20,6 +20,7 @@ router = APIRouter(
 
 @router.get(
     "",
+    summary="List Library Agents",
     responses={
         500: {"description": "Server error", "content": {"application/json": {}}},
     },
@@ -77,7 +78,7 @@ async def list_library_agents(
         ) from e
 
 
-@router.get("/{library_agent_id}")
+@router.get("/{library_agent_id}", summary="Get Library Agent")
 async def get_library_agent(
     library_agent_id: str,
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
@@ -87,6 +88,7 @@ async def get_library_agent(
 
 @router.get(
     "/marketplace/{store_listing_version_id}",
+    summary="Get Agent By Store ID",
     tags=["store, library"],
     response_model=library_model.LibraryAgent | None,
 )
@@ -118,6 +120,7 @@ async def get_library_agent_by_store_listing_version_id(
 
 @router.post(
     "",
+    summary="Add Marketplace Agent",
     status_code=status.HTTP_201_CREATED,
     responses={
         201: {"description": "Agent added successfully"},
@@ -180,6 +183,7 @@ async def add_marketplace_agent_to_library(
 
 @router.put(
     "/{library_agent_id}",
+    summary="Update Library Agent",
     status_code=status.HTTP_204_NO_CONTENT,
     responses={
         204: {"description": "Agent updated successfully"},
@@ -232,7 +236,7 @@ async def update_library_agent(
         ) from e
 
 
-@router.post("/{library_agent_id}/fork")
+@router.post("/{library_agent_id}/fork", summary="Fork Library Agent")
 async def fork_library_agent(
     library_agent_id: str,
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
