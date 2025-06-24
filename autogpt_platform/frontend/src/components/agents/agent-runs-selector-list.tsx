@@ -142,7 +142,7 @@ export default function AgentRunsSelectorList({
                     onDelete={() => onDeletePreset(preset.id)}
                   />
                 ))}
-              {agentPresets && <Separator className="my-1" />}
+              {agentPresets.length > 0 && <Separator className="my-1" />}
               {agentRuns
                 .toSorted(
                   (a, b) => b.started_at.getTime() - a.started_at.getTime(),
