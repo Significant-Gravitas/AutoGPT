@@ -156,7 +156,12 @@ const FlowEditor: React.FC<{
   }, [savedAgent]);
 
   const graphHasWebhookNodes = useMemo(
-    () => nodes.some((n) => n.data.uiType == BlockUIType.WEBHOOK),
+    () =>
+      nodes.some((n) =>
+        [BlockUIType.WEBHOOK, BlockUIType.WEBHOOK_MANUAL].includes(
+          n.data.uiType,
+        ),
+      ),
     [nodes],
   );
 
