@@ -13,7 +13,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.file import MediaFileType
+from backend.util.file import MediaFileType, store_media_file
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -108,7 +108,7 @@ class AIImageEditorBlock(Block):
             output_schema=AIImageEditorBlock.Output,
             test_input={
                 "prompt": "Add a hat to the cat",
-                "input_image": "https://example.com/cat.png",
+                "input_image": "data:image/png;base64,MQ==",
                 "aspect_ratio": AspectRatio.MATCH_INPUT_IMAGE,
                 "seed": None,
                 "model": FluxKontextModelName.PRO,
@@ -128,13 +128,22 @@ class AIImageEditorBlock(Block):
         input_data: Input,
         *,
         credentials: APIKeyCredentials,
+        graph_exec_id: str,
         **kwargs,
     ) -> BlockOutput:
         result = await self.run_model(
             api_key=credentials.api_key,
             model_name=input_data.model.api_name,
             prompt=input_data.prompt,
-            input_image=input_data.input_image,
+            input_image_b64=(
+                await store_media_file(
+                    graph_exec_id=graph_exec_id,
+                    file=input_data.input_image,
+                    return_content=True,
+                )
+                if input_data.input_image
+                else None
+            ),
             aspect_ratio=input_data.aspect_ratio.value,
             seed=input_data.seed,
         )
@@ -145,14 +154,14 @@ class AIImageEditorBlock(Block):
         api_key: SecretStr,
         model_name: str,
         prompt: str,
-        input_image: Optional[MediaFileType],
+        input_image_b64: Optional[str],
         aspect_ratio: str,
         seed: Optional[int],
     ) -> MediaFileType:
         client = ReplicateClient(api_token=api_key.get_secret_value())
         input_params = {
             "prompt": prompt,
-            "input_image": input_image,
+            "input_image": input_image_b64,
             "aspect_ratio": aspect_ratio,
             **({"seed": seed} if seed is not None else {}),
         }
