@@ -186,7 +186,7 @@ class TwitterGetQuoteTweetsBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,

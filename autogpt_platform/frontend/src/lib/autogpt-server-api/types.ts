@@ -630,6 +630,7 @@ export type StoreAgent = {
   description: string;
   runs: number;
   rating: number;
+  updated_at: string;
 };
 
 export type StoreAgentsResponse = {

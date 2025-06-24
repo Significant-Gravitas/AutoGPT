@@ -50,6 +50,7 @@ from .block import (
 from .db import BaseDbModel
 from .includes import (
     EXECUTION_RESULT_INCLUDE,
+    EXECUTION_RESULT_ORDER,
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     graph_execution_include,
 )
@@ -555,18 +556,18 @@ async def upsert_execution_input(
 async def upsert_execution_output(
     node_exec_id: str,
     output_name: str,
-    output_data: Any,
+    output_data: Any | None,
 ) -> None:
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Output.
     """
-    await AgentNodeExecutionInputOutput.prisma().create(
-        data=AgentNodeExecutionInputOutputCreateInput(
-            name=output_name,
-            data=Json(output_data),
-            referencedByOutputExecId=node_exec_id,
-        )
+    data = AgentNodeExecutionInputOutputCreateInput(
+        name=output_name,
+        referencedByOutputExecId=node_exec_id,
     )
+    if output_data is not None:
+        data["data"] = Json(output_data)
+    await AgentNodeExecutionInputOutput.prisma().create(data=data)
 
 
 async def update_graph_execution_start_time(
@@ -744,6 +745,7 @@ async def get_node_executions(
     executions = await AgentNodeExecution.prisma().find_many(
         where=where_clause,
         include=EXECUTION_RESULT_INCLUDE,
+        order=EXECUTION_RESULT_ORDER,
         take=limit,
     )
     res = [NodeExecutionResult.from_db(execution) for execution in executions]
@@ -765,11 +767,8 @@ async def get_latest_node_execution(
                 {"executionStatus": ExecutionStatus.FAILED},
             ],
         },
-        order=[
-            {"queuedTime": "desc"},
-            {"addedTime": "desc"},
-        ],
         include=EXECUTION_RESULT_INCLUDE,
+        order=EXECUTION_RESULT_ORDER,
     )
     if not execution:
         return None

@@ -655,7 +655,10 @@ async def get_graphs(
     graph_models = []
     for graph in graphs:
         try:
-            graph_models.append(GraphModel.from_db(graph))
+            graph_model = GraphModel.from_db(graph)
+            # Trigger serialization to validate that the graph is well formed.
+            graph_model.model_dump()
+            graph_models.append(graph_model)
         except Exception as e:
             logger.error(f"Error processing graph {graph.id}: {e}")
             continue
@@ -1082,7 +1085,7 @@ async def fix_llm_provider_credentials():
             )
             continue
 
-        store.update_creds(user_id, credentials)
+        await store.update_creds(user_id, credentials)
         await AgentNode.prisma().update(
             where={"id": node_id},
             data={"constantInput": Json(node_preset_input)},

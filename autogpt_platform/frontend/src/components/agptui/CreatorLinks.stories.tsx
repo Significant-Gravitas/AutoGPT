@@ -1,8 +1,8 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { CreatorLinks } from "./CreatorLinks";
 
 const meta = {
-  title: "AGPT UI/Creator Links",
+  title: "Legacy/Creator Links",
   component: CreatorLinks,
   parameters: {
     layout: "centered",

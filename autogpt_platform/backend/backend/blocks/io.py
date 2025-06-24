@@ -95,7 +95,7 @@ class AgentInputBlock(Block):
             }
         )
 
-    def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
         if input_data.value is not None:
             yield "result", input_data.value
 
@@ -186,7 +186,7 @@ class AgentOutputBlock(Block):
             static_output=True,
         )
 
-    def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
         """
         Attempts to format the recorded_value using the fmt_string if provided.
         If formatting fails or no fmt_string is given, returns the original recorded_value.
@@ -436,7 +436,7 @@ class AgentFileInputBlock(AgentInputBlock):
             ],
         )
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -446,7 +446,7 @@ class AgentFileInputBlock(AgentInputBlock):
         if not input_data.value:
             return
 
-        file_path = store_media_file(
+        file_path = await store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.value,
             return_content=False,

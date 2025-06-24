@@ -49,6 +49,7 @@ export default function Page() {
       .getAgentMetaByStoreListingVersionId(state?.selectedStoreListingVersionId)
       .then((agent) => {
         setAgent(agent);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const update: { [key: string]: any } = {};
         // Set default values from schema
         Object.entries(agent.input_schema.properties).forEach(
