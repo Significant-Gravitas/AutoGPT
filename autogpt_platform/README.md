@@ -62,6 +62,12 @@ To run the AutoGPT Platform, follow these steps:
    pnpm i
    ```
 
+   Generate the API client (this step is required before running the frontend):
+
+   ```
+   pnpm generate:api-client
+   ```
+
    Then start the frontend application in development mode:
 
    ```
@@ -164,3 +170,27 @@ To persist data for PostgreSQL and Redis, you can modify the `docker-compose.yml
 3. Save the file and run `docker compose up -d` to apply the changes.
 
 This configuration will create named volumes for PostgreSQL and Redis, ensuring that your data persists across container restarts.
+
+### API Client Generation
+
+The platform includes scripts for generating and managing the API client:
+
+- `pnpm fetch:openapi`: Fetches the OpenAPI specification from the backend service (requires backend to be running on port 8006)
+- `pnpm generate:api-client`: Generates the TypeScript API client from the OpenAPI specification using Orval
+- `pnpm generate:api-all`: Runs both fetch and generate commands in sequence
+
+#### Manual API Client Updates
+
+If you need to update the API client after making changes to the backend API:
+
+1. Ensure the backend services are running:
+   ```
+   docker compose up -d
+   ```
+
+2. Generate the updated API client:
+   ```
+   pnpm generate:api-all
+   ```
+
+This will fetch the latest OpenAPI specification and regenerate the TypeScript client code.
