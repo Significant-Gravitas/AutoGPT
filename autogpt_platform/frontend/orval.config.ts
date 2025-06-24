@@ -10,8 +10,8 @@ export default defineConfig({
     },
     output: {
       workspace: "./src/api",
-      target: `./__gen__/endpoints`,
-      schemas: "./__gen__/models",
+      target: `./__generated__/endpoints`,
+      schemas: "./__generated__/models",
       mode: "tags-split",
       client: "react-query",
       httpClient: "fetch",
@@ -46,8 +46,8 @@ export default defineConfig({
     },
     output: {
       workspace: "./src/api",
-      target: `./__gen__/zod-schema`,
-      schemas: "./__gen__/models",
+      target: `./__generated__/zod-schema`,
+      schemas: "./__generated__/models",
       mode: "tags-split",
       client: "zod",
       indexFiles: false,
