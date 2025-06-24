@@ -402,7 +402,10 @@ class GraphModel(Graph):
             if node.block_id != AgentExecutorBlock().id:
                 continue
             node.input_default["user_id"] = user_id
-            node.input_default.setdefault("inputs", {})
+            if "inputs" not in node.input_default and "data" in node.input_default:
+                node.input_default["inputs"] = node.input_default.pop("data")
+            else:
+                node.input_default.setdefault("inputs", {})
             if (graph_id := node.input_default.get("graph_id")) in graph_id_map:
                 node.input_default["graph_id"] = graph_id_map[graph_id]
 

@@ -37,7 +37,11 @@ class AgentExecutorBlock(Block):
 
         @classmethod
         def get_input_defaults(cls, data: BlockInput) -> BlockInput:
-            return data.get("inputs", {})
+            if "inputs" in data:
+                return data.get("inputs", {})
+            if "data" in data:  # Backwards compatibility
+                return data.get("data", {})
+            return {}
 
         @classmethod
         def get_missing_input(cls, data: BlockInput) -> set[str]:

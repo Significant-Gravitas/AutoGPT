@@ -7,8 +7,9 @@ from prisma.models import User
 
 import backend.server.v2.library.model
 import backend.server.v2.store.model
+from backend.blocks.agent import AgentExecutorBlock
 from backend.blocks.basic import FindInDictionaryBlock, StoreValueBlock
-from backend.blocks.io import AgentInputBlock
+from backend.blocks.io import AgentInputBlock, AgentOutputBlock
 from backend.blocks.maths import CalculatorBlock, Operation
 from backend.data import execution, graph
 from backend.server.model import CreateGraph
@@ -542,3 +543,75 @@ async def test_store_listing_graph(server: SpinTestServer):
 
     await assert_sample_graph_executions(test_graph, alt_test_user, graph_exec_id)
     logger.info("Completed test_agent_execution")
+
+
+@pytest.mark.asyncio(loop_scope="session")
+async def test_agent_executor_data_field_compat(server: SpinTestServer):
+    """AgentExecutorBlock should honor input values stored under 'data'."""
+
+    test_user = await create_test_user()
+
+    # Create a simple sub-graph that echoes the input value
+    sub_nodes = [
+        graph.Node(block_id=AgentInputBlock().id, input_default={"name": "number"}),
+        graph.Node(block_id=AgentOutputBlock().id, input_default={"name": "result"}),
+    ]
+    sub_links = [
+        graph.Link(
+            source_id=sub_nodes[0].id,
+            sink_id=sub_nodes[1].id,
+            source_name="result",
+            sink_name="value",
+        )
+    ]
+    sub_graph = graph.Graph(
+        name="SubGraph",
+        description="sub",
+        nodes=sub_nodes,
+        links=sub_links,
+    )
+    sub_graph = await create_graph(server, sub_graph, test_user)
+
+    # Create main graph using old 'data' field for inputs
+    main_nodes = [
+        graph.Node(
+            block_id=AgentExecutorBlock().id,
+            input_default={
+                "graph_id": sub_graph.id,
+                "graph_version": sub_graph.version,
+                "data": {"number": 10},
+                "input_schema": sub_graph.input_schema,
+                "output_schema": sub_graph.output_schema,
+            },
+        ),
+        graph.Node(block_id=AgentOutputBlock().id, input_default={"name": "final"}),
+    ]
+    main_links = [
+        graph.Link(
+            source_id=main_nodes[0].id,
+            sink_id=main_nodes[1].id,
+            source_name="result",
+            sink_name="value",
+        )
+    ]
+    main_graph = graph.Graph(
+        name="MainGraph",
+        description="main",
+        nodes=main_nodes,
+        links=main_links,
+    )
+    main_graph = await create_graph(server, main_graph, test_user)
+
+    graph_exec_id = await execute_graph(
+        server.agent_server, main_graph, test_user, {}, 2
+    )
+
+    result_graph = await execution.get_graph_execution(
+        test_user.id, graph_exec_id, include_node_executions=True
+    )
+    assert isinstance(result_graph, execution.GraphExecutionWithNodes)
+    assert any(
+        exec.output_data == {"output": [10]}
+        for exec in result_graph.node_executions
+        if exec.block_id == AgentOutputBlock().id
+    )
