@@ -122,7 +122,7 @@ async def list_library_agents(
             except Exception as e:
                 # Skip this agent if there was an error
                 logger.error(
-                    f"Error parsing LibraryAgent when getting library agents from db: {e}"
+                    f"Error parsing LibraryAgent #{agent.id} from DB item: {e}"
                 )
                 continue
 
