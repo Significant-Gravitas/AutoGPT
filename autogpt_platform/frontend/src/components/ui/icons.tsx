@@ -1308,21 +1308,21 @@ export const IconTiktok = createIcon((props) => (
 ));
 
 /**
- * Close (X) icon component.
+ * Cross (X) icon component.
  *
- * @component IconClose
+ * @component IconCross
  * @param {IconProps} props - The props object containing additional attributes and event handlers for the icon.
- * @returns {JSX.Element} - The close icon.
+ * @returns {JSX.Element} - The cross icon.
  *
  * @example
  * // Default usage
- * <IconClose />
+ * <IconCross />
  *
  * @example
  * // With custom color and size
- * <IconClose className="text-primary" size="lg" />
+ * <IconCross className="text-primary" size="lg" />
  */
-export const IconClose = createIcon((props) => (
+export const IconCross = createIcon((props) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     viewBox="0 0 14 14"

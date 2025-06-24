@@ -2,11 +2,19 @@ import asyncio
 import logging
 from typing import TYPE_CHECKING, Annotated, Awaitable, Literal
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    HTTPException,
+    Path,
+    Query,
+    Request,
+    status,
+)
 from pydantic import BaseModel, Field
-from starlette.status import HTTP_404_NOT_FOUND
 
-from backend.data.graph import set_node_webhook
+from backend.data.graph import get_graph, set_node_webhook
 from backend.data.integrations import (
     WebhookEvent,
     get_all_webhooks_by_creds,
@@ -20,6 +28,7 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
+from backend.server.v2.library.db import set_preset_webhook, update_preset
 from backend.util.exceptions import NeedConfirmation, NotFoundError
 from backend.util.settings import Settings
 
@@ -95,7 +104,10 @@ async def callback(
 
     if not valid_state:
         logger.warning(f"Invalid or expired state token for user {user_id}")
-        raise HTTPException(status_code=400, detail="Invalid or expired state token")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired state token",
+        )
     try:
         scopes = valid_state.scopes
         logger.debug(f"Retrieved scopes from state token: {scopes}")
@@ -122,17 +134,12 @@ async def callback(
             )
 
     except Exception as e:
-        logger.exception(
-            "OAuth callback for provider %s failed during code exchange: %s. Confirm provider credentials.",
-            provider.value,
-            e,
+        logger.error(
+            f"OAuth2 Code->Token exchange failed for provider {provider.value}: {e}"
         )
         raise HTTPException(
-            status_code=400,
-            detail={
-                "message": str(e),
-                "hint": "Verify OAuth configuration and try again.",
-            },
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"OAuth2 callback failed to exchange code for tokens: {str(e)}",
         )
 
     # TODO: Allow specifying `title` to set on `credentials`
@@ -201,10 +208,13 @@ async def get_credential(
 ) -> Credentials:
     credential = await creds_manager.get(user_id, cred_id)
     if not credential:
-        raise HTTPException(status_code=404, detail="Credentials not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
     if credential.provider != provider:
         raise HTTPException(
-            status_code=404, detail="Credentials do not match the specified provider"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Credentials do not match the specified provider",
         )
     return credential
 
@@ -222,7 +232,8 @@ async def create_credentials(
         await creds_manager.create(user_id, credentials)
     except Exception as e:
         raise HTTPException(
-            status_code=500, detail=f"Failed to store credentials: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to store credentials: {str(e)}",
         )
     return credentials
 
@@ -256,14 +267,17 @@ async def delete_credentials(
 ) -> CredentialsDeletionResponse | CredentialsDeletionNeedsConfirmationResponse:
     creds = await creds_manager.store.get_creds_by_id(user_id, cred_id)
     if not creds:
-        raise HTTPException(status_code=404, detail="Credentials not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Credentials not found"
+        )
     if creds.provider != provider:
         raise HTTPException(
-            status_code=404, detail="Credentials do not match the specified provider"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Credentials do not match the specified provider",
         )
 
     try:
-        await remove_all_webhooks_for_credentials(creds, force)
+        await remove_all_webhooks_for_credentials(user_id, creds, force)
     except NeedConfirmation as e:
         return CredentialsDeletionNeedsConfirmationResponse(message=str(e))
 
@@ -294,16 +308,10 @@ async def webhook_ingress_generic(
     logger.debug(f"Received {provider.value} webhook ingress for ID {webhook_id}")
     webhook_manager = get_webhook_manager(provider)
     try:
-        webhook = await get_webhook(webhook_id)
+        webhook = await get_webhook(webhook_id, include_relations=True)
     except NotFoundError as e:
-        logger.warning(
-            "Webhook payload received for unknown webhook %s. Confirm the webhook ID.",
-            webhook_id,
-        )
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND,
-            detail={"message": str(e), "hint": "Check if the webhook ID is correct."},
-        ) from e
+        logger.warning(f"Webhook payload received for unknown webhook #{webhook_id}")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     logger.debug(f"Webhook #{webhook_id}: {webhook}")
     payload, event_type = await webhook_manager.validate_payload(webhook, request)
     logger.debug(
@@ -320,11 +328,11 @@ async def webhook_ingress_generic(
     await publish_webhook_event(webhook_event)
     logger.debug(f"Webhook event published: {webhook_event}")
 
-    if not webhook.attached_nodes:
+    if not (webhook.triggered_nodes or webhook.triggered_presets):
         return
 
     executions: list[Awaitable] = []
-    for node in webhook.attached_nodes:
+    for node in webhook.triggered_nodes:
         logger.debug(f"Webhook-attached node: {node}")
         if not node.is_triggered_by_event_type(event_type):
             logger.debug(f"Node #{node.id} doesn't trigger on event {event_type}")
@@ -335,7 +343,48 @@ async def webhook_ingress_generic(
                 user_id=webhook.user_id,
                 graph_id=node.graph_id,
                 graph_version=node.graph_version,
-                inputs={f"webhook_{webhook_id}_payload": payload},
+                nodes_input_masks={node.id: {"payload": payload}},
+            )
+        )
+    for preset in webhook.triggered_presets:
+        logger.debug(f"Webhook-attached preset: {preset}")
+        if not preset.is_active:
+            logger.debug(f"Preset #{preset.id} is inactive")
+            continue
+
+        graph = await get_graph(preset.graph_id, preset.graph_version, webhook.user_id)
+        if not graph:
+            logger.error(
+                f"User #{webhook.user_id} has preset #{preset.id} for graph "
+                f"#{preset.graph_id} v{preset.graph_version}, "
+                "but no access to the graph itself."
+            )
+            logger.info(f"Automatically deactivating broken preset #{preset.id}")
+            await update_preset(preset.user_id, preset.id, is_active=False)
+            continue
+        if not (trigger_node := graph.webhook_input_node):
+            # NOTE: this should NEVER happen, but we log and handle it gracefully
+            logger.error(
+                f"Preset #{preset.id} is triggered by webhook #{webhook.id}, but graph "
+                f"#{preset.graph_id} v{preset.graph_version} has no webhook input node"
+            )
+            await set_preset_webhook(preset.user_id, preset.id, None)
+            continue
+        if not trigger_node.block.is_triggered_by_event_type(preset.inputs, event_type):
+            logger.debug(f"Preset #{preset.id} doesn't trigger on event {event_type}")
+            continue
+        logger.debug(f"Executing preset #{preset.id} for webhook #{webhook.id}")
+
+        executions.append(
+            add_graph_execution(
+                user_id=webhook.user_id,
+                graph_id=preset.graph_id,
+                preset_id=preset.id,
+                graph_version=preset.graph_version,
+                graph_credentials_inputs=preset.credentials,
+                nodes_input_masks={
+                    trigger_node.id: {**preset.inputs, "payload": payload}
+                },
             )
         )
     asyncio.gather(*executions)
@@ -360,7 +409,9 @@ async def webhook_ping(
         return False
 
     if not await wait_for_webhook_event(webhook_id, event_type="ping", timeout=10):
-        raise HTTPException(status_code=504, detail="Webhook ping timed out")
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="Webhook ping timed out"
+        )
 
     return True
 
@@ -369,32 +420,37 @@ async def webhook_ping(
 
 
 async def remove_all_webhooks_for_credentials(
-    credentials: Credentials, force: bool = False
+    user_id: str, credentials: Credentials, force: bool = False
 ) -> None:
     """
     Remove and deregister all webhooks that were registered using the given credentials.
 
     Params:
+        user_id: The ID of the user who owns the credentials and webhooks.
         credentials: The credentials for which to remove the associated webhooks.
         force: Whether to proceed if any of the webhooks are still in use.
 
     Raises:
         NeedConfirmation: If any of the webhooks are still in use and `force` is `False`
     """
-    webhooks = await get_all_webhooks_by_creds(credentials.id)
-    if any(w.attached_nodes for w in webhooks) and not force:
+    webhooks = await get_all_webhooks_by_creds(
+        user_id, credentials.id, include_relations=True
+    )
+    if any(w.triggered_nodes or w.triggered_presets for w in webhooks) and not force:
         raise NeedConfirmation(
             "Some webhooks linked to these credentials are still in use by an agent"
         )
     for webhook in webhooks:
-        # Unlink all nodes
-        for node in webhook.attached_nodes or []:
+        # Unlink all nodes & presets
+        for node in webhook.triggered_nodes:
             await set_node_webhook(node.id, None)
+        for preset in webhook.triggered_presets:
+            await set_preset_webhook(user_id, preset.id, None)
 
         # Prune the webhook
         webhook_manager = get_webhook_manager(ProviderName(credentials.provider))
         success = await webhook_manager.prune_webhook_if_dangling(
-            webhook.id, credentials
+            user_id, webhook.id, credentials
         )
         if not success:
             logger.warning(f"Webhook #{webhook.id} failed to prune")
@@ -405,7 +461,7 @@ def _get_provider_oauth_handler(
 ) -> "BaseOAuthHandler":
     if provider_name not in HANDLERS_BY_NAME:
         raise HTTPException(
-            status_code=404,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Provider '{provider_name.value}' does not support OAuth",
         )
 
@@ -413,14 +469,13 @@ def _get_provider_oauth_handler(
     client_secret = getattr(settings.secrets, f"{provider_name.value}_client_secret")
     if not (client_id and client_secret):
         logger.error(
-            "OAuth credentials for provider %s are missing. Check environment configuration.",
-            provider_name.value,
+            f"Attempt to use unconfigured {provider_name.value} OAuth integration"
         )
         raise HTTPException(
-            status_code=501,
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail={
-                "message": f"Integration with provider '{provider_name.value}' is not configured",
-                "hint": "Set client ID and secret in the environment.",
+                "message": f"Integration with provider '{provider_name.value}' is not configured.",
+                "hint": "Set client ID and secret in the application's deployment environment",
             },
         )
 
