@@ -708,6 +708,7 @@ const FlowEditor: React.FC<{
             className="absolute bottom-0 left-1/2 z-20 -translate-x-1/2"
             onClickAgentOutputs={() => runnerUIRef.current?.openRunnerOutput()}
             onClickRunAgent={() => {
+              if (isRunning) return;
               if (!savedAgent) {
                 toast({
                   title: `Please save the agent using the button in the left sidebar before running it.`,
@@ -715,18 +716,13 @@ const FlowEditor: React.FC<{
                 });
                 return;
               }
-              if (!isRunning) {
-                runnerUIRef.current?.runOrOpenInput();
-              } else {
-                requestStopRun();
-              }
+              runnerUIRef.current?.runOrOpenInput();
             }}
+            onClickStopRun={requestStopRun}
             onClickScheduleButton={handleScheduleButton}
             isScheduling={isScheduling}
             isDisabled={!savedAgent}
             isRunning={isRunning}
-            requestStopRun={requestStopRun}
-            runAgentTooltip={!isRunning ? "Run Agent" : "Stop Agent"}
           />
           <CronScheduler
             afterCronCreation={afterCronCreation}
