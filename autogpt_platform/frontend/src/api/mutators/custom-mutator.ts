@@ -1,7 +1,4 @@
-import { getSupabaseClient } from "@/lib/supabase/getSupabaseClient";
-
-const BASE_URL =
-  process.env.NEXT_PUBLIC_AGPT_SERVER_BASE_URL || "http://localhost:8006";
+const BASE_URL = "/api/proxy"; // Sending request via nextjs Server
 
 const getBody = <T>(c: Response | Request): Promise<T> => {
   const contentType = c.headers.get("content-type");
@@ -15,18 +12,6 @@ const getBody = <T>(c: Response | Request): Promise<T> => {
   }
 
   return c.text() as Promise<T>;
-};
-
-const getSupabaseToken = async () => {
-  const supabase = await getSupabaseClient();
-
-  const {
-    data: { session },
-  } = (await supabase?.auth.getSession()) || {
-    data: { session: null },
-  };
-
-  return session?.access_token;
 };
 
 export const customMutator = async <T = any>(
@@ -46,12 +31,6 @@ export const customMutator = async <T = any>(
   const headers: Record<string, string> = {
     ...((requestOptions.headers as Record<string, string>) || {}),
   };
-
-  const token = await getSupabaseToken();
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
 
   const isFormData = data instanceof FormData;
 
