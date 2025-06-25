@@ -101,14 +101,7 @@ Storybook is a powerful development environment for UI components. It allows you
    pnpm build:storybook
    ```
 
-3. **Running Storybook Tests**:
-   Storybook tests can be run using:
-
-   ```bash
-   pnpm test:storybook
-   ```
-
-4. **Writing Stories**:
+3. **Writing Stories**:
    Create `.stories.tsx` files alongside your components to define different states and variations of your components.
 
 By integrating Storybook into our development workflow, we can streamline UI development, improve component reusability, and maintain a consistent design system across the project.
