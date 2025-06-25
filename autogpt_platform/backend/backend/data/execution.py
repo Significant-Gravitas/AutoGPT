@@ -783,7 +783,7 @@ class GraphExecutionEntry(BaseModel):
     graph_exec_id: str
     graph_id: str
     graph_version: int
-    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]]
+    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None
 
 
 class NodeExecutionEntry(BaseModel):
