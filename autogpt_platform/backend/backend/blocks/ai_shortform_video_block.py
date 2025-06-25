@@ -269,8 +269,10 @@ class AIShortformVideoCreatorBlock(Block):
                 "https://example.com/video.mp4",
             ),
             test_mock={
+                "create_webhook": lambda: ("test_uuid", "https://webhook.site/test_uuid"),
                 "create_video": lambda api_key, payload: {"pid": "test_pid"},
-                "wait_for_video": lambda api_key, pid, max_wait_time=3600: "https://example.com/video.mp4",
+                "check_video_status": lambda api_key, pid: {"status": "ready", "videoUrl": "https://example.com/video.mp4"},
+                "wait_for_video": lambda api_key, pid: "https://example.com/video.mp4"
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -385,12 +387,10 @@ class AIAdMakerVideoCreatorBlock(Block):
             },
             test_output=("video_url", "https://example.com/ad.mp4"),
             test_mock={
-                "create_webhook": lambda: (
-                    "test_uuid",
-                    "https://webhook.site/test_uuid",
-                ),
+                "create_webhook": lambda: ("test_uuid", "https://webhook.site/test_uuid"),
                 "create_video": lambda api_key, payload: {"pid": "test_pid"},
-                "wait_for_video": lambda api_key, pid, webhook_token, max_wait_time=1000: "https://example.com/ad.mp4",
+                "check_video_status": lambda api_key, pid: {"status": "ready", "videoUrl": "https://example.com/ad.mp4"},
+                "wait_for_video": lambda api_key, pid: "https://example.com/ad.mp4"
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -467,121 +467,7 @@ class AIAdMakerVideoCreatorBlock(Block):
 
 
 # ---------------------------------------------------------------------------
-# 3. Prompt‑to‑Video (single prompt → fully‑AI video)
-# ---------------------------------------------------------------------------
-
-
-class AIPromptToVideoCreatorBlock(Block):
-    """Turns a single creative prompt into a fully AI‑generated video."""
-
-    class Input(BlockSchema):
-        credentials: CredentialsMetaInput[
-            Literal[ProviderName.REVID], Literal["api_key"]
-        ] = CredentialsField(description="Revid.ai API credentials")
-        prompt: str = SchemaField(
-            description="Imaginative prompt describing the desired video.",
-            placeholder="A neon‑lit cyberpunk alley with rain‑soaked pavements.",
-        )
-        ratio: str = SchemaField(default="9 / 16")
-        prompt_target_duration: int = SchemaField(default=30)
-        voice: Voice = SchemaField(default=Voice.EVA)
-        background_music: AudioTrack = SchemaField(
-            default=AudioTrack.DONT_STOP_ME_ABSTRACT_FUTURE_BASS
-        )
-
-    class Output(BlockSchema):
-        video_url: str = SchemaField(description="Rendered video URL")
-        error: str = SchemaField(description="Error message if any")
-
-    def __init__(self):
-        super().__init__(
-            id="bda7ca70-d146-4fe0-a851-68264fc7b734",
-            description="Creates an AI video from a single prompt (no line‑breaking script).",
-            categories={BlockCategory.AI, BlockCategory.SOCIAL},
-            input_schema=AIPromptToVideoCreatorBlock.Input,
-            output_schema=AIPromptToVideoCreatorBlock.Output,
-            test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
-                "prompt": "Epic time‑lapse of a city skyline from day to night",
-            },
-            test_output=("video_url", "https://example.com/prompt.mp4"),
-            test_mock={
-                "create_webhook": lambda: (
-                    "test_uuid",
-                    "https://webhook.site/test_uuid",
-                ),
-                "create_video": lambda api_key, payload: {"pid": "test_pid"},
-                "wait_for_video": lambda api_key, pid, webhook_token, max_wait_time=1000: "https://example.com/prompt.mp4",
-            },
-            test_credentials=TEST_CREDENTIALS,
-        )
-
-    async def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
-        webhook_token, webhook_url = await create_webhook()
-
-        payload = {
-            "webhook": webhook_url,
-            "creationParams": {
-                "mediaType": "aiVideo",
-                "flowType": "prompt-to-video",
-                "slug": "prompt-to-video",
-                "slugNew": "",
-                "isCopiedFrom": False,
-                "hasToGenerateVoice": True,
-                "hasToTranscript": False,
-                "hasToSearchMedia": True,
-                "hasAvatar": False,
-                "hasWebsiteRecorder": False,
-                "hasTextSmallAtBottom": False,
-                "ratio": input_data.ratio,
-                "selectedAudio": input_data.background_music.value,
-                "selectedVoice": input_data.voice.voice_id,
-                "selectedAvatar": "https://cdn.revid.ai/avatars/young-woman.mp4",
-                "selectedAvatarType": "video/mp4",
-                "websiteToRecord": "",
-                "hasToGenerateCover": True,
-                "nbGenerations": 1,
-                "disableCaptions": False,
-                "characters": [],
-                "captionPresetName": "Revid",
-                "sourceType": "contentScraping",
-                "selectedStoryStyle": {"value": "custom", "label": "General"},
-                "generationPreset": "DEFAULT",
-                "hasToGenerateMusic": False,
-                "isOptimizedForChinese": False,
-                "generationUserPrompt": input_data.prompt,
-                "enableNsfwFilter": False,
-                "addStickers": False,
-                "typeMovingImageAnim": "dynamic",
-                "hasToGenerateSoundEffects": False,
-                "promptTargetDuration": input_data.prompt_target_duration,
-                "selectedCharacters": [],
-                "lang": "",
-                "voiceSpeed": 1,
-                "disableAudio": False,
-                "disableVoice": False,
-                "imageGenerationModel": "good",
-                "videoGenerationModel": "ultra",
-                "hasEnhancedGeneration": True,
-                "hasEnhancedGenerationPro": True,
-                "inputMedias": [],
-                "hasToGenerateVideos": True,
-                "audioUrl": input_data.background_music.audio_url,
-                "watermark": None,
-            },
-        }
-
-        response = await create_video(credentials.api_key, payload)
-        pid = response.get("pid")
-        if not pid:
-            raise RuntimeError("Failed to create video: No project ID returned")
-
-        video_url = await wait_for_video(credentials.api_key, pid)
-        yield "video_url", video_url
-
-
-# ---------------------------------------------------------------------------
-# 4. Screenshot‑to‑Video Advert (image + voice + avatar)
+# 3. Screenshot‑to‑Video Advert (image + voice + avatar)
 # ---------------------------------------------------------------------------
 
 
@@ -622,12 +508,10 @@ class AIScreenshotToVideoAdBlock(Block):
             },
             test_output=("video_url", "https://example.com/screenshot.mp4"),
             test_mock={
-                "create_webhook": lambda: (
-                    "test_uuid",
-                    "https://webhook.site/test_uuid",
-                ),
+                "create_webhook": lambda: ("test_uuid", "https://webhook.site/test_uuid"),
                 "create_video": lambda api_key, payload: {"pid": "test_pid"},
-                "wait_for_video": lambda api_key, pid, webhook_token, max_wait_time=1000: "https://example.com/screenshot.mp4",
+                "check_video_status": lambda api_key, pid: {"status": "ready", "videoUrl": "https://example.com/screenshot.mp4"},
+                "wait_for_video": lambda api_key, pid: "https://example.com/screenshot.mp4"
             },
             test_credentials=TEST_CREDENTIALS,
         )
