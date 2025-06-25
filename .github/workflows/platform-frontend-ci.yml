@@ -63,6 +63,8 @@ jobs:
 
   chromatic:
     runs-on: ubuntu-latest
+    # Only run on dev branch pushes or PRs targeting dev
+    if: github.ref == 'refs/heads/dev' || github.base_ref == 'dev'
     steps:
       - uses: actions/checkout@v4
         with:
