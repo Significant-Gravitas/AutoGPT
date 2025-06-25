@@ -55,8 +55,39 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate API client
+        run: pnpm generate:api-client
+
       - name: Run tsc check
         run: pnpm type-check
+
+  chromatic:
+    runs-on: ubuntu-latest
+    # Only run on dev branch pushes or PRs targeting dev
+    if: github.ref == 'refs/heads/dev' || github.base_ref == 'dev'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Chromatic
+        uses: chromaui/action@latest
+        with:
+          projectToken: chpt_9e7c1a76478c9c8
+          onlyChanged: true
+          workingDir: autogpt_platform/frontend
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   test:
     runs-on: ubuntu-latest

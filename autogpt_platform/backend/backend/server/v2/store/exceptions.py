@@ -34,6 +34,20 @@ class StorageUploadError(MediaUploadError):
     pass
 
 
+class VirusDetectedError(MediaUploadError):
+    """Raised when a virus is detected in uploaded file"""
+
+    def __init__(self, threat_name: str, message: str | None = None):
+        self.threat_name = threat_name
+        super().__init__(message or f"Virus detected: {threat_name}")
+
+
+class VirusScanError(MediaUploadError):
+    """Raised when virus scanning fails"""
+
+    pass
+
+
 class StoreError(Exception):
     """Base exception for store-related errors"""
 

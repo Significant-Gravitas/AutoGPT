@@ -630,20 +630,41 @@ export default class BackendAPI {
     });
   }
 
-  async updateLibraryAgent(
+  updateLibraryAgent(
     libraryAgentId: LibraryAgentID,
     params: {
       auto_update_version?: boolean;
       is_favorite?: boolean;
       is_archived?: boolean;
-      is_deleted?: boolean;
     },
-  ): Promise<void> {
-    await this._request("PUT", `/library/agents/${libraryAgentId}`, params);
+  ): Promise<LibraryAgent> {
+    return this._request("PATCH", `/library/agents/${libraryAgentId}`, params);
+  }
+
+  async deleteLibraryAgent(libraryAgentId: LibraryAgentID): Promise<void> {
+    await this._request("DELETE", `/library/agents/${libraryAgentId}`);
   }
 
   forkLibraryAgent(libraryAgentId: LibraryAgentID): Promise<LibraryAgent> {
     return this._request("POST", `/library/agents/${libraryAgentId}/fork`);
+  }
+
+  async setupAgentTrigger(
+    libraryAgentID: LibraryAgentID,
+    params: {
+      name: string;
+      description?: string;
+      trigger_config: Record<string, any>;
+      agent_credentials: Record<string, CredentialsMetaInput>;
+    },
+  ): Promise<LibraryAgentPreset> {
+    return parseLibraryAgentPresetTimestamp(
+      await this._request(
+        "POST",
+        `/library/agents/${libraryAgentID}/setup-trigger`,
+        params,
+      ),
+    );
   }
 
   async listLibraryAgentPresets(params?: {
@@ -697,14 +718,10 @@ export default class BackendAPI {
 
   executeLibraryAgentPreset(
     presetID: LibraryAgentPresetID,
-    graphID: GraphID,
-    graphVersion: number,
-    nodeInput: { [key: string]: any },
+    inputs?: { [key: string]: any },
   ): Promise<{ id: GraphExecutionID }> {
     return this._request("POST", `/library/presets/${presetID}/execute`, {
-      graph_id: graphID,
-      graph_version: graphVersion,
-      node_input: nodeInput,
+      inputs,
     });
   }
 

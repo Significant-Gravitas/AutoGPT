@@ -68,6 +68,7 @@ zerobouncesdk = "^1.1.1"
 # NOTE: please insert new dependencies in their alphabetical location
 pytest-snapshot = "^0.9.0"
 aiofiles = "^24.1.0"
+pyclamd = "^0.4.0"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"

@@ -20,6 +20,8 @@ import {
   LibraryAgentID,
   Schedule,
   ScheduleID,
+  LibraryAgentPreset,
+  LibraryAgentPresetID,
 } from "@/lib/autogpt-server-api";
 
 import type { ButtonAction } from "@/components/agptui/types";
@@ -52,9 +54,11 @@ export default function AgentRunsPage(): React.ReactElement {
   const [graph, setGraph] = useState<Graph | null>(null); // Graph version corresponding to LibraryAgent
   const [agent, setAgent] = useState<LibraryAgent | null>(null);
   const [agentRuns, setAgentRuns] = useState<GraphExecutionMeta[]>([]);
+  const [agentPresets, setAgentPresets] = useState<LibraryAgentPreset[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [selectedView, selectView] = useState<
     | { type: "run"; id?: GraphExecutionID }
+    | { type: "preset"; id: LibraryAgentPresetID }
     | { type: "schedule"; id: ScheduleID }
   >({ type: "run" });
   const [selectedRun, setSelectedRun] = useState<
@@ -68,6 +72,8 @@ export default function AgentRunsPage(): React.ReactElement {
     useState<boolean>(false);
   const [confirmingDeleteAgentRun, setConfirmingDeleteAgentRun] =
     useState<GraphExecutionMeta | null>(null);
+  const [confirmingDeleteAgentPreset, setConfirmingDeleteAgentPreset] =
+    useState<LibraryAgentPresetID | null>(null);
   const {
     state: onboardingState,
     updateState: updateOnboardingState,
@@ -88,6 +94,10 @@ export default function AgentRunsPage(): React.ReactElement {
 
   const selectRun = useCallback((id: GraphExecutionID) => {
     selectView({ type: "run", id });
+  }, []);
+
+  const selectPreset = useCallback((id: LibraryAgentPresetID) => {
+    selectView({ type: "preset", id });
   }, []);
 
   const selectSchedule = useCallback((schedule: Schedule) => {
@@ -143,12 +153,19 @@ export default function AgentRunsPage(): React.ReactElement {
         (_graph) =>
           (graph && graph.version == _graph.version) || setGraph(_graph),
       );
-      api.getGraphExecutions(agent.graph_id).then((agentRuns) => {
-        setAgentRuns(agentRuns);
+      Promise.all([
+        api.getGraphExecutions(agent.graph_id),
+        api.listLibraryAgentPresets({
+          graph_id: agent.graph_id,
+          page_size: 100,
+        }),
+      ]).then(([runs, presets]) => {
+        setAgentRuns(runs);
+        setAgentPresets(presets.presets);
 
-        // Preload the corresponding graph versions
-        new Set(agentRuns.map((run) => run.graph_version)).forEach((version) =>
-          getGraphVersion(agent.graph_id, version),
+        // Preload the corresponding graph versions for the latest 10 runs
+        new Set(runs.slice(0, 10).map((run) => run.graph_version)).forEach(
+          (version) => getGraphVersion(agent.graph_id, version),
         );
       });
     });
@@ -157,16 +174,33 @@ export default function AgentRunsPage(): React.ReactElement {
   // On first load: select the latest run
   useEffect(() => {
     // Only for first load or first execution
-    if (selectedView.id || !isFirstLoad || agentRuns.length == 0) return;
-    setIsFirstLoad(false);
+    if (selectedView.id || !isFirstLoad) return;
+    if (agentRuns.length == 0 && agentPresets.length == 0) return;
 
-    const latestRun = agentRuns.reduce((latest, current) => {
-      if (latest.started_at && !current.started_at) return current;
-      else if (!latest.started_at) return latest;
-      return latest.started_at > current.started_at ? latest : current;
-    }, agentRuns[0]);
-    selectView({ type: "run", id: latestRun.id });
-  }, [agentRuns, isFirstLoad, selectedView.id, selectView]);
+    setIsFirstLoad(false);
+    if (agentRuns.length > 0) {
+      // select latest run
+      const latestRun = agentRuns.reduce((latest, current) => {
+        if (latest.started_at && !current.started_at) return current;
+        else if (!latest.started_at) return latest;
+        return latest.started_at > current.started_at ? latest : current;
+      }, agentRuns[0]);
+      selectRun(latestRun.id);
+    } else {
+      // select top preset
+      const latestPreset = agentPresets.toSorted(
+        (a, b) => b.updated_at.getTime() - a.updated_at.getTime(),
+      )[0];
+      selectPreset(latestPreset.id);
+    }
+  }, [
+    isFirstLoad,
+    selectedView.id,
+    agentRuns,
+    agentPresets,
+    selectRun,
+    selectPreset,
+  ]);
 
   // Initial load
   useEffect(() => {
@@ -304,9 +338,22 @@ export default function AgentRunsPage(): React.ReactElement {
       if (selectedView.type == "run" && selectedView.id == run.id) {
         openRunDraftView();
       }
-      setAgentRuns(agentRuns.filter((r) => r.id !== run.id));
+      setAgentRuns((runs) => runs.filter((r) => r.id !== run.id));
     },
-    [agentRuns, api, selectedView, openRunDraftView],
+    [api, selectedView, openRunDraftView],
+  );
+
+  const deletePreset = useCallback(
+    async (presetID: LibraryAgentPresetID) => {
+      await api.deleteLibraryAgentPreset(presetID);
+
+      setConfirmingDeleteAgentPreset(null);
+      if (selectedView.type == "preset" && selectedView.id == presetID) {
+        openRunDraftView();
+      }
+      setAgentPresets((presets) => presets.filter((p) => p.id !== presetID));
+    },
+    [api, selectedView, openRunDraftView],
   );
 
   const deleteSchedule = useCallback(
@@ -370,11 +417,22 @@ export default function AgentRunsPage(): React.ReactElement {
     [agent, downloadGraph],
   );
 
-  const onRun = useCallback(
-    (runID: GraphExecutionID) => {
-      selectRun(runID);
+  const onCreatePreset = useCallback(
+    (preset: LibraryAgentPreset) => {
+      setAgentPresets((prev) => [...prev, preset]);
+      selectPreset(preset.id);
     },
-    [selectRun],
+    [selectPreset],
+  );
+
+  const onUpdatePreset = useCallback(
+    (updated: LibraryAgentPreset) => {
+      setAgentPresets((prev) =>
+        prev.map((p) => (p.id === updated.id ? updated : p)),
+      );
+      selectPreset(updated.id);
+    },
+    [selectPreset],
   );
 
   if (!agent || !graph) {
@@ -389,14 +447,16 @@ export default function AgentRunsPage(): React.ReactElement {
         className="agpt-div w-full border-b lg:w-auto lg:border-b-0 lg:border-r"
         agent={agent}
         agentRuns={agentRuns}
+        agentPresets={agentPresets}
         schedules={schedules}
         selectedView={selectedView}
-        allowDraftNewRun={!graph.has_webhook_trigger}
         onSelectRun={selectRun}
+        onSelectPreset={selectPreset}
         onSelectSchedule={selectSchedule}
         onSelectDraftNewRun={openRunDraftView}
         onDeleteRun={setConfirmingDeleteAgentRun}
-        onDeleteSchedule={(id) => deleteSchedule(id)}
+        onDeletePreset={setConfirmingDeleteAgentPreset}
+        onDeleteSchedule={deleteSchedule}
       />
 
       <div className="flex-1">
@@ -417,14 +477,28 @@ export default function AgentRunsPage(): React.ReactElement {
               graph={graphVersions.current[selectedRun.graph_version] ?? graph}
               run={selectedRun}
               agentActions={agentActions}
-              onRun={onRun}
+              onRun={selectRun}
               deleteRun={() => setConfirmingDeleteAgentRun(selectedRun)}
             />
           )
         ) : selectedView.type == "run" ? (
+          /* Draft new runs / Create new presets */
           <AgentRunDraftView
-            graph={graph}
-            onRun={onRun}
+            agent={agent}
+            onRun={selectRun}
+            onCreatePreset={onCreatePreset}
+            agentActions={agentActions}
+          />
+        ) : selectedView.type == "preset" ? (
+          /* Edit & update presets */
+          <AgentRunDraftView
+            agent={agent}
+            agentPreset={
+              agentPresets.find((preset) => preset.id == selectedView.id)!
+            }
+            onRun={selectRun}
+            onUpdatePreset={onUpdatePreset}
+            doDeletePreset={setConfirmingDeleteAgentPreset}
             agentActions={agentActions}
           />
         ) : selectedView.type == "schedule" ? (
@@ -432,7 +506,7 @@ export default function AgentRunsPage(): React.ReactElement {
             <AgentScheduleDetailsView
               graph={graph}
               schedule={selectedSchedule}
-              onForcedRun={onRun}
+              onForcedRun={selectRun}
               agentActions={agentActions}
             />
           )
@@ -444,9 +518,7 @@ export default function AgentRunsPage(): React.ReactElement {
           onOpenChange={setAgentDeleteDialogOpen}
           onDoDelete={() =>
             agent &&
-            api
-              .updateLibraryAgent(agent.id, { is_deleted: true })
-              .then(() => router.push("/library"))
+            api.deleteLibraryAgent(agent.id).then(() => router.push("/library"))
           }
         />
 
@@ -456,6 +528,15 @@ export default function AgentRunsPage(): React.ReactElement {
           onOpenChange={(open) => !open && setConfirmingDeleteAgentRun(null)}
           onDoDelete={() =>
             confirmingDeleteAgentRun && deleteRun(confirmingDeleteAgentRun)
+          }
+        />
+        <DeleteConfirmDialog
+          entityType={agent.has_external_trigger ? "trigger" : "agent preset"}
+          open={!!confirmingDeleteAgentPreset}
+          onOpenChange={(open) => !open && setConfirmingDeleteAgentPreset(null)}
+          onDoDelete={() =>
+            confirmingDeleteAgentPreset &&
+            deletePreset(confirmingDeleteAgentPreset)
           }
         />
         {/* Copy agent confirmation dialog */}
