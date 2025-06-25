@@ -60,9 +60,11 @@ Every time a new Front-end dependency is added by you or others, you will need t
 - `pnpm start` - Start production server
 - `pnpm lint` - Run ESLint and Prettier checks
 - `pnpm format` - Format code with Prettier
-- `pnpm type-check` - Run TypeScript type checking
+- `pnpm types` - Run TypeScript type checking
 - `pnpm test` - Run Playwright tests
-- `pnpm test-ui` - Run Playwright tests with UI
+- `pnpm test:ui` - Run Playwright tests with UI
+- `pnpm test:unit` - Run unit tests (Vitest)
+- `pnpm test:unit:watch` - Run unit tests (Vitest) in watch mode
 
 This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
 
@@ -96,14 +98,14 @@ Storybook is a powerful development environment for UI components. It allows you
    To build a static version of Storybook for deployment, use:
 
    ```bash
-   pnpm build-storybook
+   pnpm build:storybook
    ```
 
 3. **Running Storybook Tests**:
    Storybook tests can be run using:
 
    ```bash
-   pnpm test-storybook
+   pnpm test:storybook
    ```
 
 4. **Writing Stories**:

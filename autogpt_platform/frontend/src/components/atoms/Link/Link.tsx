@@ -2,15 +2,16 @@ import { cn } from "@/lib/utils";
 import NextLink from "next/link";
 import { forwardRef } from "react";
 
-interface LinkProps {
+interface LinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
   href: string;
   children: React.ReactNode;
   className?: string;
   isExternal?: boolean;
+  title?: string;
 }
 
 const Link = forwardRef<HTMLAnchorElement, LinkProps>(function Link(
-  { href, children, className, isExternal = false, ...props },
+  { href, children, className, isExternal = false, title, ...props },
   ref,
 ) {
   const linkClasses = cn(
@@ -31,6 +32,7 @@ const Link = forwardRef<HTMLAnchorElement, LinkProps>(function Link(
         target="_blank"
         rel="noopener noreferrer"
         className={linkClasses}
+        title={title}
         {...props}
       >
         {children}
