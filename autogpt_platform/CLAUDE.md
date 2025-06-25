@@ -21,7 +21,7 @@ cd backend && poetry install
 # Run database migrations
 poetry run prisma migrate dev
 
-# Start all services (database, redis, rabbitmq)
+# Start all services (database, redis, rabbitmq, clamav)
 docker compose up -d
 
 # Run the backend server
@@ -98,6 +98,7 @@ npm run types
 2. **Blocks**: Reusable components in `/backend/blocks/` that perform specific tasks
 3. **Integrations**: OAuth and API connections stored per user
 4. **Store**: Marketplace for sharing agent templates
+5. **Virus Scanning**: ClamAV integration for file upload security
 
 ### Testing Approach
 
