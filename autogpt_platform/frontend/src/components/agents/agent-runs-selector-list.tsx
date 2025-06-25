@@ -103,9 +103,7 @@ export default function AgentRunsSelectorList({
           onClick={() => setActiveListTab("scheduled")}
         >
           <span>Scheduled</span>
-          <span className="text-neutral-600">
-            {schedules.filter((s) => s.graph_id === agent.graph_id).length}
-          </span>
+          <span className="text-neutral-600">{schedules.length}</span>
         </Badge>
       </div>
 
@@ -172,21 +170,19 @@ export default function AgentRunsSelectorList({
                 ))}
             </>
           ) : (
-            schedules
-              .filter((schedule) => schedule.graph_id === agent.graph_id)
-              .map((schedule) => (
-                <AgentRunSummaryCard
-                  className={listItemClasses}
-                  key={schedule.id}
-                  type="schedule"
-                  status="scheduled" // TODO: implement active/inactive status for schedules
-                  title={schedule.name}
-                  timestamp={schedule.next_run_time}
-                  selected={selectedView.id === schedule.id}
-                  onClick={() => onSelectSchedule(schedule.id)}
-                  onDelete={() => doDeleteSchedule(schedule.id)}
-                />
-              ))
+            schedules.map((schedule) => (
+              <AgentRunSummaryCard
+                className={listItemClasses}
+                key={schedule.id}
+                type="schedule"
+                status="scheduled" // TODO: implement active/inactive status for schedules
+                title={schedule.name}
+                timestamp={schedule.next_run_time}
+                selected={selectedView.id === schedule.id}
+                onClick={() => onSelectSchedule(schedule.id)}
+                onDelete={() => doDeleteSchedule(schedule.id)}
+              />
+            ))
           )}
         </div>
       </ScrollArea>
