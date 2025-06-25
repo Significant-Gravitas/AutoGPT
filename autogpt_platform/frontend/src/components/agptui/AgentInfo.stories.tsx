@@ -1,9 +1,9 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { AgentInfo } from "./AgentInfo";
-import { userEvent, within } from "@storybook/test";
+import { userEvent, within } from "storybook/test";
 
 const meta = {
-  title: "AGPT UI/Agent Info",
+  title: "Legacy/Agent Info",
   component: AgentInfo,
   parameters: {
     layout: "centered",

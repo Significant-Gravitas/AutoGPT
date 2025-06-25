@@ -21,8 +21,20 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { determineDataType, DataType } from "@/lib/autogpt-server-api/types";
-import { BlockIOSubSchema } from "@/lib/autogpt-server-api/types";
+import {
+  MultiSelector,
+  MultiSelectorContent,
+  MultiSelectorInput,
+  MultiSelectorItem,
+  MultiSelectorList,
+  MultiSelectorTrigger,
+} from "@/components/ui/multiselect";
+import {
+  BlockIOObjectSubSchema,
+  BlockIOSubSchema,
+  DataType,
+  determineDataType,
+} from "@/lib/autogpt-server-api/types";
 
 /**
  * A generic prop structure for the TypeBasedInput.
@@ -37,7 +49,7 @@ export interface TypeBasedInputProps {
   onChange: (value: any) => void;
 }
 
-const inputClasses = "min-h-11 rounded-full border px-4 py-2.5";
+const inputClasses = "min-h-11 rounded-[1.375rem] border px-4 py-2.5 bg-text";
 
 function Input({
   className,
@@ -91,7 +103,7 @@ export const TypeBasedInput: FC<
           <Switch
             className="ml-auto"
             checked={!!value}
-            onCheckedChange={(checked) => onChange(checked)}
+            onCheckedChange={(checked: boolean) => onChange(checked)}
             {...props}
           />
         </>
@@ -145,7 +157,10 @@ export const TypeBasedInput: FC<
         schema.enum.length > 0
       ) {
         innerInputElement = (
-          <Select value={value ?? ""} onValueChange={(val) => onChange(val)}>
+          <Select
+            value={value ?? ""}
+            onValueChange={(val: string) => onChange(val)}
+          >
             <SelectTrigger
               className={cn(
                 inputClasses,
@@ -167,6 +182,46 @@ export const TypeBasedInput: FC<
         );
         break;
       }
+
+    case DataType.MULTI_SELECT:
+      const _schema = schema as BlockIOObjectSubSchema;
+
+      innerInputElement = (
+        <MultiSelector
+          className="nodrag"
+          values={Object.entries(value || {})
+            .filter(([_, v]) => v)
+            .map(([k, _]) => k)}
+          onValuesChange={(values: string[]) => {
+            const allKeys = Object.keys(_schema.properties);
+            onChange(
+              Object.fromEntries(
+                allKeys.map((opt) => [opt, values.includes(opt)]),
+              ),
+            );
+          }}
+        >
+          <MultiSelectorTrigger className={inputClasses}>
+            <MultiSelectorInput
+              placeholder={schema.placeholder ?? `Select ${schema.title}...`}
+            />
+          </MultiSelectorTrigger>
+          <MultiSelectorContent className="nowheel">
+            <MultiSelectorList
+              className={cn(inputClasses, "agpt-border-input bg-white")}
+            >
+              {Object.keys(_schema.properties)
+                .map((key) => ({ ..._schema.properties[key], key }))
+                .map(({ key, title, description }) => (
+                  <MultiSelectorItem key={key} value={key} title={description}>
+                    {title ?? key}
+                  </MultiSelectorItem>
+                ))}
+            </MultiSelectorList>
+          </MultiSelectorContent>
+        </MultiSelector>
+      );
+      break;
 
     case DataType.SHORT_TEXT:
     default:
@@ -253,7 +308,7 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
       <div className="flex flex-col items-center">
         <Select
           value={hour}
-          onValueChange={(val) => changeTime(val, minute, meridiem)}
+          onValueChange={(val: string) => changeTime(val, minute, meridiem)}
         >
           <SelectTrigger
             className={cn("agpt-border-input ml-1 text-center", inputClasses)}
@@ -277,7 +332,7 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
       <div className="flex flex-col items-center">
         <Select
           value={minute}
-          onValueChange={(val) => changeTime(hour, val, meridiem)}
+          onValueChange={(val: string) => changeTime(hour, val, meridiem)}
         >
           <SelectTrigger
             className={cn("agpt-border-input text-center", inputClasses)}
@@ -297,7 +352,7 @@ export function TimePicker({ value, onChange }: TimePickerProps) {
       <div className="flex flex-col items-center">
         <Select
           value={meridiem}
-          onValueChange={(val) => changeTime(hour, minute, val)}
+          onValueChange={(val: string) => changeTime(hour, minute, val)}
         >
           <SelectTrigger
             className={cn("agpt-border-input text-center", inputClasses)}
@@ -357,12 +412,7 @@ interface FileInputProps {
   className?: string;
 }
 
-const FileInput: FC<FileInputProps> = ({
-  value,
-  placeholder,
-  onChange,
-  className,
-}) => {
+const FileInput: FC<FileInputProps> = ({ value, onChange, className }) => {
   const loadFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -402,7 +452,7 @@ const FileInput: FC<FileInputProps> = ({
             <Cross2Icon
               className="h-5 w-5 cursor-pointer text-black"
               onClick={() => {
-                inputRef.current && (inputRef.current.value = "");
+                if (inputRef.current) inputRef.current.value = "";
                 onChange("");
               }}
             />

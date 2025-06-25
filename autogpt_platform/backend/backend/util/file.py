@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
-from backend.util.request import requests
+from backend.util.request import Requests
 from backend.util.type import MediaFileType
 
 TEMP_DIR = Path(tempfile.gettempdir()).resolve()
@@ -29,7 +29,7 @@ def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
         shutil.rmtree(exec_path)
 
 
-def store_media_file(
+async def store_media_file(
     graph_exec_id: str, file: MediaFileType, return_content: bool = False
 ) -> MediaFileType:
     """
@@ -67,8 +67,7 @@ def store_media_file(
         return ext if ext else ".bin"
 
     def _file_to_data_uri(path: Path) -> str:
-        mime_type, _ = mimetypes.guess_type(path)
-        mime_type = mime_type or "application/octet-stream"
+        mime_type = get_mime_type(str(path))
         b64 = base64.b64encode(path.read_bytes()).decode("utf-8")
         return f"data:{mime_type};base64,{b64}"
 
@@ -115,8 +114,7 @@ def store_media_file(
         target_path = _ensure_inside_base(base_path / filename, base_path)
 
         # Download and save
-        resp = requests.get(file)
-        resp.raise_for_status()
+        resp = await Requests().get(file)
         target_path.write_bytes(resp.content)
 
     else:
@@ -130,3 +128,21 @@ def store_media_file(
         return MediaFileType(_file_to_data_uri(target_path))
     else:
         return MediaFileType(_strip_base_prefix(target_path, base_path))
+
+
+def get_mime_type(file: str) -> str:
+    """
+    Get the MIME type of a file, whether it's a data URI, URL, or local path.
+    """
+    if file.startswith("data:"):
+        match = re.match(r"^data:([^;]+);base64,", file)
+        return match.group(1) if match else "application/octet-stream"
+
+    elif file.startswith(("http://", "https://")):
+        parsed_url = urlparse(file)
+        mime_type, _ = mimetypes.guess_type(parsed_url.path)
+        return mime_type or "application/octet-stream"
+
+    else:
+        mime_type, _ = mimetypes.guess_type(file)
+        return mime_type or "application/octet-stream"

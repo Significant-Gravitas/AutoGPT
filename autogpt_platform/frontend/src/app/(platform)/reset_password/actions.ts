@@ -1,8 +1,7 @@
 "use server";
-import getServerSupabase from "@/lib/supabase/getServerSupabase";
+import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { redirect } from "next/navigation";
 import * as Sentry from "@sentry/nextjs";
-import { headers } from "next/headers";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 
 export async function sendResetEmail(email: string, turnstileToken: string) {
@@ -10,12 +9,8 @@ export async function sendResetEmail(email: string, turnstileToken: string) {
     "sendResetEmail",
     {},
     async () => {
-      const supabase = getServerSupabase();
-      const headersList = headers();
-      const host = headersList.get("host");
-      const protocol =
-        process.env.NODE_ENV === "development" ? "http" : "https";
-      const origin = `${protocol}://${host}`;
+      const supabase = await getServerSupabase();
+      const origin = process.env.FRONTEND_BASE_URL || "http://localhost:3000";
 
       if (!supabase) {
         redirect("/error");
@@ -38,8 +33,6 @@ export async function sendResetEmail(email: string, turnstileToken: string) {
         console.error("Error sending reset email", error);
         return error.message;
       }
-
-      redirect("/reset_password");
     },
   );
 }
@@ -49,7 +42,7 @@ export async function changePassword(password: string, turnstileToken: string) {
     "changePassword",
     {},
     async () => {
-      const supabase = getServerSupabase();
+      const supabase = await getServerSupabase();
 
       if (!supabase) {
         redirect("/error");
@@ -71,7 +64,7 @@ export async function changePassword(password: string, turnstileToken: string) {
         return error.message;
       }
 
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "global" });
       redirect("/login");
     },
   );

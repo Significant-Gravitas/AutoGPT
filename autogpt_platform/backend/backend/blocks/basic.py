@@ -14,6 +14,12 @@ class FileStoreBlock(Block):
         file_in: MediaFileType = SchemaField(
             description="The file to store in the temporary directory, it can be a URL, data URI, or local path."
         )
+        base_64: bool = SchemaField(
+            description="Whether produce an output in base64 format (not recommended, you can pass the string path just fine accross blocks).",
+            default=False,
+            advanced=True,
+            title="Produce Base64 Output",
+        )
 
     class Output(BlockSchema):
         file_out: MediaFileType = SchemaField(
@@ -30,19 +36,18 @@ class FileStoreBlock(Block):
             static_output=True,
         )
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
         graph_exec_id: str,
         **kwargs,
     ) -> BlockOutput:
-        file_path = store_media_file(
+        yield "file_out", await store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.file_in,
-            return_content=False,
+            return_content=input_data.base_64,
         )
-        yield "file_out", file_path
 
 
 class StoreValueBlock(Block):
@@ -84,7 +89,7 @@ class StoreValueBlock(Block):
             static_output=True,
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "output", input_data.data or input_data.input
 
 
@@ -110,7 +115,7 @@ class PrintToConsoleBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "output", input_data.text
         yield "status", "printed"
 
@@ -151,7 +156,7 @@ class FindInDictionaryBlock(Block):
             categories={BlockCategory.BASIC},
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         obj = input_data.input
         key = input_data.key
 
@@ -241,7 +246,7 @@ class AddToDictionaryBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         updated_dict = input_data.dictionary.copy()
 
         if input_data.value is not None and input_data.key:
@@ -319,7 +324,7 @@ class AddToListBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         entries_added = input_data.entries.copy()
         if input_data.entry:
             entries_added.append(input_data.entry)
@@ -366,7 +371,7 @@ class FindInListBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             yield "index", input_data.list.index(input_data.value)
             yield "found", True
@@ -396,7 +401,7 @@ class NoteBlock(Block):
             block_type=BlockType.NOTE,
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "output", input_data.text
 
 
@@ -442,7 +447,7 @@ class CreateDictionaryBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             # The values are already validated by Pydantic schema
             yield "dictionary", input_data.values
@@ -455,6 +460,11 @@ class CreateListBlock(Block):
         values: List[Any] = SchemaField(
             description="A list of values to be combined into a new list.",
             placeholder="e.g., ['Alice', 25, True]",
+        )
+        max_size: int | None = SchemaField(
+            default=None,
+            description="Maximum size of the list. If provided, the list will be yielded in chunks of this size.",
+            advanced=True,
         )
 
     class Output(BlockSchema):
@@ -490,10 +500,11 @@ class CreateListBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
-            # The values are already validated by Pydantic schema
-            yield "list", input_data.values
+            max_size = input_data.max_size or len(input_data.values)
+            for i in range(0, len(input_data.values), max_size):
+                yield "list", input_data.values[i : i + max_size]
         except Exception as e:
             yield "error", f"Failed to create list: {str(e)}"
 
@@ -525,7 +536,7 @@ class UniversalTypeConverterBlock(Block):
             output_schema=UniversalTypeConverterBlock.Output,
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             converted_value = convert(
                 input_data.value,

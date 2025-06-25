@@ -17,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconRefresh, IconSquare } from "@/components/ui/icons";
 import { useToastOnFail } from "@/components/ui/use-toast";
 import ActionButtonGroup from "@/components/agptui/action-button-group";
+import LoadingBox from "@/components/ui/loading";
 import { Input } from "@/components/ui/input";
 
 import {
@@ -133,7 +134,8 @@ export default function AgentRunDetailsView({
     | null
     | undefined = useMemo(() => {
     if (!("outputs" in run)) return undefined;
-    if (!["running", "success", "failed"].includes(runStatus)) return null;
+    if (!["running", "success", "failed", "stopped"].includes(runStatus))
+      return null;
 
     // Add type info from agent input schema
     return Object.fromEntries(
@@ -251,7 +253,7 @@ export default function AgentRunDetailsView({
                   ),
                 )
               ) : (
-                <p>Loading...</p>
+                <LoadingBox spinnerSize={12} className="h-24" />
               )}
             </CardContent>
           </Card>
@@ -270,7 +272,7 @@ export default function AgentRunDetailsView({
                 </div>
               ))
             ) : (
-              <p>Loading...</p>
+              <LoadingBox spinnerSize={12} className="h-24" />
             )}
           </CardContent>
         </Card>

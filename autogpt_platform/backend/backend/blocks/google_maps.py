@@ -103,7 +103,7 @@ class GoogleMapsSearchBlock(Block):
             test_credentials=TEST_CREDENTIALS,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         places = self.search_places(

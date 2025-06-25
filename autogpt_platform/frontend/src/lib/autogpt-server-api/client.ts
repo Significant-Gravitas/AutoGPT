@@ -1,4 +1,4 @@
-import getServerSupabase from "@/lib/supabase/getServerSupabase";
+import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
@@ -10,7 +10,6 @@ import type {
   APIKeyPermission,
   Block,
   CreateAPIKeyResponse,
-  CreateLibraryAgentPresetRequest,
   CreatorDetails,
   CreatorsResponse,
   Credentials,
@@ -29,7 +28,11 @@ import type {
   LibraryAgent,
   LibraryAgentID,
   LibraryAgentPreset,
+  LibraryAgentPresetCreatable,
+  LibraryAgentPresetCreatableFromGraphExecution,
+  LibraryAgentPresetID,
   LibraryAgentPresetResponse,
+  LibraryAgentPresetUpdatable,
   LibraryAgentResponse,
   LibraryAgentSortEnum,
   MyAgentsResponse,
@@ -68,6 +71,7 @@ export default class BackendAPI {
   private webSocket: WebSocket | null = null;
   private wsConnecting: Promise<void> | null = null;
   private wsOnConnectHandlers: Set<() => void> = new Set();
+  private wsOnDisconnectHandlers: Set<() => void> = new Set();
   private wsMessageHandlers: Record<string, Set<(data: any) => void>> = {};
 
   readonly HEARTBEAT_INTERVAL = 100_000; // 100 seconds
@@ -85,21 +89,23 @@ export default class BackendAPI {
     this.wsUrl = wsUrl;
   }
 
-  private get supabaseClient(): SupabaseClient | null {
+  private async getSupabaseClient(): Promise<SupabaseClient | null> {
     return isClient
       ? createBrowserClient(
           process.env.NEXT_PUBLIC_SUPABASE_URL!,
           process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          { isSingleton: true },
         )
-      : getServerSupabase();
+      : await getServerSupabase();
   }
 
   async isAuthenticated(): Promise<boolean> {
-    if (!this.supabaseClient) return false;
+    const supabaseClient = await this.getSupabaseClient();
+    if (!supabaseClient) return false;
     const {
-      data: { user },
-    } = await this.supabaseClient?.auth.getUser();
-    return user != null;
+      data: { session },
+    } = await supabaseClient.auth.getSession();
+    return session != null;
   }
 
   createUser(): Promise<User> {
@@ -117,7 +123,7 @@ export default class BackendAPI {
   getUserCredit(): Promise<{ credits: number }> {
     try {
       return this._get("/credits");
-    } catch (error) {
+    } catch {
       return Promise.resolve({ credits: 0 });
     }
   }
@@ -217,7 +223,7 @@ export default class BackendAPI {
     version?: number,
     for_export?: boolean,
   ): Promise<Graph> {
-    let query: Record<string, any> = {};
+    const query: Record<string, any> = {};
     if (version !== undefined) {
       query["version"] = version;
     }
@@ -234,7 +240,7 @@ export default class BackendAPI {
   }
 
   createGraph(graph: GraphCreatable): Promise<Graph> {
-    let requestBody = { graph } as GraphCreateRequestBody;
+    const requestBody = { graph } as GraphCreateRequestBody;
 
     return this._request("POST", "/graphs", requestBody);
   }
@@ -624,60 +630,98 @@ export default class BackendAPI {
     });
   }
 
-  async updateLibraryAgent(
+  updateLibraryAgent(
     libraryAgentId: LibraryAgentID,
     params: {
       auto_update_version?: boolean;
       is_favorite?: boolean;
       is_archived?: boolean;
-      is_deleted?: boolean;
     },
-  ): Promise<void> {
-    await this._request("PUT", `/library/agents/${libraryAgentId}`, params);
+  ): Promise<LibraryAgent> {
+    return this._request("PATCH", `/library/agents/${libraryAgentId}`, params);
+  }
+
+  async deleteLibraryAgent(libraryAgentId: LibraryAgentID): Promise<void> {
+    await this._request("DELETE", `/library/agents/${libraryAgentId}`);
   }
 
   forkLibraryAgent(libraryAgentId: LibraryAgentID): Promise<LibraryAgent> {
     return this._request("POST", `/library/agents/${libraryAgentId}/fork`);
   }
 
-  listLibraryAgentPresets(params?: {
+  async setupAgentTrigger(
+    libraryAgentID: LibraryAgentID,
+    params: {
+      name: string;
+      description?: string;
+      trigger_config: Record<string, any>;
+      agent_credentials: Record<string, CredentialsMetaInput>;
+    },
+  ): Promise<LibraryAgentPreset> {
+    return parseLibraryAgentPresetTimestamp(
+      await this._request(
+        "POST",
+        `/library/agents/${libraryAgentID}/setup-trigger`,
+        params,
+      ),
+    );
+  }
+
+  async listLibraryAgentPresets(params?: {
+    graph_id?: GraphID;
     page?: number;
     page_size?: number;
   }): Promise<LibraryAgentPresetResponse> {
-    return this._get("/library/presets", params);
+    const response: LibraryAgentPresetResponse = await this._get(
+      "/library/presets",
+      params,
+    );
+    return {
+      ...response,
+      presets: response.presets.map(parseLibraryAgentPresetTimestamp),
+    };
   }
 
-  getLibraryAgentPreset(presetId: string): Promise<LibraryAgentPreset> {
-    return this._get(`/library/presets/${presetId}`);
-  }
-
-  createLibraryAgentPreset(
-    preset: CreateLibraryAgentPresetRequest,
+  async getLibraryAgentPreset(
+    presetID: LibraryAgentPresetID,
   ): Promise<LibraryAgentPreset> {
-    return this._request("POST", "/library/presets", preset);
+    const preset = await this._get(`/library/presets/${presetID}`);
+    return parseLibraryAgentPresetTimestamp(preset);
   }
 
-  updateLibraryAgentPreset(
-    presetId: string,
-    preset: CreateLibraryAgentPresetRequest,
+  async createLibraryAgentPreset(
+    params:
+      | LibraryAgentPresetCreatable
+      | LibraryAgentPresetCreatableFromGraphExecution,
   ): Promise<LibraryAgentPreset> {
-    return this._request("PUT", `/library/presets/${presetId}`, preset);
+    const new_preset = await this._request("POST", "/library/presets", params);
+    return parseLibraryAgentPresetTimestamp(new_preset);
   }
 
-  async deleteLibraryAgentPreset(presetId: string): Promise<void> {
-    await this._request("DELETE", `/library/presets/${presetId}`);
+  async updateLibraryAgentPreset(
+    presetID: LibraryAgentPresetID,
+    partial_preset: LibraryAgentPresetUpdatable,
+  ): Promise<LibraryAgentPreset> {
+    const updated_preset = await this._request(
+      "PATCH",
+      `/library/presets/${presetID}`,
+      partial_preset,
+    );
+    return parseLibraryAgentPresetTimestamp(updated_preset);
+  }
+
+  async deleteLibraryAgentPreset(
+    presetID: LibraryAgentPresetID,
+  ): Promise<void> {
+    await this._request("DELETE", `/library/presets/${presetID}`);
   }
 
   executeLibraryAgentPreset(
-    presetId: string,
-    graphId: GraphID,
-    graphVersion: number,
-    nodeInput: { [key: string]: any },
-  ): Promise<{ id: string }> {
-    return this._request("POST", `/library/presets/${presetId}/execute`, {
-      graph_id: graphId,
-      graph_version: graphVersion,
-      node_input: nodeInput,
+    presetID: LibraryAgentPresetID,
+    inputs?: { [key: string]: any },
+  ): Promise<{ id: GraphExecutionID }> {
+    return this._request("POST", `/library/presets/${presetID}/execute`, {
+      inputs,
     });
   }
 
@@ -724,9 +768,10 @@ export default class BackendAPI {
     const maxRetries = 3;
 
     while (retryCount < maxRetries) {
+      const supabaseClient = await this.getSupabaseClient();
       const {
         data: { session },
-      } = (await this.supabaseClient?.auth.getSession()) || {
+      } = (await supabaseClient?.auth.getSession()) || {
         data: { session: null },
       };
 
@@ -777,9 +822,10 @@ export default class BackendAPI {
     const maxRetries = 3;
 
     while (retryCount < maxRetries) {
+      const supabaseClient = await this.getSupabaseClient();
       const {
         data: { session },
-      } = (await this.supabaseClient?.auth.getSession()) || {
+      } = (await supabaseClient?.auth.getSession()) || {
         data: { session: null },
       };
 
@@ -843,7 +889,7 @@ export default class BackendAPI {
         } else {
           errorDetail = errorData.detail || response.statusText;
         }
-      } catch (e) {
+      } catch {
         errorDetail = response.statusText;
       }
 
@@ -939,43 +985,70 @@ export default class BackendAPI {
     return () => this.wsOnConnectHandlers.delete(handler);
   }
 
+  /**
+   * All handlers are invoked when the WebSocket disconnects.
+   *
+   * @returns a detacher for the passed handler.
+   */
+  onWebSocketDisconnect(handler: () => void): () => void {
+    this.wsOnDisconnectHandlers.add(handler);
+
+    // Return detacher
+    return () => this.wsOnDisconnectHandlers.delete(handler);
+  }
+
   async connectWebSocket(): Promise<void> {
-    this.wsConnecting ??= new Promise(async (resolve, reject) => {
+    return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
+        const supabaseClient = await this.getSupabaseClient();
         const token =
-          (await this.supabaseClient?.auth.getSession())?.data.session
+          (await supabaseClient?.auth.getSession())?.data.session
             ?.access_token || "";
         const wsUrlWithToken = `${this.wsUrl}?token=${token}`;
         this.webSocket = new WebSocket(wsUrlWithToken);
+        this.webSocket.state = "connecting";
 
         this.webSocket.onopen = () => {
+          this.webSocket!.state = "connected";
+          console.info("[BackendAPI] WebSocket connected to", this.wsUrl);
           this._startWSHeartbeat(); // Start heartbeat when connection opens
           this.wsOnConnectHandlers.forEach((handler) => handler());
           resolve();
         };
 
         this.webSocket.onclose = (event) => {
-          console.warn("WebSocket connection closed", event);
+          if (this.webSocket?.state == "connecting") {
+            console.error(
+              `[BackendAPI] WebSocket failed to connect: ${event.reason}`,
+              event,
+            );
+          } else if (this.webSocket?.state == "connected") {
+            console.warn(
+              `[BackendAPI] WebSocket connection closed: ${event.reason}`,
+              event,
+            );
+          }
+          this.webSocket!.state = "closed";
+
           this._stopWSHeartbeat(); // Stop heartbeat when connection closes
           this.wsConnecting = null;
+          this.wsOnDisconnectHandlers.forEach((handler) => handler());
           // Attempt to reconnect after a delay
-          setTimeout(() => this.connectWebSocket(), 1000);
+          setTimeout(() => this.connectWebSocket().then(resolve), 1000);
         };
 
         this.webSocket.onerror = (error) => {
-          console.error("WebSocket error:", error);
-          this._stopWSHeartbeat(); // Stop heartbeat on error
-          this.wsConnecting = null;
-          reject(error);
+          if (this.webSocket?.state == "connected") {
+            console.error("[BackendAPI] WebSocket error:", error);
+          }
         };
 
         this.webSocket.onmessage = (event) => this._handleWSMessage(event);
       } catch (error) {
-        console.error("Error connecting to WebSocket:", error);
+        console.error("[BackendAPI] Error connecting to WebSocket:", error);
         reject(error);
       }
-    });
-    return this.wsConnecting;
+    }));
   }
 
   disconnectWebSocket() {
@@ -1044,6 +1117,12 @@ export default class BackendAPI {
   }
 }
 
+declare global {
+  interface WebSocket {
+    state: "connecting" | "connected" | "closed";
+  }
+}
+
 /* *** UTILITY TYPES *** */
 
 type GraphCreateRequestBody = {
@@ -1097,6 +1176,10 @@ function parseNodeExecutionResultTimestamps(result: any): NodeExecutionResult {
 
 function parseScheduleTimestamp(result: any): Schedule {
   return _parseObjectTimestamps<Schedule>(result, ["next_run_time"]);
+}
+
+function parseLibraryAgentPresetTimestamp(result: any): LibraryAgentPreset {
+  return _parseObjectTimestamps<LibraryAgentPreset>(result, ["updated_at"]);
 }
 
 function _parseObjectTimestamps<T>(obj: any, keys: (keyof T)[]): T {

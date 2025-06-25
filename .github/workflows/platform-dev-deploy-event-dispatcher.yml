@@ -1,0 +1,198 @@
+name: AutoGPT Platform - Dev Deploy PR Event Dispatcher
+
+on:
+  pull_request:
+    types: [closed]
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check comment permissions and deployment status
+        id: check_status
+        if: github.event_name == 'issue_comment' && github.event.issue.pull_request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const commentBody = context.payload.comment.body.trim();
+            const commentUser = context.payload.comment.user.login;
+            const prAuthor = context.payload.issue.user.login;
+            const authorAssociation = context.payload.comment.author_association;
+            
+            // Check permissions
+            const hasPermission = (
+              authorAssociation === 'OWNER' ||
+              authorAssociation === 'MEMBER' ||
+              authorAssociation === 'COLLABORATOR'
+            );
+            
+            core.setOutput('comment_body', commentBody);
+            core.setOutput('has_permission', hasPermission);
+            
+            if (!hasPermission && (commentBody === '!deploy' || commentBody === '!undeploy')) {
+              core.setOutput('permission_denied', 'true');
+              return;
+            }
+            
+            if (commentBody !== '!deploy' && commentBody !== '!undeploy') {
+              return;
+            }
+            
+            // Process deploy command
+            if (commentBody === '!deploy') {
+              core.setOutput('should_deploy', 'true');
+            }
+            // Process undeploy command
+            else if (commentBody === '!undeploy') {
+              core.setOutput('should_undeploy', 'true');
+            }
+
+      - name: Post permission denied comment
+        if: steps.check_status.outputs.permission_denied == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `❌ **Permission denied**: Only the repository owners, members, or collaborators can use deployment commands.`
+            });
+
+      - name: Get PR details for deployment
+        id: pr_details
+        if: steps.check_status.outputs.should_deploy == 'true' || steps.check_status.outputs.should_undeploy == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            core.setOutput('pr_number', pr.data.number);
+            core.setOutput('pr_title', pr.data.title);
+            core.setOutput('pr_state', pr.data.state);
+          
+      - name: Dispatch Deploy Event
+        if: steps.check_status.outputs.should_deploy == 'true'
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.DISPATCH_TOKEN }}
+          repository: Significant-Gravitas/AutoGPT_cloud_infrastructure
+          event-type: pr-event
+          client-payload: |
+            {
+              "action": "deploy",
+              "pr_number": "${{ steps.pr_details.outputs.pr_number }}",
+              "pr_title": "${{ steps.pr_details.outputs.pr_title }}",
+              "pr_state": "${{ steps.pr_details.outputs.pr_state }}",
+              "repo": "${{ github.repository }}"
+            }
+
+      - name: Post deploy success comment
+        if: steps.check_status.outputs.should_deploy == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `🚀 **Deploying PR #${{ steps.pr_details.outputs.pr_number }}** to development environment...`
+            });
+
+      - name: Dispatch Undeploy Event (from comment)
+        if: steps.check_status.outputs.should_undeploy == 'true'
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.DISPATCH_TOKEN }}
+          repository: Significant-Gravitas/AutoGPT_cloud_infrastructure
+          event-type: pr-event
+          client-payload: |
+            {
+              "action": "undeploy",
+              "pr_number": "${{ steps.pr_details.outputs.pr_number }}",
+              "pr_title": "${{ steps.pr_details.outputs.pr_title }}",
+              "pr_state": "${{ steps.pr_details.outputs.pr_state }}",
+              "repo": "${{ github.repository }}"
+            }
+
+      - name: Post undeploy success comment
+        if: steps.check_status.outputs.should_undeploy == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `🗑️ **Undeploying PR #${{ steps.pr_details.outputs.pr_number }}** from development environment...`
+            });
+
+      - name: Check deployment status on PR close
+        id: check_pr_close
+        if: github.event_name == 'pull_request' && github.event.action == 'closed'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            let lastDeployIndex = -1;
+            let lastUndeployIndex = -1;
+            
+            comments.data.forEach((comment, index) => {
+              if (comment.body.trim() === '!deploy') {
+                lastDeployIndex = index;
+              } else if (comment.body.trim() === '!undeploy') {
+                lastUndeployIndex = index;
+              }
+            });
+            
+            // Should undeploy if there's a !deploy without a subsequent !undeploy
+            const shouldUndeploy = lastDeployIndex !== -1 && lastDeployIndex > lastUndeployIndex;
+            core.setOutput('should_undeploy', shouldUndeploy);
+            
+      - name: Dispatch Undeploy Event (PR closed with active deployment)
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.action == 'closed' &&
+          steps.check_pr_close.outputs.should_undeploy == 'true'
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.DISPATCH_TOKEN }}
+          repository: Significant-Gravitas/AutoGPT_cloud_infrastructure
+          event-type: pr-event
+          client-payload: |
+            {
+              "action": "undeploy",
+              "pr_number": "${{ github.event.pull_request.number }}",
+              "pr_title": "${{ github.event.pull_request.title }}",
+              "pr_state": "${{ github.event.pull_request.state }}",
+              "repo": "${{ github.repository }}"
+            }
+
+      - name: Post PR close undeploy comment
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.action == 'closed' &&
+          steps.check_pr_close.outputs.should_undeploy == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `🧹 **Auto-undeploying**: PR closed with active deployment. Cleaning up development environment for PR #${{ github.event.pull_request.number }}.`
+            });

@@ -1,9 +1,9 @@
-import type { Meta, StoryObj } from "@storybook/react";
+import type { Meta, StoryObj } from "@storybook/nextjs";
 import { Button } from "./Button";
-import { userEvent, within, expect } from "@storybook/test";
+import { userEvent, within, expect } from "storybook/test";
 
 const meta = {
-  title: "AGPT UI/Button",
+  title: "Legacy/Button",
   component: Button,
   parameters: {
     layout: "centered",

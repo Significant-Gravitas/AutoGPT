@@ -39,7 +39,7 @@ class SearchTheWebBlock(Block, GetRequest):
             test_mock={"get_request": lambda *args, **kwargs: "search content"},
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: JinaCredentials, **kwargs
     ) -> BlockOutput:
         # Encode the search query
@@ -51,7 +51,7 @@ class SearchTheWebBlock(Block, GetRequest):
 
         # Prepend the Jina Search URL to the encoded query
         jina_search_url = f"https://s.jina.ai/{encoded_query}"
-        results = self.get_request(jina_search_url, headers=headers, json=False)
+        results = await self.get_request(jina_search_url, headers=headers, json=False)
 
         # Output the search results
         yield "results", results
@@ -90,7 +90,7 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
             test_mock={"get_request": lambda *args, **kwargs: "scraped content"},
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: JinaCredentials, **kwargs
     ) -> BlockOutput:
         if input_data.raw_content:
@@ -103,5 +103,5 @@ class ExtractWebsiteContentBlock(Block, GetRequest):
                 "Authorization": f"Bearer {credentials.api_key.get_secret_value()}",
             }
 
-        content = self.get_request(url, json=False, headers=headers)
+        content = await self.get_request(url, json=False, headers=headers)
         yield "content", content

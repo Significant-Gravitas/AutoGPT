@@ -104,7 +104,10 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
                 (node.data.hardcodedValues as any).description ||
                 "Output from the agent",
             },
-            result: (node.data.executionResults as any)?.at(-1)?.data?.output,
+            result:
+              (node.data.executionResults as any)
+                ?.map((result: any) => result?.data?.output)
+                .join("\n--\n") || "No output yet",
           }) satisfies BlockOutput,
       );
 

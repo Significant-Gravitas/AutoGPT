@@ -3,7 +3,7 @@
 import * as React from "react";
 import Image from "next/image";
 import { Button } from "../agptui/Button";
-import { IconClose } from "../ui/icons";
+import { IconCross } from "../ui/icons";
 
 export interface Agent {
   name: string;
@@ -56,7 +56,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
             className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
             aria-label="Close"
           >
-            <IconClose
+            <IconCross
               size="default"
               className="text-neutral-600 dark:text-neutral-400"
             />
@@ -66,7 +66,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
           <h3 className="font-poppins text-2xl font-semibold text-neutral-900 dark:text-neutral-100">
             Publish Agent
           </h3>
-          <p className="font-geist text-sm font-normal text-neutral-600 dark:text-neutral-400">
+          <p className="text-sm font-normal text-neutral-600 dark:text-neutral-400">
             Select your project that you&apos;d like to publish
           </p>
         </div>
@@ -135,7 +135,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
                         <p className="font-poppins text-base font-medium leading-normal text-neutral-800 dark:text-neutral-100 sm:text-base">
                           {agent.name}
                         </p>
-                        <small className="font-geist text-xs font-normal leading-[14px] text-neutral-500 dark:text-neutral-400 sm:text-sm">
+                        <small className="text-xs font-normal leading-[14px] text-neutral-500 dark:text-neutral-400 sm:text-sm">
                           Edited {agent.lastEdited}
                         </small>
                       </div>

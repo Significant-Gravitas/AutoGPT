@@ -130,7 +130,7 @@ class TodoistCreateTaskBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -261,7 +261,7 @@ class TodoistGetTasksBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -345,7 +345,7 @@ class TodoistGetTaskBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -452,7 +452,7 @@ class TodoistUpdateTaskBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -539,7 +539,7 @@ class TodoistCloseTaskBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -592,7 +592,7 @@ class TodoistReopenTaskBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -645,7 +645,7 @@ class TodoistDeleteTaskBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
