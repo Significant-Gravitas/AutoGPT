@@ -19,10 +19,10 @@ pnpm test
 If you want to run the tests in a UI where you can identify each locator used you can use the following command:
 
 ```bash
-pnpm test-ui
+pnpm test:ui
 ```
 
-You can also pass `--debug` to the test command to open the browsers in view mode rather than headless. This works with both the `pnpm test` and `pnpm test-ui` commands.
+You can also pass `--debug` to the test command to open the browsers in view mode rather than headless. This works with both the `pnpm test` and `pnpm test:ui` commands.
 
 ```bash
 pnpm test --debug

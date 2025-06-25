@@ -59,7 +59,7 @@ jobs:
         run: pnpm generate:api-client
 
       - name: Run tsc check
-        run: pnpm type-check
+        run: pnpm types
 
   chromatic:
     runs-on: ubuntu-latest
@@ -88,6 +88,26 @@ jobs:
           onlyChanged: true
           workingDir: autogpt_platform/frontend
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  test-unit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run unit tests
+        run: pnpm test:unit
 
   test:
     runs-on: ubuntu-latest
@@ -142,7 +162,7 @@ jobs:
         run: pnpm playwright install --with-deps ${{ matrix.browser }}
 
       - name: Run Playwright tests
-        run: pnpm test:no-build --project=${{ matrix.browser }}
+        run: pnpm playwright test --project=${{ matrix.browser }}
 
       - name: Print Final Docker Compose logs
         if: always()
