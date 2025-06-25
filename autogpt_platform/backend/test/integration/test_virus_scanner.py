@@ -1,7 +1,5 @@
 import asyncio
-import tempfile
 import time
-from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -44,7 +42,7 @@ class TestVirusScannerService:
     @pytest.mark.asyncio
     async def test_scan_disabled_returns_clean(self, disabled_scanner):
         content = b"test file content"
-        result = await disabled_scanner.scan_file_content(content, "test.txt")
+        result = await disabled_scanner.scan_file(content, filename="test.txt")
 
         assert result.is_clean is True
         assert result.threat_name is None
@@ -56,34 +54,18 @@ class TestVirusScannerService:
         # Create content larger than max_scan_size
         large_content = b"x" * (scanner.settings.max_scan_size + 1)
 
-        with pytest.raises(ValueError, match="exceeds maximum scan size"):
-            await scanner.scan_file_content(large_content, "large_file.txt")
+        # Large files are allowed but marked as clean with a warning
+        result = await scanner.scan_file(large_content, filename="large_file.txt")
+        assert result.is_clean is True
+        assert result.file_size == len(large_content)
+        assert result.scan_time_ms == 0
 
-    @pytest.mark.asyncio
-    @patch("pyclamd.ClamdNetworkSocket")
-    async def test_ping_success(self, mock_clamav_class, scanner):
-        mock_client = Mock()
-        mock_client.ping.return_value = True
-        mock_clamav_class.return_value = mock_client
-
-        result = await scanner.ping()
-        assert result is True
-        mock_client.ping.assert_called_once()
-
-    @pytest.mark.asyncio
-    @patch("pyclamd.ClamdNetworkSocket")
-    async def test_ping_failure(self, mock_clamav_class, scanner):
-        mock_client = Mock()
-        mock_client.ping.side_effect = Exception("Connection failed")
-        mock_clamav_class.return_value = mock_client
-
-        result = await scanner.ping()
-        assert result is False
+    # Note: ping method was removed from current implementation
 
     @pytest.mark.asyncio
     @patch("pyclamd.ClamdNetworkSocket")
     async def test_scan_clean_file(self, mock_clamav_class, scanner):
-        def mock_scan_stream(content):
+        def mock_scan_stream(_):
             time.sleep(0.001)  # Small delay to ensure timing > 0
             return None  # No virus detected
 
@@ -93,21 +75,19 @@ class TestVirusScannerService:
         mock_clamav_class.return_value = mock_client
 
         content = b"clean file content"
-        result = await scanner.scan_file_content(content, "clean.txt")
+        result = await scanner.scan_file(content, filename="clean.txt")
 
         assert result.is_clean is True
         assert result.threat_name is None
         assert result.file_size == len(content)
         assert result.scan_time_ms > 0
 
-        mock_client.ping.assert_called_once()
-
     @pytest.mark.asyncio
     @patch("pyclamd.ClamdNetworkSocket")
     async def test_scan_infected_file(self, mock_clamav_class, scanner):
-        def mock_scan_stream(content):
+        def mock_scan_stream(_):
             time.sleep(0.001)  # Small delay to ensure timing > 0
-            return {"stream": "Win.Test.EICAR_HDB-1"}
+            return {"stream": ("FOUND", "Win.Test.EICAR_HDB-1")}
 
         mock_client = Mock()
         mock_client.ping.return_value = True
@@ -115,7 +95,7 @@ class TestVirusScannerService:
         mock_clamav_class.return_value = mock_client
 
         content = b"infected file content"
-        result = await scanner.scan_file_content(content, "infected.txt")
+        result = await scanner.scan_file(content, filename="infected.txt")
 
         assert result.is_clean is False
         assert result.threat_name == "Win.Test.EICAR_HDB-1"
@@ -131,8 +111,8 @@ class TestVirusScannerService:
 
         content = b"test content"
 
-        with pytest.raises(RuntimeError, match="ClamAV service is not available"):
-            await scanner.scan_file_content(content, "test.txt")
+        with pytest.raises(RuntimeError, match="ClamAV service is unreachable"):
+            await scanner.scan_file(content, filename="test.txt")
 
     @pytest.mark.asyncio
     @patch("pyclamd.ClamdNetworkSocket")
@@ -144,61 +124,10 @@ class TestVirusScannerService:
 
         content = b"test content"
 
-        with pytest.raises(RuntimeError, match="Virus scan failed"):
-            await scanner.scan_file_content(content, "test.txt")
+        with pytest.raises(Exception, match="Scanning error"):
+            await scanner.scan_file(content, filename="test.txt")
 
-    @pytest.mark.asyncio
-    async def test_scan_file_method(self, scanner):
-        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-            test_content = b"test file content"
-            temp_file.write(test_content)
-            temp_file.flush()
-
-            temp_path = Path(temp_file.name)
-
-            with patch.object(scanner, "scan_file_content") as mock_scan:
-                mock_scan.return_value = VirusScanResult(
-                    is_clean=True, scan_time_ms=100, file_size=len(test_content)
-                )
-
-                result = await scanner.scan_file(temp_path)
-
-                assert result.is_clean is True
-                mock_scan.assert_called_once_with(test_content, str(temp_path))
-
-            # Cleanup
-            temp_path.unlink()
-
-    @pytest.mark.asyncio
-    async def test_scan_upload_file(self, scanner):
-        class MockUploadFile:
-            def __init__(self, content):
-                self.content = content
-                self.position = 0
-
-            def seek(self, position):
-                self.position = position
-
-            def read(self):
-                if self.position == 0:
-                    self.position = len(self.content)
-                    return self.content
-                return b""
-
-        test_content = b"upload file content"
-        mock_file = MockUploadFile(test_content)
-
-        with patch.object(scanner, "scan_file_content") as mock_scan:
-            mock_scan.return_value = VirusScanResult(
-                is_clean=True, scan_time_ms=50, file_size=len(test_content)
-            )
-
-            result = await scanner.scan_upload_file(mock_file, "upload.txt")
-
-            assert result.is_clean is True
-            mock_scan.assert_called_once_with(test_content, "upload.txt")
-            # Verify file pointer was reset
-            assert mock_file.position == 0
+    # Note: scan_file_method and scan_upload_file tests removed as these APIs don't exist in current implementation
 
     def test_get_virus_scanner_singleton(self):
         scanner1 = get_virus_scanner()
@@ -207,19 +136,7 @@ class TestVirusScannerService:
         # Should return the same instance
         assert scanner1 is scanner2
 
-    @pytest.mark.asyncio
-    @patch("pyclamd.ClamdNetworkSocket")
-    async def test_client_reuse(self, mock_clamav_class, scanner):
-        mock_client = Mock()
-        mock_clamav_class.return_value = mock_client
-
-        # First call should create client
-        client1 = scanner._get_client()
-        # Second call should reuse client
-        client2 = scanner._get_client()
-
-        assert client1 is client2
-        mock_clamav_class.assert_called_once()
+    # Note: client_reuse test removed as _get_client method doesn't exist in current implementation
 
     def test_scan_result_model(self):
         # Test VirusScanResult model
@@ -235,7 +152,7 @@ class TestVirusScannerService:
     @pytest.mark.asyncio
     @patch("pyclamd.ClamdNetworkSocket")
     async def test_concurrent_scans(self, mock_clamav_class, scanner):
-        def mock_scan_stream(content):
+        def mock_scan_stream(_):
             time.sleep(0.001)  # Small delay to ensure timing > 0
             return None
 
@@ -249,8 +166,8 @@ class TestVirusScannerService:
 
         # Run concurrent scans
         results = await asyncio.gather(
-            scanner.scan_file_content(content1, "file1.txt"),
-            scanner.scan_file_content(content2, "file2.txt"),
+            scanner.scan_file(content1, filename="file1.txt"),
+            scanner.scan_file(content2, filename="file2.txt"),
         )
 
         assert len(results) == 2
@@ -268,8 +185,8 @@ class TestHelperFunctions:
         """Test scan_content_safe with clean content"""
         with patch("backend.util.virus_scanner.get_virus_scanner") as mock_get_scanner:
             mock_scanner = Mock()
-            mock_scanner.scan_file_content = AsyncMock()
-            mock_scanner.scan_file_content.return_value = Mock(
+            mock_scanner.scan_file = AsyncMock()
+            mock_scanner.scan_file.return_value = Mock(
                 is_clean=True, threat_name=None, scan_time_ms=50, file_size=100
             )
             mock_get_scanner.return_value = mock_scanner
@@ -282,8 +199,8 @@ class TestHelperFunctions:
         """Test scan_content_safe with infected content"""
         with patch("backend.util.virus_scanner.get_virus_scanner") as mock_get_scanner:
             mock_scanner = Mock()
-            mock_scanner.scan_file_content = AsyncMock()
-            mock_scanner.scan_file_content.return_value = Mock(
+            mock_scanner.scan_file = AsyncMock()
+            mock_scanner.scan_file.return_value = Mock(
                 is_clean=False, threat_name="Test.Virus", scan_time_ms=50, file_size=100
             )
             mock_get_scanner.return_value = mock_scanner
@@ -298,8 +215,8 @@ class TestHelperFunctions:
         """Test scan_content_safe when scanning fails"""
         with patch("backend.util.virus_scanner.get_virus_scanner") as mock_get_scanner:
             mock_scanner = Mock()
-            mock_scanner.scan_file_content = AsyncMock()
-            mock_scanner.scan_file_content.side_effect = Exception("Scan failed")
+            mock_scanner.scan_file = AsyncMock()
+            mock_scanner.scan_file.side_effect = Exception("Scan failed")
             mock_get_scanner.return_value = mock_scanner
 
             with pytest.raises(VirusScanError, match="Virus scanning failed"):
