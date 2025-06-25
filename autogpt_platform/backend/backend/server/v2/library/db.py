@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Literal, Optional
 
 import fastapi
 import prisma.errors
@@ -122,7 +122,7 @@ async def list_library_agents(
             except Exception as e:
                 # Skip this agent if there was an error
                 logger.error(
-                    f"Error parsing LibraryAgent when getting library agents from db: {e}"
+                    f"Error parsing LibraryAgent #{agent.id} from DB item: {e}"
                 )
                 continue
 
@@ -168,7 +168,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         )
 
         if not library_agent:
-            raise store_exceptions.AgentNotFoundError(f"Library agent #{id} not found")
+            raise NotFoundError(f"Library agent #{id} not found")
 
         return library_model.LibraryAgent.from_db(library_agent)
 
@@ -346,8 +346,8 @@ async def update_library_agent(
     auto_update_version: Optional[bool] = None,
     is_favorite: Optional[bool] = None,
     is_archived: Optional[bool] = None,
-    is_deleted: Optional[bool] = None,
-) -> None:
+    is_deleted: Optional[Literal[False]] = None,
+) -> library_model.LibraryAgent:
     """
     Updates the specified LibraryAgent record.
 
@@ -357,15 +357,18 @@ async def update_library_agent(
         auto_update_version: Whether the agent should auto-update to active version.
         is_favorite: Whether this agent is marked as a favorite.
         is_archived: Whether this agent is archived.
-        is_deleted: Whether this agent is deleted.
+
+    Returns:
+        The updated LibraryAgent.
 
     Raises:
+        NotFoundError: If the specified LibraryAgent does not exist.
         DatabaseError: If there's an error in the update operation.
     """
     logger.debug(
         f"Updating library agent {library_agent_id} for user {user_id} with "
         f"auto_update_version={auto_update_version}, is_favorite={is_favorite}, "
-        f"is_archived={is_archived}, is_deleted={is_deleted}"
+        f"is_archived={is_archived}"
     )
     update_fields: prisma.types.LibraryAgentUpdateManyMutationInput = {}
     if auto_update_version is not None:
@@ -375,15 +378,44 @@ async def update_library_agent(
     if is_archived is not None:
         update_fields["isArchived"] = is_archived
     if is_deleted is not None:
+        if is_deleted is True:
+            raise RuntimeError(
+                "Use delete_library_agent() to (soft-)delete library agents"
+            )
         update_fields["isDeleted"] = is_deleted
+    if not update_fields:
+        raise ValueError("No values were passed to update")
 
     try:
-        await prisma.models.LibraryAgent.prisma().update_many(
-            where={"id": library_agent_id, "userId": user_id}, data=update_fields
+        n_updated = await prisma.models.LibraryAgent.prisma().update_many(
+            where={"id": library_agent_id, "userId": user_id},
+            data=update_fields,
+        )
+        if n_updated < 1:
+            raise NotFoundError(f"Library agent {library_agent_id} not found")
+
+        return await get_library_agent(
+            id=library_agent_id,
+            user_id=user_id,
         )
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating library agent: {str(e)}")
         raise store_exceptions.DatabaseError("Failed to update library agent") from e
+
+
+async def delete_library_agent(
+    library_agent_id: str, user_id: str, soft_delete: bool = True
+) -> None:
+    if soft_delete:
+        deleted_count = await prisma.models.LibraryAgent.prisma().update_many(
+            where={"id": library_agent_id, "userId": user_id}, data={"isDeleted": True}
+        )
+    else:
+        deleted_count = await prisma.models.LibraryAgent.prisma().delete_many(
+            where={"id": library_agent_id, "userId": user_id}
+        )
+    if deleted_count < 1:
+        raise NotFoundError(f"Library agent #{library_agent_id} not found")
 
 
 async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:

@@ -333,6 +333,3 @@ class LibraryAgentUpdateRequest(pydantic.BaseModel):
     is_archived: Optional[bool] = pydantic.Field(
         default=None, description="Archive the agent"
     )
-    is_deleted: Optional[bool] = pydantic.Field(
-        default=None, description="Delete the agent"
-    )

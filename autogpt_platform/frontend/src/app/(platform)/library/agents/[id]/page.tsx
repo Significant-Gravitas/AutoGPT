@@ -518,9 +518,7 @@ export default function AgentRunsPage(): React.ReactElement {
           onOpenChange={setAgentDeleteDialogOpen}
           onDoDelete={() =>
             agent &&
-            api
-              .updateLibraryAgent(agent.id, { is_deleted: true })
-              .then(() => router.push("/library"))
+            api.deleteLibraryAgent(agent.id).then(() => router.push("/library"))
           }
         />
 
