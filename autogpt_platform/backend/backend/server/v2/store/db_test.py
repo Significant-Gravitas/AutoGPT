@@ -93,6 +93,14 @@ async def test_get_store_agent_details(mocker):
     mock_store_agent = mocker.patch("prisma.models.StoreAgent.prisma")
     mock_store_agent.return_value.find_first = mocker.AsyncMock(return_value=mock_agent)
 
+    # Mock Profile prisma call
+    mock_profile = mocker.MagicMock()
+    mock_profile.userId = "user-id-123"
+    mock_profile_db = mocker.patch("prisma.models.Profile.prisma")
+    mock_profile_db.return_value.find_first = mocker.AsyncMock(
+        return_value=mock_profile
+    )
+
     # Mock StoreListing prisma call - this is what was missing
     mock_store_listing_db = mocker.patch("prisma.models.StoreListing.prisma")
     mock_store_listing_db.return_value.find_first = mocker.AsyncMock(
