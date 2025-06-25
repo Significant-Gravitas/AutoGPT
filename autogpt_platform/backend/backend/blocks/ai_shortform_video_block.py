@@ -272,7 +272,7 @@ class AIShortformVideoCreatorBlock(Block):
                 "create_webhook": lambda: ("test_uuid", "https://webhook.site/test_uuid"),
                 "create_video": lambda api_key, payload: {"pid": "test_pid"},
                 "check_video_status": lambda api_key, pid: {"status": "ready", "videoUrl": "https://example.com/video.mp4"},
-                "wait_for_video": lambda api_key, pid, max_wait_time=1000: "https://example.com/video.mp4"
+                "wait_for_video": lambda api_key, pid: "https://example.com/video.mp4"
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -390,7 +390,7 @@ class AIAdMakerVideoCreatorBlock(Block):
                 "create_webhook": lambda: ("test_uuid", "https://webhook.site/test_uuid"),
                 "create_video": lambda api_key, payload: {"pid": "test_pid"},
                 "check_video_status": lambda api_key, pid: {"status": "ready", "videoUrl": "https://example.com/ad.mp4"},
-                "wait_for_video": lambda api_key, pid, max_wait_time=1000: "https://example.com/ad.mp4"
+                "wait_for_video": lambda api_key, pid: "https://example.com/ad.mp4"
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -511,7 +511,7 @@ class AIScreenshotToVideoAdBlock(Block):
                 "create_webhook": lambda: ("test_uuid", "https://webhook.site/test_uuid"),
                 "create_video": lambda api_key, payload: {"pid": "test_pid"},
                 "check_video_status": lambda api_key, pid: {"status": "ready", "videoUrl": "https://example.com/screenshot.mp4"},
-                "wait_for_video": lambda api_key, pid, max_wait_time=1000: "https://example.com/screenshot.mp4"
+                "wait_for_video": lambda api_key, pid: "https://example.com/screenshot.mp4"
             },
             test_credentials=TEST_CREDENTIALS,
         )
