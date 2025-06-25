@@ -6,6 +6,7 @@ import fastapi
 from google.cloud import storage
 
 import backend.server.v2.store.exceptions
+from backend.services.virus_scanner import scan_content_safe
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Settings
 
@@ -67,7 +68,7 @@ async def upload_media(
     # Validate file signature/magic bytes
     if file.content_type in ALLOWED_IMAGE_TYPES:
         # Check image file signatures
-        if content.startswith(b"\xFF\xD8\xFF"):  # JPEG
+        if content.startswith(b"\xff\xd8\xff"):  # JPEG
             if file.content_type != "image/jpeg":
                 raise backend.server.v2.store.exceptions.InvalidFileTypeError(
                     "File signature does not match content type"
@@ -175,6 +176,7 @@ async def upload_media(
             blob.content_type = content_type
 
             file_bytes = await file.read()
+            await scan_content_safe(file_bytes, filename=unique_filename)
             blob.upload_from_string(file_bytes, content_type=content_type)
 
             public_url = blob.public_url
