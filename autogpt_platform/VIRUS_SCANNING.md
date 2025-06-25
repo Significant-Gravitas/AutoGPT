@@ -28,10 +28,10 @@ Add these to your `.env` file in the backend directory:
 
 ```bash
 # ClamAV Configuration
-CLAMAV_HOST=localhost
-CLAMAV_PORT=3310
-CLAMAV_TIMEOUT=60
-VIRUS_SCANNING_ENABLED=true
+CLAMAV_SERVICE_HOST=localhost
+CLAMAV_SERVICE_PORT=3310
+CLAMAV_SERVICE_TIMEOUT=60
+CLAMAV_SERVICE_ENABLED=true
 MAX_SCAN_SIZE=104857600  # 100MB
 ```
 
@@ -247,7 +247,7 @@ This ensures compatibility with different ClamAV configurations and stream limit
 For development or testing, you can disable virus scanning:
 
 ```bash
-VIRUS_SCANNING_ENABLED=false
+CLAMAV_SERVICE_ENABLED=false
 ```
 
 **Warning**: Never disable virus scanning in production environments.

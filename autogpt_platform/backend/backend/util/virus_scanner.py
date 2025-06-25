@@ -21,10 +21,10 @@ class VirusScanResult(BaseModel):
 
 
 class VirusScannerSettings(BaseSettings):
-    clamav_host: str = "localhost"
-    clamav_port: int = 3310
-    clamav_timeout: int = 60
-    virus_scanning_enabled: bool = True
+    clamav_service_host: str = "localhost"
+    clamav_service_port: int = 3310
+    clamav_service_timeout: int = 60
+    clamav_service_enabled: bool = True
     max_scan_size: int = 100 * 1024 * 1024  # 100 MB
     chunk_size: int = 25 * 1024 * 1024  # 25 MB (safe for 50MB stream limit)
     min_chunk_size: int = 128 * 1024  # 128 KB minimum
@@ -43,9 +43,9 @@ class VirusScannerService:
 
     def _new_client(self) -> pyclamd.ClamdNetworkSocket:
         return pyclamd.ClamdNetworkSocket(
-            host=self.settings.clamav_host,
-            port=self.settings.clamav_port,
-            timeout=self.settings.clamav_timeout,
+            host=self.settings.clamav_service_host,
+            port=self.settings.clamav_service_port,
+            timeout=self.settings.clamav_service_timeout,
         )
 
     @staticmethod
@@ -85,7 +85,7 @@ class VirusScannerService:
         Scan `content`.  Returns a result object or raises on infrastructure
         failure (unreachable daemon, etc.).
         """
-        if not self.settings.virus_scanning_enabled:
+        if not self.settings.clamav_service_enabled:
             logger.warning("Virus scanning disabled – accepting %s", filename)
             return VirusScanResult(
                 is_clean=True, scan_time_ms=0, file_size=len(content)
@@ -169,9 +169,9 @@ def get_virus_scanner() -> VirusScannerService:
     global _scanner
     if _scanner is None:
         _settings = VirusScannerSettings(
-            clamav_host=settings.config.clamav_host,
-            clamav_port=settings.config.clamav_port,
-            virus_scanning_enabled=settings.config.virus_scanning_enabled,
+            clamav_service_host=settings.config.clamav_service_host,
+            clamav_service_port=settings.config.clamav_service_port,
+            clamav_service_enabled=settings.config.clamav_service_enabled,
         )
         _scanner = VirusScannerService(_settings)
     return _scanner

@@ -205,9 +205,6 @@ jobs:
           REDIS_HOST: "localhost"
           REDIS_PORT: "6379"
           REDIS_PASSWORD: "testpassword"
-          CLAMAV_HOST: "localhost"
-          CLAMAV_PORT: "3310"
-          VIRUS_SCANNING_ENABLED: "true"
 
     env:
       CI: true

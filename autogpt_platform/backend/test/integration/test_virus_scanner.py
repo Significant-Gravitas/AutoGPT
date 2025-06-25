@@ -18,9 +18,9 @@ class TestVirusScannerService:
     @pytest.fixture
     def scanner_settings(self):
         return VirusScannerSettings(
-            clamav_host="localhost",
-            clamav_port=3310,
-            virus_scanning_enabled=True,
+            clamav_service_host="localhost",
+            clamav_service_port=3310,
+            clamav_service_enabled=True,
             max_scan_size=10 * 1024 * 1024,  # 10MB for testing
         )
 
@@ -30,14 +30,14 @@ class TestVirusScannerService:
 
     @pytest.fixture
     def disabled_scanner(self):
-        settings = VirusScannerSettings(virus_scanning_enabled=False)
+        settings = VirusScannerSettings(clamav_service_enabled=False)
         return VirusScannerService(settings)
 
     def test_scanner_initialization(self, scanner_settings):
         scanner = VirusScannerService(scanner_settings)
-        assert scanner.settings.clamav_host == "localhost"
-        assert scanner.settings.clamav_port == 3310
-        assert scanner.settings.virus_scanning_enabled is True
+        assert scanner.settings.clamav_service_host == "localhost"
+        assert scanner.settings.clamav_service_port == 3310
+        assert scanner.settings.clamav_service_enabled is True
 
     @pytest.mark.asyncio
     async def test_scan_disabled_returns_clean(self, disabled_scanner):

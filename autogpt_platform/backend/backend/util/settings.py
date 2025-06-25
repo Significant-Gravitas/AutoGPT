@@ -238,15 +238,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The Discord channel for the platform",
     )
 
-    clamav_host: str = Field(
+    clamav_service_host: str = Field(
         default="localhost",
         description="The host for the ClamAV daemon",
     )
-    clamav_port: int = Field(
+    clamav_service_port: int = Field(
         default=3310,
         description="The port for the ClamAV daemon",
     )
-    virus_scanning_enabled: bool = Field(
+    clamav_service_timeout: int = Field(
+        default=60,
+        description="The timeout in seconds for the ClamAV daemon",
+    )
+    clamav_service_enabled: bool = Field(
         default=True,
         description="Whether virus scanning is enabled or not",
     )
