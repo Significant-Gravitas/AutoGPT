@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Repository Overview
 
 AutoGPT Platform is a monorepo containing:
+
 - **Backend** (`/backend`): Python FastAPI server with async support
 - **Frontend** (`/frontend`): Next.js React application
 - **Shared Libraries** (`/autogpt_libs`): Common Python utilities
@@ -12,6 +13,7 @@ AutoGPT Platform is a monorepo containing:
 ## Essential Commands
 
 ### Backend Development
+
 ```bash
 # Install dependencies
 cd backend && poetry install
@@ -36,6 +38,7 @@ poetry run pytest path/to/test_file.py::test_function_name
 poetry run format  # Black + isort
 poetry run lint    # ruff
 ```
+
 More details can be found in TESTING.md
 
 #### Creating/Updating Snapshots
@@ -48,8 +51,8 @@ poetry run pytest path/to/test.py --snapshot-update
 
 ⚠️ **Important**: Always review snapshot changes before committing! Use `git diff` to verify the changes are expected.
 
-
 ### Frontend Development
+
 ```bash
 # Install dependencies
 cd frontend && npm install
@@ -67,12 +70,13 @@ npm run storybook
 npm run build
 
 # Type checking
-npm run type-check
+npm run types
 ```
 
 ## Architecture Overview
 
 ### Backend Architecture
+
 - **API Layer**: FastAPI with REST and WebSocket endpoints
 - **Database**: PostgreSQL with Prisma ORM, includes pgvector for embeddings
 - **Queue System**: RabbitMQ for async task processing
@@ -81,6 +85,7 @@ npm run type-check
 - **Security**: Cache protection middleware prevents sensitive data caching in browsers/proxies
 
 ### Frontend Architecture
+
 - **Framework**: Next.js App Router with React Server Components
 - **State Management**: React hooks + Supabase client for real-time updates
 - **Workflow Builder**: Visual graph editor using @xyflow/react
@@ -88,19 +93,23 @@ npm run type-check
 - **Feature Flags**: LaunchDarkly integration
 
 ### Key Concepts
+
 1. **Agent Graphs**: Workflow definitions stored as JSON, executed by the backend
 2. **Blocks**: Reusable components in `/backend/blocks/` that perform specific tasks
 3. **Integrations**: OAuth and API connections stored per user
 4. **Store**: Marketplace for sharing agent templates
 
 ### Testing Approach
+
 - Backend uses pytest with snapshot testing for API responses
 - Test files are colocated with source files (`*_test.py`)
 - Frontend uses Playwright for E2E tests
 - Component testing via Storybook
 
 ### Database Schema
+
 Key models (defined in `/backend/schema.prisma`):
+
 - `User`: Authentication and profile data
 - `AgentGraph`: Workflow definitions with version control
 - `AgentGraphExecution`: Execution history and results
@@ -108,6 +117,7 @@ Key models (defined in `/backend/schema.prisma`):
 - `StoreListing`: Marketplace listings for sharing agents
 
 ### Environment Configuration
+
 - Backend: `.env` file in `/backend`
 - Frontend: `.env.local` file in `/frontend`
 - Both require Supabase credentials and API keys for various services
@@ -115,6 +125,7 @@ Key models (defined in `/backend/schema.prisma`):
 ### Common Development Tasks
 
 **Adding a new block:**
+
 1. Create new file in `/backend/backend/blocks/`
 2. Inherit from `Block` base class
 3. Define input/output schemas
@@ -122,12 +133,14 @@ Key models (defined in `/backend/schema.prisma`):
 5. Register in block registry
 
 **Modifying the API:**
+
 1. Update route in `/backend/backend/server/routers/`
 2. Add/update Pydantic models in same directory
 3. Write tests alongside the route file
 4. Run `poetry run test` to verify
 
 **Frontend feature development:**
+
 1. Components go in `/frontend/src/components/`
 2. Use existing UI components from `/frontend/src/components/ui/`
 3. Add Storybook stories for new components
@@ -136,6 +149,7 @@ Key models (defined in `/backend/schema.prisma`):
 ### Security Implementation
 
 **Cache Protection Middleware:**
+
 - Located in `/backend/backend/server/middleware/security.py`
 - Default behavior: Disables caching for ALL endpoints with `Cache-Control: no-store, no-cache, must-revalidate, private`
 - Uses an allow list approach - only explicitly permitted paths can be cached
