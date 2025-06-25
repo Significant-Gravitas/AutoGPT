@@ -152,9 +152,16 @@ async def main():
     print(f"Inserting {NUM_USERS * MAX_AGENTS_PER_USER} user agents")
     for user in users:
         num_agents = random.randint(MIN_AGENTS_PER_USER, MAX_AGENTS_PER_USER)
-        for _ in range(num_agents):  # Create 1 LibraryAgent per user
-            graph = random.choice(agent_graphs)
-            preset = random.choice(agent_presets)
+
+        # Get a shuffled list of graphs to ensure uniqueness per user
+        available_graphs = agent_graphs.copy()
+        random.shuffle(available_graphs)
+
+        # Limit to available unique graphs
+        num_agents = min(num_agents, len(available_graphs))
+
+        for i in range(num_agents):
+            graph = available_graphs[i]  # Use unique graph for each library agent
             user_agent = await db.libraryagent.create(
                 data={
                     "userId": user.id,
@@ -180,7 +187,7 @@ async def main():
             MIN_EXECUTIONS_PER_GRAPH, MAX_EXECUTIONS_PER_GRAPH
         )
         for _ in range(num_executions):
-            matching_presets = [p for p in agent_presets if p.agentId == graph.id]
+            matching_presets = [p for p in agent_presets if p.agentGraphId == graph.id]
             preset = (
                 random.choice(matching_presets)
                 if matching_presets and random.random() < 0.5
@@ -355,7 +362,7 @@ async def main():
     store_listing_versions = []
     print(f"Inserting {NUM_USERS} store listing versions")
     for listing in store_listings:
-        graph = [g for g in agent_graphs if g.id == listing.agentId][0]
+        graph = [g for g in agent_graphs if g.id == listing.agentGraphId][0]
         version = await db.storelistingversion.create(
             data={
                 "agentGraphId": graph.id,
