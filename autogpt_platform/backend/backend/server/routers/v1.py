@@ -765,10 +765,11 @@ async def delete_graph_execution(
 
 
 class ScheduleCreationRequest(pydantic.BaseModel):
-    cron: str
-    input_data: dict[Any, Any]
     graph_id: str
     graph_version: int
+    cron: str
+    inputs: dict[str, Any]
+    credentials: dict[str, CredentialsMetaInput] = pydantic.Field(default_factory=dict)
 
 
 @v1_router.post(
@@ -787,15 +788,16 @@ async def create_schedule(
     if not graph:
         raise HTTPException(
             status_code=404,
-            detail=f"Graph #{schedule.graph_id} v.{schedule.graph_version} not found.",
+            detail=f"Graph #{schedule.graph_id} v{schedule.graph_version} not found.",
         )
 
     return await execution_scheduler_client().add_execution_schedule(
+        user_id=user_id,
         graph_id=schedule.graph_id,
         graph_version=graph.version,
         cron=schedule.cron,
-        input_data=schedule.input_data,
-        user_id=user_id,
+        input_data=schedule.inputs,
+        input_credentials=schedule.credentials,
     )
 
 

@@ -14,11 +14,12 @@ from apscheduler.triggers.cron import CronTrigger
 from autogpt_libs.utils.cache import thread_cached
 from dotenv import load_dotenv
 from prisma.enums import NotificationType
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
 from backend.data.block import BlockInput
 from backend.data.execution import ExecutionStatus
+from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
 from backend.notifications.notifications import NotificationManagerClient
 from backend.util.metrics import sentry_capture_error
@@ -86,10 +87,11 @@ async def _execute_graph(**kwargs):
     try:
         log(f"Executing recurring job for graph #{args.graph_id}")
         await execution_utils.add_graph_execution(
-            graph_id=args.graph_id,
-            inputs=args.input_data,
             user_id=args.user_id,
+            graph_id=args.graph_id,
             graph_version=args.graph_version,
+            inputs=args.input_data,
+            graph_credentials_inputs=args.input_credentials,
             use_db_query=False,
         )
     except Exception as e:
@@ -160,11 +162,12 @@ class Jobstores(Enum):
 
 
 class GraphExecutionJobArgs(BaseModel):
-    graph_id: str
-    input_data: BlockInput
     user_id: str
+    graph_id: str
     graph_version: int
     cron: str
+    input_data: BlockInput
+    input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
 
 
 class GraphExecutionJobInfo(GraphExecutionJobArgs):
@@ -292,18 +295,20 @@ class Scheduler(AppService):
     @expose
     def add_graph_execution_schedule(
         self,
+        user_id: str,
         graph_id: str,
         graph_version: int,
         cron: str,
         input_data: BlockInput,
-        user_id: str,
+        input_credentials: dict[str, CredentialsMetaInput],
     ) -> GraphExecutionJobInfo:
         job_args = GraphExecutionJobArgs(
-            graph_id=graph_id,
-            input_data=input_data,
             user_id=user_id,
+            graph_id=graph_id,
             graph_version=graph_version,
             cron=cron,
+            input_data=input_data,
+            input_credentials=input_credentials,
         )
         job = self.scheduler.add_job(
             execute_graph,
