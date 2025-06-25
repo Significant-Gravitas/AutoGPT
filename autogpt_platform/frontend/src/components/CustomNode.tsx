@@ -268,7 +268,7 @@ export const CustomNode = React.memo(
 
         default:
           const getInputPropKey = (key: string) =>
-            nodeType == BlockUIType.AGENT ? `data.${key}` : key;
+            nodeType == BlockUIType.AGENT ? `inputs.${key}` : key;
 
           return keys.map(([propKey, propSchema]) => {
             const isRequired = data.inputSchema.required?.includes(propKey);

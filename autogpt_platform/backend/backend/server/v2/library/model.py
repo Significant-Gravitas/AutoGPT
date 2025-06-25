@@ -137,7 +137,7 @@ class LibraryAgent(pydantic.BaseModel):
                         },
                         "required": [
                             pn
-                            for pn in json_schema["required"] or []
+                            for pn in json_schema.get("required", [])
                             if not is_credentials_field_name(pn)
                         ],
                     },
@@ -332,7 +332,4 @@ class LibraryAgentUpdateRequest(pydantic.BaseModel):
     )
     is_archived: Optional[bool] = pydantic.Field(
         default=None, description="Archive the agent"
-    )
-    is_deleted: Optional[bool] = pydantic.Field(
-        default=None, description="Delete the agent"
     )
