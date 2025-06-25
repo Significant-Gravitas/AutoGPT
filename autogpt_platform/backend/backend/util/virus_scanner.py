@@ -7,7 +7,10 @@ import pyclamd
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
 
+from backend.util.settings import Settings
+
 logger = logging.getLogger(__name__)
+settings = Settings()
 
 
 class VirusScanResult(BaseModel):
@@ -35,8 +38,8 @@ class VirusScannerService:
     chunks when the daemon rejects the stream size.
     """
 
-    def __init__(self, settings: Optional[VirusScannerSettings] = None) -> None:
-        self.settings = settings or VirusScannerSettings()
+    def __init__(self, settings: VirusScannerSettings) -> None:
+        self.settings = settings
 
     def _new_client(self) -> pyclamd.ClamdNetworkSocket:
         return pyclamd.ClamdNetworkSocket(
@@ -165,7 +168,12 @@ _scanner: Optional[VirusScannerService] = None
 def get_virus_scanner() -> VirusScannerService:
     global _scanner
     if _scanner is None:
-        _scanner = VirusScannerService()
+        _settings = VirusScannerSettings(
+            clamav_host=settings.config.clamav_host,
+            clamav_port=settings.config.clamav_port,
+            virus_scanning_enabled=settings.config.virus_scanning_enabled,
+        )
+        _scanner = VirusScannerService(_settings)
     return _scanner
 
 

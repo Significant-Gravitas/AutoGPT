@@ -238,6 +238,19 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The Discord channel for the platform",
     )
 
+    clamav_host: str = Field(
+        default="localhost",
+        description="The host for the ClamAV daemon",
+    )
+    clamav_port: int = Field(
+        default=3310,
+        description="The port for the ClamAV daemon",
+    )
+    virus_scanning_enabled: bool = Field(
+        default=True,
+        description="Whether virus scanning is enabled or not",
+    )
+
     @field_validator("platform_base_url", "frontend_base_url")
     @classmethod
     def validate_platform_base_url(cls, v: str, info: ValidationInfo) -> str:

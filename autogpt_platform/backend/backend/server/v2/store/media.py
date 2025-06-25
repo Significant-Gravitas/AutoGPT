@@ -6,9 +6,9 @@ import fastapi
 from google.cloud import storage
 
 import backend.server.v2.store.exceptions
-from backend.services.virus_scanner import scan_content_safe
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Settings
+from backend.util.virus_scanner import scan_content_safe
 
 logger = logging.getLogger(__name__)
 

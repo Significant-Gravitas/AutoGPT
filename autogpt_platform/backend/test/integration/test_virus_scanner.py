@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from backend.server.v2.store.exceptions import VirusDetectedError, VirusScanError
-from backend.services.virus_scanner import (
+from backend.util.virus_scanner import (
     VirusScannerService,
     VirusScannerSettings,
     VirusScanResult,
@@ -37,12 +37,6 @@ class TestVirusScannerService:
 
     def test_scanner_initialization(self, scanner_settings):
         scanner = VirusScannerService(scanner_settings)
-        assert scanner.settings.clamav_host == "localhost"
-        assert scanner.settings.clamav_port == 3310
-        assert scanner.settings.virus_scanning_enabled is True
-
-    def test_scanner_default_settings(self):
-        scanner = VirusScannerService()
         assert scanner.settings.clamav_host == "localhost"
         assert scanner.settings.clamav_port == 3310
         assert scanner.settings.virus_scanning_enabled is True
@@ -272,9 +266,7 @@ class TestHelperFunctions:
     @pytest.mark.asyncio
     async def test_scan_content_safe_clean(self):
         """Test scan_content_safe with clean content"""
-        with patch(
-            "backend.services.virus_scanner.get_virus_scanner"
-        ) as mock_get_scanner:
+        with patch("backend.util.virus_scanner.get_virus_scanner") as mock_get_scanner:
             mock_scanner = Mock()
             mock_scanner.scan_file_content = AsyncMock()
             mock_scanner.scan_file_content.return_value = Mock(
@@ -288,9 +280,7 @@ class TestHelperFunctions:
     @pytest.mark.asyncio
     async def test_scan_content_safe_infected(self):
         """Test scan_content_safe with infected content"""
-        with patch(
-            "backend.services.virus_scanner.get_virus_scanner"
-        ) as mock_get_scanner:
+        with patch("backend.util.virus_scanner.get_virus_scanner") as mock_get_scanner:
             mock_scanner = Mock()
             mock_scanner.scan_file_content = AsyncMock()
             mock_scanner.scan_file_content.return_value = Mock(
@@ -306,9 +296,7 @@ class TestHelperFunctions:
     @pytest.mark.asyncio
     async def test_scan_content_safe_scan_error(self):
         """Test scan_content_safe when scanning fails"""
-        with patch(
-            "backend.services.virus_scanner.get_virus_scanner"
-        ) as mock_get_scanner:
+        with patch("backend.util.virus_scanner.get_virus_scanner") as mock_get_scanner:
             mock_scanner = Mock()
             mock_scanner.scan_file_content = AsyncMock()
             mock_scanner.scan_file_content.side_effect = Exception("Scan failed")

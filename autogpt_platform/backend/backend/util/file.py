@@ -7,9 +7,9 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
-from backend.services.virus_scanner import scan_content_safe
 from backend.util.request import Requests
 from backend.util.type import MediaFileType
+from backend.util.virus_scanner import scan_content_safe
 
 TEMP_DIR = Path(tempfile.gettempdir()).resolve()
 
