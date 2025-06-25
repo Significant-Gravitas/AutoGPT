@@ -9,9 +9,9 @@ import {
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { makeCronExpression } from "@/lib/cron-expression-utils";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Separator } from "./ui/separator";
-import { CronExpressionManager } from "@/lib/monitor/cronExpressionManager";
 
 interface CronSchedulerProps {
   setOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -64,8 +64,6 @@ export function CronScheduler({
     { label: "Nov", value: "November" },
     { label: "Dec", value: "December" },
   ];
-
-  const cron_manager = new CronExpressionManager();
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -390,7 +388,7 @@ export function CronScheduler({
             </Button>
             <Button
               onClick={() => {
-                const cronExpr = cron_manager.generateCronExpression(
+                const cronExpr = makeCronExpression(
                   frequency,
                   selectedTime,
                   selectedDays,

@@ -64,9 +64,10 @@ export default function AgentRunsPage(): React.ReactElement {
   const [selectedRun, setSelectedRun] = useState<
     GraphExecution | GraphExecutionMeta | null
   >(null);
-  const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(
-    null,
-  );
+  const selectedSchedule =
+    selectedView.type == "schedule"
+      ? schedules.find((s) => s.id == selectedView.id)
+      : null;
   const [isFirstLoad, setIsFirstLoad] = useState<boolean>(true);
   const [agentDeleteDialogOpen, setAgentDeleteDialogOpen] =
     useState<boolean>(false);
@@ -100,9 +101,8 @@ export default function AgentRunsPage(): React.ReactElement {
     selectView({ type: "preset", id });
   }, []);
 
-  const selectSchedule = useCallback((schedule: Schedule) => {
-    selectView({ type: "schedule", id: schedule.id });
-    setSelectedSchedule(schedule);
+  const selectSchedule = useCallback((id: ScheduleID) => {
+    selectView({ type: "schedule", id });
   }, []);
 
   const graphVersions = useRef<Record<number, Graph>>({});
@@ -357,9 +357,26 @@ export default function AgentRunsPage(): React.ReactElement {
     async (scheduleID: ScheduleID) => {
       const removedSchedule =
         await api.deleteGraphExecutionSchedule(scheduleID);
-      setSchedules((schedules) =>
-        schedules.filter((s) => s.id !== removedSchedule.id),
-      );
+
+      setSchedules((schedules) => {
+        const newSchedules = schedules.filter(
+          (s) => s.id !== removedSchedule.id,
+        );
+        if (
+          selectedView.type == "schedule" &&
+          selectedView.id == removedSchedule.id
+        ) {
+          if (newSchedules.length > 0) {
+            // Select next schedule if available
+            selectSchedule(newSchedules[0].id);
+          } else {
+            // Reset to draft view if current schedule was deleted
+            openRunDraftView();
+          }
+        }
+        return newSchedules;
+      });
+      openRunDraftView();
     },
     [schedules, api],
   );
@@ -417,6 +434,14 @@ export default function AgentRunsPage(): React.ReactElement {
     [agent, downloadGraph],
   );
 
+  const onCreateSchedule = useCallback(
+    (schedule: Schedule) => {
+      setSchedules((prev) => [...prev, schedule]);
+      selectSchedule(schedule.id);
+    },
+    [selectView],
+  );
+
   const onCreatePreset = useCallback(
     (preset: LibraryAgentPreset) => {
       setAgentPresets((prev) => [...prev, preset]);
@@ -454,9 +479,9 @@ export default function AgentRunsPage(): React.ReactElement {
         onSelectPreset={selectPreset}
         onSelectSchedule={selectSchedule}
         onSelectDraftNewRun={openRunDraftView}
-        onDeleteRun={setConfirmingDeleteAgentRun}
-        onDeletePreset={setConfirmingDeleteAgentPreset}
-        onDeleteSchedule={deleteSchedule}
+        doDeleteRun={setConfirmingDeleteAgentRun}
+        doDeletePreset={setConfirmingDeleteAgentPreset}
+        doDeleteSchedule={deleteSchedule}
       />
 
       <div className="flex-1">
@@ -486,6 +511,7 @@ export default function AgentRunsPage(): React.ReactElement {
           <AgentRunDraftView
             agent={agent}
             onRun={selectRun}
+            onCreateSchedule={onCreateSchedule}
             onCreatePreset={onCreatePreset}
             agentActions={agentActions}
           />
@@ -497,6 +523,7 @@ export default function AgentRunsPage(): React.ReactElement {
               agentPresets.find((preset) => preset.id == selectedView.id)!
             }
             onRun={selectRun}
+            onCreateSchedule={onCreateSchedule}
             onUpdatePreset={onUpdatePreset}
             doDeletePreset={setConfirmingDeleteAgentPreset}
             agentActions={agentActions}
@@ -506,8 +533,10 @@ export default function AgentRunsPage(): React.ReactElement {
             <AgentScheduleDetailsView
               graph={graph}
               schedule={selectedSchedule}
-              onForcedRun={selectRun}
+              // agent={agent}
               agentActions={agentActions}
+              onForcedRun={selectRun}
+              doDeleteSchedule={deleteSchedule}
             />
           )
         ) : null) || <LoadingBox className="h-[70vh]" />}

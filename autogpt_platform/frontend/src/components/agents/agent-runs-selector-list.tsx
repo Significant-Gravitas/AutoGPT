@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -30,11 +30,11 @@ interface AgentRunsSelectorListProps {
   allowDraftNewRun?: boolean;
   onSelectRun: (id: GraphExecutionID) => void;
   onSelectPreset: (preset: LibraryAgentPresetID) => void;
-  onSelectSchedule: (schedule: Schedule) => void;
+  onSelectSchedule: (id: ScheduleID) => void;
   onSelectDraftNewRun: () => void;
-  onDeleteRun: (id: GraphExecutionMeta) => void;
-  onDeletePreset: (id: LibraryAgentPresetID) => void;
-  onDeleteSchedule: (id: ScheduleID) => void;
+  doDeleteRun: (id: GraphExecutionMeta) => void;
+  doDeletePreset: (id: LibraryAgentPresetID) => void;
+  doDeleteSchedule: (id: ScheduleID) => void;
   className?: string;
 }
 
@@ -49,14 +49,23 @@ export default function AgentRunsSelectorList({
   onSelectPreset,
   onSelectSchedule,
   onSelectDraftNewRun,
-  onDeleteRun,
-  onDeletePreset,
-  onDeleteSchedule,
+  doDeleteRun,
+  doDeletePreset,
+  doDeleteSchedule,
   className,
 }: AgentRunsSelectorListProps): React.ReactElement {
   const [activeListTab, setActiveListTab] = useState<"runs" | "scheduled">(
     "runs",
   );
+
+  useEffect(() => {
+    // Reset the active tab when the selected view changes
+    if (selectedView.type === "schedule") {
+      setActiveListTab("scheduled");
+    } else {
+      setActiveListTab("runs");
+    }
+  }, [selectedView]);
 
   const listItemClasses = "h-28 w-72 lg:h-32 xl:w-80";
 
@@ -136,7 +145,7 @@ export default function AgentRunsSelectorList({
                     // timestamp={preset.last_run_time} // TODO: implement this
                     selected={selectedView.id === preset.id}
                     onClick={() => onSelectPreset(preset.id)}
-                    onDelete={() => onDeletePreset(preset.id)}
+                    onDelete={() => doDeletePreset(preset.id)}
                   />
                 ))}
               {agentPresets.length > 0 && <Separator className="my-1" />}
@@ -158,7 +167,7 @@ export default function AgentRunsSelectorList({
                     timestamp={run.started_at}
                     selected={selectedView.id === run.id}
                     onClick={() => onSelectRun(run.id)}
-                    onDelete={() => onDeleteRun(run)}
+                    onDelete={() => doDeleteRun(run)}
                   />
                 ))}
             </>
@@ -174,8 +183,8 @@ export default function AgentRunsSelectorList({
                   title={schedule.name}
                   timestamp={schedule.next_run_time}
                   selected={selectedView.id === schedule.id}
-                  onClick={() => onSelectSchedule(schedule)}
-                  onDelete={() => onDeleteSchedule(schedule.id)}
+                  onClick={() => onSelectSchedule(schedule.id)}
+                  onDelete={() => doDeleteSchedule(schedule.id)}
                 />
               ))
           )}
