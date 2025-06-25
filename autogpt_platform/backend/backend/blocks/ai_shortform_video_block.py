@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import time
-import requests
 from enum import Enum
 from typing import Literal
 
