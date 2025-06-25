@@ -145,52 +145,62 @@ class VisualMediaType(str, Enum):
 logger = logging.getLogger(__name__)
 
 
-class _RevidMixin:
-    """Utility mix‑in that bundles the shared webhook / polling helpers."""
-
-    def create_video(self, api_key: SecretStr, payload: dict) -> dict:
-        url = "https://www.revid.ai/api/public/v2/render"
-        headers = {"key": api_key.get_secret_value()}
-        response = Requests().post(url, json=payload, headers=headers)
-        logger.debug(
-            f"API Response Status Code: {response.status_code}, Content: {response.text}"
-        )
-        return response.json()
-
-    def check_video_status(self, api_key: SecretStr, pid: str) -> dict:
-        url = f"https://www.revid.ai/api/public/v2/status?pid={pid}"
-        headers = {"key": api_key.get_secret_value()}
-        response = Requests().get(url, headers=headers)
-        return response.json()
-
-    def wait_for_video(
-        self,
-        api_key: SecretStr,
-        pid: str,
-        max_wait_time: int = 3600,
-    ) -> str:
-        start_time = time.time()
-        while time.time() - start_time < max_wait_time:
-            status = self.check_video_status(api_key, pid)
-            logger.debug(f"Video status: {status}")
-
-            if status.get("status") == "ready" and "videoUrl" in status:
-                return status["videoUrl"]
-            elif status.get("status") == "error":
-                error_message = status.get("error", "Unknown error occurred")
-                logger.error(f"Video creation failed: {error_message}")
-                raise ValueError(f"Video creation failed: {error_message}")
-            elif status.get("status") in ["FAILED", "CANCELED"]:
-                logger.error(f"Video creation failed: {status.get('message')}")
-                raise ValueError(f"Video creation failed: {status.get('message')}")
-
-            time.sleep(10)
-
-        logger.error("Video creation timed out")
-        raise TimeoutError("Video creation timed out")
+async def create_webhook() -> tuple[str, str]:
+    """Create a new webhook URL for receiving notifications."""
+    url = "https://webhook.site/token"
+    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    response = await Requests().post(url, headers=headers)
+    webhook_data = response.json()
+    return webhook_data["uuid"], f"https://webhook.site/{webhook_data['uuid']}"
 
 
-class AIShortformVideoCreatorBlock(Block, _RevidMixin):
+async def create_video(api_key: SecretStr, payload: dict) -> dict:
+    """Create a video using the Revid API."""
+    url = "https://www.revid.ai/api/public/v2/render"
+    headers = {"key": api_key.get_secret_value()}
+    response = await Requests().post(url, json=payload, headers=headers)
+    logger.debug(
+        f"API Response Status Code: {response.status}, Content: {response.text}"
+    )
+    return response.json()
+
+
+async def check_video_status(api_key: SecretStr, pid: str) -> dict:
+    """Check the status of a video creation job."""
+    url = f"https://www.revid.ai/api/public/v2/status?pid={pid}"
+    headers = {"key": api_key.get_secret_value()}
+    response = await Requests().get(url, headers=headers)
+    return response.json()
+
+
+async def wait_for_video(
+    api_key: SecretStr,
+    pid: str,
+    max_wait_time: int = 1000,
+) -> str:
+    """Wait for video creation to complete and return the video URL."""
+    start_time = time.time()
+    while time.time() - start_time < max_wait_time:
+        status = await check_video_status(api_key, pid)
+        logger.debug(f"Video status: {status}")
+
+        if status.get("status") == "ready" and "videoUrl" in status:
+            return status["videoUrl"]
+        elif status.get("status") == "error":
+            error_message = status.get("error", "Unknown error occurred")
+            logger.error(f"Video creation failed: {error_message}")
+            raise ValueError(f"Video creation failed: {error_message}")
+        elif status.get("status") in ["FAILED", "CANCELED"]:
+            logger.error(f"Video creation failed: {status.get('message')}")
+            raise ValueError(f"Video creation failed: {status.get('message')}")
+
+        await asyncio.sleep(10)
+
+    logger.error("Video creation timed out")
+    raise TimeoutError("Video creation timed out")
+
+
+class AIShortformVideoCreatorBlock(Block):
     """Creates a short‑form text‑to‑video clip using stock or AI imagery."""
 
     class Input(BlockSchema):
@@ -265,63 +275,12 @@ class AIShortformVideoCreatorBlock(Block, _RevidMixin):
             test_credentials=TEST_CREDENTIALS,
         )
 
-    async def create_webhook(self):
-        url = "https://webhook.site/token"
-        headers = {"Accept": "application/json", "Content-Type": "application/json"}
-        response = await Requests().post(url, headers=headers)
-        webhook_data = response.json()
-        return webhook_data["uuid"], f"https://webhook.site/{webhook_data['uuid']}"
-
-    async def create_video(self, api_key: SecretStr, payload: dict) -> dict:
-        url = "https://www.revid.ai/api/public/v2/render"
-        headers = {"key": api_key.get_secret_value()}
-        response = await Requests().post(url, json=payload, headers=headers)
-        logger.debug(
-            f"API Response Status Code: {response.status}, Content: {response.text}"
-        )
-        return response.json()
-
-    async def check_video_status(self, api_key: SecretStr, pid: str) -> dict:
-        url = f"https://www.revid.ai/api/public/v2/status?pid={pid}"
-        headers = {"key": api_key.get_secret_value()}
-        response = await Requests().get(url, headers=headers)
-        return response.json()
-
-    async def wait_for_video(
-        self,
-        api_key: SecretStr,
-        pid: str,
-        webhook_token: str,
-        max_wait_time: int = 1000,
-    ) -> str:
-        start_time = time.time()
-        while time.time() - start_time < max_wait_time:
-            status = await self.check_video_status(api_key, pid)
-            logger.debug(f"Video status: {status}")
-
-            if status.get("status") == "ready" and "videoUrl" in status:
-                return status["videoUrl"]
-            elif status.get("status") == "error":
-                error_message = status.get("error", "Unknown error occurred")
-                logger.error(f"Video creation failed: {error_message}")
-                raise ValueError(f"Video creation failed: {error_message}")
-            elif status.get("status") in ["FAILED", "CANCELED"]:
-                logger.error(f"Video creation failed: {status.get('message')}")
-                raise ValueError(f"Video creation failed: {status.get('message')}")
-
-            await asyncio.sleep(10)
-
-        logger.error("Video creation timed out")
-        raise TimeoutError("Video creation timed out")
-
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Create a new Webhook.site URL
-        webhook_token, webhook_url = await self.create_webhook()
+        webhook_token, webhook_url = await create_webhook()
         logger.debug(f"Webhook URL: {webhook_url}")
-
-        audio_url = input_data.background_music.audio_url
 
         payload = {
             "frameRate": input_data.frame_rate,
@@ -355,7 +314,7 @@ class AIShortformVideoCreatorBlock(Block, _RevidMixin):
         }
 
         logger.debug("Creating video...")
-        response = await self.create_video(credentials.api_key, payload)
+        response = await create_video(credentials.api_key, payload)
         pid = response.get("pid")
 
         if not pid:
@@ -367,6 +326,6 @@ class AIShortformVideoCreatorBlock(Block, _RevidMixin):
             logger.debug(
                 f"Video created with project ID: {pid}. Waiting for completion..."
             )
-            video_url = await self.wait_for_video(credentials.api_key, pid, webhook_token)
+            video_url = await wait_for_video(credentials.api_key, pid)
             logger.debug(f"Video ready: {video_url}")
             yield "video_url", video_url
