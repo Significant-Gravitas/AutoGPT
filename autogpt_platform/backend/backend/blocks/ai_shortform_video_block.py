@@ -151,7 +151,7 @@ class _RevidMixin:
     def create_video(self, api_key: SecretStr, payload: dict) -> dict:
         url = "https://www.revid.ai/api/public/v2/render"
         headers = {"key": api_key.get_secret_value()}
-        response = requests.post(url, json=payload, headers=headers)
+        response = Requests().post(url, json=payload, headers=headers)
         logger.debug(
             f"API Response Status Code: {response.status_code}, Content: {response.text}"
         )
@@ -160,7 +160,7 @@ class _RevidMixin:
     def check_video_status(self, api_key: SecretStr, pid: str) -> dict:
         url = f"https://www.revid.ai/api/public/v2/status?pid={pid}"
         headers = {"key": api_key.get_secret_value()}
-        response = requests.get(url, headers=headers)
+        response = Requests().get(url, headers=headers)
         return response.json()
 
     def wait_for_video(
