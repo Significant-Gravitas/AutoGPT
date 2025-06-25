@@ -271,12 +271,10 @@ export const FlowInfo: React.FC<
             <Button
               variant="destructive"
               onClick={() => {
-                api
-                  .updateLibraryAgent(flow.id, { is_deleted: true })
-                  .then(() => {
-                    setIsDeleteModalOpen(false);
-                    refresh();
-                  });
+                api.deleteLibraryAgent(flow.id).then(() => {
+                  setIsDeleteModalOpen(false);
+                  refresh();
+                });
               }}
             >
               Delete

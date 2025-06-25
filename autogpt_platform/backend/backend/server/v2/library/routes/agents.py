@@ -3,7 +3,7 @@ from typing import Any, Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 import backend.server.v2.library.db as library_db
@@ -179,12 +179,11 @@ async def add_marketplace_agent_to_library(
         ) from e
 
 
-@router.put(
+@router.patch(
     "/{library_agent_id}",
     summary="Update Library Agent",
-    status_code=status.HTTP_204_NO_CONTENT,
     responses={
-        204: {"description": "Agent updated successfully"},
+        200: {"description": "Agent updated successfully"},
         500: {"description": "Server error"},
     },
 )
@@ -192,7 +191,7 @@ async def update_library_agent(
     library_agent_id: str,
     payload: library_model.LibraryAgentUpdateRequest,
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
-) -> JSONResponse:
+) -> library_model.LibraryAgent:
     """
     Update the library agent with the given fields.
 
@@ -201,25 +200,22 @@ async def update_library_agent(
         payload: Fields to update (auto_update_version, is_favorite, etc.).
         user_id: ID of the authenticated user.
 
-    Returns:
-        204 (No Content) on success.
-
     Raises:
         HTTPException(500): If a server/database error occurs.
     """
     try:
-        await library_db.update_library_agent(
+        return await library_db.update_library_agent(
             library_agent_id=library_agent_id,
             user_id=user_id,
             auto_update_version=payload.auto_update_version,
             is_favorite=payload.is_favorite,
             is_archived=payload.is_archived,
-            is_deleted=payload.is_deleted,
         )
-        return JSONResponse(
-            status_code=status.HTTP_204_NO_CONTENT,
-            content={"message": "Agent updated successfully"},
-        )
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
     except store_exceptions.DatabaseError as e:
         logger.error(f"Database error while updating library agent: {e}")
         raise HTTPException(
@@ -231,6 +227,45 @@ async def update_library_agent(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": str(e), "hint": "Check server logs."},
+        ) from e
+
+
+@router.delete(
+    "/{library_agent_id}",
+    summary="Delete Library Agent",
+    responses={
+        204: {"description": "Agent deleted successfully"},
+        404: {"description": "Agent not found"},
+        500: {"description": "Server error"},
+    },
+)
+async def delete_library_agent(
+    library_agent_id: str,
+    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+) -> Response:
+    """
+    Soft-delete the specified library agent.
+
+    Args:
+        library_agent_id: ID of the library agent to delete.
+        user_id: ID of the authenticated user.
+
+    Returns:
+        204 No Content if successful.
+
+    Raises:
+        HTTPException(404): If the agent does not exist.
+        HTTPException(500): If a server/database error occurs.
+    """
+    try:
+        await library_db.delete_library_agent(
+            library_agent_id=library_agent_id, user_id=user_id
+        )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
         ) from e
 
 
