@@ -80,7 +80,7 @@ jobs:
       - name: Run Chromatic
         uses: chromaui/action@latest
         with:
-          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          projectToken: chpt_9e7c1a76478c9c8
           onlyChanged: true
           workingDir: autogpt_platform/frontend
 

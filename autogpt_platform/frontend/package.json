@@ -17,7 +17,6 @@
     "gentests": "playwright codegen http://localhost:3000",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "chromatic": "pnpm build-storybook && chromatic --project-token=$CHROMATIC_PROJECT_TOKEN",
     "test-storybook": "test-storybook",
     "fetch:openapi": "curl http://localhost:8006/openapi.json > ./src/api/openapi.json && prettier --write ./src/api/openapi.json",
     "generate:api-client": "orval --config ./orval.config.ts",
