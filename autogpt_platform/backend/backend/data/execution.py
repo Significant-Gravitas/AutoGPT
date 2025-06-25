@@ -32,7 +32,7 @@ from prisma.types import (
     AgentNodeExecutionUpdateInput,
     AgentNodeExecutionWhereInput,
 )
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, JsonValue
 from pydantic.fields import Field
 
 from backend.server.v2.store.exceptions import DatabaseError
@@ -54,7 +54,7 @@ from .includes import (
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     graph_execution_include,
 )
-from .model import CredentialsMetaInput, GraphExecutionStats, NodeExecutionStats
+from .model import GraphExecutionStats, NodeExecutionStats
 from .queue import AsyncRedisEventBus, RedisEventBus
 
 T = TypeVar("T")
@@ -271,7 +271,7 @@ class GraphExecutionWithNodes(GraphExecution):
             graph_id=self.graph_id,
             graph_version=self.graph_version or 0,
             graph_exec_id=self.id,
-            node_credentials_input_map={},  # FIXME
+            nodes_input_masks={},  # FIXME: store credentials on AgentGraphExecution
         )
 
 
@@ -783,7 +783,7 @@ class GraphExecutionEntry(BaseModel):
     graph_exec_id: str
     graph_id: str
     graph_version: int
-    node_credentials_input_map: Optional[dict[str, dict[str, CredentialsMetaInput]]]
+    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]]
 
 
 class NodeExecutionEntry(BaseModel):
