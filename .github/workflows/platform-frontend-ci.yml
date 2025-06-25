@@ -85,6 +85,7 @@ jobs:
           projectToken: chpt_9e7c1a76478c9c8
           onlyChanged: true
           workingDir: autogpt_platform/frontend
+          token: ${{ secrets.GITHUB_TOKEN }}
 
   test:
     runs-on: ubuntu-latest
