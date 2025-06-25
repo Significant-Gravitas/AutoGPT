@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { IconClose } from "../ui/icons";
+import { IconCross } from "../ui/icons";
 import Image from "next/image";
 import { Button } from "../agptui/Button";
 
@@ -50,7 +50,7 @@ export const PublishAgentAwaitingReview: React.FC<
           className="absolute right-4 top-4 flex h-[38px] w-[38px] items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200 dark:bg-neutral-700 dark:hover:bg-neutral-600"
           aria-label="Close dialog"
         >
-          <IconClose
+          <IconCross
             size="default"
             className="text-neutral-600 dark:text-neutral-300"
           />

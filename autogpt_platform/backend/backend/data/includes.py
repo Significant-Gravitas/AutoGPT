@@ -60,7 +60,8 @@ def graph_execution_include(
 
 
 INTEGRATION_WEBHOOK_INCLUDE: prisma.types.IntegrationWebhookInclude = {
-    "AgentNodes": {"include": AGENT_NODE_INCLUDE}
+    "AgentNodes": {"include": AGENT_NODE_INCLUDE},
+    "AgentPresets": {"include": {"InputPresets": True}},
 }
 
 
