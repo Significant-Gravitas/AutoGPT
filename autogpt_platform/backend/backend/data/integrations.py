@@ -1,21 +1,25 @@
 import logging
-from typing import TYPE_CHECKING, AsyncGenerator, Optional
+from typing import AsyncGenerator, Literal, Optional, overload
 
 from prisma import Json
 from prisma.models import IntegrationWebhook
-from prisma.types import IntegrationWebhookCreateInput
+from prisma.types import (
+    IntegrationWebhookCreateInput,
+    IntegrationWebhookUpdateInput,
+    IntegrationWebhookWhereInput,
+    Serializable,
+)
 from pydantic import Field, computed_field
 
 from backend.data.includes import INTEGRATION_WEBHOOK_INCLUDE
 from backend.data.queue import AsyncRedisEventBus
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.utils import webhook_ingress_url
+from backend.server.v2.library.model import LibraryAgentPreset
 from backend.util.exceptions import NotFoundError
 
 from .db import BaseDbModel
-
-if TYPE_CHECKING:
-    from .graph import NodeModel
+from .graph import NodeModel
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +36,6 @@ class Webhook(BaseDbModel):
 
     provider_webhook_id: str
 
-    attached_nodes: Optional[list["NodeModel"]] = None
-
     @computed_field
     @property
     def url(self) -> str:
@@ -41,8 +43,6 @@ class Webhook(BaseDbModel):
 
     @staticmethod
     def from_db(webhook: IntegrationWebhook):
-        from .graph import NodeModel
-
         return Webhook(
             id=webhook.id,
             user_id=webhook.userId,
@@ -54,12 +54,31 @@ class Webhook(BaseDbModel):
             config=dict(webhook.config),
             secret=webhook.secret,
             provider_webhook_id=webhook.providerWebhookId,
-            attached_nodes=(
-                [NodeModel.from_db(node) for node in webhook.AgentNodes]
-                if webhook.AgentNodes is not None
-                else None
-            ),
         )
+
+
+class WebhookWithRelations(Webhook):
+    triggered_nodes: list[NodeModel]
+    triggered_presets: list[LibraryAgentPreset]
+
+    @staticmethod
+    def from_db(webhook: IntegrationWebhook):
+        if webhook.AgentNodes is None or webhook.AgentPresets is None:
+            raise ValueError(
+                "AgentNodes and AgentPresets must be included in "
+                "IntegrationWebhook query with relations"
+            )
+        return WebhookWithRelations(
+            **Webhook.from_db(webhook).model_dump(),
+            triggered_nodes=[NodeModel.from_db(node) for node in webhook.AgentNodes],
+            triggered_presets=[
+                LibraryAgentPreset.from_db(preset) for preset in webhook.AgentPresets
+            ],
+        )
+
+
+# Fix Webhook <- NodeModel relations
+NodeModel.model_rebuild()
 
 
 # --------------------- CRUD functions --------------------- #
@@ -83,7 +102,19 @@ async def create_webhook(webhook: Webhook) -> Webhook:
     return Webhook.from_db(created_webhook)
 
 
-async def get_webhook(webhook_id: str) -> Webhook:
+@overload
+async def get_webhook(
+    webhook_id: str, *, include_relations: Literal[True]
+) -> WebhookWithRelations: ...
+@overload
+async def get_webhook(
+    webhook_id: str, *, include_relations: Literal[False] = False
+) -> Webhook: ...
+
+
+async def get_webhook(
+    webhook_id: str, *, include_relations: bool = False
+) -> Webhook | WebhookWithRelations:
     """
     ⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints.
 
@@ -92,73 +123,113 @@ async def get_webhook(webhook_id: str) -> Webhook:
     """
     webhook = await IntegrationWebhook.prisma().find_unique(
         where={"id": webhook_id},
-        include=INTEGRATION_WEBHOOK_INCLUDE,
+        include=INTEGRATION_WEBHOOK_INCLUDE if include_relations else None,
     )
     if not webhook:
         raise NotFoundError(f"Webhook #{webhook_id} not found")
-    return Webhook.from_db(webhook)
+    return (WebhookWithRelations if include_relations else Webhook).from_db(webhook)
 
 
-async def get_all_webhooks_by_creds(credentials_id: str) -> list[Webhook]:
-    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
+@overload
+async def get_all_webhooks_by_creds(
+    user_id: str, credentials_id: str, *, include_relations: Literal[True]
+) -> list[WebhookWithRelations]: ...
+@overload
+async def get_all_webhooks_by_creds(
+    user_id: str, credentials_id: str, *, include_relations: Literal[False] = False
+) -> list[Webhook]: ...
+
+
+async def get_all_webhooks_by_creds(
+    user_id: str, credentials_id: str, *, include_relations: bool = False
+) -> list[Webhook] | list[WebhookWithRelations]:
     if not credentials_id:
         raise ValueError("credentials_id must not be empty")
     webhooks = await IntegrationWebhook.prisma().find_many(
-        where={"credentialsId": credentials_id},
-        include=INTEGRATION_WEBHOOK_INCLUDE,
+        where={"userId": user_id, "credentialsId": credentials_id},
+        include=INTEGRATION_WEBHOOK_INCLUDE if include_relations else None,
     )
-    return [Webhook.from_db(webhook) for webhook in webhooks]
+    return [
+        (WebhookWithRelations if include_relations else Webhook).from_db(webhook)
+        for webhook in webhooks
+    ]
 
 
 async def find_webhook_by_credentials_and_props(
-    credentials_id: str, webhook_type: str, resource: str, events: list[str]
+    user_id: str,
+    credentials_id: str,
+    webhook_type: str,
+    resource: str,
+    events: list[str],
 ) -> Webhook | None:
-    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     webhook = await IntegrationWebhook.prisma().find_first(
         where={
+            "userId": user_id,
             "credentialsId": credentials_id,
             "webhookType": webhook_type,
             "resource": resource,
             "events": {"has_every": events},
         },
-        include=INTEGRATION_WEBHOOK_INCLUDE,
     )
     return Webhook.from_db(webhook) if webhook else None
 
 
 async def find_webhook_by_graph_and_props(
-    graph_id: str, provider: str, webhook_type: str, events: list[str]
+    user_id: str,
+    provider: str,
+    webhook_type: str,
+    graph_id: Optional[str] = None,
+    preset_id: Optional[str] = None,
 ) -> Webhook | None:
-    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
+    """Either `graph_id` or `preset_id` must be provided."""
+    where_clause: IntegrationWebhookWhereInput = {
+        "userId": user_id,
+        "provider": provider,
+        "webhookType": webhook_type,
+    }
+
+    if preset_id:
+        where_clause["AgentPresets"] = {"some": {"id": preset_id}}
+    elif graph_id:
+        where_clause["AgentNodes"] = {"some": {"agentGraphId": graph_id}}
+    else:
+        raise ValueError("Either graph_id or preset_id must be provided")
+
     webhook = await IntegrationWebhook.prisma().find_first(
-        where={
-            "provider": provider,
-            "webhookType": webhook_type,
-            "events": {"has_every": events},
-            "AgentNodes": {"some": {"agentGraphId": graph_id}},
-        },
-        include=INTEGRATION_WEBHOOK_INCLUDE,
+        where=where_clause,
     )
     return Webhook.from_db(webhook) if webhook else None
 
 
-async def update_webhook_config(webhook_id: str, updated_config: dict) -> Webhook:
+async def update_webhook(
+    webhook_id: str,
+    config: Optional[dict[str, Serializable]] = None,
+    events: Optional[list[str]] = None,
+) -> Webhook:
     """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
+    data: IntegrationWebhookUpdateInput = {}
+    if config is not None:
+        data["config"] = Json(config)
+    if events is not None:
+        data["events"] = events
+    if not data:
+        raise ValueError("Empty update query")
+
     _updated_webhook = await IntegrationWebhook.prisma().update(
         where={"id": webhook_id},
-        data={"config": Json(updated_config)},
-        include=INTEGRATION_WEBHOOK_INCLUDE,
+        data=data,
     )
     if _updated_webhook is None:
-        raise ValueError(f"Webhook #{webhook_id} not found")
+        raise NotFoundError(f"Webhook #{webhook_id} not found")
     return Webhook.from_db(_updated_webhook)
 
 
-async def delete_webhook(webhook_id: str) -> None:
-    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
-    deleted = await IntegrationWebhook.prisma().delete(where={"id": webhook_id})
-    if not deleted:
-        raise ValueError(f"Webhook #{webhook_id} not found")
+async def delete_webhook(user_id: str, webhook_id: str) -> None:
+    deleted = await IntegrationWebhook.prisma().delete_many(
+        where={"id": webhook_id, "userId": user_id}
+    )
+    if deleted < 1:
+        raise NotFoundError(f"Webhook #{webhook_id} not found")
 
 
 # --------------------- WEBHOOK EVENTS --------------------- #

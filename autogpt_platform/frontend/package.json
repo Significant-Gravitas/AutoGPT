@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbo",
-    "build": "SKIP_STORYBOOK_TESTS=true next build",
+    "build": "pnpm run generate:api-client && SKIP_STORYBOOK_TESTS=true next build",
     "start": "next start",
     "start:standalone": "cd .next/standalone && node server.js",
     "lint": "next lint && prettier --check .",
@@ -17,7 +17,10 @@
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "test-storybook": "test-storybook",
-    "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"pnpm run build-storybook -- --quiet && npx http-server storybook-static --port 6006 --silent\" \"wait-on tcp:6006 && pnpm run test-storybook\""
+    "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"pnpm run build-storybook -- --quiet && npx http-server storybook-static --port 6006 --silent\" \"wait-on tcp:6006 && pnpm run test-storybook\"",
+    "fetch:openapi": "curl http://localhost:8006/openapi.json > ./src/api/openapi.json && prettier --write ./src/api/openapi.json",
+    "generate:api-client": "orval --config ./orval.config.ts",
+    "generate:api-all": "pnpm run fetch:openapi && pnpm run generate:api-client"
   },
   "browserslist": [
     "defaults"
@@ -115,6 +118,7 @@
     "import-in-the-middle": "1.14.2",
     "msw": "2.10.2",
     "msw-storybook-addon": "2.0.5",
+    "orval": "7.10.0",
     "postcss": "8.5.6",
     "prettier": "3.5.3",
     "prettier-plugin-tailwindcss": "0.6.12",
