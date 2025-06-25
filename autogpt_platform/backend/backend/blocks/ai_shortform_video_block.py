@@ -2,7 +2,7 @@ import asyncio
 import logging
 import time
 from enum import Enum
-from typing import Literal
+from typing import Literal, List
 
 from pydantic import SecretStr
 
@@ -145,6 +145,61 @@ class VisualMediaType(str, Enum):
 logger = logging.getLogger(__name__)
 
 
+async def create_webhook() -> tuple[str, str]:
+    """Create a new webhook URL for receiving notifications."""
+    url = "https://webhook.site/token"
+    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    response = await Requests().post(url, headers=headers)
+    webhook_data = response.json()
+    return webhook_data["uuid"], f"https://webhook.site/{webhook_data['uuid']}"
+
+
+async def create_video(api_key: SecretStr, payload: dict) -> dict:
+    """Create a video using the Revid API."""
+    url = "https://www.revid.ai/api/public/v2/render"
+    headers = {"key": api_key.get_secret_value()}
+    response = await Requests().post(url, json=payload, headers=headers)
+    logger.debug(
+        f"API Response Status Code: {response.status}, Content: {response.text}"
+    )
+    return response.json()
+
+
+async def check_video_status(api_key: SecretStr, pid: str) -> dict:
+    """Check the status of a video creation job."""
+    url = f"https://www.revid.ai/api/public/v2/status?pid={pid}"
+    headers = {"key": api_key.get_secret_value()}
+    response = await Requests().get(url, headers=headers)
+    return response.json()
+
+
+async def wait_for_video(
+    api_key: SecretStr,
+    pid: str,
+    max_wait_time: int = 1000,
+) -> str:
+    """Wait for video creation to complete and return the video URL."""
+    start_time = time.time()
+    while time.time() - start_time < max_wait_time:
+        status = await check_video_status(api_key, pid)
+        logger.debug(f"Video status: {status}")
+
+        if status.get("status") == "ready" and "videoUrl" in status:
+            return status["videoUrl"]
+        elif status.get("status") == "error":
+            error_message = status.get("error", "Unknown error occurred")
+            logger.error(f"Video creation failed: {error_message}")
+            raise ValueError(f"Video creation failed: {error_message}")
+        elif status.get("status") in ["FAILED", "CANCELED"]:
+            logger.error(f"Video creation failed: {status.get('message')}")
+            raise ValueError(f"Video creation failed: {status.get('message')}")
+
+        await asyncio.sleep(10)
+
+    logger.error("Video creation timed out")
+    raise TimeoutError("Video creation timed out")
+
+
 class AIShortformVideoCreatorBlock(Block):
     """Creates a short‑form text‑to‑video clip using stock or AI imagery."""
 
@@ -220,66 +275,11 @@ class AIShortformVideoCreatorBlock(Block):
             test_credentials=TEST_CREDENTIALS,
         )
 
-    @staticmethod
-    async def create_webhook() -> tuple[str, str]:
-        """Create a new webhook URL for receiving notifications."""
-        url = "https://webhook.site/token"
-        headers = {"Accept": "application/json", "Content-Type": "application/json"}
-        response = await Requests().post(url, headers=headers)
-        webhook_data = response.json()
-        return webhook_data["uuid"], f"https://webhook.site/{webhook_data['uuid']}"
-
-    @staticmethod
-    async def create_video(api_key: SecretStr, payload: dict) -> dict:
-        """Create a video using the Revid API."""
-        url = "https://www.revid.ai/api/public/v2/render"
-        headers = {"key": api_key.get_secret_value()}
-        response = await Requests().post(url, json=payload, headers=headers)
-        logger.debug(
-            f"API Response Status Code: {response.status}, Content: {response.text}"
-        )
-        return response.json()
-
-    @staticmethod
-    async def check_video_status(api_key: SecretStr, pid: str) -> dict:
-        """Check the status of a video creation job."""
-        url = f"https://www.revid.ai/api/public/v2/status?pid={pid}"
-        headers = {"key": api_key.get_secret_value()}
-        response = await Requests().get(url, headers=headers)
-        return response.json()
-
-    @staticmethod
-    async def wait_for_video(
-        api_key: SecretStr,
-        pid: str,
-        max_wait_time: int = 1000,
-    ) -> str:
-        """Wait for video creation to complete and return the video URL."""
-        start_time = time.time()
-        while time.time() - start_time < max_wait_time:
-            status = await AIShortformVideoCreatorBlock.check_video_status(api_key, pid)
-            logger.debug(f"Video status: {status}")
-
-            if status.get("status") == "ready" and "videoUrl" in status:
-                return status["videoUrl"]
-            elif status.get("status") == "error":
-                error_message = status.get("error", "Unknown error occurred")
-                logger.error(f"Video creation failed: {error_message}")
-                raise ValueError(f"Video creation failed: {error_message}")
-            elif status.get("status") in ["FAILED", "CANCELED"]:
-                logger.error(f"Video creation failed: {status.get('message')}")
-                raise ValueError(f"Video creation failed: {status.get('message')}")
-
-            await asyncio.sleep(10)
-
-        logger.error("Video creation timed out")
-        raise TimeoutError("Video creation timed out")
-
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Create a new Webhook.site URL
-        webhook_token, webhook_url = await self.create_webhook()
+        webhook_token, webhook_url = await create_webhook()
         logger.debug(f"Webhook URL: {webhook_url}")
 
         payload = {
@@ -314,7 +314,7 @@ class AIShortformVideoCreatorBlock(Block):
         }
 
         logger.debug("Creating video...")
-        response = await self.create_video(credentials.api_key, payload)
+        response = await create_video(credentials.api_key, payload)
         pid = response.get("pid")
 
         if not pid:
@@ -326,6 +326,378 @@ class AIShortformVideoCreatorBlock(Block):
             logger.debug(
                 f"Video created with project ID: {pid}. Waiting for completion..."
             )
-            video_url = await self.wait_for_video(credentials.api_key, pid)
+            video_url = await wait_for_video(credentials.api_key, pid)
             logger.debug(f"Video ready: {video_url}")
             yield "video_url", video_url
+
+# ---------------------------------------------------------------------------
+# 2. Ad‑Maker (text & image → 30s vertical AI video)
+# ---------------------------------------------------------------------------
+
+
+class AIAdMakerVideoCreatorBlock(Block):
+    """Generates a 30‑second vertical AI advert using optional user‑supplied imagery."""
+
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.REVID], Literal["api_key"]
+        ] = CredentialsField(
+            description="Credentials for Revid.ai API access.",
+        )
+        script: str = SchemaField(
+            description="Short advertising copy. Line breaks create new scenes.",
+            placeholder="Introducing Foobar – [show product photo] the gadget that does it all.",
+        )
+        ratio: str = SchemaField(description="Aspect ratio", default="9 / 16")
+        target_duration: int = SchemaField(
+            description="Desired length of the ad in seconds.", default=30
+        )
+        voice: Voice = SchemaField(
+            description="Narration voice", default=Voice.EVA, placeholder=Voice.EVA
+        )
+        background_music: AudioTrack = SchemaField(
+            description="Background track", default=AudioTrack.DONT_STOP_ME_ABSTRACT_FUTURE_BASS
+        )
+        input_media_urls: List[str] = SchemaField(
+            description="List of image URLs to feature in the advert.", default=[]
+        )
+        use_only_provided_media: bool = SchemaField(
+            description="Restrict visuals to supplied images only.", default=True
+        )
+
+    class Output(BlockSchema):
+        video_url: str = SchemaField(description="URL of the finished advert")
+        error: str = SchemaField(description="Error message on failure")
+
+    def __init__(self):
+        super().__init__(
+            id="58bd2a19-115d-4fd1-8ca4-13b9e37fa6a0",
+            description="Creates an AI‑generated 30‑second advert (text + images)",
+            categories={BlockCategory.MARKETING, BlockCategory.AI},
+            input_schema=AIAdMakerVideoCreatorBlock.Input,
+            output_schema=AIAdMakerVideoCreatorBlock.Output,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "script": "Test product launch!",
+                "input_media_urls": [
+                    "https://cdn.revid.ai/uploads/1747076315114-image.png",
+                ],
+            },
+            test_output=("video_url", "https://example.com/ad.mp4"),
+            test_mock={
+                "create_webhook": lambda: (
+                    "test_uuid",
+                    "https://webhook.site/test_uuid",
+                ),
+                "create_video": lambda api_key, payload: {"pid": "test_pid"},
+                "wait_for_video": lambda api_key, pid, webhook_token, max_wait_time=1000: "https://example.com/ad.mp4",
+            },
+            test_credentials=TEST_CREDENTIALS,
+        )
+
+    async def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
+        webhook_token, webhook_url = await create_webhook()
+
+        payload = {
+            "webhook": webhook_url,
+            "creationParams": {
+                "targetDuration": input_data.target_duration,
+                "ratio": input_data.ratio,
+                "mediaType": "aiVideo",
+                "inputText": input_data.script,
+                "flowType": "text-to-video",
+                "slug": "ai-ad-generator",
+                "slugNew": "",
+                "isCopiedFrom": False,
+                "hasToGenerateVoice": True,
+                "hasToTranscript": False,
+                "hasToSearchMedia": True,
+                "hasAvatar": False,
+                "hasWebsiteRecorder": False,
+                "hasTextSmallAtBottom": False,
+                "selectedAudio": input_data.background_music.value,
+                "selectedVoice": input_data.voice.voice_id,
+                "selectedAvatar": "https://cdn.revid.ai/avatars/young-woman.mp4",
+                "selectedAvatarType": "video/mp4",
+                "websiteToRecord": "",
+                "hasToGenerateCover": True,
+                "nbGenerations": 1,
+                "disableCaptions": False,
+                "mediaMultiplier": "medium",
+                "characters": [],
+                "captionPresetName": "Revid",
+                "sourceType": "contentScraping",
+                "selectedStoryStyle": {"value": "custom", "label": "General"},
+                "generationPreset": "DEFAULT",
+                "hasToGenerateMusic": False,
+                "isOptimizedForChinese": False,
+                "generationUserPrompt": "",
+                "enableNsfwFilter": False,
+                "addStickers": False,
+                "typeMovingImageAnim": "dynamic",
+                "hasToGenerateSoundEffects": False,
+                "forceModelType": "gpt-image-1",
+                "selectedCharacters": [],
+                "lang": "",
+                "voiceSpeed": 1,
+                "disableAudio": False,
+                "disableVoice": False,
+                "useOnlyProvidedMedia": input_data.use_only_provided_media,
+                "imageGenerationModel": "ultra",
+                "videoGenerationModel": "pro",
+                "hasEnhancedGeneration": True,
+                "hasEnhancedGenerationPro": True,
+                "inputMedias": [
+                    {"url": url, "title": "", "type": "image"}
+                    for url in input_data.input_media_urls
+                ],
+                "hasToGenerateVideos": True,
+                "audioUrl": input_data.background_music.audio_url,
+                "watermark": None,
+            },
+        }
+
+        response = await create_video(credentials.api_key, payload)
+        pid = response.get("pid")
+        if not pid:
+            raise RuntimeError("Failed to create video: No project ID returned")
+
+        video_url = await wait_for_video(credentials.api_key, pid)
+        yield "video_url", video_url
+
+
+# ---------------------------------------------------------------------------
+# 3. Prompt‑to‑Video (single prompt → fully‑AI video)
+# ---------------------------------------------------------------------------
+
+
+class AIPromptToVideoCreatorBlock(Block):
+    """Turns a single creative prompt into a fully AI‑generated video."""
+
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.REVID], Literal["api_key"]
+        ] = CredentialsField(description="Revid.ai API credentials")
+        prompt: str = SchemaField(
+            description="Imaginative prompt describing the desired video.",
+            placeholder="A neon‑lit cyberpunk alley with rain‑soaked pavements.",
+        )
+        ratio: str = SchemaField(default="9 / 16")
+        prompt_target_duration: int = SchemaField(default=30)
+        voice: Voice = SchemaField(default=Voice.EVA)
+        background_music: AudioTrack = SchemaField(
+            default=AudioTrack.DONT_STOP_ME_ABSTRACT_FUTURE_BASS
+        )
+
+    class Output(BlockSchema):
+        video_url: str = SchemaField(description="Rendered video URL")
+        error: str = SchemaField(description="Error message if any")
+
+    def __init__(self):
+        super().__init__(
+            id="bda7ca70-d146-4fe0-a851-68264fc7b734",
+            description="Creates an AI video from a single prompt (no line‑breaking script).",
+            categories={BlockCategory.AI, BlockCategory.SOCIAL},
+            input_schema=AIPromptToVideoCreatorBlock.Input,
+            output_schema=AIPromptToVideoCreatorBlock.Output,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "prompt": "Epic time‑lapse of a city skyline from day to night",
+            },
+            test_output=("video_url", "https://example.com/prompt.mp4"),
+            test_mock={
+                "create_webhook": lambda: (
+                    "test_uuid",
+                    "https://webhook.site/test_uuid",
+                ),
+                "create_video": lambda api_key, payload: {"pid": "test_pid"},
+                "wait_for_video": lambda api_key, pid, webhook_token, max_wait_time=1000: "https://example.com/prompt.mp4",
+            },
+            test_credentials=TEST_CREDENTIALS,
+        )
+
+    async def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
+        webhook_token, webhook_url = await create_webhook()
+
+        payload = {
+            "webhook": webhook_url,
+            "creationParams": {
+                "mediaType": "aiVideo",
+                "flowType": "prompt-to-video",
+                "slug": "prompt-to-video",
+                "slugNew": "",
+                "isCopiedFrom": False,
+                "hasToGenerateVoice": True,
+                "hasToTranscript": False,
+                "hasToSearchMedia": True,
+                "hasAvatar": False,
+                "hasWebsiteRecorder": False,
+                "hasTextSmallAtBottom": False,
+                "ratio": input_data.ratio,
+                "selectedAudio": input_data.background_music.value,
+                "selectedVoice": input_data.voice.voice_id,
+                "selectedAvatar": "https://cdn.revid.ai/avatars/young-woman.mp4",
+                "selectedAvatarType": "video/mp4",
+                "websiteToRecord": "",
+                "hasToGenerateCover": True,
+                "nbGenerations": 1,
+                "disableCaptions": False,
+                "characters": [],
+                "captionPresetName": "Revid",
+                "sourceType": "contentScraping",
+                "selectedStoryStyle": {"value": "custom", "label": "General"},
+                "generationPreset": "DEFAULT",
+                "hasToGenerateMusic": False,
+                "isOptimizedForChinese": False,
+                "generationUserPrompt": input_data.prompt,
+                "enableNsfwFilter": False,
+                "addStickers": False,
+                "typeMovingImageAnim": "dynamic",
+                "hasToGenerateSoundEffects": False,
+                "promptTargetDuration": input_data.prompt_target_duration,
+                "selectedCharacters": [],
+                "lang": "",
+                "voiceSpeed": 1,
+                "disableAudio": False,
+                "disableVoice": False,
+                "imageGenerationModel": "good",
+                "videoGenerationModel": "ultra",
+                "hasEnhancedGeneration": True,
+                "hasEnhancedGenerationPro": True,
+                "inputMedias": [],
+                "hasToGenerateVideos": True,
+                "audioUrl": input_data.background_music.audio_url,
+                "watermark": None,
+            },
+        }
+
+        response = await create_video(credentials.api_key, payload)
+        pid = response.get("pid")
+        if not pid:
+            raise RuntimeError("Failed to create video: No project ID returned")
+
+        video_url = await wait_for_video(credentials.api_key, pid)
+        yield "video_url", video_url
+
+
+# ---------------------------------------------------------------------------
+# 4. Screenshot‑to‑Video Advert (image + voice + avatar)
+# ---------------------------------------------------------------------------
+
+
+class AIScreenshotToVideoAdBlock(Block):
+    """Creates an advert where the supplied screenshot is narrated by an AI avatar."""
+
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput[
+            Literal[ProviderName.REVID], Literal["api_key"]
+        ] = CredentialsField(description="Revid.ai API key")
+        script: str = SchemaField(
+            description="Narration that will accompany the screenshot.",
+            placeholder="Check out these amazing stats!",
+        )
+        screenshot_url: str = SchemaField(description="Screenshot or image URL to showcase.")
+        ratio: str = SchemaField(default="9 / 16")
+        target_duration: int = SchemaField(default=30)
+        voice: Voice = SchemaField(default=Voice.EVA)
+        background_music: AudioTrack = SchemaField(
+            default=AudioTrack.DONT_STOP_ME_ABSTRACT_FUTURE_BASS
+        )
+
+    class Output(BlockSchema):
+        video_url: str = SchemaField(description="Rendered video URL")
+        error: str = SchemaField(description="Error, if encountered")
+
+    def __init__(self):
+        super().__init__(
+            id="0f3e4635-e810-43d9-9e81-49e6f4e83b7c",
+            description="Turns a screenshot into an engaging, avatar‑narrated video advert.",
+            categories={BlockCategory.AI, BlockCategory.MARKETING},
+            input_schema=AIScreenshotToVideoAdBlock.Input,
+            output_schema=AIScreenshotToVideoAdBlock.Output,
+            test_input={
+                "credentials": TEST_CREDENTIALS_INPUT,
+                "script": "Amazing numbers!",
+                "screenshot_url": "https://cdn.revid.ai/uploads/1747080376028-image.png",
+            },
+            test_output=("video_url", "https://example.com/screenshot.mp4"),
+            test_mock={
+                "create_webhook": lambda: (
+                    "test_uuid",
+                    "https://webhook.site/test_uuid",
+                ),
+                "create_video": lambda api_key, payload: {"pid": "test_pid"},
+                "wait_for_video": lambda api_key, pid, webhook_token, max_wait_time=1000: "https://example.com/screenshot.mp4",
+            },
+            test_credentials=TEST_CREDENTIALS,
+        )
+
+    async def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
+        webhook_token, webhook_url = await create_webhook()
+
+        payload = {
+            "webhook": webhook_url,
+            "creationParams": {
+                "targetDuration": input_data.target_duration,
+                "ratio": input_data.ratio,
+                "mediaType": "aiVideo",
+                "hasAvatar": True,
+                "removeAvatarBackground": True,
+                "inputText": input_data.script,
+                "flowType": "text-to-video",
+                "slug": "ai-ad-generator",
+                "slugNew": "screenshot-to-video-ad",
+                "isCopiedFrom": "ai-ad-generator",
+                "hasToGenerateVoice": True,
+                "hasToTranscript": False,
+                "hasToSearchMedia": True,
+                "hasWebsiteRecorder": False,
+                "hasTextSmallAtBottom": False,
+                "selectedAudio": input_data.background_music.value,
+                "selectedVoice": input_data.voice.voice_id,
+                "selectedAvatar": "https://cdn.revid.ai/avatars/young-woman.mp4",
+                "selectedAvatarType": "video/mp4",
+                "websiteToRecord": "",
+                "hasToGenerateCover": True,
+                "nbGenerations": 1,
+                "disableCaptions": False,
+                "mediaMultiplier": "medium",
+                "characters": [],
+                "captionPresetName": "Revid",
+                "sourceType": "contentScraping",
+                "selectedStoryStyle": {"value": "custom", "label": "General"},
+                "generationPreset": "DEFAULT",
+                "hasToGenerateMusic": False,
+                "isOptimizedForChinese": False,
+                "generationUserPrompt": "",
+                "enableNsfwFilter": False,
+                "addStickers": False,
+                "typeMovingImageAnim": "dynamic",
+                "hasToGenerateSoundEffects": False,
+                "forceModelType": "gpt-image-1",
+                "selectedCharacters": [],
+                "lang": "",
+                "voiceSpeed": 1,
+                "disableAudio": False,
+                "disableVoice": False,
+                "useOnlyProvidedMedia": True,
+                "imageGenerationModel": "ultra",
+                "videoGenerationModel": "ultra",
+                "hasEnhancedGeneration": True,
+                "hasEnhancedGenerationPro": True,
+                "inputMedias": [
+                    {"url": input_data.screenshot_url, "title": "", "type": "image"}
+                ],
+                "hasToGenerateVideos": True,
+                "audioUrl": input_data.background_music.audio_url,
+                "watermark": None,
+            },
+        }
+
+        response = await create_video(credentials.api_key, payload)
+        pid = response.get("pid")
+        if not pid:
+            raise RuntimeError("Failed to create video: No project ID returned")
+
+        video_url = await wait_for_video(credentials.api_key, pid)
+        yield "video_url", video_url
