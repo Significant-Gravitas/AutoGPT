@@ -315,11 +315,8 @@ export default function AgentRunsPage(): React.ReactElement {
   const fetchSchedules = useCallback(async () => {
     if (!agent) return;
 
-    // TODO: filter in backend - https://github.com/Significant-Gravitas/AutoGPT/issues/9183
-    setSchedules(
-      (await api.listSchedules()).filter((s) => s.graph_id == agent.graph_id),
-    );
-  }, [api, agent]);
+    setSchedules(await api.listGraphExecutionSchedules(agent.graph_id));
+  }, [api, agent?.graph_id]);
 
   useEffect(() => {
     fetchSchedules();
@@ -358,8 +355,11 @@ export default function AgentRunsPage(): React.ReactElement {
 
   const deleteSchedule = useCallback(
     async (scheduleID: ScheduleID) => {
-      const removedSchedule = await api.deleteSchedule(scheduleID);
-      setSchedules(schedules.filter((s) => s.id !== removedSchedule.id));
+      const removedSchedule =
+        await api.deleteGraphExecutionSchedule(scheduleID);
+      setSchedules((schedules) =>
+        schedules.filter((s) => s.id !== removedSchedule.id),
+      );
     },
     [schedules, api],
   );

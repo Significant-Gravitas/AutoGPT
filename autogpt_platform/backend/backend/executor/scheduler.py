@@ -22,6 +22,7 @@ from backend.data.execution import ExecutionStatus
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
 from backend.notifications.notifications import NotificationManagerClient
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.metrics import sentry_capture_error
 from backend.util.service import (
     AppService,
@@ -326,12 +327,11 @@ class Scheduler(AppService):
     ) -> GraphExecutionJobInfo:
         job = self.scheduler.get_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
         if not job:
-            log(f"Job {schedule_id} not found.")
-            raise ValueError(f"Job #{schedule_id} not found.")
+            raise NotFoundError(f"Job #{schedule_id} not found.")
 
         job_args = GraphExecutionJobArgs(**job.kwargs)
         if job_args.user_id != user_id:
-            raise ValueError("User ID does not match the job's user ID.")
+            raise NotAuthorizedError("User ID does not match the job's user ID")
 
         log(f"Deleting job {schedule_id}")
         job.remove()

@@ -729,20 +729,33 @@ export default class BackendAPI {
   /////////// SCHEDULES ////////////
   //////////////////////////////////
 
-  async createSchedule(schedule: ScheduleCreatable): Promise<Schedule> {
-    return this._request("POST", `/schedules`, schedule).then(
-      parseScheduleTimestamp,
+  async createGraphExecutionSchedule(
+    params: ScheduleCreatable,
+  ): Promise<Schedule> {
+    return this._request(
+      "POST",
+      `/graphs/${params.graph_id}/schedules`,
+      params,
+    ).then(parseScheduleTimestamp);
+  }
+
+  async listGraphExecutionSchedules(graphID: GraphID): Promise<Schedule[]> {
+    return this._get(`/graphs/${graphID}/schedules`).then((schedules) =>
+      schedules.map(parseScheduleTimestamp),
     );
   }
 
-  async deleteSchedule(scheduleId: ScheduleID): Promise<{ id: string }> {
-    return this._request("DELETE", `/schedules/${scheduleId}`);
-  }
-
-  async listSchedules(): Promise<Schedule[]> {
+  /** @deprecated only used in legacy `Monitor` */
+  async listAllGraphsExecutionSchedules(): Promise<Schedule[]> {
     return this._get(`/schedules`).then((schedules) =>
       schedules.map(parseScheduleTimestamp),
     );
+  }
+
+  async deleteGraphExecutionSchedule(
+    scheduleID: ScheduleID,
+  ): Promise<{ id: ScheduleID }> {
+    return this._request("DELETE", `/schedules/${scheduleID}`);
   }
 
   //////////////////////////////////
