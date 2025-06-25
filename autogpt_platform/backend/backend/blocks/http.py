@@ -218,7 +218,7 @@ class SendAuthenticatedWebRequestBlock(SendWebRequestBlock):
     def __init__(self):
         Block.__init__(
             self,
-            id="7f4f8b2a-c3d1-4e5f-8a9b-2c3d4e5f6a7b",
+            id="fff86bcd-e001-4bad-a7f6-2eae4720c8dc",
             description="Make an authenticated HTTP request with host-scoped credentials (JSON / form / multipart).",
             categories={BlockCategory.OUTPUT},
             input_schema=SendAuthenticatedWebRequestBlock.Input,
@@ -230,8 +230,8 @@ class SendAuthenticatedWebRequestBlock(SendWebRequestBlock):
         self,
         input_data: Input,
         *,
-        credentials: HostScopedCredentials,
         graph_exec_id: str,
+        credentials: HostScopedCredentials,
         **kwargs,
     ) -> BlockOutput:
         # Create SendWebRequestBlock.Input from our input (removing credentials field)

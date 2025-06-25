@@ -132,5 +132,5 @@
       "public"
     ]
   },
-  "packageManager": "pnpm@10.12.3"
+  "packageManager": "pnpm@10.11.1+sha256.211e9990148495c9fc30b7e58396f7eeda83d9243eb75407ea4f8650fb161f7c"
 }

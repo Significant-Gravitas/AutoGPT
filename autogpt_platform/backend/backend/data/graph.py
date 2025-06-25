@@ -289,7 +289,7 @@ class Graph(BaseGraph):
             )]
         """
         # First collect all credential field data with input defaults
-        credential_data = []
+        node_credential_data = []
 
         for graph in [self] + self.sub_graphs:
             for node in graph.nodes:
@@ -312,12 +312,12 @@ class Graph(BaseGraph):
                     # Add input defaults to the field info before combining
                     discriminated_field_info.sibling_inputs.update(node.input_default)
 
-                    credential_data.append(
+                    node_credential_data.append(
                         (discriminated_field_info, (node.id, field_name))
                     )
 
         # Combine credential field info (this will merge input_defaults automatically)
-        combined_fields = CredentialsFieldInfo.combine(*credential_data)
+        combined_fields = CredentialsFieldInfo.combine(*node_credential_data)
 
         # Build final result
         return {
