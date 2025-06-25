@@ -88,6 +88,7 @@ jobs:
           onlyChanged: true
           workingDir: autogpt_platform/frontend
           token: ${{ secrets.GITHUB_TOKEN }}
+          buildScriptName: pnpm storybook build
 
   test-unit:
     runs-on: ubuntu-latest
