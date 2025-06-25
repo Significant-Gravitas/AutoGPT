@@ -2,7 +2,7 @@ import asyncio
 import logging
 import time
 from enum import Enum
-from typing import Literal, List
+from typing import List, Literal
 
 from pydantic import SecretStr
 
@@ -269,10 +269,16 @@ class AIShortformVideoCreatorBlock(Block):
                 "https://example.com/video.mp4",
             ),
             test_mock={
-                "create_webhook": lambda: ("test_uuid", "https://webhook.site/test_uuid"),
+                "create_webhook": lambda: (
+                    "test_uuid",
+                    "https://webhook.site/test_uuid",
+                ),
                 "create_video": lambda api_key, payload: {"pid": "test_pid"},
-                "check_video_status": lambda api_key, pid: {"status": "ready", "videoUrl": "https://example.com/video.mp4"},
-                "wait_for_video": lambda api_key, pid: "https://example.com/video.mp4"
+                "check_video_status": lambda api_key, pid: {
+                    "status": "ready",
+                    "videoUrl": "https://example.com/video.mp4",
+                },
+                "wait_for_video": lambda api_key, pid: "https://example.com/video.mp4",
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -332,6 +338,7 @@ class AIShortformVideoCreatorBlock(Block):
             logger.debug(f"Video ready: {video_url}")
             yield "video_url", video_url
 
+
 # ---------------------------------------------------------------------------
 # 2. Ad‑Maker (text & image → 30s vertical AI video)
 # ---------------------------------------------------------------------------
@@ -358,7 +365,8 @@ class AIAdMakerVideoCreatorBlock(Block):
             description="Narration voice", default=Voice.EVA, placeholder=Voice.EVA
         )
         background_music: AudioTrack = SchemaField(
-            description="Background track", default=AudioTrack.DONT_STOP_ME_ABSTRACT_FUTURE_BASS
+            description="Background track",
+            default=AudioTrack.DONT_STOP_ME_ABSTRACT_FUTURE_BASS,
         )
         input_media_urls: List[str] = SchemaField(
             description="List of image URLs to feature in the advert.", default=[]
@@ -387,10 +395,16 @@ class AIAdMakerVideoCreatorBlock(Block):
             },
             test_output=("video_url", "https://example.com/ad.mp4"),
             test_mock={
-                "create_webhook": lambda: ("test_uuid", "https://webhook.site/test_uuid"),
+                "create_webhook": lambda: (
+                    "test_uuid",
+                    "https://webhook.site/test_uuid",
+                ),
                 "create_video": lambda api_key, payload: {"pid": "test_pid"},
-                "check_video_status": lambda api_key, pid: {"status": "ready", "videoUrl": "https://example.com/ad.mp4"},
-                "wait_for_video": lambda api_key, pid: "https://example.com/ad.mp4"
+                "check_video_status": lambda api_key, pid: {
+                    "status": "ready",
+                    "videoUrl": "https://example.com/ad.mp4",
+                },
+                "wait_for_video": lambda api_key, pid: "https://example.com/ad.mp4",
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -482,7 +496,9 @@ class AIScreenshotToVideoAdBlock(Block):
             description="Narration that will accompany the screenshot.",
             placeholder="Check out these amazing stats!",
         )
-        screenshot_url: str = SchemaField(description="Screenshot or image URL to showcase.")
+        screenshot_url: str = SchemaField(
+            description="Screenshot or image URL to showcase."
+        )
         ratio: str = SchemaField(default="9 / 16")
         target_duration: int = SchemaField(default=30)
         voice: Voice = SchemaField(default=Voice.EVA)
@@ -508,10 +524,16 @@ class AIScreenshotToVideoAdBlock(Block):
             },
             test_output=("video_url", "https://example.com/screenshot.mp4"),
             test_mock={
-                "create_webhook": lambda: ("test_uuid", "https://webhook.site/test_uuid"),
+                "create_webhook": lambda: (
+                    "test_uuid",
+                    "https://webhook.site/test_uuid",
+                ),
                 "create_video": lambda api_key, payload: {"pid": "test_pid"},
-                "check_video_status": lambda api_key, pid: {"status": "ready", "videoUrl": "https://example.com/screenshot.mp4"},
-                "wait_for_video": lambda api_key, pid: "https://example.com/screenshot.mp4"
+                "check_video_status": lambda api_key, pid: {
+                    "status": "ready",
+                    "videoUrl": "https://example.com/screenshot.mp4",
+                },
+                "wait_for_video": lambda api_key, pid: "https://example.com/screenshot.mp4",
             },
             test_credentials=TEST_CREDENTIALS,
         )
