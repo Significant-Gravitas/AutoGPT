@@ -77,10 +77,6 @@ class WebhookWithRelations(Webhook):
         )
 
 
-# Fix Webhook <- NodeModel relations
-NodeModel.model_rebuild()
-
-
 # --------------------- CRUD functions --------------------- #
 
 
