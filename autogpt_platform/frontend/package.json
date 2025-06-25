@@ -17,7 +17,7 @@
     "test:unit:watch": "vitest --config vitest.config.mjs --watch",
     "gentests": "playwright codegen http://localhost:3000",
     "storybook": "storybook dev -p 6006",
-    "build:storybook": "storybook build",
+    "storybook:build": "storybook build",
     "fetch:openapi": "curl http://localhost:8006/openapi.json > ./src/api/openapi.json && prettier --write ./src/api/openapi.json",
     "generate:api-client": "orval --config ./orval.config.ts",
     "generate:api-all": "pnpm run fetch:openapi && pnpm run generate:api-client"

@@ -98,7 +98,7 @@ Storybook is a powerful development environment for UI components. It allows you
    To build a static version of Storybook for deployment, use:
 
    ```bash
-   pnpm build:storybook
+   pnpm storybook:build
    ```
 
 3. **Writing Stories**:
