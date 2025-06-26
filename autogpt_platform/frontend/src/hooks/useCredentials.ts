@@ -9,6 +9,7 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsProviderName,
 } from "@/lib/autogpt-server-api";
+import { getHostFromUrl } from "@/lib/utils/url";
 
 export type CredentialsData =
   | {
@@ -17,14 +18,18 @@ export type CredentialsData =
       supportsApiKey: boolean;
       supportsOAuth2: boolean;
       supportsUserPassword: boolean;
+      supportsHostScoped: boolean;
       isLoading: true;
+      discriminatorValue?: string;
     }
   | (CredentialsProviderData & {
       schema: BlockIOCredentialsSubSchema;
       supportsApiKey: boolean;
       supportsOAuth2: boolean;
       supportsUserPassword: boolean;
+      supportsHostScoped: boolean;
       isLoading: false;
+      discriminatorValue?: string;
     });
 
 export default function useCredentials(
@@ -33,12 +38,16 @@ export default function useCredentials(
 ): CredentialsData | null {
   const allProviders = useContext(CredentialsProvidersContext);
 
-  const discriminatorValue: CredentialsProviderName | null =
-    (credsInputSchema.discriminator &&
-      credsInputSchema.discriminator_mapping![
-        getValue(credsInputSchema.discriminator, nodeInputValues)
-      ]) ||
-    null;
+  const discriminatorValue = [
+    credsInputSchema.discriminator
+      ? getValue(credsInputSchema.discriminator, nodeInputValues)
+      : null,
+    ...(credsInputSchema.discriminator_values || []),
+  ].find(Boolean);
+
+  const discriminatedProvider = credsInputSchema.discriminator_mapping
+    ? credsInputSchema.discriminator_mapping[discriminatorValue]
+    : null;
 
   let providerName: CredentialsProviderName;
   if (credsInputSchema.credentials_provider.length > 1) {
@@ -47,14 +56,14 @@ export default function useCredentials(
         "Multi-provider credential input requires discriminator!",
       );
     }
-    if (!discriminatorValue) {
-      console.log(
+    if (!discriminatedProvider) {
+      console.warn(
         `Missing discriminator value from '${credsInputSchema.discriminator}': ` +
           "hiding credentials input until it is set.",
       );
       return null;
     }
-    providerName = discriminatorValue;
+    providerName = discriminatedProvider;
   } else {
     providerName = credsInputSchema.credentials_provider[0];
   }
@@ -69,6 +78,8 @@ export default function useCredentials(
   const supportsOAuth2 = credsInputSchema.credentials_types.includes("oauth2");
   const supportsUserPassword =
     credsInputSchema.credentials_types.includes("user_password");
+  const supportsHostScoped =
+    credsInputSchema.credentials_types.includes("host_scoped");
 
   // No provider means maybe it's still loading
   if (!provider) {
@@ -82,15 +93,24 @@ export default function useCredentials(
     return null;
   }
 
-  // Filter by OAuth credentials that have sufficient scopes for this block
-  const requiredScopes = credsInputSchema.credentials_scopes;
-  const savedCredentials = requiredScopes
-    ? provider.savedCredentials.filter(
-        (c) =>
-          c.type != "oauth2" ||
-          new Set(c.scopes).isSupersetOf(new Set(requiredScopes)),
-      )
-    : provider.savedCredentials;
+  const savedCredentials = provider.savedCredentials.filter((c) => {
+    // Filter by OAuth credentials that have sufficient scopes for this block
+    if (c.type === "oauth2") {
+      const requiredScopes = credsInputSchema.credentials_scopes;
+      return (
+        !requiredScopes ||
+        new Set(c.scopes).isSupersetOf(new Set(requiredScopes))
+      );
+    }
+
+    // Filter host_scoped credentials by host matching
+    if (c.type === "host_scoped") {
+      return discriminatorValue && getHostFromUrl(discriminatorValue) == c.host;
+    }
+
+    // Include all other credential types
+    return true;
+  });
 
   return {
     ...provider,
@@ -99,7 +119,9 @@ export default function useCredentials(
     supportsApiKey,
     supportsOAuth2,
     supportsUserPassword,
+    supportsHostScoped,
     savedCredentials,
+    discriminatorValue,
     isLoading: false,
   };
 }
