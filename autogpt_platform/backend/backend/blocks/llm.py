@@ -40,7 +40,7 @@ LLMProviderName = Literal[
 AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
 
 TEST_CREDENTIALS = APIKeyCredentials(
-    id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
+    id="769f6af7-820b-4d5d-9b7a-ab82bbc165f",
     provider="openai",
     api_key=SecretStr("mock-openai-api-key"),
     title="Mock OpenAI API key",
