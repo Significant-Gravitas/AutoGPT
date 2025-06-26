@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
 import { useState } from "react";
 
-export function DownloadAgentAdminButton({
-  storeListingVersionId,
-}: {
+interface Props {
   storeListingVersionId: string;
-}) {
+}
+
+export function DownloadAgentAdminButton({ storeListingVersionId }: Props) {
   const [isLoading, setIsLoading] = useState(false);
 
   const handleDownload = async () => {

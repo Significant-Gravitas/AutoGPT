@@ -1,7 +1,7 @@
+import { AdminAgentsDataTable } from "@/app/(platform)/admin/marketplace/components/AdminAgentsDataTable/AdminAgentsDataTable";
+import type { SubmissionStatus } from "@/lib/autogpt-server-api/types";
 import { withRoleAccess } from "@/lib/withRoleAccess";
 import { Suspense } from "react";
-import type { SubmissionStatus } from "@/lib/autogpt-server-api/types";
-import { AdminAgentsDataTable } from "@/components/admin/marketplace/admin-agents-data-table";
 
 type MarketplaceAdminPageSearchParams = {
   page?: string;

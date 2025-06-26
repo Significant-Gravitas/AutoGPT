@@ -1,3 +1,5 @@
+import { getAdminListingsWithVersions } from "@/app/(platform)/admin/marketplace/actions";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import {
   Table,
   TableBody,
@@ -6,37 +8,22 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  StoreSubmission,
-  SubmissionStatus,
-} from "@/lib/autogpt-server-api/types";
-import { PaginationControls } from "../../ui/pagination-controls";
-import { getAdminListingsWithVersions } from "@/app/(platform)/admin/marketplace/actions";
-import { ExpandableRow } from "./expandable-row";
-import { SearchAndFilterAdminMarketplace } from "./search-filter-form";
+import { SubmissionStatus } from "@/lib/autogpt-server-api/types";
+import { ExpandableRow } from "../ExpandableRow/ExpandableRow";
+import { SearchAndFilterForm } from "../SearchAndFilterForm";
+import { getLatestVersionByNumber } from "./helpers";
 
-// Helper function to get the latest version by version number
-const getLatestVersionByNumber = (
-  versions: StoreSubmission[],
-): StoreSubmission | null => {
-  if (!versions || versions.length === 0) return null;
-  return versions.reduce(
-    (latest, current) =>
-      (current.version ?? 0) > (latest.version ?? 1) ? current : latest,
-    versions[0],
-  );
-};
+interface Props {
+  initialPage?: number;
+  initialStatus?: SubmissionStatus;
+  initialSearch?: string;
+}
 
 export async function AdminAgentsDataTable({
   initialPage = 1,
   initialStatus,
   initialSearch,
-}: {
-  initialPage?: number;
-  initialStatus?: SubmissionStatus;
-  initialSearch?: string;
-}) {
-  // Server-side data fetching
+}: Props) {
   const { listings, pagination } = await getAdminListingsWithVersions(
     initialStatus,
     initialSearch,
@@ -46,10 +33,7 @@ export async function AdminAgentsDataTable({
 
   return (
     <div className="space-y-4">
-      <SearchAndFilterAdminMarketplace
-        initialStatus={initialStatus}
-        initialSearch={initialSearch}
-      />
+      <SearchAndFilterForm initialSearch={initialSearch} />
 
       <div className="rounded-md border">
         <Table>

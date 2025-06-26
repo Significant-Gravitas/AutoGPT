@@ -1,46 +1,32 @@
 "use client";
 
-import { useState } from "react";
-import {
-  TableRow,
-  TableCell,
-  Table,
-  TableHeader,
-  TableHead,
-  TableBody,
-} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ChevronDown, ChevronRight } from "lucide-react";
-import { formatDistanceToNow } from "date-fns";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   type StoreListingWithVersions,
   type StoreSubmission,
   SubmissionStatus,
 } from "@/lib/autogpt-server-api/types";
-import { ApproveRejectButtons } from "./approve-reject-buttons";
-import { DownloadAgentAdminButton } from "./download-agent-button";
+import { formatDistanceToNow } from "date-fns";
+import { ChevronDown, ChevronRight } from "lucide-react";
+import { useState } from "react";
+import { ApproveRejectButtons } from "../ApproveRejectButtons";
+import { DownloadAgentAdminButton } from "../DownloadAgentAdminButton";
+import { getStatusBadge } from "./helpers";
 
-// Moved the getStatusBadge function into the client component
-const getStatusBadge = (status: SubmissionStatus) => {
-  switch (status) {
-    case SubmissionStatus.PENDING:
-      return <Badge className="bg-amber-500">Pending</Badge>;
-    case SubmissionStatus.APPROVED:
-      return <Badge className="bg-green-500">Approved</Badge>;
-    case SubmissionStatus.REJECTED:
-      return <Badge className="bg-red-500">Rejected</Badge>;
-    default:
-      return <Badge className="bg-gray-500">Draft</Badge>;
-  }
-};
-
-export function ExpandableRow({
-  listing,
-  latestVersion,
-}: {
+interface Props {
   listing: StoreListingWithVersions;
   latestVersion: StoreSubmission | null;
-}) {
+}
+
+export function ExpandableRow({ listing, latestVersion }: Props) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -66,7 +52,9 @@ export function ExpandableRow({
           {latestVersion?.sub_heading || "No description"}
         </TableCell>
         <TableCell onClick={() => setExpanded(!expanded)}>
-          {latestVersion?.status && getStatusBadge(latestVersion.status)}
+          {latestVersion?.status
+            ? getStatusBadge(latestVersion.status)
+            : "Unknown"}
         </TableCell>
         <TableCell onClick={() => setExpanded(!expanded)}>
           {latestVersion?.date_submitted

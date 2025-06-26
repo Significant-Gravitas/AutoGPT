@@ -1,30 +1,30 @@
 "use client";
 
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { CheckCircle, XCircle } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import type { StoreSubmission } from "@/lib/autogpt-server-api/types";
-import { useRouter } from "next/navigation";
 import {
   approveAgent,
   rejectAgent,
 } from "@/app/(platform)/admin/marketplace/actions";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import type { StoreSubmission } from "@/lib/autogpt-server-api/types";
+import { CheckCircle, XCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
-export function ApproveRejectButtons({
-  version,
-}: {
+interface Props {
   version: StoreSubmission;
-}) {
+}
+
+export function ApproveRejectButtons({ version }: Props) {
   const router = useRouter();
   const [isApproveDialogOpen, setIsApproveDialogOpen] = useState(false);
   const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
