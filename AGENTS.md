@@ -23,8 +23,22 @@ See `docs/content/platform/getting-started.md` for setup instructions.
 
 Always run the relevant linters and tests before committing.
 Use conventional commit messages for all commits (e.g. `feat(backend): add API`).
-Types: - feat - fix - refactor - ci - dx (developer experience)
-Scopes: - platform - platform/library - platform/marketplace - backend - backend/executor - frontend - frontend/library - frontend/marketplace - blocks
+  Types:
+    - feat
+    - fix
+    - refactor
+    - ci
+    - dx (developer experience)
+  Scopes:
+    - platform
+      - platform/library
+      - platform/marketplace
+      - backend
+        - backend/executor
+      - frontend
+        - frontend/library
+        - frontend/marketplace
+      - blocks
 
 ## Pull requests
 
