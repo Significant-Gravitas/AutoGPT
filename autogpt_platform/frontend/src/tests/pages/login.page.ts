@@ -4,7 +4,10 @@ export class LoginPage {
   constructor(private page: Page) {}
 
   async login(email: string, password: string) {
-    console.log("Attempting login with:", { email, password }); // Debug log
+    console.log(`ℹ️ Attempting login on ${this.page.url()} with`, {
+      email,
+      password,
+    });
 
     // Fill email
     const emailInput = this.page.getByPlaceholder("m@example.com");
@@ -33,23 +36,35 @@ export class LoginPage {
     });
     await loginButton.waitFor({ state: "visible" });
 
-    // Start waiting for navigation before clicking
-    const navigationPromise = Promise.race([
-      this.page.waitForURL("/", { timeout: 10_000 }), // Wait for home page
-      this.page.waitForURL("/marketplace", { timeout: 10_000 }), // Wait for home page
-      this.page.waitForURL("/onboarding/**", { timeout: 10_000 }), // Wait for onboarding page
-    ]);
+    // Attach navigation logger for debug purposes
+    this.page.on("load", (page) => console.log(`ℹ️ Now at URL: ${page.url()}`));
 
-    console.log("About to click login button"); // Debug log
+    // Start waiting for navigation before clicking
+    const leaveLoginPage = this.page
+      .waitForURL(
+        (url) => /^\/(marketplace|onboarding(\/.*)?)?$/.test(url.pathname),
+        { timeout: 10_000 },
+      )
+      .catch((reason) => {
+        console.error(
+          `🚨 Navigation away from /login timed out (current URL: ${this.page.url()}):`,
+          reason,
+        );
+        throw reason;
+      });
+
+    console.log(`🖱️ Clicking login button...`);
     await loginButton.click();
 
-    console.log("Waiting for navigation"); // Debug log
-    await navigationPromise;
+    console.log("⏳ Waiting for navigation away from /login ...");
+    await leaveLoginPage;
+    console.log(`⌛ Post-login redirected to ${this.page.url()}`);
 
-    await this.page.goto("/marketplace");
-
-    console.log("Navigation complete, waiting for network idle"); // Debug log
+    await new Promise((resolve) => setTimeout(resolve, 200)); // allow time for client-side redirect
     await this.page.waitForLoadState("load", { timeout: 10_000 });
-    console.log("Login process complete"); // Debug log
+
+    console.log("➡️ Navigating to /marketplace ...");
+    await this.page.goto("/marketplace", { timeout: 10_000 });
+    console.log("✅ Login process complete");
   }
 }

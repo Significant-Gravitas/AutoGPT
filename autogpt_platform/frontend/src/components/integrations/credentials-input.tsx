@@ -56,6 +56,7 @@ export const providerIcons: Record<
   CredentialsProviderName,
   React.FC<{ className?: string }>
 > = {
+  aiml_api: fallbackIcon,
   anthropic: fallbackIcon,
   apollo: fallbackIcon,
   e2b: fallbackIcon,
@@ -113,12 +114,14 @@ export const CredentialsInput: FC<{
   selectedCredentials?: CredentialsMetaInput;
   onSelectCredentials: (newValue?: CredentialsMetaInput) => void;
   siblingInputs?: Record<string, any>;
+  hideIfSingleCredentialAvailable?: boolean;
 }> = ({
   schema,
   className,
   selectedCredentials,
   onSelectCredentials,
   siblingInputs,
+  hideIfSingleCredentialAvailable = true,
 }) => {
   const [isAPICredentialsModalOpen, setAPICredentialsModalOpen] =
     useState(false);
@@ -161,7 +164,11 @@ export const CredentialsInput: FC<{
     }
   }, [singleCredential, selectedCredentials, onSelectCredentials]);
 
-  if (!credentials || credentials.isLoading || singleCredential) {
+  if (
+    !credentials ||
+    credentials.isLoading ||
+    (singleCredential && hideIfSingleCredentialAvailable)
+  ) {
     return null;
   }
 

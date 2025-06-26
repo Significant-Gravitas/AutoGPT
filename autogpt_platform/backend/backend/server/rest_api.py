@@ -1,10 +1,12 @@
 import contextlib
 import logging
+from enum import Enum
 from typing import Any, Optional
 
 import autogpt_libs.auth.models
 import fastapi
 import fastapi.responses
+import pydantic
 import starlette.middleware.cors
 import uvicorn
 from autogpt_libs.feature_flag.client import (
@@ -12,6 +14,8 @@ from autogpt_libs.feature_flag.client import (
     shutdown_launchdarkly,
 )
 from autogpt_libs.logging.utils import generate_uvicorn_config
+from fastapi.exceptions import RequestValidationError
+from fastapi.routing import APIRoute
 
 import backend.data.block
 import backend.data.db
@@ -34,6 +38,7 @@ from backend.blocks.llm import LlmModel
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
 from backend.server.external.api import external_app
+from backend.server.middleware.security import SecurityHeadersMiddleware
 
 settings = backend.util.settings.Settings()
 logger = logging.getLogger(__name__)
@@ -65,6 +70,33 @@ async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.db.disconnect()
 
 
+def custom_generate_unique_id(route: APIRoute):
+    """Generate clean operation IDs for OpenAPI spec following the format:
+    {method}{tag}{summary}
+    """
+    if not route.tags or not route.methods:
+        return f"{route.name}"
+
+    method = list(route.methods)[0].lower()
+    first_tag = route.tags[0]
+    if isinstance(first_tag, Enum):
+        tag_str = first_tag.name
+    else:
+        tag_str = str(first_tag)
+
+    tag = "".join(word.capitalize() for word in tag_str.split("_"))  # v1/v2
+
+    summary = (
+        route.summary if route.summary else route.name
+    )  # need to be unique, a different version could have the same summary
+    summary = "".join(word.capitalize() for word in str(summary).split("_"))
+
+    if tag:
+        return f"{method}{tag}{summary}"
+    else:
+        return f"{method}{summary}"
+
+
 docs_url = (
     "/docs"
     if settings.config.app_env == backend.util.settings.AppEnvironment.LOCAL
@@ -80,17 +112,32 @@ app = fastapi.FastAPI(
     version="0.1",
     lifespan=lifespan_context,
     docs_url=docs_url,
+    generate_unique_id_function=custom_generate_unique_id,
 )
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
     def handler(request: fastapi.Request, exc: Exception):
         if log_error:
-            logger.exception(f"{request.method} {request.url.path} failed: {exc}")
+            logger.exception(
+                "%s %s failed. Investigate and resolve the underlying issue: %s",
+                request.method,
+                request.url.path,
+                exc,
+            )
+
+        hint = (
+            "Adjust the request and retry."
+            if status_code < 500
+            else "Check server logs and dependent services."
+        )
         return fastapi.responses.JSONResponse(
             content={
-                "message": f"{request.method} {request.url.path} failed",
+                "message": f"Failed to process {request.method} {request.url.path}",
                 "detail": str(exc),
+                "hint": hint,
             },
             status_code=status_code,
         )
@@ -98,6 +145,32 @@ def handle_internal_http_error(status_code: int = 500, log_error: bool = True):
     return handler
 
 
+async def validation_error_handler(
+    request: fastapi.Request, exc: Exception
+) -> fastapi.responses.JSONResponse:
+    logger.error(
+        "Validation failed for %s %s: %s. Fix the request payload and try again.",
+        request.method,
+        request.url.path,
+        exc,
+    )
+    errors: list | str
+    if hasattr(exc, "errors"):
+        errors = exc.errors()  # type: ignore[call-arg]
+    else:
+        errors = str(exc)
+    return fastapi.responses.JSONResponse(
+        status_code=422,
+        content={
+            "message": f"Invalid data for {request.method} {request.url.path}",
+            "detail": errors,
+            "hint": "Ensure the request matches the API schema.",
+        },
+    )
+
+
+app.add_exception_handler(RequestValidationError, validation_error_handler)
+app.add_exception_handler(pydantic.ValidationError, validation_error_handler)
 app.add_exception_handler(ValueError, handle_internal_http_error(400))
 app.add_exception_handler(Exception, handle_internal_http_error(500))
 app.include_router(backend.server.routers.v1.v1_router, tags=["v1"], prefix="/api")
@@ -118,10 +191,12 @@ app.include_router(
     backend.server.v2.library.routes.router, tags=["v2"], prefix="/api/library"
 )
 app.include_router(
-    backend.server.v2.otto.routes.router, tags=["v2"], prefix="/api/otto"
+    backend.server.v2.otto.routes.router, tags=["v2", "otto"], prefix="/api/otto"
 )
 app.include_router(
-    backend.server.v2.turnstile.routes.router, tags=["v2"], prefix="/api/turnstile"
+    backend.server.v2.turnstile.routes.router,
+    tags=["v2", "turnstile"],
+    prefix="/api/turnstile",
 )
 
 app.include_router(
@@ -204,6 +279,7 @@ class AgentServer(backend.util.service.AppProcess):
 
     @staticmethod
     async def test_delete_graph(graph_id: str, user_id: str):
+        """Used for clean-up after a test run"""
         await backend.server.v2.library.db.delete_library_agent_by_graph_id(
             graph_id=graph_id, user_id=user_id
         )
@@ -211,7 +287,7 @@ class AgentServer(backend.util.service.AppProcess):
 
     @staticmethod
     async def test_get_presets(user_id: str, page: int = 1, page_size: int = 10):
-        return await backend.server.v2.library.routes.presets.get_presets(
+        return await backend.server.v2.library.routes.presets.list_presets(
             user_id=user_id, page=page, page_size=page_size
         )
 
@@ -223,7 +299,7 @@ class AgentServer(backend.util.service.AppProcess):
 
     @staticmethod
     async def test_create_preset(
-        preset: backend.server.v2.library.model.CreateLibraryAgentPresetRequest,
+        preset: backend.server.v2.library.model.LibraryAgentPresetCreatable,
         user_id: str,
     ):
         return await backend.server.v2.library.routes.presets.create_preset(
@@ -233,7 +309,7 @@ class AgentServer(backend.util.service.AppProcess):
     @staticmethod
     async def test_update_preset(
         preset_id: str,
-        preset: backend.server.v2.library.model.CreateLibraryAgentPresetRequest,
+        preset: backend.server.v2.library.model.LibraryAgentPresetUpdatable,
         user_id: str,
     ):
         return await backend.server.v2.library.routes.presets.update_preset(
@@ -248,18 +324,14 @@ class AgentServer(backend.util.service.AppProcess):
 
     @staticmethod
     async def test_execute_preset(
-        graph_id: str,
-        graph_version: int,
         preset_id: str,
         user_id: str,
-        node_input: Optional[dict[str, Any]] = None,
+        inputs: Optional[dict[str, Any]] = None,
     ):
         return await backend.server.v2.library.routes.presets.execute_preset(
-            graph_id=graph_id,
-            graph_version=graph_version,
             preset_id=preset_id,
-            node_input=node_input or {},
             user_id=user_id,
+            inputs=inputs or {},
         )
 
     @staticmethod
@@ -280,14 +352,14 @@ class AgentServer(backend.util.service.AppProcess):
         )
 
     @staticmethod
-    def test_create_credentials(
+    async def test_create_credentials(
         user_id: str,
         provider: ProviderName,
         credentials: Credentials,
     ) -> Credentials:
         from backend.server.integrations.router import create_credentials
 
-        return create_credentials(
+        return await create_credentials(
             user_id=user_id, provider=provider, credentials=credentials
         )
 

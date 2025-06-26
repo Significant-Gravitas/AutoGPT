@@ -85,7 +85,7 @@ class TwitterRetweetBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -162,7 +162,7 @@ class TwitterRemoveRetweetBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -328,7 +328,7 @@ class TwitterGetRetweetersBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,

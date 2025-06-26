@@ -7,8 +7,9 @@ import { Button } from "./Button";
 import Wallet from "./Wallet";
 import { ProfileDetails } from "@/lib/autogpt-server-api/types";
 import { NavbarLink } from "./NavbarLink";
-import getServerUser from "@/lib/supabase/getServerUser";
+
 import BackendAPI from "@/lib/autogpt-server-api";
+import { getServerUser } from "@/lib/supabase/server/getServerUser";
 
 // Disable theme toggle for now
 // import { ThemeToggle } from "./ThemeToggle";

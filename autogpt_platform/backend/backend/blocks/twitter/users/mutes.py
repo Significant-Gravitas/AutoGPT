@@ -82,7 +82,7 @@ class TwitterUnmuteUserBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -232,7 +232,7 @@ class TwitterGetMutedUsersBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -318,7 +318,7 @@ class TwitterMuteUserBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,

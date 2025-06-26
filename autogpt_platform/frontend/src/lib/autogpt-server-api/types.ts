@@ -149,6 +149,7 @@ export type Credentials =
 
 // --8<-- [start:BlockIOCredentialsSubSchema]
 export const PROVIDER_NAMES = {
+  AIML_API: "aiml_api",
   ANTHROPIC: "anthropic",
   APOLLO: "apollo",
   D_ID: "d_id",
@@ -276,11 +277,12 @@ export type GraphExecutionMeta = {
   user_id: UserID;
   graph_id: GraphID;
   graph_version: number;
-  preset_id?: string;
+  preset_id?: LibraryAgentPresetID;
   status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
   started_at: Date;
   ended_at: Date;
   stats?: {
+    error?: string;
     cost: number;
     duration: number;
     duration_cpu_only: number;
@@ -399,11 +401,29 @@ export type LibraryAgent = {
   updated_at: Date;
   name: string;
   description: string;
-  input_schema: BlockIOObjectSubSchema;
+  input_schema: GraphIOSchema;
+  credentials_input_schema: {
+    type: "object";
+    properties: { [key: string]: BlockIOCredentialsSubSchema };
+    required: (keyof LibraryAgent["credentials_input_schema"]["properties"])[];
+  };
   new_output: boolean;
   can_access_graph: boolean;
   is_latest_version: boolean;
-};
+} & (
+  | {
+      has_external_trigger: true;
+      trigger_setup_info: {
+        provider: CredentialsProviderName;
+        config_schema: BlockIORootSchema;
+        credentials_input_name?: string;
+      };
+    }
+  | {
+      has_external_trigger: false;
+      trigger_setup_info?: null;
+    }
+);
 
 export type LibraryAgentID = Brand<string, "LibraryAgentID">;
 
@@ -414,7 +434,7 @@ export enum AgentStatus {
   ERROR = "ERROR",
 }
 
-export interface LibraryAgentResponse {
+export type LibraryAgentResponse = {
   agents: LibraryAgent[];
   pagination: {
     current_page: number;
@@ -422,36 +442,49 @@ export interface LibraryAgentResponse {
     total_items: number;
     total_pages: number;
   };
-}
+};
 
-export interface LibraryAgentPreset {
-  id: string;
+export type LibraryAgentPreset = {
+  id: LibraryAgentPresetID;
   updated_at: Date;
   graph_id: GraphID;
   graph_version: number;
+  inputs: { [key: string]: any };
+  credentials: Record<string, CredentialsMetaInput>;
   name: string;
   description: string;
   is_active: boolean;
-  inputs: { [key: string]: any };
-}
+  webhook_id?: string;
+};
 
-export interface LibraryAgentPresetResponse {
+export type LibraryAgentPresetID = Brand<string, "LibraryAgentPresetID">;
+
+export type LibraryAgentPresetResponse = {
   presets: LibraryAgentPreset[];
   pagination: {
     total: number;
     page: number;
     size: number;
   };
-}
+};
 
-export interface CreateLibraryAgentPresetRequest {
-  name: string;
-  description: string;
-  inputs: { [key: string]: any };
-  graph_id: GraphID;
-  graph_version: number;
-  is_active: boolean;
-}
+export type LibraryAgentPresetCreatable = Omit<
+  LibraryAgentPreset,
+  "id" | "updated_at" | "is_active"
+> & {
+  is_active?: boolean;
+};
+
+export type LibraryAgentPresetCreatableFromGraphExecution = Omit<
+  LibraryAgentPresetCreatable,
+  "graph_id" | "graph_version" | "inputs"
+> & {
+  graph_execution_id: GraphExecutionID;
+};
+
+export type LibraryAgentPresetUpdatable = Partial<
+  Omit<LibraryAgentPresetCreatable, "graph_id" | "graph_version">
+>;
 
 export enum LibraryAgentSortEnum {
   CREATED_AT = "createdAt",
@@ -617,6 +650,7 @@ export type StoreAgent = {
   description: string;
   runs: number;
   rating: number;
+  updated_at: string;
 };
 
 export type StoreAgentsResponse = {

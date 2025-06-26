@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import * as Sentry from "@sentry/nextjs";
-import getServerSupabase from "@/lib/supabase/getServerSupabase";
+import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { signupFormSchema } from "@/types/auth";
 import BackendAPI from "@/lib/autogpt-server-api";
 import { verifyTurnstileToken } from "@/lib/turnstile";
@@ -17,7 +17,7 @@ export async function signup(
     "signup",
     {},
     async () => {
-      const supabase = getServerSupabase();
+      const supabase = await getServerSupabase();
 
       if (!supabase) {
         redirect("/error");

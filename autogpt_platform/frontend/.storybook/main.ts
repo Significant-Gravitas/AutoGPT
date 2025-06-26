@@ -1,21 +1,26 @@
 import type { StorybookConfig } from "@storybook/nextjs";
 
 const config: StorybookConfig = {
-  stories: ["../src/**/*.mdx", "../src/**/*.stories.@(js|jsx|mjs|ts|tsx)"],
+  stories: [
+    "../src/components/overview.stories.@(js|jsx|mjs|ts|tsx)",
+    "../src/components/tokens/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+    "../src/components/atoms/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+    "../src/components/agptui/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+  ],
   addons: [
     "@storybook/addon-a11y",
     "@storybook/addon-onboarding",
     "@storybook/addon-links",
-    "@storybook/addon-essentials",
-    "@storybook/addon-interactions",
+    "@storybook/addon-docs",
   ],
   features: {
     experimentalRSC: true,
   },
   framework: {
     name: "@storybook/nextjs",
-    options: {},
+    options: { builder: { useSWC: true } },
   },
   staticDirs: ["../public"],
 };
+
 export default config;

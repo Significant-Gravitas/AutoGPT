@@ -1,8 +1,6 @@
 import uuid
 from typing import List
 
-import requests as baserequests
-
 from backend.data.block import BlockOutput, BlockSchema
 from backend.data.model import APIKeyCredentials, SchemaField
 from backend.util import settings
@@ -76,17 +74,17 @@ class Slant3DCreateOrderBlock(Slant3DBlockBase):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            order_data = self._format_order_data(
+            order_data = await self._format_order_data(
                 input_data.customer,
                 input_data.order_number,
                 input_data.items,
                 credentials.api_key.get_secret_value(),
             )
-            result = self._make_request(
+            result = await self._make_request(
                 "POST", "order", credentials.api_key.get_secret_value(), json=order_data
             )
             yield "order_id", result["orderId"]
@@ -162,28 +160,24 @@ class Slant3DEstimateOrderBlock(Slant3DBlockBase):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        order_data = self._format_order_data(
+        order_data = await self._format_order_data(
             input_data.customer,
             input_data.order_number,
             input_data.items,
             credentials.api_key.get_secret_value(),
         )
-        try:
-            result = self._make_request(
-                "POST",
-                "order/estimate",
-                credentials.api_key.get_secret_value(),
-                json=order_data,
-            )
-            yield "total_price", result["totalPrice"]
-            yield "shipping_cost", result["shippingCost"]
-            yield "printing_cost", result["printingCost"]
-        except baserequests.HTTPError as e:
-            yield "error", str(f"Error estimating order: {e} {e.response.text}")
-            raise
+        result = await self._make_request(
+            "POST",
+            "order/estimate",
+            credentials.api_key.get_secret_value(),
+            json=order_data,
+        )
+        yield "total_price", result["totalPrice"]
+        yield "shipping_cost", result["shippingCost"]
+        yield "printing_cost", result["printingCost"]
 
 
 class Slant3DEstimateShippingBlock(Slant3DBlockBase):
@@ -246,17 +240,17 @@ class Slant3DEstimateShippingBlock(Slant3DBlockBase):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            order_data = self._format_order_data(
+            order_data = await self._format_order_data(
                 input_data.customer,
                 input_data.order_number,
                 input_data.items,
                 credentials.api_key.get_secret_value(),
             )
-            result = self._make_request(
+            result = await self._make_request(
                 "POST",
                 "order/estimateShipping",
                 credentials.api_key.get_secret_value(),
@@ -312,11 +306,11 @@ class Slant3DGetOrdersBlock(Slant3DBlockBase):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            result = self._make_request(
+            result = await self._make_request(
                 "GET", "order", credentials.api_key.get_secret_value()
             )
             yield "orders", [str(order["orderId"]) for order in result["ordersData"]]
@@ -359,11 +353,11 @@ class Slant3DTrackingBlock(Slant3DBlockBase):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            result = self._make_request(
+            result = await self._make_request(
                 "GET",
                 f"order/{input_data.order_id}/get-tracking",
                 credentials.api_key.get_secret_value(),
@@ -403,11 +397,11 @@ class Slant3DCancelOrderBlock(Slant3DBlockBase):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            result = self._make_request(
+            result = await self._make_request(
                 "DELETE",
                 f"order/{input_data.order_id}",
                 credentials.api_key.get_secret_value(),

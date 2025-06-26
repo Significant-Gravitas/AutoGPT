@@ -77,7 +77,6 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
   handleInputChange,
   errors,
   className,
-  displayName,
 }) => {
   object ||= ("default" in schema ? schema.default : null) ?? {};
   return (
@@ -126,12 +125,10 @@ const NodeDateTimeInput: FC<{
   hideTime?: boolean;
 }> = ({
   selfKey,
-  schema,
   value = "",
   error,
   handleInputChange,
   className,
-  displayName,
   hideDate = false,
   hideTime = false,
 }) => {
@@ -219,7 +216,6 @@ const NodeFileInput: FC<{
   displayName: string;
 }> = ({
   selfKey,
-  schema,
   value = "",
   error,
   handleInputChange,
@@ -229,7 +225,6 @@ const NodeFileInput: FC<{
   const handleFileChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
-      console.log(">>> file", file);
       if (!file) return;
 
       const reader = new FileReader();
@@ -280,7 +275,7 @@ const NodeFileInput: FC<{
               variant="ghost"
               className="text-red-500 hover:text-red-700"
               onClick={() => {
-                inputRef.current && (inputRef.current!.value = "");
+                if (inputRef.current) inputRef.current.value = "";
                 handleInputChange(selfKey, "");
               }}
             >
@@ -493,10 +488,11 @@ export const NodeGenericInputField: FC<{
           schema={propSchema as BlockIOKVSubSchema}
           entries={currentValue}
           errors={errors}
-          className={className}
-          displayName={displayName}
           connections={connections}
           handleInputChange={handleInputChange}
+          handleInputClick={handleInputClick}
+          className={className}
+          displayName={displayName}
         />
       );
 
@@ -732,6 +728,7 @@ const NodeKeyValueInput: FC<{
   errors: { [key: string]: string | undefined };
   connections: NodeObjectInputTreeProps["connections"];
   handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
+  handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
   className?: string;
   displayName?: string;
 }> = ({
@@ -741,6 +738,7 @@ const NodeKeyValueInput: FC<{
   schema,
   connections,
   handleInputChange,
+  handleInputClick,
   errors,
   className,
   displayName,
@@ -761,7 +759,7 @@ const NodeKeyValueInput: FC<{
   }, [entries, schema.default, connections, nodeId, selfKey]);
 
   const [keyValuePairs, setKeyValuePairs] = useState<
-    { key: string; value: string | number | null }[]
+    { key: string; value: any }[]
   >([]);
 
   useEffect(
@@ -778,18 +776,6 @@ const NodeKeyValueInput: FC<{
     );
   }
 
-  const isNumberType =
-    schema.additionalProperties &&
-    ["number", "integer"].includes(schema.additionalProperties.type);
-
-  function convertValueType(value: string): string | number | null {
-    if (isNumberType) {
-      const numValue = Number(value);
-      return !isNaN(numValue) ? numValue : null;
-    }
-    return value;
-  }
-
   function getEntryKey(key: string): string {
     return `${selfKey}_#_${key}`;
   }
@@ -798,6 +784,11 @@ const NodeKeyValueInput: FC<{
       (c) => c.targetHandle === getEntryKey(key) && c.target === nodeId,
     );
   }
+
+  const propSchema =
+    schema.additionalProperties && schema.additionalProperties.type
+      ? schema.additionalProperties
+      : ({ type: "string" } as BlockIOSimpleTypeSubSchema);
 
   return (
     <div
@@ -832,18 +823,24 @@ const NodeKeyValueInput: FC<{
                     )
                   }
                 />
-                <LocalValuedInput
-                  type={isNumberType ? "number" : "text"}
-                  placeholder="Value"
-                  value={value ?? ""}
-                  onChange={(e) =>
+                <NodeGenericInputField
+                  className="w-full"
+                  nodeId={nodeId}
+                  propKey={`${selfKey}_#_${key}`}
+                  propSchema={propSchema}
+                  currentValue={value}
+                  errors={errors}
+                  connections={connections}
+                  displayName={displayName || beautifyString(key)}
+                  handleInputChange={(_, newValue) =>
                     updateKeyValuePairs(
                       keyValuePairs.toSpliced(index, 1, {
                         key: key,
-                        value: convertValueType(e.target.value),
+                        value: newValue,
                       }),
                     )
                   }
+                  handleInputClick={handleInputClick}
                 />
                 <Button
                   variant="ghost"
@@ -882,13 +879,6 @@ const NodeKeyValueInput: FC<{
     </div>
   );
 };
-
-// Checking if schema is type of string
-function isStringSubSchema(
-  schema: BlockIOSimpleTypeSubSchema,
-): schema is BlockIOStringSubSchema {
-  return "type" in schema && schema.type === "string";
-}
 
 const NodeArrayInput: FC<{
   nodeId: string;
@@ -1228,15 +1218,7 @@ const NodeBooleanInput: FC<{
   handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
   className?: string;
   displayName: string;
-}> = ({
-  selfKey,
-  schema,
-  value,
-  error,
-  handleInputChange,
-  className,
-  displayName,
-}) => {
+}> = ({ selfKey, schema, value, error, handleInputChange, className }) => {
   value ||= schema.default ?? false;
   return (
     <div className={className}>

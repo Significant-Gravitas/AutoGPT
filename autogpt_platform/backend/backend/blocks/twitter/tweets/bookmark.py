@@ -85,7 +85,7 @@ class TwitterBookmarkTweetBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -262,7 +262,7 @@ class TwitterGetBookmarkedTweetsBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -362,7 +362,7 @@ class TwitterRemoveBookmarkTweetBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,

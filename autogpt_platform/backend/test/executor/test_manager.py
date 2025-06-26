@@ -357,7 +357,7 @@ async def test_execute_preset(server: SpinTestServer):
     test_graph = await create_graph(server, test_graph, test_user)
 
     # Create preset with initial values
-    preset = backend.server.v2.library.model.CreateLibraryAgentPresetRequest(
+    preset = backend.server.v2.library.model.LibraryAgentPresetCreatable(
         name="Test Preset With Clash",
         description="Test preset with clashing input values",
         graph_id=test_graph.id,
@@ -366,14 +366,13 @@ async def test_execute_preset(server: SpinTestServer):
             "dictionary": {"key1": "Hello", "key2": "World"},
             "selected_value": "key2",
         },
+        credentials={},
         is_active=True,
     )
     created_preset = await server.agent_server.test_create_preset(preset, test_user.id)
 
     # Execute preset with overriding values
     result = await server.agent_server.test_execute_preset(
-        graph_id=test_graph.id,
-        graph_version=test_graph.version,
         preset_id=created_preset.id,
         user_id=test_user.id,
     )
@@ -446,7 +445,7 @@ async def test_execute_preset_with_clash(server: SpinTestServer):
     test_graph = await create_graph(server, test_graph, test_user)
 
     # Create preset with initial values
-    preset = backend.server.v2.library.model.CreateLibraryAgentPresetRequest(
+    preset = backend.server.v2.library.model.LibraryAgentPresetCreatable(
         name="Test Preset With Clash",
         description="Test preset with clashing input values",
         graph_id=test_graph.id,
@@ -455,16 +454,15 @@ async def test_execute_preset_with_clash(server: SpinTestServer):
             "dictionary": {"key1": "Hello", "key2": "World"},
             "selected_value": "key2",
         },
+        credentials={},
         is_active=True,
     )
     created_preset = await server.agent_server.test_create_preset(preset, test_user.id)
 
     # Execute preset with overriding values
     result = await server.agent_server.test_execute_preset(
-        graph_id=test_graph.id,
-        graph_version=test_graph.version,
         preset_id=created_preset.id,
-        node_input={"selected_value": "key1"},
+        inputs={"selected_value": "key1"},
         user_id=test_user.id,
     )
 

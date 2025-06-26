@@ -1,9 +1,7 @@
+import asyncio
 import logging
-import time
 from enum import Enum
 from typing import Any
-
-import httpx
 
 from backend.blocks.fal._auth import (
     TEST_CREDENTIALS,
@@ -14,6 +12,7 @@ from backend.blocks.fal._auth import (
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
+from backend.util.request import ClientResponseError, Requests
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +20,7 @@ logger = logging.getLogger(__name__)
 class FalModel(str, Enum):
     MOCHI = "fal-ai/mochi-v1"
     LUMA = "fal-ai/luma-dream-machine"
+    VEO3 = "fal-ai/veo3"
 
 
 class AIVideoGeneratorBlock(Block):
@@ -65,35 +65,37 @@ class AIVideoGeneratorBlock(Block):
         )
 
     def _get_headers(self, api_key: str) -> dict[str, str]:
-        """Get headers for FAL API requests."""
+        """Get headers for FAL API Requests."""
         return {
             "Authorization": f"Key {api_key}",
             "Content-Type": "application/json",
         }
 
-    def _submit_request(
+    async def _submit_request(
         self, url: str, headers: dict[str, str], data: dict[str, Any]
     ) -> dict[str, Any]:
         """Submit a request to the FAL API."""
         try:
-            response = httpx.post(url, headers=headers, json=data)
-            response.raise_for_status()
+            response = await Requests().post(url, headers=headers, json=data)
             return response.json()
-        except httpx.HTTPError as e:
+        except ClientResponseError as e:
             logger.error(f"FAL API request failed: {str(e)}")
             raise RuntimeError(f"Failed to submit request: {str(e)}")
 
-    def _poll_status(self, status_url: str, headers: dict[str, str]) -> dict[str, Any]:
+    async def _poll_status(
+        self, status_url: str, headers: dict[str, str]
+    ) -> dict[str, Any]:
         """Poll the status endpoint until completion or failure."""
         try:
-            response = httpx.get(status_url, headers=headers)
-            response.raise_for_status()
+            response = await Requests().get(status_url, headers=headers)
             return response.json()
-        except httpx.HTTPError as e:
+        except ClientResponseError as e:
             logger.error(f"Failed to get status: {str(e)}")
             raise RuntimeError(f"Failed to get status: {str(e)}")
 
-    def generate_video(self, input_data: Input, credentials: FalCredentials) -> str:
+    async def generate_video(
+        self, input_data: Input, credentials: FalCredentials
+    ) -> str:
         """Generate video using the specified FAL model."""
         base_url = "https://queue.fal.run"
         api_key = credentials.api_key.get_secret_value()
@@ -102,13 +104,16 @@ class AIVideoGeneratorBlock(Block):
         # Submit generation request
         submit_url = f"{base_url}/{input_data.model.value}"
         submit_data = {"prompt": input_data.prompt}
+        if input_data.model == FalModel.VEO3:
+            submit_data["generate_audio"] = True  # type: ignore
 
         seen_logs = set()
 
         try:
             # Submit request to queue
-            submit_response = httpx.post(submit_url, headers=headers, json=submit_data)
-            submit_response.raise_for_status()
+            submit_response = await Requests().post(
+                submit_url, headers=headers, json=submit_data
+            )
             request_data = submit_response.json()
 
             # Get request_id and urls from initial response
@@ -119,14 +124,23 @@ class AIVideoGeneratorBlock(Block):
             if not all([request_id, status_url, result_url]):
                 raise ValueError("Missing required data in submission response")
 
+            # Ensure status_url is a string
+            if not isinstance(status_url, str):
+                raise ValueError("Invalid status URL format")
+
+            # Ensure result_url is a string
+            if not isinstance(result_url, str):
+                raise ValueError("Invalid result URL format")
+
             # Poll for status with exponential backoff
             max_attempts = 30
             attempt = 0
             base_wait_time = 5
 
             while attempt < max_attempts:
-                status_response = httpx.get(f"{status_url}?logs=1", headers=headers)
-                status_response.raise_for_status()
+                status_response = await Requests().get(
+                    f"{status_url}?logs=1", headers=headers
+                )
                 status_data = status_response.json()
 
                 # Process new logs only
@@ -149,8 +163,7 @@ class AIVideoGeneratorBlock(Block):
                 status = status_data.get("status")
                 if status == "COMPLETED":
                     # Get the final result
-                    result_response = httpx.get(result_url, headers=headers)
-                    result_response.raise_for_status()
+                    result_response = await Requests().get(result_url, headers=headers)
                     result_data = result_response.json()
 
                     if "video" not in result_data or not isinstance(
@@ -159,8 +172,8 @@ class AIVideoGeneratorBlock(Block):
                         raise ValueError("Invalid response format - missing video data")
 
                     video_url = result_data["video"].get("url")
-                    if not video_url:
-                        raise ValueError("No video URL in response")
+                    if not video_url or not isinstance(video_url, str):
+                        raise ValueError("No valid video URL in response")
 
                     return video_url
 
@@ -180,19 +193,19 @@ class AIVideoGeneratorBlock(Block):
                     logger.info(f"[FAL Generation] Status: Unknown status: {status}")
 
                 wait_time = min(base_wait_time * (2**attempt), 60)  # Cap at 60 seconds
-                time.sleep(wait_time)
+                await asyncio.sleep(wait_time)
                 attempt += 1
 
             raise RuntimeError("Maximum polling attempts reached")
 
-        except httpx.HTTPError as e:
+        except ClientResponseError as e:
             raise RuntimeError(f"API request failed: {str(e)}")
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: FalCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            video_url = self.generate_video(input_data, credentials)
+            video_url = await self.generate_video(input_data, credentials)
             yield "video_url", video_url
         except Exception as e:
             error_message = str(e)

@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Literal
 
-from e2b_code_interpreter import Sandbox
+from e2b_code_interpreter import AsyncSandbox
 from pydantic import SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -123,7 +123,7 @@ class CodeExecutionBlock(Block):
             },
         )
 
-    def execute_code(
+    async def execute_code(
         self,
         code: str,
         language: ProgrammingLanguage,
@@ -135,21 +135,21 @@ class CodeExecutionBlock(Block):
         try:
             sandbox = None
             if template_id:
-                sandbox = Sandbox(
+                sandbox = await AsyncSandbox.create(
                     template=template_id, api_key=api_key, timeout=timeout
                 )
             else:
-                sandbox = Sandbox(api_key=api_key, timeout=timeout)
+                sandbox = await AsyncSandbox.create(api_key=api_key, timeout=timeout)
 
             if not sandbox:
                 raise Exception("Sandbox not created")
 
             # Running setup commands
             for cmd in setup_commands:
-                sandbox.commands.run(cmd)
+                await sandbox.commands.run(cmd)
 
             # Executing the code
-            execution = sandbox.run_code(
+            execution = await sandbox.run_code(
                 code,
                 language=language.value,
                 on_error=lambda e: sandbox.kill(),  # Kill the sandbox if there is an error
@@ -167,11 +167,11 @@ class CodeExecutionBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            response, stdout_logs, stderr_logs = self.execute_code(
+            response, stdout_logs, stderr_logs = await self.execute_code(
                 input_data.code,
                 input_data.language,
                 input_data.setup_commands,
@@ -278,11 +278,11 @@ class InstantiationBlock(Block):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            sandbox_id, response, stdout_logs, stderr_logs = self.execute_code(
+            sandbox_id, response, stdout_logs, stderr_logs = await self.execute_code(
                 input_data.setup_code,
                 input_data.language,
                 input_data.setup_commands,
@@ -303,7 +303,7 @@ class InstantiationBlock(Block):
         except Exception as e:
             yield "error", str(e)
 
-    def execute_code(
+    async def execute_code(
         self,
         code: str,
         language: ProgrammingLanguage,
@@ -315,21 +315,21 @@ class InstantiationBlock(Block):
         try:
             sandbox = None
             if template_id:
-                sandbox = Sandbox(
+                sandbox = await AsyncSandbox.create(
                     template=template_id, api_key=api_key, timeout=timeout
                 )
             else:
-                sandbox = Sandbox(api_key=api_key, timeout=timeout)
+                sandbox = await AsyncSandbox.create(api_key=api_key, timeout=timeout)
 
             if not sandbox:
                 raise Exception("Sandbox not created")
 
             # Running setup commands
             for cmd in setup_commands:
-                sandbox.commands.run(cmd)
+                await sandbox.commands.run(cmd)
 
             # Executing the code
-            execution = sandbox.run_code(
+            execution = await sandbox.run_code(
                 code,
                 language=language.value,
                 on_error=lambda e: sandbox.kill(),  # Kill the sandbox if there is an error
@@ -409,7 +409,7 @@ class StepExecutionBlock(Block):
             },
         )
 
-    def execute_step_code(
+    async def execute_step_code(
         self,
         sandbox_id: str,
         code: str,
@@ -417,12 +417,12 @@ class StepExecutionBlock(Block):
         api_key: str,
     ):
         try:
-            sandbox = Sandbox.connect(sandbox_id=sandbox_id, api_key=api_key)
+            sandbox = await AsyncSandbox.connect(sandbox_id=sandbox_id, api_key=api_key)
             if not sandbox:
                 raise Exception("Sandbox not found")
 
             # Executing the code
-            execution = sandbox.run_code(code, language=language.value)
+            execution = await sandbox.run_code(code, language=language.value)
 
             if execution.error:
                 raise Exception(execution.error)
@@ -436,11 +436,11 @@ class StepExecutionBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
-            response, stdout_logs, stderr_logs = self.execute_step_code(
+            response, stdout_logs, stderr_logs = await self.execute_step_code(
                 input_data.sandbox_id,
                 input_data.step_code,
                 input_data.language,

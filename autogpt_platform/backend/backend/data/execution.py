@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from multiprocessing import Manager
+from queue import Empty
 from typing import (
     Annotated,
     Any,
@@ -31,7 +32,7 @@ from prisma.types import (
     AgentNodeExecutionUpdateInput,
     AgentNodeExecutionWhereInput,
 )
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, JsonValue
 from pydantic.fields import Field
 
 from backend.server.v2.store.exceptions import DatabaseError
@@ -49,10 +50,11 @@ from .block import (
 from .db import BaseDbModel
 from .includes import (
     EXECUTION_RESULT_INCLUDE,
+    EXECUTION_RESULT_ORDER,
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     graph_execution_include,
 )
-from .model import CredentialsMetaInput, GraphExecutionStats, NodeExecutionStats
+from .model import GraphExecutionStats, NodeExecutionStats
 from .queue import AsyncRedisEventBus, RedisEventBus
 
 T = TypeVar("T")
@@ -269,7 +271,7 @@ class GraphExecutionWithNodes(GraphExecution):
             graph_id=self.graph_id,
             graph_version=self.graph_version or 0,
             graph_exec_id=self.id,
-            node_credentials_input_map={},  # FIXME
+            nodes_input_masks={},  # FIXME: store credentials on AgentGraphExecution
         )
 
 
@@ -554,18 +556,18 @@ async def upsert_execution_input(
 async def upsert_execution_output(
     node_exec_id: str,
     output_name: str,
-    output_data: Any,
+    output_data: Any | None,
 ) -> None:
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Output.
     """
-    await AgentNodeExecutionInputOutput.prisma().create(
-        data=AgentNodeExecutionInputOutputCreateInput(
-            name=output_name,
-            data=Json(output_data),
-            referencedByOutputExecId=node_exec_id,
-        )
+    data = AgentNodeExecutionInputOutputCreateInput(
+        name=output_name,
+        referencedByOutputExecId=node_exec_id,
     )
+    if output_data is not None:
+        data["data"] = Json(output_data)
+    await AgentNodeExecutionInputOutput.prisma().create(data=data)
 
 
 async def update_graph_execution_start_time(
@@ -621,14 +623,25 @@ async def update_graph_execution_stats(
     return GraphExecution.from_db(graph_exec)
 
 
-async def update_node_execution_stats(node_exec_id: str, stats: NodeExecutionStats):
+async def update_node_execution_stats(
+    node_exec_id: str, stats: NodeExecutionStats
+) -> NodeExecutionResult:
     data = stats.model_dump()
     if isinstance(data["error"], Exception):
         data["error"] = str(data["error"])
-    await AgentNodeExecution.prisma().update(
+
+    res = await AgentNodeExecution.prisma().update(
         where={"id": node_exec_id},
-        data={"stats": Json(data)},
+        data={
+            "stats": Json(data),
+            "endedTime": datetime.now(tz=timezone.utc),
+        },
+        include=EXECUTION_RESULT_INCLUDE,
     )
+    if not res:
+        raise ValueError(f"Node execution {node_exec_id} not found.")
+
+    return NodeExecutionResult.from_db(res)
 
 
 async def update_node_execution_status_batch(
@@ -702,6 +715,16 @@ async def delete_graph_execution(
         )
 
 
+async def get_node_execution(node_exec_id: str) -> NodeExecutionResult | None:
+    execution = await AgentNodeExecution.prisma().find_first(
+        where={"id": node_exec_id},
+        include=EXECUTION_RESULT_INCLUDE,
+    )
+    if not execution:
+        return None
+    return NodeExecutionResult.from_db(execution)
+
+
 async def get_node_executions(
     graph_exec_id: str,
     node_id: str | None = None,
@@ -722,6 +745,7 @@ async def get_node_executions(
     executions = await AgentNodeExecution.prisma().find_many(
         where=where_clause,
         include=EXECUTION_RESULT_INCLUDE,
+        order=EXECUTION_RESULT_ORDER,
         take=limit,
     )
     res = [NodeExecutionResult.from_db(execution) for execution in executions]
@@ -743,11 +767,8 @@ async def get_latest_node_execution(
                 {"executionStatus": ExecutionStatus.FAILED},
             ],
         },
-        order=[
-            {"queuedTime": "desc"},
-            {"addedTime": "desc"},
-        ],
         include=EXECUTION_RESULT_INCLUDE,
+        order=EXECUTION_RESULT_ORDER,
     )
     if not execution:
         return None
@@ -762,7 +783,7 @@ class GraphExecutionEntry(BaseModel):
     graph_exec_id: str
     graph_id: str
     graph_version: int
-    node_credentials_input_map: Optional[dict[str, dict[str, CredentialsMetaInput]]]
+    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None
 
 
 class NodeExecutionEntry(BaseModel):
@@ -793,6 +814,12 @@ class ExecutionQueue(Generic[T]):
 
     def empty(self) -> bool:
         return self.queue.empty()
+
+    def get_or_none(self) -> T | None:
+        try:
+            return self.queue.get_nowait()
+        except Empty:
+            return None
 
 
 # --------------------- Event Bus --------------------- #
