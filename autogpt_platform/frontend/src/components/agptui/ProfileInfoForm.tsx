@@ -1,24 +1,21 @@
 "use client";
 
-import * as React from "react";
 import { useState } from "react";
 
 import Image from "next/image";
 
-import { Button } from "./Button";
 import { IconPersonFill } from "@/components/ui/icons";
-import { ProfileDetails } from "@/lib/autogpt-server-api/types";
 import { Separator } from "@/components/ui/separator";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { ProfileDetails } from "@/lib/autogpt-server-api/types";
+import { Button } from "./Button";
 
-export const ProfileInfoForm = ({ profile }: { profile: ProfileDetails }) => {
+export function ProfileInfoForm({ profile }: { profile: ProfileDetails }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [profileData, setProfileData] = useState<ProfileDetails>(profile);
-  const { supabase } = useSupabase();
   const api = useBackendAPI();
 
-  const submitForm = async () => {
+  async function submitForm() {
     try {
       setIsSubmitting(true);
 
@@ -39,48 +36,12 @@ export const ProfileInfoForm = ({ profile }: { profile: ProfileDetails }) => {
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }
 
-  const handleImageUpload = async (file: File) => {
+  async function handleImageUpload(file: File) {
     try {
-      // Create FormData and append file
-      const formData = new FormData();
-      formData.append("file", file);
+      const mediaUrl = await api.uploadStoreSubmissionMedia(file);
 
-      // Get auth token
-      if (!supabase) {
-        throw new Error("Supabase client not initialized");
-      }
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const token = session?.access_token;
-
-      if (!token) {
-        throw new Error("No authentication token found");
-      }
-
-      // Make upload request
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_AGPT_SERVER_URL}/store/submissions/media`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-          body: formData,
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`);
-      }
-
-      // Get media URL from response
-      const mediaUrl = await response.json();
-
-      // Update profile with new avatar URL
       const updatedProfile = {
         ...profileData,
         avatar_url: mediaUrl,
@@ -91,7 +52,7 @@ export const ProfileInfoForm = ({ profile }: { profile: ProfileDetails }) => {
     } catch (error) {
       console.error("Error uploading image:", error);
     }
-  };
+  }
 
   return (
     <div className="w-full min-w-[800px] px-4 sm:px-8">
@@ -261,4 +222,4 @@ export const ProfileInfoForm = ({ profile }: { profile: ProfileDetails }) => {
       </div>
     </div>
   );
-};
+}

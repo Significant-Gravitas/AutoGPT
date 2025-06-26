@@ -1,6 +1,8 @@
+import { getWebSocketToken } from "@/lib/supabase/actions";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { proxyApiRequest, proxyFileUpload } from "./proxy-action";
 import type {
   AddUserCreditsResponse,
   AnalyticsDetails,
@@ -761,50 +763,25 @@ export default class BackendAPI {
     return this._request("GET", path, query);
   }
 
+  private async getAuthToken(): Promise<string> {
+    // Only try client-side session (for WebSocket connections)
+    // This will return "no-token-found" with httpOnly cookies, which is expected
+    const supabaseClient = await this.getSupabaseClient();
+    const {
+      data: { session },
+    } = (await supabaseClient?.auth.getSession()) || {
+      data: { session: null },
+    };
+
+    return session?.access_token || "no-token-found";
+  }
+
   private async _uploadFile(path: string, file: File): Promise<string> {
-    // Get session with retry logic
-    let token = "no-token-found";
-    let retryCount = 0;
-    const maxRetries = 3;
-
-    while (retryCount < maxRetries) {
-      const supabaseClient = await this.getSupabaseClient();
-      const {
-        data: { session },
-      } = (await supabaseClient?.auth.getSession()) || {
-        data: { session: null },
-      };
-
-      if (session?.access_token) {
-        token = session.access_token;
-        break;
-      }
-
-      retryCount++;
-      if (retryCount < maxRetries) {
-        await new Promise((resolve) => setTimeout(resolve, 100 * retryCount));
-      }
-    }
-
-    // Create a FormData object and append the file
     const formData = new FormData();
     formData.append("file", file);
 
-    const response = await fetch(this.baseUrl + path, {
-      method: "POST",
-      headers: {
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
-      body: formData,
-    });
-
-    if (!response.ok) {
-      throw new Error(`Error uploading file: ${response.statusText}`);
-    }
-
-    // Parse the response appropriately
-    const media_url = await response.text();
-    return media_url;
+    // Use proxy server action for secure file upload
+    return await proxyFileUpload(path, formData, this.baseUrl);
   }
 
   private async _request(
@@ -816,103 +793,13 @@ export default class BackendAPI {
       console.debug(`${method} ${path} payload:`, payload);
     }
 
-    // Get session with retry logic
-    let token = "no-token-found";
-    let retryCount = 0;
-    const maxRetries = 3;
-
-    while (retryCount < maxRetries) {
-      const supabaseClient = await this.getSupabaseClient();
-      const {
-        data: { session },
-      } = (await supabaseClient?.auth.getSession()) || {
-        data: { session: null },
-      };
-
-      if (session?.access_token) {
-        token = session.access_token;
-        break;
-      }
-
-      retryCount++;
-      if (retryCount < maxRetries) {
-        await new Promise((resolve) => setTimeout(resolve, 100 * retryCount));
-      }
-    }
-
-    let url = this.baseUrl + path;
-    const payloadAsQuery = ["GET", "DELETE"].includes(method);
-    if (payloadAsQuery && payload) {
-      // For GET requests, use payload as query
-      const queryParams = new URLSearchParams(payload);
-      url += `?${queryParams.toString()}`;
-    }
-
-    const hasRequestBody = !payloadAsQuery && payload !== undefined;
-    const response = await fetch(url, {
+    // Always use proxy server action to not expose any auth tokens to the browser
+    return await proxyApiRequest({
       method,
-      headers: {
-        ...(hasRequestBody && { "Content-Type": "application/json" }),
-        ...(token && { Authorization: `Bearer ${token}` }),
-      },
-      body: hasRequestBody ? JSON.stringify(payload) : undefined,
+      path,
+      payload,
+      baseUrl: this.baseUrl,
     });
-
-    if (!response.ok) {
-      console.warn(`${method} ${path} returned non-OK response:`, response);
-
-      // console.warn("baseClient is attempting to redirect by changing window location")
-      // if (
-      //   response.status === 403 &&
-      //   response.statusText === "Not authenticated" &&
-      //   typeof window !== "undefined" // Check if in browser environment
-      // ) {
-      //   window.location.href = "/login";
-      // }
-
-      let errorDetail;
-      try {
-        const errorData = await response.json();
-        if (
-          Array.isArray(errorData.detail) &&
-          errorData.detail.length > 0 &&
-          errorData.detail[0].loc
-        ) {
-          // This appears to be a Pydantic validation error
-          const errors = errorData.detail.map(
-            (err: _PydanticValidationError) => {
-              const location = err.loc.join(" -> ");
-              return `${location}: ${err.msg}`;
-            },
-          );
-          errorDetail = errors.join("\n");
-        } else {
-          errorDetail = errorData.detail || response.statusText;
-        }
-      } catch {
-        errorDetail = response.statusText;
-      }
-
-      throw new Error(errorDetail);
-    }
-
-    // Handle responses with no content (like DELETE requests)
-    if (
-      response.status === 204 ||
-      response.headers.get("Content-Length") === "0"
-    ) {
-      return null;
-    }
-
-    try {
-      return await response.json();
-    } catch (e) {
-      if (e instanceof SyntaxError) {
-        console.warn(`${method} ${path} returned invalid JSON:`, e);
-        return null;
-      }
-      throw e;
-    }
   }
 
   ////////////////////////////////////////
@@ -1000,10 +887,19 @@ export default class BackendAPI {
   async connectWebSocket(): Promise<void> {
     return (this.wsConnecting ??= new Promise(async (resolve, reject) => {
       try {
-        const supabaseClient = await this.getSupabaseClient();
-        const token =
-          (await supabaseClient?.auth.getSession())?.data.session
-            ?.access_token || "";
+        let token = "";
+        try {
+          const { token: serverToken, error } = await getWebSocketToken();
+          if (serverToken && !error) {
+            token = serverToken;
+          } else if (error) {
+            console.warn("Failed to get WebSocket token from server:", error);
+          }
+        } catch (error) {
+          console.warn("Failed to get token for WebSocket connection:", error);
+          // Continue with empty token, connection might still work
+        }
+
         const wsUrlWithToken = `${this.wsUrl}?token=${token}`;
         this.webSocket = new WebSocket(wsUrlWithToken);
         this.webSocket.state = "connecting";
