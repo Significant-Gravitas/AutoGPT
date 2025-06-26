@@ -369,9 +369,14 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
             )
 
     @staticmethod
-    def _add_json_schema_extra(schema, cls: CredentialsMetaInput):
-        schema["credentials_provider"] = cls.allowed_providers()
-        schema["credentials_types"] = cls.allowed_cred_types()
+    def _add_json_schema_extra(schema: dict, model_class: type):
+        # Use model_class for allowed_providers/cred_types
+        if hasattr(model_class, "allowed_providers") and hasattr(
+            model_class, "allowed_cred_types"
+        ):
+            schema["credentials_provider"] = model_class.allowed_providers()
+            schema["credentials_types"] = model_class.allowed_cred_types()
+        # Do not return anything, just mutate schema in place
 
     model_config = ConfigDict(
         json_schema_extra=_add_json_schema_extra,  # type: ignore
