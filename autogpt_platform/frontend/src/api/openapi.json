@@ -2931,18 +2931,6 @@
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Preset Id" }
-          },
-          {
-            "name": "graph_id",
-            "in": "query",
-            "required": true,
-            "schema": { "type": "string", "title": "Graph Id" }
-          },
-          {
-            "name": "graph_version",
-            "in": "query",
-            "required": true,
-            "schema": { "type": "integer", "title": "Graph Version" }
           }
         ],
         "requestBody": {
@@ -3128,11 +3116,11 @@
           }
         }
       },
-      "put": {
+      "patch": {
         "tags": ["v2", "library", "private"],
         "summary": "Update Library Agent",
-        "description": "Update the library agent with the given fields.\n\nArgs:\n    library_agent_id: ID of the library agent to update.\n    payload: Fields to update (auto_update_version, is_favorite, etc.).\n    user_id: ID of the authenticated user.\n\nReturns:\n    204 (No Content) on success.\n\nRaises:\n    HTTPException(500): If a server/database error occurs.",
-        "operationId": "putV2Update library agent",
+        "description": "Update the library agent with the given fields.\n\nArgs:\n    library_agent_id: ID of the library agent to update.\n    payload: Fields to update (auto_update_version, is_favorite, etc.).\n    user_id: ID of the authenticated user.\n\nRaises:\n    HTTPException(500): If a server/database error occurs.",
+        "operationId": "patchV2Update library agent",
         "parameters": [
           {
             "name": "library_agent_id",
@@ -3152,7 +3140,45 @@
           }
         },
         "responses": {
-          "204": { "description": "Agent updated successfully" },
+          "200": {
+            "description": "Agent updated successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryAgent" }
+              }
+            }
+          },
+          "500": { "description": "Server error" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["v2", "library", "private"],
+        "summary": "Delete Library Agent",
+        "description": "Soft-delete the specified library agent.\n\nArgs:\n    library_agent_id: ID of the library agent to delete.\n    user_id: ID of the authenticated user.\n\nReturns:\n    204 No Content if successful.\n\nRaises:\n    HTTPException(404): If the agent does not exist.\n    HTTPException(500): If a server/database error occurs.",
+        "operationId": "deleteV2Delete library agent",
+        "parameters": [
+          {
+            "name": "library_agent_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Library Agent Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "204": { "description": "Agent deleted successfully" },
+          "404": { "description": "Agent not found" },
           "500": { "description": "Server error" },
           "422": {
             "description": "Validation Error",
@@ -3224,6 +3250,55 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/LibraryAgent" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/agents/{library_agent_id}/setup-trigger": {
+      "post": {
+        "tags": ["v2", "library", "private"],
+        "summary": "Setup Trigger",
+        "description": "Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.\nReturns the correspondingly created `LibraryAgentPreset` with `webhook_id` set.",
+        "operationId": "postV2SetupTrigger",
+        "parameters": [
+          {
+            "name": "library_agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ID of the library agent",
+              "title": "Library Agent Id"
+            },
+            "description": "ID of the library agent"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggeredPresetSetupParams"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryAgentPreset" }
               }
             }
           },
@@ -3713,10 +3788,10 @@
       },
       "Body_postV2Execute_a_preset": {
         "properties": {
-          "node_input": {
+          "inputs": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Node Input"
+            "title": "Inputs"
           }
         },
         "type": "object",
@@ -4303,6 +4378,23 @@
             "type": "object",
             "title": "Input Schema"
           },
+          "credentials_input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Credentials Input Schema",
+            "description": "Input schema for credentials required by the agent"
+          },
+          "has_external_trigger": {
+            "type": "boolean",
+            "title": "Has External Trigger",
+            "description": "Whether the agent has an external trigger (e.g. webhook) node"
+          },
+          "trigger_setup_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/LibraryAgentTriggerInfo" },
+              { "type": "null" }
+            ]
+          },
           "new_output": { "type": "boolean", "title": "New Output" },
           "can_access_graph": {
             "type": "boolean",
@@ -4326,6 +4418,8 @@
           "name",
           "description",
           "input_schema",
+          "credentials_input_schema",
+          "has_external_trigger",
           "new_output",
           "can_access_graph",
           "is_latest_version"
@@ -4342,6 +4436,13 @@
             "type": "object",
             "title": "Inputs"
           },
+          "credentials": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialsMetaInput"
+            },
+            "type": "object",
+            "title": "Credentials"
+          },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
           "is_active": {
@@ -4349,7 +4450,12 @@
             "title": "Is Active",
             "default": true
           },
+          "webhook_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Webhook Id"
+          },
           "id": { "type": "string", "title": "Id" },
+          "user_id": { "type": "string", "title": "User Id" },
           "updated_at": {
             "type": "string",
             "format": "date-time",
@@ -4361,9 +4467,11 @@
           "graph_id",
           "graph_version",
           "inputs",
+          "credentials",
           "name",
           "description",
           "id",
+          "user_id",
           "updated_at"
         ],
         "title": "LibraryAgentPreset",
@@ -4378,12 +4486,23 @@
             "type": "object",
             "title": "Inputs"
           },
+          "credentials": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialsMetaInput"
+            },
+            "type": "object",
+            "title": "Credentials"
+          },
           "name": { "type": "string", "title": "Name" },
           "description": { "type": "string", "title": "Description" },
           "is_active": {
             "type": "boolean",
             "title": "Is Active",
             "default": true
+          },
+          "webhook_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Webhook Id"
           }
         },
         "type": "object",
@@ -4391,6 +4510,7 @@
           "graph_id",
           "graph_version",
           "inputs",
+          "credentials",
           "name",
           "description"
         ],
@@ -4439,6 +4559,18 @@
             ],
             "title": "Inputs"
           },
+          "credentials": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CredentialsMetaInput"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Credentials"
+          },
           "name": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Name"
@@ -4481,6 +4613,24 @@
         "enum": ["COMPLETED", "HEALTHY", "WAITING", "ERROR"],
         "title": "LibraryAgentStatus"
       },
+      "LibraryAgentTriggerInfo": {
+        "properties": {
+          "provider": { "$ref": "#/components/schemas/ProviderName" },
+          "config_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config Schema",
+            "description": "Input schema for the trigger block"
+          },
+          "credentials_input_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credentials Input Name"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "config_schema", "credentials_input_name"],
+        "title": "LibraryAgentTriggerInfo"
+      },
       "LibraryAgentUpdateRequest": {
         "properties": {
           "auto_update_version": {
@@ -4497,11 +4647,6 @@
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Is Archived",
             "description": "Archive the agent"
-          },
-          "is_deleted": {
-            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
-            "title": "Is Deleted",
-            "description": "Delete the agent"
           }
         },
         "type": "object",
@@ -5773,6 +5918,31 @@
         "required": ["transactions", "next_transaction_time"],
         "title": "TransactionHistory"
       },
+      "TriggeredPresetSetupParams": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "trigger_config": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Trigger Config"
+          },
+          "agent_credentials": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialsMetaInput"
+            },
+            "type": "object",
+            "title": "Agent Credentials"
+          }
+        },
+        "type": "object",
+        "required": ["name", "trigger_config"],
+        "title": "TriggeredPresetSetupParams"
+      },
       "TurnstileVerifyRequest": {
         "properties": {
           "token": {
@@ -6054,16 +6224,6 @@
           "provider_webhook_id": {
             "type": "string",
             "title": "Provider Webhook Id"
-          },
-          "attached_nodes": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/NodeModel" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Attached Nodes"
           },
           "url": { "type": "string", "title": "Url", "readOnly": true }
         },
