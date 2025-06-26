@@ -1,8 +1,8 @@
 "use server";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
-import { redirect } from "next/navigation";
-import * as Sentry from "@sentry/nextjs";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import * as Sentry from "@sentry/nextjs";
+import { redirect } from "next/navigation";
 
 export async function sendResetEmail(email: string, turnstileToken: string) {
   return await Sentry.withServerActionInstrumentation(
@@ -19,14 +19,14 @@ export async function sendResetEmail(email: string, turnstileToken: string) {
       // Verify Turnstile token if provided
       const success = await verifyTurnstileToken(
         turnstileToken,
-        "reset_password",
+        "reset-password",
       );
       if (!success) {
         return "CAPTCHA verification failed. Please try again.";
       }
 
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${origin}/reset_password`,
+        redirectTo: `${origin}/reset-password`,
       });
 
       if (error) {
