@@ -19,7 +19,7 @@
     "build-storybook": "storybook build",
     "test-storybook": "test-storybook",
     "test-storybook:ci": "concurrently -k -s first -n \"SB,TEST\" -c \"magenta,blue\" \"pnpm run build-storybook -- --quiet && npx http-server storybook-static --port 6006 --silent\" \"wait-on tcp:6006 && pnpm run test-storybook\"",
-    "fetch:openapi": "curl http://localhost:8006/openapi.json > ./src/api/openapi.json && prettier --write ./src/api/openapi.json",
+    "fetch:openapi": "curl http://localhost:8006/openapi.json > ./src/app/api/openapi.json && prettier --write ./src/app/api/openapi.json",
     "generate:api-client": "orval --config ./orval.config.ts",
     "generate:api-all": "pnpm run fetch:openapi && pnpm run generate:api-client"
   },
