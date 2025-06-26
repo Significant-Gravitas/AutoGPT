@@ -11,7 +11,7 @@ from backend.blocks.apollo.models import (
     SearchOrganizationsRequest,
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
+from backend.data.model import CredentialsField, SchemaField
 
 
 class SearchOrganizationsBlock(Block):
@@ -65,7 +65,7 @@ To find IDs, identify the values for organization_id when you call this endpoint
             le=50000,
             advanced=True,
         )
-        credentials: ApolloCredentialsInput = SchemaField(
+        credentials: ApolloCredentialsInput = CredentialsField(
             description="Apollo credentials",
         )
 

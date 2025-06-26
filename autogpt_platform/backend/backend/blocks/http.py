@@ -33,12 +33,6 @@ HttpCredentials = CredentialsMetaInput[
 ]
 
 
-def HttpCredentialsField() -> HttpCredentials:
-    return CredentialsField(
-        description="HTTP host-scoped credentials for automatic header injection"
-    )
-
-
 TEST_CREDENTIALS = HostScopedCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
     provider="http",
@@ -211,8 +205,8 @@ class SendWebRequestBlock(Block):
 
 class SendAuthenticatedWebRequestBlock(SendWebRequestBlock):
     class Input(SendWebRequestBlock.Input):
-        credentials: HttpCredentials = SchemaField(
-            description="HTTP host-scoped credentials for automatic header injection"
+        credentials: HttpCredentials = CredentialsField(
+            description="HTTP host-scoped credentials for automatic header injection",
         )
 
     def __init__(self):
