@@ -20,6 +20,7 @@ export type CredentialsData =
       supportsUserPassword: boolean;
       supportsHostScoped: boolean;
       isLoading: true;
+      discriminatorValue?: string;
     }
   | (CredentialsProviderData & {
       schema: BlockIOCredentialsSubSchema;
@@ -28,6 +29,7 @@ export type CredentialsData =
       supportsUserPassword: boolean;
       supportsHostScoped: boolean;
       isLoading: false;
+      discriminatorValue?: string;
     });
 
 export default function useCredentials(
@@ -36,24 +38,16 @@ export default function useCredentials(
 ): CredentialsData | null {
   const allProviders = useContext(CredentialsProvidersContext);
 
-  const discriminatorValue: CredentialsProviderName | null = (() => {
-    if (
-      !credsInputSchema.discriminator ||
-      !credsInputSchema.discriminator_mapping
-    ) {
-      return null;
-    }
+  const discriminatorValue = [
+    credsInputSchema.discriminator
+      ? getValue(credsInputSchema.discriminator, nodeInputValues)
+      : null,
+    ...(credsInputSchema.discriminator_values || []),
+  ].find(Boolean);
 
-    const discriminatorKey = getValue(
-      credsInputSchema.discriminator,
-      nodeInputValues,
-    );
-    if (discriminatorKey === undefined) {
-      return null;
-    }
-
-    return credsInputSchema.discriminator_mapping[discriminatorKey] || null;
-  })();
+  const discriminatedProvider = credsInputSchema.discriminator_mapping
+    ? credsInputSchema.discriminator_mapping[discriminatorValue]
+    : null;
 
   let providerName: CredentialsProviderName;
   if (credsInputSchema.credentials_provider.length > 1) {
@@ -62,14 +56,14 @@ export default function useCredentials(
         "Multi-provider credential input requires discriminator!",
       );
     }
-    if (!discriminatorValue) {
-      console.log(
+    if (!discriminatedProvider) {
+      console.warn(
         `Missing discriminator value from '${credsInputSchema.discriminator}': ` +
           "hiding credentials input until it is set.",
       );
       return null;
     }
-    providerName = discriminatorValue;
+    providerName = discriminatedProvider;
   } else {
     providerName = credsInputSchema.credentials_provider[0];
   }
@@ -111,13 +105,7 @@ export default function useCredentials(
 
     // Filter host_scoped credentials by host matching
     if (c.type === "host_scoped") {
-      const schemaHosts = [
-        ...[credsInputSchema.discriminator_values || []],
-        getValue(credsInputSchema.discriminator || "url", nodeInputValues),
-      ]
-        .map((v) => getHostFromUrl(v))
-        .filter((h) => h);
-      return schemaHosts && schemaHosts.includes(c.host || "");
+      return discriminatorValue && getHostFromUrl(discriminatorValue) == c.host;
     }
 
     // Include all other credential types
@@ -133,6 +121,7 @@ export default function useCredentials(
     supportsUserPassword,
     supportsHostScoped,
     savedCredentials,
+    discriminatorValue,
     isLoading: false,
   };
 }
