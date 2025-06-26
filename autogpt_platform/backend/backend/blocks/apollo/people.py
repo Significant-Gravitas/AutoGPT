@@ -1,3 +1,5 @@
+import asyncio
+
 from backend.blocks.apollo._api import ApolloClient
 from backend.blocks.apollo._auth import (
     TEST_CREDENTIALS,
@@ -8,6 +10,7 @@ from backend.blocks.apollo._auth import (
 from backend.blocks.apollo.models import (
     Contact,
     ContactEmailStatuses,
+    EnrichPersonRequest,
     SearchPeopleRequest,
     SenorityLevels,
 )
@@ -90,10 +93,15 @@ class SearchPeopleBlock(Block):
             advanced=False,
         )
         max_results: int = SchemaField(
-            description="""The maximum number of results to return. If you don't specify this parameter, the default is 100.""",
-            default=100,
+            description="""The maximum number of results to return. If you don't specify this parameter, the default is 25. Limited to 500 to prevent overspending.""",
+            default=25,
             ge=1,
-            le=50000,
+            le=500,
+            advanced=True,
+        )
+        enrich_info: bool = SchemaField(
+            description="""Whether to enrich contacts with detailed information including real email addresses. This will double the search cost.""",
+            default=False,
             advanced=True,
         )
 
@@ -105,10 +113,6 @@ class SearchPeopleBlock(Block):
         people: list[Contact] = SchemaField(
             description="List of people found",
             default_factory=list,
-        )
-        person: Contact = SchemaField(
-            title="Person",
-            description="Each found person, one at a time",
         )
         error: str = SchemaField(
             description="Error message if the search failed",
@@ -380,6 +384,13 @@ class SearchPeopleBlock(Block):
         client = ApolloClient(credentials)
         return await client.search_people(query)
 
+    @staticmethod
+    async def enrich_person(
+        query: EnrichPersonRequest, credentials: ApolloCredentials
+    ) -> Contact:
+        client = ApolloClient(credentials)
+        return await client.enrich_person(query)
+
     async def run(
         self,
         input_data: Input,
@@ -390,6 +401,19 @@ class SearchPeopleBlock(Block):
 
         query = SearchPeopleRequest(**input_data.model_dump())
         people = await self.search_people(query, credentials)
-        for person in people:
-            yield "person", person
+
+        # Enrich with detailed info if requested
+        if input_data.enrich_info:
+
+            async def enrich_or_fallback(person):
+                try:
+                    enrich_query = EnrichPersonRequest(person_id=person.person_id)
+                    return await self.enrich_person(enrich_query, credentials)
+                except Exception:
+                    return person  # If enrichment fails, use original person data
+
+            people = await asyncio.gather(
+                *(enrich_or_fallback(person) for person in people)
+            )
+
         yield "people", people
