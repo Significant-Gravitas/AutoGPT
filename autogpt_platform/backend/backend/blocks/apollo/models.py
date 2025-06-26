@@ -506,7 +506,7 @@ You can add multiple domains to search across companies.
 To find IDs, call the Organization Search endpoint and identify the values for organization_id.""",
         default_factory=list,
     )
-    organization_num_empoloyees_range: list[int] = SchemaField(
+    organization_num_employees_range: list[int] = SchemaField(
         description="""The number range of employees working for the company. This enables you to find companies based on headcount. You can add multiple ranges to expand your search results.
 
 Each range you add needs to be a string, with the upper and lower numbers of the range separated only by a comma.""",

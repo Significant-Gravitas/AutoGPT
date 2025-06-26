@@ -18,7 +18,7 @@ class SearchOrganizationsBlock(Block):
     """Search for organizations in Apollo"""
 
     class Input(BlockSchema):
-        organization_num_empoloyees_range: list[int] = SchemaField(
+        organization_num_employees_range: list[int] = SchemaField(
             description="""The number range of employees working for the company. This enables you to find companies based on headcount. You can add multiple ranges to expand your search results.
 
 Each range you add needs to be a string, with the upper and lower numbers of the range separated only by a comma.""",
