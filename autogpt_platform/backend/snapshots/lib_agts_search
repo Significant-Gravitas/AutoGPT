@@ -1,0 +1,60 @@
+{
+  "agents": [
+    {
+      "id": "test-agent-1",
+      "graph_id": "test-agent-1",
+      "graph_version": 1,
+      "image_url": null,
+      "creator_name": "Test Creator",
+      "creator_image_url": "",
+      "status": "COMPLETED",
+      "updated_at": "2023-01-01T00:00:00",
+      "name": "Test Agent 1",
+      "description": "Test Description 1",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "credentials_input_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "has_external_trigger": false,
+      "trigger_setup_info": null,
+      "new_output": false,
+      "can_access_graph": true,
+      "is_latest_version": true
+    },
+    {
+      "id": "test-agent-2",
+      "graph_id": "test-agent-2",
+      "graph_version": 1,
+      "image_url": null,
+      "creator_name": "Test Creator",
+      "creator_image_url": "",
+      "status": "COMPLETED",
+      "updated_at": "2023-01-01T00:00:00",
+      "name": "Test Agent 2",
+      "description": "Test Description 2",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "credentials_input_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "has_external_trigger": false,
+      "trigger_setup_info": null,
+      "new_output": false,
+      "can_access_graph": false,
+      "is_latest_version": true
+    }
+  ],
+  "pagination": {
+    "total_items": 2,
+    "total_pages": 1,
+    "current_page": 1,
+    "page_size": 50
+  }
+}

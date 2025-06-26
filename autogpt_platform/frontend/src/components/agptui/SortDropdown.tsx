@@ -34,10 +34,10 @@ export const SortDropdown: React.FC<{
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex items-center gap-1.5 focus:outline-none">
-        <span className="font-geist text-base text-neutral-800 dark:text-neutral-200">
+        <span className="text-base text-neutral-800 dark:text-neutral-200">
           Sort by
         </span>
-        <span className="font-geist text-base text-neutral-800 dark:text-neutral-200">
+        <span className="text-base text-neutral-800 dark:text-neutral-200">
           {selected.label}
         </span>
         <ChevronDownIcon className="h-4 w-4 text-neutral-800 dark:text-neutral-200" />

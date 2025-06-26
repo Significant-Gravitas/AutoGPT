@@ -108,7 +108,7 @@ class TodoistCreateCommentBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -215,7 +215,7 @@ class TodoistGetCommentsBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -307,7 +307,7 @@ class TodoistGetCommentBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -371,7 +371,7 @@ class TodoistUpdateCommentBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -429,7 +429,7 @@ class TodoistDeleteCommentBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,

@@ -1,8 +1,11 @@
+import asyncio
 import logging
-from typing import TYPE_CHECKING, Any, Optional, cast
+from collections import defaultdict
+from concurrent.futures import Future
+from typing import TYPE_CHECKING, Any, Callable, Optional, cast
 
 from autogpt_libs.utils.cache import thread_cached
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
 from backend.data.block import (
     Block,
@@ -21,6 +24,7 @@ from backend.data.execution import (
     GraphExecutionWithNodes,
     RedisExecutionEventBus,
     create_graph_execution,
+    get_node_executions,
     update_graph_execution_stats,
     update_node_execution_status_batch,
 )
@@ -35,17 +39,18 @@ from backend.data.rabbitmq import (
     SyncRabbitMQ,
 )
 from backend.util.exceptions import NotFoundError
+from backend.util.logging import TruncatedLogger
 from backend.util.mock import MockObject
 from backend.util.service import get_service_client
 from backend.util.settings import Config
 from backend.util.type import convert
 
 if TYPE_CHECKING:
-    from backend.executor import DatabaseManagerClient
+    from backend.executor import DatabaseManagerAsyncClient, DatabaseManagerClient
     from backend.integrations.credentials_store import IntegrationCredentialsStore
 
 config = Config()
-logger = logging.getLogger(__name__)
+logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
 
 # ============ Resource Helpers ============ #
 
@@ -86,6 +91,13 @@ def get_db_client() -> "DatabaseManagerClient":
     from backend.executor import DatabaseManagerClient
 
     return get_service_client(DatabaseManagerClient)
+
+
+@thread_cached
+def get_db_async_client() -> "DatabaseManagerAsyncClient":
+    from backend.executor import DatabaseManagerAsyncClient
+
+    return get_service_client(DatabaseManagerAsyncClient)
 
 
 # ============ Execution Cost Helpers ============ #
@@ -174,68 +186,195 @@ def _is_cost_filter_match(cost_filter: BlockInput, input_data: BlockInput) -> bo
 
 # ============ Execution Input Helpers ============ #
 
+# --------------------------------------------------------------------------- #
+#  Delimiters
+# --------------------------------------------------------------------------- #
+
 LIST_SPLIT = "_$_"
 DICT_SPLIT = "_#_"
 OBJC_SPLIT = "_@_"
 
+_DELIMS = (LIST_SPLIT, DICT_SPLIT, OBJC_SPLIT)
+
+# --------------------------------------------------------------------------- #
+#  Tokenisation utilities
+# --------------------------------------------------------------------------- #
+
+
+def _next_delim(s: str) -> tuple[str | None, int]:
+    """
+    Return the *earliest* delimiter appearing in `s` and its index.
+
+    If none present → (None, -1).
+    """
+    first: str | None = None
+    pos = len(s)  # sentinel: larger than any real index
+    for d in _DELIMS:
+        i = s.find(d)
+        if 0 <= i < pos:
+            first, pos = d, i
+    return first, (pos if first else -1)
+
+
+def _tokenise(path: str) -> list[tuple[str, str]] | None:
+    """
+    Convert the raw path string (starting with a delimiter) into
+    [ (delimiter, identifier), … ] or None if the syntax is malformed.
+    """
+    tokens: list[tuple[str, str]] = []
+    while path:
+        # 1. Which delimiter starts this chunk?
+        delim = next((d for d in _DELIMS if path.startswith(d)), None)
+        if delim is None:
+            return None  # invalid syntax
+
+        # 2. Slice off the delimiter, then up to the next delimiter (or EOS)
+        path = path[len(delim) :]
+        nxt_delim, pos = _next_delim(path)
+        token, path = (
+            path[: pos if pos != -1 else len(path)],
+            path[pos if pos != -1 else len(path) :],
+        )
+        if token == "":
+            return None  # empty identifier is invalid
+        tokens.append((delim, token))
+    return tokens
+
+
+# --------------------------------------------------------------------------- #
+#  Public API – parsing (flattened ➜ concrete)
+# --------------------------------------------------------------------------- #
+
 
 def parse_execution_output(output: BlockData, name: str) -> Any | None:
     """
-    Extracts partial output data by name from a given BlockData.
+    Retrieve a nested value out of `output` using the flattened *name*.
 
-    The function supports extracting data from lists, dictionaries, and objects
-    using specific naming conventions:
-    - For lists: <output_name>_$_<index>
-    - For dictionaries: <output_name>_#_<key>
-    - For objects: <output_name>_@_<attribute>
-
-    Args:
-        output (BlockData): A tuple containing the output name and data.
-        name (str): The name used to extract specific data from the output.
-
-    Returns:
-        Any | None: The extracted data if found, otherwise None.
-
-    Examples:
-        >>> output = ("result", [10, 20, 30])
-        >>> parse_execution_output(output, "result_$_1")
-        20
-
-        >>> output = ("config", {"key1": "value1", "key2": "value2"})
-        >>> parse_execution_output(output, "config_#_key1")
-        'value1'
-
-        >>> class Sample:
-        ...     attr1 = "value1"
-        ...     attr2 = "value2"
-        >>> output = ("object", Sample())
-        >>> parse_execution_output(output, "object_@_attr1")
-        'value1'
+    On any failure (wrong name, wrong type, out-of-range, bad path)
+    returns **None**.
     """
-    output_name, output_data = output
+    base_name, data = output
 
-    if name == output_name:
-        return output_data
+    # Exact match → whole object
+    if name == base_name:
+        return data
 
-    if name.startswith(f"{output_name}{LIST_SPLIT}"):
-        index = int(name.split(LIST_SPLIT)[1])
-        if not isinstance(output_data, list) or len(output_data) <= index:
-            return None
-        return output_data[int(name.split(LIST_SPLIT)[1])]
+    # Must start with the expected name
+    if not name.startswith(base_name):
+        return None
+    path = name[len(base_name) :]
+    if not path:
+        return None  # nothing left to parse
 
-    if name.startswith(f"{output_name}{DICT_SPLIT}"):
-        index = name.split(DICT_SPLIT)[1]
-        if not isinstance(output_data, dict) or index not in output_data:
-            return None
-        return output_data[index]
-
-    if name.startswith(f"{output_name}{OBJC_SPLIT}"):
-        index = name.split(OBJC_SPLIT)[1]
-        if isinstance(output_data, object) and hasattr(output_data, index):
-            return getattr(output_data, index)
+    tokens = _tokenise(path)
+    if tokens is None:
         return None
 
-    return None
+    cur: Any = data
+    for delim, ident in tokens:
+        if delim == LIST_SPLIT:
+            # list[index]
+            try:
+                idx = int(ident)
+            except ValueError:
+                return None
+            if not isinstance(cur, list) or idx >= len(cur):
+                return None
+            cur = cur[idx]
+
+        elif delim == DICT_SPLIT:
+            if not isinstance(cur, dict) or ident not in cur:
+                return None
+            cur = cur[ident]
+
+        elif delim == OBJC_SPLIT:
+            if not hasattr(cur, ident):
+                return None
+            cur = getattr(cur, ident)
+
+        else:
+            return None  # unreachable
+
+    return cur
+
+
+def _assign(container: Any, tokens: list[tuple[str, str]], value: Any) -> Any:
+    """
+    Recursive helper that *returns* the (possibly new) container with
+    `value` assigned along the remaining `tokens` path.
+    """
+    if not tokens:
+        return value  # leaf reached
+
+    delim, ident = tokens[0]
+    rest = tokens[1:]
+
+    # ---------- list ----------
+    if delim == LIST_SPLIT:
+        try:
+            idx = int(ident)
+        except ValueError:
+            raise ValueError("index must be an integer")
+
+        if container is None:
+            container = []
+        elif not isinstance(container, list):
+            container = list(container) if hasattr(container, "__iter__") else []
+
+        while len(container) <= idx:
+            container.append(None)
+        container[idx] = _assign(container[idx], rest, value)
+        return container
+
+    # ---------- dict ----------
+    if delim == DICT_SPLIT:
+        if container is None:
+            container = {}
+        elif not isinstance(container, dict):
+            container = dict(container) if hasattr(container, "items") else {}
+        container[ident] = _assign(container.get(ident), rest, value)
+        return container
+
+    # ---------- object ----------
+    if delim == OBJC_SPLIT:
+        if container is None or not isinstance(container, MockObject):
+            container = MockObject()
+        setattr(
+            container,
+            ident,
+            _assign(getattr(container, ident, None), rest, value),
+        )
+        return container
+
+    return value  # unreachable
+
+
+def merge_execution_input(data: BlockInput) -> BlockInput:
+    """
+    Reconstruct nested objects from a *flattened* dict of key → value.
+
+    Raises ValueError on syntactically invalid list indices.
+    """
+    merged: BlockInput = {}
+
+    for key, value in data.items():
+        # Split off the base name (before the first delimiter, if any)
+        delim, pos = _next_delim(key)
+        if delim is None:
+            merged[key] = value
+            continue
+
+        base, path = key[:pos], key[pos:]
+        tokens = _tokenise(path)
+        if tokens is None:
+            # Invalid key; treat as scalar under the raw name
+            merged[key] = value
+            continue
+
+        merged[base] = _assign(merged.get(base), tokens, value)
+
+    data.update(merged)
+    return data
 
 
 def validate_exec(
@@ -263,11 +402,6 @@ def validate_exec(
         return None, f"Block for {node.block_id} not found."
     schema = node_block.input_schema
 
-    # Convert non-matching data types to the expected input schema.
-    for name, data_type in schema.__annotations__.items():
-        if (value := data.get(name)) and (type(value) is not data_type):
-            data[name] = convert(value, data_type)
-
     # Input data (without default values) should contain all required fields.
     error_prefix = f"Input data missing or mismatch for `{node_block.name}`:"
     if missing_links := schema.get_missing_links(data, node.input_links):
@@ -278,6 +412,12 @@ def validate_exec(
     data = {**input_default, **data}
     if resolve_input:
         data = merge_execution_input(data)
+
+    # Convert non-matching data types to the expected input schema.
+    for name, data_type in schema.__annotations__.items():
+        value = data.get(name)
+        if (value is not None) and (type(value) is not data_type):
+            data[name] = convert(value, data_type)
 
     # Input data post-merge should contain all required fields from the schema.
     if missing_input := schema.get_missing_input(data):
@@ -292,83 +432,10 @@ def validate_exec(
     return data, node_block.name
 
 
-def merge_execution_input(data: BlockInput) -> BlockInput:
-    """
-    Merges dynamic input pins into a single list, dictionary, or object based on naming patterns.
-
-    This function processes input keys that follow specific patterns to merge them into a unified structure:
-    - `<input_name>_$_<index>` for list inputs.
-    - `<input_name>_#_<index>` for dictionary inputs.
-    - `<input_name>_@_<index>` for object inputs.
-
-    Args:
-        data (BlockInput): A dictionary containing input keys and their corresponding values.
-
-    Returns:
-        BlockInput: A dictionary with merged inputs.
-
-    Raises:
-        ValueError: If a list index is not an integer.
-
-    Examples:
-        >>> data = {
-        ...     "list_$_0": "a",
-        ...     "list_$_1": "b",
-        ...     "dict_#_key1": "value1",
-        ...     "dict_#_key2": "value2",
-        ...     "object_@_attr1": "value1",
-        ...     "object_@_attr2": "value2"
-        ... }
-        >>> merge_execution_input(data)
-        {
-            "list": ["a", "b"],
-            "dict": {"key1": "value1", "key2": "value2"},
-            "object": <MockObject attr1="value1" attr2="value2">
-        }
-    """
-
-    # Merge all input with <input_name>_$_<index> into a single list.
-    items = list(data.items())
-
-    for key, value in items:
-        if LIST_SPLIT not in key:
-            continue
-        name, index = key.split(LIST_SPLIT)
-        if not index.isdigit():
-            raise ValueError(f"Invalid key: {key}, #{index} index must be an integer.")
-
-        data[name] = data.get(name, [])
-        if int(index) >= len(data[name]):
-            # Pad list with empty string on missing indices.
-            data[name].extend([""] * (int(index) - len(data[name]) + 1))
-        data[name][int(index)] = value
-
-    # Merge all input with <input_name>_#_<index> into a single dict.
-    for key, value in items:
-        if DICT_SPLIT not in key:
-            continue
-        name, index = key.split(DICT_SPLIT)
-        data[name] = data.get(name, {})
-        data[name][index] = value
-
-    # Merge all input with <input_name>_@_<index> into a single object.
-    for key, value in items:
-        if OBJC_SPLIT not in key:
-            continue
-        name, index = key.split(OBJC_SPLIT)
-        if name not in data or not isinstance(data[name], object):
-            data[name] = MockObject()
-        setattr(data[name], index, value)
-
-    return data
-
-
-def _validate_node_input_credentials(
+async def _validate_node_input_credentials(
     graph: GraphModel,
     user_id: str,
-    node_credentials_input_map: Optional[
-        dict[str, dict[str, CredentialsMetaInput]]
-    ] = None,
+    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
 ):
     """Checks all credentials for all nodes of the graph"""
 
@@ -384,11 +451,13 @@ def _validate_node_input_credentials(
 
         for field_name, credentials_meta_type in credentials_fields.items():
             if (
-                node_credentials_input_map
-                and (node_credentials_inputs := node_credentials_input_map.get(node.id))
-                and field_name in node_credentials_inputs
+                nodes_input_masks
+                and (node_input_mask := nodes_input_masks.get(node.id))
+                and field_name in node_input_mask
             ):
-                credentials_meta = node_credentials_input_map[node.id][field_name]
+                credentials_meta = credentials_meta_type.model_validate(
+                    node_input_mask[field_name]
+                )
             elif field_name in node.input_default:
                 credentials_meta = credentials_meta_type.model_validate(
                     node.input_default[field_name]
@@ -400,7 +469,7 @@ def _validate_node_input_credentials(
                 )
 
             # Fetch the corresponding Credentials and perform sanity checks
-            credentials = get_integration_credentials_store().get_creds_by_id(
+            credentials = await get_integration_credentials_store().get_creds_by_id(
                 user_id, credentials_meta.id
             )
             if not credentials:
@@ -427,7 +496,7 @@ def _validate_node_input_credentials(
 def make_node_credentials_input_map(
     graph: GraphModel,
     graph_credentials_input: dict[str, CredentialsMetaInput],
-) -> dict[str, dict[str, CredentialsMetaInput]]:
+) -> dict[str, dict[str, JsonValue]]:
     """
     Maps credentials for an execution to the correct nodes.
 
@@ -436,9 +505,9 @@ def make_node_credentials_input_map(
         graph_credentials_input: A (graph_input_name, credentials_meta) map.
 
     Returns:
-        dict[node_id, dict[field_name, CredentialsMetaInput]]: Node credentials input map.
+        dict[node_id, dict[field_name, CredentialsMetaRaw]]: Node credentials input map.
     """
-    result: dict[str, dict[str, CredentialsMetaInput]] = {}
+    result: dict[str, dict[str, JsonValue]] = {}
 
     # Get aggregated credentials fields for the graph
     graph_cred_inputs = graph.aggregate_credentials_inputs()
@@ -452,18 +521,18 @@ def make_node_credentials_input_map(
         for node_id, node_field_name in compatible_node_fields:
             if node_id not in result:
                 result[node_id] = {}
-            result[node_id][node_field_name] = graph_credentials_input[graph_input_name]
+            result[node_id][node_field_name] = graph_credentials_input[
+                graph_input_name
+            ].model_dump(exclude_none=True)
 
     return result
 
 
-def construct_node_execution_input(
+async def construct_node_execution_input(
     graph: GraphModel,
     user_id: str,
     graph_inputs: BlockInput,
-    node_credentials_input_map: Optional[
-        dict[str, dict[str, CredentialsMetaInput]]
-    ] = None,
+    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
 ) -> list[tuple[str, BlockInput]]:
     """
     Validates and prepares the input data for executing a graph.
@@ -481,8 +550,8 @@ def construct_node_execution_input(
         list[tuple[str, BlockInput]]: A list of tuples, each containing the node ID and
             the corresponding input data for that node.
     """
-    graph.validate_graph(for_run=True)
-    _validate_node_input_credentials(graph, user_id, node_credentials_input_map)
+    graph.validate_graph(for_run=True, nodes_input_masks=nodes_input_masks)
+    await _validate_node_input_credentials(graph, user_id, nodes_input_masks)
 
     nodes_input = []
     for node in graph.starting_nodes:
@@ -499,23 +568,9 @@ def construct_node_execution_input(
             if input_name and input_name in graph_inputs:
                 input_data = {"value": graph_inputs[input_name]}
 
-        # Extract webhook payload, and assign it to the input pin
-        webhook_payload_key = f"webhook_{node.webhook_id}_payload"
-        if (
-            block.block_type in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
-            and node.webhook_id
-        ):
-            if webhook_payload_key not in graph_inputs:
-                raise ValueError(
-                    f"Node {block.name} #{node.id} webhook payload is missing"
-                )
-            input_data = {"payload": graph_inputs[webhook_payload_key]}
-
-        # Apply node credentials overrides
-        if node_credentials_input_map and (
-            node_credentials := node_credentials_input_map.get(node.id)
-        ):
-            input_data.update({k: v.model_dump() for k, v in node_credentials.items()})
+        # Apply node input overrides
+        if nodes_input_masks and (node_input_mask := nodes_input_masks.get(node.id)):
+            input_data.update(node_input_mask)
 
         input_data, error = validate_exec(node, input_data)
         if input_data is None:
@@ -529,6 +584,20 @@ def construct_node_execution_input(
         )
 
     return nodes_input
+
+
+def _merge_nodes_input_masks(
+    overrides_map_1: dict[str, dict[str, JsonValue]],
+    overrides_map_2: dict[str, dict[str, JsonValue]],
+) -> dict[str, dict[str, JsonValue]]:
+    """Perform a per-node merge of input overrides"""
+    result = overrides_map_1.copy()
+    for node_id, overrides2 in overrides_map_2.items():
+        if node_id in result:
+            result[node_id] = {**result[node_id], **overrides2}
+        else:
+            result[node_id] = overrides2
+    return result
 
 
 # ============ Execution Queue Helpers ============ #
@@ -583,13 +652,90 @@ def create_execution_queue_config() -> RabbitMQConfig:
     )
 
 
-async def add_graph_execution_async(
+async def stop_graph_execution(
+    graph_exec_id: str,
+    use_db_query: bool = True,
+):
+    """
+    Mechanism:
+    1. Set the cancel event
+    2. Graph executor's cancel handler thread detects the event, terminates workers,
+       reinitializes worker pool, and returns.
+    3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
+    """
+    queue_client = await get_async_execution_queue()
+    await queue_client.publish_message(
+        routing_key="",
+        message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
+        exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
+    )
+
+    # Update the status of the graph execution
+    if use_db_query:
+        graph_execution = await update_graph_execution_stats(
+            graph_exec_id,
+            ExecutionStatus.TERMINATED,
+        )
+    else:
+        graph_execution = await get_db_async_client().update_graph_execution_stats(
+            graph_exec_id,
+            ExecutionStatus.TERMINATED,
+        )
+
+    if graph_execution:
+        await get_async_execution_event_bus().publish(graph_execution)
+    else:
+        raise NotFoundError(
+            f"Graph execution #{graph_exec_id} not found for termination."
+        )
+
+    # Update the status of the node executions
+    if use_db_query:
+        node_executions = await get_node_executions(
+            graph_exec_id=graph_exec_id,
+            statuses=[
+                ExecutionStatus.QUEUED,
+                ExecutionStatus.RUNNING,
+                ExecutionStatus.INCOMPLETE,
+            ],
+        )
+        await update_node_execution_status_batch(
+            [v.node_exec_id for v in node_executions],
+            ExecutionStatus.TERMINATED,
+        )
+    else:
+        node_executions = await get_db_async_client().get_node_executions(
+            graph_exec_id=graph_exec_id,
+            statuses=[
+                ExecutionStatus.QUEUED,
+                ExecutionStatus.RUNNING,
+                ExecutionStatus.INCOMPLETE,
+            ],
+        )
+        await get_db_async_client().update_node_execution_status_batch(
+            [v.node_exec_id for v in node_executions],
+            ExecutionStatus.TERMINATED,
+        )
+
+    await asyncio.gather(
+        *[
+            get_async_execution_event_bus().publish(
+                v.model_copy(update={"status": ExecutionStatus.TERMINATED})
+            )
+            for v in node_executions
+        ]
+    )
+
+
+async def add_graph_execution(
     graph_id: str,
     user_id: str,
-    inputs: BlockInput,
+    inputs: Optional[BlockInput] = None,
     preset_id: Optional[str] = None,
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[dict[str, CredentialsMetaInput]] = None,
+    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
+    use_db_query: bool = True,
 ) -> GraphExecutionWithNodes:
     """
     Adds a graph execution to the queue and returns the execution entry.
@@ -602,43 +748,67 @@ async def add_graph_execution_async(
         graph_version: The version of the graph to execute.
         graph_credentials_inputs: Credentials inputs to use in the execution.
             Keys should map to the keys generated by `GraphModel.aggregate_credentials_inputs`.
+        nodes_input_masks: Node inputs to use in the execution.
     Returns:
         GraphExecutionEntry: The entry for the graph execution.
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
     """  # noqa
-    graph: GraphModel | None = await get_graph(
-        graph_id=graph_id,
-        user_id=user_id,
-        version=graph_version,
-        include_subgraphs=True,
-    )
+    if use_db_query:
+        graph: GraphModel | None = await get_graph(
+            graph_id=graph_id,
+            user_id=user_id,
+            version=graph_version,
+            include_subgraphs=True,
+        )
+    else:
+        graph: GraphModel | None = await get_db_async_client().get_graph(
+            graph_id=graph_id,
+            user_id=user_id,
+            version=graph_version,
+            include_subgraphs=True,
+        )
+
     if not graph:
         raise NotFoundError(f"Graph #{graph_id} not found.")
 
-    node_credentials_input_map = (
-        make_node_credentials_input_map(graph, graph_credentials_inputs)
-        if graph_credentials_inputs
-        else None
+    nodes_input_masks = _merge_nodes_input_masks(
+        (
+            make_node_credentials_input_map(graph, graph_credentials_inputs)
+            if graph_credentials_inputs
+            else {}
+        ),
+        nodes_input_masks or {},
+    )
+    starting_nodes_input = await construct_node_execution_input(
+        graph=graph,
+        user_id=user_id,
+        graph_inputs=inputs or {},
+        nodes_input_masks=nodes_input_masks,
     )
 
-    graph_exec = await create_graph_execution(
-        user_id=user_id,
-        graph_id=graph_id,
-        graph_version=graph.version,
-        starting_nodes_input=construct_node_execution_input(
-            graph=graph,
+    if use_db_query:
+        graph_exec = await create_graph_execution(
             user_id=user_id,
-            graph_inputs=inputs,
-            node_credentials_input_map=node_credentials_input_map,
-        ),
-        preset_id=preset_id,
-    )
+            graph_id=graph_id,
+            graph_version=graph.version,
+            starting_nodes_input=starting_nodes_input,
+            preset_id=preset_id,
+        )
+    else:
+        graph_exec = await get_db_async_client().create_graph_execution(
+            user_id=user_id,
+            graph_id=graph_id,
+            graph_version=graph.version,
+            starting_nodes_input=starting_nodes_input,
+            preset_id=preset_id,
+        )
+
     try:
         queue = await get_async_execution_queue()
         graph_exec_entry = graph_exec.to_graph_execution_entry()
-        if node_credentials_input_map:
-            graph_exec_entry.node_credentials_input_map = node_credentials_input_map
+        if nodes_input_masks:
+            graph_exec_entry.nodes_input_masks = nodes_input_masks
         await queue.publish_message(
             routing_key=GRAPH_EXECUTION_ROUTING_KEY,
             message=graph_exec_entry.model_dump_json(),
@@ -652,99 +822,122 @@ async def add_graph_execution_async(
     except Exception as e:
         logger.error(f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {e}")
 
-        await update_node_execution_status_batch(
-            [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
-            ExecutionStatus.FAILED,
-        )
-        await update_graph_execution_stats(
-            graph_exec_id=graph_exec.id,
-            status=ExecutionStatus.FAILED,
-            stats=GraphExecutionStats(error=str(e)),
-        )
+        if use_db_query:
+            await update_node_execution_status_batch(
+                [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
+                ExecutionStatus.FAILED,
+            )
+            await update_graph_execution_stats(
+                graph_exec_id=graph_exec.id,
+                status=ExecutionStatus.FAILED,
+                stats=GraphExecutionStats(error=str(e)),
+            )
+        else:
+            await get_db_async_client().update_node_execution_status_batch(
+                [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
+                ExecutionStatus.FAILED,
+            )
+            await get_db_async_client().update_graph_execution_stats(
+                graph_exec_id=graph_exec.id,
+                status=ExecutionStatus.FAILED,
+                stats=GraphExecutionStats(error=str(e)),
+            )
+
         raise
 
 
-def add_graph_execution(
-    graph_id: str,
-    user_id: str,
-    inputs: BlockInput,
-    preset_id: Optional[str] = None,
-    graph_version: Optional[int] = None,
-    graph_credentials_inputs: Optional[dict[str, CredentialsMetaInput]] = None,
-    node_credentials_input_map: Optional[
-        dict[str, dict[str, CredentialsMetaInput]]
-    ] = None,
-) -> GraphExecutionWithNodes:
-    """
-    Adds a graph execution to the queue and returns the execution entry.
+# ============ Execution Output Helpers ============ #
 
-    Args:
-        graph_id: The ID of the graph to execute.
-        user_id: The ID of the user executing the graph.
-        inputs: The input data for the graph execution.
-        preset_id: The ID of the preset to use.
-        graph_version: The version of the graph to execute.
-        graph_credentials_inputs: Credentials inputs to use in the execution.
-            Keys should map to the keys generated by `GraphModel.aggregate_credentials_inputs`.
-        node_credentials_input_map: Credentials inputs to use in the execution, mapped to specific nodes.
-    Returns:
-        GraphExecutionEntry: The entry for the graph execution.
-    Raises:
-        ValueError: If the graph is not found or if there are validation errors.
-    """
-    db = get_db_client()
-    graph: GraphModel | None = db.get_graph(
-        graph_id=graph_id,
-        user_id=user_id,
-        version=graph_version,
-        include_subgraphs=True,
-    )
-    if not graph:
-        raise NotFoundError(f"Graph #{graph_id} not found.")
 
-    node_credentials_input_map = node_credentials_input_map or (
-        make_node_credentials_input_map(graph, graph_credentials_inputs)
-        if graph_credentials_inputs
-        else None
-    )
+class ExecutionOutputEntry(BaseModel):
+    node: Node
+    node_exec_id: str
+    data: BlockData
 
-    graph_exec = db.create_graph_execution(
-        user_id=user_id,
-        graph_id=graph_id,
-        graph_version=graph.version,
-        starting_nodes_input=construct_node_execution_input(
-            graph=graph,
-            user_id=user_id,
-            graph_inputs=inputs,
-            node_credentials_input_map=node_credentials_input_map,
-        ),
-        preset_id=preset_id,
-    )
-    try:
-        queue = get_execution_queue()
-        graph_exec_entry = graph_exec.to_graph_execution_entry()
-        if node_credentials_input_map:
-            graph_exec_entry.node_credentials_input_map = node_credentials_input_map
-        queue.publish_message(
-            routing_key=GRAPH_EXECUTION_ROUTING_KEY,
-            message=graph_exec_entry.model_dump_json(),
-            exchange=GRAPH_EXECUTION_EXCHANGE,
-        )
 
-        bus = get_execution_event_bus()
-        bus.publish(graph_exec)
+class NodeExecutionProgress:
+    def __init__(
+        self,
+        on_done_task: Callable[[str, object], None],
+    ):
+        self.output: dict[str, list[ExecutionOutputEntry]] = defaultdict(list)
+        self.tasks: dict[str, Future] = {}
+        self.on_done_task = on_done_task
 
-        return graph_exec
-    except Exception as e:
-        logger.error(f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {e}")
+    def add_task(self, node_exec_id: str, task: Future):
+        self.tasks[node_exec_id] = task
 
-        db.update_node_execution_status_batch(
-            [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
-            ExecutionStatus.FAILED,
-        )
-        db.update_graph_execution_stats(
-            graph_exec_id=graph_exec.id,
-            status=ExecutionStatus.FAILED,
-            stats=GraphExecutionStats(error=str(e)),
-        )
-        raise
+    def add_output(self, output: ExecutionOutputEntry):
+        self.output[output.node_exec_id].append(output)
+
+    def pop_output(self) -> ExecutionOutputEntry | None:
+        exec_id = self._next_exec()
+        if not exec_id:
+            return None
+
+        if self._pop_done_task(exec_id):
+            return self.pop_output()
+
+        if next_output := self.output[exec_id]:
+            return next_output.pop(0)
+
+        return None
+
+    def is_done(self, wait_time: float = 0.0) -> bool:
+        exec_id = self._next_exec()
+        if not exec_id:
+            return True
+
+        if self._pop_done_task(exec_id):
+            return self.is_done(wait_time)
+
+        if wait_time <= 0:
+            return False
+
+        try:
+            self.tasks[exec_id].result(wait_time)
+        except TimeoutError:
+            print(
+                ">>>>>>>  -- Timeout, after waiting for",
+                wait_time,
+                "seconds for node_id",
+                exec_id,
+            )
+            pass
+
+        return self.is_done(0)
+
+    def stop(self) -> list[str]:
+        """
+        Stops all tasks and clears the output.
+        This is useful for cleaning up when the execution is cancelled or terminated.
+        Returns a list of execution IDs that were stopped.
+        """
+        cancelled_ids = []
+        for task_id, task in self.tasks.items():
+            if task.done():
+                continue
+            task.cancel()
+            cancelled_ids.append(task_id)
+        return cancelled_ids
+
+    def _pop_done_task(self, exec_id: str) -> bool:
+        task = self.tasks.get(exec_id)
+        if not task:
+            return True
+
+        if not task.done():
+            return False
+
+        if self.output[exec_id]:
+            return False
+
+        if task := self.tasks.pop(exec_id):
+            self.on_done_task(exec_id, task.result())
+
+        return True
+
+    def _next_exec(self) -> str | None:
+        if not self.tasks:
+            return None
+        return next(iter(self.tasks.keys()))

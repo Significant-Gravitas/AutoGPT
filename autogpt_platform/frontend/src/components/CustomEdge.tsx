@@ -12,6 +12,7 @@ import "./customedge.css";
 import { X } from "lucide-react";
 import { useBezierPath } from "@/hooks/useBezierPath";
 import { FlowContext } from "./Flow";
+import { NodeExecutionResult } from "@/lib/autogpt-server-api";
 
 export type CustomEdgeData = {
   edgeColor: string;
@@ -19,7 +20,7 @@ export type CustomEdgeData = {
   isStatic?: boolean;
   beadUp?: number;
   beadDown?: number;
-  beadData?: any[];
+  beadData?: Map<string, NodeExecutionResult["status"]>;
 };
 
 type Bead = {
@@ -92,7 +93,7 @@ export function CustomEdge({
       return;
     }
 
-    const beadUp = data?.beadUp!;
+    const beadUp: number = data?.beadUp ?? 0;
 
     // Add beads
     setBeads(({ beads, created, destroyed }) => {
@@ -113,10 +114,8 @@ export function CustomEdge({
         const newBeads = beads
           .map((bead) => ({ ...bead }))
           .filter((bead, index) => {
-            const beadDown = data?.beadDown!;
-
-            // Remove always one less bead in case of static edge, so it stays at the connection point
-            const removeCount = beadDown - destroyed - (data?.isStatic ? 1 : 0);
+            const beadDown: number = data?.beadDown ?? 0;
+            const removeCount = beadDown - destroyed;
             if (bead.t >= bead.targetT && index < removeCount) {
               destroyedCount++;
               return false;
@@ -152,10 +151,8 @@ export function CustomEdge({
             };
           })
           .filter((bead, index) => {
-            const beadDown = data?.beadDown!;
-
-            // Remove always one less bead in case of static edge, so it stays at the connection point
-            const removeCount = beadDown - destroyed - (data?.isStatic ? 1 : 0);
+            const beadDown: number = data?.beadDown ?? 0;
+            const removeCount = beadDown - destroyed;
             if (bead.t >= bead.targetT && index < removeCount) {
               destroyedCount++;
               return false;

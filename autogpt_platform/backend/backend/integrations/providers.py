@@ -3,6 +3,7 @@ from enum import Enum
 
 # --8<-- [start:ProviderName]
 class ProviderName(str, Enum):
+    AIML_API = "aiml_api"
     ANTHROPIC = "anthropic"
     APOLLO = "apollo"
     COMPASS = "compass"
@@ -16,6 +17,7 @@ class ProviderName(str, Enum):
     GOOGLE = "google"
     GOOGLE_MAPS = "google_maps"
     GROQ = "groq"
+    HTTP = "http"
     HUBSPOT = "hubspot"
     IDEOGRAM = "ideogram"
     JINA = "jina"

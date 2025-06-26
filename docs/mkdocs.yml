@@ -23,6 +23,7 @@ nav:
     - Blocks: platform/blocks/blocks.md
     - Contributing:
         - Tests: platform/contributing/tests.md
+        - OAuth Flows: platform/contributing/oauth-integration-flow.md
   - AutoGPT Classic:
       - Introduction: classic/index.md
       - Setup:
@@ -54,7 +55,9 @@ nav:
       - Frontend:
          - Readme: https://github.com/Significant-Gravitas/AutoGPT/blob/master/classic/frontend/README.md
 
-  - Contribute: contribute/index.md
+  - Contribute: 
+        - Introduction: contribute/index.md
+        - Testing: autogpt_platform/backend/TESTING.md
     
   # - Challenges:
   #     - Introduction: challenges/introduction.md
