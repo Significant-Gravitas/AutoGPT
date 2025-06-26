@@ -16,12 +16,12 @@ import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
 import { CalendarClockIcon, Trash2Icon } from "lucide-react";
+import { CronSchedulerDialog } from "@/components/cron-scheduler";
 import { CredentialsInput } from "@/components/integrations/credentials-input";
 import { TypeBasedInput } from "@/components/type-based-input";
 import { useToastOnFail } from "@/components/ui/use-toast";
 import ActionButtonGroup from "@/components/agptui/action-button-group";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
-import { CronScheduler } from "@/components/cron-scheduler";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { useToast } from "@/components/ui/use-toast";
 import { isEmpty } from "lodash";
@@ -337,11 +337,9 @@ export default function AgentRunDraftView({
   ]);
 
   const doSetupSchedule = useCallback(
-    (cronExpression: string) => {
+    (cronExpression: string, scheduleName: string) => {
       // Scheduling is not supported for webhook-triggered agents
       if (agent.has_external_trigger) return;
-
-      const scheduleName = prompt("Enter a name for the schedule:", agent.name);
 
       api
         .createGraphExecutionSchedule({
@@ -597,10 +595,11 @@ export default function AgentRunDraftView({
             title={`${agent.has_external_trigger ? "Trigger" : agentPreset ? "Preset" : "Run"} actions`}
             actions={runActions}
           />
-          <CronScheduler
+          <CronSchedulerDialog
             open={cronScheduleDialogOpen}
             setOpen={setCronScheduleDialogOpen}
             afterCronCreation={doSetupSchedule}
+            defaultScheduleName={agent.name}
           />
 
           <ActionButtonGroup title="Agent actions" actions={agentActions} />

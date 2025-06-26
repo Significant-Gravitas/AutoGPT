@@ -52,7 +52,7 @@ import PrimaryActionBar from "@/components/PrimaryActionButton";
 import OttoChatWidget from "@/components/OttoChatWidget";
 import { useToast } from "@/components/ui/use-toast";
 import { useCopyPaste } from "../hooks/useCopyPaste";
-import { CronScheduler } from "@/components/cron-scheduler";
+import { CronSchedulerDialog } from "@/components/cron-scheduler";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -639,8 +639,11 @@ const FlowEditor: React.FC<{
 
   // This function is called after cron expression is created
   // So you can collect inputs for scheduling
-  const afterCronCreation = (cronExpression: string) => {
-    runnerUIRef.current?.collectInputsForScheduling(cronExpression);
+  const afterCronCreation = (cronExpression: string, scheduleName: string) => {
+    runnerUIRef.current?.collectInputsForScheduling(
+      cronExpression,
+      scheduleName,
+    );
   };
 
   // This function Opens up form for creating cron expression
@@ -728,10 +731,11 @@ const FlowEditor: React.FC<{
             requestStopRun={requestStopRun}
             runAgentTooltip={!isRunning ? "Run Agent" : "Stop Agent"}
           />
-          <CronScheduler
-            afterCronCreation={afterCronCreation}
+          <CronSchedulerDialog
             open={openCron}
             setOpen={setOpenCron}
+            afterCronCreation={afterCronCreation}
+            defaultScheduleName={agentName}
           />
         </ReactFlow>
       </div>
