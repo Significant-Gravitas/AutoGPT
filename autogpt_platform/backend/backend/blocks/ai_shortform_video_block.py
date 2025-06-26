@@ -332,6 +332,7 @@ class AIShortformVideoCreatorBlock(Block):
             logger.debug(f"Video ready: {video_url}")
             yield "video_url", video_url
 
+
 class AIAdMakerVideoCreatorBlock(Block):
     """Generates a 30‑second vertical AI advert using optional user‑supplied imagery."""
 
@@ -518,6 +519,7 @@ class AIAdMakerVideoCreatorBlock(Block):
 
         video_url = await self.wait_for_video(credentials.api_key, pid)
         yield "video_url", video_url
+
 
 class AIScreenshotToVideoAdBlock(Block):
     """Creates an advert where the supplied screenshot is narrated by an AI avatar."""
