@@ -560,3 +560,56 @@ class SearchPeopleResponse(BaseModel):
     model_ids: list[str] = []
     num_fetch_result: Optional[str] = "N/A"
     derived_params: Optional[str] = "N/A"
+
+
+class EnrichPersonRequest(BaseModel):
+    """Request for Apollo's person enrichment API"""
+
+    person_id: Optional[str] = SchemaField(
+        description="Apollo person ID to enrich (most accurate method)",
+        default=None,
+    )
+    first_name: Optional[str] = SchemaField(
+        description="First name of the person to enrich",
+        default=None,
+    )
+    last_name: Optional[str] = SchemaField(
+        description="Last name of the person to enrich",
+        default=None,
+    )
+    name: Optional[str] = SchemaField(
+        description="Full name of the person to enrich",
+        default=None,
+    )
+    email: Optional[str] = SchemaField(
+        description="Email address of the person to enrich",
+        default=None,
+    )
+    domain: Optional[str] = SchemaField(
+        description="Company domain of the person to enrich",
+        default=None,
+    )
+    company: Optional[str] = SchemaField(
+        description="Company name of the person to enrich",
+        default=None,
+    )
+    linkedin_url: Optional[str] = SchemaField(
+        description="LinkedIn URL of the person to enrich",
+        default=None,
+    )
+    organization_id: Optional[str] = SchemaField(
+        description="Apollo organization ID of the person's company",
+        default=None,
+    )
+    title: Optional[str] = SchemaField(
+        description="Job title of the person to enrich",
+        default=None,
+    )
+    reveal_personal_emails: bool = SchemaField(
+        description="Whether to reveal personal email addresses (consumes credits)",
+        default=False,
+    )
+    reveal_phone_number: bool = SchemaField(
+        description="Whether to reveal phone numbers (consumes credits)",
+        default=False,
+    )
