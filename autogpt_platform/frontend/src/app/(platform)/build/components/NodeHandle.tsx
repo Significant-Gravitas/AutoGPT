@@ -7,7 +7,7 @@ import {
 } from "@/lib/utils";
 import { Handle, Position } from "@xyflow/react";
 import { FC, memo, useCallback } from "react";
-import SchemaTooltip from "../../../../../components/SchemaTooltip";
+import SchemaTooltip from "../../../../components/SchemaTooltip";
 
 type Props = {
   keyName: string;

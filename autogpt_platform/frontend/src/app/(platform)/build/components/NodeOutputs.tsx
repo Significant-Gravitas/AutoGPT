@@ -1,7 +1,7 @@
-import React from "react";
-import { ContentRenderer } from "./ui/render";
 import { beautifyString } from "@/lib/utils";
 import * as Separator from "@radix-ui/react-separator";
+import React from "react";
+import { ContentRenderer } from "../../../../components/ui/render";
 
 type NodeOutputsProps = {
   title?: string;
@@ -9,7 +9,7 @@ type NodeOutputsProps = {
   data: { [key: string]: Array<any> };
 };
 
-export default function NodeOutputs({
+export function NodeOutputs({
   title,
   truncateLongData,
   data,

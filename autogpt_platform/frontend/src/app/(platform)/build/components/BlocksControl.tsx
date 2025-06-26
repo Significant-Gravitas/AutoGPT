@@ -1,4 +1,3 @@
-import { CustomNode } from "@/app/(platform)/build/components/components/CustomNode";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { IconToyBrick } from "@/components/ui/icons";
@@ -26,6 +25,7 @@ import { beautifyString, getPrimaryCategoryColor } from "@/lib/utils";
 import { MagnifyingGlassIcon, PlusIcon } from "@radix-ui/react-icons";
 import jaro from "jaro-winkler";
 import React, { useMemo, useState } from "react";
+import { CustomNode } from "./CustomNode/CustomNode";
 
 interface PRops {
   blocks: Block[];

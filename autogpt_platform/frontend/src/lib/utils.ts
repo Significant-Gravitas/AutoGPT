@@ -1,7 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
-import { NodeDimension } from "@/app/(platform)/build/components/FlowEditor";
+import { NodeDimension } from "@/app/(platform)/build/page";
 import { Category } from "@/lib/autogpt-server-api/types";
 
 export function cn(...inputs: ClassValue[]) {

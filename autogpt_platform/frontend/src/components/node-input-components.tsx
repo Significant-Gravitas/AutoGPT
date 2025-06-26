@@ -1,7 +1,8 @@
 import {
   ConnectionData,
   CustomNodeData,
-} from "@/app/(platform)/build/components/components/CustomNode";
+} from "@/app/(platform)/build/components/CustomNode/CustomNode";
+import NodeHandle from "@/app/(platform)/build/components/NodeHandle";
 import { CredentialsInput } from "@/components/integrations/credentials-input";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -37,7 +38,6 @@ import React, {
   useRef,
   useState,
 } from "react";
-import NodeHandle from "../app/(platform)/build/components/components/NodeHandle";
 import { Button } from "./ui/button";
 import { LocalValuedInput } from "./ui/input";
 import {

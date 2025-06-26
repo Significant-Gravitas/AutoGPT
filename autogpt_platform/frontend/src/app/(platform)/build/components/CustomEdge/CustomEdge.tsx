@@ -1,4 +1,3 @@
-import { useBezierPath } from "@/hooks/useBezierPath";
 import { NodeExecutionResult } from "@/lib/autogpt-server-api";
 import {
   BaseEdge,
@@ -11,8 +10,9 @@ import {
 } from "@xyflow/react";
 import { X } from "lucide-react";
 import { useCallback, useContext, useEffect, useState } from "react";
-import { FlowContext } from "../FlowEditor";
-import "./customedge.css";
+import { FlowContext } from "../../context";
+import "./styles.css";
+import { useBezierPath } from "./useBezierPath";
 
 export type CustomEdgeData = {
   edgeColor: string;

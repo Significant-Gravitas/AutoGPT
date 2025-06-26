@@ -46,16 +46,16 @@ import {
   NodeGenericInputField,
   NodeTextBoxInput,
 } from "../../../../../components/node-input-components";
-import NodeOutputs from "../../../../../components/NodeOutputs";
 import OutputModalComponent from "../../../../../components/OutputModalComponent";
 import SchemaTooltip from "../../../../../components/SchemaTooltip";
 import { Badge } from "../../../../../components/ui/badge";
 import { IconCoin } from "../../../../../components/ui/icons";
-import { FlowContext } from "../FlowEditor";
-import "./customnode.css";
-import NodeHandle from "./NodeHandle";
+import NodeHandle from "../NodeHandle";
+import { NodeOutputs } from "../NodeOutputs";
+import "./styles.css";
 
 import useCredits from "@/hooks/useCredits";
+import { FlowContext } from "../../context";
 
 export type ConnectionData = Array<{
   edge_id: string;

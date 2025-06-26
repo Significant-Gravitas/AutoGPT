@@ -11,9 +11,11 @@ import React, {
   useImperativeHandle,
   useState,
 } from "react";
-import { CustomNode } from "../app/(platform)/build/components/components/CustomNode";
-import RunnerInputUI from "./runner-ui/RunnerInputUI";
-import RunnerOutputUI, { BlockOutput } from "./runner-ui/RunnerOutputUI";
+import RunnerInputUI from "../../../../components/runner-ui/RunnerInputUI";
+import RunnerOutputUI, {
+  BlockOutput,
+} from "../../../../components/runner-ui/RunnerOutputUI";
+import { CustomNode } from "./CustomNode/CustomNode";
 
 interface HardcodedValues {
   name: any;
@@ -29,7 +31,7 @@ export interface InputItem {
   hardcodedValues: HardcodedValues;
 }
 
-interface RunnerUIWrapperProps {
+interface Props {
   nodes: Node[];
   setNodes: React.Dispatch<React.SetStateAction<CustomNode[]>>;
   setIsScheduling: React.Dispatch<React.SetStateAction<boolean>>;
@@ -46,7 +48,7 @@ export interface RunnerUIWrapperRef {
   collectInputsForScheduling: (cronExpression: string) => void;
 }
 
-const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
+export const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, Props>(
   (
     {
       nodes,
@@ -204,5 +206,3 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
 );
 
 RunnerUIWrapper.displayName = "RunnerUIWrapper";
-
-export default RunnerUIWrapper;

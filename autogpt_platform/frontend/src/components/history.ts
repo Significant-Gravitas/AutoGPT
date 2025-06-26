@@ -1,6 +1,6 @@
 import { Edge } from "@xyflow/react";
-import { CustomEdgeData } from "../app/(platform)/build/components/components/CustomEdge";
-import { CustomNodeData } from "../app/(platform)/build/components/components/CustomNode";
+import { CustomEdgeData } from "../app/(platform)/build/components/CustomEdge/CustomEdge";
+import { CustomNodeData } from "../app/(platform)/build/components/CustomNode/CustomNode";
 
 type ActionType =
   | "ADD_NODE"

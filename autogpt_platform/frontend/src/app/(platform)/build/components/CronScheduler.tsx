@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { CronExpressionManager } from "@/lib/monitor/cronExpressionManager";
 import { useState } from "react";
-import { Separator } from "../../../../../components/ui/separator";
+import { Separator } from "../../../../components/ui/separator";
 
 interface Props {
   setOpen: React.Dispatch<React.SetStateAction<boolean>>;
