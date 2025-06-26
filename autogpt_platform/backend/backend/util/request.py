@@ -353,15 +353,6 @@ class Requests:
         max_redirects: int = 10,
         **kwargs,
     ) -> Response:
-        print(
-            ">>>> Sending request with headers:",
-            headers,
-            "and data:",
-            data,
-            "and json:",
-            json,
-        )
-
         if files is not None:
             if json is not None:
                 raise ValueError(
