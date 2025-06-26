@@ -3,7 +3,6 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-import { User } from "@supabase/supabase-js";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -20,63 +19,18 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { updateSettings } from "@/app/(platform)/profile/(user)/settings/actions";
 import { toast } from "@/components/ui/use-toast";
-import { NotificationPreferenceDTO } from "@/lib/autogpt-server-api";
+import { NotificationPreference } from "@/api/__generated__/models/notificationPreference";
+import { User } from "@supabase/supabase-js";
+import { createDefaultValues, formSchema } from "./helpers";
 
-const formSchema = z
-  .object({
-    email: z.string().email(),
-    password: z
-      .string()
-      .optional()
-      .refine((val) => {
-        // If password is provided, it must be at least 8 characters
-        if (val) return val.length >= 12;
-        return true;
-      }, "String must contain at least 12 character(s)"),
-    confirmPassword: z.string().optional(),
-    notifyOnAgentRun: z.boolean(),
-    notifyOnZeroBalance: z.boolean(),
-    notifyOnLowBalance: z.boolean(),
-    notifyOnBlockExecutionFailed: z.boolean(),
-    notifyOnContinuousAgentError: z.boolean(),
-    notifyOnDailySummary: z.boolean(),
-    notifyOnWeeklySummary: z.boolean(),
-    notifyOnMonthlySummary: z.boolean(),
-  })
-  .refine(
-    (data) => {
-      if (data.password || data.confirmPassword) {
-        return data.password === data.confirmPassword;
-      }
-      return true;
-    },
-    {
-      message: "Passwords do not match",
-      path: ["confirmPassword"],
-    },
-  );
-
-interface SettingsFormProps {
+export const SettingsForm = ({
+  preferences,
+  user,
+}: {
+  preferences: NotificationPreference;
   user: User;
-  preferences: NotificationPreferenceDTO;
-}
-
-export default function SettingsForm({ user, preferences }: SettingsFormProps) {
-  const defaultValues = {
-    email: user.email || "",
-    password: "",
-    confirmPassword: "",
-    notifyOnAgentRun: preferences.preferences.AGENT_RUN,
-    notifyOnZeroBalance: preferences.preferences.ZERO_BALANCE,
-    notifyOnLowBalance: preferences.preferences.LOW_BALANCE,
-    notifyOnBlockExecutionFailed:
-      preferences.preferences.BLOCK_EXECUTION_FAILED,
-    notifyOnContinuousAgentError:
-      preferences.preferences.CONTINUOUS_AGENT_ERROR,
-    notifyOnDailySummary: preferences.preferences.DAILY_SUMMARY,
-    notifyOnWeeklySummary: preferences.preferences.WEEKLY_SUMMARY,
-    notifyOnMonthlySummary: preferences.preferences.MONTHLY_SUMMARY,
-  };
+}) => {
+  const defaultValues = createDefaultValues(user, preferences);
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -396,4 +350,4 @@ export default function SettingsForm({ user, preferences }: SettingsFormProps) {
       </form>
     </Form>
   );
-}
+};
