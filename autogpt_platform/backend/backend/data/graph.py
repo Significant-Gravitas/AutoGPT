@@ -300,36 +300,22 @@ class Graph(BaseGraph):
                     field_name,
                     field_info,
                 ) in node.block.input_schema.get_credentials_fields_info().items():
-                    # Apply discrimination before aggregating credentials inputs
-                    discriminated_field_info = (
-                        field_info.discriminate(
-                            node.input_default[field_info.discriminator]
-                        )
-                        if (
-                            field_info.discriminator
-                            and node.input_default.get(field_info.discriminator)
-                        )
-                        else field_info
-                    )
 
-                    # Add discriminator values to the field info before combining
-                    if (
-                        field_info.discriminator
-                        and field_info.discriminator in node.input_default
-                    ):
-                        discriminator_value = node.input_default[
-                            field_info.discriminator
-                        ]
-                        if (
-                            discriminator_value
-                            not in discriminated_field_info.discriminator_values
-                        ):
-                            discriminated_field_info.discriminator_values.append(
-                                discriminator_value
-                            )
+                    discriminator = field_info.discriminator
+                    if not discriminator:
+                        node_credential_data.append((field_info, (node.id, field_name)))
+                        continue
+
+                    discriminator_value = node.input_default.get(discriminator)
+                    if discriminator_value is None:
+                        node_credential_data.append((field_info, (node.id, field_name)))
+                        continue
+
+                    discriminated_info = field_info.discriminate(discriminator_value)
+                    discriminated_info.discriminator_values.add(discriminator_value)
 
                     node_credential_data.append(
-                        (discriminated_field_info, (node.id, field_name))
+                        (discriminated_info, (node.id, field_name))
                     )
 
         # Combine credential field info (this will merge discriminator_values automatically)

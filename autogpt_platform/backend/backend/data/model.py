@@ -252,7 +252,7 @@ class HostScopedCredentials(_BaseCredentials):
     @field_serializer("headers")
     def serialize_headers(self, headers: dict[str, SecretStr]) -> dict[str, str]:
         """Serialize headers by extracting secret values."""
-        return {key: value.get_secret_value() for key, value in headers.items()}
+        return {key: str(value) for key, value in headers.items()}
 
     def get_headers_dict(self) -> dict[str, str]:
         """Get headers with secret values extracted."""
@@ -399,7 +399,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
     required_scopes: Optional[frozenset[str]] = Field(None, alias="credentials_scopes")
     discriminator: Optional[str] = None
     discriminator_mapping: Optional[dict[str, CP]] = None
-    discriminator_values: list[Any] = Field(default_factory=list)
+    discriminator_values: set[Any] = Field(default_factory=set)
 
     @classmethod
     def combine(
@@ -487,7 +487,7 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                     credentials_scopes=frozenset(all_scopes) or None,
                     discriminator=combined.discriminator,
                     discriminator_mapping=combined.discriminator_mapping,
-                    discriminator_values=all_discriminator_values,
+                    discriminator_values=set(all_discriminator_values),
                 ),
                 combined_keys,
             )
@@ -498,11 +498,14 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
         if not (self.discriminator and self.discriminator_mapping):
             return self
 
-        discriminator_value = self.discriminator_mapping[discriminator_value]
         return CredentialsFieldInfo(
-            credentials_provider=frozenset([discriminator_value]),
+            credentials_provider=frozenset(
+                [self.discriminator_mapping[discriminator_value]]
+            ),
             credentials_types=self.supported_types,
             credentials_scopes=self.required_scopes,
+            discriminator=self.discriminator,
+            discriminator_mapping=self.discriminator_mapping,
             discriminator_values=self.discriminator_values,
         )
 
@@ -512,7 +515,7 @@ def CredentialsField(
     *,
     discriminator: Optional[str] = None,
     discriminator_mapping: Optional[dict[str, Any]] = None,
-    discriminator_values: Optional[list[Any]] = None,
+    discriminator_values: Optional[set[Any]] = None,
     title: Optional[str] = None,
     description: Optional[str] = None,
     **kwargs,
