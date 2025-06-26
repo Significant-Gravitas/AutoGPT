@@ -353,10 +353,10 @@ stateDiagram-v2
 
 ### 2. PKCE Implementation
 
-- **Code Verifier**: 128-byte random string
+- **Code Verifier**: Random string generated using `secrets.token_urlsafe(128)` (approximately 171 characters when base64url encoded, though RFC 7636 recommends 43-128 characters)
 - **Code Challenge**: SHA256 hash of verifier, base64url encoded
-- **Storage**: Stored with state token in Redis
-- **Usage**: Enhanced security for public clients
+- **Storage**: Stored with state token in database (encrypted) with 10-minute expiration
+- **Usage**: Enhanced security for public clients (currently used by Twitter provider)
 
 ### 3. Credential Storage
 
