@@ -12,6 +12,7 @@ from autogpt_libs.auth.depends import auth_middleware, get_user_id
 import backend.data.block
 import backend.data.graph
 import backend.server.v2.store.db
+import backend.server.v2.store.exceptions
 import backend.server.v2.store.image_gen
 import backend.server.v2.store.media
 import backend.server.v2.store.model
@@ -589,6 +590,25 @@ async def upload_submission_media(
             user_id=user_id, file=file
         )
         return media_url
+    except backend.server.v2.store.exceptions.VirusDetectedError as e:
+        logger.warning(f"Virus detected in uploaded file: {e.threat_name}")
+        return fastapi.responses.JSONResponse(
+            status_code=400,
+            content={
+                "detail": f"File rejected due to virus detection: {e.threat_name}",
+                "error_type": "virus_detected",
+                "threat_name": e.threat_name,
+            },
+        )
+    except backend.server.v2.store.exceptions.VirusScanError as e:
+        logger.error(f"Virus scanning failed: {str(e)}")
+        return fastapi.responses.JSONResponse(
+            status_code=503,
+            content={
+                "detail": "Virus scanning service unavailable. Please try again later.",
+                "error_type": "virus_scan_failed",
+            },
+        )
     except Exception:
         logger.exception("Exception occurred whilst uploading submission media")
         return fastapi.responses.JSONResponse(
