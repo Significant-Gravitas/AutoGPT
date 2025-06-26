@@ -2,7 +2,7 @@ import asyncio
 import logging
 import time
 from enum import Enum
-from typing import List, Literal
+from typing import Literal
 
 from pydantic import SecretStr
 
@@ -362,7 +362,7 @@ class AIAdMakerVideoCreatorBlock(Block):
             description="Background track",
             default=AudioTrack.DONT_STOP_ME_ABSTRACT_FUTURE_BASS,
         )
-        input_media_urls: List[str] = SchemaField(
+        input_media_urls: list[str] = SchemaField(
             description="List of image URLs to feature in the advert.", default=[]
         )
         use_only_provided_media: bool = SchemaField(
