@@ -205,6 +205,7 @@ jobs:
           REDIS_HOST: "localhost"
           REDIS_PORT: "6379"
           REDIS_PASSWORD: "testpassword"
+          ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw" # DO NOT USE IN PRODUCTION!!
 
     env:
       CI: true
