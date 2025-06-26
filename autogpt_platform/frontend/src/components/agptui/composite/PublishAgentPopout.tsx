@@ -21,6 +21,8 @@ import {
 import { useRouter } from "next/navigation";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useToast } from "@/components/ui/use-toast";
+import LoadingBox, { LoadingSpinner } from "@/components/ui/loading";
+
 interface PublishAgentPopoutProps {
   trigger?: React.ReactNode;
   openPopout?: boolean;
@@ -72,6 +74,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   const [loading, setLoading] = React.useState(false);
   const [loadingMore, setLoadingMore] = React.useState(false);
   const [hasMore, setHasMore] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
   const api = useBackendAPI();
 
@@ -97,6 +100,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
         );
       } catch (error) {
         console.error("Failed to load my agents:", error);
+        setError("Failed to load agents. Please try again.");
       } finally {
         append ? setLoadingMore(false) : setLoading(false);
       }
@@ -119,11 +123,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     if (open) {
       setCurrentPage(1);
       setHasMore(true);
-    }
-  }, [open]);
-
-  React.useEffect(() => {
-    if (open) {
+      setError(null);
       fetchMyAgents(1);
     }
   }, [open, fetchMyAgents]);
@@ -244,7 +244,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
       if (
         hasMore &&
         !loadingMore &&
-        scrollTop + clientHeight >= scrollHeight - 20
+        scrollTop + clientHeight >= scrollHeight - 50
       ) {
         fetchMyAgents(currentPage + 1, true);
       }
@@ -260,8 +260,19 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
             <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
               <div className="h-full overflow-y-hidden">
                 {loading ? (
-                  <div className="flex items-center justify-center p-8 text-gray-600">
-                    Loading agents...
+                  <LoadingBox className="p-8" />
+                ) : error ? (
+                  <div className="flex flex-col items-center justify-center gap-4 p-8">
+                    <p className="text-red-600">{error}</p>
+                    <Button
+                      onClick={() => {
+                        setError(null);
+                        fetchMyAgents(1);
+                      }}
+                      variant="outline"
+                    >
+                      Try Again
+                    </Button>
                   </div>
                 ) : (
                   <>
@@ -291,8 +302,8 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
                       onListScroll={handleScroll}
                     />
                     {loadingMore && (
-                      <div className="flex items-center justify-center p-4 text-gray-600">
-                        Loading more...
+                      <div className="flex items-center justify-center p-4">
+                        <LoadingSpinner className="size-6" />
                       </div>
                     )}
                   </>
