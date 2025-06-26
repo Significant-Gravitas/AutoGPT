@@ -767,6 +767,7 @@ async def delete_graph_execution(
 
 class ScheduleCreationRequest(pydantic.BaseModel):
     graph_version: Optional[int] = None
+    name: str
     cron: str
     inputs: dict[str, Any]
     credentials: dict[str, CredentialsMetaInput] = pydantic.Field(default_factory=dict)
@@ -798,6 +799,7 @@ async def create_graph_execution_schedule(
         user_id=user_id,
         graph_id=graph_id,
         graph_version=graph.version,
+        name=schedule_params.name,
         cron=schedule_params.cron,
         input_data=schedule_params.inputs,
         input_credentials=schedule_params.credentials,

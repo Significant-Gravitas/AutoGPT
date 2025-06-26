@@ -1081,6 +1081,7 @@ export default function useAgentGraph(
             graph_id: flowID,
             // flowVersion is always defined here because scheduling is opened for a specific version
             graph_version: flowVersion!,
+            name: agentName, // TODO: make customizable
             cron: cronExpression,
             inputs: inputs.reduce(
               (acc, input) => ({

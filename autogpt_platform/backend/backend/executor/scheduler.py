@@ -3,6 +3,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+from typing import Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
@@ -302,6 +303,7 @@ class Scheduler(AppService):
         cron: str,
         input_data: BlockInput,
         input_credentials: dict[str, CredentialsMetaInput],
+        name: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
         job_args = GraphExecutionJobArgs(
             user_id=user_id,
@@ -313,10 +315,11 @@ class Scheduler(AppService):
         )
         job = self.scheduler.add_job(
             execute_graph,
-            CronTrigger.from_crontab(cron),
             kwargs=job_args.model_dump(),
-            replace_existing=True,
+            name=name,
+            trigger=CronTrigger.from_crontab(cron),
             jobstore=Jobstores.EXECUTION.value,
+            replace_existing=True,
         )
         log(f"Added job {job.id} with cron schedule '{cron}' input data: {input_data}")
         return GraphExecutionJobInfo.from_db(job_args, job)

@@ -341,10 +341,13 @@ export default function AgentRunDraftView({
       // Scheduling is not supported for webhook-triggered agents
       if (agent.has_external_trigger) return;
 
+      const scheduleName = prompt("Enter a name for the schedule:", agent.name);
+
       api
         .createGraphExecutionSchedule({
           graph_id: agent.graph_id,
           graph_version: agent.graph_version,
+          name: scheduleName || agent.name,
           cron: cronExpression,
           inputs: inputValues,
           credentials: inputCredentials,

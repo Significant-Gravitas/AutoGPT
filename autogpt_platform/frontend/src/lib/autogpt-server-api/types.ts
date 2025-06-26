@@ -774,6 +774,7 @@ export type ScheduleID = Brand<string, "ScheduleID">;
 export type ScheduleCreatable = {
   graph_id: GraphID;
   graph_version: number;
+  name: string;
   cron: string;
   inputs: Record<string, any>;
   credentials?: Record<string, CredentialsMetaInput>;
