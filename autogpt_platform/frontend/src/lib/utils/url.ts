@@ -5,6 +5,9 @@
  */
 export const getHostFromUrl = (url: string): string | null => {
   try {
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+      url = "http://" + url; // Add a scheme if missing for URL parsing
+    }
     const urlObj = new URL(url);
     return urlObj.hostname;
   } catch {

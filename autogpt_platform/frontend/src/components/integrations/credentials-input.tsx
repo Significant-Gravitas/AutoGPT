@@ -357,12 +357,10 @@ export const CredentialsInput: FC<{
               Enter username and password
             </Button>
           )}
-          {supportsHostScoped && (
+          {supportsHostScoped && siblingInputs?.url && (
             <Button onClick={() => setHostScopedCredentialsModalOpen(true)}>
               <ProviderIcon className="mr-2 h-4 w-4" />
-              {siblingInputs?.url
-                ? `Enter sensitive headers for ${getHostFromUrl(siblingInputs.url)}`
-                : `Enter sensitive headers`}
+              {`Enter sensitive headers for ${getHostFromUrl(siblingInputs.url)}`}
             </Button>
           )}
         </div>

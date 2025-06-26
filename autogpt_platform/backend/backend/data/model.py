@@ -436,8 +436,9 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                 # HTTP host-scoped credentials can have different hosts that reqires different credential sets.
                 # Group by host extracted from the URL
                 providers = frozenset(
-                    [
-                        cast(CP, f"http:{_extract_host_from_url(str(value))}")
+                    [cast(CP, "http")]
+                    + [
+                        cast(CP, _extract_host_from_url(str(value)))
                         for value in field.discriminator_values
                     ]
                 )
