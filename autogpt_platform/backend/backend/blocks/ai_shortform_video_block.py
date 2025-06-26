@@ -263,13 +263,16 @@ class AIShortformVideoCreatorBlock(Block):
             },
             test_output=("video_url", "https://example.com/video.mp4"),
             test_mock={
-                "create_webhook": lambda *args, **kwargs: ("test_uuid", "https://webhook.site/test_uuid"),
+                "create_webhook": lambda *args, **kwargs: (
+                    "test_uuid",
+                    "https://webhook.site/test_uuid",
+                ),
                 "create_video": lambda *args, **kwargs: {"pid": "test_pid"},
                 "check_video_status": lambda *args, **kwargs: {
                     "status": "ready",
-                    "videoUrl": "https://example.com/video.mp4"
+                    "videoUrl": "https://example.com/video.mp4",
                 },
-                "wait_for_video": lambda *args, **kwargs: "https://example.com/video.mp4"
+                "wait_for_video": lambda *args, **kwargs: "https://example.com/video.mp4",
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -438,13 +441,16 @@ class AIAdMakerVideoCreatorBlock(Block):
             },
             test_output=("video_url", "https://example.com/ad.mp4"),
             test_mock={
-                "create_webhook": lambda *args, **kwargs: ("test_uuid", "https://webhook.site/test_uuid"),
+                "create_webhook": lambda *args, **kwargs: (
+                    "test_uuid",
+                    "https://webhook.site/test_uuid",
+                ),
                 "create_video": lambda *args, **kwargs: {"pid": "test_pid"},
                 "check_video_status": lambda *args, **kwargs: {
                     "status": "ready",
-                    "videoUrl": "https://example.com/ad.mp4"
+                    "videoUrl": "https://example.com/ad.mp4",
                 },
-                "wait_for_video": lambda *args, **kwargs: "https://example.com/ad.mp4"
+                "wait_for_video": lambda *args, **kwargs: "https://example.com/ad.mp4",
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -616,13 +622,16 @@ class AIScreenshotToVideoAdBlock(Block):
             },
             test_output=("video_url", "https://example.com/screenshot.mp4"),
             test_mock={
-                "create_webhook": lambda *args, **kwargs: ("test_uuid", "https://webhook.site/test_uuid"),
+                "create_webhook": lambda *args, **kwargs: (
+                    "test_uuid",
+                    "https://webhook.site/test_uuid",
+                ),
                 "create_video": lambda *args, **kwargs: {"pid": "test_pid"},
                 "check_video_status": lambda *args, **kwargs: {
                     "status": "ready",
-                    "videoUrl": "https://example.com/screenshot.mp4"
+                    "videoUrl": "https://example.com/screenshot.mp4",
                 },
-                "wait_for_video": lambda *args, **kwargs: "https://example.com/screenshot.mp4"
+                "wait_for_video": lambda *args, **kwargs: "https://example.com/screenshot.mp4",
             },
             test_credentials=TEST_CREDENTIALS,
         )
