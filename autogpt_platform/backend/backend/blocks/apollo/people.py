@@ -12,7 +12,7 @@ from backend.blocks.apollo.models import (
     SenorityLevels,
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
+from backend.data.model import CredentialsField, SchemaField
 
 
 class SearchPeopleBlock(Block):
@@ -97,7 +97,7 @@ class SearchPeopleBlock(Block):
             advanced=True,
         )
 
-        credentials: ApolloCredentialsInput = SchemaField(
+        credentials: ApolloCredentialsInput = CredentialsField(
             description="Apollo credentials",
         )
 

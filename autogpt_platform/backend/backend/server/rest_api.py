@@ -357,11 +357,22 @@ class AgentServer(backend.util.service.AppProcess):
         provider: ProviderName,
         credentials: Credentials,
     ) -> Credentials:
-        from backend.server.integrations.router import create_credentials
-
-        return await create_credentials(
-            user_id=user_id, provider=provider, credentials=credentials
+        from backend.server.integrations.router import (
+            create_credentials,
+            get_credential,
         )
+
+        try:
+            return await create_credentials(
+                user_id=user_id, provider=provider, credentials=credentials
+            )
+        except Exception as e:
+            logger.error(f"Error creating credentials: {e}")
+            return await get_credential(
+                provider=provider,
+                user_id=user_id,
+                cred_id=credentials.id,
+            )
 
     def set_test_dependency_overrides(self, overrides: dict):
         app.dependency_overrides.update(overrides)
