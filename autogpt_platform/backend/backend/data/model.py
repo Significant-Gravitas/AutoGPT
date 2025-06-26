@@ -249,14 +249,18 @@ class HostScopedCredentials(_BaseCredentials):
         default_factory=dict,
     )
 
+    def _extract_headers(self, headers: dict[str, SecretStr]) -> dict[str, str]:
+        """Helper to extract secret values from headers."""
+        return {key: value.get_secret_value() for key, value in headers.items()}
+
     @field_serializer("headers")
     def serialize_headers(self, headers: dict[str, SecretStr]) -> dict[str, str]:
         """Serialize headers by extracting secret values."""
-        return {key: str(value) for key, value in headers.items()}
+        return self._extract_headers(headers)
 
     def get_headers_dict(self) -> dict[str, str]:
         """Get headers with secret values extracted."""
-        return {key: value.get_secret_value() for key, value in self.headers.items()}
+        return self._extract_headers(self.headers)
 
     def auth_header(self) -> str:
         """Get authorization header for backward compatibility."""
