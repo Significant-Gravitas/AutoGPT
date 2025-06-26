@@ -310,6 +310,35 @@ class SearchPeopleBlock(Block):
         client = ApolloClient(credentials)
         return await client.enrich_person(query)
 
+    @staticmethod
+    def merge_contact_data(original: Contact, enriched: Contact) -> Contact:
+        """
+        Merge contact data from original search with enriched data.
+        Enriched data complements original data, only filling in missing values.
+        """
+        merged_data = original.model_dump()
+        enriched_data = enriched.model_dump()
+
+        # Only update fields that are None, empty string, empty list, or default values in original
+        for key, enriched_value in enriched_data.items():
+            original_value = merged_data.get(key)
+
+            # Skip if enriched value is None, empty string, or empty list
+            if enriched_value is None or enriched_value == "" or enriched_value == []:
+                continue
+
+            # Update if original value is None, empty string, empty list, or zero
+            if (
+                original_value is None
+                or original_value == ""
+                or original_value == []
+                or original_value == 0
+                or original_value == 0.0
+            ):
+                merged_data[key] = enriched_value
+
+        return Contact(**merged_data)
+
     async def run(
         self,
         input_data: Input,
@@ -327,7 +356,11 @@ class SearchPeopleBlock(Block):
             async def enrich_or_fallback(person):
                 try:
                     enrich_query = EnrichPersonRequest(person_id=person.person_id)
-                    return await self.enrich_person(enrich_query, credentials)
+                    enriched_person = await self.enrich_person(
+                        enrich_query, credentials
+                    )
+                    # Merge enriched data with original data, complementing instead of replacing
+                    return self.merge_contact_data(person, enriched_person)
                 except Exception:
                     return person  # If enrichment fails, use original person data
 

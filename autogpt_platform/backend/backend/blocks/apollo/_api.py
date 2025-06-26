@@ -140,4 +140,6 @@ class ApolloClient:
         if "person" not in data:
             raise ValueError(f"Person not found or enrichment failed: {data}")
 
-        return Contact(**data["person"])
+        contact = Contact(**data["person"])
+        contact.email = contact.email or "-"
+        return contact
