@@ -366,7 +366,8 @@ class AgentServer(backend.util.service.AppProcess):
             return await create_credentials(
                 user_id=user_id, provider=provider, credentials=credentials
             )
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error creating credentials: {e}")
             return await get_credential(
                 provider=provider,
                 user_id=user_id,
