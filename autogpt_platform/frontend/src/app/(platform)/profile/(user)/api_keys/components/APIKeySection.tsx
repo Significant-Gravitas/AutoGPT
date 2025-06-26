@@ -65,25 +65,27 @@ export function APIKeysSection() {
     },
   });
 
-  const { mutateAsync: createAPIKey } = usePostV1CreateNewApiKey({
-    mutation: {
-      onSettled: () => {
-        return queryClient.invalidateQueries({
-          queryKey: getGetV1ListUserApiKeysQueryKey(),
-        });
+  const { mutateAsync: createAPIKey, isPending: isCreating } =
+    usePostV1CreateNewApiKey({
+      mutation: {
+        onSettled: () => {
+          return queryClient.invalidateQueries({
+            queryKey: getGetV1ListUserApiKeysQueryKey(),
+          });
+        },
       },
-    },
-  });
+    });
 
-  const { mutateAsync: revokeAPIKey } = useDeleteV1RevokeApiKey({
-    mutation: {
-      onSettled: () => {
-        return queryClient.invalidateQueries({
-          queryKey: getGetV1ListUserApiKeysQueryKey(),
-        });
+  const { mutateAsync: revokeAPIKey, isPending: isDeleting } =
+    useDeleteV1RevokeApiKey({
+      mutation: {
+        onSettled: () => {
+          return queryClient.invalidateQueries({
+            queryKey: getGetV1ListUserApiKeysQueryKey(),
+          });
+        },
       },
-    },
-  });
+    });
 
   const handleCreateKey = async () => {
     try {
@@ -208,7 +210,9 @@ export function APIKeysSection() {
               <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleCreateKey}>Create</Button>
+              <Button onClick={handleCreateKey} disabled={isCreating}>
+                Create
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -297,6 +301,7 @@ export function APIKeysSection() {
                         <DropdownMenuItem
                           className="text-destructive"
                           onClick={() => handleRevokeKey(key.id)}
+                          disabled={isDeleting}
                         >
                           Revoke
                         </DropdownMenuItem>
