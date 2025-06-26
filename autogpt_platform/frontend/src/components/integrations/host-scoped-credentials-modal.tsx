@@ -36,7 +36,7 @@ export const HostScopedCredentialsModal: FC<{
 }> = ({ schema, open, onClose, onCredentialsCreate, siblingInputs }) => {
   const credentials = useCredentials(schema, siblingInputs);
 
-  // Get current host from siblingInputs
+  // Get current host from siblingInputs or discriminator_values
   const currentUrl = siblingInputs?.url;
   const currentHost = currentUrl ? getHostFromUrl(currentUrl) : "";
 

@@ -205,7 +205,7 @@ export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   credentials_types: Array<CredentialsType>;
   discriminator?: string;
   discriminator_mapping?: { [key: string]: CredentialsProviderName };
-  sibling_inputs?: { [key: string]: any };
+  discriminator_values?: any[];
   secret?: boolean;
 };
 
@@ -508,6 +508,7 @@ export type CredentialsMetaResponse = {
   title?: string;
   scopes?: Array<string>;
   username?: string;
+  host?: string;
 };
 
 /* Mirror of backend/server/integrations/router.py:CredentialsDeletionResponse */

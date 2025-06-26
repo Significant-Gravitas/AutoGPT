@@ -9,6 +9,7 @@ import {
   BlockIOCredentialsSubSchema,
   CredentialsProviderName,
 } from "@/lib/autogpt-server-api";
+import { getHostFromUrl } from "@/lib/utils/url";
 
 export type CredentialsData =
   | {
@@ -35,12 +36,24 @@ export default function useCredentials(
 ): CredentialsData | null {
   const allProviders = useContext(CredentialsProvidersContext);
 
-  const discriminatorValue: CredentialsProviderName | null =
-    (credsInputSchema.discriminator &&
-      credsInputSchema.discriminator_mapping![
-        getValue(credsInputSchema.discriminator, nodeInputValues)
-      ]) ||
-    null;
+  const discriminatorValue: CredentialsProviderName | null = (() => {
+    if (
+      !credsInputSchema.discriminator ||
+      !credsInputSchema.discriminator_mapping
+    ) {
+      return null;
+    }
+
+    const discriminatorKey = getValue(
+      credsInputSchema.discriminator,
+      nodeInputValues,
+    );
+    if (discriminatorKey === undefined) {
+      return null;
+    }
+
+    return credsInputSchema.discriminator_mapping[discriminatorKey] || null;
+  })();
 
   let providerName: CredentialsProviderName;
   if (credsInputSchema.credentials_provider.length > 1) {
@@ -86,15 +99,30 @@ export default function useCredentials(
     return null;
   }
 
-  // Filter by OAuth credentials that have sufficient scopes for this block
-  const requiredScopes = credsInputSchema.credentials_scopes;
-  const savedCredentials = requiredScopes
-    ? provider.savedCredentials.filter(
-        (c) =>
-          c.type != "oauth2" ||
-          new Set(c.scopes).isSupersetOf(new Set(requiredScopes)),
-      )
-    : provider.savedCredentials;
+  const savedCredentials = provider.savedCredentials.filter((c) => {
+    // Filter by OAuth credentials that have sufficient scopes for this block
+    if (c.type === "oauth2") {
+      const requiredScopes = credsInputSchema.credentials_scopes;
+      return (
+        !requiredScopes ||
+        new Set(c.scopes).isSupersetOf(new Set(requiredScopes))
+      );
+    }
+
+    // Filter host_scoped credentials by host matching
+    if (c.type === "host_scoped") {
+      const schemaHosts = [
+        ...[credsInputSchema.discriminator_values || []],
+        getValue(credsInputSchema.discriminator || "url", nodeInputValues),
+      ]
+        .map((v) => getHostFromUrl(v))
+        .filter((h) => h);
+      return schemaHosts && schemaHosts.includes(c.host || "");
+    }
+
+    // Include all other credential types
+    return true;
+  });
 
   return {
     ...provider,

@@ -207,6 +207,7 @@ class SendAuthenticatedWebRequestBlock(SendWebRequestBlock):
     class Input(SendWebRequestBlock.Input):
         credentials: HttpCredentials = CredentialsField(
             description="HTTP host-scoped credentials for automatic header injection",
+            discriminator="url",
         )
 
     def __init__(self):

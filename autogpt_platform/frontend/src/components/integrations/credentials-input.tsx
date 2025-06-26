@@ -28,11 +28,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { getHostFromUrl } from "@/lib/utils/url";
 import { APIKeyCredentialsModal } from "./api-key-credentials-modal";
 import { UserPasswordCredentialsModal } from "./user-password-credentials-modal";
 import { HostScopedCredentialsModal } from "./host-scoped-credentials-modal";
 import { OAuth2FlowWaitingModal } from "./oauth2-flow-waiting-modal";
+import { getHostFromUrl } from "@/lib/utils/url";
 
 const fallbackIcon = FaKey;
 
@@ -136,59 +136,28 @@ export const CredentialsInput: FC<{
     }
   }, [credentials, selectedCredentials, onSelectCredentials]);
 
-  // Get current host from siblingInputs
-  const currentUrl = siblingInputs?.url;
-  const currentHost = currentUrl ? getHostFromUrl(currentUrl) : null;
-
-  const {
-    hostScopedCredentialsForCurrentHost,
-    hasRelevantCredentials,
-    singleCredential,
-  } = useMemo(() => {
+  const { hasRelevantCredentials, singleCredential } = useMemo(() => {
     if (!credentials || !("savedCredentials" in credentials)) {
       return {
-        hostScopedCredentialsForCurrentHost: [],
         hasRelevantCredentials: false,
         singleCredential: null,
       };
     }
 
-    // For host-scoped credentials, we need to be more lenient with matching
-    // since the title might be auto-generated from host
-    const hostScoped = currentHost
-      ? credentials.savedCredentials.filter(
-          (c) => c.type === "host_scoped" && c.title === currentHost,
-        )
-      : [];
+    // Simple logic: if we have any saved credentials, we have relevant credentials
+    const hasRelevant = credentials.savedCredentials.length > 0;
 
-    // For non-host-scoped credentials, show all of them
-    const nonHostScoped = credentials.savedCredentials.filter(
-      (c) => c.type !== "host_scoped",
-    );
-
-    // Check if we have relevant credentials for current context
-    const hasRelevant = nonHostScoped.length > 0 || hostScoped.length > 0;
-
-    // Determine single credential for auto-selection
-    let single = null;
-    if (credentials.supportsHostScoped && currentHost) {
-      const relevantCredentials = nonHostScoped.concat(hostScoped);
-      if (relevantCredentials.length === 1) {
-        single = relevantCredentials[0];
-      }
-    } else {
-      // For non-host-scoped credentials, use original logic
-      if (credentials.savedCredentials.length === 1) {
-        single = credentials.savedCredentials[0];
-      }
-    }
+    // Auto-select single credential if only one exists
+    const single =
+      credentials.savedCredentials.length === 1
+        ? credentials.savedCredentials[0]
+        : null;
 
     return {
-      hostScopedCredentialsForCurrentHost: hostScoped,
       hasRelevantCredentials: hasRelevant,
       singleCredential: single,
     };
-  }, [credentials, currentHost]);
+  }, [credentials]);
 
   // If only 1 credential is available, auto-select it and hide this input
   useEffect(() => {
@@ -391,9 +360,9 @@ export const CredentialsInput: FC<{
           {supportsHostScoped && (
             <Button onClick={() => setHostScopedCredentialsModalOpen(true)}>
               <ProviderIcon className="mr-2 h-4 w-4" />
-              {currentHost
-                ? `Enter sensitive headers for ${currentHost}`
-                : "Enter sensitive headers"}
+              {siblingInputs?.url
+                ? `Enter sensitive headers for ${getHostFromUrl(siblingInputs.url)}`
+                : `Enter sensitive headers`}
             </Button>
           )}
         </div>
@@ -466,13 +435,15 @@ export const CredentialsInput: FC<{
                 {credentials.title}
               </SelectItem>
             ))}
-          {hostScopedCredentialsForCurrentHost.map((credentials, index) => (
-            <SelectItem key={index} value={credentials.id}>
-              <ProviderIcon className="mr-2 inline h-4 w-4" />
-              <IconKey className="mr-1.5 inline" />
-              {credentials.title}
-            </SelectItem>
-          ))}
+          {savedCredentials
+            .filter((c) => c.type == "host_scoped")
+            .map((credentials, index) => (
+              <SelectItem key={index} value={credentials.id}>
+                <ProviderIcon className="mr-2 inline h-4 w-4" />
+                <IconKey className="mr-1.5 inline" />
+                {credentials.title}
+              </SelectItem>
+            ))}
           <SelectSeparator />
           {supportsOAuth2 && (
             <SelectItem value="sign-in">
@@ -492,15 +463,12 @@ export const CredentialsInput: FC<{
               Add new user password
             </SelectItem>
           )}
-          {supportsHostScoped &&
-            hostScopedCredentialsForCurrentHost.length === 0 && (
-              <SelectItem value="add-host-scoped">
-                <IconKey className="mr-1.5 inline" />
-                {currentHost
-                  ? `Add sensitive headers for ${currentHost}`
-                  : "Add sensitive headers"}
-              </SelectItem>
-            )}
+          {supportsHostScoped && (
+            <SelectItem value="add-host-scoped">
+              <IconKey className="mr-1.5 inline" />
+              Add host-scoped headers
+            </SelectItem>
+          )}
         </SelectContent>
       </Select>
       {modals}
