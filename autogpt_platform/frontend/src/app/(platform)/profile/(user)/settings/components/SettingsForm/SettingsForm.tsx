@@ -1,9 +1,5 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
-import * as z from "zod";
-
 import { Button } from "@/components/ui/button";
 import {
   Form,
@@ -17,11 +13,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { updateSettings } from "@/app/(platform)/profile/(user)/settings/actions";
-import { toast } from "@/components/ui/use-toast";
 import { NotificationPreference } from "@/api/__generated__/models/notificationPreference";
 import { User } from "@supabase/supabase-js";
-import { createDefaultValues, formSchema } from "./helpers";
+import { useSettingsForm } from "./useSettingsForm";
 
 export const SettingsForm = ({
   preferences,
@@ -30,42 +24,11 @@ export const SettingsForm = ({
   preferences: NotificationPreference;
   user: User;
 }) => {
-  const defaultValues = createDefaultValues(user, preferences);
-
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues,
+  const { form, onSubmit, onCancel } = useSettingsForm({
+    preferences,
+    user,
   });
 
-  async function onSubmit(values: z.infer<typeof formSchema>) {
-    try {
-      const formData = new FormData();
-
-      Object.entries(values).forEach(([key, value]) => {
-        if (key !== "confirmPassword") {
-          formData.append(key, value.toString());
-        }
-      });
-
-      await updateSettings(formData);
-
-      toast({
-        title: "Successfully updated settings",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description:
-          error instanceof Error ? error.message : "Something went wrong",
-        variant: "destructive",
-      });
-      throw error;
-    }
-  }
-
-  function onCancel() {
-    form.reset(defaultValues);
-  }
   return (
     <Form {...form}>
       <form

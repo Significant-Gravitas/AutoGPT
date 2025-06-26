@@ -1,5 +1,5 @@
 import { Metadata } from "next/types";
-import { APIKeysSection } from "@/app/(platform)/profile/(user)/api_keys/components/APIKeySection";
+import { APIKeysSection } from "@/app/(platform)/profile/(user)/api_keys/components/APIKeySection/APIKeySection";
 import {
   Card,
   CardContent,
@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { APIKeysModals } from "./components/APIKeysModals/APIKeysModals";
 
 export const metadata: Metadata = { title: "API Keys - AutoGPT Platform" };
 
@@ -21,6 +22,7 @@ const ApiKeysPage = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          <APIKeysModals />
           <APIKeysSection />
         </CardContent>
       </Card>
