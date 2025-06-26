@@ -50,6 +50,23 @@ jobs:
         env:
           RABBITMQ_DEFAULT_USER: ${{ env.RABBITMQ_DEFAULT_USER }}
           RABBITMQ_DEFAULT_PASS: ${{ env.RABBITMQ_DEFAULT_PASS }}
+      clamav:
+        image: clamav/clamav-debian:latest
+        ports:
+          - 3310:3310
+        env:
+          CLAMAV_NO_FRESHCLAMD: false
+          CLAMD_CONF_StreamMaxLength: 50M
+          CLAMD_CONF_MaxFileSize: 100M
+          CLAMD_CONF_MaxScanSize: 100M
+          CLAMD_CONF_MaxThreads: 4
+          CLAMD_CONF_ReadTimeout: 300
+        options: >-
+          --health-cmd "clamdscan --version || exit 1"
+          --health-interval 30s
+          --health-timeout 10s
+          --health-retries 5
+          --health-start-period 180s
 
     steps:
       - name: Checkout repository
@@ -130,6 +147,35 @@ jobs:
           supabase status -o env | sed 's/="/=/; s/"$//' >> $GITHUB_OUTPUT
         # outputs:
         # DB_URL, API_URL, GRAPHQL_URL, ANON_KEY, SERVICE_ROLE_KEY, JWT_SECRET
+
+      - name: Wait for ClamAV to be ready
+        run: |
+          echo "Waiting for ClamAV daemon to start..."
+          max_attempts=60
+          attempt=0
+          
+          until nc -z localhost 3310 || [ $attempt -eq $max_attempts ]; do
+            echo "ClamAV is unavailable - sleeping (attempt $((attempt+1))/$max_attempts)"
+            sleep 5
+            attempt=$((attempt+1))
+          done
+          
+          if [ $attempt -eq $max_attempts ]; then
+            echo "ClamAV failed to start after $((max_attempts*5)) seconds"
+            echo "Checking ClamAV service logs..."
+            docker logs $(docker ps -q --filter "ancestor=clamav/clamav-debian:latest") 2>&1 | tail -50 || echo "No ClamAV container found"
+            exit 1
+          fi
+          
+          echo "ClamAV is ready!"
+          
+          # Verify ClamAV is responsive
+          echo "Testing ClamAV connection..."
+          timeout 10 bash -c 'echo "PING" | nc localhost 3310' || {
+            echo "ClamAV is not responding to PING"
+            docker logs $(docker ps -q --filter "ancestor=clamav/clamav-debian:latest") 2>&1 | tail -50 || echo "No ClamAV container found"
+            exit 1
+          }
 
       - name: Run Database Migrations
         run: poetry run prisma migrate dev --name updates

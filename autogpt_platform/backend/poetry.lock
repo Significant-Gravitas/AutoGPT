@@ -3857,6 +3857,17 @@ cffi = ">=1.5.0"
 idna = ["idna (>=2.1)"]
 
 [[package]]
+name = "pyclamd"
+version = "0.4.0"
+description = "pyClamd is a python interface to Clamd (Clamav daemon)."
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "pyClamd-0.4.0.tar.gz", hash = "sha256:ddd588577e5db123760b6ddaac46b5c4b1d9044a00b5d9422de59f83a55c20fe"},
+]
+
+[[package]]
 name = "pycodestyle"
 version = "2.13.0"
 description = "Python style guide checker"
@@ -6369,4 +6380,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "6c93e51cf22c06548aa6d0e23ca8ceb4450f5e02d4142715e941aabc1a2cbd6a"
+content-hash = "35f6516ea0e72a0b4381842f4a6ad6d01ed263e01baabb09e554f9a63ca8b175"
