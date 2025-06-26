@@ -1,18 +1,18 @@
-import React, { useCallback, useContext, useEffect, useState } from "react";
+import { useBezierPath } from "@/hooks/useBezierPath";
+import { NodeExecutionResult } from "@/lib/autogpt-server-api";
 import {
   BaseEdge,
+  Edge,
   EdgeLabelRenderer,
   EdgeProps,
+  Node,
   useReactFlow,
   XYPosition,
-  Edge,
-  Node,
 } from "@xyflow/react";
-import "./customedge.css";
 import { X } from "lucide-react";
-import { useBezierPath } from "@/hooks/useBezierPath";
-import { FlowContext } from "./Flow";
-import { NodeExecutionResult } from "@/lib/autogpt-server-api";
+import { useCallback, useContext, useEffect, useState } from "react";
+import { FlowContext } from "../FlowEditor";
+import "./customedge.css";
 
 export type CustomEdgeData = {
   edgeColor: string;

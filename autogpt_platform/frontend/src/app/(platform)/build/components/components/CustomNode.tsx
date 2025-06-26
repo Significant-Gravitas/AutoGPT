@@ -1,59 +1,59 @@
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-  useContext,
-  useMemo,
-} from "react";
-import { NodeProps, useReactFlow, Node as XYNode, Edge } from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import "./customnode.css";
-import InputModalComponent from "./InputModalComponent";
-import OutputModalComponent from "./OutputModalComponent";
+import { Button } from "@/components/ui/button";
+import { TextRenderer } from "@/components/ui/render";
+import { Switch } from "@/components/ui/switch";
 import {
+  BlockCost,
   BlockIORootSchema,
-  BlockIOSubSchema,
   BlockIOStringSubSchema,
+  BlockIOSubSchema,
+  BlockUIType,
   Category,
   Node,
   NodeExecutionResult,
-  BlockUIType,
-  BlockCost,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   beautifyString,
   cn,
+  getPrimaryCategoryColor,
   getValue,
   hasNonNullNonObjectValue,
   isObject,
   parseKeys,
   setNestedProperty,
 } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { TextRenderer } from "@/components/ui/render";
-import { history } from "./history";
-import NodeHandle from "./NodeHandle";
+import * as ContextMenu from "@radix-ui/react-context-menu";
+import {
+  CopyIcon,
+  DotsVerticalIcon,
+  ExitIcon,
+  TrashIcon,
+} from "@radix-ui/react-icons";
+import * as Separator from "@radix-ui/react-separator";
+import { Edge, NodeProps, useReactFlow, Node as XYNode } from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { history } from "../../../../../components/history";
+import InputModalComponent from "../../../../../components/InputModalComponent";
 import {
   NodeGenericInputField,
   NodeTextBoxInput,
-} from "./node-input-components";
-import { getPrimaryCategoryColor } from "@/lib/utils";
-import { FlowContext } from "./Flow";
-import { Badge } from "./ui/badge";
-import NodeOutputs from "./NodeOutputs";
-import SchemaTooltip from "./SchemaTooltip";
-import { IconCoin } from "./ui/icons";
-import * as Separator from "@radix-ui/react-separator";
-import * as ContextMenu from "@radix-ui/react-context-menu";
-import {
-  DotsVerticalIcon,
-  TrashIcon,
-  CopyIcon,
-  ExitIcon,
-} from "@radix-ui/react-icons";
+} from "../../../../../components/node-input-components";
+import NodeOutputs from "../../../../../components/NodeOutputs";
+import OutputModalComponent from "../../../../../components/OutputModalComponent";
+import SchemaTooltip from "../../../../../components/SchemaTooltip";
+import { Badge } from "../../../../../components/ui/badge";
+import { IconCoin } from "../../../../../components/ui/icons";
+import { FlowContext } from "../FlowEditor";
+import "./customnode.css";
+import NodeHandle from "./NodeHandle";
 
 import useCredits from "@/hooks/useCredits";
 

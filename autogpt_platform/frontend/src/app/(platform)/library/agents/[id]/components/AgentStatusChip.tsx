@@ -1,5 +1,3 @@
-import React from "react";
-
 import { Badge } from "@/components/ui/badge";
 
 export type AgentStatus = "active" | "inactive" | "error";
@@ -24,11 +22,11 @@ const statusStyles = {
     "bg-slate-100 text-slate-800 hover:bg-slate-100 hover:text-slate-800",
 };
 
-export default function AgentStatusChip({
-  status,
-}: {
+interface Props {
   status: AgentStatus;
-}): React.ReactElement {
+}
+
+export default function AgentStatusChip({ status }: Props) {
   return (
     <Badge
       variant="secondary"

@@ -1,23 +1,23 @@
-import React, { useCallback, useEffect } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { IconSave } from "@/components/ui/icons";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { GraphMeta } from "@/lib/autogpt-server-api";
-import { Label } from "@/components/ui/label";
-import { IconSave } from "@/components/ui/icons";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/use-toast";
+import { GraphMeta } from "@/lib/autogpt-server-api";
+import { useCallback, useEffect } from "react";
 
-interface SaveControlProps {
+interface Props {
   agentMeta: GraphMeta | null;
   agentName: string;
   agentDescription: string;
@@ -28,19 +28,7 @@ interface SaveControlProps {
   pinSavePopover: boolean;
 }
 
-/**
- * A SaveControl component to be used within the ControlPanel. It allows the user to save the agent.
- * @param {Object} SaveControlProps - The properties of the SaveControl component.
- * @param {GraphMeta | null} SaveControlProps.agentMeta - The agent's metadata, or null if creating a new agent.
- * @param {string} SaveControlProps.agentName - The agent's name.
- * @param {string} SaveControlProps.agentDescription - The agent's description.
- * @param {boolean} SaveControlProps.canSave - Whether the button to save the agent should be enabled.
- * @param {() => void} SaveControlProps.onSave - Function to save the agent.
- * @param {(name: string) => void} SaveControlProps.onNameChange - Function to handle name changes.
- * @param {(description: string) => void} SaveControlProps.onDescriptionChange - Function to handle description changes.
- * @returns The SaveControl component.
- */
-export const SaveControl = ({
+export function SaveControl({
   agentMeta,
   canSave,
   onSave,
@@ -49,13 +37,7 @@ export const SaveControl = ({
   agentDescription,
   onDescriptionChange,
   pinSavePopover,
-}: SaveControlProps) => {
-  /**
-   * Note for improvement:
-   * At the moment we are leveraging onDescriptionChange and onNameChange to handle the changes in the description and name of the agent.
-   * We should migrate this to be handled with form controls and a form library.
-   */
-
+}: Props) {
   const handleSave = useCallback(() => {
     onSave();
   }, [onSave]);
@@ -65,8 +47,8 @@ export const SaveControl = ({
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "s") {
-        event.preventDefault(); // Stop the browser default action
-        handleSave(); // Call your save function
+        event.preventDefault();
+        handleSave();
         toast({
           duration: 2000,
           title: "All changes saved successfully!",
@@ -166,4 +148,4 @@ export const SaveControl = ({
       </PopoverContent>
     </Popover>
   );
-};
+}

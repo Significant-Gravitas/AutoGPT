@@ -8,25 +8,27 @@ import {
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
+import ActionButtonGroup from "@/components/agptui/action-button-group";
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AgentRunStatus } from "@/components/agents/agent-run-status-chip";
-import { useToastOnFail } from "@/components/ui/use-toast";
-import ActionButtonGroup from "@/components/agptui/action-button-group";
-import LoadingBox from "@/components/ui/loading";
 import { Input } from "@/components/ui/input";
+import LoadingBox from "@/components/ui/loading";
+import { useToastOnFail } from "@/components/ui/use-toast";
+import { AgentRunStatus } from "./AgentRunStatusChip";
+
+interface Props {
+  graph: GraphMeta;
+  schedule: Schedule;
+  onForcedRun: (runID: GraphExecutionID) => void;
+  agentActions: ButtonAction[];
+}
 
 export default function AgentScheduleDetailsView({
   graph,
   schedule,
   onForcedRun,
   agentActions,
-}: {
-  graph: GraphMeta;
-  schedule: Schedule;
-  onForcedRun: (runID: GraphExecutionID) => void;
-  agentActions: ButtonAction[];
-}): React.ReactNode {
+}: Props) {
   const api = useBackendAPI();
 
   const selectedRunStatus: AgentRunStatus = "scheduled";

@@ -1,8 +1,7 @@
 "use client";
-import React, { useState } from "react";
 import { Plus } from "lucide-react";
+import { useState } from "react";
 
-import { cn } from "@/lib/utils";
 import {
   GraphExecutionID,
   GraphExecutionMeta,
@@ -12,16 +11,16 @@ import {
   Schedule,
   ScheduleID,
 } from "@/lib/autogpt-server-api";
+import { cn } from "@/lib/utils";
 
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/agptui/Button";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { agentRunStatusMap } from "./AgentRunStatusChip";
+import AgentRunSummaryCard from "./AgentRunSummaryCard";
 
-import { agentRunStatusMap } from "@/components/agents/agent-run-status-chip";
-import AgentRunSummaryCard from "@/components/agents/agent-run-summary-card";
-
-interface AgentRunsSelectorListProps {
+interface Props {
   agent: LibraryAgent;
   agentRuns: GraphExecutionMeta[];
   agentPresets: LibraryAgentPreset[];
@@ -53,7 +52,7 @@ export default function AgentRunsSelectorList({
   onDeletePreset,
   onDeleteSchedule,
   className,
-}: AgentRunsSelectorListProps): React.ReactElement {
+}: Props) {
   const [activeListTab, setActiveListTab] = useState<"runs" | "scheduled">(
     "runs",
   );

@@ -1,19 +1,19 @@
-import React, {
-  useState,
-  useCallback,
-  forwardRef,
-  useImperativeHandle,
-} from "react";
-import RunnerOutputUI, { BlockOutput } from "./runner-ui/RunnerOutputUI";
-import RunnerInputUI from "./runner-ui/RunnerInputUI";
-import { Node } from "@xyflow/react";
-import { filterBlocksByType } from "@/lib/utils";
 import {
   BlockIOObjectSubSchema,
   BlockIORootSchema,
   BlockUIType,
 } from "@/lib/autogpt-server-api/types";
-import { CustomNode } from "./CustomNode";
+import { filterBlocksByType } from "@/lib/utils";
+import { Node } from "@xyflow/react";
+import React, {
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useState,
+} from "react";
+import { CustomNode } from "../app/(platform)/build/components/components/CustomNode";
+import RunnerInputUI from "./runner-ui/RunnerInputUI";
+import RunnerOutputUI, { BlockOutput } from "./runner-ui/RunnerOutputUI";
 
 interface HardcodedValues {
   name: any;

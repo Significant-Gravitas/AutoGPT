@@ -1,11 +1,15 @@
 import { BlockIOSubSchema } from "@/lib/autogpt-server-api/types";
-import { cn } from "@/lib/utils";
-import { beautifyString, getTypeBgColor, getTypeTextColor } from "@/lib/utils";
-import { FC, memo, useCallback } from "react";
+import {
+  beautifyString,
+  cn,
+  getTypeBgColor,
+  getTypeTextColor,
+} from "@/lib/utils";
 import { Handle, Position } from "@xyflow/react";
-import SchemaTooltip from "./SchemaTooltip";
+import { FC, memo, useCallback } from "react";
+import SchemaTooltip from "../../../../../components/SchemaTooltip";
 
-type HandleProps = {
+type Props = {
   keyName: string;
   schema: BlockIOSubSchema;
   isConnected: boolean;
@@ -39,9 +43,10 @@ const Dot: FC<{ isConnected: boolean; type?: string }> = memo(
     );
   },
 );
+
 Dot.displayName = "Dot";
 
-const NodeHandle: FC<HandleProps> = ({
+function NodeHandle({
   keyName,
   schema,
   isConnected,
@@ -49,7 +54,7 @@ const NodeHandle: FC<HandleProps> = ({
   side,
   title,
   className,
-}) => {
+}: Props) {
   const typeClass = `text-sm ${getTypeTextColor(schema.type || "any")} ${
     side === "left" ? "text-left" : "text-right"
   }`;
@@ -124,6 +129,6 @@ const NodeHandle: FC<HandleProps> = ({
       </div>
     );
   }
-};
+}
 
 export default memo(NodeHandle);

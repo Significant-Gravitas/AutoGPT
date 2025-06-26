@@ -1,5 +1,5 @@
-import { CustomEdge } from "@/components/CustomEdge";
-import { CustomNode } from "@/components/CustomNode";
+import { CustomEdge } from "@/app/(platform)/build/components/components/CustomEdge";
+import { CustomNode } from "@/app/(platform)/build/components/components/CustomNode";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import { InputItem } from "@/components/RunnerUIWrapper";
 import { useToast } from "@/components/ui/use-toast";

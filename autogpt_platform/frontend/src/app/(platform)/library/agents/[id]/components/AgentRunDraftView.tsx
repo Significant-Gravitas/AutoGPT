@@ -1,7 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   CredentialsMetaInput,
   GraphExecutionID,
@@ -10,20 +9,26 @@ import {
   LibraryAgentPresetID,
   LibraryAgentPresetUpdatable,
 } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
+import ActionButtonGroup from "@/components/agptui/action-button-group";
 import type { ButtonAction } from "@/components/agptui/types";
+import { CredentialsInput } from "@/components/integrations/credentials-input";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import SchemaTooltip from "@/components/SchemaTooltip";
+import { TypeBasedInput } from "@/components/type-based-input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
-import { CredentialsInput } from "@/components/integrations/credentials-input";
-import { TypeBasedInput } from "@/components/type-based-input";
-import { useToastOnFail } from "@/components/ui/use-toast";
-import ActionButtonGroup from "@/components/agptui/action-button-group";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
-import { Trash2Icon } from "lucide-react";
-import SchemaTooltip from "@/components/SchemaTooltip";
-import { useToast } from "@/components/ui/use-toast";
-import { isEmpty } from "lodash";
 import { Input } from "@/components/ui/input";
+import { useToast, useToastOnFail } from "@/components/ui/use-toast";
+import { isEmpty } from "lodash";
+import { Trash2Icon } from "lucide-react";
+
+interface Props {
+  agent: LibraryAgent;
+  agentActions: ButtonAction[];
+  onRun: (runID: GraphExecutionID) => void;
+}
 
 export default function AgentRunDraftView({
   agent,
@@ -33,24 +38,21 @@ export default function AgentRunDraftView({
   onUpdatePreset,
   doDeletePreset,
   agentActions,
-}: {
-  agent: LibraryAgent;
-  agentActions: ButtonAction[];
-  onRun: (runID: GraphExecutionID) => void;
-} & (
-  | {
-      onCreatePreset: (preset: LibraryAgentPreset) => void;
-      agentPreset?: never;
-      onUpdatePreset?: never;
-      doDeletePreset?: never;
-    }
-  | {
-      onCreatePreset?: never;
-      agentPreset: LibraryAgentPreset;
-      onUpdatePreset: (preset: LibraryAgentPreset) => void;
-      doDeletePreset: (presetID: LibraryAgentPresetID) => void;
-    }
-)): React.ReactNode {
+}: Props &
+  (
+    | {
+        onCreatePreset: (preset: LibraryAgentPreset) => void;
+        agentPreset?: never;
+        onUpdatePreset?: never;
+        doDeletePreset?: never;
+      }
+    | {
+        onCreatePreset?: never;
+        agentPreset: LibraryAgentPreset;
+        onUpdatePreset: (preset: LibraryAgentPreset) => void;
+        doDeletePreset: (presetID: LibraryAgentPresetID) => void;
+      }
+  )): React.ReactNode {
   const api = useBackendAPI();
   const { toast } = useToast();
   const toastOnFail = useToastOnFail();

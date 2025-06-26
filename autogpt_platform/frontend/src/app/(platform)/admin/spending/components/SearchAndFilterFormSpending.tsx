@@ -1,11 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search } from "lucide-react";
-import { CreditTransactionType } from "@/lib/autogpt-server-api";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -13,13 +9,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CreditTransactionType } from "@/lib/autogpt-server-api";
+import { Search } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 
-export function SearchAndFilterAdminSpending({
-  initialSearch,
-}: {
+interface Props {
   initialStatus?: CreditTransactionType;
   initialSearch?: string;
-}) {
+}
+
+export function SearchAndFilterFormSpending({ initialSearch }: Props) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();

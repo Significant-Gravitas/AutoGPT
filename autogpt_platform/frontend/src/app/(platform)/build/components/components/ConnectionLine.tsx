@@ -1,8 +1,8 @@
 import {
   BaseEdge,
   ConnectionLineComponentProps,
-  Node,
   getBezierPath,
+  Node,
   Position,
 } from "@xyflow/react";
 

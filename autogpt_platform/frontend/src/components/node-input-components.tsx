@@ -1,15 +1,14 @@
+import {
+  ConnectionData,
+  CustomNodeData,
+} from "@/app/(platform)/build/components/components/CustomNode";
+import { CredentialsInput } from "@/components/integrations/credentials-input";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { format } from "date-fns";
-import { CalendarIcon } from "lucide-react";
-import { beautifyString, cn } from "@/lib/utils";
-import { Node, useNodeId, useNodesData } from "@xyflow/react";
-import { ConnectionData, CustomNodeData } from "@/components/CustomNode";
-import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
 import {
   BlockIOArraySubSchema,
   BlockIOBooleanSubSchema,
@@ -25,23 +24,22 @@ import {
   DataType,
   determineDataType,
 } from "@/lib/autogpt-server-api/types";
+import { beautifyString, cn } from "@/lib/utils";
+import { Cross2Icon, Pencil2Icon, PlusIcon } from "@radix-ui/react-icons";
+import { Node, useNodeId, useNodesData } from "@xyflow/react";
+import { format } from "date-fns";
+import { CalendarIcon } from "lucide-react";
 import React, {
   FC,
   useCallback,
   useEffect,
   useMemo,
-  useState,
   useRef,
+  useState,
 } from "react";
+import NodeHandle from "../app/(platform)/build/components/components/NodeHandle";
 import { Button } from "./ui/button";
-import { Switch } from "./ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "./ui/select";
+import { LocalValuedInput } from "./ui/input";
 import {
   MultiSelector,
   MultiSelectorContent,
@@ -50,9 +48,14 @@ import {
   MultiSelectorList,
   MultiSelectorTrigger,
 } from "./ui/multiselect";
-import { LocalValuedInput } from "./ui/input";
-import NodeHandle from "./NodeHandle";
-import { CredentialsInput } from "@/components/integrations/credentials-input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+import { Switch } from "./ui/switch";
 
 type NodeObjectInputTreeProps = {
   nodeId: string;

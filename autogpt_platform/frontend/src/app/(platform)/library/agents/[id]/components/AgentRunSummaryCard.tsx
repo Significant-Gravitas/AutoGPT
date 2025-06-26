@@ -1,26 +1,20 @@
-import React from "react";
 import moment from "moment";
 
 import { cn } from "@/lib/utils";
 
-import { Link2Icon, Link2OffIcon, MoreVertical } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Link2Icon, Link2OffIcon, MoreVertical } from "lucide-react";
+import AgentRunStatusChip, { AgentRunStatus } from "./AgentRunStatusChip";
+import AgentStatusChip, { AgentStatus } from "./AgentStatusChip";
 
-import AgentRunStatusChip, {
-  AgentRunStatus,
-} from "@/components/agents/agent-run-status-chip";
-import AgentStatusChip, {
-  AgentStatus,
-} from "@/components/agents/agent-status-chip";
-
-export type AgentRunSummaryProps = (
+type Props = (
   | {
       type: "run";
       status: AgentRunStatus;
@@ -53,7 +47,7 @@ export default function AgentRunSummaryCard({
   // onRename,
   onDelete,
   className,
-}: AgentRunSummaryProps): React.ReactElement {
+}: Props) {
   return (
     <Card
       className={cn(

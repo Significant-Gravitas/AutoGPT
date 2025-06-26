@@ -1,9 +1,9 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
-import { GraphID } from "@/lib/autogpt-server-api/types";
-import FlowEditor from "@/components/Flow";
+import { FlowEditor } from "@/app/(platform)/build/components/FlowEditor";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { GraphID } from "@/lib/autogpt-server-api/types";
+import { useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 
 export default function BuilderPage() {
@@ -17,7 +17,7 @@ export default function BuilderPage() {
   return (
     <FlowEditor
       className="flow-container"
-      flowID={query.get("flowID") as GraphID | null ?? undefined}
+      flowID={(query.get("flowID") as GraphID | null) ?? undefined}
       flowVersion={query.get("flowVersion") ?? undefined}
     />
   );

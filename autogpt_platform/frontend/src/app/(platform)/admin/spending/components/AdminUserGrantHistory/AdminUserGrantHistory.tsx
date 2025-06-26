@@ -7,22 +7,24 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import { PaginationControls } from "../../ui/pagination-controls";
-import { SearchAndFilterAdminSpending } from "./search-filter-form";
 import { getUsersTransactionHistory } from "@/app/(platform)/admin/spending/actions";
-import { AdminAddMoneyButton } from "./add-money-button";
 import { CreditTransactionType } from "@/lib/autogpt-server-api";
+import { PaginationControls } from "../../../../../../components/ui/pagination-controls";
+import { AdminAddMoneyButton } from "../AdminAddMoneyButton";
+import { SearchAndFilterFormSpending } from "../SearchAndFilterFormSpending";
+import { formatAmount, formatDate, formatType } from "./helpers";
+
+interface Props {
+  initialPage?: number;
+  initialStatus?: CreditTransactionType;
+  initialSearch?: string;
+}
 
 export async function AdminUserGrantHistory({
   initialPage = 1,
   initialStatus,
   initialSearch,
-}: {
-  initialPage?: number;
-  initialStatus?: CreditTransactionType;
-  initialSearch?: string;
-}) {
-  // Server-side data fetching
+}: Props) {
   const { history, pagination } = await getUsersTransactionHistory(
     initialPage,
     15,
@@ -30,57 +32,9 @@ export async function AdminUserGrantHistory({
     initialStatus,
   );
 
-  // Helper function to format the amount with color based on transaction type
-  const formatAmount = (amount: number, type: CreditTransactionType) => {
-    const isPositive = type === CreditTransactionType.GRANT;
-    const isNeutral = type === CreditTransactionType.TOP_UP;
-    const color = isPositive
-      ? "text-green-600"
-      : isNeutral
-        ? "text-blue-600"
-        : "text-red-600";
-    return <span className={color}>${Math.abs(amount / 100)}</span>;
-  };
-
-  // Helper function to format the transaction type with color
-  const formatType = (type: CreditTransactionType) => {
-    const isGrant = type === CreditTransactionType.GRANT;
-    const isPurchased = type === CreditTransactionType.TOP_UP;
-    const isSpent = type === CreditTransactionType.USAGE;
-
-    const displayText = type;
-    let bgColor = "";
-
-    if (isGrant) {
-      bgColor = "bg-green-100 text-green-800";
-    } else if (isPurchased) {
-      bgColor = "bg-blue-100 text-blue-800";
-    } else if (isSpent) {
-      bgColor = "bg-red-100 text-red-800";
-    }
-
-    return (
-      <span className={`rounded-full px-2 py-1 text-xs font-medium ${bgColor}`}>
-        {displayText.valueOf()}
-      </span>
-    );
-  };
-
-  // Helper function to format the date
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "numeric",
-      hour12: true,
-    }).format(new Date(date));
-  };
-
   return (
     <div className="space-y-4">
-      <SearchAndFilterAdminSpending
+      <SearchAndFilterFormSpending
         initialStatus={initialStatus}
         initialSearch={initialSearch}
       />
@@ -143,9 +97,6 @@ export async function AdminUserGrantHistory({
                   <TableCell className="font-medium text-green-600">
                     ${transaction.running_balance / 100}
                   </TableCell>
-                  {/* <TableCell className="font-medium text-green-600">
-                    ${transaction.current_balance / 100}
-                  </TableCell> */}
                   <TableCell className="text-right">
                     <AdminAddMoneyButton
                       userId={transaction.user_id}

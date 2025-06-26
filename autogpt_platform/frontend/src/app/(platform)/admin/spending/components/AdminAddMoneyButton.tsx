@@ -1,20 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { addDollars } from "@/app/(platform)/admin/spending/actions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
-import { addDollars } from "@/app/(platform)/admin/spending/actions";
+import { useState } from "react";
+
+interface Props {
+  userId: string;
+  userEmail: string;
+  currentBalance: number;
+  defaultAmount?: number;
+  defaultComments?: string;
+}
 
 export function AdminAddMoneyButton({
   userId,
@@ -22,13 +30,7 @@ export function AdminAddMoneyButton({
   currentBalance,
   defaultAmount,
   defaultComments,
-}: {
-  userId: string;
-  userEmail: string;
-  currentBalance: number;
-  defaultAmount?: number;
-  defaultComments?: string;
-}) {
+}: Props) {
   const router = useRouter();
   const [isAddMoneyDialogOpen, setIsAddMoneyDialogOpen] = useState(false);
   const [dollarAmount, setDollarAmount] = useState(

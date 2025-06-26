@@ -1,30 +1,33 @@
-import React, { useState, useMemo } from "react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
+import { CustomNode } from "@/app/(platform)/build/components/components/CustomNode";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { IconToyBrick } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
-import { TextRenderer } from "@/components/ui/render";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { CustomNode } from "@/components/CustomNode";
-import { beautifyString } from "@/lib/utils";
+import { Label } from "@/components/ui/label";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Block, BlockUIType, SpecialBlockID } from "@/lib/autogpt-server-api";
-import { MagnifyingGlassIcon, PlusIcon } from "@radix-ui/react-icons";
-import { IconToyBrick } from "@/components/ui/icons";
-import { getPrimaryCategoryColor } from "@/lib/utils";
+import { TextRenderer } from "@/components/ui/render";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { GraphMeta } from "@/lib/autogpt-server-api";
+import {
+  Block,
+  BlockUIType,
+  GraphMeta,
+  SpecialBlockID,
+} from "@/lib/autogpt-server-api";
+import { beautifyString, getPrimaryCategoryColor } from "@/lib/utils";
+import { MagnifyingGlassIcon, PlusIcon } from "@radix-ui/react-icons";
 import jaro from "jaro-winkler";
+import React, { useMemo, useState } from "react";
 
-interface BlocksControlProps {
+interface PRops {
   blocks: Block[];
   addBlock: (
     id: string,
@@ -36,22 +39,13 @@ interface BlocksControlProps {
   nodes: CustomNode[];
 }
 
-/**
- * A React functional component that displays a control for managing blocks.
- *
- * @component
- * @param {Object} BlocksControlProps - The properties for the BlocksControl component.
- * @param {Block[]} BlocksControlProps.blocks - An array of blocks to be displayed and filtered.
- * @param {(id: string, name: string) => void} BlocksControlProps.addBlock - A function to call when a block is added.
- * @returns The rendered BlocksControl component.
- */
-export const BlocksControl: React.FC<BlocksControlProps> = ({
+export function BlocksControl({
   blocks,
   addBlock,
   pinBlocksPopover,
   flows,
   nodes,
-}) => {
+}: PRops) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
@@ -336,4 +330,4 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
       </PopoverContent>
     </Popover>
   );
-};
+}

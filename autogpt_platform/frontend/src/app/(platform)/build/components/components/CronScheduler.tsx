@@ -1,4 +1,7 @@
-import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -6,24 +9,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { Separator } from "./ui/separator";
 import { CronExpressionManager } from "@/lib/monitor/cronExpressionManager";
+import { useState } from "react";
+import { Separator } from "../../../../../components/ui/separator";
 
-interface CronSchedulerProps {
+interface Props {
   setOpen: React.Dispatch<React.SetStateAction<boolean>>;
   open: boolean;
   afterCronCreation: (cronExpression: string) => void;
 }
 
-export function CronScheduler({
-  setOpen,
-  open,
-  afterCronCreation,
-}: CronSchedulerProps) {
+export function CronScheduler({ setOpen, open, afterCronCreation }: Props) {
   const [frequency, setFrequency] = useState<
     "minute" | "hour" | "daily" | "weekly" | "monthly" | "yearly" | "custom"
   >("daily");

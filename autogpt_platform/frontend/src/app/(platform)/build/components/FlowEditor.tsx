@@ -1,58 +1,61 @@
 "use client";
-import React, {
-  createContext,
-  useState,
-  useCallback,
-  useEffect,
-  useRef,
-  MouseEvent,
-  Suspense,
-} from "react";
+import { BlocksControl } from "@/app/(platform)/build/components/components/BlocksControl";
 import {
-  ReactFlow,
-  ReactFlowProvider,
-  Controls,
-  Background,
-  Node,
-  OnConnect,
-  Connection,
-  MarkerType,
-  NodeChange,
-  EdgeChange,
-  useReactFlow,
-  applyEdgeChanges,
-  applyNodeChanges,
-  useViewport,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import { CustomNode } from "./CustomNode";
-import "./flow.css";
+  Control,
+  ControlPanel,
+} from "@/app/(platform)/build/components/components/ControlPanel";
+import { SaveControl } from "@/app/(platform)/build/components/components/SaveControl";
+import OttoChatWidget from "@/components/OttoChatWidget";
+import PrimaryActionBar from "@/components/PrimaryActionButton";
+import RunnerUIWrapper, {
+  RunnerUIWrapperRef,
+} from "@/components/RunnerUIWrapper";
+import { IconRedo2, IconUndo2 } from "@/components/ui/icons";
+import { useToast } from "@/components/ui/use-toast";
+import useAgentGraph from "@/hooks/useAgentGraph";
 import {
   BlockUIType,
   formatEdgeID,
   GraphExecutionID,
   GraphID,
 } from "@/lib/autogpt-server-api";
-import { getTypeColor, findNewlyAddedBlockCoordinates } from "@/lib/utils";
-import { history } from "./history";
-import { CustomEdge } from "./CustomEdge";
-import ConnectionLine from "./ConnectionLine";
-import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
-import { SaveControl } from "@/components/edit/control/SaveControl";
-import { BlocksControl } from "@/components/edit/control/BlocksControl";
-import { IconUndo2, IconRedo2 } from "@/components/ui/icons";
-import { startTutorial } from "./tutorial";
-import useAgentGraph from "@/hooks/useAgentGraph";
+import { findNewlyAddedBlockCoordinates, getTypeColor } from "@/lib/utils";
+import {
+  applyEdgeChanges,
+  applyNodeChanges,
+  Background,
+  Connection,
+  Controls,
+  EdgeChange,
+  MarkerType,
+  Node,
+  NodeChange,
+  OnConnect,
+  ReactFlow,
+  ReactFlowProvider,
+  useReactFlow,
+  useViewport,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import {
+  createContext,
+  MouseEvent,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { v4 as uuidv4 } from "uuid";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import RunnerUIWrapper, {
-  RunnerUIWrapperRef,
-} from "@/components/RunnerUIWrapper";
-import PrimaryActionBar from "@/components/PrimaryActionButton";
-import OttoChatWidget from "@/components/OttoChatWidget";
-import { useToast } from "@/components/ui/use-toast";
-import { useCopyPaste } from "../hooks/useCopyPaste";
-import { CronScheduler } from "./cronScheduler";
+import { history } from "../../../../components/history";
+import { startTutorial } from "../../../../components/tutorial";
+import { useCopyPaste } from "../../../../hooks/useCopyPaste";
+import ConnectionLine from "./components/ConnectionLine";
+import { CronScheduler } from "./components/CronScheduler";
+import { CustomEdge } from "./components/CustomEdge";
+import { CustomNode } from "./components/CustomNode";
+import "./flow.css";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -75,11 +78,13 @@ export type NodeDimension = {
 
 export const FlowContext = createContext<FlowContextType | null>(null);
 
-const FlowEditor: React.FC<{
+interface Props {
   flowID?: GraphID;
   flowVersion?: string;
   className?: string;
-}> = ({ flowID, flowVersion, className }) => {
+}
+
+function BaseFlowEditor({ flowID, flowVersion, className }: Props) {
   const {
     addNodes,
     addEdges,
@@ -753,12 +758,10 @@ const FlowEditor: React.FC<{
       </Suspense>
     </FlowContext.Provider>
   );
-};
+}
 
-const WrappedFlowEditor: typeof FlowEditor = (props) => (
+export const FlowEditor: typeof BaseFlowEditor = (props) => (
   <ReactFlowProvider>
-    <FlowEditor {...props} />
+    <BaseFlowEditor {...props} />
   </ReactFlowProvider>
 );
-
-export default WrappedFlowEditor;
