@@ -508,15 +508,6 @@ export default function AgentRunDraftView({
                   hideIfSingleCredentialAvailable={
                     !agentPreset && !agent.has_external_trigger
                   }
-                  siblingInputs={
-                    inputSubSchema.discriminator &&
-                    inputSubSchema.discriminator_values?.[0]
-                      ? {
-                          [inputSubSchema.discriminator]:
-                            inputSubSchema.discriminator_values[0],
-                        }
-                      : {}
-                  }
                 />
               ),
             )}
