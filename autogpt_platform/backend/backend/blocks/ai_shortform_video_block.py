@@ -145,61 +145,6 @@ class VisualMediaType(str, Enum):
 logger = logging.getLogger(__name__)
 
 
-async def create_webhook() -> tuple[str, str]:
-    """Create a new webhook URL for receiving notifications."""
-    url = "https://webhook.site/token"
-    headers = {"Accept": "application/json", "Content-Type": "application/json"}
-    response = await Requests().post(url, headers=headers)
-    webhook_data = response.json()
-    return webhook_data["uuid"], f"https://webhook.site/{webhook_data['uuid']}"
-
-
-async def create_video(api_key: SecretStr, payload: dict) -> dict:
-    """Create a video using the Revid API."""
-    url = "https://www.revid.ai/api/public/v2/render"
-    headers = {"key": api_key.get_secret_value()}
-    response = await Requests().post(url, json=payload, headers=headers)
-    logger.debug(
-        f"API Response Status Code: {response.status}, Content: {response.text}"
-    )
-    return response.json()
-
-
-async def check_video_status(api_key: SecretStr, pid: str) -> dict:
-    """Check the status of a video creation job."""
-    url = f"https://www.revid.ai/api/public/v2/status?pid={pid}"
-    headers = {"key": api_key.get_secret_value()}
-    response = await Requests().get(url, headers=headers)
-    return response.json()
-
-
-async def wait_for_video(
-    api_key: SecretStr,
-    pid: str,
-    max_wait_time: int = 1000,
-) -> str:
-    """Wait for video creation to complete and return the video URL."""
-    start_time = time.time()
-    while time.time() - start_time < max_wait_time:
-        status = await check_video_status(api_key, pid)
-        logger.debug(f"Video status: {status}")
-
-        if status.get("status") == "ready" and "videoUrl" in status:
-            return status["videoUrl"]
-        elif status.get("status") == "error":
-            error_message = status.get("error", "Unknown error occurred")
-            logger.error(f"Video creation failed: {error_message}")
-            raise ValueError(f"Video creation failed: {error_message}")
-        elif status.get("status") in ["FAILED", "CANCELED"]:
-            logger.error(f"Video creation failed: {status.get('message')}")
-            raise ValueError(f"Video creation failed: {status.get('message')}")
-
-        await asyncio.sleep(10)
-
-    logger.error("Video creation timed out")
-    raise TimeoutError("Video creation timed out")
-
-
 class AIShortformVideoCreatorBlock(Block):
     """Creates a short‑form text‑to‑video clip using stock or AI imagery."""
 
@@ -246,6 +191,58 @@ class AIShortformVideoCreatorBlock(Block):
         video_url: str = SchemaField(description="The URL of the created video")
         error: str = SchemaField(description="Error message if the request failed")
 
+    async def create_webhook(self) -> tuple[str, str]:
+        """Create a new webhook URL for receiving notifications."""
+        url = "https://webhook.site/token"
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        response = await Requests().post(url, headers=headers)
+        webhook_data = response.json()
+        return webhook_data["uuid"], f"https://webhook.site/{webhook_data['uuid']}"
+
+    async def create_video(self, api_key: SecretStr, payload: dict) -> dict:
+        """Create a video using the Revid API."""
+        url = "https://www.revid.ai/api/public/v2/render"
+        headers = {"key": api_key.get_secret_value()}
+        response = await Requests().post(url, json=payload, headers=headers)
+        logger.debug(
+            f"API Response Status Code: {response.status}, Content: {response.text}"
+        )
+        return response.json()
+
+    async def check_video_status(self, api_key: SecretStr, pid: str) -> dict:
+        """Check the status of a video creation job."""
+        url = f"https://www.revid.ai/api/public/v2/status?pid={pid}"
+        headers = {"key": api_key.get_secret_value()}
+        response = await Requests().get(url, headers=headers)
+        return response.json()
+
+    async def wait_for_video(
+        self,
+        api_key: SecretStr,
+        pid: str,
+        max_wait_time: int = 1000,
+    ) -> str:
+        """Wait for video creation to complete and return the video URL."""
+        start_time = time.time()
+        while time.time() - start_time < max_wait_time:
+            status = await self.check_video_status(api_key, pid)
+            logger.debug(f"Video status: {status}")
+
+            if status.get("status") == "ready" and "videoUrl" in status:
+                return status["videoUrl"]
+            elif status.get("status") == "error":
+                error_message = status.get("error", "Unknown error occurred")
+                logger.error(f"Video creation failed: {error_message}")
+                raise ValueError(f"Video creation failed: {error_message}")
+            elif status.get("status") in ["FAILED", "CANCELED"]:
+                logger.error(f"Video creation failed: {status.get('message')}")
+                raise ValueError(f"Video creation failed: {status.get('message')}")
+
+            await asyncio.sleep(10)
+
+        logger.error("Video creation timed out")
+        raise TimeoutError("Video creation timed out")
+
     def __init__(self):
         super().__init__(
             id="361697fb-0c4f-4feb-aed3-8320c88c771b",
@@ -264,21 +261,15 @@ class AIShortformVideoCreatorBlock(Block):
                 "voice": Voice.LILY,
                 "video_style": VisualMediaType.STOCK_VIDEOS,
             },
-            test_output=(
-                "video_url",
-                "https://example.com/video.mp4",
-            ),
+            test_output=("video_url", "https://example.com/video.mp4"),
             test_mock={
-                "create_webhook": lambda: (
-                    "test_uuid",
-                    "https://webhook.site/test_uuid",
-                ),
-                "create_video": lambda api_key, payload: {"pid": "test_pid"},
-                "check_video_status": lambda api_key, pid: {
+                "create_webhook": lambda *args, **kwargs: ("test_uuid", "https://webhook.site/test_uuid"),
+                "create_video": lambda *args, **kwargs: {"pid": "test_pid"},
+                "check_video_status": lambda *args, **kwargs: {
                     "status": "ready",
-                    "videoUrl": "https://example.com/video.mp4",
+                    "videoUrl": "https://example.com/video.mp4"
                 },
-                "wait_for_video": lambda api_key, pid: "https://example.com/video.mp4",
+                "wait_for_video": lambda *args, **kwargs: "https://example.com/video.mp4"
             },
             test_credentials=TEST_CREDENTIALS,
         )
@@ -287,7 +278,7 @@ class AIShortformVideoCreatorBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         # Create a new Webhook.site URL
-        webhook_token, webhook_url = await create_webhook()
+        webhook_token, webhook_url = await self.create_webhook()
         logger.debug(f"Webhook URL: {webhook_url}")
 
         payload = {
@@ -322,7 +313,7 @@ class AIShortformVideoCreatorBlock(Block):
         }
 
         logger.debug("Creating video...")
-        response = await create_video(credentials.api_key, payload)
+        response = await self.create_video(credentials.api_key, payload)
         pid = response.get("pid")
 
         if not pid:
@@ -334,7 +325,7 @@ class AIShortformVideoCreatorBlock(Block):
             logger.debug(
                 f"Video created with project ID: {pid}. Waiting for completion..."
             )
-            video_url = await wait_for_video(credentials.api_key, pid)
+            video_url = await self.wait_for_video(credentials.api_key, pid)
             logger.debug(f"Video ready: {video_url}")
             yield "video_url", video_url
 
@@ -379,6 +370,58 @@ class AIAdMakerVideoCreatorBlock(Block):
         video_url: str = SchemaField(description="URL of the finished advert")
         error: str = SchemaField(description="Error message on failure")
 
+    async def create_webhook(self) -> tuple[str, str]:
+        """Create a new webhook URL for receiving notifications."""
+        url = "https://webhook.site/token"
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        response = await Requests().post(url, headers=headers)
+        webhook_data = response.json()
+        return webhook_data["uuid"], f"https://webhook.site/{webhook_data['uuid']}"
+
+    async def create_video(self, api_key: SecretStr, payload: dict) -> dict:
+        """Create a video using the Revid API."""
+        url = "https://www.revid.ai/api/public/v2/render"
+        headers = {"key": api_key.get_secret_value()}
+        response = await Requests().post(url, json=payload, headers=headers)
+        logger.debug(
+            f"API Response Status Code: {response.status}, Content: {response.text}"
+        )
+        return response.json()
+
+    async def check_video_status(self, api_key: SecretStr, pid: str) -> dict:
+        """Check the status of a video creation job."""
+        url = f"https://www.revid.ai/api/public/v2/status?pid={pid}"
+        headers = {"key": api_key.get_secret_value()}
+        response = await Requests().get(url, headers=headers)
+        return response.json()
+
+    async def wait_for_video(
+        self,
+        api_key: SecretStr,
+        pid: str,
+        max_wait_time: int = 1000,
+    ) -> str:
+        """Wait for video creation to complete and return the video URL."""
+        start_time = time.time()
+        while time.time() - start_time < max_wait_time:
+            status = await self.check_video_status(api_key, pid)
+            logger.debug(f"Video status: {status}")
+
+            if status.get("status") == "ready" and "videoUrl" in status:
+                return status["videoUrl"]
+            elif status.get("status") == "error":
+                error_message = status.get("error", "Unknown error occurred")
+                logger.error(f"Video creation failed: {error_message}")
+                raise ValueError(f"Video creation failed: {error_message}")
+            elif status.get("status") in ["FAILED", "CANCELED"]:
+                logger.error(f"Video creation failed: {status.get('message')}")
+                raise ValueError(f"Video creation failed: {status.get('message')}")
+
+            await asyncio.sleep(10)
+
+        logger.error("Video creation timed out")
+        raise TimeoutError("Video creation timed out")
+
     def __init__(self):
         super().__init__(
             id="58bd2a19-115d-4fd1-8ca4-13b9e37fa6a0",
@@ -395,22 +438,19 @@ class AIAdMakerVideoCreatorBlock(Block):
             },
             test_output=("video_url", "https://example.com/ad.mp4"),
             test_mock={
-                "create_webhook": lambda: (
-                    "test_uuid",
-                    "https://webhook.site/test_uuid",
-                ),
-                "create_video": lambda api_key, payload: {"pid": "test_pid"},
-                "check_video_status": lambda api_key, pid: {
+                "create_webhook": lambda *args, **kwargs: ("test_uuid", "https://webhook.site/test_uuid"),
+                "create_video": lambda *args, **kwargs: {"pid": "test_pid"},
+                "check_video_status": lambda *args, **kwargs: {
                     "status": "ready",
-                    "videoUrl": "https://example.com/ad.mp4",
+                    "videoUrl": "https://example.com/ad.mp4"
                 },
-                "wait_for_video": lambda api_key, pid: "https://example.com/ad.mp4",
+                "wait_for_video": lambda *args, **kwargs: "https://example.com/ad.mp4"
             },
             test_credentials=TEST_CREDENTIALS,
         )
 
     async def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
-        webhook_token, webhook_url = await create_webhook()
+        webhook_token, webhook_url = await self.create_webhook()
 
         payload = {
             "webhook": webhook_url,
@@ -471,12 +511,12 @@ class AIAdMakerVideoCreatorBlock(Block):
             },
         }
 
-        response = await create_video(credentials.api_key, payload)
+        response = await self.create_video(credentials.api_key, payload)
         pid = response.get("pid")
         if not pid:
             raise RuntimeError("Failed to create video: No project ID returned")
 
-        video_url = await wait_for_video(credentials.api_key, pid)
+        video_url = await self.wait_for_video(credentials.api_key, pid)
         yield "video_url", video_url
 
 
@@ -510,6 +550,58 @@ class AIScreenshotToVideoAdBlock(Block):
         video_url: str = SchemaField(description="Rendered video URL")
         error: str = SchemaField(description="Error, if encountered")
 
+    async def create_webhook(self) -> tuple[str, str]:
+        """Create a new webhook URL for receiving notifications."""
+        url = "https://webhook.site/token"
+        headers = {"Accept": "application/json", "Content-Type": "application/json"}
+        response = await Requests().post(url, headers=headers)
+        webhook_data = response.json()
+        return webhook_data["uuid"], f"https://webhook.site/{webhook_data['uuid']}"
+
+    async def create_video(self, api_key: SecretStr, payload: dict) -> dict:
+        """Create a video using the Revid API."""
+        url = "https://www.revid.ai/api/public/v2/render"
+        headers = {"key": api_key.get_secret_value()}
+        response = await Requests().post(url, json=payload, headers=headers)
+        logger.debug(
+            f"API Response Status Code: {response.status}, Content: {response.text}"
+        )
+        return response.json()
+
+    async def check_video_status(self, api_key: SecretStr, pid: str) -> dict:
+        """Check the status of a video creation job."""
+        url = f"https://www.revid.ai/api/public/v2/status?pid={pid}"
+        headers = {"key": api_key.get_secret_value()}
+        response = await Requests().get(url, headers=headers)
+        return response.json()
+
+    async def wait_for_video(
+        self,
+        api_key: SecretStr,
+        pid: str,
+        max_wait_time: int = 1000,
+    ) -> str:
+        """Wait for video creation to complete and return the video URL."""
+        start_time = time.time()
+        while time.time() - start_time < max_wait_time:
+            status = await self.check_video_status(api_key, pid)
+            logger.debug(f"Video status: {status}")
+
+            if status.get("status") == "ready" and "videoUrl" in status:
+                return status["videoUrl"]
+            elif status.get("status") == "error":
+                error_message = status.get("error", "Unknown error occurred")
+                logger.error(f"Video creation failed: {error_message}")
+                raise ValueError(f"Video creation failed: {error_message}")
+            elif status.get("status") in ["FAILED", "CANCELED"]:
+                logger.error(f"Video creation failed: {status.get('message')}")
+                raise ValueError(f"Video creation failed: {status.get('message')}")
+
+            await asyncio.sleep(10)
+
+        logger.error("Video creation timed out")
+        raise TimeoutError("Video creation timed out")
+
     def __init__(self):
         super().__init__(
             id="0f3e4635-e810-43d9-9e81-49e6f4e83b7c",
@@ -524,22 +616,19 @@ class AIScreenshotToVideoAdBlock(Block):
             },
             test_output=("video_url", "https://example.com/screenshot.mp4"),
             test_mock={
-                "create_webhook": lambda: (
-                    "test_uuid",
-                    "https://webhook.site/test_uuid",
-                ),
-                "create_video": lambda api_key, payload: {"pid": "test_pid"},
-                "check_video_status": lambda api_key, pid: {
+                "create_webhook": lambda *args, **kwargs: ("test_uuid", "https://webhook.site/test_uuid"),
+                "create_video": lambda *args, **kwargs: {"pid": "test_pid"},
+                "check_video_status": lambda *args, **kwargs: {
                     "status": "ready",
-                    "videoUrl": "https://example.com/screenshot.mp4",
+                    "videoUrl": "https://example.com/screenshot.mp4"
                 },
-                "wait_for_video": lambda api_key, pid: "https://example.com/screenshot.mp4",
+                "wait_for_video": lambda *args, **kwargs: "https://example.com/screenshot.mp4"
             },
             test_credentials=TEST_CREDENTIALS,
         )
 
     async def run(self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs):
-        webhook_token, webhook_url = await create_webhook()
+        webhook_token, webhook_url = await self.create_webhook()
 
         payload = {
             "webhook": webhook_url,
@@ -600,10 +689,10 @@ class AIScreenshotToVideoAdBlock(Block):
             },
         }
 
-        response = await create_video(credentials.api_key, payload)
+        response = await self.create_video(credentials.api_key, payload)
         pid = response.get("pid")
         if not pid:
             raise RuntimeError("Failed to create video: No project ID returned")
 
-        video_url = await wait_for_video(credentials.api_key, pid)
+        video_url = await self.wait_for_video(credentials.api_key, pid)
         yield "video_url", video_url
