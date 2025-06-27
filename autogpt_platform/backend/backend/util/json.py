@@ -14,8 +14,8 @@ def to_dict(data) -> dict:
     return jsonable_encoder(data)
 
 
-def dumps(data) -> str:
-    return json.dumps(to_dict(data))
+def dumps(data, *args, **kwargs) -> str:
+    return json.dumps(to_dict(data), *args, **kwargs)
 
 
 T = TypeVar("T")
