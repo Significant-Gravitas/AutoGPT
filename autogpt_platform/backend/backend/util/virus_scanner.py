@@ -186,6 +186,7 @@ def get_virus_scanner() -> VirusScannerService:
             clamav_service_host=settings.config.clamav_service_host,
             clamav_service_port=settings.config.clamav_service_port,
             clamav_service_enabled=settings.config.clamav_service_enabled,
+            max_concurrency=settings.config.clamav_max_concurrency,
         )
         _scanner = VirusScannerService(_settings)
     return _scanner

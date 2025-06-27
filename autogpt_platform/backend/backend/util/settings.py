@@ -254,6 +254,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=True,
         description="Whether virus scanning is enabled or not",
     )
+    clamav_max_concurrency: int = Field(
+        default=10,
+        description="The maximum number of concurrent scans to perform",
+    )
 
     @field_validator("platform_base_url", "frontend_base_url")
     @classmethod
