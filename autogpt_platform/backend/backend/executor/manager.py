@@ -581,6 +581,15 @@ class Executor:
         exec_stats.cputime += timing_info.cpu_time
         exec_stats.error = str(error) if error else exec_stats.error
 
+        if status not in {
+            ExecutionStatus.COMPLETED,
+            ExecutionStatus.TERMINATED,
+            ExecutionStatus.FAILED,
+        }:
+            raise RuntimeError(
+                f"Graph Execution #{graph_exec.graph_exec_id} ended with unexpected status {status}"
+            )
+
         if graph_exec_result := db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
             status=status,
