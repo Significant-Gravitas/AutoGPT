@@ -60,7 +60,7 @@ class VirusScannerService:
     @staticmethod
     def _parse_raw(raw: Optional[dict]) -> Tuple[bool, Optional[str]]:
         """
-        Convert pyclamd output to (infected?, threat_name).
+        Convert aioclamd output to (infected?, threat_name).
         Returns (False, None) for clean.
         """
         if not raw:

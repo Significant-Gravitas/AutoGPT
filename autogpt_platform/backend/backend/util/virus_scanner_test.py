@@ -1,5 +1,4 @@
 import asyncio
-import time
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -63,16 +62,17 @@ class TestVirusScannerService:
     # Note: ping method was removed from current implementation
 
     @pytest.mark.asyncio
-    @patch("pyclamd.ClamdNetworkSocket")
-    async def test_scan_clean_file(self, mock_clamav_class, scanner):
-        def mock_scan_stream(_):
-            time.sleep(0.001)  # Small delay to ensure timing > 0
+    async def test_scan_clean_file(self, scanner):
+        async def mock_instream(_):
+            await asyncio.sleep(0.001)  # Small delay to ensure timing > 0
             return None  # No virus detected
 
         mock_client = Mock()
-        mock_client.ping.return_value = True
-        mock_client.scan_stream = mock_scan_stream
-        mock_clamav_class.return_value = mock_client
+        mock_client.ping = AsyncMock(return_value=True)
+        mock_client.instream = AsyncMock(side_effect=mock_instream)
+
+        # Replace the client instance that was created in the constructor
+        scanner._client = mock_client
 
         content = b"clean file content"
         result = await scanner.scan_file(content, filename="clean.txt")
@@ -83,16 +83,17 @@ class TestVirusScannerService:
         assert result.scan_time_ms > 0
 
     @pytest.mark.asyncio
-    @patch("pyclamd.ClamdNetworkSocket")
-    async def test_scan_infected_file(self, mock_clamav_class, scanner):
-        def mock_scan_stream(_):
-            time.sleep(0.001)  # Small delay to ensure timing > 0
+    async def test_scan_infected_file(self, scanner):
+        async def mock_instream(_):
+            await asyncio.sleep(0.001)  # Small delay to ensure timing > 0
             return {"stream": ("FOUND", "Win.Test.EICAR_HDB-1")}
 
         mock_client = Mock()
-        mock_client.ping.return_value = True
-        mock_client.scan_stream = mock_scan_stream
-        mock_clamav_class.return_value = mock_client
+        mock_client.ping = AsyncMock(return_value=True)
+        mock_client.instream = AsyncMock(side_effect=mock_instream)
+
+        # Replace the client instance that was created in the constructor
+        scanner._client = mock_client
 
         content = b"infected file content"
         result = await scanner.scan_file(content, filename="infected.txt")
@@ -103,11 +104,12 @@ class TestVirusScannerService:
         assert result.scan_time_ms > 0
 
     @pytest.mark.asyncio
-    @patch("pyclamd.ClamdNetworkSocket")
-    async def test_scan_clamav_unavailable_fail_safe(self, mock_clamav_class, scanner):
+    async def test_scan_clamav_unavailable_fail_safe(self, scanner):
         mock_client = Mock()
-        mock_client.ping.return_value = False
-        mock_clamav_class.return_value = mock_client
+        mock_client.ping = AsyncMock(return_value=False)
+
+        # Replace the client instance that was created in the constructor
+        scanner._client = mock_client
 
         content = b"test content"
 
@@ -115,12 +117,13 @@ class TestVirusScannerService:
             await scanner.scan_file(content, filename="test.txt")
 
     @pytest.mark.asyncio
-    @patch("pyclamd.ClamdNetworkSocket")
-    async def test_scan_error_fail_safe(self, mock_clamav_class, scanner):
+    async def test_scan_error_fail_safe(self, scanner):
         mock_client = Mock()
-        mock_client.ping.return_value = True
-        mock_client.scan_stream.side_effect = Exception("Scanning error")
-        mock_clamav_class.return_value = mock_client
+        mock_client.ping = AsyncMock(return_value=True)
+        mock_client.instream = AsyncMock(side_effect=Exception("Scanning error"))
+
+        # Replace the client instance that was created in the constructor
+        scanner._client = mock_client
 
         content = b"test content"
 
@@ -150,16 +153,17 @@ class TestVirusScannerService:
         assert result.file_size == 1024
 
     @pytest.mark.asyncio
-    @patch("pyclamd.ClamdNetworkSocket")
-    async def test_concurrent_scans(self, mock_clamav_class, scanner):
-        def mock_scan_stream(_):
-            time.sleep(0.001)  # Small delay to ensure timing > 0
+    async def test_concurrent_scans(self, scanner):
+        async def mock_instream(_):
+            await asyncio.sleep(0.001)  # Small delay to ensure timing > 0
             return None
 
         mock_client = Mock()
-        mock_client.ping.return_value = True
-        mock_client.scan_stream = mock_scan_stream
-        mock_clamav_class.return_value = mock_client
+        mock_client.ping = AsyncMock(return_value=True)
+        mock_client.instream = AsyncMock(side_effect=mock_instream)
+
+        # Replace the client instance that was created in the constructor
+        scanner._client = mock_client
 
         content1 = b"file1 content"
         content2 = b"file2 content"
