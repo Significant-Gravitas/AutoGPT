@@ -1,7 +1,9 @@
-import json
 from copy import deepcopy
+from typing import Any
 
 from tiktoken import encoding_for_model
+
+from backend.util import json
 
 # ---------------------------------------------------------------------------#
 #  INTERNAL UTILITIES                                                         #
@@ -179,3 +181,26 @@ def estimate_token_count(
     """
     enc = encoding_for_model(model)  # best-match tokenizer
     return sum(_msg_tokens(m, enc) for m in messages)
+
+
+def estimate_token_count_str(
+    text: Any,
+    *,
+    model: str = "gpt-4o",
+) -> int:
+    """
+    Return the true token count of *text* when encoded for *model*.
+
+    Parameters
+    ----------
+    text    Input text.
+    model   Model name; passed to tiktoken to pick the right
+            tokenizer (gpt-4o → 'o200k_base', others fallback).
+
+    Returns
+    -------
+    int  – Token count.
+    """
+    enc = encoding_for_model(model)  # best-match tokenizer
+    text = json.dumps(text) if not isinstance(text, str) else text
+    return _tok_len(text, enc)
