@@ -11,17 +11,33 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { Separator } from "@/components/ui/separator";
-import { makeCronExpression } from "@/lib/cron-expression-utils";
+import { CronFrequency, makeCronExpression } from "@/lib/cron-expression-utils";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
-type CronFrequency =
-  | "minute"
-  | "hour"
-  | "daily"
-  | "weekly"
-  | "monthly"
-  | "yearly"
-  | "custom";
+const weekDays = [
+  { label: "Su", value: 0 },
+  { label: "Mo", value: 1 },
+  { label: "Tu", value: 2 },
+  { label: "We", value: 3 },
+  { label: "Th", value: 4 },
+  { label: "Fr", value: 5 },
+  { label: "Sa", value: 6 },
+];
+
+const months = [
+  { label: "Jan", value: "January" },
+  { label: "Feb", value: "February" },
+  { label: "Mar", value: "March" },
+  { label: "Apr", value: "April" },
+  { label: "May", value: "May" },
+  { label: "Jun", value: "June" },
+  { label: "Jul", value: "July" },
+  { label: "Aug", value: "August" },
+  { label: "Sep", value: "September" },
+  { label: "Oct", value: "October" },
+  { label: "Nov", value: "November" },
+  { label: "Dec", value: "December" },
+];
 
 export function CronScheduler({
   onCronExpressionChange,
@@ -29,58 +45,47 @@ export function CronScheduler({
   onCronExpressionChange: (cronExpression: string) => void;
 }): React.ReactElement {
   const [frequency, setFrequency] = useState<CronFrequency>("daily");
-  const [selectedDays, setSelectedDays] = useState<number[]>([]);
-  const [selectedTime, setSelectedTime] = useState<string>("09:00");
-  const [showCustomDays, setShowCustomDays] = useState<boolean>(false);
   const [selectedMinute, setSelectedMinute] = useState<string>("0");
+  const [selectedTime, setSelectedTime] = useState<string>("09:00");
+  const [selectedWeekDays, setSelectedWeekDays] = useState<number[]>([]);
+  const [selectedMonthDays, setSelectedMonthDays] = useState<number[]>([]);
+  const [selectedMonths, setSelectedMonths] = useState<number[]>([]);
   const [customInterval, setCustomInterval] = useState<{
     value: number;
     unit: "minutes" | "hours" | "days";
   }>({ value: 1, unit: "minutes" });
+  const [showCustomDays, setShowCustomDays] = useState<boolean>(false);
 
   // const [endType, setEndType] = useState<"never" | "on" | "after">("never");
   // const [endDate, setEndDate] = useState<Date | undefined>();
   // const [occurrences, setOccurrences] = useState<number>(1);
 
-  const weekDays = [
-    { label: "Su", value: 0 },
-    { label: "Mo", value: 1 },
-    { label: "Tu", value: 2 },
-    { label: "We", value: 3 },
-    { label: "Th", value: 4 },
-    { label: "Fr", value: 5 },
-    { label: "Sa", value: 6 },
-  ];
-
-  const months = [
-    { label: "Jan", value: "January" },
-    { label: "Feb", value: "February" },
-    { label: "Mar", value: "March" },
-    { label: "Apr", value: "April" },
-    { label: "May", value: "May" },
-    { label: "Jun", value: "June" },
-    { label: "Jul", value: "July" },
-    { label: "Aug", value: "August" },
-    { label: "Sep", value: "September" },
-    { label: "Oct", value: "October" },
-    { label: "Nov", value: "November" },
-    { label: "Dec", value: "December" },
-  ];
-
   useEffect(() => {
-    const cronExpr = makeCronExpression(
+    const cronExpr = makeCronExpression({
       frequency,
-      selectedTime,
-      selectedDays,
-      selectedMinute,
-      customInterval,
-    );
+      minute:
+        frequency === "hourly"
+          ? parseInt(selectedMinute)
+          : parseInt(selectedTime.split(":")[1]),
+      hour: parseInt(selectedTime.split(":")[0]),
+      days:
+        frequency === "weekly"
+          ? selectedWeekDays
+          : frequency === "monthly"
+            ? selectedMonthDays
+            : [],
+      months: frequency === "yearly" ? selectedMonths : [],
+      customInterval:
+        frequency === "custom" ? customInterval : { unit: "minutes", value: 1 },
+    });
     onCronExpressionChange(cronExpr);
   }, [
     frequency,
-    selectedTime,
-    selectedDays,
     selectedMinute,
+    selectedTime,
+    selectedWeekDays,
+    selectedMonthDays,
+    selectedMonths,
     customInterval,
     onCronExpressionChange,
   ]);
@@ -91,15 +96,15 @@ export function CronScheduler({
         <Label className="text-base font-medium">Repeat</Label>
 
         <Select
+          value={frequency}
           onValueChange={(value: CronFrequency) => setFrequency(value)}
-          defaultValue="daily"
         >
           <SelectTrigger>
             <SelectValue placeholder="Select frequency" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="minute">Every Minute</SelectItem>
-            <SelectItem value="hour">Every Hour</SelectItem>
+            <SelectItem value="every minute">Every Minute</SelectItem>
+            <SelectItem value="hourly">Every Hour</SelectItem>
             <SelectItem value="daily">Daily</SelectItem>
             <SelectItem value="weekly">Weekly</SelectItem>
             <SelectItem value="monthly">Monthly</SelectItem>
@@ -108,7 +113,7 @@ export function CronScheduler({
           </SelectContent>
         </Select>
 
-        {frequency === "hour" && (
+        {frequency === "hourly" && (
           <div className="flex items-center gap-2">
             <Label>At minute</Label>
             <Select value={selectedMinute} onValueChange={setSelectedMinute}>
@@ -168,28 +173,28 @@ export function CronScheduler({
               variant="outline"
               className="h-8 px-2 py-1 text-xs"
               onClick={() => {
-                if (selectedDays.length === weekDays.length) {
-                  setSelectedDays([]);
+                if (selectedWeekDays.length === weekDays.length) {
+                  setSelectedWeekDays([]);
                 } else {
-                  setSelectedDays(weekDays.map((day) => day.value));
+                  setSelectedWeekDays(weekDays.map((day) => day.value));
                 }
               }}
             >
-              {selectedDays.length === weekDays.length
+              {selectedWeekDays.length === weekDays.length
                 ? "Deselect All"
                 : "Select All"}
             </Button>
             <Button
               variant="outline"
               className="h-8 px-2 py-1 text-xs"
-              onClick={() => setSelectedDays([1, 2, 3, 4, 5])}
+              onClick={() => setSelectedWeekDays([1, 2, 3, 4, 5])}
             >
               Weekdays
             </Button>
             <Button
               variant="outline"
               className="h-8 px-2 py-1 text-xs"
-              onClick={() => setSelectedDays([0, 6])}
+              onClick={() => setSelectedWeekDays([0, 6])}
             >
               Weekends
             </Button>
@@ -199,11 +204,11 @@ export function CronScheduler({
               <Button
                 key={day.value}
                 variant={
-                  selectedDays.includes(day.value) ? "default" : "outline"
+                  selectedWeekDays.includes(day.value) ? "default" : "outline"
                 }
                 className="h-10 w-10 p-0"
                 onClick={() => {
-                  setSelectedDays((prev) =>
+                  setSelectedWeekDays((prev) =>
                     prev.includes(day.value)
                       ? prev.filter((d) => d !== day.value)
                       : [...prev, day.value],
@@ -224,7 +229,9 @@ export function CronScheduler({
               variant={!showCustomDays ? "default" : "outline"}
               onClick={() => {
                 setShowCustomDays(false);
-                setSelectedDays(Array.from({ length: 31 }, (_, i) => i + 1));
+                setSelectedMonthDays(
+                  Array.from({ length: 31 }, (_, i) => i + 1),
+                );
               }}
             >
               All Days
@@ -233,15 +240,21 @@ export function CronScheduler({
               variant={showCustomDays ? "default" : "outline"}
               onClick={() => {
                 setShowCustomDays(true);
-                setSelectedDays([]);
+                setSelectedMonthDays([]);
               }}
             >
               Customize
             </Button>
-            <Button variant="outline" onClick={() => setSelectedDays([15])}>
+            <Button
+              variant="outline"
+              onClick={() => setSelectedMonthDays([15])}
+            >
               15th
             </Button>
-            <Button variant="outline" onClick={() => setSelectedDays([31])}>
+            <Button
+              variant="outline"
+              onClick={() => setSelectedMonthDays([31])}
+            >
               Last Day
             </Button>
           </div>
@@ -250,10 +263,12 @@ export function CronScheduler({
               {Array.from({ length: 31 }, (_, i) => (
                 <Button
                   key={i + 1}
-                  variant={selectedDays.includes(i + 1) ? "default" : "outline"}
+                  variant={
+                    selectedMonthDays.includes(i + 1) ? "default" : "outline"
+                  }
                   className="h-10 w-10 p-0"
                   onClick={() => {
-                    setSelectedDays((prev) =>
+                    setSelectedMonthDays((prev) =>
                       prev.includes(i + 1)
                         ? prev.filter((d) => d !== i + 1)
                         : [...prev, i + 1],
@@ -275,40 +290,45 @@ export function CronScheduler({
               variant="outline"
               className="h-8 px-2 py-1 text-xs"
               onClick={() => {
-                if (selectedDays.length === months.length) {
-                  setSelectedDays([]);
+                if (selectedMonths.length === months.length) {
+                  setSelectedMonths([]);
                 } else {
-                  setSelectedDays(Array.from({ length: 12 }, (_, i) => i));
+                  setSelectedMonths(Array.from({ length: 12 }, (_, i) => i));
                 }
               }}
             >
-              {selectedDays.length === months.length
+              {selectedMonths.length === months.length
                 ? "Deselect All"
                 : "Select All"}
             </Button>
           </div>
           <div className="flex flex-wrap gap-2">
-            {months.map((month, index) => (
-              <Button
-                key={index}
-                variant={selectedDays.includes(index) ? "default" : "outline"}
-                className="px-2 py-1"
-                onClick={() => {
-                  setSelectedDays((prev) =>
-                    prev.includes(index)
-                      ? prev.filter((m) => m !== index)
-                      : [...prev, index],
-                  );
-                }}
-              >
-                {month.label}
-              </Button>
-            ))}
+            {months.map((month, i) => {
+              const monthNumber = i + 1;
+              return (
+                <Button
+                  key={i}
+                  variant={
+                    selectedMonths.includes(monthNumber) ? "default" : "outline"
+                  }
+                  className="px-2 py-1"
+                  onClick={() => {
+                    setSelectedMonths((prev) =>
+                      prev.includes(monthNumber)
+                        ? prev.filter((m) => m !== monthNumber)
+                        : [...prev, monthNumber],
+                    );
+                  }}
+                >
+                  {month.label}
+                </Button>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {frequency !== "minute" && frequency !== "hour" && (
+      {frequency !== "every minute" && frequency !== "hourly" && (
         <div className="flex items-center gap-4 space-y-2">
           <Label className="pt-2">At</Label>
           <Input

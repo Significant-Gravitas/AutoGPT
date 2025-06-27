@@ -1,51 +1,79 @@
-export function makeCronExpression(
-  frequency: string,
-  selectedTime: string,
-  selectedDays: number[],
-  selectedMinute: string,
-  customInterval: { unit: string; value: number },
-): string {
-  const [hours, minutes] = selectedTime.split(":").map(Number);
-  let expression = "";
+export type CronFrequency =
+  | "every minute"
+  | "hourly"
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "yearly"
+  | "custom";
 
-  switch (frequency) {
-    case "minute":
-      expression = "* * * * *";
-      break;
-    case "hour":
-      expression = `${selectedMinute} * * * *`;
-      break;
-    case "daily":
-      expression = `${minutes} ${hours} * * *`;
-      break;
-    case "weekly":
-      const days = selectedDays.join(",");
-      expression = `${minutes} ${hours} * * ${days}`;
-      break;
-    case "monthly":
-      const monthDays = selectedDays.sort((a, b) => a - b).join(",");
-      expression = `${minutes} ${hours} ${monthDays} * *`;
-      break;
-    case "yearly":
-      const monthList = selectedDays
-        .map((d) => d + 1)
-        .sort((a, b) => a - b)
-        .join(",");
-      expression = `${minutes} ${hours} 1 ${monthList} *`;
-      break;
-    case "custom":
-      if (customInterval.unit === "minutes") {
-        expression = `*/${customInterval.value} * * * *`;
-      } else if (customInterval.unit === "hours") {
-        expression = `0 */${customInterval.value} * * *`;
-      } else {
-        expression = `${minutes} ${hours} */${customInterval.value} * *`;
-      }
-      break;
-    default:
-      expression = "";
+export type CronExpressionParams =
+  | { frequency: "every minute" }
+  | {
+      frequency: "hourly";
+      minute: number;
+    }
+  | ((
+      | {
+          frequency: "daily";
+        }
+      | {
+          frequency: "weekly";
+          /** 0-based list of weekdays: 0 = Monday ... 6 = Sunday */
+          days: number[];
+        }
+      | {
+          frequency: "monthly";
+          /** 1-based list of month days */
+          days: number[];
+        }
+      | {
+          frequency: "yearly";
+          /** 1-based list of months (1-12) */
+          months: number[];
+        }
+      | {
+          frequency: "custom";
+          customInterval: { unit: string; value: number };
+        }
+    ) & {
+      minute: number;
+      hour: number;
+    });
+
+export function makeCronExpression(params: CronExpressionParams): string {
+  const frequency = params.frequency;
+
+  if (frequency === "every minute") return "* * * * *";
+  if (frequency === "hourly") return `${params.minute} * * * *`;
+  if (frequency === "daily") return `${params.minute} ${params.hour} * * *`;
+  if (frequency === "weekly") {
+    const { minute, hour, days } = params;
+    const weekDaysExpr = days.sort((a, b) => a - b).join(",");
+    return `${minute} ${hour} * * ${weekDaysExpr}`;
   }
-  return expression;
+  if (frequency === "monthly") {
+    const { minute, hour, days } = params;
+    const monthDaysExpr = days.sort((a, b) => a - b).join(",");
+    return `${minute} ${hour} ${monthDaysExpr} * *`;
+  }
+  if (frequency === "yearly") {
+    const { minute, hour, months } = params;
+    const monthList = months.sort((a, b) => a - b).join(",");
+    return `${minute} ${hour} 1 ${monthList} *`;
+  }
+  if (frequency === "custom") {
+    const { minute, hour, customInterval } = params;
+    if (customInterval.unit === "minutes") {
+      return `*/${customInterval.value} * * * *`;
+    } else if (customInterval.unit === "hours") {
+      return `0 */${customInterval.value} * * *`;
+    } else {
+      return `${minute} ${hour} */${customInterval.value} * *`;
+    }
+  }
+
+  return "";
 }
 
 export function humanizeCronExpression(cronExpression: string): string {
