@@ -53,10 +53,6 @@ export function CronScheduler({
   }>({ value: 1, unit: "minutes" });
   const [showCustomDays, setShowCustomDays] = useState<boolean>(false);
 
-  // const [endType, setEndType] = useState<"never" | "on" | "after">("never");
-  // const [endDate, setEndDate] = useState<Date | undefined>();
-  // const [occurrences, setOccurrences] = useState<number>(1);
-
   useEffect(() => {
     const cronExpr = makeCronExpression({
       frequency,
@@ -335,76 +331,6 @@ export function CronScheduler({
           />
         </div>
       )}
-
-      {/*
-
-        On the backend, we are using standard cron expressions,
-        which makes it challenging to add an end date or stop execution
-        after a certain time using only cron expressions.
-        (since standard cron expressions have limitations, like the lack of a year field or more...).
-
-        We could also use ranges in cron expression for end dates but It doesm't cover all cases (sometimes break)
-
-        To automatically end the scheduler, we need to store the end date and time occurrence in the database
-        and modify scheduler.add_job. Currently, we can only stop the scheduler manually from the monitor tab.
-
-        */}
-
-      {/* <div className="space-y-6">
-        <Label className="text-lg font-medium">Ends</Label>
-        <RadioGroup
-          value={endType}
-          onValueChange={(value: "never" | "on" | "after") =>
-            setEndType(value)
-          }
-        >
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="never" id="never" />
-            <Label htmlFor="never">Never</Label>
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="on" id="on" />
-            <Label htmlFor="on" className="w-[50px]">
-              On
-            </Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  disabled={endType !== "on"}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {endDate ? format(endDate, "PPP") : "Pick a date"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0">
-                <Calendar
-                  mode="single"
-                  selected={endDate}
-                  onSelect={setEndDate}
-                  disabled={(date) => date < new Date()}
-                  fromDate={new Date()}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="after" id="after" />
-            <Label htmlFor="after" className="ml-2 w-[50px]">
-              After
-            </Label>
-            <Input
-              type="number"
-              className="ml-2 w-[100px]"
-              value={occurrences}
-              onChange={(e) => setOccurrences(Number(e.target.value))}
-            />
-            <span>times</span>
-          </div>
-        </RadioGroup>
-      </div> */}
     </div>
   );
 }
