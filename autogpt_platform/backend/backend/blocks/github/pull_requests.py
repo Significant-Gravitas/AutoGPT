@@ -265,10 +265,26 @@ class GithubReadPullRequestBlock(Block):
         files = response.json()
         changes = []
         for file in files:
-            filename = file.get("filename", "")
-            status = file.get("status", "")
-            changes.append(f"{filename}: {status}")
-        return "\n".join(changes)
+            status: str = file.get("status", "")
+            diff: str = file.get("patch", "")
+            if status != "removed":
+                is_filename: str = file.get("filename", "")
+                was_filename: str = (
+                    file.get("previous_filename", is_filename)
+                    if status != "added"
+                    else ""
+                )
+            else:
+                is_filename = ""
+                was_filename: str = file.get("filename", "")
+
+            patch_header = ""
+            if was_filename:
+                patch_header += f"--- {was_filename}\n"
+            if is_filename:
+                patch_header += f"+++ {is_filename}\n"
+            changes.append(patch_header + diff)
+        return "\n\n".join(changes)
 
     async def run(
         self,
