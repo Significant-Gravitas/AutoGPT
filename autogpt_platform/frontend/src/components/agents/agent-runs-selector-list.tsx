@@ -59,7 +59,6 @@ export default function AgentRunsSelectorList({
   );
 
   useEffect(() => {
-    // Reset the active tab when the selected view changes
     if (selectedView.type === "schedule") {
       setActiveListTab("scheduled");
     } else {
