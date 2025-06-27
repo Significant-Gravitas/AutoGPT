@@ -1,31 +1,60 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
 
-// TODO : Need to use proxyApiRequest or proxyFileUpload from PR https://github.com/Significant-Gravitas/AutoGPT/pull/10201
-// If content type == "application/json" then use proxyApiRequest otherwise use proxyFileUpload
+const BACKEND_BASE_URL =
+  process.env.NEXT_PUBLIC_AGPT_SERVER_BASE_URL || "http://localhost:8006";
 
-export async function GET(req: NextRequest) {
-  console.log("GET Request : ", req);
-  return NextResponse.json({ message: "GET request received successfully." });
+/**
+ * A simple proxy route that forwards requests to the backend API.
+ * It injects the server-side authentication token into the Authorization header.
+ * It streams the request and response bodies to be efficient with memory.
+ */
+async function handler(
+  req: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> },
+) {
+  // Construct the backend URL from the incoming request.
+  const { path } = await params;
+  const url = new URL(req.url);
+  const queryString = url.search;
+  const backendPath = path.join("/");
+  const backendUrl = `${BACKEND_BASE_URL}/${backendPath}${queryString}`;
+
+  const requestHeaders = new Headers(req.headers);
+
+  const token = await getServerAuthToken();
+  if (token) {
+    requestHeaders.set("Authorization", `Bearer ${token}`);
+  }
+
+  // The 'host' header is automatically set by fetch and should not be copied.
+  requestHeaders.delete("host");
+
+  try {
+    // Forward the request to the backend, streaming the body.
+    const backendResponse = await fetch(backendUrl, {
+      method: req.method,
+      headers: requestHeaders,
+      body: req.body,
+    });
+
+    // Return the response from the backend directly to the client.
+    return backendResponse;
+  } catch (error) {
+    console.error("API proxy error:", error);
+    const detail =
+      error instanceof Error ? error.message : "An unknown error occurred";
+    return NextResponse.json(
+      { error: "Proxy request failed", detail },
+      { status: 502 }, // Bad Gateway
+    );
+  }
 }
 
-export async function POST(req: NextRequest) {
-  console.log("POST Request : ", req);
-  return NextResponse.json({ message: "POST request received successfully." });
-}
-
-export async function PUT(req: NextRequest) {
-  console.log("PUT Request : ", req);
-  return NextResponse.json({ message: "PUT request received successfully." });
-}
-
-export async function DELETE(req: NextRequest) {
-  console.log("DELETE Request : ", req);
-  return NextResponse.json({
-    message: "DELETE request received successfully.",
-  });
-}
-
-export async function PATCH(req: NextRequest) {
-  console.log("PATCH Request : ", req);
-  return NextResponse.json({ message: "PATCH request received successfully." });
-}
+export {
+  handler as GET,
+  handler as POST,
+  handler as PUT,
+  handler as PATCH,
+  handler as DELETE,
+};

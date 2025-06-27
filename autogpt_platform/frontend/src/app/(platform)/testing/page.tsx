@@ -1,6 +1,6 @@
 "use client";
-import { useGetV2ListLibraryAgents } from "@/api/__generated__/endpoints/library/library";
-import { LibraryAgentResponse } from "@/api/__generated__/models/libraryAgentResponse";
+import { useGetV2ListLibraryAgents } from "@/app/api/__generated__/endpoints/library/library";
+import { LibraryAgentResponse } from "@/app/api/__generated__/models/libraryAgentResponse";
 import React from "react";
 
 const TestingComponent = () => {
