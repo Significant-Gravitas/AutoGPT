@@ -16,7 +16,7 @@ import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
 import { CalendarClockIcon, Trash2Icon } from "lucide-react";
-import { CronSchedulerDialog } from "@/components/cron-scheduler";
+import { CronSchedulerDialog } from "@/components/cron-scheduler-dialog";
 import { CredentialsInput } from "@/components/integrations/credentials-input";
 import { TypeBasedInput } from "@/components/type-based-input";
 import { useToastOnFail } from "@/components/ui/use-toast";
