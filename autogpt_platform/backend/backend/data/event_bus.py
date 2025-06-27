@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from redis.asyncio.client import PubSub as AsyncPubSub
 from redis.client import PubSub
 
-from backend.data import redis
+from backend.data import redis_client as redis
 
 logger = logging.getLogger(__name__)
 
