@@ -635,7 +635,7 @@ class RemoveFromListBlock(Block):
                 lst.remove(input_data.value)
                 removed = input_data.value
             else:
-                raise ValueError
+                raise ValueError("No index or value provided for removal")
         except (IndexError, ValueError):
             yield "error", "Index or value not found"
             return
