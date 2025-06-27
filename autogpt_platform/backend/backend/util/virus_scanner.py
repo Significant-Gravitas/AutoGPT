@@ -132,15 +132,17 @@ class VirusScannerService:
 
                 for coro in asyncio.as_completed(tasks):
                     infected, threat = await coro
-                    if infected:
-                        for t in tasks:
+                    if not infected:
+                        continue
+                    for t in tasks:
+                        if not t.done():
                             t.cancel()
-                        return VirusScanResult(
-                            is_clean=False,
-                            threat_name=threat,
-                            file_size=len(content),
-                            scan_time_ms=int((time.monotonic() - start) * 1000),
-                        )
+                    return VirusScanResult(
+                        is_clean=False,
+                        threat_name=threat,
+                        file_size=len(content),
+                        scan_time_ms=int((time.monotonic() - start) * 1000),
+                    )
 
                 # All chunks clean
                 return VirusScanResult(
