@@ -36,11 +36,13 @@ const months = [
   { label: "Dec", value: "December" },
 ];
 
+type CronSchedulerProps = {
+  onCronExpressionChange: (cronExpression: string) => void;
+};
+
 export function CronScheduler({
   onCronExpressionChange,
-}: {
-  onCronExpressionChange: (cronExpression: string) => void;
-}): React.ReactElement {
+}: CronSchedulerProps): React.ReactElement {
   const [frequency, setFrequency] = useState<CronFrequency>("daily");
   const [selectedMinute, setSelectedMinute] = useState<string>("0");
   const [selectedTime, setSelectedTime] = useState<string>("09:00");

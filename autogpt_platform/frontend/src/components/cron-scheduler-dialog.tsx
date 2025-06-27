@@ -6,17 +6,19 @@ import { Separator } from "@/components/ui/separator";
 import { CronScheduler } from "@/components/cron-scheduler";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
+type CronSchedulerDialogProps = {
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  afterCronCreation: (cronExpression: string, scheduleName: string) => void;
+  defaultScheduleName?: string;
+};
+
 export function CronSchedulerDialog({
   open,
   setOpen,
   afterCronCreation,
   defaultScheduleName = "",
-}: {
-  open: boolean;
-  setOpen: (open: boolean) => void;
-  afterCronCreation: (cronExpression: string, scheduleName: string) => void;
-  defaultScheduleName?: string;
-}) {
+}: CronSchedulerDialogProps) {
   const { toast } = useToast();
   const [cronExpression, setCronExpression] = useState<string>("");
   const [scheduleName, setScheduleName] = useState<string>(defaultScheduleName);
