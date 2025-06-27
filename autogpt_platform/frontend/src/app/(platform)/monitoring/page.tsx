@@ -32,12 +32,13 @@ const Monitor = () => {
   const api = useBackendAPI();
 
   const fetchSchedules = useCallback(async () => {
-    setSchedules(await api.listSchedules());
+    setSchedules(await api.listAllGraphsExecutionSchedules());
   }, [api]);
 
   const removeSchedule = useCallback(
     async (scheduleId: ScheduleID) => {
-      const removedSchedule = await api.deleteSchedule(scheduleId);
+      const removedSchedule =
+        await api.deleteGraphExecutionSchedule(scheduleId);
       setSchedules(schedules.filter((s) => s.id !== removedSchedule.id));
     },
     [schedules, api],

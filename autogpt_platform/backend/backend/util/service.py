@@ -31,7 +31,7 @@ from tenacity import (
     wait_exponential_jitter,
 )
 
-from backend.util.exceptions import InsufficientBalanceError
+import backend.util.exceptions as exceptions
 from backend.util.json import to_dict
 from backend.util.metrics import sentry_init
 from backend.util.process import AppProcess, get_service_name
@@ -106,7 +106,13 @@ EXCEPTION_MAPPING = {
         ValueError,
         TimeoutError,
         ConnectionError,
-        InsufficientBalanceError,
+        *[
+            ErrorType
+            for _, ErrorType in inspect.getmembers(exceptions)
+            if inspect.isclass(ErrorType)
+            and issubclass(ErrorType, Exception)
+            and ErrorType.__module__ == exceptions.__name__
+        ],
     ]
 }
 
