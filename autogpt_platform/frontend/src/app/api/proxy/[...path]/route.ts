@@ -1,53 +1,170 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getServerAuthToken } from "@/lib/autogpt-server-api/helpers";
+import {
+  makeAuthenticatedRequest,
+  makeAuthenticatedFileUpload,
+} from "@/lib/autogpt-server-api/helpers";
 
 const BACKEND_BASE_URL =
   process.env.NEXT_PUBLIC_AGPT_SERVER_BASE_URL || "http://localhost:8006";
 
 /**
+ * Builds the backend URL from the request path and query string
+ */
+function buildBackendUrl(path: string[], queryString: string): string {
+  const backendPath = path.join("/");
+  return `${BACKEND_BASE_URL}/${backendPath}${queryString}`;
+}
+
+/**
+ * Handles JSON content type requests
+ */
+async function handleJsonRequest(
+  req: NextRequest,
+  method: string,
+  backendUrl: string,
+): Promise<any> {
+  const payload = await req.json();
+  return await makeAuthenticatedRequest(
+    method,
+    backendUrl,
+    payload,
+    "application/json",
+  );
+}
+
+/**
+ * Handles multipart/form-data content type requests
+ */
+async function handleFormDataRequest(
+  req: NextRequest,
+  backendUrl: string,
+): Promise<any> {
+  const formData = await req.formData();
+  return await makeAuthenticatedFileUpload(backendUrl, formData);
+}
+
+/**
+ * Handles URL-encoded form content type requests
+ */
+async function handleUrlEncodedRequest(
+  req: NextRequest,
+  method: string,
+  backendUrl: string,
+): Promise<any> {
+  const textPayload = await req.text();
+  const params = new URLSearchParams(textPayload);
+  const payload = Object.fromEntries(params.entries());
+  return await makeAuthenticatedRequest(
+    method,
+    backendUrl,
+    payload,
+    "application/x-www-form-urlencoded",
+  );
+}
+
+/**
+ * Handles requests without a body (GET, DELETE)
+ */
+async function handleRequestWithoutBody(
+  method: string,
+  backendUrl: string,
+): Promise<any> {
+  return await makeAuthenticatedRequest(method, backendUrl);
+}
+
+/**
+ * Returns an error response for unsupported content types
+ */
+function createUnsupportedContentTypeResponse(
+  contentType: string | null,
+): NextResponse {
+  return NextResponse.json(
+    {
+      error:
+        "Unsupported Content-Type for proxying with authentication helpers.",
+      receivedContentType: contentType,
+      supportedContentTypes: [
+        "application/json",
+        "multipart/form-data",
+        "application/x-www-form-urlencoded",
+      ],
+    },
+    { status: 415 }, // Unsupported Media Type
+  );
+}
+
+/**
+ * Creates the appropriate response based on the response body and status
+ */
+function createResponse(
+  responseBody: any,
+  responseStatus: number,
+  responseHeaders: Record<string, string>,
+): NextResponse {
+  if (responseStatus === 204) {
+    return new NextResponse(null, { status: responseStatus });
+  } else {
+    return NextResponse.json(responseBody, {
+      status: responseStatus,
+      headers: responseHeaders,
+    });
+  }
+}
+
+/**
+ * Creates an error response for request failures
+ */
+function createErrorResponse(error: unknown): NextResponse {
+  console.error("API proxy error:", error);
+  const detail =
+    error instanceof Error ? error.message : "An unknown error occurred";
+  return NextResponse.json(
+    { error: "Proxy request failed", detail },
+    { status: 500 }, // Internal Server Error
+  );
+}
+
+/**
  * A simple proxy route that forwards requests to the backend API.
  * It injects the server-side authentication token into the Authorization header.
- * It streams the request and response bodies to be efficient with memory.
+ * It uses the makeAuthenticatedRequest and makeAuthenticatedFileUpload helpers
+ * to handle request body parsing and authentication.
  */
 async function handler(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
-  // Construct the backend URL from the incoming request.
   const { path } = await params;
   const url = new URL(req.url);
   const queryString = url.search;
-  const backendPath = path.join("/");
-  const backendUrl = `${BACKEND_BASE_URL}/${backendPath}${queryString}`;
+  const backendUrl = buildBackendUrl(path, queryString);
 
-  const requestHeaders = new Headers(req.headers);
+  const method = req.method;
+  const contentType = req.headers.get("Content-Type");
 
-  const token = await getServerAuthToken();
-  if (token) {
-    requestHeaders.set("Authorization", `Bearer ${token}`);
-  }
-
-  // The 'host' header is automatically set by fetch and should not be copied.
-  requestHeaders.delete("host");
+  let responseBody: any;
+  const responseStatus: number = 200;
+  const responseHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
 
   try {
-    // Forward the request to the backend, streaming the body.
-    const backendResponse = await fetch(backendUrl, {
-      method: req.method,
-      headers: requestHeaders,
-      body: req.body,
-    });
+    if (method === "GET" || method === "DELETE") {
+      responseBody = await handleRequestWithoutBody(method, backendUrl);
+    } else if (contentType?.includes("application/json")) {
+      responseBody = await handleJsonRequest(req, method, backendUrl);
+    } else if (contentType?.includes("multipart/form-data")) {
+      responseBody = await handleFormDataRequest(req, backendUrl);
+      responseHeaders["Content-Type"] = "text/plain";
+    } else if (contentType?.includes("application/x-www-form-urlencoded")) {
+      responseBody = await handleUrlEncodedRequest(req, method, backendUrl);
+    } else {
+      return createUnsupportedContentTypeResponse(contentType);
+    }
 
-    // Return the response from the backend directly to the client.
-    return backendResponse;
+    return createResponse(responseBody, responseStatus, responseHeaders);
   } catch (error) {
-    console.error("API proxy error:", error);
-    const detail =
-      error instanceof Error ? error.message : "An unknown error occurred";
-    return NextResponse.json(
-      { error: "Proxy request failed", detail },
-      { status: 502 }, // Bad Gateway
-    );
+    return createErrorResponse(error);
   }
 }
 
