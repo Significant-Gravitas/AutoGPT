@@ -14,8 +14,37 @@ def to_dict(data) -> dict:
     return jsonable_encoder(data)
 
 
-def dumps(data) -> str:
-    return json.dumps(to_dict(data))
+def dumps(data: Any, *args: Any, **kwargs: Any) -> str:
+    """
+    Serialize data to JSON string with automatic conversion of Pydantic models and complex types.
+
+    This function converts the input data to a JSON-serializable format using FastAPI's
+    jsonable_encoder before dumping to JSON. It handles Pydantic models, complex types,
+    and ensures proper serialization.
+
+    Parameters
+    ----------
+    data : Any
+        The data to serialize. Can be any type including Pydantic models, dicts, lists, etc.
+    *args : Any
+        Additional positional arguments passed to json.dumps()
+    **kwargs : Any
+        Additional keyword arguments passed to json.dumps() (e.g., indent, separators)
+
+    Returns
+    -------
+    str
+        JSON string representation of the data
+
+    Examples
+    --------
+    >>> dumps({"name": "Alice", "age": 30})
+    '{"name": "Alice", "age": 30}'
+
+    >>> dumps(pydantic_model_instance, indent=2)
+    '{\n  "field1": "value1",\n  "field2": "value2"\n}'
+    """
+    return json.dumps(to_dict(data), *args, **kwargs)
 
 
 T = TypeVar("T")

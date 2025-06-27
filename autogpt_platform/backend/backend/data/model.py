@@ -14,11 +14,12 @@ from typing import (
     Generic,
     Literal,
     Optional,
-    Sequence,
     TypedDict,
     TypeVar,
+    cast,
     get_args,
 )
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from prisma.enums import CreditTransactionType
@@ -240,13 +241,65 @@ class UserPasswordCredentials(_BaseCredentials):
         return f"Basic {base64.b64encode(f'{self.username.get_secret_value()}:{self.password.get_secret_value()}'.encode()).decode()}"
 
 
+class HostScopedCredentials(_BaseCredentials):
+    type: Literal["host_scoped"] = "host_scoped"
+    host: str = Field(description="The host/URI pattern to match against request URLs")
+    headers: dict[str, SecretStr] = Field(
+        description="Key-value header map to add to matching requests",
+        default_factory=dict,
+    )
+
+    def _extract_headers(self, headers: dict[str, SecretStr]) -> dict[str, str]:
+        """Helper to extract secret values from headers."""
+        return {key: value.get_secret_value() for key, value in headers.items()}
+
+    @field_serializer("headers")
+    def serialize_headers(self, headers: dict[str, SecretStr]) -> dict[str, str]:
+        """Serialize headers by extracting secret values."""
+        return self._extract_headers(headers)
+
+    def get_headers_dict(self) -> dict[str, str]:
+        """Get headers with secret values extracted."""
+        return self._extract_headers(self.headers)
+
+    def auth_header(self) -> str:
+        """Get authorization header for backward compatibility."""
+        auth_headers = self.get_headers_dict()
+        if "Authorization" in auth_headers:
+            return auth_headers["Authorization"]
+        return ""
+
+    def matches_url(self, url: str) -> bool:
+        """Check if this credential should be applied to the given URL."""
+
+        parsed_url = urlparse(url)
+        # Extract hostname without port
+        request_host = parsed_url.hostname
+        if not request_host:
+            return False
+
+        # Simple host matching - exact match or wildcard subdomain match
+        if self.host == request_host:
+            return True
+
+        # Support wildcard matching (e.g., "*.example.com" matches "api.example.com")
+        if self.host.startswith("*."):
+            domain = self.host[2:]  # Remove "*."
+            return request_host.endswith(f".{domain}") or request_host == domain
+
+        return False
+
+
 Credentials = Annotated[
-    OAuth2Credentials | APIKeyCredentials | UserPasswordCredentials,
+    OAuth2Credentials
+    | APIKeyCredentials
+    | UserPasswordCredentials
+    | HostScopedCredentials,
     Field(discriminator="type"),
 ]
 
 
-CredentialsType = Literal["api_key", "oauth2", "user_password"]
+CredentialsType = Literal["api_key", "oauth2", "user_password", "host_scoped"]
 
 
 class OAuthState(BaseModel):
@@ -320,13 +373,27 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
             )
 
     @staticmethod
-    def _add_json_schema_extra(schema, cls: CredentialsMetaInput):
-        schema["credentials_provider"] = cls.allowed_providers()
-        schema["credentials_types"] = cls.allowed_cred_types()
+    def _add_json_schema_extra(schema: dict, model_class: type):
+        # Use model_class for allowed_providers/cred_types
+        if hasattr(model_class, "allowed_providers") and hasattr(
+            model_class, "allowed_cred_types"
+        ):
+            schema["credentials_provider"] = model_class.allowed_providers()
+            schema["credentials_types"] = model_class.allowed_cred_types()
+        # Do not return anything, just mutate schema in place
 
     model_config = ConfigDict(
         json_schema_extra=_add_json_schema_extra,  # type: ignore
     )
+
+
+def _extract_host_from_url(url: str) -> str:
+    """Extract host from URL for grouping host-scoped credentials."""
+    try:
+        parsed = urlparse(url)
+        return parsed.hostname or url
+    except Exception:
+        return ""
 
 
 class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
@@ -336,11 +403,12 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
     required_scopes: Optional[frozenset[str]] = Field(None, alias="credentials_scopes")
     discriminator: Optional[str] = None
     discriminator_mapping: Optional[dict[str, CP]] = None
+    discriminator_values: set[Any] = Field(default_factory=set)
 
     @classmethod
     def combine(
         cls, *fields: tuple[CredentialsFieldInfo[CP, CT], T]
-    ) -> Sequence[tuple[CredentialsFieldInfo[CP, CT], set[T]]]:
+    ) -> dict[str, tuple[CredentialsFieldInfo[CP, CT], set[T]]]:
         """
         Combines multiple CredentialsFieldInfo objects into as few as possible.
 
@@ -358,22 +426,36 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
             the set of keys of the respective original items that were grouped together.
         """
         if not fields:
-            return []
+            return {}
 
         # Group fields by their provider and supported_types
+        # For HTTP host-scoped credentials, also group by host
         grouped_fields: defaultdict[
             tuple[frozenset[CP], frozenset[CT]],
             list[tuple[T, CredentialsFieldInfo[CP, CT]]],
         ] = defaultdict(list)
 
         for field, key in fields:
-            group_key = (frozenset(field.provider), frozenset(field.supported_types))
+            if field.provider == frozenset([ProviderName.HTTP]):
+                # HTTP host-scoped credentials can have different hosts that reqires different credential sets.
+                # Group by host extracted from the URL
+                providers = frozenset(
+                    [cast(CP, "http")]
+                    + [
+                        cast(CP, _extract_host_from_url(str(value)))
+                        for value in field.discriminator_values
+                    ]
+                )
+            else:
+                providers = frozenset(field.provider)
+
+            group_key = (providers, frozenset(field.supported_types))
             grouped_fields[group_key].append((key, field))
 
         # Combine fields within each group
-        result: list[tuple[CredentialsFieldInfo[CP, CT], set[T]]] = []
+        result: dict[str, tuple[CredentialsFieldInfo[CP, CT], set[T]]] = {}
 
-        for group in grouped_fields.values():
+        for key, group in grouped_fields.items():
             # Start with the first field in the group
             _, combined = group[0]
 
@@ -386,18 +468,32 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
                 if field.required_scopes:
                     all_scopes.update(field.required_scopes)
 
-            # Create a new combined field
-            result.append(
-                (
-                    CredentialsFieldInfo[CP, CT](
-                        credentials_provider=combined.provider,
-                        credentials_types=combined.supported_types,
-                        credentials_scopes=frozenset(all_scopes) or None,
-                        discriminator=combined.discriminator,
-                        discriminator_mapping=combined.discriminator_mapping,
-                    ),
-                    combined_keys,
-                )
+            # Combine discriminator_values from all fields in the group (removing duplicates)
+            all_discriminator_values = []
+            for _, field in group:
+                for value in field.discriminator_values:
+                    if value not in all_discriminator_values:
+                        all_discriminator_values.append(value)
+
+            # Generate the key for the combined result
+            providers_key, supported_types_key = key
+            group_key = (
+                "-".join(sorted(providers_key))
+                + "_"
+                + "-".join(sorted(supported_types_key))
+                + "_credentials"
+            )
+
+            result[group_key] = (
+                CredentialsFieldInfo[CP, CT](
+                    credentials_provider=combined.provider,
+                    credentials_types=combined.supported_types,
+                    credentials_scopes=frozenset(all_scopes) or None,
+                    discriminator=combined.discriminator,
+                    discriminator_mapping=combined.discriminator_mapping,
+                    discriminator_values=set(all_discriminator_values),
+                ),
+                combined_keys,
             )
 
         return result
@@ -406,11 +502,15 @@ class CredentialsFieldInfo(BaseModel, Generic[CP, CT]):
         if not (self.discriminator and self.discriminator_mapping):
             return self
 
-        discriminator_value = self.discriminator_mapping[discriminator_value]
         return CredentialsFieldInfo(
-            credentials_provider=frozenset([discriminator_value]),
+            credentials_provider=frozenset(
+                [self.discriminator_mapping[discriminator_value]]
+            ),
             credentials_types=self.supported_types,
             credentials_scopes=self.required_scopes,
+            discriminator=self.discriminator,
+            discriminator_mapping=self.discriminator_mapping,
+            discriminator_values=self.discriminator_values,
         )
 
 
@@ -419,6 +519,7 @@ def CredentialsField(
     *,
     discriminator: Optional[str] = None,
     discriminator_mapping: Optional[dict[str, Any]] = None,
+    discriminator_values: Optional[set[Any]] = None,
     title: Optional[str] = None,
     description: Optional[str] = None,
     **kwargs,
@@ -434,6 +535,7 @@ def CredentialsField(
             "credentials_scopes": list(required_scopes) or None,
             "discriminator": discriminator,
             "discriminator_mapping": discriminator_mapping,
+            "discriminator_values": discriminator_values,
         }.items()
         if v is not None
     }

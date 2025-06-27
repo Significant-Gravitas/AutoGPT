@@ -85,7 +85,7 @@ def _get_tool_responses(entry: dict[str, Any]) -> list[str]:
     return tool_call_ids
 
 
-def _create_tool_response(call_id: str, output: dict[str, Any]) -> dict[str, Any]:
+def _create_tool_response(call_id: str, output: Any) -> dict[str, Any]:
     """
     Create a tool response message for either OpenAI or Anthropics,
     based on the tool_id format.
@@ -142,6 +142,12 @@ class SmartDecisionMakerBlock(Block):
             advanced=False,
         )
         credentials: llm.AICredentials = llm.AICredentialsField()
+        multiple_tool_calls: bool = SchemaField(
+            title="Multiple Tool Calls",
+            default=False,
+            description="Whether to allow multiple tool calls in a single response.",
+            advanced=True,
+        )
         sys_prompt: str = SchemaField(
             title="System Prompt",
             default="Thinking carefully step by step decide which function to call. "
@@ -150,7 +156,7 @@ class SmartDecisionMakerBlock(Block):
             "matching the required jsonschema signature, no missing argument is allowed. "
             "If you have already completed the task objective, you can end the task "
             "by providing the end result of your work as a finish message. "
-            "Only provide EXACTLY one function call, multiple tool calls is strictly prohibited.",
+            "Function parameters that has no default value and not optional typed has to be provided. ",
             description="The system prompt to provide additional context to the model.",
         )
         conversation_history: list[dict] = SchemaField(
@@ -206,6 +212,15 @@ class SmartDecisionMakerBlock(Block):
                     "link like the output of `StoreValue` or `AgentInput` block"
                 )
 
+            # Check that both conversation_history and last_tool_output are connected together
+            if any(link.sink_name == "conversation_history" for link in links) != any(
+                link.sink_name == "last_tool_output" for link in links
+            ):
+                raise ValueError(
+                    "Last Tool Output is needed when Conversation History is used, "
+                    "and vice versa. Please connect both inputs together."
+                )
+
             return missing_links
 
         @classmethod
@@ -216,8 +231,15 @@ class SmartDecisionMakerBlock(Block):
             conversation_history = data.get("conversation_history", [])
             pending_tool_calls = get_pending_tool_calls(conversation_history)
             last_tool_output = data.get("last_tool_output")
-            if not last_tool_output and pending_tool_calls:
+
+            # Tool call is pending, wait for the tool output to be provided.
+            if last_tool_output is None and pending_tool_calls:
                 return {"last_tool_output"}
+
+            # No tool call is pending, wait for the conversation history to be updated.
+            if last_tool_output is not None and not pending_tool_calls:
+                return {"conversation_history"}
+
             return set()
 
     class Output(BlockSchema):
@@ -273,29 +295,18 @@ class SmartDecisionMakerBlock(Block):
             "name": SmartDecisionMakerBlock.cleanup(block.name),
             "description": block.description,
         }
-
+        sink_block_input_schema = block.input_schema
         properties = {}
-        required = []
 
         for link in links:
-            sink_block_input_schema = block.input_schema
-            description = (
-                sink_block_input_schema.model_fields[link.sink_name].description
-                if link.sink_name in sink_block_input_schema.model_fields
-                and sink_block_input_schema.model_fields[link.sink_name].description
-                else f"The {link.sink_name} of the tool"
+            sink_name = SmartDecisionMakerBlock.cleanup(link.sink_name)
+            properties[sink_name] = sink_block_input_schema.get_field_schema(
+                link.sink_name
             )
-            properties[SmartDecisionMakerBlock.cleanup(link.sink_name)] = {
-                "type": "string",
-                "description": description,
-            }
 
         tool_function["parameters"] = {
-            "type": "object",
+            **block.input_schema.jsonschema(),
             "properties": properties,
-            "required": required,
-            "additionalProperties": False,
-            "strict": True,
         }
 
         return {"type": "function", "function": tool_function}
@@ -335,25 +346,27 @@ class SmartDecisionMakerBlock(Block):
         }
 
         properties = {}
-        required = []
 
         for link in links:
             sink_block_input_schema = sink_node.input_default["input_schema"]
+            sink_block_properties = sink_block_input_schema.get("properties", {}).get(
+                link.sink_name, {}
+            )
+            sink_name = SmartDecisionMakerBlock.cleanup(link.sink_name)
             description = (
-                sink_block_input_schema["properties"][link.sink_name]["description"]
-                if "description"
-                in sink_block_input_schema["properties"][link.sink_name]
+                sink_block_properties["description"]
+                if "description" in sink_block_properties
                 else f"The {link.sink_name} of the tool"
             )
-            properties[SmartDecisionMakerBlock.cleanup(link.sink_name)] = {
+            properties[sink_name] = {
                 "type": "string",
                 "description": description,
+                "default": json.dumps(sink_block_properties.get("default", None)),
             }
 
         tool_function["parameters"] = {
             "type": "object",
             "properties": properties,
-            "required": required,
             "additionalProperties": False,
             "strict": True,
         }
@@ -417,7 +430,7 @@ class SmartDecisionMakerBlock(Block):
 
         return return_tool_functions
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -430,12 +443,13 @@ class SmartDecisionMakerBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         tool_functions = self._create_function_signature(node_id)
+        yield "tool_functions", json.dumps(tool_functions)
 
         input_data.conversation_history = input_data.conversation_history or []
         prompt = [json.to_dict(p) for p in input_data.conversation_history if p]
 
         pending_tool_calls = get_pending_tool_calls(input_data.conversation_history)
-        if pending_tool_calls and not input_data.last_tool_output:
+        if pending_tool_calls and input_data.last_tool_output is None:
             raise ValueError(f"Tool call requires an output for {pending_tool_calls}")
 
         # Prefill all missing tool calls with the last tool output/
@@ -469,6 +483,10 @@ class SmartDecisionMakerBlock(Block):
             )
 
         prompt.extend(tool_output)
+        if input_data.multiple_tool_calls:
+            input_data.sys_prompt += "\nYou can call a tool (different tools) multiple times in a single response."
+        else:
+            input_data.sys_prompt += "\nOnly provide EXACTLY one function call, multiple tool calls is strictly prohibited."
 
         values = input_data.prompt_values
         if values:
@@ -487,7 +505,7 @@ class SmartDecisionMakerBlock(Block):
         ):
             prompt.append({"role": "user", "content": prefix + input_data.prompt})
 
-        response = llm.llm_call(
+        response = await llm.llm_call(
             credentials=credentials,
             llm_model=input_data.model,
             prompt=prompt,
@@ -495,7 +513,7 @@ class SmartDecisionMakerBlock(Block):
             max_tokens=input_data.max_tokens,
             tools=tool_functions,
             ollama_host=input_data.ollama_host,
-            parallel_tool_calls=False,
+            parallel_tool_calls=input_data.multiple_tool_calls,
         )
 
         if not response.tool_calls:
@@ -506,8 +524,31 @@ class SmartDecisionMakerBlock(Block):
             tool_name = tool_call.function.name
             tool_args = json.loads(tool_call.function.arguments)
 
-            for arg_name, arg_value in tool_args.items():
-                yield f"tools_^_{tool_name}_~_{arg_name}", arg_value
+            # Find the tool definition to get the expected arguments
+            tool_def = next(
+                (
+                    tool
+                    for tool in tool_functions
+                    if tool["function"]["name"] == tool_name
+                ),
+                None,
+            )
+
+            if (
+                tool_def
+                and "function" in tool_def
+                and "parameters" in tool_def["function"]
+            ):
+                expected_args = tool_def["function"]["parameters"].get("properties", {})
+            else:
+                expected_args = tool_args.keys()
+
+            # Yield provided arguments and None for missing ones
+            for arg_name in expected_args:
+                if arg_name in tool_args:
+                    yield f"tools_^_{tool_name}_~_{arg_name}", tool_args[arg_name]
+                else:
+                    yield f"tools_^_{tool_name}_~_{arg_name}", None
 
         response.prompt.append(response.raw_response)
         yield "conversations", response.prompt

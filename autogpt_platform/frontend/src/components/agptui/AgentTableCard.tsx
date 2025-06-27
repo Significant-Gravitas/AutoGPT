@@ -33,7 +33,6 @@ export const AgentTableCard: React.FC<AgentTableCardProps> = ({
   status,
   runs,
   rating,
-  id,
   onEditSubmission,
 }) => {
   const onEdit = () => {

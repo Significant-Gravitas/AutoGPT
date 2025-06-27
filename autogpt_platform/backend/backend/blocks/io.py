@@ -95,7 +95,7 @@ class AgentInputBlock(Block):
             }
         )
 
-    def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
         if input_data.value is not None:
             yield "result", input_data.value
 
@@ -186,7 +186,7 @@ class AgentOutputBlock(Block):
             static_output=True,
         )
 
-    def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, *args, **kwargs) -> BlockOutput:
         """
         Attempts to format the recorded_value using the fmt_string if provided.
         If formatting fails or no fmt_string is given, returns the original recorded_value.
@@ -413,6 +413,12 @@ class AgentFileInputBlock(AgentInputBlock):
             advanced=False,
             title="Default Value",
         )
+        base_64: bool = SchemaField(
+            description="Whether produce an output in base64 format (not recommended, you can pass the string path just fine accross blocks).",
+            default=False,
+            advanced=True,
+            title="Produce Base64 Output",
+        )
 
     class Output(AgentInputBlock.Output):
         result: str = SchemaField(description="File reference/path result.")
@@ -436,7 +442,7 @@ class AgentFileInputBlock(AgentInputBlock):
             ],
         )
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -446,12 +452,11 @@ class AgentFileInputBlock(AgentInputBlock):
         if not input_data.value:
             return
 
-        file_path = store_media_file(
+        yield "result", await store_media_file(
             graph_exec_id=graph_exec_id,
             file=input_data.value,
-            return_content=False,
+            return_content=input_data.base_64,
         )
-        yield "result", file_path
 
 
 class AgentDropdownInputBlock(AgentInputBlock):

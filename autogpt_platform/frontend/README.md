@@ -106,12 +106,6 @@ Storybook is a powerful development environment for UI components. It allows you
    pnpm test-storybook
    ```
 
-   For CI environments, use:
-
-   ```bash
-   pnpm test-storybook:ci
-   ```
-
 4. **Writing Stories**:
    Create `.stories.tsx` files alongside your components to define different states and variations of your components.
 
@@ -156,3 +150,9 @@ By integrating Storybook into our development workflow, we can streamline UI dev
 - [**Zod**](https://zod.dev/) - TypeScript-first schema validation
 - [**React Table**](https://tanstack.com/table) - Headless table library
 - [**React Flow**](https://reactflow.dev/) - Interactive node-based diagrams
+- [**React Query**](https://tanstack.com/query/latest/docs/framework/react/overview) - Data fetching and caching
+- [**React Query DevTools**](https://tanstack.com/query/latest/docs/framework/react/devtools) - Debugging tool for React Query
+
+### Development Tools
+
+- `NEXT_PUBLIC_REACT_QUERY_DEVTOOL` - Enable React Query DevTools. Set to `true` to enable.

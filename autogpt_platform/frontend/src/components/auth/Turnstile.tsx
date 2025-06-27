@@ -1,6 +1,6 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useEffect, useRef, useState } from "react";
 
 export interface TurnstileProps {
   siteKey: string;
@@ -120,7 +120,7 @@ export function Turnstile({
   ]);
 
   // Method to reset the widget manually
-  const reset = useCallback(() => {
+  useEffect(() => {
     if (loaded && widgetIdRef.current && window.turnstile && shouldRender) {
       window.turnstile.reset(widgetIdRef.current);
     }

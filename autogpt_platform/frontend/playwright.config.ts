@@ -34,7 +34,15 @@ export default defineConfig({
     bypassCSP: true,
   },
   /* Maximum time one test can run for */
-  timeout: 60000,
+  timeout: 30000,
+
+  /* Configure web server to start automatically */
+  webServer: {
+    command: "NEXT_PUBLIC_PW_TEST=true pnpm start",
+    url: "http://localhost:3000",
+    reuseExistingServer: !process.env.CI,
+    timeout: 120 * 1000,
+  },
 
   /* Configure projects for major browsers */
   projects: [
@@ -73,15 +81,4 @@ export default defineConfig({
     //   use: { ...devices['Desktop Chrome'], channel: 'chrome' },
     // },
   ],
-
-  /* Run your local server before starting the tests */
-  webServer: {
-    command: "pnpm start",
-    url: "http://localhost:3000/",
-    reuseExistingServer: !process.env.CI,
-    timeout: 10 * 1000,
-    env: {
-      NODE_ENV: "test",
-    },
-  },
 });

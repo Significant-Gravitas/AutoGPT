@@ -59,12 +59,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=1000,
         description="Maximum number of workers to use for graph execution.",
     )
-    num_node_workers: int = Field(
-        default=5,
-        ge=1,
-        le=1000,
-        description="Maximum number of workers to use for node execution within a single graph.",
-    )
     pyro_host: str = Field(
         default="localhost",
         description="The default hostname of the Pyro server.",
@@ -242,6 +236,23 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     platform_alert_discord_channel: str = Field(
         default="local-alerts",
         description="The Discord channel for the platform",
+    )
+
+    clamav_service_host: str = Field(
+        default="localhost",
+        description="The host for the ClamAV daemon",
+    )
+    clamav_service_port: int = Field(
+        default=3310,
+        description="The port for the ClamAV daemon",
+    )
+    clamav_service_timeout: int = Field(
+        default=60,
+        description="The timeout in seconds for the ClamAV daemon",
+    )
+    clamav_service_enabled: bool = Field(
+        default=True,
+        description="Whether virus scanning is enabled or not",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")

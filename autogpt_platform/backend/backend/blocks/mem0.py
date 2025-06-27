@@ -13,7 +13,7 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 
 TEST_CREDENTIALS = APIKeyCredentials(
-    id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
+    id="8cc8b2c5-d3e4-4b1c-84ad-e1e9fe2a0122",
     provider="mem0",
     api_key=SecretStr("mock-mem0-api-key"),
     title="Mock Mem0 API key",
@@ -109,7 +109,7 @@ class AddMemoryBlock(Block, Mem0Base):
             test_mock={"_get_client": lambda credentials: MockMemoryClient()},
         )
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -208,7 +208,7 @@ class SearchMemoryBlock(Block, Mem0Base):
             test_mock={"_get_client": lambda credentials: MockMemoryClient()},
         )
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -288,7 +288,7 @@ class GetAllMemoriesBlock(Block, Mem0Base):
             test_mock={"_get_client": lambda credentials: MockMemoryClient()},
         )
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
