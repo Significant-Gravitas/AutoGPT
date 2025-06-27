@@ -321,20 +321,12 @@ class SearchPeopleBlock(Block):
 
         # Only update fields that are None, empty string, empty list, or default values in original
         for key, enriched_value in enriched_data.items():
-            original_value = merged_data.get(key)
-
             # Skip if enriched value is None, empty string, or empty list
             if enriched_value is None or enriched_value == "" or enriched_value == []:
                 continue
 
             # Update if original value is None, empty string, empty list, or zero
-            if (
-                original_value is None
-                or original_value == ""
-                or original_value == []
-                or original_value == 0
-                or original_value == 0.0
-            ):
+            if enriched_value:
                 merged_data[key] = enriched_value
 
         return Contact(**merged_data)
@@ -353,9 +345,9 @@ class SearchPeopleBlock(Block):
         # Enrich with detailed info if requested
         if input_data.enrich_info:
 
-            async def enrich_or_fallback(person):
+            async def enrich_or_fallback(person: Contact):
                 try:
-                    enrich_query = EnrichPersonRequest(person_id=person.person_id)
+                    enrich_query = EnrichPersonRequest(person_id=person.id)
                     enriched_person = await self.enrich_person(
                         enrich_query, credentials
                     )

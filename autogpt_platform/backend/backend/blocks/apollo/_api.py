@@ -113,28 +113,14 @@ class ApolloClient:
         )
 
     async def enrich_person(self, query: EnrichPersonRequest) -> Contact:
-        """Enrich a person's data including email reveal"""
-        # Extract reveal parameters for query string
-        reveal_emails = query.reveal_personal_emails
-        reveal_phone = query.reveal_phone_number
-
-        # Create request data without reveal parameters
-        request_data = query.model_dump(
-            exclude={"reveal_personal_emails", "reveal_phone_number"}
-        )
-
-        # Build query parameters
-        params = {}
-        if reveal_emails:
-            params["reveal_personal_emails"] = "true"
-        if reveal_phone:
-            params["reveal_phone_number"] = "true"
-
+        """Enrich a person's data including email & phone reveal"""
         response = await self.requests.post(
             f"{self.API_URL}/people/match",
             headers=self._get_headers(),
-            json=request_data,
-            params=params,
+            json=query.model_dump(),
+            params={
+                "reveal_personal_emails": "true",
+            },
         )
         data = response.json()
         if "person" not in data:
