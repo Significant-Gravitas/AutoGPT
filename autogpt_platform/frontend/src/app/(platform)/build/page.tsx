@@ -71,6 +71,14 @@ export type NodeDimension = {
 };
 
 export default function BuilderPage() {
+  return (
+    <ReactFlowProvider>
+      <FlowEditor />
+    </ReactFlowProvider>
+  );
+}
+
+export function FlowEditor() {
   const {
     addNodes,
     addEdges,
@@ -657,105 +665,101 @@ export default function BuilderPage() {
   };
 
   return (
-    <ReactFlowProvider>
-      <FlowContext.Provider
-        value={{ visualizeBeads, setIsAnyModalOpen, getNextNodeId }}
-      >
-        <div className="flow-container">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            nodeTypes={{ custom: CustomNode }}
-            edgeTypes={{ custom: CustomEdge }}
-            connectionLineComponent={ConnectionLine}
-            onConnect={onConnect}
-            onNodesChange={onNodesChange}
-            onNodesDelete={onNodesDelete}
-            onEdgesChange={onEdgesChange}
-            onNodeDragStop={onNodeDragEnd}
-            onNodeDragStart={onNodeDragStart}
-            deleteKeyCode={["Backspace", "Delete"]}
-            minZoom={0.1}
-            maxZoom={2}
-            className="dark:bg-slate-900"
-          >
-            <Controls />
-            <Background className="dark:bg-slate-800" />
-            <ControlPanel
-              className="absolute z-20"
-              controls={editorControls}
-              topChildren={
-                <BlocksControl
-                  pinBlocksPopover={pinBlocksPopover} // Pass the state to BlocksControl
-                  blocks={availableNodes}
-                  addBlock={addNode}
-                  flows={availableFlows}
-                  nodes={nodes}
-                />
-              }
-              botChildren={
-                <SaveControl
-                  agentMeta={savedAgent}
-                  canSave={!isSaving && !isRunning && !isStopping}
-                  onSave={() => requestSave()}
-                  agentDescription={agentDescription}
-                  onDescriptionChange={setAgentDescription}
-                  agentName={agentName}
-                  onNameChange={setAgentName}
-                  pinSavePopover={pinSavePopover}
-                />
-              }
-            ></ControlPanel>
-            <PrimaryActionBar
-              className="absolute bottom-0 left-1/2 z-20 -translate-x-1/2"
-              onClickAgentOutputs={() =>
-                runnerUIRef.current?.openRunnerOutput()
-              }
-              onClickRunAgent={() => {
-                if (!savedAgent) {
-                  toast({
-                    title: `Please save the agent using the button in the left sidebar before running it.`,
-                    duration: 2000,
-                  });
-                  return;
-                }
-                if (!isRunning) {
-                  runnerUIRef.current?.runOrOpenInput();
-                } else {
-                  requestStopRun();
-                }
-              }}
-              onClickScheduleButton={handleScheduleButton}
-              isScheduling={isScheduling}
-              isDisabled={!savedAgent}
-              isRunning={isRunning}
-              requestStopRun={requestStopRun}
-              runAgentTooltip={!isRunning ? "Run Agent" : "Stop Agent"}
-            />
-            <CronScheduler
-              afterCronCreation={afterCronCreation}
-              open={openCron}
-              setOpen={setOpenCron}
-            />
-          </ReactFlow>
-        </div>
-        <RunnerUIWrapper
-          ref={runnerUIRef}
+    <FlowContext.Provider
+      value={{ visualizeBeads, setIsAnyModalOpen, getNextNodeId }}
+    >
+      <div className="flow-container">
+        <ReactFlow
           nodes={nodes}
-          setNodes={setNodes}
-          setIsScheduling={setIsScheduling}
-          isScheduling={isScheduling}
-          isRunning={isRunning}
-          scheduleRunner={scheduleRunner}
-          requestSaveAndRun={requestSaveAndRun}
-        />
-        <Suspense fallback={null}>
-          <OttoChatWidget
-            graphID={flowID}
-            className="fixed bottom-4 right-4 z-20"
+          edges={edges}
+          nodeTypes={{ custom: CustomNode }}
+          edgeTypes={{ custom: CustomEdge }}
+          connectionLineComponent={ConnectionLine}
+          onConnect={onConnect}
+          onNodesChange={onNodesChange}
+          onNodesDelete={onNodesDelete}
+          onEdgesChange={onEdgesChange}
+          onNodeDragStop={onNodeDragEnd}
+          onNodeDragStart={onNodeDragStart}
+          deleteKeyCode={["Backspace", "Delete"]}
+          minZoom={0.1}
+          maxZoom={2}
+          className="dark:bg-slate-900"
+        >
+          <Controls />
+          <Background className="dark:bg-slate-800" />
+          <ControlPanel
+            className="absolute z-20"
+            controls={editorControls}
+            topChildren={
+              <BlocksControl
+                pinBlocksPopover={pinBlocksPopover} // Pass the state to BlocksControl
+                blocks={availableNodes}
+                addBlock={addNode}
+                flows={availableFlows}
+                nodes={nodes}
+              />
+            }
+            botChildren={
+              <SaveControl
+                agentMeta={savedAgent}
+                canSave={!isSaving && !isRunning && !isStopping}
+                onSave={() => requestSave()}
+                agentDescription={agentDescription}
+                onDescriptionChange={setAgentDescription}
+                agentName={agentName}
+                onNameChange={setAgentName}
+                pinSavePopover={pinSavePopover}
+              />
+            }
+          ></ControlPanel>
+          <PrimaryActionBar
+            className="absolute bottom-0 left-1/2 z-20 -translate-x-1/2"
+            onClickAgentOutputs={() => runnerUIRef.current?.openRunnerOutput()}
+            onClickRunAgent={() => {
+              if (!savedAgent) {
+                toast({
+                  title: `Please save the agent using the button in the left sidebar before running it.`,
+                  duration: 2000,
+                });
+                return;
+              }
+              if (!isRunning) {
+                runnerUIRef.current?.runOrOpenInput();
+              } else {
+                requestStopRun();
+              }
+            }}
+            onClickScheduleButton={handleScheduleButton}
+            isScheduling={isScheduling}
+            isDisabled={!savedAgent}
+            isRunning={isRunning}
+            requestStopRun={requestStopRun}
+            runAgentTooltip={!isRunning ? "Run Agent" : "Stop Agent"}
           />
-        </Suspense>
-      </FlowContext.Provider>
-    </ReactFlowProvider>
+          <CronScheduler
+            afterCronCreation={afterCronCreation}
+            open={openCron}
+            setOpen={setOpenCron}
+          />
+        </ReactFlow>
+      </div>
+      <RunnerUIWrapper
+        ref={runnerUIRef}
+        nodes={nodes}
+        setNodes={setNodes}
+        setIsScheduling={setIsScheduling}
+        isScheduling={isScheduling}
+        isRunning={isRunning}
+        scheduleRunner={scheduleRunner}
+        requestSaveAndRun={requestSaveAndRun}
+      />
+      <Suspense fallback={null}>
+        <OttoChatWidget
+          graphID={flowID}
+          className="fixed bottom-4 right-4 z-20"
+        />
+      </Suspense>
+    </FlowContext.Provider>
   );
 }
