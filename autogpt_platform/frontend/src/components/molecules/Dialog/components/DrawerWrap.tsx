@@ -36,7 +36,7 @@ export function DrawerWrap({
         onInteractOutside={handleClose}
       >
         <div
-          className={`flex w-full justify-between items-center ${
+          className={`flex w-full items-center justify-between ${
             title ? "pb-6" : "pb-0"
           }`}
         >

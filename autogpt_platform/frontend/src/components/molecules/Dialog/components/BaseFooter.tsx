@@ -15,14 +15,14 @@ export function BaseFooter({
 
   return ctx.isLargeScreen ? (
     <div
-      className={`flex justify-end pt-6 gap-4 ${className}`}
+      className={`flex justify-end gap-4 pt-6 ${className}`}
       data-testid={testId}
     >
       {children}
     </div>
   ) : (
     <div
-      className={`flex justify-between w-full pt-6 items-end gap-4 ${className}`}
+      className={`flex w-full items-end justify-between gap-4 pt-6 ${className}`}
       data-testid={testId}
     >
       {children}
