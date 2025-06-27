@@ -2,7 +2,7 @@ import functools
 import logging
 import os
 import time
-from typing import Any, Awaitable, Callable, Coroutine, ParamSpec, Tuple, TypeVar
+from typing import Awaitable, Callable, ParamSpec, Tuple, TypeVar
 
 from pydantic import BaseModel
 
@@ -72,37 +72,61 @@ def async_time_measured(
     return async_wrapper
 
 
-def error_logged(func: Callable[P, T]) -> Callable[P, T | None]:
+def error_logged(*, swallow: bool = True):
     """
-    Decorator to suppress and log any exceptions raised by a function.
-    """
+    Decorator to log any exceptions raised by a function, with optional suppression.
 
-    @functools.wraps(func)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> T | None:
-        try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            logger.exception(
-                f"Error when calling function {func.__name__} with arguments {args} {kwargs}: {e}"
-            )
+    Args:
+        swallow: Whether to suppress the exception (True) or re-raise it (False). Default is True.
 
-    return wrapper
-
-
-def async_error_logged(
-    func: Callable[P, Coroutine[Any, Any, T]],
-) -> Callable[P, Coroutine[Any, Any, T | None]]:
-    """
-    Decorator to suppress and log any exceptions raised by an async function.
+    Usage:
+        @error_logged()  # Default behavior (swallow errors)
+        @error_logged(swallow=False)  # Log and re-raise errors
     """
 
-    @functools.wraps(func)
-    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T | None:
-        try:
-            return await func(*args, **kwargs)
-        except Exception as e:
-            logger.exception(
-                f"Error when calling async function {func.__name__} with arguments {args} {kwargs}: {e}"
-            )
+    def decorator(f):
+        @functools.wraps(f)
+        def wrapper(*args, **kwargs):
+            try:
+                return f(*args, **kwargs)
+            except Exception as e:
+                logger.exception(
+                    f"Error when calling function {f.__name__} with arguments {args} {kwargs}: {e}"
+                )
+                if not swallow:
+                    raise
+                return None
 
-    return wrapper
+        return wrapper
+
+    return decorator
+
+
+def async_error_logged(*, swallow: bool = True):
+    """
+    Decorator to log any exceptions raised by an async function, with optional suppression.
+
+    Args:
+        swallow: Whether to suppress the exception (True) or re-raise it (False). Default is True.
+
+    Usage:
+        @async_error_logged()  # Default behavior (swallow errors)
+        @async_error_logged(swallow=False)  # Log and re-raise errors
+    """
+
+    def decorator(f):
+        @functools.wraps(f)
+        async def wrapper(*args, **kwargs):
+            try:
+                return await f(*args, **kwargs)
+            except Exception as e:
+                logger.exception(
+                    f"Error when calling async function {f.__name__} with arguments {args} {kwargs}: {e}"
+                )
+                if not swallow:
+                    raise
+                return None
+
+        return wrapper
+
+    return decorator
