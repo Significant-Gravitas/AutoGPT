@@ -85,7 +85,7 @@ def _get_tool_responses(entry: dict[str, Any]) -> list[str]:
     return tool_call_ids
 
 
-def _create_tool_response(call_id: str, output: dict[str, Any]) -> dict[str, Any]:
+def _create_tool_response(call_id: str, output: Any) -> dict[str, Any]:
     """
     Create a tool response message for either OpenAI or Anthropics,
     based on the tool_id format.
@@ -212,6 +212,15 @@ class SmartDecisionMakerBlock(Block):
                     "link like the output of `StoreValue` or `AgentInput` block"
                 )
 
+            # Check that both conversation_history and last_tool_output are connected together
+            if any(link.sink_name == "conversation_history" for link in links) != any(
+                link.sink_name == "last_tool_output" for link in links
+            ):
+                raise ValueError(
+                    "Last Tool Output is needed when Conversation History is used, "
+                    "and vice versa. Please connect both inputs together."
+                )
+
             return missing_links
 
         @classmethod
@@ -222,8 +231,15 @@ class SmartDecisionMakerBlock(Block):
             conversation_history = data.get("conversation_history", [])
             pending_tool_calls = get_pending_tool_calls(conversation_history)
             last_tool_output = data.get("last_tool_output")
-            if not last_tool_output and pending_tool_calls:
+
+            # Tool call is pending, wait for the tool output to be provided.
+            if last_tool_output is None and pending_tool_calls:
                 return {"last_tool_output"}
+
+            # No tool call is pending, wait for the conversation history to be updated.
+            if last_tool_output is not None and not pending_tool_calls:
+                return {"conversation_history"}
+
             return set()
 
     class Output(BlockSchema):
@@ -433,7 +449,7 @@ class SmartDecisionMakerBlock(Block):
         prompt = [json.to_dict(p) for p in input_data.conversation_history if p]
 
         pending_tool_calls = get_pending_tool_calls(input_data.conversation_history)
-        if pending_tool_calls and not input_data.last_tool_output:
+        if pending_tool_calls and input_data.last_tool_output is None:
             raise ValueError(f"Tool call requires an output for {pending_tool_calls}")
 
         # Prefill all missing tool calls with the last tool output/
@@ -497,7 +513,7 @@ class SmartDecisionMakerBlock(Block):
             max_tokens=input_data.max_tokens,
             tools=tool_functions,
             ollama_host=input_data.ollama_host,
-            parallel_tool_calls=True if input_data.multiple_tool_calls else None,
+            parallel_tool_calls=input_data.multiple_tool_calls,
         )
 
         if not response.tool_calls:
