@@ -143,7 +143,7 @@ async def test_add_agent_to_library(mocker):
     )
 
     mock_library_agent = mocker.patch("prisma.models.LibraryAgent.prisma")
-    mock_library_agent.return_value.find_first = mocker.AsyncMock(return_value=None)
+    mock_library_agent.return_value.find_unique = mocker.AsyncMock(return_value=None)
     mock_library_agent.return_value.create = mocker.AsyncMock(
         return_value=mock_library_agent_data
     )
@@ -159,21 +159,24 @@ async def test_add_agent_to_library(mocker):
     mock_store_listing_version.return_value.find_unique.assert_called_once_with(
         where={"id": "version123"}, include={"AgentGraph": True}
     )
-    mock_library_agent.return_value.find_first.assert_called_once_with(
+    mock_library_agent.return_value.find_unique.assert_called_once_with(
         where={
-            "userId": "test-user",
-            "agentGraphId": "agent1",
-            "agentGraphVersion": 1,
+            "userId_agentGraphId_agentGraphVersion": {
+                "userId": "test-user",
+                "agentGraphId": "agent1",
+                "agentGraphVersion": 1,
+            }
         },
-        include=library_agent_include("test-user"),
+        include={"AgentGraph": True},
     )
     mock_library_agent.return_value.create.assert_called_once_with(
-        data=prisma.types.LibraryAgentCreateInput(
-            userId="test-user",
-            agentGraphId="agent1",
-            agentGraphVersion=1,
-            isCreatedByUser=False,
-        ),
+        data={
+            "User": {"connect": {"id": "test-user"}},
+            "AgentGraph": {
+                "connect": {"graphVersionId": {"id": "agent1", "version": 1}}
+            },
+            "isCreatedByUser": False,
+        },
         include=library_agent_include("test-user"),
     )
 

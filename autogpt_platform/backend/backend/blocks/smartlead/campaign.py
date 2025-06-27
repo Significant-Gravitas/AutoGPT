@@ -17,7 +17,7 @@ from backend.blocks.smartlead.models import (
     Sequence,
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
+from backend.data.model import CredentialsField, SchemaField
 
 
 class CreateCampaignBlock(Block):
@@ -27,7 +27,7 @@ class CreateCampaignBlock(Block):
         name: str = SchemaField(
             description="The name of the campaign",
         )
-        credentials: SmartLeadCredentialsInput = SchemaField(
+        credentials: SmartLeadCredentialsInput = CredentialsField(
             description="SmartLead credentials",
         )
 
@@ -119,7 +119,7 @@ class AddLeadToCampaignBlock(Block):
             description="Settings for lead upload",
             default=LeadUploadSettings(),
         )
-        credentials: SmartLeadCredentialsInput = SchemaField(
+        credentials: SmartLeadCredentialsInput = CredentialsField(
             description="SmartLead credentials",
         )
 
@@ -251,7 +251,7 @@ class SaveCampaignSequencesBlock(Block):
             default_factory=list,
             advanced=False,
         )
-        credentials: SmartLeadCredentialsInput = SchemaField(
+        credentials: SmartLeadCredentialsInput = CredentialsField(
             description="SmartLead credentials",
         )
 
