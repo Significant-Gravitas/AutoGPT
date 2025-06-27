@@ -25,12 +25,7 @@ async def create_graph(s: SpinTestServer, g: graph.Graph, u: User) -> graph.Grap
 async def create_credentials(s: SpinTestServer, u: User):
     provider = ProviderName.OPENAI
     credentials = llm.TEST_CREDENTIALS
-    try:
-        await s.agent_server.test_create_credentials(u.id, provider, credentials)
-    except Exception:
-        # ValueErrors is raised trying to recreate the same credentials
-        # so hidding the error
-        pass
+    return await s.agent_server.test_create_credentials(u.id, provider, credentials)
 
 
 async def execute_graph(
@@ -60,19 +55,18 @@ async def execute_graph(
     return graph_exec_id
 
 
-@pytest.mark.skip()
 @pytest.mark.asyncio(loop_scope="session")
 async def test_graph_validation_with_tool_nodes_correct(server: SpinTestServer):
     test_user = await create_test_user()
     test_tool_graph = await create_graph(server, create_test_graph(), test_user)
-    await create_credentials(server, test_user)
+    creds = await create_credentials(server, test_user)
 
     nodes = [
         graph.Node(
             block_id=SmartDecisionMakerBlock().id,
             input_default={
                 "prompt": "Hello, World!",
-                "credentials": llm.TEST_CREDENTIALS_INPUT,
+                "credentials": creds,
             },
         ),
         graph.Node(
@@ -110,80 +104,18 @@ async def test_graph_validation_with_tool_nodes_correct(server: SpinTestServer):
     test_graph = await create_graph(server, test_graph, test_user)
 
 
-@pytest.mark.skip()
-@pytest.mark.asyncio(loop_scope="session")
-async def test_graph_validation_with_tool_nodes_raises_error(server: SpinTestServer):
-
-    test_user = await create_test_user()
-    test_tool_graph = await create_graph(server, create_test_graph(), test_user)
-    await create_credentials(server, test_user)
-
-    nodes = [
-        graph.Node(
-            block_id=SmartDecisionMakerBlock().id,
-            input_default={
-                "prompt": "Hello, World!",
-                "credentials": llm.TEST_CREDENTIALS_INPUT,
-            },
-        ),
-        graph.Node(
-            block_id=AgentExecutorBlock().id,
-            input_default={
-                "graph_id": test_tool_graph.id,
-                "graph_version": test_tool_graph.version,
-                "input_schema": test_tool_graph.input_schema,
-                "output_schema": test_tool_graph.output_schema,
-            },
-        ),
-        graph.Node(
-            block_id=StoreValueBlock().id,
-        ),
-    ]
-
-    links = [
-        graph.Link(
-            source_id=nodes[0].id,
-            sink_id=nodes[1].id,
-            source_name="tools_^_sample_tool_input_1",
-            sink_name="input_1",
-        ),
-        graph.Link(
-            source_id=nodes[0].id,
-            sink_id=nodes[1].id,
-            source_name="tools_^_sample_tool_input_2",
-            sink_name="input_2",
-        ),
-        graph.Link(
-            source_id=nodes[0].id,
-            sink_id=nodes[2].id,
-            source_name="tools_^_store_value_input",
-            sink_name="input",
-        ),
-    ]
-
-    test_graph = graph.Graph(
-        name="TestGraph",
-        description="Test graph",
-        nodes=nodes,
-        links=links,
-    )
-    with pytest.raises(ValueError):
-        test_graph = await create_graph(server, test_graph, test_user)
-
-
-@pytest.mark.skip()
 @pytest.mark.asyncio(loop_scope="session")
 async def test_smart_decision_maker_function_signature(server: SpinTestServer):
     test_user = await create_test_user()
     test_tool_graph = await create_graph(server, create_test_graph(), test_user)
-    await create_credentials(server, test_user)
+    creds = await create_credentials(server, test_user)
 
     nodes = [
         graph.Node(
             block_id=SmartDecisionMakerBlock().id,
             input_default={
                 "prompt": "Hello, World!",
-                "credentials": llm.TEST_CREDENTIALS_INPUT,
+                "credentials": creds,
             },
         ),
         graph.Node(

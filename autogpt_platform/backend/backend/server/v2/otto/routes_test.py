@@ -259,8 +259,8 @@ def test_ask_otto_unauthenticated(mocker: pytest_mock.MockFixture) -> None:
     }
 
     response = client.post("/ask", json=request_data)
-    # When auth is disabled and Otto API URL is not configured, we get 503
-    assert response.status_code == 503
+    # When auth is disabled and Otto API URL is not configured, we get 502 (wrapped from 503)
+    assert response.status_code == 502
 
     # Restore the override
     app.dependency_overrides[autogpt_libs.auth.middleware.auth_middleware] = (
