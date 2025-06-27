@@ -45,7 +45,7 @@ import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
 import { IconUndo2, IconRedo2 } from "@/components/ui/icons";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { startTutorial } from "./tutorial";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { v4 as uuidv4 } from "uuid";
@@ -765,29 +765,27 @@ const FlowEditor: React.FC<{
               />
             </>
           ) : (
-            <Alert
-              variant="default"
-              className="absolute bottom-4 left-1/2 z-20 w-auto -translate-x-1/2"
-            >
-              <AlertDescription className="flex select-none items-center">
-                <PlayIcon className="ml-2 mr-5 inline-block size-6 rounded-full text-zinc-700" />
-                <div>
-                  Agents with a trigger block can not be run manually.
-                  <br />
-                  Instead, after setting up and saving your agent, check out the
-                  triggered runs in your{" "}
-                  <Link
-                    href={
-                      libraryAgent
-                        ? `/library/agents/${libraryAgent.id}`
-                        : "/library"
-                    }
-                    className="underline"
-                  >
-                    Agent Library
-                  </Link>
-                  !
-                </div>
+            <Alert className="absolute bottom-4 left-1/2 z-20 w-auto -translate-x-1/2 select-none">
+              <AlertTitle>You are building a Trigger Agent</AlertTitle>
+              <AlertDescription>
+                Your agent{" "}
+                {savedAgent?.nodes.some((node) => node.webhook)
+                  ? "is listening"
+                  : "will listen"}{" "}
+                for its trigger and will run when the time is right.
+                <br />
+                You can view its activity in your
+                <Link
+                  href={
+                    libraryAgent
+                      ? `/library/agents/${libraryAgent.id}`
+                      : "/library"
+                  }
+                  className="underline"
+                >
+                  Agent Library
+                </Link>
+                .
               </AlertDescription>
             </Alert>
           )}
