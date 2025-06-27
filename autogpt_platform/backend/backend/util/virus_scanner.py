@@ -1,9 +1,10 @@
 import asyncio
+import io
 import logging
 import time
 from typing import Optional, Tuple
 
-import pyclamd
+import aioclamd
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
 
@@ -26,27 +27,35 @@ class VirusScannerSettings(BaseSettings):
     clamav_service_timeout: int = 60
     clamav_service_enabled: bool = True
     max_scan_size: int = 100 * 1024 * 1024  # 100 MB
-    chunk_size: int = 25 * 1024 * 1024  # 25 MB (safe for 50MB stream limit)
+    chunk_size: int = 25 * 1024 * 1024  # 25 MB (safe for 50 MB stream limit)
     min_chunk_size: int = 128 * 1024  # 128 KB minimum
     max_retries: int = 8  # halve chunk ≤ max_retries times
+    max_concurrency: int = 10  # simultaneous chunk scans
 
 
 class VirusScannerService:
-    """
-    Thin async wrapper around ClamAV.  Creates a fresh `ClamdNetworkSocket`
-    per chunk (the class is *not* thread-safe) and falls back to smaller
-    chunks when the daemon rejects the stream size.
+    """Fully‑async ClamAV wrapper using **aioclamd**.
+
+    • Reuses a single `ClamdAsyncClient` connection (aioclamd keeps the socket
+      open).
+    • Throttles concurrent `INSTREAM` calls with an `asyncio.Semaphore` so we
+      don't exhaust daemon worker threads or file descriptors.
+    • Falls back to progressively smaller chunk sizes when the daemon rejects a
+      stream as too large.
     """
 
     def __init__(self, settings: VirusScannerSettings) -> None:
         self.settings = settings
-
-    def _new_client(self) -> pyclamd.ClamdNetworkSocket:
-        return pyclamd.ClamdNetworkSocket(
-            host=self.settings.clamav_service_host,
-            port=self.settings.clamav_service_port,
-            timeout=self.settings.clamav_service_timeout,
+        self._client = aioclamd.ClamdAsyncClient(
+            host=settings.clamav_service_host,
+            port=settings.clamav_service_port,
+            timeout=settings.clamav_service_timeout,
         )
+        self._sem = asyncio.Semaphore(settings.max_concurrency)
+
+    # ------------------------------------------------------------------ #
+    # Helpers
+    # ------------------------------------------------------------------ #
 
     @staticmethod
     def _parse_raw(raw: Optional[dict]) -> Tuple[bool, Optional[str]]:
@@ -60,19 +69,20 @@ class VirusScannerService:
         return status == "FOUND", threat
 
     async def _scan_chunk(self, chunk: bytes) -> Tuple[bool, Optional[str]]:
-        loop = asyncio.get_running_loop()
-        client = self._new_client()
-        try:
-            raw = await loop.run_in_executor(None, client.scan_stream, chunk)
-            return self._parse_raw(raw)
+        """Scan **one** chunk with concurrency control."""
+        async with self._sem:
+            try:
+                # aioclamd expects a BinaryIO, so wrap our bytes
+                raw = await self._client.instream(io.BytesIO(chunk))
+                return self._parse_raw(raw)
 
-        # ClamAV aborts the socket when >StreamMaxLength → BrokenPipe/Reset.
-        except (BrokenPipeError, ConnectionResetError) as exc:
-            raise RuntimeError("size-limit") from exc
-        except Exception as exc:
-            if "INSTREAM size limit exceeded" in str(exc):
+            # ClamAV closes the socket when >StreamMaxLength → treat as size‑limit
+            except (BrokenPipeError, ConnectionResetError) as exc:
                 raise RuntimeError("size-limit") from exc
-            raise
+            except Exception as exc:
+                if "INSTREAM size limit exceeded" in str(exc):
+                    raise RuntimeError("size-limit") from exc
+                raise
 
     # --------------------------------------------------------------------- #
     # Public API
@@ -86,24 +96,21 @@ class VirusScannerService:
         failure (unreachable daemon, etc.).
         """
         if not self.settings.clamav_service_enabled:
-            logger.warning("Virus scanning disabled – accepting %s", filename)
+            logger.warning(f"Virus scanning disabled – accepting {filename}")
             return VirusScanResult(
                 is_clean=True, scan_time_ms=0, file_size=len(content)
             )
 
         if len(content) > self.settings.max_scan_size:
             logger.warning(
-                f"File {filename} ({len(content)} bytes) exceeds max scan size ({self.settings.max_scan_size}), skipping virus scan"
+                f"File {filename} ({len(content)} bytes) exceeds max scan size ({self.settings.max_scan_size}); skipping virus scan"
             )
             return VirusScanResult(
-                is_clean=True,  # Assume clean for oversized files
-                file_size=len(content),
-                scan_time_ms=0,
-                threat_name=None,
+                is_clean=True, file_size=len(content), scan_time_ms=0
             )
 
-        loop = asyncio.get_running_loop()
-        if not await loop.run_in_executor(None, self._new_client().ping):
+        # Ensure daemon is reachable (small RTT check)
+        if not await self._client.ping():
             raise RuntimeError("ClamAV service is unreachable")
 
         start = time.monotonic()
@@ -115,11 +122,19 @@ class VirusScannerService:
                     f"Scanning {filename} with chunk size: {chunk_size // 1_048_576}MB"
                 )
 
-                # Scan all chunks with current chunk size
-                for offset in range(0, len(content), chunk_size):
-                    chunk_data = content[offset : offset + chunk_size]
-                    infected, threat = await self._scan_chunk(chunk_data)
+                # Fire off all chunk scans concurrently
+                tasks = [
+                    asyncio.create_task(
+                        self._scan_chunk(content[offset : offset + chunk_size])
+                    )
+                    for offset in range(0, len(content), chunk_size)
+                ]
+
+                for coro in asyncio.as_completed(tasks):
+                    infected, threat = await coro
                     if infected:
+                        for t in tasks:
+                            t.cancel()
                         return VirusScanResult(
                             is_clean=False,
                             threat_name=threat,
@@ -158,7 +173,6 @@ class VirusScannerService:
             is_clean=True,  # Allow file when scanning impossible
             file_size=len(content),
             scan_time_ms=int((time.monotonic() - start) * 1000),
-            threat_name=None,
         )
 
 
