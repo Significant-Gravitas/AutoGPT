@@ -27,7 +27,7 @@ class VirusScannerSettings(BaseSettings):
     clamav_service_timeout: int = 60
     clamav_service_enabled: bool = True
     max_scan_size: int = 100 * 1024 * 1024  # 100 MB
-    chunk_size: int = 25 * 1024 * 1024  # 25 MB (safe for 50 MB stream limit)
+    chunk_size: int = 25 * 1024 * 1024  # 25 MB (safe for 50MB stream limit)
     min_chunk_size: int = 128 * 1024  # 128 KB minimum
     max_retries: int = 8  # halve chunk ≤ max_retries times
     max_concurrency: int = 10  # simultaneous chunk scans
