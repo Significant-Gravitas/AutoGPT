@@ -27,6 +27,7 @@ async def test_agent_schedule(server: SpinTestServer):
         graph_version=1,
         cron="0 0 * * *",
         input_data={"input": "data"},
+        input_credentials={},
     )
     assert schedule
 
