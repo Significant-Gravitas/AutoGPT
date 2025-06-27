@@ -2,9 +2,9 @@ from typing import Type
 
 from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
 from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
-from backend.blocks.apollo.get_people_detail import GetPersonDetailBlock
 from backend.blocks.apollo.organization import SearchOrganizationsBlock
 from backend.blocks.apollo.people import SearchPeopleBlock
+from backend.blocks.apollo.person import GetPersonDetailBlock
 from backend.blocks.flux_kontext import AIImageEditorBlock, FluxKontextModelName
 from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock

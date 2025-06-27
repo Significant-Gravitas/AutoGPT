@@ -64,17 +64,6 @@ class GetPersonDetailBlock(Block):
             default="",
             advanced=True,
         )
-        reveal_personal_emails: bool = SchemaField(
-            description="Whether to reveal personal email addresses (consumes Apollo credits)",
-            default=True,
-            advanced=False,
-        )
-        reveal_phone_number: bool = SchemaField(
-            description="Whether to reveal phone numbers (consumes Apollo credits)",
-            default=False,
-            advanced=True,
-        )
-
         credentials: ApolloCredentialsInput = CredentialsField(
             description="Apollo credentials",
         )
@@ -101,7 +90,6 @@ class GetPersonDetailBlock(Block):
                 "first_name": "John",
                 "last_name": "Doe",
                 "company": "Google",
-                "reveal_personal_emails": True,
             },
             test_output=[
                 (
@@ -146,9 +134,5 @@ class GetPersonDetailBlock(Block):
         credentials: ApolloCredentials,
         **kwargs,
     ) -> BlockOutput:
-        try:
-            query = EnrichPersonRequest(**input_data.model_dump())
-            contact = await self.enrich_person(query, credentials)
-            yield "contact", contact
-        except Exception as e:
-            yield "error", str(e)
+        query = EnrichPersonRequest(**input_data.model_dump())
+        yield "contact", await self.enrich_person(query, credentials)
