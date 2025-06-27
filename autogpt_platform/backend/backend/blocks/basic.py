@@ -551,3 +551,162 @@ class UniversalTypeConverterBlock(Block):
             yield "value", converted_value
         except Exception as e:
             yield "error", f"Failed to convert value: {str(e)}"
+
+
+class GetListItemBlock(Block):
+    class Input(BlockSchema):
+        list: List[Any] = SchemaField(description="The list to get the item from.")
+        index: int = SchemaField(
+            description="The 0-based index of the item (supports negative indices)."
+        )
+
+    class Output(BlockSchema):
+        item: Any = SchemaField(description="The item at the specified index.")
+        error: str = SchemaField(description="Error message if the operation failed.")
+
+    def __init__(self):
+        super().__init__(
+            id="262ca24c-1025-43cf-a578-534e23234e97",
+            description="Returns the element at the given index.",
+            categories={BlockCategory.BASIC},
+            input_schema=GetListItemBlock.Input,
+            output_schema=GetListItemBlock.Output,
+            test_input=[
+                {"list": [1, 2, 3], "index": 1},
+                {"list": [1, 2, 3], "index": -1},
+            ],
+            test_output=[
+                ("item", 2),
+                ("item", 3),
+            ],
+        )
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        try:
+            yield "item", input_data.list[input_data.index]
+        except IndexError:
+            yield "error", "Index out of range"
+
+
+class RemoveFromListBlock(Block):
+    class Input(BlockSchema):
+        list: List[Any] = SchemaField(description="The list to modify.")
+        value: Any = SchemaField(
+            default=None, description="Value to remove from the list."
+        )
+        index: int | None = SchemaField(
+            default=None,
+            description="Index of the item to pop (supports negative indices).",
+        )
+        return_item: bool = SchemaField(
+            default=False, description="Whether to return the removed item."
+        )
+
+    class Output(BlockSchema):
+        updated_list: List[Any] = SchemaField(description="The list after removal.")
+        removed_item: Any = SchemaField(description="The removed item if requested.")
+        error: str = SchemaField(description="Error message if the operation failed.")
+
+    def __init__(self):
+        super().__init__(
+            id="d93c5a93-ac7e-41c1-ae5c-ef67e6e9b826",
+            description="Removes an item from a list by value or index.",
+            categories={BlockCategory.BASIC},
+            input_schema=RemoveFromListBlock.Input,
+            output_schema=RemoveFromListBlock.Output,
+            test_input=[
+                {"list": [1, 2, 3], "index": 1, "return_item": True},
+                {"list": ["a", "b", "c"], "value": "b"},
+            ],
+            test_output=[
+                ("updated_list", [1, 3]),
+                ("removed_item", 2),
+                ("updated_list", ["a", "c"]),
+            ],
+        )
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        lst = input_data.list.copy()
+        removed = None
+        try:
+            if input_data.index is not None:
+                removed = lst.pop(input_data.index)
+            elif input_data.value is not None:
+                lst.remove(input_data.value)
+                removed = input_data.value
+            else:
+                raise ValueError
+        except (IndexError, ValueError):
+            yield "error", "Index or value not found"
+            return
+
+        yield "updated_list", lst
+        if input_data.return_item:
+            yield "removed_item", removed
+
+
+class ReplaceListItemBlock(Block):
+    class Input(BlockSchema):
+        list: List[Any] = SchemaField(description="The list to modify.")
+        index: int = SchemaField(
+            description="Index of the item to replace (supports negative indices)."
+        )
+        value: Any = SchemaField(description="The new value for the given index.")
+
+    class Output(BlockSchema):
+        updated_list: List[Any] = SchemaField(description="The list after replacement.")
+        old_item: Any = SchemaField(description="The item that was replaced.")
+        error: str = SchemaField(description="Error message if the operation failed.")
+
+    def __init__(self):
+        super().__init__(
+            id="fbf62922-bea1-4a3d-8bac-23587f810b38",
+            description="Replaces an item at the specified index.",
+            categories={BlockCategory.BASIC},
+            input_schema=ReplaceListItemBlock.Input,
+            output_schema=ReplaceListItemBlock.Output,
+            test_input=[
+                {"list": [1, 2, 3], "index": 1, "value": 99},
+                {"list": ["a", "b"], "index": -1, "value": "c"},
+            ],
+            test_output=[
+                ("updated_list", [1, 99, 3]),
+                ("old_item", 2),
+                ("updated_list", ["a", "c"]),
+                ("old_item", "b"),
+            ],
+        )
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        lst = input_data.list.copy()
+        try:
+            old = lst[input_data.index]
+            lst[input_data.index] = input_data.value
+        except IndexError:
+            yield "error", "Index out of range"
+            return
+
+        yield "updated_list", lst
+        yield "old_item", old
+
+
+class ListIsEmptyBlock(Block):
+    class Input(BlockSchema):
+        list: List[Any] = SchemaField(description="The list to check.")
+
+    class Output(BlockSchema):
+        is_empty: bool = SchemaField(description="True if the list is empty.")
+
+    def __init__(self):
+        super().__init__(
+            id="896ed73b-27d0-41be-813c-c1c1dc856c03",
+            description="Checks if a list is empty.",
+            categories={BlockCategory.BASIC},
+            input_schema=ListIsEmptyBlock.Input,
+            output_schema=ListIsEmptyBlock.Output,
+            test_input=[{"list": []}, {"list": [1]}],
+            test_output=[("is_empty", True), ("is_empty", False)],
+        )
+
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        yield "is_empty", len(input_data.list) == 0
