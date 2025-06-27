@@ -518,11 +518,8 @@ class CreateListBlock(Block):
                 tokens = 0
 
             # Check if adding this value would exceed either limit
-            if (
-                max_tokens
-                and (cur_tokens + tokens > max_tokens)
-                or max_size
-                and (cur_size + 1 > max_size)
+            if (max_tokens and (cur_tokens + tokens > max_tokens)) or (
+                max_size and (cur_size + 1 > max_size)
             ):
                 yield "list", chunk
                 chunk = [value]
