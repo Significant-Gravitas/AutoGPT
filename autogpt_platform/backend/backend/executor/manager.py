@@ -35,7 +35,7 @@ from autogpt_libs.utils.cache import thread_cached
 from prometheus_client import Gauge, start_http_server
 
 from backend.blocks.agent import AgentExecutorBlock
-from backend.data import redis
+from backend.data import redis_client as redis
 from backend.data.block import (
     BlockData,
     BlockInput,

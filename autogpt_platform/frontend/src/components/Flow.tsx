@@ -53,11 +53,11 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import RunnerUIWrapper, {
   RunnerUIWrapperRef,
 } from "@/components/RunnerUIWrapper";
+import { CronSchedulerDialog } from "@/components/cron-scheduler-dialog";
 import PrimaryActionBar from "@/components/PrimaryActionButton";
 import OttoChatWidget from "@/components/OttoChatWidget";
 import { useToast } from "@/components/ui/use-toast";
 import { useCopyPaste } from "../hooks/useCopyPaste";
-import { CronScheduler } from "./cronScheduler";
 import { PlayIcon } from "lucide-react";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
@@ -669,8 +669,11 @@ const FlowEditor: React.FC<{
 
   // This function is called after cron expression is created
   // So you can collect inputs for scheduling
-  const afterCronCreation = (cronExpression: string) => {
-    runnerUIRef.current?.collectInputsForScheduling(cronExpression);
+  const afterCronCreation = (cronExpression: string, scheduleName: string) => {
+    runnerUIRef.current?.collectInputsForScheduling(
+      cronExpression,
+      scheduleName,
+    );
   };
 
   // This function Opens up form for creating cron expression
@@ -758,10 +761,11 @@ const FlowEditor: React.FC<{
                 isDisabled={!savedAgent}
                 isRunning={isRunning}
               />
-              <CronScheduler
+              <CronSchedulerDialog
                 afterCronCreation={afterCronCreation}
                 open={openCron}
                 setOpen={setOpenCron}
+                defaultScheduleName={agentName}
               />
             </>
           ) : (
