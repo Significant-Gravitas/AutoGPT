@@ -48,6 +48,7 @@ from .block import (
     get_webhook_block_ids,
 )
 from .db import BaseDbModel
+from .event_bus import AsyncRedisEventBus, RedisEventBus
 from .includes import (
     EXECUTION_RESULT_INCLUDE,
     EXECUTION_RESULT_ORDER,
@@ -55,7 +56,6 @@ from .includes import (
     graph_execution_include,
 )
 from .model import GraphExecutionStats, NodeExecutionStats
-from .queue import AsyncRedisEventBus, RedisEventBus
 
 T = TypeVar("T")
 
