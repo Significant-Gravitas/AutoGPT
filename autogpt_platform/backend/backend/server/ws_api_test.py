@@ -19,7 +19,9 @@ from backend.server.ws_api import (
 
 @pytest.fixture
 def mock_websocket() -> AsyncMock:
-    return AsyncMock(spec=WebSocket)
+    mock = AsyncMock(spec=WebSocket)
+    mock.query_params = {}  # Add query_params attribute for authentication
+    return mock
 
 
 @pytest.fixture
@@ -29,8 +31,13 @@ def mock_manager() -> AsyncMock:
 
 @pytest.mark.asyncio
 async def test_websocket_router_subscribe(
-    mock_websocket: AsyncMock, mock_manager: AsyncMock, snapshot: Snapshot
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, snapshot: Snapshot, mocker
 ) -> None:
+    # Mock the authenticate_websocket function to ensure it returns a valid user_id
+    mocker.patch(
+        "backend.server.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+
     mock_websocket.receive_text.side_effect = [
         WSMessage(
             method=WSMethod.SUBSCRIBE_GRAPH_EXEC,
@@ -70,8 +77,13 @@ async def test_websocket_router_subscribe(
 
 @pytest.mark.asyncio
 async def test_websocket_router_unsubscribe(
-    mock_websocket: AsyncMock, mock_manager: AsyncMock, snapshot: Snapshot
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, snapshot: Snapshot, mocker
 ) -> None:
+    # Mock the authenticate_websocket function to ensure it returns a valid user_id
+    mocker.patch(
+        "backend.server.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+
     mock_websocket.receive_text.side_effect = [
         WSMessage(
             method=WSMethod.UNSUBSCRIBE,
@@ -108,8 +120,13 @@ async def test_websocket_router_unsubscribe(
 
 @pytest.mark.asyncio
 async def test_websocket_router_invalid_method(
-    mock_websocket: AsyncMock, mock_manager: AsyncMock
+    mock_websocket: AsyncMock, mock_manager: AsyncMock, mocker
 ) -> None:
+    # Mock the authenticate_websocket function to ensure it returns a valid user_id
+    mocker.patch(
+        "backend.server.ws_api.authenticate_websocket", return_value=DEFAULT_USER_ID
+    )
+
     mock_websocket.receive_text.side_effect = [
         WSMessage(method=WSMethod.GRAPH_EXECUTION_EVENT).model_dump_json(),
         WebSocketDisconnect(),

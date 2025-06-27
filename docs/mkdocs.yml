@@ -23,6 +23,7 @@ nav:
     - Blocks: platform/blocks/blocks.md
     - Contributing:
         - Tests: platform/contributing/tests.md
+        - OAuth Flows: platform/contributing/oauth-integration-flow.md
   - AutoGPT Classic:
       - Introduction: classic/index.md
       - Setup:
