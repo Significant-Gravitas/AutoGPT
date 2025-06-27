@@ -9,17 +9,19 @@ import {
   LibraryAgentPreset,
   LibraryAgentPresetID,
   LibraryAgentPresetUpdatable,
+  Schedule,
 } from "@/lib/autogpt-server-api";
 
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
+import { CalendarClockIcon, Trash2Icon } from "lucide-react";
+import { CronSchedulerDialog } from "@/components/cron-scheduler-dialog";
 import { CredentialsInput } from "@/components/integrations/credentials-input";
 import { TypeBasedInput } from "@/components/type-based-input";
 import { useToastOnFail } from "@/components/ui/use-toast";
 import ActionButtonGroup from "@/components/agptui/action-button-group";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
-import { Trash2Icon } from "lucide-react";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { useToast } from "@/components/ui/use-toast";
 import { isEmpty } from "lodash";
@@ -32,11 +34,13 @@ export default function AgentRunDraftView({
   onCreatePreset,
   onUpdatePreset,
   doDeletePreset,
+  onCreateSchedule,
   agentActions,
 }: {
   agent: LibraryAgent;
   agentActions: ButtonAction[];
   onRun: (runID: GraphExecutionID) => void;
+  onCreateSchedule: (schedule: Schedule) => void;
 } & (
   | {
       onCreatePreset: (preset: LibraryAgentPreset) => void;
@@ -66,6 +70,7 @@ export default function AgentRunDraftView({
   >(new Set());
   const { state: onboardingState, completeStep: completeOnboardingStep } =
     useOnboarding();
+  const [cronScheduleDialogOpen, setCronScheduleDialogOpen] = useState(false);
 
   // Update values if agentPreset parameter is changed
   useEffect(() => {
@@ -314,6 +319,43 @@ export default function AgentRunDraftView({
     completeOnboardingStep,
   ]);
 
+  const openScheduleDialog = useCallback(() => {
+    // Scheduling is not supported for webhook-triggered agents
+    if (agent.has_external_trigger) return;
+
+    if (!allRequiredInputsAreSet || !allCredentialsAreSet) {
+      notifyMissingInputs(false);
+      return;
+    }
+
+    setCronScheduleDialogOpen(true);
+  }, [
+    agent,
+    allRequiredInputsAreSet,
+    allCredentialsAreSet,
+    notifyMissingInputs,
+  ]);
+
+  const doSetupSchedule = useCallback(
+    (cronExpression: string, scheduleName: string) => {
+      // Scheduling is not supported for webhook-triggered agents
+      if (agent.has_external_trigger) return;
+
+      api
+        .createGraphExecutionSchedule({
+          graph_id: agent.graph_id,
+          graph_version: agent.graph_version,
+          name: scheduleName || agent.name,
+          cron: cronExpression,
+          inputs: inputValues,
+          credentials: inputCredentials,
+        })
+        .then((schedule) => onCreateSchedule(schedule))
+        .catch(toastOnFail("set up agent run schedule"));
+    },
+    [api, agent, inputValues, inputCredentials, onCreateSchedule, toastOnFail],
+  );
+
   const runActions: ButtonAction[] = useMemo(
     () => [
       // "Regular" agent: [run] + [save as preset] buttons
@@ -327,6 +369,14 @@ export default function AgentRunDraftView({
               ),
               variant: "accent",
               callback: doRun,
+            },
+            {
+              label: (
+                <>
+                  <CalendarClockIcon className="mr-2 size-4" /> Schedule
+                </>
+              ),
+              callback: openScheduleDialog,
             },
             // {
             //   label: (
@@ -418,12 +468,12 @@ export default function AgentRunDraftView({
     [
       agent.has_external_trigger,
       agentPreset,
-      api,
       doRun,
       doSetupTrigger,
       doCreatePreset,
       doUpdatePreset,
       doDeletePreset,
+      openScheduleDialog,
       changedPresetAttributes,
       presetName,
       allRequiredInputsAreSet,
@@ -544,6 +594,12 @@ export default function AgentRunDraftView({
           <ActionButtonGroup
             title={`${agent.has_external_trigger ? "Trigger" : agentPreset ? "Preset" : "Run"} actions`}
             actions={runActions}
+          />
+          <CronSchedulerDialog
+            open={cronScheduleDialogOpen}
+            setOpen={setCronScheduleDialogOpen}
+            afterCronCreation={doSetupSchedule}
+            defaultScheduleName={agent.name}
           />
 
           <ActionButtonGroup title="Agent actions" actions={agentActions} />
