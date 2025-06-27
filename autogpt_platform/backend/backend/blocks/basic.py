@@ -6,6 +6,7 @@ from backend.data.model import SchemaField
 from backend.util import json
 from backend.util.file import store_media_file
 from backend.util.mock import MockObject
+from backend.util.prompt import estimate_token_count_str
 from backend.util.type import MediaFileType, convert
 
 
@@ -466,6 +467,11 @@ class CreateListBlock(Block):
             description="Maximum size of the list. If provided, the list will be yielded in chunks of this size.",
             advanced=True,
         )
+        max_tokens: int | None = SchemaField(
+            default=None,
+            description="Maximum tokens for the list. If provided, the list will be yielded in chunks that fit within this token limit.",
+            advanced=True,
+        )
 
     class Output(BlockSchema):
         list: List[Any] = SchemaField(
@@ -476,7 +482,7 @@ class CreateListBlock(Block):
     def __init__(self):
         super().__init__(
             id="a912d5c7-6e00-4542-b2a9-8034136930e4",
-            description="Creates a list with the specified values. Use this when you know all the values you want to add upfront.",
+            description="Creates a list with the specified values. Use this when you know all the values you want to add upfront. This block can also yield the list in batches based on a maximum size or token limit.",
             categories={BlockCategory.DATA},
             input_schema=CreateListBlock.Input,
             output_schema=CreateListBlock.Output,
@@ -501,12 +507,30 @@ class CreateListBlock(Block):
         )
 
     async def run(self, input_data: Input, **kwargs) -> BlockOutput:
-        try:
-            max_size = input_data.max_size or len(input_data.values)
-            for i in range(0, len(input_data.values), max_size):
-                yield "list", input_data.values[i : i + max_size]
-        except Exception as e:
-            yield "error", f"Failed to create list: {str(e)}"
+        chunk = []
+        cur_tokens, max_tokens = 0, input_data.max_tokens
+        cur_size, max_size = 0, input_data.max_size
+
+        for value in input_data.values:
+            if max_tokens:
+                tokens = estimate_token_count_str(value)
+            else:
+                tokens = 0
+
+            # Check if adding this value would exceed either limit
+            if (max_tokens and (cur_tokens + tokens > max_tokens)) or (
+                max_size and (cur_size + 1 > max_size)
+            ):
+                yield "list", chunk
+                chunk = [value]
+                cur_size, cur_tokens = 1, tokens
+            else:
+                chunk.append(value)
+                cur_size, cur_tokens = cur_size + 1, cur_tokens + tokens
+
+        # Yield final chunk if any
+        if chunk:
+            yield "list", chunk
 
 
 class TypeOptions(enum.Enum):
