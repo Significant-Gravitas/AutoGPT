@@ -36,14 +36,21 @@ interface RunnerUIWrapperProps {
   isRunning: boolean;
   isScheduling: boolean;
   requestSaveAndRun: () => void;
-  scheduleRunner: (cronExpression: string, input: InputItem[]) => Promise<void>;
+  scheduleRunner: (
+    cronExpression: string,
+    input: InputItem[],
+    scheduleName: string,
+  ) => Promise<void>;
 }
 
 export interface RunnerUIWrapperRef {
   openRunnerInput: () => void;
   openRunnerOutput: () => void;
   runOrOpenInput: () => void;
-  collectInputsForScheduling: (cronExpression: string) => void;
+  collectInputsForScheduling: (
+    cronExpression: string,
+    scheduleName: string,
+  ) => void;
 }
 
 const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
@@ -63,6 +70,7 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
     const [isRunnerOutputOpen, setIsRunnerOutputOpen] = useState(false);
     const [scheduledInput, setScheduledInput] = useState(false);
     const [cronExpression, setCronExpression] = useState("");
+    const [scheduleName, setScheduleName] = useState("");
 
     const getBlockInputsAndOutputs = useCallback((): {
       inputs: InputItem[];
@@ -149,15 +157,19 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
       }
     };
 
-    const collectInputsForScheduling = (cron_exp: string) => {
+    const collectInputsForScheduling = (
+      cronExpression: string,
+      scheduleName: string,
+    ) => {
       const { inputs } = getBlockInputsAndOutputs();
-      setCronExpression(cron_exp);
+      setCronExpression(cronExpression);
+      setScheduleName(scheduleName);
 
       if (inputs.length > 0) {
         setScheduledInput(true);
         setIsRunnerInputOpen(true);
       } else {
-        scheduleRunner(cron_exp, []);
+        scheduleRunner(cronExpression, [], scheduleName);
       }
     };
 
@@ -186,6 +198,7 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
             await scheduleRunner(
               cronExpression,
               getBlockInputsAndOutputs().inputs,
+              scheduleName,
             );
             setIsScheduling(false);
             setIsRunnerInputOpen(false);
