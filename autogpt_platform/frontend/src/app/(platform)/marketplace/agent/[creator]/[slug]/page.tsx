@@ -49,7 +49,7 @@ export default async function MarketplaceAgentPage({
       agentData.active_version_id || "",
       {
         query: {
-          enabled: !!user,
+          enabled: !!user && !!agentData?.store_listing_version_id,
         },
       },
     ),

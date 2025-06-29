@@ -6,71 +6,21 @@ import { BreadCrumbs } from "../BreadCrumbs/BreadCrumbs";
 import { AgentsSection } from "../AgentsSection/AgentsSection";
 import { BecomeACreator } from "../BecomeACreator/BecomeACreator";
 import { getBreadcrumbs } from "./helper";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import {
-  useGetV2GetSpecificAgent,
-  useGetV2ListStoreAgents,
-} from "@/app/api/__generated__/endpoints/store/store";
+import { useMainAgentPage } from "./useMainAgentPage";
 import { MarketplaceAgentPageParams } from "../../agent/[creator]/[slug]/page";
-import { useGetV2GetAgentByStoreId } from "@/app/api/__generated__/endpoints/library/library";
-import { StoreAgentDetails } from "@/app/api/__generated__/models/storeAgentDetails";
-import { StoreAgentsResponse } from "@/app/api/__generated__/models/storeAgentsResponse";
-import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 
 interface MainAgentPageProps {
   params: MarketplaceAgentPageParams;
 }
 
 export const MainAgentPage = ({ params }: MainAgentPageProps) => {
-  const creator_lower = params.creator.toLowerCase();
-  const { user } = useSupabase();
-  const { data: agent } = useGetV2GetSpecificAgent(creator_lower, params.slug, {
-    query: {
-      select: (x) => {
-        return x.data as StoreAgentDetails;
-      },
-      enabled: !!user,
-    },
-  });
-
-  const { data: otherAgents } = useGetV2ListStoreAgents(
-    {
-      creator: creator_lower,
-    },
-    {
-      query: {
-        select: (x) => {
-          return x.data as StoreAgentsResponse;
-        },
-      },
-    },
-  );
-
-  const { data: similarAgents } = useGetV2ListStoreAgents(
-    {
-      search_query: agent?.slug.replace(/-/g, " "),
-    },
-    {
-      query: {
-        enabled: !!agent,
-        select: (x) => {
-          return x.data as StoreAgentsResponse;
-        },
-      },
-    },
-  );
-
-  const { data: libraryAgent } = useGetV2GetAgentByStoreId(
-    agent?.active_version_id || "",
-    {
-      query: {
-        enabled: !!agent,
-        select: (x) => {
-          return x.data as LibraryAgent | null;
-        },
-      },
-    },
-  );
+  const {
+    libraryAgent,
+    similarAgents,
+    otherAgents,
+    agentData: agent,
+    user,
+  } = useMainAgentPage({ params });
 
   return (
     <div className="mx-auto w-screen max-w-[1360px]">
