@@ -1,12 +1,12 @@
 import BackendAPI from "@/lib/autogpt-server-api";
-import { BreadCrumbs } from "@/components/agptui/BreadCrumbs";
-import { AgentInfo } from "@/components/agptui/AgentInfo";
-import { AgentImages } from "@/components/agptui/AgentImages";
-import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
-import { BecomeACreator } from "@/components/agptui/BecomeACreator";
+import { BreadCrumbs } from "@/app/(platform)/marketplace/components/BreadCrumbs/BreadCrumbs";
+import { AgentInfo } from "@/app/(platform)/marketplace/components/AgentInfo/AgentInfo";
+import { AgentImages } from "@/app/(platform)/marketplace/components/AgentImages/AgentImages";
+import { BecomeACreator } from "@/app/(platform)/marketplace/components/BecomeACreator/BecomeACreator";
 import { Separator } from "@/components/ui/separator";
 import { Metadata } from "next";
 import { getServerUser } from "@/lib/supabase/server/getServerUser";
+import { AgentsSection } from "../../../components/AgentsSection/AgentsSection";
 
 // Force dynamic rendering to avoid static generation issues with cookies
 export const dynamic = "force-dynamic";

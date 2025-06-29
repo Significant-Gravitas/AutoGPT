@@ -1,14 +1,14 @@
 "use client";
 
 import { use, useCallback, useEffect, useState } from "react";
-import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
-import { SearchBar } from "@/components/agptui/SearchBar";
-import { FeaturedCreators } from "@/components/agptui/composite/FeaturedCreators";
+import { SearchBar } from "@/app/(platform)/marketplace/components/SearchBar/SearchBar";
 import { Separator } from "@/components/ui/separator";
-import { SearchFilterChips } from "@/components/agptui/SearchFilterChips";
-import { SortDropdown } from "@/components/agptui/SortDropdown";
+import { SearchFilterChips } from "@/app/(platform)/marketplace/components/SearchFilterChips/SearchFilterChips";
+import { SortDropdown } from "@/app/(platform)/marketplace/components/SortDropdown/SortDropdown";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { Creator, StoreAgent } from "@/lib/autogpt-server-api";
+import { FeaturedCreators } from "../components/FeaturedCreators/FeaturedCreators";
+import { AgentsSection } from "../components/AgentsSection/AgentsSection";
 
 type MarketplaceSearchPageSearchParams = { searchTerm?: string; sort?: string };
 

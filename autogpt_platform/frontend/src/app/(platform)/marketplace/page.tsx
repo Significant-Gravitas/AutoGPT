@@ -1,19 +1,17 @@
 import React from "react";
-import { HeroSection } from "@/components/agptui/composite/HeroSection";
-import { FeaturedSection } from "@/components/agptui/composite/FeaturedSection";
-import {
-  AgentsSection,
-  Agent,
-} from "@/components/agptui/composite/AgentsSection";
-import { BecomeACreator } from "@/components/agptui/BecomeACreator";
-import {
-  FeaturedCreators,
-  FeaturedCreator,
-} from "@/components/agptui/composite/FeaturedCreators";
+
 import { Separator } from "@/components/ui/separator";
 import { Metadata } from "next";
 
 import { getMarketplaceData } from "./actions";
+import { HeroSection } from "./components/HeroSection/HeroSection";
+import { Agent, AgentsSection } from "./components/AgentsSection/AgentsSection";
+import {
+  FeaturedCreator,
+  FeaturedCreators,
+} from "./components/FeaturedCreators/FeaturedCreators";
+import { BecomeACreator } from "./components/BecomeACreator/BecomeACreator";
+import { FeaturedSection } from "./components/FeaturedSection/FeaturedSection";
 
 // Force dynamic rendering to avoid static generation issues with cookies
 export const dynamic = "force-dynamic";

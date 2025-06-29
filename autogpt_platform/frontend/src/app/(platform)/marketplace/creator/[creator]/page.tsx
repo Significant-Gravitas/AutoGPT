@@ -1,10 +1,10 @@
 import BackendAPI from "@/lib/autogpt-server-api";
-import { AgentsSection } from "@/components/agptui/composite/AgentsSection";
-import { BreadCrumbs } from "@/components/agptui/BreadCrumbs";
+import { BreadCrumbs } from "@/app/(platform)/marketplace/components/BreadCrumbs/BreadCrumbs";
 import { Metadata } from "next";
-import { CreatorInfoCard } from "@/components/agptui/CreatorInfoCard";
-import { CreatorLinks } from "@/components/agptui/CreatorLinks";
+import { CreatorInfoCard } from "@/app/(platform)/marketplace/components/CreatorInfoCard/CreatorInfoCard";
+import { CreatorLinks } from "@/app/(platform)/marketplace/components/CreatorLinks/CreatorLinks";
 import { Separator } from "@/components/ui/separator";
+import { AgentsSection } from "../../components/AgentsSection/AgentsSection";
 
 // Force dynamic rendering to avoid static generation issues with cookies
 export const dynamic = "force-dynamic";
