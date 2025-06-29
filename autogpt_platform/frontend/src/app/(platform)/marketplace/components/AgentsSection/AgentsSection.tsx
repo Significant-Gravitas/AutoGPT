@@ -7,6 +7,7 @@ import {
   CarouselItem,
 } from "@/components/ui/carousel";
 import { useAgentsSection } from "./useAgentsSection";
+import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 
 export interface Agent {
   slug: string;
@@ -22,7 +23,7 @@ export interface Agent {
 
 interface AgentsSectionProps {
   sectionTitle: string;
-  agents: Agent[];
+  agents: StoreAgent[];
   hideAvatars?: boolean;
   margin?: string;
 }

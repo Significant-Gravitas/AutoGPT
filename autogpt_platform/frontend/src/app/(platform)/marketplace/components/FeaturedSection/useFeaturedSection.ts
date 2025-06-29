@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { StoreAgent } from "@/lib/autogpt-server-api";
+import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 
 interface useFeaturedSectionProps {
   featuredAgents: StoreAgent[];

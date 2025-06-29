@@ -2,18 +2,11 @@
 
 import { CreatorCard } from "@/app/(platform)/marketplace/components/CreatorCard/CreatorCard";
 import { useFeaturedCreators } from "./useFeaturedCreators";
-
-export interface FeaturedCreator {
-  name: string;
-  username: string;
-  description: string;
-  avatar_url: string;
-  num_agents: number;
-}
+import { Creator } from "@/app/api/__generated__/models/creator";
 
 interface FeaturedCreatorsProps {
   title?: string;
-  featuredCreators: FeaturedCreator[];
+  featuredCreators: Creator[];
 }
 
 export const FeaturedCreators = ({

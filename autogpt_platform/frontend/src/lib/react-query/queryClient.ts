@@ -1,5 +1,3 @@
-"use client";
-
 import { isServer, QueryClient } from "@tanstack/react-query";
 
 function makeQueryClient() {

@@ -9,10 +9,10 @@ import {
   CarouselNext,
   CarouselIndicator,
 } from "@/components/ui/carousel";
-import { StoreAgent } from "@/lib/autogpt-server-api";
 import Link from "next/link";
 import { getBackgroundColor } from "./helper";
 import { useFeaturedSection } from "./useFeaturedSection";
+import { StoreAgent } from "@/app/api/__generated__/models/storeAgent";
 
 interface FeaturedSectionProps {
   featuredAgents: StoreAgent[];
@@ -22,6 +22,7 @@ export const FeaturedSection = ({ featuredAgents }: FeaturedSectionProps) => {
   const { handleNextSlide, handlePrevSlide } = useFeaturedSection({
     featuredAgents,
   });
+
   return (
     <section className="w-full">
       <h2 className="mb-8 font-poppins text-2xl font-semibold leading-7 text-neutral-800 dark:text-neutral-200">
