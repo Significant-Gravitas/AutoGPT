@@ -1,12 +1,13 @@
+import { usePostV2AddMarketplaceAgent } from "@/app/api/__generated__/endpoints/library/library";
+import { useGetV2DownloadAgentFile } from "@/app/api/__generated__/endpoints/store/store";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import { useToast } from "@/components/ui/use-toast";
-import BackendAPI, { LibraryAgent } from "@/lib/autogpt-server-api";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 
 interface useAgentInfoProps {
   storeListingVersionId: string;
-  libraryAgent: LibraryAgent | null;
+  libraryAgent: LibraryAgent | null | undefined;
 }
 
 export const useAgentInfo = ({
@@ -14,52 +15,66 @@ export const useAgentInfo = ({
   libraryAgent,
 }: useAgentInfoProps) => {
   const router = useRouter();
-  const api = new BackendAPI();
   const { toast } = useToast();
 
   const { completeStep } = useOnboarding();
 
-  const [adding, setAdding] = useState(false);
-  const [downloading, setDownloading] = useState(false);
+  const { mutateAsync: addAgentToLibrary, isPending: adding } =
+    usePostV2AddMarketplaceAgent({
+      mutation: {
+        onSuccess: ({ data }) => {
+          const newLibraryAgent = data as LibraryAgent;
+          console.log(newLibraryAgent);
+          completeStep("MARKETPLACE_ADD_AGENT");
+          router.push(`/library/agents/${newLibraryAgent.id}`);
+          toast({
+            title: "Agent Added",
+            description: "Redirecting to your library...",
+            duration: 2000,
+          });
+        },
+        onError: (error) => {
+          console.error("Failed to add agent to library:", error);
+          toast({
+            title: "EaddAgentToLibraryrror",
+            description: "Failed to add agent to library. Please try again.",
+            variant: "destructive",
+          });
+        },
+      },
+    });
+
+  const { isLoading: downloading, refetch: downloadAgentFile } =
+    useGetV2DownloadAgentFile(storeListingVersionId, {
+      query: {
+        enabled: false,
+        select: (x) => {
+          return x.data;
+        },
+      },
+    });
 
   const libraryAction = async () => {
-    setAdding(true);
     if (libraryAgent) {
       toast({
         description: "Redirecting to your library...",
         duration: 2000,
       });
-      // Redirect to the library agent page
       router.push(`/library/agents/${libraryAgent.id}`);
       return;
     }
-    try {
-      const newLibraryAgent = await api.addMarketplaceAgentToLibrary(
-        storeListingVersionId,
-      );
-      completeStep("MARKETPLACE_ADD_AGENT");
-      router.push(`/library/agents/${newLibraryAgent.id}`);
-      toast({
-        title: "Agent Added",
-        description: "Redirecting to your library...",
-        duration: 2000,
-      });
-    } catch (error) {
-      console.error("Failed to add agent to library:", error);
-      toast({
-        title: "Error",
-        description: "Failed to add agent to library. Please try again.",
-        variant: "destructive",
-      });
-    }
+
+    await addAgentToLibrary({
+      data: {
+        store_listing_version_id: storeListingVersionId,
+      },
+    });
   };
 
   const handleDownload = async () => {
     const downloadAgent = async (): Promise<void> => {
-      setDownloading(true);
       try {
-        const file = await api.downloadStoreAgent(storeListingVersionId);
-
+        const { data: file } = await downloadAgentFile();
         // Similar to Marketplace v1
         const jsonData = JSON.stringify(file, null, 2);
         // Create a Blob from the file content
@@ -95,7 +110,6 @@ export const useAgentInfo = ({
       }
     };
     await downloadAgent();
-    setDownloading(false);
   };
 
   return {

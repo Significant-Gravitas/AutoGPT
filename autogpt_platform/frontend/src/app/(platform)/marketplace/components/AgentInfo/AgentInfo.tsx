@@ -2,12 +2,12 @@
 
 import { StarRatingIcons } from "@/components/ui/icons";
 import { Separator } from "@/components/ui/separator";
-import { LibraryAgent } from "@/lib/autogpt-server-api";
 import Link from "next/link";
 
 import { User } from "@supabase/supabase-js";
 import { cn } from "@/lib/utils";
 import { useAgentInfo } from "./useAgentInfo";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 
 interface AgentInfoProps {
   user: User | null;
@@ -21,7 +21,7 @@ interface AgentInfoProps {
   lastUpdated: string;
   version: string;
   storeListingVersionId: string;
-  libraryAgent: LibraryAgent | null;
+  libraryAgent: LibraryAgent | null | undefined;
 }
 
 export const AgentInfo = ({
@@ -33,7 +33,7 @@ export const AgentInfo = ({
   rating,
   runs,
   categories,
-  lastUpdated,
+  lastUpdated: _,
   version,
   storeListingVersionId,
   libraryAgent,
@@ -146,9 +146,9 @@ export const AgentInfo = ({
         <div className="decoration-skip-ink-none mb-1.5 text-base font-medium leading-6 text-neutral-800 dark:text-neutral-200 sm:mb-2">
           Version history
         </div>
-        <div className="decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
+        {/* <div className="decoration-skip-ink-none text-base font-normal leading-6 text-neutral-600 underline-offset-[from-font] dark:text-neutral-400">
           Last updated {lastUpdated}
-        </div>
+        </div> */}
         <div className="text-xs text-neutral-600 dark:text-neutral-400 sm:text-sm">
           Version {version}
         </div>
