@@ -1,12 +1,9 @@
 "use client";
-import {
-  AuthButton,
-  AuthCard,
-  AuthFeedback,
-  AuthHeader,
-  PasswordInput,
-  Turnstile,
-} from "@/components/auth";
+import AuthButton from "@/components/auth/AuthButton";
+import { AuthCard } from "@/components/auth/AuthCard";
+import AuthFeedback from "@/components/auth/AuthFeedback";
+import { PasswordInput } from "@/components/auth/PasswordInput";
+import Turnstile from "@/components/auth/Turnstile";
 import {
   Form,
   FormControl,
@@ -160,9 +157,8 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <AuthCard>
-        <AuthHeader>Reset Password</AuthHeader>
+    <div className="flex h-full min-h-[85vh] flex-col items-center justify-center">
+      <AuthCard title="Reset Password">
         {user ? (
           <form onSubmit={changePasswordForm.handleSubmit(onChangePassword)}>
             <Form {...changePasswordForm}>

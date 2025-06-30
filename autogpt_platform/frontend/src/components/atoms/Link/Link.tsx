@@ -23,7 +23,7 @@ const Link = forwardRef<HTMLAnchorElement, LinkProps>(function Link(
 ) {
   const linkClasses = cn(
     // Base styles from Figma
-    "font-['Geist'] text-sm font-medium leading-[22px] text-[var(--AutoGPT-Text-text-black,#141414)]",
+    "font-sans text-sm font-medium leading-[22px] text-[var(--AutoGPT-Text-text-black,#141414)]",
     // Variant-specific underline styles
     variant === "primary" && "hover:underline",
     variant === "secondary" && "underline",

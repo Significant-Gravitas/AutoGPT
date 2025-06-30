@@ -1,16 +1,13 @@
 "use client";
-import {
-  AuthBottomText,
-  AuthButton,
-  AuthCard,
-  AuthHeader,
-  GoogleOAuthButton,
-  PasswordInput,
-  Turnstile,
-} from "@/components/auth";
+
+import AuthButton from "@/components/auth/AuthButton";
+import { AuthCard } from "@/components/auth/AuthCard";
 import AuthFeedback from "@/components/auth/AuthFeedback";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleLoadingModal } from "@/components/auth/GoogleLoadingModal";
+import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
+import { PasswordInput } from "@/components/auth/PasswordInput";
+import Turnstile from "@/components/auth/Turnstile";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Form,
@@ -58,10 +55,8 @@ export default function SignupPage() {
   }
 
   return (
-    <>
-      <AuthCard className="mx-auto mt-12">
-        <AuthHeader>Create a new account</AuthHeader>
-
+    <div className="flex h-full min-h-[85vh] flex-col items-center justify-center">
+      <AuthCard title="Create a new account">
         {isCloudEnv ? (
           <>
             <div className="mb-6">
@@ -80,7 +75,7 @@ export default function SignupPage() {
         ) : null}
 
         <Form {...form}>
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} className="w-full">
             <FormField
               control={form.control}
               name="email"
@@ -190,10 +185,9 @@ export default function SignupPage() {
           behaveAs={getBehaveAs()}
         />
 
-        <AuthBottomText
+        <AuthCard.BottomText
           text="Already a member?"
-          linkText="Log in"
-          href="/login"
+          link={{ text: "Log in", href: "/login" }}
         />
       </AuthCard>
       <GoogleLoadingModal isOpen={isGoogleLoading} />
@@ -201,6 +195,6 @@ export default function SignupPage() {
         isOpen={showNotAllowedModal}
         onClose={handleCloseNotAllowedModal}
       />
-    </>
+    </div>
   );
 }

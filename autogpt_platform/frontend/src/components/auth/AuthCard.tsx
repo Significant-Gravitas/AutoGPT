@@ -1,22 +1,55 @@
-import { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { ReactNode } from "react";
+import { Card } from "../atoms/Card/Card";
+import { Link } from "../atoms/Link/Link";
+import { Text } from "../atoms/Text/Text";
 
-interface Props {
-  children: ReactNode;
+interface BottomTextProps {
+  text: string;
+  link?: { text: string; href: string };
   className?: string;
 }
 
-export default function AuthCard({ children, className }: Props) {
+AuthCard.BottomText = function BottomText({
+  text,
+  link,
+  className,
+}: BottomTextProps) {
   return (
     <div
       className={cn(
-        "flex h-[80vh] w-[32rem] items-center justify-center",
         className,
+        "mt-8 inline-flex w-full items-center justify-center",
       )}
     >
-      <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-md">
-        {children}
-      </div>
+      <span className="text-sm font-medium leading-normal text-slate-950">
+        {text}
+      </span>
+      {link ? (
+        <Link
+          href={link.href}
+          className="ml-1 text-sm font-medium leading-normal text-slate-950 underline"
+        >
+          {link.text}
+        </Link>
+      ) : null}
     </div>
+  );
+};
+
+interface Props {
+  children: ReactNode;
+  title: string;
+  className?: string;
+}
+
+export function AuthCard({ children, title }: Props) {
+  return (
+    <Card className="mx-auto flex min-h-[50vh] w-full max-w-[32rem] flex-col items-center justify-center gap-8">
+      <Text variant="h3" as="h2">
+        {title}
+      </Text>
+      {children}
+    </Card>
   );
 }

@@ -1,16 +1,12 @@
 "use client";
-import {
-  AuthBottomText,
-  AuthButton,
-  AuthCard,
-  AuthFeedback,
-  AuthHeader,
-  GoogleOAuthButton,
-  PasswordInput,
-  Turnstile,
-} from "@/components/auth";
+import AuthButton from "@/components/auth/AuthButton";
+import { AuthCard } from "@/components/auth/AuthCard";
+import AuthFeedback from "@/components/auth/AuthFeedback";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleLoadingModal } from "@/components/auth/GoogleLoadingModal";
+import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
+import { PasswordInput } from "@/components/auth/PasswordInput";
+import Turnstile from "@/components/auth/Turnstile";
 import {
   Form,
   FormControl,
@@ -56,10 +52,8 @@ export default function LoginPage() {
   }
 
   return (
-    <>
-      <AuthCard className="mx-auto">
-        <AuthHeader>Login to your account</AuthHeader>
-
+    <div className="flex h-full min-h-[85vh] flex-col items-center justify-center">
+      <AuthCard title="Login to your account">
         {isCloudEnv ? (
           <>
             <div className="mb-6">
@@ -76,9 +70,8 @@ export default function LoginPage() {
             </div>
           </>
         ) : null}
-
         <Form {...form}>
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} className="w-full">
             <FormField
               control={form.control}
               name="email"
@@ -145,10 +138,9 @@ export default function LoginPage() {
             behaveAs={getBehaveAs()}
           />
         </Form>
-        <AuthBottomText
+        <AuthCard.BottomText
           text="Don't have an account?"
-          linkText="Sign up"
-          href="/signup"
+          link={{ text: "Sign up", href: "/signup" }}
         />
       </AuthCard>
       <GoogleLoadingModal isOpen={isGoogleLoading} />
@@ -156,6 +148,6 @@ export default function LoginPage() {
         isOpen={showNotAllowedModal}
         onClose={handleCloseNotAllowedModal}
       />
-    </>
+    </div>
   );
 }
