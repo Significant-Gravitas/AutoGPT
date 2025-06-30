@@ -1,7 +1,12 @@
 import Link from "next/link";
 import Image from "next/image";
-import { LibraryAgent } from "@/lib/autogpt-server-api";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
+
+interface LibraryAgentCardProps {
+  agent: LibraryAgent;
+}
 
 export default function LibraryAgentCard({
   agent: {
@@ -13,9 +18,7 @@ export default function LibraryAgentCard({
     creator_image_url,
     image_url,
   },
-}: {
-  agent: LibraryAgent;
-}): React.ReactNode {
+}: LibraryAgentCardProps) {
   return (
     <div className="inline-flex w-full max-w-[434px] flex-col items-start justify-start gap-2.5 rounded-[26px] bg-white transition-all duration-300 hover:shadow-lg dark:bg-transparent dark:hover:shadow-gray-700">
       <Link
