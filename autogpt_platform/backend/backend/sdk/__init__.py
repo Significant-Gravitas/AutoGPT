@@ -46,6 +46,7 @@ from backend.data.model import (
 # === INTEGRATIONS ===
 from backend.integrations.providers import ProviderName
 from backend.sdk.builder import ProviderBuilder
+from backend.sdk.cost_integration import cost
 from backend.sdk.provider import Provider
 
 # === NEW SDK COMPONENTS (imported early for patches) ===
@@ -188,6 +189,7 @@ __all__ = [
     "BlockConfiguration",
     "Provider",
     "ProviderBuilder",
+    "cost",
 ]
 
 # Remove None values from __all__

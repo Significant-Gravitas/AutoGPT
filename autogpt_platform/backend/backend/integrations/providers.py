@@ -18,7 +18,6 @@ class ProviderName(str, Enum):
     DISCORD = "discord"
     D_ID = "d_id"
     E2B = "e2b"
-    EXA = "exa"
     FAL = "fal"
     GENERIC_WEBHOOK = "generic_webhook"
     GITHUB = "github"

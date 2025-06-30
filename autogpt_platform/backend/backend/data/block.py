@@ -513,6 +513,12 @@ def get_blocks() -> dict[str, Type[Block]]:
 
 
 async def initialize_blocks() -> None:
+    # First, sync all provider costs to blocks
+    # Imported here to avoid circular import
+    from backend.sdk.cost_integration import sync_all_provider_costs
+
+    sync_all_provider_costs()
+
     for cls in get_blocks().values():
         block = cls()
         existing_block = await AgentBlock.prisma().find_first(
