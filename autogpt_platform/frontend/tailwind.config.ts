@@ -120,7 +120,7 @@ const config = {
         xs: "0.25rem", // 4px
         s: "0.5rem", // 8px
         m: "0.75rem", // 12px
-        l: "1rem", // 16px
+        large: "1rem", // 16px (renamed from 'l' to avoid conflict with directional 'left')
         xl: "1.25rem", // 20px
         "2xl": "1.5rem", // 24px
         full: "9999px", // For pill buttons

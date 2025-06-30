@@ -1,4 +1,4 @@
-import { GoogleLogo } from "@phosphor-icons/react/ssr";
+import Image from "next/image";
 import { Button } from "../atoms/Button/Button";
 
 interface GoogleOAuthButtonProps {
@@ -15,13 +15,13 @@ export function GoogleOAuthButton({
   return (
     <Button
       type="button"
-      variant="outline"
+      variant="primary"
       className="w-full gap-3"
       onClick={onClick}
       disabled={disabled}
       loading={isLoading}
     >
-      <GoogleLogo size={20} />
+      <Image src="/google-logo.svg" alt="Google" width={20} height={20} />
       {isLoading ? "Connecting..." : "Continue with Google"}
     </Button>
   );

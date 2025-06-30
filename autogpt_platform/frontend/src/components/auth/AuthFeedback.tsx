@@ -1,7 +1,7 @@
-import { AlertCircle, CheckCircle } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { HelpItem } from "@/components/auth/help-item";
+import { Card, CardContent } from "@/components/ui/card";
 import { BehaveAs } from "@/lib/utils";
+import { AlertCircle, CheckCircle } from "lucide-react";
 
 interface Props {
   type: "login" | "signup";
@@ -16,9 +16,21 @@ export default function AuthFeedback({
   isError = false,
   behaveAs = BehaveAs.CLOUD,
 }: Props) {
-  // If there's no message but isError is true, show a default error message
   const displayMessage =
     message || (isError ? "Something went wrong. Please try again." : "");
+
+  const isCloudMode = behaveAs === BehaveAs.CLOUD;
+  const isLocalMode = behaveAs === BehaveAs.LOCAL;
+  const showCloudHelp = isError && isCloudMode;
+  const showLocalHelp = isError && isLocalMode;
+  const isSignupFlow = type === "signup";
+  const hasAnyHelpContent = showCloudHelp || showLocalHelp;
+
+  const hasContent = displayMessage || hasAnyHelpContent;
+
+  if (!hasContent) {
+    return null;
+  }
 
   return (
     <div className="mt-4 space-y-4">
@@ -40,9 +52,8 @@ export default function AuthFeedback({
       )}
 
       {/* Cloud-specific help */}
-      {isError &&
-        behaveAs === BehaveAs.CLOUD &&
-        (type === "signup" ? (
+      {showCloudHelp &&
+        (isSignupFlow ? (
           <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <CardContent className="p-0">
               <div className="divide-y divide-slate-100">
@@ -81,7 +92,7 @@ export default function AuthFeedback({
         ))}
 
       {/* Local-specific help */}
-      {isError && behaveAs === BehaveAs.LOCAL && (
+      {showLocalHelp && (
         <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
           <CardContent className="p-0">
             <div className="space-y-4 divide-y divide-slate-100">

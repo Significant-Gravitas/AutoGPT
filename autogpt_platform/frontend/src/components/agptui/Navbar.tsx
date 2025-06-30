@@ -1,15 +1,15 @@
-import * as React from "react";
-import Link from "next/link";
-import { ProfilePopoutMenu } from "./ProfilePopoutMenu";
-import { IconType, IconLogIn, IconAutoGPTLogo } from "@/components/ui/icons";
-import { MobileNavBar } from "./MobileNavBar";
-import { Button } from "./Button";
-import Wallet from "./Wallet";
+import { IconAutoGPTLogo, IconType } from "@/components/ui/icons";
 import { ProfileDetails } from "@/lib/autogpt-server-api/types";
+import Link from "next/link";
+import { MobileNavBar } from "./MobileNavBar";
 import { NavbarLink } from "./NavbarLink";
+import { ProfilePopoutMenu } from "./ProfilePopoutMenu";
+import Wallet from "./Wallet";
 
 import BackendAPI from "@/lib/autogpt-server-api";
 import { getServerUser } from "@/lib/supabase/server/getServerUser";
+import { SignInIcon } from "@phosphor-icons/react/dist/ssr";
+import { Button } from "../atoms/Button/Button";
 
 // Disable theme toggle for now
 // import { ThemeToggle } from "./ThemeToggle";
@@ -73,11 +73,12 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
           ) : (
             <Link href="/login">
               <Button
-                size="sm"
+                size="small"
                 className="flex items-center justify-end space-x-2"
+                leftIcon={<SignInIcon className="h-5 w-5" />}
+                variant="secondary"
               >
-                <IconLogIn className="h-5 h-[48px] w-5" />
-                <span>Log In</span>
+                Log In
               </Button>
             </Link>
           )}
@@ -119,9 +120,13 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
             href="/login"
             className="fixed right-4 top-4 z-50 mt-4 inline-flex h-8 items-center justify-end rounded-lg pr-4 md:hidden"
           >
-            <Button size="sm" className="flex items-center space-x-2">
-              <IconLogIn className="h-5 w-5" />
-              <span>Log In</span>
+            <Button
+              size="small"
+              className="flex items-center justify-end space-x-2"
+              leftIcon={<SignInIcon className="h-5 w-5" />}
+              variant="secondary"
+            >
+              Log In
             </Button>
           </Link>
         )}

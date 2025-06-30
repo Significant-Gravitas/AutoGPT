@@ -41,11 +41,11 @@ const borderRadiusScale = [
     description: "Medium - for buttons and inputs",
   },
   {
-    name: "l",
+    name: "large",
     value: "1rem",
     rem: "1rem",
     px: "16px",
-    class: "rounded-l",
+    class: "rounded-large",
     description: "Large - for panels and modals",
   },
   {
@@ -85,8 +85,8 @@ export function AllVariants() {
           </Text>
           <Text variant="large" className="text-zinc-600">
             Our border radius system uses a simplified naming convention (xs, s,
-            m, l, xl, 2xl, full) based on our Figma design tokens. This creates
-            visual hierarchy and maintains design consistency across all
+            m, large, xl, 2xl, full) based on our Figma design tokens. This
+            creates visual hierarchy and maintains design consistency across all
             components.
           </Text>
         </div>
@@ -137,8 +137,8 @@ export function AllVariants() {
               </div>
               <Text variant="body" className="mb-4 text-zinc-600">
                 We use a custom border radius system based on our Figma design
-                tokens, with simplified naming (xs, s, m, l, xl, 2xl, full) that
-                provides consistent radius values optimized for our design
+                tokens, with simplified naming (xs, s, m, large, xl, 2xl, full)
+                that provides consistent radius values optimized for our design
                 system.
               </Text>
             </div>
@@ -188,7 +188,7 @@ export function AllVariants() {
           <Text variant="body" className="mb-6 text-zinc-600">
             All border radius values from our Figma design tokens. Each value
             can be applied to all corners or specific corners/sides using our
-            simplified naming convention.
+            simplified naming convention (xs, s, m, large, xl, 2xl, full).
           </Text>
         </div>
 
@@ -235,7 +235,7 @@ export function AllVariants() {
 <div className="rounded-xs">Extra small rounding (4px)</div>
 <div className="rounded-s">Small rounding (8px)</div>
 <div className="rounded-m">Medium rounding (12px)</div>
-<div className="rounded-l">Large rounding (16px)</div>
+<div className="rounded-large">Large rounding (16px)</div>
 <div className="rounded-xl">Extra large rounding (20px)</div>
 <div className="rounded-2xl">2X large rounding (24px)</div>
 <div className="rounded-full">Pill buttons (circular)</div>
