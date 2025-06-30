@@ -1,14 +1,15 @@
 import { Connection } from "@xyflow/react";
-import { Graph, Block, BlockUIType, Link } from "./types";
+import { Block, BlockUIType, Link } from "./types";
+import { Graph } from "@/app/api/__generated__/models/graph";
 
 export function removeAgentInputBlockValues(graph: Graph, blocks: Block[]) {
-  const inputBlocks = graph.nodes.filter(
+  const inputBlocks = graph.nodes?.filter(
     (node) =>
       blocks.find((b) => b.id === node.block_id)?.uiType === BlockUIType.INPUT,
   );
 
-  const modifiedNodes = graph.nodes.map((node) => {
-    if (inputBlocks.find((inputNode) => inputNode.id === node.id)) {
+  const modifiedNodes = graph.nodes?.map((node) => {
+    if (inputBlocks?.find((inputNode) => inputNode.id === node.id)) {
       return {
         ...node,
         input_default: {
@@ -61,7 +62,7 @@ function removeCredentials(obj: any): void {
  */
 function updateBlockIDs(graph: Graph) {
   graph.nodes
-    .filter((node) => node.block_id in updatedBlockIDMap)
+    ?.filter((node) => node.block_id in updatedBlockIDMap)
     .forEach((node) => {
       node.block_id = updatedBlockIDMap[node.block_id];
     });
