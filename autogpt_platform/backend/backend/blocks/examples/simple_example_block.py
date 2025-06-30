@@ -51,6 +51,6 @@ class SimpleExampleBlock(Block):
             output_schema=SimpleExampleBlock.Output,
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         result = input_data.text * input_data.count
         yield "result", result

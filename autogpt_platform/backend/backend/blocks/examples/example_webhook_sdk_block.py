@@ -114,7 +114,7 @@ class ExampleWebhookSDKBlock(Block):
             ),
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             # Extract webhook payload
             payload = input_data.payload

@@ -10,9 +10,9 @@ from backend.sdk import (
     CredentialsMetaInput,
     Integer,
     List,
+    Requests,
     SchemaField,
     String,
-    Requests,
 )
 
 from ._config import exa

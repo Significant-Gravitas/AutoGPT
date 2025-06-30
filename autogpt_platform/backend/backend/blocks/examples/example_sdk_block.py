@@ -91,7 +91,7 @@ class ExampleSDKBlock(Block):
             test_credentials=TEST_CREDENTIALS,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:

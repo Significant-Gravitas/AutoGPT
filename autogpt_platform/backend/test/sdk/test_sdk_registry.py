@@ -487,11 +487,11 @@ class TestSDKImports:
 
     def test_utility_imports(self):
         """Test utility imports."""
-        from backend.sdk import BaseModel, json, requests
+        from backend.sdk import BaseModel, Requests, json
 
         assert json is not None
         assert BaseModel is not None
-        assert requests is not None
+        assert Requests is not None
 
     def test_integration_imports(self):
         """Test integration imports."""

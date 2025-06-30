@@ -29,7 +29,8 @@ from backend.sdk import (
 class TestBasicBlockCreation:
     """Test creating basic blocks using the SDK."""
 
-    def test_simple_block(self):
+    @pytest.mark.asyncio
+    async def test_simple_block(self):
         """Test creating a simple block without any decorators."""
 
         class SimpleBlock(Block):
@@ -51,7 +52,7 @@ class TestBasicBlockCreation:
                     output_schema=SimpleBlock.Output,
                 )
 
-            def run(self, input_data: Input, **kwargs) -> BlockOutput:
+            async def run(self, input_data: Input, **kwargs) -> BlockOutput:
                 result = input_data.text * input_data.count
                 yield "result", result
 
@@ -61,15 +62,16 @@ class TestBasicBlockCreation:
         assert BlockCategory.TEXT in block.categories
 
         # Test execution
-        outputs = list(
-            block.run(
-                SimpleBlock.Input(text="Hello ", count=3),
-            )
-        )
+        outputs = []
+        async for name, value in block.run(
+            SimpleBlock.Input(text="Hello ", count=3),
+        ):
+            outputs.append((name, value))
         assert len(outputs) == 1
         assert outputs[0] == ("result", "Hello Hello Hello ")
 
-    def test_block_with_credentials(self):
+    @pytest.mark.asyncio
+    async def test_block_with_credentials(self):
         """Test creating a block that requires credentials."""
 
         class APIBlock(Block):
@@ -96,7 +98,7 @@ class TestBasicBlockCreation:
                     output_schema=APIBlock.Output,
                 )
 
-            def run(
+            async def run(
                 self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
             ) -> BlockOutput:
                 # Simulate API call
@@ -116,25 +118,26 @@ class TestBasicBlockCreation:
 
         # Create and test the block
         block = APIBlock()
-        outputs = list(
-            block.run(
-                APIBlock.Input(
-                    credentials={  # type: ignore
-                        "provider": "test_api",
-                        "id": "test-creds",
-                        "type": "api_key",
-                    },
-                    query="test query",
-                ),
-                credentials=test_creds,
-            )
-        )
+        outputs = []
+        async for name, value in block.run(
+            APIBlock.Input(
+                credentials={  # type: ignore
+                    "provider": "test_api",
+                    "id": "test-creds",
+                    "type": "api_key",
+                },
+                query="test query",
+            ),
+            credentials=test_creds,
+        ):
+            outputs.append((name, value))
 
         assert len(outputs) == 2
         assert outputs[0] == ("response", "API response for: test query")
         assert outputs[1] == ("authenticated", True)
 
-    def test_block_with_multiple_outputs(self):
+    @pytest.mark.asyncio
+    async def test_block_with_multiple_outputs(self):
         """Test block that yields multiple outputs."""
 
         class MultiOutputBlock(Block):
@@ -158,7 +161,7 @@ class TestBasicBlockCreation:
                     output_schema=MultiOutputBlock.Output,
                 )
 
-            def run(self, input_data: Input, **kwargs) -> BlockOutput:
+            async def run(self, input_data: Input, **kwargs) -> BlockOutput:
                 text = input_data.text
                 yield "uppercase", text.upper()
                 yield "lowercase", text.lower()
@@ -167,7 +170,9 @@ class TestBasicBlockCreation:
 
         # Test the block
         block = MultiOutputBlock()
-        outputs = list(block.run(MultiOutputBlock.Input(text="Hello World")))
+        outputs = []
+        async for name, value in block.run(MultiOutputBlock.Input(text="Hello World")):
+            outputs.append((name, value))
 
         assert len(outputs) == 4
         assert ("uppercase", "HELLO WORLD") in outputs
@@ -189,7 +194,8 @@ class TestBlockWithProvider:
             .build()
         )
 
-    def test_block_using_provider(self):
+    @pytest.mark.asyncio
+    async def test_block_using_provider(self):
         """Test block that uses a registered provider."""
 
         class TestServiceBlock(Block):
@@ -216,7 +222,7 @@ class TestBlockWithProvider:
                     output_schema=TestServiceBlock.Output,
                 )
 
-            def run(
+            async def run(
                 self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
             ) -> BlockOutput:
                 # The provider name should match
@@ -233,19 +239,19 @@ class TestBlockWithProvider:
 
         # Test the block
         block = TestServiceBlock()
-        outputs = dict(
-            block.run(
-                TestServiceBlock.Input(
-                    credentials={  # type: ignore
-                        "provider": "test_service",
-                        "id": "test-service-creds",
-                        "type": "api_key",
-                    },
-                    action="test action",
-                ),
-                credentials=creds,
-            )
-        )
+        outputs = {}
+        async for name, value in block.run(
+            TestServiceBlock.Input(
+                credentials={  # type: ignore
+                    "provider": "test_service",
+                    "id": "test-service-creds",
+                    "type": "api_key",
+                },
+                action="test action",
+            ),
+            credentials=creds,
+        ):
+            outputs[name] = value
 
         assert outputs["result"] == "Performed: test action"
         assert outputs["provider_name"] == "test_service"
@@ -254,7 +260,8 @@ class TestBlockWithProvider:
 class TestComplexBlockScenarios:
     """Test more complex block scenarios."""
 
-    def test_block_with_optional_fields(self):
+    @pytest.mark.asyncio
+    async def test_block_with_optional_fields(self):
         """Test block with optional input fields."""
         # Optional is already imported at the module level
 
@@ -288,40 +295,41 @@ class TestComplexBlockScenarios:
                     output_schema=OptionalFieldBlock.Output,
                 )
 
-            def run(self, input_data: Input, **kwargs) -> BlockOutput:
+            async def run(self, input_data: Input, **kwargs) -> BlockOutput:
                 yield "has_optional", input_data.optional_field is not None
                 yield "optional_value", input_data.optional_field
                 yield "default_value", input_data.optional_with_default
 
         # Test with optional field provided
         block = OptionalFieldBlock()
-        outputs = dict(
-            block.run(
-                OptionalFieldBlock.Input(
-                    required_field="test",
-                    optional_field="provided",
-                )
+        outputs = {}
+        async for name, value in block.run(
+            OptionalFieldBlock.Input(
+                required_field="test",
+                optional_field="provided",
             )
-        )
+        ):
+            outputs[name] = value
 
         assert outputs["has_optional"] is True
         assert outputs["optional_value"] == "provided"
         assert outputs["default_value"] == "default value"
 
         # Test without optional field
-        outputs = dict(
-            block.run(
-                OptionalFieldBlock.Input(
-                    required_field="test",
-                )
+        outputs = {}
+        async for name, value in block.run(
+            OptionalFieldBlock.Input(
+                required_field="test",
             )
-        )
+        ):
+            outputs[name] = value
 
         assert outputs["has_optional"] is False
         assert outputs["optional_value"] is None
         assert outputs["default_value"] == "default value"
 
-    def test_block_with_complex_types(self):
+    @pytest.mark.asyncio
+    async def test_block_with_complex_types(self):
         """Test block with complex input/output types."""
         from backend.sdk import BaseModel, Dict, List
 
@@ -352,7 +360,7 @@ class TestComplexBlockScenarios:
                     output_schema=ComplexBlock.Output,
                 )
 
-            def run(self, input_data: Input, **kwargs) -> BlockOutput:
+            async def run(self, input_data: Input, **kwargs) -> BlockOutput:
                 yield "item_count", len(input_data.items)
                 yield "total_value", sum(input_data.mapping.values())
 
@@ -366,20 +374,21 @@ class TestComplexBlockScenarios:
 
         # Test the block
         block = ComplexBlock()
-        outputs = dict(
-            block.run(
-                ComplexBlock.Input(
-                    items=["apple", "banana", "orange"],
-                    mapping={"apple": 5, "banana": 3, "orange": 4},
-                )
+        outputs = {}
+        async for name, value in block.run(
+            ComplexBlock.Input(
+                items=["apple", "banana", "orange"],
+                mapping={"apple": 5, "banana": 3, "orange": 4},
             )
-        )
+        ):
+            outputs[name] = value
 
         assert outputs["item_count"] == 3
         assert outputs["total_value"] == 12
         assert outputs["combined"] == ["apple: 5", "banana: 3", "orange: 4"]
 
-    def test_block_error_handling(self):
+    @pytest.mark.asyncio
+    async def test_block_error_handling(self):
         """Test block error handling."""
 
         class ErrorHandlingBlock(Block):
@@ -407,7 +416,7 @@ class TestComplexBlockScenarios:
                     output_schema=ErrorHandlingBlock.Output,
                 )
 
-            def run(self, input_data: Input, **kwargs) -> BlockOutput:
+            async def run(self, input_data: Input, **kwargs) -> BlockOutput:
                 if input_data.should_error:
                     raise ValueError("Intentional error triggered")
 
@@ -420,22 +429,31 @@ class TestComplexBlockScenarios:
 
         # Test normal operation
         block = ErrorHandlingBlock()
-        outputs = dict(block.run(ErrorHandlingBlock.Input(value=5, should_error=False)))
+        outputs = {}
+        async for name, value in block.run(
+            ErrorHandlingBlock.Input(value=5, should_error=False)
+        ):
+            outputs[name] = value
 
         assert outputs["result"] == 10
         assert outputs["error_message"] is None
 
         # Test with negative value
-        outputs = dict(
-            block.run(ErrorHandlingBlock.Input(value=-5, should_error=False))
-        )
+        outputs = {}
+        async for name, value in block.run(
+            ErrorHandlingBlock.Input(value=-5, should_error=False)
+        ):
+            outputs[name] = value
 
         assert outputs["result"] == 0
         assert outputs["error_message"] == "Value must be non-negative"
 
         # Test with error
         with pytest.raises(ValueError, match="Intentional error triggered"):
-            list(block.run(ErrorHandlingBlock.Input(value=5, should_error=True)))
+            async for _ in block.run(
+                ErrorHandlingBlock.Input(value=5, should_error=True)
+            ):
+                pass
 
 
 if __name__ == "__main__":

@@ -8,9 +8,9 @@ from backend.sdk import (
     CredentialsMetaInput,
     Dict,
     List,
+    Requests,
     SchemaField,
     String,
-    requests,
 )
 
 from ._config import exa
@@ -66,7 +66,7 @@ class ExaAnswerBlock(Block):
             output_schema=ExaAnswerBlock.Output,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         url = "https://api.exa.ai/answer"
@@ -86,8 +86,7 @@ class ExaAnswerBlock(Block):
         try:
             # Note: This endpoint doesn't support streaming in our block implementation
             # If stream=True is requested, we still make a regular request
-            response = requests.post(url, headers=headers, json=payload)
-            response.raise_for_status()
+            response = await Requests().post(url, headers=headers, json=payload)
             data = response.json()
 
             yield "answer", data.get("answer", "")

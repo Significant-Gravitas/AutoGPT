@@ -11,9 +11,9 @@ from backend.sdk import (
     Integer,
     List,
     Optional,
+    Requests,
     SchemaField,
     String,
-    requests,
 )
 
 from ._config import exa
@@ -69,7 +69,7 @@ class ExaCreateWebsetBlock(Block):
             output_schema=ExaCreateWebsetBlock.Output,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         url = "https://api.exa.ai/websets/v0/websets"
@@ -97,8 +97,7 @@ class ExaCreateWebsetBlock(Block):
             payload["metadata"] = input_data.metadata
 
         try:
-            response = requests.post(url, headers=headers, json=payload)
-            response.raise_for_status()
+            response = await Requests().post(url, headers=headers, json=payload)
             data = response.json()
 
             yield "webset_id", data.get("id", "")
@@ -154,7 +153,7 @@ class ExaUpdateWebsetBlock(Block):
             output_schema=ExaUpdateWebsetBlock.Output,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}"
@@ -169,8 +168,7 @@ class ExaUpdateWebsetBlock(Block):
             payload["metadata"] = input_data.metadata
 
         try:
-            response = requests.post(url, headers=headers, json=payload)
-            response.raise_for_status()
+            response = await Requests().post(url, headers=headers, json=payload)
             data = response.json()
 
             yield "webset_id", data.get("id", "")
@@ -227,7 +225,7 @@ class ExaListWebsetsBlock(Block):
             output_schema=ExaListWebsetsBlock.Output,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         url = "https://api.exa.ai/websets/v0/websets"
@@ -242,8 +240,7 @@ class ExaListWebsetsBlock(Block):
             params["cursor"] = input_data.cursor
 
         try:
-            response = requests.get(url, headers=headers, params=params)
-            response.raise_for_status()
+            response = await Requests().get(url, headers=headers, params=params)
             data = response.json()
 
             yield "websets", data.get("data", [])
@@ -313,7 +310,7 @@ class ExaGetWebsetBlock(Block):
             output_schema=ExaGetWebsetBlock.Output,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}"
@@ -326,8 +323,7 @@ class ExaGetWebsetBlock(Block):
             params["expand[]"] = "items"
 
         try:
-            response = requests.get(url, headers=headers, params=params)
-            response.raise_for_status()
+            response = await Requests().get(url, headers=headers, params=params)
             data = response.json()
 
             yield "webset_id", data.get("id", "")
@@ -387,7 +383,7 @@ class ExaDeleteWebsetBlock(Block):
             output_schema=ExaDeleteWebsetBlock.Output,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}"
@@ -396,8 +392,7 @@ class ExaDeleteWebsetBlock(Block):
         }
 
         try:
-            response = requests.delete(url, headers=headers)
-            response.raise_for_status()
+            response = await Requests().delete(url, headers=headers)
             data = response.json()
 
             yield "webset_id", data.get("id", "")
@@ -448,7 +443,7 @@ class ExaCancelWebsetBlock(Block):
             output_schema=ExaCancelWebsetBlock.Output,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         url = f"https://api.exa.ai/websets/v0/websets/{input_data.webset_id}/cancel"
@@ -457,8 +452,7 @@ class ExaCancelWebsetBlock(Block):
         }
 
         try:
-            response = requests.post(url, headers=headers)
-            response.raise_for_status()
+            response = await Requests().post(url, headers=headers)
             data = response.json()
 
             yield "webset_id", data.get("id", "")
