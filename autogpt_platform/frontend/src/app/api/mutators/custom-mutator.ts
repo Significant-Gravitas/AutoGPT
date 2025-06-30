@@ -43,8 +43,6 @@ export const customMutator = async <T = any>(
     ? "?" + new URLSearchParams(params).toString()
     : "";
 
-  console.log("BASE URL : ", BASE_URL);
-
   const response = await fetch(`${BASE_URL}${url}${queryString}`, {
     ...requestOptions,
     method,
