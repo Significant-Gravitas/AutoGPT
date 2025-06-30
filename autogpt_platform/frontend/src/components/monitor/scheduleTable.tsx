@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ClockIcon, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
-import { CronExpressionManager } from "@/lib/monitor/cronExpressionManager";
+import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import {
   Select,
   SelectContent,
@@ -52,7 +52,6 @@ export const SchedulesTable = ({
 }: SchedulesTableProps) => {
   const { toast } = useToast();
   const router = useRouter();
-  const cron_manager = new CronExpressionManager();
   const [selectedAgent, setSelectedAgent] = useState<string>(""); // Library Agent ID
   const [selectedVersion, setSelectedVersion] = useState<number>(0); // Graph version
   const [maxVersion, setMaxVersion] = useState<number>(0);
@@ -246,7 +245,7 @@ export const SchedulesTable = ({
                   </TableCell>
                   <TableCell>
                     <Badge variant="secondary">
-                      {cron_manager.generateDescription(schedule.cron || "")}
+                      {humanizeCronExpression(schedule.cron)}
                     </Badge>
                   </TableCell>
 

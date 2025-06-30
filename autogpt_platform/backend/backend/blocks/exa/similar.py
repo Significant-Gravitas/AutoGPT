@@ -12,7 +12,7 @@ from backend.sdk import (
     List,
     SchemaField,
     String,
-    requests,
+    Requests,
 )
 
 from ._config import exa
@@ -86,7 +86,7 @@ class ExaFindSimilarBlock(Block):
             output_schema=ExaFindSimilarBlock.Output,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         url = "https://api.exa.ai/findSimilar"
@@ -128,8 +128,7 @@ class ExaFindSimilarBlock(Block):
                 payload[api_field] = value.strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
         try:
-            response = requests.post(url, headers=headers, json=payload)
-            response.raise_for_status()
+            response = await Requests().post(url, headers=headers, json=payload)
             data = response.json()
             yield "results", data.get("results", [])
         except Exception as e:

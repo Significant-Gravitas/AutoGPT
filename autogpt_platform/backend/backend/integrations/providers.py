@@ -11,6 +11,7 @@ class ProviderName(str, Enum):
     backward compatibility with existing provider constants.
     """
 
+    AIML_API = "aiml_api"
     ANTHROPIC = "anthropic"
     APOLLO = "apollo"
     COMPASS = "compass"
@@ -24,6 +25,7 @@ class ProviderName(str, Enum):
     GOOGLE = "google"
     GOOGLE_MAPS = "google_maps"
     GROQ = "groq"
+    HTTP = "http"
     HUBSPOT = "hubspot"
     IDEOGRAM = "ideogram"
     JINA = "jina"

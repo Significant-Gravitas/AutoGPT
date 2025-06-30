@@ -20,7 +20,7 @@ export function InputList({ blockInputs, onInputChange }: InputListProps) {
               schema={block.inputSchema}
               name={block.hardcodedValues.name}
               description={block.hardcodedValues.description}
-              value={block.hardcodedValues.value || ""}
+              value={block.hardcodedValues.value ?? ""}
               placeholder_values={block.hardcodedValues.placeholder_values}
               onInputChange={onInputChange}
             />

@@ -15,7 +15,7 @@ from backend.blocks.zerobounce._auth import (
     ZeroBounceCredentialsInput,
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
+from backend.data.model import CredentialsField, SchemaField
 
 
 class Response(BaseModel):
@@ -90,7 +90,7 @@ class ValidateEmailsBlock(Block):
             description="IP address to validate",
             default="",
         )
-        credentials: ZeroBounceCredentialsInput = SchemaField(
+        credentials: ZeroBounceCredentialsInput = CredentialsField(
             description="ZeroBounce credentials",
         )
 
@@ -159,7 +159,7 @@ class ValidateEmailsBlock(Block):
         client = ZeroBounceClient(credentials.api_key.get_secret_value())
         return client.validate_email(email, ip_address)
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,

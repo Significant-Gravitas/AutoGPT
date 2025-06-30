@@ -153,7 +153,7 @@ class TwitterGetTweetBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -327,7 +327,7 @@ class TwitterGetTweetsBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,

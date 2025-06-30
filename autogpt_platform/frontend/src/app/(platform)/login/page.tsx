@@ -1,5 +1,15 @@
 "use client";
 import {
+  AuthBottomText,
+  AuthButton,
+  AuthCard,
+  AuthFeedback,
+  AuthHeader,
+  GoogleOAuthButton,
+  PasswordInput,
+  Turnstile,
+} from "@/components/auth";
+import {
   Form,
   FormControl,
   FormField,
@@ -8,19 +18,9 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import Link from "next/link";
 import LoadingBox from "@/components/ui/loading";
-import {
-  AuthCard,
-  AuthHeader,
-  AuthButton,
-  AuthFeedback,
-  AuthBottomText,
-  GoogleOAuthButton,
-  PasswordInput,
-  Turnstile,
-} from "@/components/auth";
 import { getBehaveAs } from "@/lib/utils";
+import Link from "next/link";
 import { useLoginPage } from "./useLoginPage";
 
 export default function LoginPage() {
@@ -100,7 +100,7 @@ export default function LoginPage() {
                 <FormLabel className="flex w-full items-center justify-between">
                   <span>Password</span>
                   <Link
-                    href="/reset_password"
+                    href="/reset-password"
                     className="text-sm font-normal leading-normal text-black underline"
                   >
                     Forgot your password?

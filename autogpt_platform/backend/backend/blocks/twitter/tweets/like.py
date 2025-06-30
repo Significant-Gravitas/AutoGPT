@@ -90,7 +90,7 @@ class TwitterLikeTweetBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -249,7 +249,7 @@ class TwitterGetLikingUsersBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -467,7 +467,7 @@ class TwitterGetLikedTweetsBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -564,7 +564,7 @@ class TwitterUnlikeTweetBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
