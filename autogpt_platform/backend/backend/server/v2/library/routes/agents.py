@@ -92,6 +92,23 @@ async def get_library_agent(
     return await library_db.get_library_agent(id=library_agent_id, user_id=user_id)
 
 
+@router.get("/by-graph/{graph_id}")
+async def get_library_agent_by_graph_id(
+    graph_id: str,
+    version: Optional[int] = Query(default=None),
+    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+) -> library_model.LibraryAgent:
+    library_agent = await library_db.get_library_agent_by_graph_id(
+        user_id, graph_id, version
+    )
+    if not library_agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Library agent for graph #{graph_id} and user #{user_id} not found",
+        )
+    return library_agent
+
+
 @router.get(
     "/marketplace/{store_listing_version_id}",
     summary="Get Agent By Store ID",

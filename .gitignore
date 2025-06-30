@@ -179,4 +179,4 @@ autogpt_platform/backend/settings.py
 .claude/settings.local.json
 
 # Auto generated client
-autogpt_platform/frontend/src/api/__generated__
+autogpt_platform/frontend/src/app/api/__generated__
