@@ -1,5 +1,4 @@
 "use client";
-import { useState } from "react";
 import { Upload, X } from "lucide-react";
 import { Button } from "@/components/agptui/Button";
 import {
@@ -10,8 +9,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { z } from "zod";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { FileUploader } from "react-drag-drop-files";
 import {
   Form,
@@ -23,13 +20,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Graph,
-  GraphCreatable,
-  sanitizeImportedGraph,
-} from "@/lib/autogpt-server-api";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useToast } from "@/components/ui/use-toast";
+import { useLibraryUploadAgentDialog } from "./useLibraryUploadAgentDialog";
 
 const fileTypes = ["JSON"];
 
@@ -37,98 +28,24 @@ const fileSchema = z.custom<File>((val) => val instanceof File, {
   message: "Must be a File object",
 });
 
-const formSchema = z.object({
+export const uploadAgentFormSchema = z.object({
   agentFile: fileSchema,
   agentName: z.string().min(1, "Agent name is required"),
   agentDescription: z.string(),
 });
 
 export default function LibraryUploadAgentDialog(): React.ReactNode {
-  const [isDroped, setisDroped] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
-  const api = useBackendAPI();
-  const { toast } = useToast();
-  const [agentObject, setAgentObject] = useState<GraphCreatable | null>(null);
-
-  const form = useForm<z.infer<typeof formSchema>>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      agentName: "",
-      agentDescription: "",
-    },
-  });
-
-  const onSubmit = async (values: z.infer<typeof formSchema>) => {
-    if (!agentObject) {
-      form.setError("root", { message: "No Agent object to save" });
-      return;
-    }
-
-    setIsLoading(true);
-
-    const payload: GraphCreatable = {
-      ...agentObject,
-      name: values.agentName,
-      description: values.agentDescription,
-      is_active: true,
-    };
-
-    try {
-      const response = await api.createGraph(payload);
-      setIsOpen(false);
-      toast({
-        title: "Success",
-        description: "Agent uploaded successfully",
-        variant: "default",
-      });
-      const qID = "flowID";
-      window.location.href = `/build?${qID}=${response.id}`;
-    } catch (error) {
-      form.setError("root", {
-        message: `Could not create agent: ${error}`,
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleChange = (file: File) => {
-    setTimeout(() => {
-      setisDroped(false);
-    }, 2000);
-
-    form.setValue("agentFile", file);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const obj = JSON.parse(event.target?.result as string);
-        if (
-          !["name", "description", "nodes", "links"].every(
-            (key) => key in obj && obj[key] != null,
-          )
-        ) {
-          throw new Error(
-            "Invalid agent object in file: " + JSON.stringify(obj, null, 2),
-          );
-        }
-        const agent = obj as Graph;
-        sanitizeImportedGraph(agent);
-        setAgentObject(agent);
-        if (!form.getValues("agentName")) {
-          form.setValue("agentName", agent.name);
-        }
-        if (!form.getValues("agentDescription")) {
-          form.setValue("agentDescription", agent.description);
-        }
-      } catch (error) {
-        console.error("Error loading agent file:", error);
-      }
-    };
-    reader.readAsText(file);
-    setisDroped(false);
-  };
-
+  const {
+    onSubmit,
+    isUploading,
+    isOpen,
+    setIsOpen,
+    isDroped,
+    handleChange,
+    form,
+    setisDroped,
+    agentObject,
+  } = useLibraryUploadAgentDialog();
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
@@ -249,9 +166,9 @@ export default function LibraryUploadAgentDialog(): React.ReactNode {
               type="submit"
               variant="primary"
               className="mt-2 self-end"
-              disabled={!agentObject || isLoading}
+              disabled={!agentObject || isUploading}
             >
-              {isLoading ? (
+              {isUploading ? (
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-4 animate-spin rounded-full border-b-2 border-t-2 border-white"></div>
                   <span>Uploading...</span>

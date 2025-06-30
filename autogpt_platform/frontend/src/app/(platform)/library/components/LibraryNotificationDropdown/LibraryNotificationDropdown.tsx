@@ -11,9 +11,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import LibraryNotificationCard, {
+import NotificationCard, {
   NotificationCardData,
-} from "./library-notification-card";
+} from "../LibraryNotificationCard/LibraryNotificationCard";
 
 export default function LibraryNotificationDropdown(): React.ReactNode {
   const controls = useAnimationControls();
@@ -109,7 +109,7 @@ export default function LibraryNotificationDropdown(): React.ReactNode {
           {notifications && notifications.length ? (
             notifications.map((notification) => (
               <DropdownMenuItem key={notification.id} className="p-0">
-                <LibraryNotificationCard
+                <NotificationCard
                   notification={notification}
                   onClose={() =>
                     setNotifications((prev) => {
