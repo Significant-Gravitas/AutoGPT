@@ -13,7 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
-import { NotificationPreference } from "@/api/__generated__/models/notificationPreference";
+import { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
 import { User } from "@supabase/supabase-js";
 import { useSettingsForm } from "./useSettingsForm";
 
