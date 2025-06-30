@@ -28,7 +28,7 @@ export function getCookieSettings(): Partial<CookieOptions> {
   return {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
-    httpOnly: true,
+    // httpOnly: true, // Temporarily disabled until we figure out session migration
   } as const;
 }
 
