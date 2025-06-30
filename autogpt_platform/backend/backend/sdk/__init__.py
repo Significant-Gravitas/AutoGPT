@@ -21,8 +21,6 @@ from typing import Literal
 from typing import Literal as _Literal
 from typing import Optional, Union
 
-import requests
-
 # Third-party imports
 from pydantic import BaseModel, Field, SecretStr
 
@@ -55,6 +53,7 @@ from backend.sdk.registry import AutoRegistry, BlockConfiguration
 
 # === UTILITIES ===
 from backend.util import json
+from backend.util.request import Requests
 
 # === OPTIONAL IMPORTS WITH TRY/EXCEPT ===
 # Webhooks
@@ -183,7 +182,7 @@ __all__ = [
     "BaseModel",
     "Field",
     "SecretStr",
-    "requests",
+    "Requests",
     # SDK Components
     "AutoRegistry",
     "BlockConfiguration",
