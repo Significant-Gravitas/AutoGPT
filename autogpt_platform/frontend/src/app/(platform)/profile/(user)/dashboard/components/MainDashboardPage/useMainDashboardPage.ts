@@ -1,13 +1,17 @@
 import {
+  getGetV2ListMySubmissionsQueryKey,
   useDeleteV2DeleteStoreSubmission,
   useGetV2ListMySubmissions,
 } from "@/app/api/__generated__/endpoints/store/store";
 import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
 import { StoreSubmissionsResponse } from "@/app/api/__generated__/models/storeSubmissionsResponse";
+import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useState } from "react";
 
 export const useMainDashboardPage = () => {
+  const queryClient = getQueryClient();
+
   const { user } = useSupabase();
   const [openPopout, setOpenPopout] = useState<boolean>(false);
   const [submissionData, setSubmissionData] =
@@ -16,7 +20,15 @@ export const useMainDashboardPage = () => {
     "info",
   );
 
-  const { mutateAsync: deleteSubmission } = useDeleteV2DeleteStoreSubmission();
+  const { mutateAsync: deleteSubmission } = useDeleteV2DeleteStoreSubmission({
+    mutation: {
+      onSuccess: () => {
+        queryClient.invalidateQueries({
+          queryKey: getGetV2ListMySubmissionsQueryKey(),
+        });
+      },
+    },
+  });
 
   const { data: submissions, isLoading } = useGetV2ListMySubmissions(
     undefined,
