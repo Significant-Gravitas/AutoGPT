@@ -99,6 +99,7 @@ pnpm generate:api-client
 The generated client provides React Query hooks for both queries and mutations:
 
 #### Queries (GET requests)
+
 ```typescript
 import { useGetV1GetNotificationPreferences } from "@/app/api/__generated__/endpoints/auth/auth";
 
@@ -111,6 +112,7 @@ const { data, isLoading, isError } = useGetV1GetNotificationPreferences({
 ```
 
 #### Mutations (POST, PUT, DELETE requests)
+
 ```typescript
 import { useDeleteV2DeleteStoreSubmission } from "@/app/api/__generated__/endpoints/store/store";
 import { getGetV2ListMySubmissionsQueryKey } from "@/app/api/__generated__/endpoints/store/store";
@@ -136,6 +138,7 @@ await deleteSubmission({
 ```
 
 #### Server Actions
+
 For server-side operations, you can also use the generated client functions directly:
 
 ```typescript
@@ -156,6 +159,7 @@ await postV1UpdateNotificationPreferences(preferences);
 ```
 
 #### Server-Side Prefetching
+
 For server-side components, you can prefetch data on the server and hydrate it in the client cache. This allows immediate access to cached data when queries are called:
 
 ```typescript
