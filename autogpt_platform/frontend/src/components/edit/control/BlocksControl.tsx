@@ -55,8 +55,8 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
-  const graphHasWebhookNodes = nodes.some(
-    (n) => n.data.uiType == BlockUIType.WEBHOOK,
+  const graphHasWebhookNodes = nodes.some((n) =>
+    [BlockUIType.WEBHOOK, BlockUIType.WEBHOOK_MANUAL].includes(n.data.uiType),
   );
   const graphHasInputNodes = nodes.some(
     (n) => n.data.uiType == BlockUIType.INPUT,

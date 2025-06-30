@@ -215,6 +215,32 @@ async def get_library_agent_by_store_version_id(
         return None
 
 
+async def get_library_agent_by_graph_id(
+    user_id: str,
+    graph_id: str,
+    graph_version: Optional[int] = None,
+) -> library_model.LibraryAgent | None:
+    try:
+        filter: prisma.types.LibraryAgentWhereInput = {
+            "agentGraphId": graph_id,
+            "userId": user_id,
+            "isDeleted": False,
+        }
+        if graph_version is not None:
+            filter["agentGraphVersion"] = graph_version
+
+        agent = await prisma.models.LibraryAgent.prisma().find_first(
+            where=filter,
+            include=library_agent_include(user_id),
+        )
+        if not agent:
+            return None
+        return library_model.LibraryAgent.from_db(agent)
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error fetching library agent by graph ID: {e}")
+        raise store_exceptions.DatabaseError("Failed to fetch library agent") from e
+
+
 async def add_generated_agent_image(
     graph: graph_db.GraphModel,
     library_agent_id: str,
