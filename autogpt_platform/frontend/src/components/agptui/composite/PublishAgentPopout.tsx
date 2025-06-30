@@ -261,8 +261,8 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
                 <PublishAgentAwaitingReview
                   agentName={publishData.name}
                   subheader={publishData.sub_heading}
-                  description={publishData.description}
-                  thumbnailSrc={publishData.image_urls[0]}
+                  description={publishData.description || ""}
+                  thumbnailSrc={publishData.image_urls?.[0]}
                   onClose={handleClose}
                   onDone={handleClose}
                   onViewProgress={() => {
