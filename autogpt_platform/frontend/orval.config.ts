@@ -3,13 +3,13 @@ import { defineConfig } from "orval";
 export default defineConfig({
   autogpt_api_client: {
     input: {
-      target: `./src/api/openapi.json`,
+      target: `./src/app/api/openapi.json`,
       override: {
-        transformer: "./src/api/transformers/fix-tags.mjs",
+        transformer: "./src/app/api/transformers/fix-tags.mjs",
       },
     },
     output: {
-      workspace: "./src/api",
+      workspace: "./src/app/api",
       target: `./__generated__/endpoints`,
       schemas: "./__generated__/models",
       mode: "tags-split",
@@ -31,6 +31,14 @@ export default defineConfig({
           useMutation: true,
           // Will add more as their use cases arise
         },
+        operations: {
+          "getV2List library agents": {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "page",
+            },
+          },
+        },
       },
     },
     hooks: {
@@ -39,13 +47,13 @@ export default defineConfig({
   },
   autogpt_zod_schema: {
     input: {
-      target: `./src/api/openapi.json`,
+      target: `./src/app/api/openapi.json`,
       override: {
-        transformer: "./src/api/transformers/fix-tags.mjs",
+        transformer: "./src/app/api/transformers/fix-tags.mjs",
       },
     },
     output: {
-      workspace: "./src/api",
+      workspace: "./src/app/api",
       target: `./__generated__/zod-schema`,
       schemas: "./__generated__/models",
       mode: "tags-split",

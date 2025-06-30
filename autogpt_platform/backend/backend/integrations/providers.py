@@ -17,6 +17,7 @@ class ProviderName(str, Enum):
     GOOGLE = "google"
     GOOGLE_MAPS = "google_maps"
     GROQ = "groq"
+    HTTP = "http"
     HUBSPOT = "hubspot"
     IDEOGRAM = "ideogram"
     JINA = "jina"

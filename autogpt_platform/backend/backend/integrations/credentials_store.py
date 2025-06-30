@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Optional
 
 from pydantic import SecretStr
 
-from backend.data.redis import get_redis_async
+from backend.data.redis_client import get_redis_async
 
 if TYPE_CHECKING:
     from backend.executor.database import DatabaseManagerAsyncClient
