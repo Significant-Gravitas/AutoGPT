@@ -94,26 +94,48 @@ export const Ghost: Story = {
   },
 };
 
-export const Link: Story = {
-  args: {
-    variant: "link",
-    children: "Add to library",
-  },
-};
-
 // Loading states
 export const Loading: Story = {
   args: {
     loading: true,
-    children: "Processing...",
+    children: "Saving...",
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Use contextual loading text that reflects the action being performed (e.g., 'Computing...', 'Processing...', 'Saving...', 'Uploading...', 'Deleting...')",
+      },
+    },
   },
 };
 
-export const LoadingSecondary: Story = {
+export const LoadingGhost: Story = {
   args: {
-    variant: "secondary",
+    variant: "ghost",
     loading: true,
-    children: "Loading...",
+    children: "Fetching data...",
+  },
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Always show contextual loading text that describes what's happening. Avoid generic 'Loading...' text when possible.",
+      },
+    },
+  },
+};
+
+// Contextual loading examples
+export const ContextualLoadingExamples: Story = {
+  render: renderContextualLoadingExamples,
+  parameters: {
+    docs: {
+      description: {
+        story:
+          "Examples of contextual loading text. Always use specific action-based text rather than generic 'Loading...' to give users clear feedback about what's happening.",
+      },
+    },
   },
 };
 
@@ -163,6 +185,65 @@ export const AllVariants: Story = {
 };
 
 // Render functions as function declarations
+function renderContextualLoadingExamples() {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="mb-4 text-base font-medium text-neutral-900">
+          ✅ Good Examples - Contextual Loading Text
+        </h3>
+        <div className="flex flex-wrap gap-4">
+          <Button variant="primary" loading>
+            Saving...
+          </Button>
+          <Button variant="primary" loading>
+            Computing...
+          </Button>
+          <Button variant="primary" loading>
+            Processing...
+          </Button>
+          <Button variant="primary" loading>
+            Uploading...
+          </Button>
+          <Button variant="destructive" loading>
+            Deleting...
+          </Button>
+          <Button variant="secondary" loading>
+            Generating...
+          </Button>
+          <Button variant="ghost" loading>
+            Fetching data...
+          </Button>
+          <Button variant="outline" loading>
+            Analyzing...
+          </Button>
+        </div>
+      </div>
+
+      <div>
+        <h3 className="mb-4 text-base font-medium text-red-600">
+          ❌ Avoid - Generic Loading Text
+        </h3>
+        <div className="flex flex-wrap gap-4">
+          <Button variant="primary" loading disabled>
+            Loading...
+          </Button>
+          <Button variant="secondary" loading disabled>
+            Please wait...
+          </Button>
+          <Button variant="outline" loading disabled>
+            Working...
+          </Button>
+        </div>
+        <p className="mt-2 text-sm text-neutral-600">
+          These examples are disabled to show what NOT to do. Use specific
+          action-based text instead.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 function renderSmallButtons() {
   return (
     <div className="flex flex-wrap gap-4">
@@ -405,6 +486,9 @@ function renderAllVariants() {
               <Button variant="secondary" size="small">
                 Save
               </Button>
+              <Button variant="secondary" size="small" loading>
+                Loading
+              </Button>
               <Button variant="secondary" size="small" disabled>
                 Disabled
               </Button>
@@ -426,6 +510,9 @@ function renderAllVariants() {
             <div className="flex flex-col gap-8">
               <Button variant="destructive" size="small">
                 Save
+              </Button>
+              <Button variant="destructive" size="small" loading>
+                Loading
               </Button>
               <Button variant="destructive" size="small" disabled>
                 Disabled
@@ -449,6 +536,9 @@ function renderAllVariants() {
               <Button variant="outline" size="small">
                 Save
               </Button>
+              <Button variant="outline" size="small" loading>
+                Loading
+              </Button>
               <Button variant="outline" size="small" disabled>
                 Disabled
               </Button>
@@ -471,6 +561,9 @@ function renderAllVariants() {
               <Button variant="ghost" size="small">
                 Save
               </Button>
+              <Button variant="ghost" size="small" loading>
+                Loading
+              </Button>
               <Button variant="ghost" size="small" disabled>
                 Disabled
               </Button>
@@ -492,17 +585,6 @@ function renderAllVariants() {
           Other button types
         </h2>
         <div className="flex gap-20">
-          {/* Link */}
-          <div className="flex flex-col gap-5">
-            <div className="font-['Geist'] text-base font-medium text-zinc-800">
-              Link
-            </div>
-            <div className="flex flex-col gap-8">
-              <Button variant="link">Add to library</Button>
-            </div>
-          </div>
-
-          {/* Icon */}
           <div className="flex flex-col gap-5">
             <div className="font-['Geist'] text-base font-medium text-zinc-800">
               Icon
