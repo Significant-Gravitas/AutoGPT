@@ -1,14 +1,13 @@
 import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { BehaveAs, getBehaveAs } from "@/lib/utils";
 import { loginFormSchema, LoginProvider } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { login, providerLogin } from "./actions";
 import z from "zod";
-import { BehaveAs } from "@/lib/utils";
-import { getBehaveAs } from "@/lib/utils";
+import { login, providerLogin } from "./actions";
 
 export function useLoginPage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -17,6 +16,7 @@ export function useLoginPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
   const isCloudEnv = getBehaveAs() === BehaveAs.CLOUD;
 
   const turnstile = useTurnstile({
@@ -50,7 +50,12 @@ export function useLoginPage() {
       setFeedback(null);
     } catch (error) {
       resetCaptcha();
-      setFeedback(JSON.stringify(error));
+      const errorString = JSON.stringify(error);
+      if (errorString.includes("not_allowed")) {
+        setShowNotAllowedModal(true);
+      } else {
+        setFeedback(errorString);
+      }
     } finally {
       setIsGoogleLoading(false);
     }
@@ -95,8 +100,10 @@ export function useLoginPage() {
     isCloudEnv,
     isUserLoading,
     isGoogleLoading,
+    showNotAllowedModal,
     isSupabaseAvailable: !!supabase,
     handleSubmit: form.handleSubmit(handleLogin),
     handleProviderLogin,
+    handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
   };
 }

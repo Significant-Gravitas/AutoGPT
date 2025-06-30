@@ -9,6 +9,8 @@ import {
   PasswordInput,
   Turnstile,
 } from "@/components/auth";
+import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
+import { GoogleLoadingModal } from "@/components/auth/GoogleLoadingModal";
 import {
   Form,
   FormControl,
@@ -34,9 +36,11 @@ export default function LoginPage() {
     isLoggedIn,
     isUserLoading,
     isGoogleLoading,
+    showNotAllowedModal,
     isSupabaseAvailable,
     handleSubmit,
     handleProviderLogin,
+    handleCloseNotAllowedModal,
   } = useLoginPage();
 
   if (isUserLoading || isLoggedIn) {
@@ -52,99 +56,106 @@ export default function LoginPage() {
   }
 
   return (
-    <AuthCard className="mx-auto">
-      <AuthHeader>Login to your account</AuthHeader>
+    <>
+      <AuthCard className="mx-auto">
+        <AuthHeader>Login to your account</AuthHeader>
 
-      {isCloudEnv ? (
-        <>
-          <div className="mb-6">
-            <GoogleOAuthButton
-              onClick={() => handleProviderLogin("google")}
-              isLoading={isGoogleLoading}
-              disabled={isLoading}
+        {isCloudEnv ? (
+          <>
+            <div className="mb-6">
+              <GoogleOAuthButton
+                onClick={() => handleProviderLogin("google")}
+                isLoading={isGoogleLoading}
+                disabled={isLoading}
+              />
+            </div>
+            <div className="mb-6 flex items-center">
+              <div className="flex-1 border-t border-gray-300"></div>
+              <span className="mx-3 text-sm text-gray-500">or</span>
+              <div className="flex-1 border-t border-gray-300"></div>
+            </div>
+          </>
+        ) : null}
+
+        <Form {...form}>
+          <form onSubmit={handleSubmit}>
+            <FormField
+              control={form.control}
+              name="email"
+              render={({ field }) => (
+                <FormItem className="mb-6">
+                  <FormLabel>Email</FormLabel>
+                  <FormControl>
+                    <Input
+                      placeholder="m@example.com"
+                      {...field}
+                      type="email" // Explicitly specify email type
+                      autoComplete="username" // Added for password managers
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
-          <div className="mb-6 flex items-center">
-            <div className="flex-1 border-t border-gray-300"></div>
-            <span className="mx-3 text-sm text-gray-500">or</span>
-            <div className="flex-1 border-t border-gray-300"></div>
-          </div>
-        </>
-      ) : null}
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem className="mb-6">
+                  <FormLabel className="flex w-full items-center justify-between">
+                    <span>Password</span>
+                    <Link
+                      href="/reset-password"
+                      className="text-sm font-normal leading-normal text-black underline"
+                    >
+                      Forgot your password?
+                    </Link>
+                  </FormLabel>
+                  <FormControl>
+                    <PasswordInput
+                      {...field}
+                      autoComplete="current-password" // Added for password managers
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-      <Form {...form}>
-        <form onSubmit={handleSubmit}>
-          <FormField
-            control={form.control}
-            name="email"
-            render={({ field }) => (
-              <FormItem className="mb-6">
-                <FormLabel>Email</FormLabel>
-                <FormControl>
-                  <Input
-                    placeholder="m@example.com"
-                    {...field}
-                    type="email" // Explicitly specify email type
-                    autoComplete="username" // Added for password managers
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="password"
-            render={({ field }) => (
-              <FormItem className="mb-6">
-                <FormLabel className="flex w-full items-center justify-between">
-                  <span>Password</span>
-                  <Link
-                    href="/reset-password"
-                    className="text-sm font-normal leading-normal text-black underline"
-                  >
-                    Forgot your password?
-                  </Link>
-                </FormLabel>
-                <FormControl>
-                  <PasswordInput
-                    {...field}
-                    autoComplete="current-password" // Added for password managers
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+            {/* Turnstile CAPTCHA Component */}
+            <Turnstile
+              key={captchaKey}
+              siteKey={turnstile.siteKey}
+              onVerify={turnstile.handleVerify}
+              onExpire={turnstile.handleExpire}
+              onError={turnstile.handleError}
+              setWidgetId={turnstile.setWidgetId}
+              action="login"
+              shouldRender={turnstile.shouldRender}
+            />
 
-          {/* Turnstile CAPTCHA Component */}
-          <Turnstile
-            key={captchaKey}
-            siteKey={turnstile.siteKey}
-            onVerify={turnstile.handleVerify}
-            onExpire={turnstile.handleExpire}
-            onError={turnstile.handleError}
-            setWidgetId={turnstile.setWidgetId}
-            action="login"
-            shouldRender={turnstile.shouldRender}
+            <AuthButton isLoading={isLoading} type="submit">
+              Login
+            </AuthButton>
+          </form>
+          <AuthFeedback
+            type="login"
+            message={feedback}
+            isError={!!feedback}
+            behaveAs={getBehaveAs()}
           />
-
-          <AuthButton isLoading={isLoading} type="submit">
-            Login
-          </AuthButton>
-        </form>
-        <AuthFeedback
-          type="login"
-          message={feedback}
-          isError={!!feedback}
-          behaveAs={getBehaveAs()}
+        </Form>
+        <AuthBottomText
+          text="Don't have an account?"
+          linkText="Sign up"
+          href="/signup"
         />
-      </Form>
-      <AuthBottomText
-        text="Don't have an account?"
-        linkText="Sign up"
-        href="/signup"
+      </AuthCard>
+      <GoogleLoadingModal isOpen={isGoogleLoading} />
+      <EmailNotAllowedModal
+        isOpen={showNotAllowedModal}
+        onClose={handleCloseNotAllowedModal}
       />
-    </AuthCard>
+    </>
   );
 }

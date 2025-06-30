@@ -1,14 +1,14 @@
 import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { signupFormSchema, LoginProvider } from "@/types/auth";
+import { BehaveAs, getBehaveAs } from "@/lib/utils";
+import { LoginProvider, signupFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { signup } from "./actions";
-import { providerLogin } from "../login/actions";
 import z from "zod";
-import { BehaveAs, getBehaveAs } from "@/lib/utils";
+import { providerLogin } from "../login/actions";
+import { signup } from "./actions";
 
 export function useSignupPage() {
   const { supabase, user, isUserLoading } = useSupabase();
@@ -17,6 +17,8 @@ export function useSignupPage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
+
   const isCloudEnv = getBehaveAs() === BehaveAs.CLOUD;
 
   const turnstile = useTurnstile({
@@ -83,6 +85,8 @@ export function useSignupPage() {
         setFeedback("User with this email already exists");
         turnstile.reset();
         return;
+      } else if (error === "not_allowed") {
+        setShowNotAllowedModal(true);
       } else {
         setFeedback(error);
         resetCaptcha();
@@ -103,8 +107,10 @@ export function useSignupPage() {
     isCloudEnv,
     isUserLoading,
     isGoogleLoading,
+    showNotAllowedModal,
     isSupabaseAvailable: !!supabase,
     handleSubmit: form.handleSubmit(handleSignup),
+    handleCloseNotAllowedModal: () => setShowNotAllowedModal(false),
     handleProviderSignup,
   };
 }

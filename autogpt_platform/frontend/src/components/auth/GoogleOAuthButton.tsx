@@ -1,5 +1,5 @@
-import { FaGoogle, FaSpinner } from "react-icons/fa";
-import { Button } from "../ui/button";
+import { GoogleLogo } from "@phosphor-icons/react/ssr";
+import { Button } from "../atoms/Button/Button";
 
 interface GoogleOAuthButtonProps {
   onClick: () => void;
@@ -7,26 +7,22 @@ interface GoogleOAuthButtonProps {
   disabled?: boolean;
 }
 
-export default function GoogleOAuthButton({
+export function GoogleOAuthButton({
   onClick,
-  isLoading = false,
-  disabled = false,
+  isLoading,
+  disabled,
 }: GoogleOAuthButtonProps) {
   return (
     <Button
       type="button"
-      className="w-full border bg-zinc-700 py-2 text-white disabled:opacity-50"
-      disabled={isLoading || disabled}
+      variant="outline"
+      className="w-full gap-3"
       onClick={onClick}
+      disabled={disabled}
+      loading={isLoading}
     >
-      {isLoading ? (
-        <FaSpinner className="mr-2 h-4 w-4 animate-spin" />
-      ) : (
-        <FaGoogle className="mr-2 h-4 w-4" />
-      )}
-      <span className="text-sm font-medium">
-        {isLoading ? "Signing in..." : "Continue with Google"}
-      </span>
+      <GoogleLogo size={20} />
+      {isLoading ? "Connecting..." : "Continue with Google"}
     </Button>
   );
 }
