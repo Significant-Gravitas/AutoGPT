@@ -78,7 +78,7 @@ This project uses an auto-generated API client powered by [**Orval**](https://or
 1. **Backend Requirements**: Each API endpoint needs a summary and tag in the OpenAPI spec
 2. **Operation ID Generation**: FastAPI generates operation IDs using the pattern `{method}{tag}{summary}`
 3. **Spec Fetching**: The OpenAPI spec is fetched from `http://localhost:8006/openapi.json` and saved to the frontend
-4. **Spec Transformation**: The OpenAPI spec is cleaned up using a custom transformer (see `autogpt_platform/frontend/README.md`)
+4. **Spec Transformation**: The OpenAPI spec is cleaned up using a custom transformer (see `autogpt_platform/frontend/src/app/api/transformers`)
 5. **Client Generation**: Auto-generated client includes TypeScript types, API endpoints, and Zod schemas, organized by tags
 
 ### API Client Commands
