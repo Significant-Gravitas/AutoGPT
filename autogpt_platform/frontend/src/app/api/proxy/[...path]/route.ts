@@ -7,17 +7,11 @@ import {
 const BACKEND_BASE_URL =
   process.env.NEXT_PUBLIC_AGPT_SERVER_BASE_URL || "http://localhost:8006";
 
-/**
- * Builds the backend URL from the request path and query string
- */
 function buildBackendUrl(path: string[], queryString: string): string {
   const backendPath = path.join("/");
   return `${BACKEND_BASE_URL}/${backendPath}${queryString}`;
 }
 
-/**
- * Handles JSON content type requests
- */
 async function handleJsonRequest(
   req: NextRequest,
   method: string,
@@ -32,9 +26,6 @@ async function handleJsonRequest(
   );
 }
 
-/**
- * Handles multipart/form-data content type requests
- */
 async function handleFormDataRequest(
   req: NextRequest,
   backendUrl: string,
@@ -43,9 +34,6 @@ async function handleFormDataRequest(
   return await makeAuthenticatedFileUpload(backendUrl, formData);
 }
 
-/**
- * Handles URL-encoded form content type requests
- */
 async function handleUrlEncodedRequest(
   req: NextRequest,
   method: string,
@@ -62,9 +50,6 @@ async function handleUrlEncodedRequest(
   );
 }
 
-/**
- * Handles requests without a body (GET, DELETE)
- */
 async function handleRequestWithoutBody(
   method: string,
   backendUrl: string,
@@ -72,9 +57,6 @@ async function handleRequestWithoutBody(
   return await makeAuthenticatedRequest(method, backendUrl);
 }
 
-/**
- * Returns an error response for unsupported content types
- */
 function createUnsupportedContentTypeResponse(
   contentType: string | null,
 ): NextResponse {
@@ -93,9 +75,6 @@ function createUnsupportedContentTypeResponse(
   );
 }
 
-/**
- * Creates the appropriate response based on the response body and status
- */
 function createResponse(
   responseBody: any,
   responseStatus: number,
@@ -111,9 +90,6 @@ function createResponse(
   }
 }
 
-/**
- * Creates an error response for request failures
- */
 function createErrorResponse(error: unknown): NextResponse {
   console.error("API proxy error:", error);
   const detail =
