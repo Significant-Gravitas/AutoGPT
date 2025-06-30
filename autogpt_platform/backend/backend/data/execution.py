@@ -591,9 +591,7 @@ async def update_graph_execution_stats(
     status: ExecutionStatus | None = None,
     stats: GraphExecutionStats | None = None,
 ) -> GraphExecution | None:
-    update_data: AgentGraphExecutionUpdateManyMutationInput = {
-        "updatedAt": datetime.now(tz=timezone.utc),
-    }
+    update_data: AgentGraphExecutionUpdateManyMutationInput = {}
 
     if stats:
         stats_dict = stats.model_dump()
