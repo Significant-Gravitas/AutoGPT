@@ -3,9 +3,9 @@ import { useEffect, useState, useCallback } from "react";
 
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
-import { useLibraryPageContext } from "@/app/(platform)/library/state-provider";
 import { useScrollThreshold } from "@/hooks/useScrollThreshold";
-import LibraryAgentCard from "./library-agent-card";
+import { useLibraryPageContext } from "../state-provider";
+import LibraryAgentCard from "../LibraryAgentCard/LibraryAgentCard";
 
 /**
  * Displays a grid of library agents with infinite scroll functionality.

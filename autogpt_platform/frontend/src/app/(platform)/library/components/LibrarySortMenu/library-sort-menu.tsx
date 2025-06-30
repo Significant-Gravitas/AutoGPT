@@ -1,6 +1,5 @@
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { LibraryAgentSortEnum } from "@/lib/autogpt-server-api/types";
-import { useLibraryPageContext } from "@/app/(platform)/library/state-provider";
 import { ArrowDownNarrowWideIcon } from "lucide-react";
 import {
   Select,
@@ -10,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useLibraryPageContext } from "../state-provider";
 
 export default function LibrarySortMenu(): React.ReactNode {
   const api = useBackendAPI();
