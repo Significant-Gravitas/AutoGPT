@@ -29,6 +29,8 @@ export default defineConfig({
         query: {
           useQuery: true,
           useMutation: true,
+          useInfinite: true,
+          useInfiniteQueryParam: "page", // currently all our pagination is using page
           // Will add more as their use cases arise
         },
       },

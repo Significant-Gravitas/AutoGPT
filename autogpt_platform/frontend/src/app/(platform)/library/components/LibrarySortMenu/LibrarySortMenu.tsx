@@ -1,5 +1,4 @@
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { LibraryAgentSortEnum } from "@/lib/autogpt-server-api/types";
+"use client";
 import { ArrowDownNarrowWideIcon } from "lucide-react";
 import {
   Select,
@@ -9,25 +8,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useLibraryPageContext } from "../state-provider";
+import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
+import { useLibrarySortMenu } from "./useLibrarySortMenu";
 
 export default function LibrarySortMenu(): React.ReactNode {
-  const api = useBackendAPI();
-  const { setAgentLoading, setAgents, setLibrarySort, searchTerm } =
-    useLibraryPageContext();
-  const handleSortChange = async (value: LibraryAgentSortEnum) => {
-    setLibrarySort(value);
-    setAgentLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    const response = await api.listLibraryAgents({
-      search_term: searchTerm,
-      sort_by: value,
-      page: 1,
-    });
-    setAgents(response.agents);
-    setAgentLoading(false);
-  };
-
+  const { handleSortChange } = useLibrarySortMenu();
   return (
     <div className="flex items-center">
       <span className="hidden whitespace-nowrap sm:inline">sort by</span>
@@ -38,10 +23,10 @@ export default function LibrarySortMenu(): React.ReactNode {
         </SelectTrigger>
         <SelectContent>
           <SelectGroup>
-            <SelectItem value={LibraryAgentSortEnum.CREATED_AT}>
+            <SelectItem value={LibraryAgentSort.createdAt}>
               Creation Date
             </SelectItem>
-            <SelectItem value={LibraryAgentSortEnum.UPDATED_AT}>
+            <SelectItem value={LibraryAgentSort.updatedAt}>
               Last Modified
             </SelectItem>
           </SelectGroup>

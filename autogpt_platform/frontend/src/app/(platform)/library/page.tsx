@@ -9,7 +9,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 
 import { LibraryPageStateProvider } from "./components/state-provider";
 import LibraryActionHeader from "./components/LibraryActionHeader/LibraryActionHeader";
-import LibraryActionSubHeader from "./components/LibraryActionSubHeader/LibraryActionSubHeader";
 import LibraryAgentList from "./components/LibraryAgentList/LibraryAgentList";
 
 /**
@@ -21,7 +20,6 @@ export default function LibraryPage() {
     <main className="container min-h-screen space-y-4 pb-20 sm:px-8 md:px-12">
       <LibraryPageStateProvider>
         <LibraryActionHeader />
-        <LibraryActionSubHeader />
         <LibraryAgentList />
       </LibraryPageStateProvider>
 

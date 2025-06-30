@@ -1,11 +1,14 @@
 "use client";
 
-import LibrarySortMenu from "../LibrarySortMenu/library-sort-menu";
-import { useLibraryPageContext } from "../state-provider";
+import LibrarySortMenu from "../LibrarySortMenu/LibrarySortMenu";
 
-export default function LibraryActionSubHeader(): React.ReactNode {
-  const { agents } = useLibraryPageContext();
+interface LibraryActionSubHeaderProps {
+  agentCount: number;
+}
 
+export default function LibraryActionSubHeader({
+  agentCount,
+}: LibraryActionSubHeaderProps) {
   return (
     <div className="flex items-center justify-between pb-[10px]">
       <div className="flex items-center gap-[10px] p-2">
@@ -13,7 +16,7 @@ export default function LibraryActionSubHeader(): React.ReactNode {
           My agents
         </span>
         <span className="w-[70px] font-sans text-[14px] font-normal leading-6">
-          {agents.length} agents
+          {agentCount} agents
         </span>
       </div>
       <LibrarySortMenu />

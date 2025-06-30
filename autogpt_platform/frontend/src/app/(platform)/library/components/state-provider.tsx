@@ -1,5 +1,6 @@
 "use client";
 
+import { LibraryAgentSort } from "@/app/api/__generated__/models/libraryAgentSort";
 import {
   createContext,
   useState,
@@ -8,19 +9,14 @@ import {
   Dispatch,
   SetStateAction,
 } from "react";
-import { LibraryAgent, LibraryAgentSortEnum } from "@/lib/autogpt-server-api";
 
 interface LibraryPageContextType {
-  agents: LibraryAgent[];
-  setAgents: Dispatch<SetStateAction<LibraryAgent[]>>;
-  agentLoading: boolean;
-  setAgentLoading: Dispatch<SetStateAction<boolean>>;
-  searchTerm: string | undefined;
-  setSearchTerm: Dispatch<SetStateAction<string | undefined>>;
+  searchTerm: string;
+  setSearchTerm: Dispatch<SetStateAction<string>>;
   uploadedFile: File | null;
   setUploadedFile: Dispatch<SetStateAction<File | null>>;
-  librarySort: LibraryAgentSortEnum;
-  setLibrarySort: Dispatch<SetStateAction<LibraryAgentSortEnum>>;
+  librarySort: LibraryAgentSort;
+  setLibrarySort: Dispatch<SetStateAction<LibraryAgentSort>>;
 }
 
 export const LibraryPageContext = createContext<LibraryPageContextType>(
@@ -32,21 +28,15 @@ export function LibraryPageStateProvider({
 }: {
   children: ReactNode;
 }) {
-  const [agents, setAgents] = useState<LibraryAgent[]>([]);
-  const [agentLoading, setAgentLoading] = useState<boolean>(true);
-  const [searchTerm, setSearchTerm] = useState<string | undefined>("");
+  const [searchTerm, setSearchTerm] = useState<string>("");
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [librarySort, setLibrarySort] = useState<LibraryAgentSortEnum>(
-    LibraryAgentSortEnum.UPDATED_AT,
+  const [librarySort, setLibrarySort] = useState<LibraryAgentSort>(
+    LibraryAgentSort.updatedAt,
   );
 
   return (
     <LibraryPageContext.Provider
       value={{
-        agents,
-        setAgents,
-        agentLoading,
-        setAgentLoading,
         searchTerm,
         setSearchTerm,
         uploadedFile,

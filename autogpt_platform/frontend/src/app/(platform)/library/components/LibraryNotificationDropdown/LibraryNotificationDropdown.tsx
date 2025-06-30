@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import NotificationCard, {
   NotificationCardData,
-} from "../LibraryNotificationCard/library-notification-card";
+} from "../LibraryNotificationCard/LibraryNotificationCard";
 
 export default function LibraryNotificationDropdown(): React.ReactNode {
   const controls = useAnimationControls();

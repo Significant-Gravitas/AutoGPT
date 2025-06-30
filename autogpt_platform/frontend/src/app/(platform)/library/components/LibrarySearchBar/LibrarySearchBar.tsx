@@ -1,39 +1,11 @@
 "use client";
-import { useRef, useState } from "react";
-import debounce from "lodash/debounce";
 import { Input } from "@/components/ui/input";
 import { Search, X } from "lucide-react";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useLibraryPageContext } from "../state-provider";
+import { useLibrarySearchbar } from "./useLibrarySearchbar";
 
 export default function LibrarySearchBar(): React.ReactNode {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [isFocused, setIsFocused] = useState(false);
-  const api = useBackendAPI();
-  const { setAgentLoading, setAgents, librarySort, setSearchTerm } =
-    useLibraryPageContext();
-
-  const debouncedSearch = debounce(async (value: string) => {
-    try {
-      setAgentLoading(true);
-      setSearchTerm(value);
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      const response = await api.listLibraryAgents({
-        search_term: value,
-        sort_by: librarySort,
-        page: 1,
-      });
-      setAgents(response.agents);
-      setAgentLoading(false);
-    } catch (error) {
-      console.error("Search failed:", error);
-    }
-  }, 300);
-  const handleSearchInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const searchTerm = e.target.value;
-    debouncedSearch(searchTerm);
-  };
-
+  const { handleSearchInput, handleClear, setIsFocused, isFocused, inputRef } =
+    useLibrarySearchbar();
   return (
     <div
       onClick={() => inputRef.current?.focus()}
@@ -58,15 +30,7 @@ export default function LibrarySearchBar(): React.ReactNode {
         <X
           className="ml-2 h-[29px] w-[29px] cursor-pointer text-neutral-900"
           strokeWidth={1.25}
-          onClick={(e: React.MouseEvent) => {
-            if (inputRef.current) {
-              debouncedSearch("");
-              inputRef.current.value = "";
-              inputRef.current.blur();
-              e.preventDefault();
-            }
-            setIsFocused(false);
-          }}
+          onClick={handleClear}
         />
       )}
     </div>
