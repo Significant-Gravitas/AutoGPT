@@ -1541,11 +1541,24 @@
         }
       }
     },
-    "/api/schedules": {
+    "/api/graphs/{graph_id}/schedules": {
       "post": {
         "tags": ["v1", "schedules"],
         "summary": "Create execution schedule",
         "operationId": "postV1Create execution schedule",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ID of the graph to schedule",
+              "title": "Graph Id"
+            },
+            "description": "ID of the graph to schedule"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1579,17 +1592,14 @@
       },
       "get": {
         "tags": ["v1", "schedules"],
-        "summary": "List execution schedules",
-        "operationId": "getV1List execution schedules",
+        "summary": "List execution schedules for a graph",
+        "operationId": "getV1List execution schedules for a graph",
         "parameters": [
           {
             "name": "graph_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "Graph Id"
-            }
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Id" }
           }
         ],
         "responses": {
@@ -1602,7 +1612,7 @@
                   "items": {
                     "$ref": "#/components/schemas/GraphExecutionJobInfo"
                   },
-                  "title": "Response Getv1List Execution Schedules"
+                  "title": "Response Getv1List Execution Schedules For A Graph"
                 }
               }
             }
@@ -1612,6 +1622,29 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/schedules": {
+      "get": {
+        "tags": ["v1", "schedules"],
+        "summary": "List execution schedules for a user",
+        "operationId": "getV1List execution schedules for a user",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GraphExecutionJobInfo"
+                  },
+                  "type": "array",
+                  "title": "Response Getv1List Execution Schedules For A User"
+                }
               }
             }
           }
@@ -1628,7 +1661,12 @@
             "name": "schedule_id",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "title": "Schedule Id" }
+            "schema": {
+              "type": "string",
+              "description": "ID of the schedule to delete",
+              "title": "Schedule Id"
+            },
+            "description": "ID of the schedule to delete"
           }
         ],
         "responses": {
@@ -3199,48 +3237,6 @@
         }
       }
     },
-    "/api/library/agents/by-graph/{graph_id}": {
-      "get": {
-        "tags": ["v2", "library", "private"],
-        "summary": "Get Library Agent By Graph Id",
-        "operationId": "getV2GetLibraryAgentByGraphId",
-        "parameters": [
-          {
-            "name": "graph_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Graph Id" }
-          },
-          {
-            "name": "version",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "integer" }, { "type": "null" }],
-              "title": "Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/LibraryAgent" }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/library/agents/marketplace/{store_listing_version_id}": {
       "get": {
         "tags": ["v2", "library", "private", "store, library"],
@@ -4187,26 +4183,33 @@
       },
       "GraphExecutionJobInfo": {
         "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
+          "cron": { "type": "string", "title": "Cron" },
           "input_data": {
             "additionalProperties": true,
             "type": "object",
             "title": "Input Data"
           },
-          "user_id": { "type": "string", "title": "User Id" },
-          "graph_version": { "type": "integer", "title": "Graph Version" },
-          "cron": { "type": "string", "title": "Cron" },
+          "input_credentials": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialsMetaInput"
+            },
+            "type": "object",
+            "title": "Input Credentials"
+          },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
           "next_run_time": { "type": "string", "title": "Next Run Time" }
         },
         "type": "object",
         "required": [
-          "graph_id",
-          "input_data",
           "user_id",
+          "graph_id",
           "graph_version",
           "cron",
+          "input_data",
           "id",
           "name",
           "next_run_time"
@@ -5139,7 +5142,6 @@
           "AGENT_INPUT",
           "CONGRATS",
           "GET_RESULTS",
-          "RUN_AGENTS",
           "MARKETPLACE_VISIT",
           "MARKETPLACE_ADD_AGENT",
           "MARKETPLACE_RUN_AGENT",
@@ -5636,17 +5638,27 @@
       },
       "ScheduleCreationRequest": {
         "properties": {
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          },
+          "name": { "type": "string", "title": "Name" },
           "cron": { "type": "string", "title": "Cron" },
-          "input_data": {
+          "inputs": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Input Data"
+            "title": "Inputs"
           },
-          "graph_id": { "type": "string", "title": "Graph Id" },
-          "graph_version": { "type": "integer", "title": "Graph Version" }
+          "credentials": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialsMetaInput"
+            },
+            "type": "object",
+            "title": "Credentials"
+          }
         },
         "type": "object",
-        "required": ["cron", "input_data", "graph_id", "graph_version"],
+        "required": ["name", "cron", "inputs"],
         "title": "ScheduleCreationRequest"
       },
       "SetGraphActiveVersion": {

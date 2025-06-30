@@ -14,13 +14,11 @@ import {
 } from "../PublishAgentSelectInfo";
 import { PublishAgentAwaitingReview } from "../PublishAgentAwaitingReview";
 import { Button } from "../Button";
-import {
-  StoreSubmissionRequest,
-  MyAgentsResponse,
-} from "@/lib/autogpt-server-api";
+import { MyAgentsResponse } from "@/lib/autogpt-server-api";
 import { useRouter } from "next/navigation";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useToast } from "@/components/ui/use-toast";
+import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
 interface PublishAgentPopoutProps {
   trigger?: React.ReactNode;
   openPopout?: boolean;

@@ -1,10 +1,9 @@
 "use client";
 
-import * as React from "react";
 import Image from "next/image";
 import { IconStarFilled, IconMore } from "@/components/ui/icons";
-import { Status, StatusType } from "./Status";
-import { StoreSubmissionRequest } from "@/lib/autogpt-server-api";
+import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
+import { Status, StatusType } from "@/components/agptui/Status";
 
 export interface AgentTableCardProps {
   agent_id: string;
@@ -21,7 +20,7 @@ export interface AgentTableCardProps {
   onEditSubmission: (submission: StoreSubmissionRequest) => void;
 }
 
-export const AgentTableCard: React.FC<AgentTableCardProps> = ({
+export const AgentTableCard = ({
   agent_id,
   agent_version,
   agentName,
@@ -33,9 +32,8 @@ export const AgentTableCard: React.FC<AgentTableCardProps> = ({
   runs,
   rating,
   onEditSubmission,
-}) => {
+}: AgentTableCardProps) => {
   const onEdit = () => {
-    console.log("Edit agent", agentName);
     onEditSubmission({
       agent_id,
       agent_version,
