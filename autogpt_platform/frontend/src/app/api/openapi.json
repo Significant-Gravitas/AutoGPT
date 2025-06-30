@@ -11,7 +11,7 @@
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "Login",
-        "operationId": "login_api_integrations__provider__login_get",
+        "operationId": "getV1Login",
         "parameters": [
           {
             "name": "provider",
@@ -57,7 +57,7 @@
       "post": {
         "tags": ["v1", "integrations"],
         "summary": "Callback",
-        "operationId": "callback_api_integrations__provider__callback_post",
+        "operationId": "postV1Callback",
         "parameters": [
           {
             "name": "provider",
@@ -73,9 +73,7 @@
           "required": true,
           "content": {
             "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_callback_api_integrations__provider__callback_post"
-              }
+              "schema": { "$ref": "#/components/schemas/Body_postV1Callback" }
             }
           }
         },
@@ -105,7 +103,7 @@
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "List Credentials",
-        "operationId": "list_credentials_api_integrations_credentials_get",
+        "operationId": "getV1ListCredentials",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -116,7 +114,7 @@
                     "$ref": "#/components/schemas/CredentialsMetaResponse"
                   },
                   "type": "array",
-                  "title": "Response List Credentials Api Integrations Credentials Get"
+                  "title": "Response Getv1Listcredentials"
                 }
               }
             }
@@ -128,7 +126,7 @@
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "List Credentials By Provider",
-        "operationId": "list_credentials_by_provider_api_integrations__provider__credentials_get",
+        "operationId": "getV1ListCredentialsByProvider",
         "parameters": [
           {
             "name": "provider",
@@ -150,7 +148,7 @@
                   "items": {
                     "$ref": "#/components/schemas/CredentialsMetaResponse"
                   },
-                  "title": "Response List Credentials By Provider Api Integrations  Provider  Credentials Get"
+                  "title": "Response Getv1Listcredentialsbyprovider"
                 }
               }
             }
@@ -168,7 +166,7 @@
       "post": {
         "tags": ["v1", "integrations"],
         "summary": "Create Credentials",
-        "operationId": "create_credentials_api_integrations__provider__credentials_post",
+        "operationId": "postV1CreateCredentials",
         "parameters": [
           {
             "name": "provider",
@@ -188,14 +186,16 @@
                 "oneOf": [
                   { "$ref": "#/components/schemas/OAuth2Credentials" },
                   { "$ref": "#/components/schemas/APIKeyCredentials" },
-                  { "$ref": "#/components/schemas/UserPasswordCredentials" }
+                  { "$ref": "#/components/schemas/UserPasswordCredentials" },
+                  { "$ref": "#/components/schemas/HostScopedCredentials-Input" }
                 ],
                 "discriminator": {
                   "propertyName": "type",
                   "mapping": {
                     "oauth2": "#/components/schemas/OAuth2Credentials",
                     "api_key": "#/components/schemas/APIKeyCredentials",
-                    "user_password": "#/components/schemas/UserPasswordCredentials"
+                    "user_password": "#/components/schemas/UserPasswordCredentials",
+                    "host_scoped": "#/components/schemas/HostScopedCredentials-Input"
                   }
                 },
                 "title": "Credentials"
@@ -212,17 +212,21 @@
                   "oneOf": [
                     { "$ref": "#/components/schemas/OAuth2Credentials" },
                     { "$ref": "#/components/schemas/APIKeyCredentials" },
-                    { "$ref": "#/components/schemas/UserPasswordCredentials" }
+                    { "$ref": "#/components/schemas/UserPasswordCredentials" },
+                    {
+                      "$ref": "#/components/schemas/HostScopedCredentials-Output"
+                    }
                   ],
                   "discriminator": {
                     "propertyName": "type",
                     "mapping": {
                       "oauth2": "#/components/schemas/OAuth2Credentials",
                       "api_key": "#/components/schemas/APIKeyCredentials",
-                      "user_password": "#/components/schemas/UserPasswordCredentials"
+                      "user_password": "#/components/schemas/UserPasswordCredentials",
+                      "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
                     }
                   },
-                  "title": "Response Create Credentials Api Integrations  Provider  Credentials Post"
+                  "title": "Response Postv1Createcredentials"
                 }
               }
             }
@@ -242,7 +246,7 @@
       "get": {
         "tags": ["v1", "integrations"],
         "summary": "Get Credential",
-        "operationId": "get_credential_api_integrations__provider__credentials__cred_id__get",
+        "operationId": "getV1GetCredential",
         "parameters": [
           {
             "name": "provider",
@@ -272,17 +276,21 @@
                   "oneOf": [
                     { "$ref": "#/components/schemas/OAuth2Credentials" },
                     { "$ref": "#/components/schemas/APIKeyCredentials" },
-                    { "$ref": "#/components/schemas/UserPasswordCredentials" }
+                    { "$ref": "#/components/schemas/UserPasswordCredentials" },
+                    {
+                      "$ref": "#/components/schemas/HostScopedCredentials-Output"
+                    }
                   ],
                   "discriminator": {
                     "propertyName": "type",
                     "mapping": {
                       "oauth2": "#/components/schemas/OAuth2Credentials",
                       "api_key": "#/components/schemas/APIKeyCredentials",
-                      "user_password": "#/components/schemas/UserPasswordCredentials"
+                      "user_password": "#/components/schemas/UserPasswordCredentials",
+                      "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
                     }
                   },
-                  "title": "Response Get Credential Api Integrations  Provider  Credentials  Cred Id  Get"
+                  "title": "Response Getv1Getcredential"
                 }
               }
             }
@@ -300,7 +308,7 @@
       "delete": {
         "tags": ["v1", "integrations"],
         "summary": "Delete Credentials",
-        "operationId": "delete_credentials_api_integrations__provider__credentials__cred_id__delete",
+        "operationId": "deleteV1DeleteCredentials",
         "parameters": [
           {
             "name": "provider",
@@ -345,7 +353,7 @@
                       "$ref": "#/components/schemas/CredentialsDeletionNeedsConfirmationResponse"
                     }
                   ],
-                  "title": "Response Delete Credentials Api Integrations  Provider  Credentials  Cred Id  Delete"
+                  "title": "Response Deletev1Deletecredentials"
                 }
               }
             }
@@ -365,7 +373,7 @@
       "post": {
         "tags": ["v1", "integrations"],
         "summary": "Webhook Ingress Generic",
-        "operationId": "webhook_ingress_generic_api_integrations__provider__webhooks__webhook_id__ingress_post",
+        "operationId": "postV1WebhookIngressGeneric",
         "parameters": [
           {
             "name": "provider",
@@ -403,7 +411,7 @@
       "post": {
         "tags": ["v1", "integrations"],
         "summary": "Webhook Ping",
-        "operationId": "webhook_ping_api_integrations_webhooks__webhook_id__ping_post",
+        "operationId": "postV1WebhookPing",
         "parameters": [
           {
             "name": "webhook_id",
@@ -432,13 +440,11 @@
       "post": {
         "tags": ["v1", "analytics"],
         "summary": "Log Raw Metric",
-        "operationId": "log_raw_metric_api_analytics_log_raw_metric_post",
+        "operationId": "postV1LogRawMetric",
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_log_raw_metric_api_analytics_log_raw_metric_post"
-              }
+              "schema": { "$ref": "#/components/schemas/LogRawMetricRequest" }
             }
           },
           "required": true
@@ -463,12 +469,12 @@
       "post": {
         "tags": ["v1", "analytics"],
         "summary": "Log Raw Analytics",
-        "operationId": "log_raw_analytics_api_analytics_log_raw_analytics_post",
+        "operationId": "postV1LogRawAnalytics",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Body_log_raw_analytics_api_analytics_log_raw_analytics_post"
+                "$ref": "#/components/schemas/Body_postV1LogRawAnalytics"
               }
             }
           },
@@ -493,8 +499,8 @@
     "/api/auth/user": {
       "post": {
         "tags": ["v1", "auth"],
-        "summary": "Get Or Create User Route",
-        "operationId": "get_or_create_user_route_api_auth_user_post",
+        "summary": "Get or create user",
+        "operationId": "postV1Get or create user",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -506,8 +512,8 @@
     "/api/auth/user/email": {
       "post": {
         "tags": ["v1", "auth"],
-        "summary": "Update User Email Route",
-        "operationId": "update_user_email_route_api_auth_user_email_post",
+        "summary": "Update user email",
+        "operationId": "postV1Update user email",
         "requestBody": {
           "content": {
             "application/json": {
@@ -524,7 +530,7 @@
                 "schema": {
                   "additionalProperties": { "type": "string" },
                   "type": "object",
-                  "title": "Response Update User Email Route Api Auth User Email Post"
+                  "title": "Response Postv1Update User Email"
                 }
               }
             }
@@ -543,8 +549,8 @@
     "/api/auth/user/preferences": {
       "get": {
         "tags": ["v1", "auth"],
-        "summary": "Get Preferences",
-        "operationId": "get_preferences_api_auth_user_preferences_get",
+        "summary": "Get notification preferences",
+        "operationId": "getV1Get notification preferences",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -560,8 +566,8 @@
       },
       "post": {
         "tags": ["v1", "auth"],
-        "summary": "Update Preferences",
-        "operationId": "update_preferences_api_auth_user_preferences_post",
+        "summary": "Update notification preferences",
+        "operationId": "postV1Update notification preferences",
         "requestBody": {
           "content": {
             "application/json": {
@@ -597,8 +603,8 @@
     "/api/onboarding": {
       "get": {
         "tags": ["v1", "onboarding"],
-        "summary": "Get Onboarding",
-        "operationId": "get_onboarding_api_onboarding_get",
+        "summary": "Get onboarding status",
+        "operationId": "getV1Get onboarding status",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -608,8 +614,8 @@
       },
       "patch": {
         "tags": ["v1", "onboarding"],
-        "summary": "Update Onboarding",
-        "operationId": "update_onboarding_api_onboarding_patch",
+        "summary": "Update onboarding progress",
+        "operationId": "patchV1Update onboarding progress",
         "requestBody": {
           "content": {
             "application/json": {
@@ -637,8 +643,8 @@
     "/api/onboarding/agents": {
       "get": {
         "tags": ["v1", "onboarding"],
-        "summary": "Get Onboarding Agents",
-        "operationId": "get_onboarding_agents_api_onboarding_agents_get",
+        "summary": "Get recommended agents",
+        "operationId": "getV1Get recommended agents",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -650,8 +656,8 @@
     "/api/onboarding/enabled": {
       "get": {
         "tags": ["v1", "onboarding", "public"],
-        "summary": "Is Onboarding Enabled",
-        "operationId": "is_onboarding_enabled_api_onboarding_enabled_get",
+        "summary": "Check onboarding enabled",
+        "operationId": "getV1Check onboarding enabled",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -663,8 +669,8 @@
     "/api/blocks": {
       "get": {
         "tags": ["v1", "blocks"],
-        "summary": "Get Graph Blocks",
-        "operationId": "get_graph_blocks_api_blocks_get",
+        "summary": "List available blocks",
+        "operationId": "getV1List available blocks",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -673,7 +679,7 @@
                 "schema": {
                   "items": { "additionalProperties": true, "type": "object" },
                   "type": "array",
-                  "title": "Response Get Graph Blocks Api Blocks Get"
+                  "title": "Response Getv1List Available Blocks"
                 }
               }
             }
@@ -684,8 +690,8 @@
     "/api/blocks/{block_id}/execute": {
       "post": {
         "tags": ["v1", "blocks"],
-        "summary": "Execute Graph Block",
-        "operationId": "execute_graph_block_api_blocks__block_id__execute_post",
+        "summary": "Execute graph block",
+        "operationId": "postV1Execute graph block",
         "parameters": [
           {
             "name": "block_id",
@@ -714,7 +720,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": { "type": "array", "items": {} },
-                  "title": "Response Execute Graph Block Api Blocks  Block Id  Execute Post"
+                  "title": "Response Postv1Execute Graph Block"
                 }
               }
             }
@@ -732,9 +738,9 @@
     },
     "/api/credits": {
       "get": {
-        "tags": ["v1"],
-        "summary": "Get User Credits",
-        "operationId": "get_user_credits_api_credits_get",
+        "tags": ["v1", "credits"],
+        "summary": "Get user credits",
+        "operationId": "getV1Get user credits",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -743,7 +749,7 @@
                 "schema": {
                   "additionalProperties": { "type": "integer" },
                   "type": "object",
-                  "title": "Response Get User Credits Api Credits Get"
+                  "title": "Response Getv1Get User Credits"
                 }
               }
             }
@@ -752,8 +758,8 @@
       },
       "post": {
         "tags": ["v1", "credits"],
-        "summary": "Request Top Up",
-        "operationId": "request_top_up_api_credits_post",
+        "summary": "Request credit top up",
+        "operationId": "postV1Request credit top up",
         "requestBody": {
           "content": {
             "application/json": {
@@ -779,8 +785,8 @@
       },
       "patch": {
         "tags": ["v1", "credits"],
-        "summary": "Fulfill Checkout",
-        "operationId": "fulfill_checkout_api_credits_patch",
+        "summary": "Fulfill checkout session",
+        "operationId": "patchV1Fulfill checkout session",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -792,8 +798,8 @@
     "/api/credits/{transaction_key}/refund": {
       "post": {
         "tags": ["v1", "credits"],
-        "summary": "Refund Top Up",
-        "operationId": "refund_top_up_api_credits__transaction_key__refund_post",
+        "summary": "Refund credit transaction",
+        "operationId": "postV1Refund credit transaction",
         "parameters": [
           {
             "name": "transaction_key",
@@ -821,7 +827,7 @@
               "application/json": {
                 "schema": {
                   "type": "integer",
-                  "title": "Response Refund Top Up Api Credits  Transaction Key  Refund Post"
+                  "title": "Response Postv1Refund Credit Transaction"
                 }
               }
             }
@@ -840,8 +846,8 @@
     "/api/credits/auto-top-up": {
       "get": {
         "tags": ["v1", "credits"],
-        "summary": "Get User Auto Top Up",
-        "operationId": "get_user_auto_top_up_api_credits_auto_top_up_get",
+        "summary": "Get auto top up",
+        "operationId": "getV1Get auto top up",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -855,8 +861,8 @@
       },
       "post": {
         "tags": ["v1", "credits"],
-        "summary": "Configure User Auto Top Up",
-        "operationId": "configure_user_auto_top_up_api_credits_auto_top_up_post",
+        "summary": "Configure auto top up",
+        "operationId": "postV1Configure auto top up",
         "requestBody": {
           "content": {
             "application/json": {
@@ -872,7 +878,7 @@
               "application/json": {
                 "schema": {
                   "type": "string",
-                  "title": "Response Configure User Auto Top Up Api Credits Auto Top Up Post"
+                  "title": "Response Postv1Configure Auto Top Up"
                 }
               }
             }
@@ -891,8 +897,8 @@
     "/api/credits/stripe_webhook": {
       "post": {
         "tags": ["v1", "credits"],
-        "summary": "Stripe Webhook",
-        "operationId": "stripe_webhook_api_credits_stripe_webhook_post",
+        "summary": "Handle Stripe webhooks",
+        "operationId": "postV1Handle stripe webhooks",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -903,9 +909,9 @@
     },
     "/api/credits/manage": {
       "get": {
-        "tags": ["v1"],
-        "summary": "Manage Payment Method",
-        "operationId": "manage_payment_method_api_credits_manage_get",
+        "tags": ["v1", "credits"],
+        "summary": "Manage payment methods",
+        "operationId": "getV1Manage payment methods",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -914,7 +920,7 @@
                 "schema": {
                   "additionalProperties": { "type": "string" },
                   "type": "object",
-                  "title": "Response Manage Payment Method Api Credits Manage Get"
+                  "title": "Response Getv1Manage Payment Methods"
                 }
               }
             }
@@ -924,9 +930,9 @@
     },
     "/api/credits/transactions": {
       "get": {
-        "tags": ["v1"],
-        "summary": "Get Credit History",
-        "operationId": "get_credit_history_api_credits_transactions_get",
+        "tags": ["v1", "credits"],
+        "summary": "Get credit history",
+        "operationId": "getV1Get credit history",
         "parameters": [
           {
             "name": "transaction_time",
@@ -982,9 +988,9 @@
     },
     "/api/credits/refunds": {
       "get": {
-        "tags": ["v1"],
-        "summary": "Get Refund Requests",
-        "operationId": "get_refund_requests_api_credits_refunds_get",
+        "tags": ["v1", "credits"],
+        "summary": "Get refund requests",
+        "operationId": "getV1Get refund requests",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -993,7 +999,7 @@
                 "schema": {
                   "items": { "$ref": "#/components/schemas/RefundRequest" },
                   "type": "array",
-                  "title": "Response Get Refund Requests Api Credits Refunds Get"
+                  "title": "Response Getv1Get Refund Requests"
                 }
               }
             }
@@ -1004,8 +1010,8 @@
     "/api/graphs": {
       "get": {
         "tags": ["v1", "graphs"],
-        "summary": "Get Graphs",
-        "operationId": "get_graphs_api_graphs_get",
+        "summary": "List user graphs",
+        "operationId": "getV1List user graphs",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1014,7 +1020,7 @@
                 "schema": {
                   "items": { "$ref": "#/components/schemas/GraphModel" },
                   "type": "array",
-                  "title": "Response Get Graphs Api Graphs Get"
+                  "title": "Response Getv1List User Graphs"
                 }
               }
             }
@@ -1023,8 +1029,8 @@
       },
       "post": {
         "tags": ["v1", "graphs"],
-        "summary": "Create New Graph",
-        "operationId": "create_new_graph_api_graphs_post",
+        "summary": "Create new graph",
+        "operationId": "postV1Create new graph",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1056,8 +1062,8 @@
     "/api/graphs/{graph_id}/versions/{version}": {
       "get": {
         "tags": ["v1", "graphs"],
-        "summary": "Get Graph",
-        "operationId": "get_graph_api_graphs__graph_id__versions__version__get",
+        "summary": "Get graph version",
+        "operationId": "getV1Get graph version",
         "parameters": [
           {
             "name": "graph_id",
@@ -1108,8 +1114,8 @@
     "/api/graphs/{graph_id}": {
       "get": {
         "tags": ["v1", "graphs"],
-        "summary": "Get Graph",
-        "operationId": "get_graph_api_graphs__graph_id__get",
+        "summary": "Get specific graph",
+        "operationId": "getV1Get specific graph",
         "parameters": [
           {
             "name": "graph_id",
@@ -1158,8 +1164,8 @@
       },
       "delete": {
         "tags": ["v1", "graphs"],
-        "summary": "Delete Graph",
-        "operationId": "delete_graph_api_graphs__graph_id__delete",
+        "summary": "Delete graph permanently",
+        "operationId": "deleteV1Delete graph permanently",
         "parameters": [
           {
             "name": "graph_id",
@@ -1189,8 +1195,8 @@
       },
       "put": {
         "tags": ["v1", "graphs"],
-        "summary": "Update Graph",
-        "operationId": "update_graph_api_graphs__graph_id__put",
+        "summary": "Update graph version",
+        "operationId": "putV1Update graph version",
         "parameters": [
           {
             "name": "graph_id",
@@ -1230,8 +1236,8 @@
     "/api/graphs/{graph_id}/versions": {
       "get": {
         "tags": ["v1", "graphs"],
-        "summary": "Get Graph All Versions",
-        "operationId": "get_graph_all_versions_api_graphs__graph_id__versions_get",
+        "summary": "Get all graph versions",
+        "operationId": "getV1Get all graph versions",
         "parameters": [
           {
             "name": "graph_id",
@@ -1248,7 +1254,7 @@
                 "schema": {
                   "type": "array",
                   "items": { "$ref": "#/components/schemas/GraphModel" },
-                  "title": "Response Get Graph All Versions Api Graphs  Graph Id  Versions Get"
+                  "title": "Response Getv1Get All Graph Versions"
                 }
               }
             }
@@ -1267,8 +1273,8 @@
     "/api/graphs/{graph_id}/versions/active": {
       "put": {
         "tags": ["v1", "graphs"],
-        "summary": "Set Graph Active Version",
-        "operationId": "set_graph_active_version_api_graphs__graph_id__versions_active_put",
+        "summary": "Set active graph version",
+        "operationId": "putV1Set active graph version",
         "parameters": [
           {
             "name": "graph_id",
@@ -1304,8 +1310,8 @@
     "/api/graphs/{graph_id}/execute/{graph_version}": {
       "post": {
         "tags": ["v1", "graphs"],
-        "summary": "Execute Graph",
-        "operationId": "execute_graph_api_graphs__graph_id__execute__graph_version__post",
+        "summary": "Execute graph agent",
+        "operationId": "postV1Execute graph agent",
         "parameters": [
           {
             "name": "graph_id",
@@ -1336,7 +1342,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Body_execute_graph_api_graphs__graph_id__execute__graph_version__post"
+                "$ref": "#/components/schemas/Body_postV1Execute_graph_agent"
               }
             }
           }
@@ -1366,9 +1372,15 @@
     "/api/graphs/{graph_id}/executions/{graph_exec_id}/stop": {
       "post": {
         "tags": ["v1", "graphs"],
-        "summary": "Stop Graph Run",
-        "operationId": "stop_graph_run_api_graphs__graph_id__executions__graph_exec_id__stop_post",
+        "summary": "Stop graph execution",
+        "operationId": "postV1Stop graph execution",
         "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Id" }
+          },
           {
             "name": "graph_exec_id",
             "in": "path",
@@ -1399,8 +1411,8 @@
     "/api/executions": {
       "get": {
         "tags": ["v1", "graphs"],
-        "summary": "Get Graphs Executions",
-        "operationId": "get_graphs_executions_api_executions_get",
+        "summary": "Get all executions",
+        "operationId": "getV1Get all executions",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1411,7 +1423,7 @@
                     "$ref": "#/components/schemas/GraphExecutionMeta"
                   },
                   "type": "array",
-                  "title": "Response Get Graphs Executions Api Executions Get"
+                  "title": "Response Getv1Get All Executions"
                 }
               }
             }
@@ -1422,8 +1434,8 @@
     "/api/graphs/{graph_id}/executions": {
       "get": {
         "tags": ["v1", "graphs"],
-        "summary": "Get Graph Executions",
-        "operationId": "get_graph_executions_api_graphs__graph_id__executions_get",
+        "summary": "Get graph executions",
+        "operationId": "getV1Get graph executions",
         "parameters": [
           {
             "name": "graph_id",
@@ -1442,7 +1454,7 @@
                   "items": {
                     "$ref": "#/components/schemas/GraphExecutionMeta"
                   },
-                  "title": "Response Get Graph Executions Api Graphs  Graph Id  Executions Get"
+                  "title": "Response Getv1Get Graph Executions"
                 }
               }
             }
@@ -1461,8 +1473,8 @@
     "/api/graphs/{graph_id}/executions/{graph_exec_id}": {
       "get": {
         "tags": ["v1", "graphs"],
-        "summary": "Get Graph Execution",
-        "operationId": "get_graph_execution_api_graphs__graph_id__executions__graph_exec_id__get",
+        "summary": "Get execution details",
+        "operationId": "getV1Get execution details",
         "parameters": [
           {
             "name": "graph_id",
@@ -1487,7 +1499,7 @@
                     { "$ref": "#/components/schemas/GraphExecution" },
                     { "$ref": "#/components/schemas/GraphExecutionWithNodes" }
                   ],
-                  "title": "Response Get Graph Execution Api Graphs  Graph Id  Executions  Graph Exec Id  Get"
+                  "title": "Response Getv1Get Execution Details"
                 }
               }
             }
@@ -1506,8 +1518,8 @@
     "/api/executions/{graph_exec_id}": {
       "delete": {
         "tags": ["v1", "graphs"],
-        "summary": "Delete Graph Execution",
-        "operationId": "delete_graph_execution_api_executions__graph_exec_id__delete",
+        "summary": "Delete graph execution",
+        "operationId": "deleteV1Delete graph execution",
         "parameters": [
           {
             "name": "graph_exec_id",
@@ -1529,11 +1541,24 @@
         }
       }
     },
-    "/api/schedules": {
+    "/api/graphs/{graph_id}/schedules": {
       "post": {
         "tags": ["v1", "schedules"],
-        "summary": "Create Schedule",
-        "operationId": "create_schedule_api_schedules_post",
+        "summary": "Create execution schedule",
+        "operationId": "postV1Create execution schedule",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ID of the graph to schedule",
+              "title": "Graph Id"
+            },
+            "description": "ID of the graph to schedule"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -1567,17 +1592,14 @@
       },
       "get": {
         "tags": ["v1", "schedules"],
-        "summary": "Get Execution Schedules",
-        "operationId": "get_execution_schedules_api_schedules_get",
+        "summary": "List execution schedules for a graph",
+        "operationId": "getV1List execution schedules for a graph",
         "parameters": [
           {
             "name": "graph_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
-              "title": "Graph Id"
-            }
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Id" }
           }
         ],
         "responses": {
@@ -1590,7 +1612,7 @@
                   "items": {
                     "$ref": "#/components/schemas/GraphExecutionJobInfo"
                   },
-                  "title": "Response Get Execution Schedules Api Schedules Get"
+                  "title": "Response Getv1List Execution Schedules For A Graph"
                 }
               }
             }
@@ -1606,17 +1628,45 @@
         }
       }
     },
+    "/api/schedules": {
+      "get": {
+        "tags": ["v1", "schedules"],
+        "summary": "List execution schedules for a user",
+        "operationId": "getV1List execution schedules for a user",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/GraphExecutionJobInfo"
+                  },
+                  "type": "array",
+                  "title": "Response Getv1List Execution Schedules For A User"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/schedules/{schedule_id}": {
       "delete": {
         "tags": ["v1", "schedules"],
-        "summary": "Delete Schedule",
-        "operationId": "delete_schedule_api_schedules__schedule_id__delete",
+        "summary": "Delete execution schedule",
+        "operationId": "deleteV1Delete execution schedule",
         "parameters": [
           {
             "name": "schedule_id",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "title": "Schedule Id" }
+            "schema": {
+              "type": "string",
+              "description": "ID of the schedule to delete",
+              "title": "Schedule Id"
+            },
+            "description": "ID of the schedule to delete"
           }
         ],
         "responses": {
@@ -1627,7 +1677,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Delete Schedule Api Schedules  Schedule Id  Delete"
+                  "title": "Response Deletev1Delete Execution Schedule"
                 }
               }
             }
@@ -1646,9 +1696,9 @@
     "/api/api-keys": {
       "get": {
         "tags": ["v1", "api-keys"],
-        "summary": "Get Api Keys",
+        "summary": "List user API keys",
         "description": "List all API keys for the user",
-        "operationId": "get_api_keys_api_api_keys_get",
+        "operationId": "getV1List user api keys",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1667,7 +1717,7 @@
                       "type": "object"
                     }
                   ],
-                  "title": "Response Get Api Keys Api Api Keys Get"
+                  "title": "Response Getv1List User Api Keys"
                 }
               }
             }
@@ -1676,9 +1726,9 @@
       },
       "post": {
         "tags": ["v1", "api-keys"],
-        "summary": "Create Api Key",
+        "summary": "Create new API key",
         "description": "Create a new API key",
-        "operationId": "create_api_key_api_api_keys_post",
+        "operationId": "postV1Create new api key",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1712,9 +1762,9 @@
     "/api/api-keys/{key_id}": {
       "get": {
         "tags": ["v1", "api-keys"],
-        "summary": "Get Api Key",
+        "summary": "Get specific API key",
         "description": "Get a specific API key",
-        "operationId": "get_api_key_api_api_keys__key_id__get",
+        "operationId": "getV1Get specific api key",
         "parameters": [
           {
             "name": "key_id",
@@ -1744,9 +1794,9 @@
       },
       "delete": {
         "tags": ["v1", "api-keys"],
-        "summary": "Delete Api Key",
+        "summary": "Revoke API key",
         "description": "Revoke an API key",
-        "operationId": "delete_api_key_api_api_keys__key_id__delete",
+        "operationId": "deleteV1Revoke api key",
         "parameters": [
           {
             "name": "key_id",
@@ -1778,9 +1828,9 @@
     "/api/api-keys/{key_id}/suspend": {
       "post": {
         "tags": ["v1", "api-keys"],
-        "summary": "Suspend Key",
+        "summary": "Suspend API key",
         "description": "Suspend an API key",
-        "operationId": "suspend_key_api_api_keys__key_id__suspend_post",
+        "operationId": "postV1Suspend api key",
         "parameters": [
           {
             "name": "key_id",
@@ -1812,9 +1862,9 @@
     "/api/api-keys/{key_id}/permissions": {
       "put": {
         "tags": ["v1", "api-keys"],
-        "summary": "Update Permissions",
+        "summary": "Update key permissions",
         "description": "Update API key permissions",
-        "operationId": "update_permissions_api_api_keys__key_id__permissions_put",
+        "operationId": "putV1Update key permissions",
         "parameters": [
           {
             "name": "key_id",
@@ -1856,9 +1906,9 @@
     "/api/store/profile": {
       "get": {
         "tags": ["v2", "store", "private"],
-        "summary": "Get Profile",
+        "summary": "Get user profile",
         "description": "Get the profile details for the authenticated user.",
-        "operationId": "get_profile_api_store_profile_get",
+        "operationId": "getV2Get user profile",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -1872,9 +1922,9 @@
       },
       "post": {
         "tags": ["v2", "store", "private"],
-        "summary": "Update Or Create Profile",
+        "summary": "Update user profile",
         "description": "Update the store profile for the authenticated user.\n\nArgs:\n    profile (Profile): The updated profile details\n    user_id (str): ID of the authenticated user\n\nReturns:\n    CreatorDetails: The updated profile\n\nRaises:\n    HTTPException: If there is an error updating the profile",
-        "operationId": "update_or_create_profile_api_store_profile_post",
+        "operationId": "postV2Update user profile",
         "requestBody": {
           "content": {
             "application/json": {
@@ -1906,9 +1956,9 @@
     "/api/store/agents": {
       "get": {
         "tags": ["v2", "store", "public"],
-        "summary": "Get Agents",
+        "summary": "List store agents",
         "description": "Get a paginated list of agents from the store with optional filtering and sorting.\n\nArgs:\n    featured (bool, optional): Filter to only show featured agents. Defaults to False.\n    creator (str | None, optional): Filter agents by creator username. Defaults to None.\n    sorted_by (str | None, optional): Sort agents by \"runs\" or \"rating\". Defaults to None.\n    search_query (str | None, optional): Search agents by name, subheading and description. Defaults to None.\n    category (str | None, optional): Filter agents by category. Defaults to None.\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of agents per page. Defaults to 20.\n\nReturns:\n    StoreAgentsResponse: Paginated list of agents matching the filters\n\nRaises:\n    HTTPException: If page or page_size are less than 1\n\nUsed for:\n- Home Page Featured Agents\n- Home Page Top Agents\n- Search Results\n- Agent Details - Other Agents By Creator\n- Agent Details - Similar Agents\n- Creator Details - Agents By Creator",
-        "operationId": "get_agents_api_store_agents_get",
+        "operationId": "getV2List store agents",
         "parameters": [
           {
             "name": "featured",
@@ -1992,9 +2042,9 @@
     "/api/store/agents/{username}/{agent_name}": {
       "get": {
         "tags": ["v2", "store", "public"],
-        "summary": "Get Agent",
+        "summary": "Get specific agent",
         "description": "This is only used on the AgentDetails Page\n\nIt returns the store listing agents details.",
-        "operationId": "get_agent_api_store_agents__username___agent_name__get",
+        "operationId": "getV2Get specific agent",
         "parameters": [
           {
             "name": "username",
@@ -2032,9 +2082,9 @@
     "/api/store/graph/{store_listing_version_id}": {
       "get": {
         "tags": ["v2", "store"],
-        "summary": "Get Graph Meta By Store Listing Version Id",
+        "summary": "Get agent graph",
         "description": "Get Agent Graph from Store Listing Version ID.",
-        "operationId": "get_graph_meta_by_store_listing_version_id_api_store_graph__store_listing_version_id__get",
+        "operationId": "getV2Get agent graph",
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -2062,9 +2112,9 @@
     "/api/store/agents/{store_listing_version_id}": {
       "get": {
         "tags": ["v2", "store"],
-        "summary": "Get Store Agent",
+        "summary": "Get agent by version",
         "description": "Get Store Agent Details from Store Listing Version ID.",
-        "operationId": "get_store_agent_api_store_agents__store_listing_version_id__get",
+        "operationId": "getV2Get agent by version",
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -2096,9 +2146,9 @@
     "/api/store/agents/{username}/{agent_name}/review": {
       "post": {
         "tags": ["v2", "store"],
-        "summary": "Create Review",
+        "summary": "Create agent review",
         "description": "Create a review for a store agent.\n\nArgs:\n    username: Creator's username\n    agent_name: Name/slug of the agent\n    review: Review details including score and optional comments\n    user_id: ID of authenticated user creating the review\n\nReturns:\n    The created review",
-        "operationId": "create_review_api_store_agents__username___agent_name__review_post",
+        "operationId": "postV2Create agent review",
         "parameters": [
           {
             "name": "username",
@@ -2144,9 +2194,9 @@
     "/api/store/creators": {
       "get": {
         "tags": ["v2", "store", "public"],
-        "summary": "Get Creators",
+        "summary": "List store creators",
         "description": "This is needed for:\n- Home Page Featured Creators\n- Search Results Page\n\n---\n\nTo support this functionality we need:\n- featured: bool - to limit the list to just featured agents\n- search_query: str - vector search based on the creators profile description.\n- sorted_by: [agent_rating, agent_runs] -",
-        "operationId": "get_creators_api_store_creators_get",
+        "operationId": "getV2List store creators",
         "parameters": [
           {
             "name": "featured",
@@ -2212,9 +2262,9 @@
     "/api/store/creator/{username}": {
       "get": {
         "tags": ["v2", "store", "public"],
-        "summary": "Get Creator",
+        "summary": "Get creator details",
         "description": "Get the details of a creator\n- Creator Details Page",
-        "operationId": "get_creator_api_store_creator__username__get",
+        "operationId": "getV2Get creator details",
         "parameters": [
           {
             "name": "username",
@@ -2246,8 +2296,8 @@
     "/api/store/myagents": {
       "get": {
         "tags": ["v2", "store", "private"],
-        "summary": "Get My Agents",
-        "operationId": "get_my_agents_api_store_myagents_get",
+        "summary": "Get my agents",
+        "operationId": "getV2Get my agents",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -2263,9 +2313,9 @@
     "/api/store/submissions/{submission_id}": {
       "delete": {
         "tags": ["v2", "store", "private"],
-        "summary": "Delete Submission",
+        "summary": "Delete store submission",
         "description": "Delete a store listing submission.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    submission_id (str): ID of the submission to be deleted\n\nReturns:\n    bool: True if the submission was successfully deleted, False otherwise",
-        "operationId": "delete_submission_api_store_submissions__submission_id__delete",
+        "operationId": "deleteV2Delete store submission",
         "parameters": [
           {
             "name": "submission_id",
@@ -2281,7 +2331,7 @@
               "application/json": {
                 "schema": {
                   "type": "boolean",
-                  "title": "Response Delete Submission Api Store Submissions  Submission Id  Delete"
+                  "title": "Response Deletev2Delete Store Submission"
                 }
               }
             }
@@ -2300,9 +2350,9 @@
     "/api/store/submissions": {
       "get": {
         "tags": ["v2", "store", "private"],
-        "summary": "Get Submissions",
+        "summary": "List my submissions",
         "description": "Get a paginated list of store submissions for the authenticated user.\n\nArgs:\n    user_id (str): ID of the authenticated user\n    page (int, optional): Page number for pagination. Defaults to 1.\n    page_size (int, optional): Number of submissions per page. Defaults to 20.\n\nReturns:\n    StoreListingsResponse: Paginated list of store submissions\n\nRaises:\n    HTTPException: If page or page_size are less than 1",
-        "operationId": "get_submissions_api_store_submissions_get",
+        "operationId": "getV2List my submissions",
         "parameters": [
           {
             "name": "page",
@@ -2340,9 +2390,9 @@
       },
       "post": {
         "tags": ["v2", "store", "private"],
-        "summary": "Create Submission",
+        "summary": "Create store submission",
         "description": "Create a new store listing submission.\n\nArgs:\n    submission_request (StoreSubmissionRequest): The submission details\n    user_id (str): ID of the authenticated user submitting the listing\n\nReturns:\n    StoreSubmission: The created store submission\n\nRaises:\n    HTTPException: If there is an error creating the submission",
-        "operationId": "create_submission_api_store_submissions_post",
+        "operationId": "postV2Create store submission",
         "requestBody": {
           "required": true,
           "content": {
@@ -2376,14 +2426,14 @@
     "/api/store/submissions/media": {
       "post": {
         "tags": ["v2", "store", "private"],
-        "summary": "Upload Submission Media",
+        "summary": "Upload submission media",
         "description": "Upload media (images/videos) for a store listing submission.\n\nArgs:\n    file (UploadFile): The media file to upload\n    user_id (str): ID of the authenticated user uploading the media\n\nReturns:\n    str: URL of the uploaded media file\n\nRaises:\n    HTTPException: If there is an error uploading the media",
-        "operationId": "upload_submission_media_api_store_submissions_media_post",
+        "operationId": "postV2Upload submission media",
         "requestBody": {
           "content": {
             "multipart/form-data": {
               "schema": {
-                "$ref": "#/components/schemas/Body_upload_submission_media_api_store_submissions_media_post"
+                "$ref": "#/components/schemas/Body_postV2Upload_submission_media"
               }
             }
           },
@@ -2408,9 +2458,9 @@
     "/api/store/submissions/generate_image": {
       "post": {
         "tags": ["v2", "store", "private"],
-        "summary": "Generate Image",
+        "summary": "Generate submission image",
         "description": "Generate an image for a store listing submission.\n\nArgs:\n    agent_id (str): ID of the agent to generate an image for\n    user_id (str): ID of the authenticated user\n\nReturns:\n    JSONResponse: JSON containing the URL of the generated image",
-        "operationId": "generate_image_api_store_submissions_generate_image_post",
+        "operationId": "postV2Generate submission image",
         "parameters": [
           {
             "name": "agent_id",
@@ -2438,9 +2488,9 @@
     "/api/store/download/agents/{store_listing_version_id}": {
       "get": {
         "tags": ["v2", "store", "public"],
-        "summary": "Download Agent File",
+        "summary": "Download agent file",
         "description": "Download the agent file by streaming its content.\n\nArgs:\n    store_listing_version_id (str): The ID of the agent to download\n\nReturns:\n    StreamingResponse: A streaming response containing the agent's graph data.\n\nRaises:\n    HTTPException: If the agent is not found or an unexpected error occurs.",
-        "operationId": "download_agent_file_api_store_download_agents__store_listing_version_id__get",
+        "operationId": "getV2Download agent file",
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -2473,9 +2523,9 @@
     "/api/store/admin/listings": {
       "get": {
         "tags": ["v2", "admin", "store", "admin"],
-        "summary": "Get Admin Listings With Versions",
+        "summary": "Get Admin Listings History",
         "description": "Get store listings with their version history for admins.\n\nThis provides a consolidated view of listings with their versions,\nallowing for an expandable UI in the admin dashboard.\n\nArgs:\n    status: Filter by submission status (PENDING, APPROVED, REJECTED)\n    search: Search by name, description, or user email\n    page: Page number for pagination\n    page_size: Number of items per page\n\nReturns:\n    StoreListingsWithVersionsResponse with listings and their versions",
-        "operationId": "get_admin_listings_with_versions_api_store_admin_listings_get",
+        "operationId": "getV2Get admin listings history",
         "parameters": [
           {
             "name": "status",
@@ -2536,9 +2586,9 @@
     "/api/store/admin/submissions/{store_listing_version_id}/review": {
       "post": {
         "tags": ["v2", "admin", "store", "admin"],
-        "summary": "Review Submission",
+        "summary": "Review Store Submission",
         "description": "Review a store listing submission.\n\nArgs:\n    store_listing_version_id: ID of the submission to review\n    request: Review details including approval status and comments\n    user: Authenticated admin user performing the review\n\nReturns:\n    StoreSubmission with updated review information",
-        "operationId": "review_submission_api_store_admin_submissions__store_listing_version_id__review_post",
+        "operationId": "postV2Review store submission",
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -2582,7 +2632,7 @@
         "tags": ["v2", "admin", "store", "admin", "store", "admin"],
         "summary": "Admin Download Agent File",
         "description": "Download the agent file by streaming its content.\n\nArgs:\n    store_listing_version_id (str): The ID of the agent to download\n\nReturns:\n    StreamingResponse: A streaming response containing the agent's graph data.\n\nRaises:\n    HTTPException: If the agent is not found or an unexpected error occurs.",
-        "operationId": "admin_download_agent_file_api_store_admin_submissions_download__store_listing_version_id__get",
+        "operationId": "getV2Admin download agent file",
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -2615,13 +2665,13 @@
     "/api/credits/admin/add_credits": {
       "post": {
         "tags": ["v2", "admin", "credits", "admin"],
-        "summary": "Add User Credits",
-        "operationId": "add_user_credits_api_credits_admin_add_credits_post",
+        "summary": "Add Credits to User",
+        "operationId": "postV2Add credits to user",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Body_add_user_credits_api_credits_admin_add_credits_post"
+                "$ref": "#/components/schemas/Body_postV2Add_credits_to_user"
               }
             }
           },
@@ -2652,8 +2702,8 @@
     "/api/credits/admin/users_history": {
       "get": {
         "tags": ["v2", "admin", "credits", "admin"],
-        "summary": "Admin Get All User History",
-        "operationId": "admin_get_all_user_history_api_credits_admin_users_history_get",
+        "summary": "Get All Users History",
+        "operationId": "getV2Get all users history",
         "parameters": [
           {
             "name": "search",
@@ -2711,22 +2761,43 @@
     },
     "/api/library/presets": {
       "get": {
-        "tags": ["v2"],
+        "tags": ["v2", "presets"],
         "summary": "List presets",
         "description": "Retrieve a paginated list of presets for the current user.",
-        "operationId": "get_presets_api_library_presets_get",
+        "operationId": "getV2List presets",
         "parameters": [
           {
             "name": "page",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 1, "title": "Page" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
           },
           {
             "name": "page_size",
             "in": "query",
             "required": false,
-            "schema": { "type": "integer", "default": 10, "title": "Page Size" }
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 10,
+              "title": "Page Size"
+            }
+          },
+          {
+            "name": "graph_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "description": "Allows to filter presets by a specific agent graph",
+              "title": "Graph Id"
+            },
+            "description": "Allows to filter presets by a specific agent graph"
           }
         ],
         "responses": {
@@ -2751,16 +2822,24 @@
         }
       },
       "post": {
-        "tags": ["v2"],
+        "tags": ["v2", "presets"],
         "summary": "Create a new preset",
         "description": "Create a new preset for the current user.",
-        "operationId": "create_preset_api_library_presets_post",
+        "operationId": "postV2Create a new preset",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateLibraryAgentPresetRequest"
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/LibraryAgentPresetCreatable"
+                  },
+                  {
+                    "$ref": "#/components/schemas/LibraryAgentPresetCreatableFromGraphExecution"
+                  }
+                ],
+                "title": "Preset"
               }
             }
           }
@@ -2787,10 +2866,10 @@
     },
     "/api/library/presets/{preset_id}": {
       "get": {
-        "tags": ["v2"],
+        "tags": ["v2", "presets"],
         "summary": "Get a specific preset",
         "description": "Retrieve details for a specific preset by its ID.",
-        "operationId": "get_preset_api_library_presets__preset_id__get",
+        "operationId": "getV2Get a specific preset",
         "parameters": [
           {
             "name": "preset_id",
@@ -2818,11 +2897,11 @@
           }
         }
       },
-      "put": {
-        "tags": ["v2"],
+      "patch": {
+        "tags": ["v2", "presets"],
         "summary": "Update an existing preset",
         "description": "Update an existing preset by its ID.",
-        "operationId": "update_preset_api_library_presets__preset_id__put",
+        "operationId": "patchV2Update an existing preset",
         "parameters": [
           {
             "name": "preset_id",
@@ -2836,7 +2915,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateLibraryAgentPresetRequest"
+                "$ref": "#/components/schemas/LibraryAgentPresetUpdatable"
               }
             }
           }
@@ -2861,10 +2940,10 @@
         }
       },
       "delete": {
-        "tags": ["v2"],
+        "tags": ["v2", "presets"],
         "summary": "Delete a preset",
         "description": "Delete an existing preset by its ID.",
-        "operationId": "delete_preset_api_library_presets__preset_id__delete",
+        "operationId": "deleteV2Delete a preset",
         "parameters": [
           {
             "name": "preset_id",
@@ -2888,35 +2967,23 @@
     },
     "/api/library/presets/{preset_id}/execute": {
       "post": {
-        "tags": ["v2", "presets"],
+        "tags": ["v2", "presets", "presets"],
         "summary": "Execute a preset",
         "description": "Execute a preset with the given graph and node input for the current user.",
-        "operationId": "execute_preset_api_library_presets__preset_id__execute_post",
+        "operationId": "postV2Execute a preset",
         "parameters": [
           {
             "name": "preset_id",
             "in": "path",
             "required": true,
             "schema": { "type": "string", "title": "Preset Id" }
-          },
-          {
-            "name": "graph_id",
-            "in": "query",
-            "required": true,
-            "schema": { "type": "string", "title": "Graph Id" }
-          },
-          {
-            "name": "graph_version",
-            "in": "query",
-            "required": true,
-            "schema": { "type": "integer", "title": "Graph Version" }
           }
         ],
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Body_execute_preset_api_library_presets__preset_id__execute_post"
+                "$ref": "#/components/schemas/Body_postV2Execute_a_preset"
               }
             }
           }
@@ -2929,7 +2996,7 @@
                 "schema": {
                   "type": "object",
                   "additionalProperties": true,
-                  "title": "Response Execute Preset Api Library Presets  Preset Id  Execute Post"
+                  "title": "Response Postv2Execute A Preset"
                 }
               }
             }
@@ -2950,7 +3017,7 @@
         "tags": ["v2", "library", "private"],
         "summary": "List Library Agents",
         "description": "Get all agents in the user's library (both created and saved).\n\nArgs:\n    user_id: ID of the authenticated user.\n    search_term: Optional search term to filter agents by name/description.\n    filter_by: List of filters to apply (favorites, created by user).\n    sort_by: List of sorting criteria (created date, updated date).\n    page: Page number to retrieve.\n    page_size: Number of agents per page.\n\nReturns:\n    A LibraryAgentResponse containing agents and pagination metadata.\n\nRaises:\n    HTTPException: If a server/database error occurs.",
-        "operationId": "list_library_agents_api_library_agents_get",
+        "operationId": "getV2List library agents",
         "parameters": [
           {
             "name": "search_term",
@@ -3028,15 +3095,15 @@
       },
       "post": {
         "tags": ["v2", "library", "private"],
-        "summary": "Add Marketplace Agent To Library",
+        "summary": "Add Marketplace Agent",
         "description": "Add an agent from the marketplace to the user's library.\n\nArgs:\n    store_listing_version_id: ID of the store listing version to add.\n    user_id: ID of the authenticated user.\n\nReturns:\n    library_model.LibraryAgent: Agent added to the library\n\nRaises:\n    HTTPException(404): If the listing version is not found.\n    HTTPException(500): If a server/database error occurs.",
-        "operationId": "add_marketplace_agent_to_library_api_library_agents_post",
+        "operationId": "postV2Add marketplace agent",
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Body_add_marketplace_agent_to_library_api_library_agents_post"
+                "$ref": "#/components/schemas/Body_postV2Add_marketplace_agent"
               }
             }
           }
@@ -3067,7 +3134,7 @@
       "get": {
         "tags": ["v2", "library", "private"],
         "summary": "Get Library Agent",
-        "operationId": "get_library_agent_api_library_agents__library_agent_id__get",
+        "operationId": "getV2Get library agent",
         "parameters": [
           {
             "name": "library_agent_id",
@@ -3095,11 +3162,11 @@
           }
         }
       },
-      "put": {
+      "patch": {
         "tags": ["v2", "library", "private"],
         "summary": "Update Library Agent",
-        "description": "Update the library agent with the given fields.\n\nArgs:\n    library_agent_id: ID of the library agent to update.\n    payload: Fields to update (auto_update_version, is_favorite, etc.).\n    user_id: ID of the authenticated user.\n\nReturns:\n    204 (No Content) on success.\n\nRaises:\n    HTTPException(500): If a server/database error occurs.",
-        "operationId": "update_library_agent_api_library_agents__library_agent_id__put",
+        "description": "Update the library agent with the given fields.\n\nArgs:\n    library_agent_id: ID of the library agent to update.\n    payload: Fields to update (auto_update_version, is_favorite, etc.).\n    user_id: ID of the authenticated user.\n\nRaises:\n    HTTPException(500): If a server/database error occurs.",
+        "operationId": "patchV2Update library agent",
         "parameters": [
           {
             "name": "library_agent_id",
@@ -3119,8 +3186,88 @@
           }
         },
         "responses": {
-          "204": { "description": "Agent updated successfully" },
+          "200": {
+            "description": "Agent updated successfully",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryAgent" }
+              }
+            }
+          },
           "500": { "description": "Server error" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": ["v2", "library", "private"],
+        "summary": "Delete Library Agent",
+        "description": "Soft-delete the specified library agent.\n\nArgs:\n    library_agent_id: ID of the library agent to delete.\n    user_id: ID of the authenticated user.\n\nReturns:\n    204 No Content if successful.\n\nRaises:\n    HTTPException(404): If the agent does not exist.\n    HTTPException(500): If a server/database error occurs.",
+        "operationId": "deleteV2Delete library agent",
+        "parameters": [
+          {
+            "name": "library_agent_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Library Agent Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": { "application/json": { "schema": {} } }
+          },
+          "204": { "description": "Agent deleted successfully" },
+          "404": { "description": "Agent not found" },
+          "500": { "description": "Server error" },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/library/agents/by-graph/{graph_id}": {
+      "get": {
+        "tags": ["v2", "library", "private"],
+        "summary": "Get Library Agent By Graph Id",
+        "operationId": "getV2GetLibraryAgentByGraphId",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Id" }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "integer" }, { "type": "null" }],
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryAgent" }
+              }
+            }
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -3135,9 +3282,9 @@
     "/api/library/agents/marketplace/{store_listing_version_id}": {
       "get": {
         "tags": ["v2", "library", "private", "store, library"],
-        "summary": "Get Library Agent By Store Listing Version Id",
+        "summary": "Get Agent By Store ID",
         "description": "Get Library Agent from Store Listing Version ID.",
-        "operationId": "get_library_agent_by_store_listing_version_id_api_library_agents_marketplace__store_listing_version_id__get",
+        "operationId": "getV2Get agent by store id",
         "parameters": [
           {
             "name": "store_listing_version_id",
@@ -3156,7 +3303,7 @@
                     { "$ref": "#/components/schemas/LibraryAgent" },
                     { "type": "null" }
                   ],
-                  "title": "Response Get Library Agent By Store Listing Version Id Api Library Agents Marketplace  Store Listing Version Id  Get"
+                  "title": "Response Getv2Get Agent By Store Id"
                 }
               }
             }
@@ -3176,7 +3323,7 @@
       "post": {
         "tags": ["v2", "library", "private"],
         "summary": "Fork Library Agent",
-        "operationId": "fork_library_agent_api_library_agents__library_agent_id__fork_post",
+        "operationId": "postV2Fork library agent",
         "parameters": [
           {
             "name": "library_agent_id",
@@ -3205,12 +3352,61 @@
         }
       }
     },
+    "/api/library/agents/{library_agent_id}/setup-trigger": {
+      "post": {
+        "tags": ["v2", "library", "private"],
+        "summary": "Setup Trigger",
+        "description": "Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.\nReturns the correspondingly created `LibraryAgentPreset` with `webhook_id` set.",
+        "operationId": "postV2SetupTrigger",
+        "parameters": [
+          {
+            "name": "library_agent_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "ID of the library agent",
+              "title": "Library Agent Id"
+            },
+            "description": "ID of the library agent"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TriggeredPresetSetupParams"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryAgentPreset" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/otto/ask": {
       "post": {
-        "tags": ["v2"],
-        "summary": "Proxy Otto Request",
+        "tags": ["v2", "otto"],
+        "summary": "Proxy Otto Chat Request",
         "description": "Proxy requests to Otto API while adding necessary security headers and logging.\nRequires an authenticated user.",
-        "operationId": "proxy_otto_request_api_otto_ask_post",
+        "operationId": "postV2Proxy otto chat request",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3241,10 +3437,10 @@
     },
     "/api/turnstile/verify": {
       "post": {
-        "tags": ["v2"],
+        "tags": ["v2", "turnstile"],
         "summary": "Verify Turnstile Token",
         "description": "Verify a Cloudflare Turnstile token.\nThis endpoint verifies a token returned by the Cloudflare Turnstile challenge\non the client side. It returns whether the verification was successful.",
-        "operationId": "verify_turnstile_token_api_turnstile_verify_post",
+        "operationId": "postV2Verify turnstile token",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3280,8 +3476,8 @@
     "/api/email/unsubscribe": {
       "post": {
         "tags": ["v1", "email"],
-        "summary": "Unsubscribe Via One Click",
-        "operationId": "unsubscribe_via_one_click_api_email_unsubscribe_post",
+        "summary": "One Click Email Unsubscribe",
+        "operationId": "postV1One click email unsubscribe",
         "parameters": [
           {
             "name": "token",
@@ -3309,8 +3505,8 @@
     "/api/email/": {
       "post": {
         "tags": ["v1", "email"],
-        "summary": "Postmark Webhook Handler",
-        "operationId": "postmark_webhook_handler_api_email__post",
+        "summary": "Handle Postmark Email Webhooks",
+        "operationId": "postV1Handle postmark email webhooks",
         "requestBody": {
           "content": {
             "application/json": {
@@ -3365,7 +3561,7 @@
       "get": {
         "tags": ["health"],
         "summary": "Health",
-        "operationId": "health_health_get",
+        "operationId": "getHealthHealth",
         "responses": {
           "200": {
             "description": "Successful Response",
@@ -3598,28 +3794,7 @@
         "required": ["name", "description", "input_schema", "output_schema"],
         "title": "BaseGraph"
       },
-      "Body_add_marketplace_agent_to_library_api_library_agents_post": {
-        "properties": {
-          "store_listing_version_id": {
-            "type": "string",
-            "title": "Store Listing Version Id"
-          }
-        },
-        "type": "object",
-        "required": ["store_listing_version_id"],
-        "title": "Body_add_marketplace_agent_to_library_api_library_agents_post"
-      },
-      "Body_add_user_credits_api_credits_admin_add_credits_post": {
-        "properties": {
-          "user_id": { "type": "string", "title": "User Id" },
-          "amount": { "type": "integer", "title": "Amount" },
-          "comments": { "type": "string", "title": "Comments" }
-        },
-        "type": "object",
-        "required": ["user_id", "amount", "comments"],
-        "title": "Body_add_user_credits_api_credits_admin_add_credits_post"
-      },
-      "Body_callback_api_integrations__provider__callback_post": {
+      "Body_postV1Callback": {
         "properties": {
           "code": {
             "type": "string",
@@ -3629,9 +3804,9 @@
         },
         "type": "object",
         "required": ["code", "state_token"],
-        "title": "Body_callback_api_integrations__provider__callback_post"
+        "title": "Body_postV1Callback"
       },
-      "Body_execute_graph_api_graphs__graph_id__execute__graph_version__post": {
+      "Body_postV1Execute_graph_agent": {
         "properties": {
           "inputs": {
             "additionalProperties": true,
@@ -3647,20 +3822,9 @@
           }
         },
         "type": "object",
-        "title": "Body_execute_graph_api_graphs__graph_id__execute__graph_version__post"
+        "title": "Body_postV1Execute graph agent"
       },
-      "Body_execute_preset_api_library_presets__preset_id__execute_post": {
-        "properties": {
-          "node_input": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Node Input"
-          }
-        },
-        "type": "object",
-        "title": "Body_execute_preset_api_library_presets__preset_id__execute_post"
-      },
-      "Body_log_raw_analytics_api_analytics_log_raw_analytics_post": {
+      "Body_postV1LogRawAnalytics": {
         "properties": {
           "type": { "type": "string", "title": "Type" },
           "data": {
@@ -3677,25 +3841,47 @@
         },
         "type": "object",
         "required": ["type", "data", "data_index"],
-        "title": "Body_log_raw_analytics_api_analytics_log_raw_analytics_post"
+        "title": "Body_postV1LogRawAnalytics"
       },
-      "Body_log_raw_metric_api_analytics_log_raw_metric_post": {
+      "Body_postV2Add_credits_to_user": {
         "properties": {
-          "metric_name": { "type": "string", "title": "Metric Name" },
-          "metric_value": { "type": "number", "title": "Metric Value" },
-          "data_string": { "type": "string", "title": "Data String" }
+          "user_id": { "type": "string", "title": "User Id" },
+          "amount": { "type": "integer", "title": "Amount" },
+          "comments": { "type": "string", "title": "Comments" }
         },
         "type": "object",
-        "required": ["metric_name", "metric_value", "data_string"],
-        "title": "Body_log_raw_metric_api_analytics_log_raw_metric_post"
+        "required": ["user_id", "amount", "comments"],
+        "title": "Body_postV2Add credits to user"
       },
-      "Body_upload_submission_media_api_store_submissions_media_post": {
+      "Body_postV2Add_marketplace_agent": {
+        "properties": {
+          "store_listing_version_id": {
+            "type": "string",
+            "title": "Store Listing Version Id"
+          }
+        },
+        "type": "object",
+        "required": ["store_listing_version_id"],
+        "title": "Body_postV2Add marketplace agent"
+      },
+      "Body_postV2Execute_a_preset": {
+        "properties": {
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs"
+          }
+        },
+        "type": "object",
+        "title": "Body_postV2Execute a preset"
+      },
+      "Body_postV2Upload_submission_media": {
         "properties": {
           "file": { "type": "string", "format": "binary", "title": "File" }
         },
         "type": "object",
         "required": ["file"],
-        "title": "Body_upload_submission_media_api_store_submissions_media_post"
+        "title": "Body_postV2Upload submission media"
       },
       "ChatRequest": {
         "properties": {
@@ -3751,31 +3937,6 @@
         "type": "object",
         "required": ["graph"],
         "title": "CreateGraph"
-      },
-      "CreateLibraryAgentPresetRequest": {
-        "properties": {
-          "name": { "type": "string", "title": "Name" },
-          "description": { "type": "string", "title": "Description" },
-          "inputs": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Inputs"
-          },
-          "graph_id": { "type": "string", "title": "Graph Id" },
-          "graph_version": { "type": "integer", "title": "Graph Version" },
-          "is_active": { "type": "boolean", "title": "Is Active" }
-        },
-        "type": "object",
-        "required": [
-          "name",
-          "description",
-          "inputs",
-          "graph_id",
-          "graph_version",
-          "is_active"
-        ],
-        "title": "CreateLibraryAgentPresetRequest",
-        "description": "Request model used when creating a new preset for a library agent."
       },
       "Creator": {
         "properties": {
@@ -3894,7 +4055,7 @@
           "provider": { "$ref": "#/components/schemas/ProviderName" },
           "type": {
             "type": "string",
-            "enum": ["api_key", "oauth2", "user_password"],
+            "enum": ["api_key", "oauth2", "user_password", "host_scoped"],
             "title": "Type"
           }
         },
@@ -3910,7 +4071,7 @@
           "provider": { "type": "string", "title": "Provider" },
           "type": {
             "type": "string",
-            "enum": ["api_key", "oauth2", "user_password"],
+            "enum": ["api_key", "oauth2", "user_password", "host_scoped"],
             "title": "Type"
           },
           "title": {
@@ -3927,6 +4088,11 @@
           "username": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Username"
+          },
+          "host": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Host",
+            "description": "Host pattern for host-scoped credentials"
           }
         },
         "type": "object",
@@ -4059,26 +4225,33 @@
       },
       "GraphExecutionJobInfo": {
         "properties": {
+          "user_id": { "type": "string", "title": "User Id" },
           "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
+          "cron": { "type": "string", "title": "Cron" },
           "input_data": {
             "additionalProperties": true,
             "type": "object",
             "title": "Input Data"
           },
-          "user_id": { "type": "string", "title": "User Id" },
-          "graph_version": { "type": "integer", "title": "Graph Version" },
-          "cron": { "type": "string", "title": "Cron" },
+          "input_credentials": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialsMetaInput"
+            },
+            "type": "object",
+            "title": "Input Credentials"
+          },
           "id": { "type": "string", "title": "Id" },
           "name": { "type": "string", "title": "Name" },
           "next_run_time": { "type": "string", "title": "Next Run Time" }
         },
         "type": "object",
         "required": [
-          "graph_id",
-          "input_data",
           "user_id",
+          "graph_id",
           "graph_version",
           "cron",
+          "input_data",
           "id",
           "name",
           "next_run_time"
@@ -4268,6 +4441,70 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HostScopedCredentials-Input": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "provider": { "type": "string", "title": "Provider" },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
+          },
+          "type": {
+            "type": "string",
+            "const": "host_scoped",
+            "title": "Type",
+            "default": "host_scoped"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host",
+            "description": "The host/URI pattern to match against request URLs"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string",
+              "format": "password",
+              "writeOnly": true
+            },
+            "type": "object",
+            "title": "Headers",
+            "description": "Key-value header map to add to matching requests"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "host"],
+        "title": "HostScopedCredentials"
+      },
+      "HostScopedCredentials-Output": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "provider": { "type": "string", "title": "Provider" },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
+          },
+          "type": {
+            "type": "string",
+            "const": "host_scoped",
+            "title": "Type",
+            "default": "host_scoped"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host",
+            "description": "The host/URI pattern to match against request URLs"
+          },
+          "headers": {
+            "additionalProperties": { "type": "string" },
+            "type": "object",
+            "title": "Headers",
+            "description": "Key-value header map to add to matching requests"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "host"],
+        "title": "HostScopedCredentials"
+      },
       "LibraryAgent": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -4295,6 +4532,23 @@
             "type": "object",
             "title": "Input Schema"
           },
+          "credentials_input_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Credentials Input Schema",
+            "description": "Input schema for credentials required by the agent"
+          },
+          "has_external_trigger": {
+            "type": "boolean",
+            "title": "Has External Trigger",
+            "description": "Whether the agent has an external trigger (e.g. webhook) node"
+          },
+          "trigger_setup_info": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/LibraryAgentTriggerInfo" },
+              { "type": "null" }
+            ]
+          },
           "new_output": { "type": "boolean", "title": "New Output" },
           "can_access_graph": {
             "type": "boolean",
@@ -4318,6 +4572,8 @@
           "name",
           "description",
           "input_schema",
+          "credentials_input_schema",
+          "has_external_trigger",
           "new_output",
           "can_access_graph",
           "is_latest_version"
@@ -4327,36 +4583,112 @@
       },
       "LibraryAgentPreset": {
         "properties": {
-          "id": { "type": "string", "title": "Id" },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At"
-          },
           "graph_id": { "type": "string", "title": "Graph Id" },
           "graph_version": { "type": "integer", "title": "Graph Version" },
-          "name": { "type": "string", "title": "Name" },
-          "description": { "type": "string", "title": "Description" },
-          "is_active": { "type": "boolean", "title": "Is Active" },
           "inputs": {
             "additionalProperties": true,
             "type": "object",
             "title": "Inputs"
+          },
+          "credentials": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialsMetaInput"
+            },
+            "type": "object",
+            "title": "Credentials"
+          },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "webhook_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Webhook Id"
+          },
+          "id": { "type": "string", "title": "Id" },
+          "user_id": { "type": "string", "title": "User Id" },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
           }
         },
         "type": "object",
         "required": [
-          "id",
-          "updated_at",
           "graph_id",
           "graph_version",
+          "inputs",
+          "credentials",
           "name",
           "description",
-          "is_active",
-          "inputs"
+          "id",
+          "user_id",
+          "updated_at"
         ],
         "title": "LibraryAgentPreset",
         "description": "Represents a preset configuration for a library agent."
+      },
+      "LibraryAgentPresetCreatable": {
+        "properties": {
+          "graph_id": { "type": "string", "title": "Graph Id" },
+          "graph_version": { "type": "integer", "title": "Graph Version" },
+          "inputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Inputs"
+          },
+          "credentials": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialsMetaInput"
+            },
+            "type": "object",
+            "title": "Credentials"
+          },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          },
+          "webhook_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Webhook Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "graph_id",
+          "graph_version",
+          "inputs",
+          "credentials",
+          "name",
+          "description"
+        ],
+        "title": "LibraryAgentPresetCreatable",
+        "description": "Request model used when creating a new preset for a library agent."
+      },
+      "LibraryAgentPresetCreatableFromGraphExecution": {
+        "properties": {
+          "graph_execution_id": {
+            "type": "string",
+            "title": "Graph Execution Id"
+          },
+          "name": { "type": "string", "title": "Name" },
+          "description": { "type": "string", "title": "Description" },
+          "is_active": {
+            "type": "boolean",
+            "title": "Is Active",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": ["graph_execution_id", "name", "description"],
+        "title": "LibraryAgentPresetCreatableFromGraphExecution",
+        "description": "Request model used when creating a new preset for a library agent."
       },
       "LibraryAgentPresetResponse": {
         "properties": {
@@ -4371,6 +4703,44 @@
         "required": ["presets", "pagination"],
         "title": "LibraryAgentPresetResponse",
         "description": "Response schema for a list of agent presets and pagination info."
+      },
+      "LibraryAgentPresetUpdatable": {
+        "properties": {
+          "inputs": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "title": "Inputs"
+          },
+          "credentials": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/components/schemas/CredentialsMetaInput"
+                },
+                "type": "object"
+              },
+              { "type": "null" }
+            ],
+            "title": "Credentials"
+          },
+          "name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Name"
+          },
+          "description": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Description"
+          },
+          "is_active": {
+            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
+            "title": "Is Active"
+          }
+        },
+        "type": "object",
+        "title": "LibraryAgentPresetUpdatable",
+        "description": "Request model used when updating a preset for a library agent."
       },
       "LibraryAgentResponse": {
         "properties": {
@@ -4397,6 +4767,24 @@
         "enum": ["COMPLETED", "HEALTHY", "WAITING", "ERROR"],
         "title": "LibraryAgentStatus"
       },
+      "LibraryAgentTriggerInfo": {
+        "properties": {
+          "provider": { "$ref": "#/components/schemas/ProviderName" },
+          "config_schema": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Config Schema",
+            "description": "Input schema for the trigger block"
+          },
+          "credentials_input_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Credentials Input Name"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "config_schema", "credentials_input_name"],
+        "title": "LibraryAgentTriggerInfo"
+      },
       "LibraryAgentUpdateRequest": {
         "properties": {
           "auto_update_version": {
@@ -4413,11 +4801,6 @@
             "anyOf": [{ "type": "boolean" }, { "type": "null" }],
             "title": "Is Archived",
             "description": "Archive the agent"
-          },
-          "is_deleted": {
-            "anyOf": [{ "type": "boolean" }, { "type": "null" }],
-            "title": "Is Deleted",
-            "description": "Delete the agent"
           }
         },
         "type": "object",
@@ -4440,6 +4823,24 @@
         "type": "object",
         "required": ["source_id", "sink_id", "source_name", "sink_name"],
         "title": "Link"
+      },
+      "LogRawMetricRequest": {
+        "properties": {
+          "metric_name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Metric Name"
+          },
+          "metric_value": { "type": "number", "title": "Metric Value" },
+          "data_string": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Data String"
+          }
+        },
+        "type": "object",
+        "required": ["metric_name", "metric_value", "data_string"],
+        "title": "LogRawMetricRequest"
       },
       "LoginResponse": {
         "properties": {
@@ -5174,6 +5575,7 @@
       "ProviderName": {
         "type": "string",
         "enum": [
+          "aiml_api",
           "anthropic",
           "apollo",
           "compass",
@@ -5187,6 +5589,7 @@
           "google",
           "google_maps",
           "groq",
+          "http",
           "hubspot",
           "ideogram",
           "jina",
@@ -5278,17 +5681,27 @@
       },
       "ScheduleCreationRequest": {
         "properties": {
+          "graph_version": {
+            "anyOf": [{ "type": "integer" }, { "type": "null" }],
+            "title": "Graph Version"
+          },
+          "name": { "type": "string", "title": "Name" },
           "cron": { "type": "string", "title": "Cron" },
-          "input_data": {
+          "inputs": {
             "additionalProperties": true,
             "type": "object",
-            "title": "Input Data"
+            "title": "Inputs"
           },
-          "graph_id": { "type": "string", "title": "Graph Id" },
-          "graph_version": { "type": "integer", "title": "Graph Version" }
+          "credentials": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialsMetaInput"
+            },
+            "type": "object",
+            "title": "Credentials"
+          }
         },
         "type": "object",
-        "required": ["cron", "input_data", "graph_id", "graph_version"],
+        "required": ["name", "cron", "inputs"],
         "title": "ScheduleCreationRequest"
       },
       "SetGraphActiveVersion": {
@@ -5689,6 +6102,31 @@
         "required": ["transactions", "next_transaction_time"],
         "title": "TransactionHistory"
       },
+      "TriggeredPresetSetupParams": {
+        "properties": {
+          "name": { "type": "string", "title": "Name" },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "default": ""
+          },
+          "trigger_config": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Trigger Config"
+          },
+          "agent_credentials": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CredentialsMetaInput"
+            },
+            "type": "object",
+            "title": "Agent Credentials"
+          }
+        },
+        "type": "object",
+        "required": ["name", "trigger_config"],
+        "title": "TriggeredPresetSetupParams"
+      },
       "TurnstileVerifyRequest": {
         "properties": {
           "token": {
@@ -5970,16 +6408,6 @@
           "provider_webhook_id": {
             "type": "string",
             "title": "Provider Webhook Id"
-          },
-          "attached_nodes": {
-            "anyOf": [
-              {
-                "items": { "$ref": "#/components/schemas/NodeModel" },
-                "type": "array"
-              },
-              { "type": "null" }
-            ],
-            "title": "Attached Nodes"
           },
           "url": { "type": "string", "title": "Url", "readOnly": true }
         },
