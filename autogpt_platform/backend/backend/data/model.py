@@ -561,6 +561,11 @@ def CredentialsField(
         if v is not None
     }
 
+    # Merge any json_schema_extra passed in kwargs
+    if "json_schema_extra" in kwargs:
+        extra_schema = kwargs.pop("json_schema_extra")
+        field_schema_extra.update(extra_schema)
+
     return Field(
         title=title,
         description=description,

@@ -14,29 +14,17 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     Boolean,
-    CredentialsField,
     CredentialsMetaInput,
     Integer,
     SchemaField,
-    SecretStr,
     String,
 )
 
-# Define test credentials for testing
-TEST_CREDENTIALS = APIKeyCredentials(
-    id="01234567-89ab-cdef-0123-456789abcdef",
-    provider="example-service",  # Custom provider name
-    api_key=SecretStr("mock-example-api-key"),
-    title="Mock Example Service API key",
-    expires_at=None,
+from ._config import (
+    EXAMPLE_SERVICE_TEST_CREDENTIALS,
+    EXAMPLE_SERVICE_TEST_CREDENTIALS_INPUT,
+    example_service,
 )
-
-TEST_CREDENTIALS_INPUT = {
-    "provider": TEST_CREDENTIALS.provider,
-    "id": TEST_CREDENTIALS.id,
-    "type": TEST_CREDENTIALS.type,
-    "title": TEST_CREDENTIALS.title,
-}
 
 
 # Example of a simple service
@@ -53,9 +41,7 @@ class ExampleSDKBlock(Block):
     """
 
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput = CredentialsField(
-            provider="example-service",  # Custom provider name
-            supported_credential_types={"api_key"},
+        credentials: CredentialsMetaInput = example_service.credentials_field(
             description="Credentials for Example Service API",
         )
         text: String = SchemaField(
@@ -79,7 +65,7 @@ class ExampleSDKBlock(Block):
             input_schema=ExampleSDKBlock.Input,
             output_schema=ExampleSDKBlock.Output,
             test_input={
-                "credentials": TEST_CREDENTIALS_INPUT,
+                "credentials": EXAMPLE_SERVICE_TEST_CREDENTIALS_INPUT,
                 "text": "Test input",
                 "max_length": 50,
             },
@@ -88,7 +74,7 @@ class ExampleSDKBlock(Block):
                 ("length", 21),  # Length of "PROCESSED: Test input"
                 ("api_key_used", True),
             ],
-            test_credentials=TEST_CREDENTIALS,
+            test_credentials=EXAMPLE_SERVICE_TEST_CREDENTIALS,
         )
 
     async def run(

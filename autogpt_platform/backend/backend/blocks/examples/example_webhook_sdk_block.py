@@ -16,7 +16,6 @@ from backend.sdk import (
     BlockSchema,
     BlockType,
     BlockWebhookConfig,
-    CredentialsField,
     CredentialsMetaInput,
     Dict,
     Field,
@@ -24,6 +23,8 @@ from backend.sdk import (
     SchemaField,
     String,
 )
+
+from ._config import example_webhook
 
 
 # Define event filter model
@@ -75,9 +76,7 @@ class ExampleWebhookSDKBlock(Block):
     """
 
     class Input(BlockSchema):
-        credentials: CredentialsMetaInput = CredentialsField(
-            provider="examplewebhook",
-            supported_credential_types={"api_key"},
+        credentials: CredentialsMetaInput = example_webhook.credentials_field(
             description="Credentials for webhook service",
         )
         webhook_url: String = SchemaField(

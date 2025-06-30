@@ -11,19 +11,18 @@ from backend.sdk import (
     APIKeyCredentials,
     Block,
     BlockCategory,
-    BlockCostType,
     BlockOutput,
     BlockSchema,
     Boolean,
-    CredentialsField,
     CredentialsMetaInput,
     Integer,
     Optional,
-    ProviderBuilder,
     SchemaField,
     SecretStr,
     String,
 )
+
+from ._config import test_api, test_service
 
 
 class TestBasicBlockCreation:
@@ -78,10 +77,8 @@ class TestBasicBlockCreation:
             """A block that requires API credentials."""
 
             class Input(BlockSchema):
-                credentials: CredentialsMetaInput = CredentialsField(
-                    provider="test_api",
-                    supported_credential_types={"api_key"},
-                    description="API credentials",
+                credentials: CredentialsMetaInput = test_api.credentials_field(
+                    description="API credentials for test service",
                 )
                 query: String = SchemaField(description="API query")
 
@@ -184,16 +181,6 @@ class TestBasicBlockCreation:
 class TestBlockWithProvider:
     """Test creating blocks associated with providers."""
 
-    def setup_method(self):
-        """Set up test provider."""
-        # Create a provider using ProviderBuilder
-        self.provider = (
-            ProviderBuilder("test_service")
-            .with_api_key("TEST_SERVICE_API_KEY", "Test Service API Key")
-            .with_base_cost(10, BlockCostType.RUN)
-            .build()
-        )
-
     @pytest.mark.asyncio
     async def test_block_using_provider(self):
         """Test block that uses a registered provider."""
@@ -202,9 +189,7 @@ class TestBlockWithProvider:
             """Block for test service."""
 
             class Input(BlockSchema):
-                credentials: CredentialsMetaInput = CredentialsField(
-                    provider="test_service",  # Matches our provider
-                    supported_credential_types={"api_key"},
+                credentials: CredentialsMetaInput = test_service.credentials_field(
                     description="Test service credentials",
                 )
                 action: String = SchemaField(description="Action to perform")
@@ -331,11 +316,7 @@ class TestComplexBlockScenarios:
     @pytest.mark.asyncio
     async def test_block_with_complex_types(self):
         """Test block with complex input/output types."""
-        from backend.sdk import BaseModel, Dict, List
-
-        class ItemModel(BaseModel):
-            name: str
-            value: int
+        from backend.sdk import Dict, List
 
         class ComplexBlock(Block):
             """Block with complex types."""

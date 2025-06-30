@@ -39,15 +39,40 @@ class Provider:
 
     def credentials_field(self, **kwargs) -> CredentialsMetaInput:
         """Return a CredentialsField configured for this provider."""
-        # Merge provider defaults with user overrides
-        field_kwargs = {
-            "provider": self.name,
-            "supported_credential_types": self.supported_auth_types,
-            "description": f"{self.name.title()} credentials",
-        }
-        field_kwargs.update(kwargs)
+        # Extract known CredentialsField parameters
+        title = kwargs.pop("title", None)
+        description = kwargs.pop("description", f"{self.name.title()} credentials")
+        required_scopes = kwargs.pop("required_scopes", set())
+        discriminator = kwargs.pop("discriminator", None)
+        discriminator_mapping = kwargs.pop("discriminator_mapping", None)
+        discriminator_values = kwargs.pop("discriminator_values", None)
 
-        return CredentialsField(**field_kwargs)
+        # Create json_schema_extra with provider information
+        json_schema_extra = {
+            "credentials_provider": [self.name],
+            "credentials_types": (
+                list(self.supported_auth_types)
+                if self.supported_auth_types
+                else ["api_key"]
+            ),
+        }
+
+        # Merge any existing json_schema_extra
+        if "json_schema_extra" in kwargs:
+            json_schema_extra.update(kwargs.pop("json_schema_extra"))
+
+        # Add json_schema_extra to kwargs
+        kwargs["json_schema_extra"] = json_schema_extra
+
+        return CredentialsField(
+            required_scopes=required_scopes,
+            discriminator=discriminator,
+            discriminator_mapping=discriminator_mapping,
+            discriminator_values=discriminator_values,
+            title=title,
+            description=description,
+            **kwargs,
+        )
 
     def get_api(self, credentials: Credentials) -> Any:
         """Get API client instance for the given credentials."""
