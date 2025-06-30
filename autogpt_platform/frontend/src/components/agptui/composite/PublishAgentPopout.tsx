@@ -21,6 +21,8 @@ import {
 import { useRouter } from "next/navigation";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useToast } from "@/components/ui/use-toast";
+import LoadingBox, { LoadingSpinner } from "@/components/ui/loading";
+
 interface PublishAgentPopoutProps {
   trigger?: React.ReactNode;
   openPopout?: boolean;
@@ -68,10 +70,46 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     number | null
   >(null);
   const [open, setOpen] = React.useState(false);
+  const [currentPage, setCurrentPage] = React.useState(1);
+  const [loading, setLoading] = React.useState(false);
+  const [loadingMore, setLoadingMore] = React.useState(false);
+  const [hasMore, setHasMore] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const api = useBackendAPI();
+
+  const fetchMyAgents = React.useCallback(
+    async (page: number, append = false) => {
+      try {
+        append ? setLoadingMore(true) : setLoading(true);
+        const response = await api.getMyAgents({
+          page,
+          page_size: 20,
+        });
+        setCurrentPage(response.pagination.current_page);
+        setHasMore(
+          response.pagination.current_page < response.pagination.total_pages,
+        );
+        setMyAgents((prev) =>
+          append && prev
+            ? {
+                agents: [...prev.agents, ...response.agents],
+                pagination: response.pagination,
+              }
+            : response,
+        );
+      } catch (error) {
+        console.error("Failed to load my agents:", error);
+        setError("Failed to load agents. Please try again.");
+      } finally {
+        append ? setLoadingMore(false) : setLoading(false);
+      }
+    },
+    [api],
+  );
 
   const popupId = React.useId();
   const router = useRouter();
-  const api = useBackendAPI();
 
   const { toast } = useToast();
 
@@ -83,18 +121,12 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
 
   React.useEffect(() => {
     if (open) {
-      const loadMyAgents = async () => {
-        try {
-          const response = await api.getMyAgents();
-          setMyAgents(response);
-        } catch (error) {
-          console.error("Failed to load my agents:", error);
-        }
-      };
-
-      loadMyAgents();
+      setCurrentPage(1);
+      setHasMore(true);
+      setError(null);
+      fetchMyAgents(1);
     }
-  }, [open, api]);
+  }, [open, fetchMyAgents]);
 
   const handleClose = () => {
     setStep("select");
@@ -206,36 +238,76 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     }
   };
 
+  const handleScroll = React.useCallback(
+    (e: React.UIEvent<HTMLDivElement>) => {
+      const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+      if (
+        hasMore &&
+        !loadingMore &&
+        scrollTop + clientHeight >= scrollHeight - 50
+      ) {
+        fetchMyAgents(currentPage + 1, true);
+      }
+    },
+    [hasMore, loadingMore, currentPage, fetchMyAgents],
+  );
+
   const renderContent = () => {
     switch (step) {
       case "select":
         return (
           <div className="flex min-h-screen items-center justify-center">
             <div className="mx-auto flex w-full max-w-[900px] flex-col rounded-3xl bg-white shadow-lg dark:bg-gray-800">
-              <div className="h-full overflow-y-auto">
-                <PublishAgentSelect
-                  agents={
-                    myAgents?.agents
-                      .map((agent) => ({
-                        name: agent.agent_name,
-                        id: agent.agent_id,
-                        version: agent.agent_version,
-                        lastEdited: agent.last_edited,
-                        imageSrc:
-                          agent.agent_image || "https://picsum.photos/300/200",
-                      }))
-                      .sort(
-                        (a, b) =>
-                          new Date(b.lastEdited).getTime() -
-                          new Date(a.lastEdited).getTime(),
-                      ) || []
-                  }
-                  onSelect={handleAgentSelect}
-                  onCancel={handleClose}
-                  onNext={handleNextFromSelect}
-                  onClose={handleClose}
-                  onOpenBuilder={() => router.push("/build")}
-                />
+              <div className="h-full overflow-y-hidden">
+                {loading ? (
+                  <LoadingBox className="p-8" />
+                ) : error ? (
+                  <div className="flex flex-col items-center justify-center gap-4 p-8">
+                    <p className="text-red-600">{error}</p>
+                    <Button
+                      onClick={() => {
+                        setError(null);
+                        fetchMyAgents(1);
+                      }}
+                      variant="outline"
+                    >
+                      Try Again
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <PublishAgentSelect
+                      agents={
+                        myAgents?.agents
+                          .map((agent) => ({
+                            name: agent.agent_name,
+                            id: agent.agent_id,
+                            version: agent.agent_version,
+                            lastEdited: agent.last_edited,
+                            imageSrc:
+                              agent.agent_image ||
+                              "https://picsum.photos/300/200",
+                          }))
+                          .sort(
+                            (a, b) =>
+                              new Date(b.lastEdited).getTime() -
+                              new Date(a.lastEdited).getTime(),
+                          ) || []
+                      }
+                      onSelect={handleAgentSelect}
+                      onCancel={handleClose}
+                      onNext={handleNextFromSelect}
+                      onClose={handleClose}
+                      onOpenBuilder={() => router.push("/build")}
+                      onListScroll={handleScroll}
+                    />
+                    {loadingMore && (
+                      <div className="flex items-center justify-center p-4">
+                        <LoadingSpinner className="size-6" />
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           </div>

@@ -20,6 +20,7 @@ interface PublishAgentSelectProps {
   onNext: (agentId: string, agentVersion: number) => void;
   onClose: () => void;
   onOpenBuilder: () => void;
+  onListScroll?: (e: React.UIEvent<HTMLDivElement>) => void;
 }
 
 export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
@@ -29,6 +30,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
   onNext,
   onClose,
   onOpenBuilder,
+  onListScroll,
 }) => {
   const [selectedAgentId, setSelectedAgentId] = React.useState<string | null>(
     null,
@@ -93,9 +95,11 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
           <div className="flex-grow overflow-hidden p-4 sm:p-6">
             <h3 className="sr-only">List of agents</h3>
             <div
-              className="h-[300px] overflow-y-auto pr-2 sm:h-[400px] md:h-[500px]"
+              className="h-[300px] overflow-y-auto overscroll-contain pr-2 sm:h-[400px] md:h-[500px]"
               role="region"
               aria-labelledby="agentListHeading"
+              onScroll={onListScroll}
+              onWheel={(e) => e.stopPropagation()}
             >
               <div id="agentListHeading" className="sr-only">
                 Scrollable list of agents
