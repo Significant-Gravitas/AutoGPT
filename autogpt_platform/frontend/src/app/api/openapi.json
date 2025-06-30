@@ -186,14 +186,16 @@
                 "oneOf": [
                   { "$ref": "#/components/schemas/OAuth2Credentials" },
                   { "$ref": "#/components/schemas/APIKeyCredentials" },
-                  { "$ref": "#/components/schemas/UserPasswordCredentials" }
+                  { "$ref": "#/components/schemas/UserPasswordCredentials" },
+                  { "$ref": "#/components/schemas/HostScopedCredentials-Input" }
                 ],
                 "discriminator": {
                   "propertyName": "type",
                   "mapping": {
                     "oauth2": "#/components/schemas/OAuth2Credentials",
                     "api_key": "#/components/schemas/APIKeyCredentials",
-                    "user_password": "#/components/schemas/UserPasswordCredentials"
+                    "user_password": "#/components/schemas/UserPasswordCredentials",
+                    "host_scoped": "#/components/schemas/HostScopedCredentials-Input"
                   }
                 },
                 "title": "Credentials"
@@ -210,14 +212,18 @@
                   "oneOf": [
                     { "$ref": "#/components/schemas/OAuth2Credentials" },
                     { "$ref": "#/components/schemas/APIKeyCredentials" },
-                    { "$ref": "#/components/schemas/UserPasswordCredentials" }
+                    { "$ref": "#/components/schemas/UserPasswordCredentials" },
+                    {
+                      "$ref": "#/components/schemas/HostScopedCredentials-Output"
+                    }
                   ],
                   "discriminator": {
                     "propertyName": "type",
                     "mapping": {
                       "oauth2": "#/components/schemas/OAuth2Credentials",
                       "api_key": "#/components/schemas/APIKeyCredentials",
-                      "user_password": "#/components/schemas/UserPasswordCredentials"
+                      "user_password": "#/components/schemas/UserPasswordCredentials",
+                      "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
                     }
                   },
                   "title": "Response Postv1Createcredentials"
@@ -270,14 +276,18 @@
                   "oneOf": [
                     { "$ref": "#/components/schemas/OAuth2Credentials" },
                     { "$ref": "#/components/schemas/APIKeyCredentials" },
-                    { "$ref": "#/components/schemas/UserPasswordCredentials" }
+                    { "$ref": "#/components/schemas/UserPasswordCredentials" },
+                    {
+                      "$ref": "#/components/schemas/HostScopedCredentials-Output"
+                    }
                   ],
                   "discriminator": {
                     "propertyName": "type",
                     "mapping": {
                       "oauth2": "#/components/schemas/OAuth2Credentials",
                       "api_key": "#/components/schemas/APIKeyCredentials",
-                      "user_password": "#/components/schemas/UserPasswordCredentials"
+                      "user_password": "#/components/schemas/UserPasswordCredentials",
+                      "host_scoped": "#/components/schemas/HostScopedCredentials-Output"
                     }
                   },
                   "title": "Response Getv1Getcredential"
@@ -434,9 +444,7 @@
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Body_postV1LogRawMetric"
-              }
+              "schema": { "$ref": "#/components/schemas/LogRawMetricRequest" }
             }
           },
           "required": true
@@ -3797,16 +3805,6 @@
         "required": ["type", "data", "data_index"],
         "title": "Body_postV1LogRawAnalytics"
       },
-      "Body_postV1LogRawMetric": {
-        "properties": {
-          "metric_name": { "type": "string", "title": "Metric Name" },
-          "metric_value": { "type": "number", "title": "Metric Value" },
-          "data_string": { "type": "string", "title": "Data String" }
-        },
-        "type": "object",
-        "required": ["metric_name", "metric_value", "data_string"],
-        "title": "Body_postV1LogRawMetric"
-      },
       "Body_postV2Add_credits_to_user": {
         "properties": {
           "user_id": { "type": "string", "title": "User Id" },
@@ -4019,7 +4017,7 @@
           "provider": { "$ref": "#/components/schemas/ProviderName" },
           "type": {
             "type": "string",
-            "enum": ["api_key", "oauth2", "user_password"],
+            "enum": ["api_key", "oauth2", "user_password", "host_scoped"],
             "title": "Type"
           }
         },
@@ -4035,7 +4033,7 @@
           "provider": { "type": "string", "title": "Provider" },
           "type": {
             "type": "string",
-            "enum": ["api_key", "oauth2", "user_password"],
+            "enum": ["api_key", "oauth2", "user_password", "host_scoped"],
             "title": "Type"
           },
           "title": {
@@ -4052,6 +4050,11 @@
           "username": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Username"
+          },
+          "host": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Host",
+            "description": "Host pattern for host-scoped credentials"
           }
         },
         "type": "object",
@@ -4393,6 +4396,70 @@
         "type": "object",
         "title": "HTTPValidationError"
       },
+      "HostScopedCredentials-Input": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "provider": { "type": "string", "title": "Provider" },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
+          },
+          "type": {
+            "type": "string",
+            "const": "host_scoped",
+            "title": "Type",
+            "default": "host_scoped"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host",
+            "description": "The host/URI pattern to match against request URLs"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string",
+              "format": "password",
+              "writeOnly": true
+            },
+            "type": "object",
+            "title": "Headers",
+            "description": "Key-value header map to add to matching requests"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "host"],
+        "title": "HostScopedCredentials"
+      },
+      "HostScopedCredentials-Output": {
+        "properties": {
+          "id": { "type": "string", "title": "Id" },
+          "provider": { "type": "string", "title": "Provider" },
+          "title": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Title"
+          },
+          "type": {
+            "type": "string",
+            "const": "host_scoped",
+            "title": "Type",
+            "default": "host_scoped"
+          },
+          "host": {
+            "type": "string",
+            "title": "Host",
+            "description": "The host/URI pattern to match against request URLs"
+          },
+          "headers": {
+            "additionalProperties": { "type": "string" },
+            "type": "object",
+            "title": "Headers",
+            "description": "Key-value header map to add to matching requests"
+          }
+        },
+        "type": "object",
+        "required": ["provider", "host"],
+        "title": "HostScopedCredentials"
+      },
       "LibraryAgent": {
         "properties": {
           "id": { "type": "string", "title": "Id" },
@@ -4711,6 +4778,24 @@
         "type": "object",
         "required": ["source_id", "sink_id", "source_name", "sink_name"],
         "title": "Link"
+      },
+      "LogRawMetricRequest": {
+        "properties": {
+          "metric_name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Metric Name"
+          },
+          "metric_value": { "type": "number", "title": "Metric Value" },
+          "data_string": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Data String"
+          }
+        },
+        "type": "object",
+        "required": ["metric_name", "metric_value", "data_string"],
+        "title": "LogRawMetricRequest"
       },
       "LoginResponse": {
         "properties": {
@@ -5459,6 +5544,7 @@
           "google",
           "google_maps",
           "groq",
+          "http",
           "hubspot",
           "ideogram",
           "jina",
