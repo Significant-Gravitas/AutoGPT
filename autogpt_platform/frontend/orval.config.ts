@@ -31,6 +31,14 @@ export default defineConfig({
           useMutation: true,
           // Will add more as their use cases arise
         },
+        operations: {
+          "getV2List library agents": {
+            query: {
+              useInfinite: true,
+              useInfiniteQueryParam: "page",
+            },
+          },
+        },
       },
     },
     hooks: {
