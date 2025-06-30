@@ -46,6 +46,8 @@ class LibraryAgent(pydantic.BaseModel):
     status: LibraryAgentStatus
 
     updated_at: datetime.datetime
+    # Most recent time this agent was executed
+    last_executed_at: Optional[datetime.datetime] = None
 
     name: str
     description: str
@@ -105,6 +107,10 @@ class LibraryAgent(pydantic.BaseModel):
         status = status_result.status
         new_output = status_result.new_output
 
+        last_executed_at = None
+        if executions:
+            last_executed_at = max(exec.createdAt for exec in executions)
+
         # Check if user can access the graph
         can_access_graph = agent.AgentGraph.userId == agent.userId
 
@@ -120,6 +126,7 @@ class LibraryAgent(pydantic.BaseModel):
             creator_image_url=creator_image_url,
             status=status,
             updated_at=updated_at,
+            last_executed_at=last_executed_at,
             name=graph.name,
             description=graph.description,
             input_schema=graph.input_schema,
@@ -314,6 +321,7 @@ class LibraryAgentSort(str, Enum):
 
     CREATED_AT = "createdAt"
     UPDATED_AT = "updatedAt"
+    LAST_EXECUTED_AT = "lastExecutedAt"
 
 
 class LibraryAgentUpdateRequest(pydantic.BaseModel):

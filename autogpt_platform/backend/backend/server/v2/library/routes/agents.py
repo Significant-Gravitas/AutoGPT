@@ -37,7 +37,7 @@ async def list_library_agents(
         None, description="Search term to filter agents"
     ),
     sort_by: library_model.LibraryAgentSort = Query(
-        library_model.LibraryAgentSort.UPDATED_AT,
+        library_model.LibraryAgentSort.LAST_EXECUTED_AT,
         description="Criteria to sort results by",
     ),
     page: int = Query(

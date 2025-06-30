@@ -1,3 +1,4 @@
+import datetime
 import logging
 from typing import Literal, Optional
 
@@ -31,7 +32,7 @@ integration_creds_manager = IntegrationCredentialsManager()
 async def list_library_agents(
     user_id: str,
     search_term: Optional[str] = None,
-    sort_by: library_model.LibraryAgentSort = library_model.LibraryAgentSort.UPDATED_AT,
+    sort_by: library_model.LibraryAgentSort = library_model.LibraryAgentSort.LAST_EXECUTED_AT,
     page: int = 1,
     page_size: int = 50,
 ) -> library_model.LibraryAgentResponse:
@@ -97,16 +98,23 @@ async def list_library_agents(
         order_by = {"updatedAt": "desc"}
 
     try:
-        library_agents = await prisma.models.LibraryAgent.prisma().find_many(
-            where=where_clause,
-            include=library_agent_include(user_id),
-            order=order_by,
-            skip=(page - 1) * page_size,
-            take=page_size,
-        )
-        agent_count = await prisma.models.LibraryAgent.prisma().count(
-            where=where_clause
-        )
+        if sort_by == library_model.LibraryAgentSort.LAST_EXECUTED_AT:
+            library_agents = await prisma.models.LibraryAgent.prisma().find_many(
+                where=where_clause,
+                include=library_agent_include(user_id),
+            )
+            agent_count = len(library_agents)
+        else:
+            library_agents = await prisma.models.LibraryAgent.prisma().find_many(
+                where=where_clause,
+                include=library_agent_include(user_id),
+                order=order_by,
+                skip=(page - 1) * page_size,
+                take=page_size,
+            )
+            agent_count = await prisma.models.LibraryAgent.prisma().count(
+                where=where_clause
+            )
 
         logger.debug(
             f"Retrieved {len(library_agents)} library agents for user #{user_id}"
@@ -126,7 +134,15 @@ async def list_library_agents(
                 )
                 continue
 
-        # Return the response with only valid agents
+        if sort_by == library_model.LibraryAgentSort.LAST_EXECUTED_AT:
+            valid_library_agents.sort(
+                key=lambda a: a.last_executed_at
+                or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc),
+                reverse=True,
+            )
+            start = (page - 1) * page_size
+            valid_library_agents = valid_library_agents[start : start + page_size]
+
         return library_model.LibraryAgentResponse(
             agents=valid_library_agents,
             pagination=backend.server.model.Pagination(
