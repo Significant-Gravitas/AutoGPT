@@ -1,6 +1,6 @@
 // import LibraryNotificationDropdown from "./library-notification-dropdown";
-import LibraryUploadAgentDialog from "./library-upload-agent-dialog";
-import LibrarySearchBar from "./library-search-bar";
+import LibraryUploadAgentDialog from "../LibraryUploadAgentDialog/LibraryUploadAgentDialog";
+import LibrarySearchBar from "../LibrarySearchBar/LibrarySearchBar";
 
 type LibraryActionHeaderProps = Record<string, never>;
 
