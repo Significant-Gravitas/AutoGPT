@@ -6,6 +6,8 @@ from typing import Optional
 import click
 from forge.logging.config import LogFormatName
 
+LOG_FORMAT_CHOICES = [i.value for i in LogFormatName]
+
 from .telemetry import setup_telemetry
 
 
@@ -100,7 +102,7 @@ def cli(ctx: click.Context):
         " Also implies --log-file-format, unless it is specified explicitly."
         " Using the 'structured_google_cloud' format disables log file output."
     ),
-    type=click.Choice([i.value for i in LogFormatName]),
+    type=click.Choice(LOG_FORMAT_CHOICES),
 )
 @click.option(
     "--log-file-format",
@@ -108,7 +110,7 @@ def cli(ctx: click.Context):
         "Override the format used for the log file output."
         " Defaults to the application's global --log-format."
     ),
-    type=click.Choice([i.value for i in LogFormatName]),
+    type=click.Choice(LOG_FORMAT_CHOICES),
 )
 @click.option(
     "--component-config-file",
@@ -154,9 +156,9 @@ def run(
         install_plugin_deps=install_plugin_deps,
         override_ai_name=ai_name,
         override_ai_role=ai_role,
-        resources=list(resource),
-        constraints=list(constraint),
-        best_practices=list(best_practice),
+        resources=resource,
+        constraints=constraint,
+        best_practices=best_practice,
         override_directives=override_directives,
         component_config_file=component_config_file,
     )
@@ -179,7 +181,7 @@ def run(
         " Also implies --log-file-format, unless it is specified explicitly."
         " Using the 'structured_google_cloud' format disables log file output."
     ),
-    type=click.Choice([i.value for i in LogFormatName]),
+    type=click.Choice(LOG_FORMAT_CHOICES),
 )
 @click.option(
     "--log-file-format",
@@ -187,7 +189,7 @@ def run(
         "Override the format used for the log file output."
         " Defaults to the application's global --log-format."
     ),
-    type=click.Choice([i.value for i in LogFormatName]),
+    type=click.Choice(LOG_FORMAT_CHOICES),
 )
 def serve(
     install_plugin_deps: bool,

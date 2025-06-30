@@ -70,9 +70,9 @@ async def run_auto_gpt(
     install_plugin_deps: bool = False,
     override_ai_name: Optional[str] = None,
     override_ai_role: Optional[str] = None,
-    resources: Optional[list[str]] = None,
-    constraints: Optional[list[str]] = None,
-    best_practices: Optional[list[str]] = None,
+    resources: Optional[tuple[str]] = None,
+    constraints: Optional[tuple[str]] = None,
+    best_practices: Optional[tuple[str]] = None,
     override_directives: bool = False,
     component_config_file: Optional[Path] = None,
 ):
@@ -489,8 +489,10 @@ async def run_interaction_loop(
         if stop_reason:
             raise stop_reason
 
+    import asyncio
+
     # Set up an interrupt signal for the agent.
-    signal.signal(signal.SIGINT, graceful_agent_interrupt)
+    asyncio.get_event_loop().add_signal_handler(signal.SIGINT, graceful_agent_interrupt)
 
     #########################
     # Application Main Loop #
@@ -692,6 +694,7 @@ async def get_user_feedback(
         # Parse user input
         if console_input.lower().strip() == config.authorise_key:
             user_feedback = UserFeedback.AUTHORIZE
+            new_cycles_remaining = None
         elif console_input.lower().strip() == "":
             logger.warning("Invalid input format.")
         elif console_input.lower().startswith(f"{config.authorise_key} -"):
@@ -725,7 +728,7 @@ def print_assistant_thoughts(
         if isinstance(thoughts, AssistantThoughts)
         else thoughts.summary()
         if isinstance(thoughts, ModelWithSummary)
-        else thoughts
+        else str(thoughts)
     )
     print_attribute(
         f"{ai_name.upper()} THOUGHTS", thoughts_text, title_color=Fore.YELLOW
@@ -735,22 +738,11 @@ def print_assistant_thoughts(
         print_attribute(
             "REASONING", remove_ansi_escape(thoughts.reasoning), title_color=Fore.YELLOW
         )
-        if assistant_thoughts_plan := remove_ansi_escape(
-            "\n".join(f"- {p}" for p in thoughts.plan)
-        ):
+        if thoughts.plan:
             print_attribute("PLAN", "", title_color=Fore.YELLOW)
-            # If it's a list, join it into a string
-            if isinstance(assistant_thoughts_plan, list):
-                assistant_thoughts_plan = "\n".join(assistant_thoughts_plan)
-            elif isinstance(assistant_thoughts_plan, dict):
-                assistant_thoughts_plan = str(assistant_thoughts_plan)
-
-            # Split the input_string using the newline character and dashes
-            lines = assistant_thoughts_plan.split("\n")
-            for line in lines:
-                line = line.lstrip("- ")
+            for p in thoughts.plan:
                 logger.info(
-                    line.strip(), extra={"title": "- ", "title_color": Fore.GREEN}
+                    remove_ansi_escape(p).strip(), extra={"title": "- ", "title_color": Fore.GREEN}
                 )
         print_attribute(
             "CRITICISM",
@@ -770,5 +762,7 @@ def print_assistant_thoughts(
         speak(thoughts_text)
 
 
+import re
+
 def remove_ansi_escape(s: str) -> str:
-    return s.replace("\x1B", "")
+    return re.sub(r"\x1B\[[0-?]*[ -/]*[@-~]", "", s)
