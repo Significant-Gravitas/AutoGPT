@@ -5142,6 +5142,7 @@
           "AGENT_INPUT",
           "CONGRATS",
           "GET_RESULTS",
+          "RUN_AGENTS",
           "MARKETPLACE_VISIT",
           "MARKETPLACE_ADD_AGENT",
           "MARKETPLACE_RUN_AGENT",
