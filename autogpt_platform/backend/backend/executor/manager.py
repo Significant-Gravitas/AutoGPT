@@ -421,7 +421,7 @@ class Executor:
     """
 
     @classmethod
-    @async_error_logged
+    @async_error_logged(swallow=True)
     async def on_node_execution(
         cls,
         node_exec: NodeExecutionEntry,
@@ -529,7 +529,7 @@ class Executor:
         logger.info(f"[GraphExecutor] {cls.pid} started")
 
     @classmethod
-    @error_logged
+    @error_logged(swallow=False)
     def on_graph_execution(
         cls, graph_exec: GraphExecutionEntry, cancel: threading.Event
     ):
@@ -580,6 +580,15 @@ class Executor:
         exec_stats.walltime += timing_info.wall_time
         exec_stats.cputime += timing_info.cpu_time
         exec_stats.error = str(error) if error else exec_stats.error
+
+        if status not in {
+            ExecutionStatus.COMPLETED,
+            ExecutionStatus.TERMINATED,
+            ExecutionStatus.FAILED,
+        }:
+            raise RuntimeError(
+                f"Graph Execution #{graph_exec.graph_exec_id} ended with unexpected status {status}"
+            )
 
         if graph_exec_result := db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
@@ -684,7 +693,6 @@ class Executor:
 
             if _graph_exec := db_client.update_graph_execution_stats(
                 graph_exec_id=graph_exec.graph_exec_id,
-                status=execution_status,
                 stats=execution_stats,
             ):
                 send_execution_update(_graph_exec)
