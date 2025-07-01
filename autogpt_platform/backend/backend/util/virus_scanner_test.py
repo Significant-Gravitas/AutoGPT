@@ -1,5 +1,4 @@
 import asyncio
-import time
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -22,6 +21,7 @@ class TestVirusScannerService:
             clamav_service_port=3310,
             clamav_service_enabled=True,
             max_scan_size=10 * 1024 * 1024,  # 10MB for testing
+            mark_failed_scans_as_clean=False,  # For testing, failed scans should be clean
         )
 
     @pytest.fixture
@@ -54,25 +54,51 @@ class TestVirusScannerService:
         # Create content larger than max_scan_size
         large_content = b"x" * (scanner.settings.max_scan_size + 1)
 
-        # Large files are allowed but marked as clean with a warning
+        # Large files behavior depends on mark_failed_scans_as_clean setting
         result = await scanner.scan_file(large_content, filename="large_file.txt")
-        assert result.is_clean is True
+        assert result.is_clean == scanner.settings.mark_failed_scans_as_clean
         assert result.file_size == len(large_content)
         assert result.scan_time_ms == 0
+
+    @pytest.mark.asyncio
+    async def test_scan_file_too_large_both_configurations(self):
+        """Test large file handling with both mark_failed_scans_as_clean configurations"""
+        large_content = b"x" * (10 * 1024 * 1024 + 1)  # Larger than 10MB
+
+        # Test with mark_failed_scans_as_clean=True
+        settings_clean = VirusScannerSettings(
+            max_scan_size=10 * 1024 * 1024, mark_failed_scans_as_clean=True
+        )
+        scanner_clean = VirusScannerService(settings_clean)
+        result_clean = await scanner_clean.scan_file(
+            large_content, filename="large_file.txt"
+        )
+        assert result_clean.is_clean is True
+
+        # Test with mark_failed_scans_as_clean=False
+        settings_dirty = VirusScannerSettings(
+            max_scan_size=10 * 1024 * 1024, mark_failed_scans_as_clean=False
+        )
+        scanner_dirty = VirusScannerService(settings_dirty)
+        result_dirty = await scanner_dirty.scan_file(
+            large_content, filename="large_file.txt"
+        )
+        assert result_dirty.is_clean is False
 
     # Note: ping method was removed from current implementation
 
     @pytest.mark.asyncio
-    @patch("pyclamd.ClamdNetworkSocket")
-    async def test_scan_clean_file(self, mock_clamav_class, scanner):
-        def mock_scan_stream(_):
-            time.sleep(0.001)  # Small delay to ensure timing > 0
+    async def test_scan_clean_file(self, scanner):
+        async def mock_instream(_):
+            await asyncio.sleep(0.001)  # Small delay to ensure timing > 0
             return None  # No virus detected
 
         mock_client = Mock()
-        mock_client.ping.return_value = True
-        mock_client.scan_stream = mock_scan_stream
-        mock_clamav_class.return_value = mock_client
+        mock_client.ping = AsyncMock(return_value=True)
+        mock_client.instream = AsyncMock(side_effect=mock_instream)
+
+        # Replace the client instance that was created in the constructor
+        scanner._client = mock_client
 
         content = b"clean file content"
         result = await scanner.scan_file(content, filename="clean.txt")
@@ -83,16 +109,17 @@ class TestVirusScannerService:
         assert result.scan_time_ms > 0
 
     @pytest.mark.asyncio
-    @patch("pyclamd.ClamdNetworkSocket")
-    async def test_scan_infected_file(self, mock_clamav_class, scanner):
-        def mock_scan_stream(_):
-            time.sleep(0.001)  # Small delay to ensure timing > 0
+    async def test_scan_infected_file(self, scanner):
+        async def mock_instream(_):
+            await asyncio.sleep(0.001)  # Small delay to ensure timing > 0
             return {"stream": ("FOUND", "Win.Test.EICAR_HDB-1")}
 
         mock_client = Mock()
-        mock_client.ping.return_value = True
-        mock_client.scan_stream = mock_scan_stream
-        mock_clamav_class.return_value = mock_client
+        mock_client.ping = AsyncMock(return_value=True)
+        mock_client.instream = AsyncMock(side_effect=mock_instream)
+
+        # Replace the client instance that was created in the constructor
+        scanner._client = mock_client
 
         content = b"infected file content"
         result = await scanner.scan_file(content, filename="infected.txt")
@@ -103,11 +130,12 @@ class TestVirusScannerService:
         assert result.scan_time_ms > 0
 
     @pytest.mark.asyncio
-    @patch("pyclamd.ClamdNetworkSocket")
-    async def test_scan_clamav_unavailable_fail_safe(self, mock_clamav_class, scanner):
+    async def test_scan_clamav_unavailable_fail_safe(self, scanner):
         mock_client = Mock()
-        mock_client.ping.return_value = False
-        mock_clamav_class.return_value = mock_client
+        mock_client.ping = AsyncMock(return_value=False)
+
+        # Replace the client instance that was created in the constructor
+        scanner._client = mock_client
 
         content = b"test content"
 
@@ -115,12 +143,13 @@ class TestVirusScannerService:
             await scanner.scan_file(content, filename="test.txt")
 
     @pytest.mark.asyncio
-    @patch("pyclamd.ClamdNetworkSocket")
-    async def test_scan_error_fail_safe(self, mock_clamav_class, scanner):
+    async def test_scan_error_fail_safe(self, scanner):
         mock_client = Mock()
-        mock_client.ping.return_value = True
-        mock_client.scan_stream.side_effect = Exception("Scanning error")
-        mock_clamav_class.return_value = mock_client
+        mock_client.ping = AsyncMock(return_value=True)
+        mock_client.instream = AsyncMock(side_effect=Exception("Scanning error"))
+
+        # Replace the client instance that was created in the constructor
+        scanner._client = mock_client
 
         content = b"test content"
 
@@ -150,16 +179,17 @@ class TestVirusScannerService:
         assert result.file_size == 1024
 
     @pytest.mark.asyncio
-    @patch("pyclamd.ClamdNetworkSocket")
-    async def test_concurrent_scans(self, mock_clamav_class, scanner):
-        def mock_scan_stream(_):
-            time.sleep(0.001)  # Small delay to ensure timing > 0
+    async def test_concurrent_scans(self, scanner):
+        async def mock_instream(_):
+            await asyncio.sleep(0.001)  # Small delay to ensure timing > 0
             return None
 
         mock_client = Mock()
-        mock_client.ping.return_value = True
-        mock_client.scan_stream = mock_scan_stream
-        mock_clamav_class.return_value = mock_client
+        mock_client.ping = AsyncMock(return_value=True)
+        mock_client.instream = AsyncMock(side_effect=mock_instream)
+
+        # Replace the client instance that was created in the constructor
+        scanner._client = mock_client
 
         content1 = b"file1 content"
         content2 = b"file2 content"
