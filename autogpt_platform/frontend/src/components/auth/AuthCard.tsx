@@ -19,17 +19,14 @@ AuthCard.BottomText = function BottomText({
     <div
       className={cn(
         className,
-        "mt-8 inline-flex w-full items-center justify-center",
+        "mt-8 inline-flex w-full items-center justify-center gap-1",
       )}
     >
-      <span className="text-sm font-medium leading-normal text-slate-950">
+      <Text variant="body-medium" className="text-slate-950">
         {text}
-      </span>
+      </Text>
       {link ? (
-        <Link
-          href={link.href}
-          className="ml-1 text-sm font-medium leading-normal text-slate-950 underline"
-        >
+        <Link href={link.href} variant="secondary">
           {link.text}
         </Link>
       ) : null}

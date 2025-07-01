@@ -1,6 +1,7 @@
 "use client";
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
+import { Link } from "@/components/atoms/Link/Link";
 import { AuthCard } from "@/components/auth/AuthCard";
 import AuthFeedback from "@/components/auth/AuthFeedback";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
@@ -61,7 +62,7 @@ export default function LoginPage() {
           </>
         ) : null}
         <Form {...form}>
-          <form onSubmit={handleSubmit} className="flex w-full flex-col gap-6">
+          <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
             <FormField
               control={form.control}
               name="email"
@@ -87,6 +88,11 @@ export default function LoginPage() {
                   type="password"
                   autoComplete="current-password"
                   error={form.formState.errors.password?.message}
+                  hint={
+                    <Link variant="secondary" href="/reset-password">
+                      Forgot password?
+                    </Link>
+                  }
                   {...field}
                 />
               )}

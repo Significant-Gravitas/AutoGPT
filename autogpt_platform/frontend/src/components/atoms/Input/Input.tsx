@@ -1,5 +1,6 @@
 import { Input as BaseInput, type InputProps } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { ReactNode } from "react";
 import { Text } from "../Text/Text";
 import { useInput } from "./useInput";
 
@@ -8,6 +9,7 @@ export interface TextFieldProps extends InputProps {
   hideLabel?: boolean;
   decimalCount?: number; // Only used for type="amount"
   error?: string;
+  hint?: ReactNode;
 }
 
 export function Input({
@@ -16,6 +18,7 @@ export function Input({
   placeholder,
   hideLabel = false,
   decimalCount,
+  hint,
   error,
   ...props
 }: TextFieldProps) {
@@ -48,13 +51,19 @@ export function Input({
   );
 
   const inputWithError = (
-    <div className="flex flex-col gap-1">
+    <div className="relative mb-6">
       {input}
-      {error && (
-        <Text variant="small-medium" as="span" className="!text-red-500">
-          {error}
-        </Text>
-      )}
+      <Text
+        variant="small-medium"
+        as="span"
+        className={cn(
+          "absolute left-0 top-full mt-1 !text-red-500 transition-opacity duration-200",
+          error ? "opacity-100" : "opacity-0",
+        )}
+      >
+        {error || " "}{" "}
+        {/* Always render with space to maintain consistent height calculation */}
+      </Text>
     </div>
   );
 
@@ -62,9 +71,12 @@ export function Input({
     inputWithError
   ) : (
     <label className="flex flex-col gap-2">
-      <Text variant="body-medium" as="span" className="text-black">
-        {label}
-      </Text>
+      <div className="flex items-center justify-between">
+        <Text variant="body-medium" as="span" className="text-black">
+          {label}
+        </Text>
+        {hint}
+      </div>
       {inputWithError}
     </label>
   );

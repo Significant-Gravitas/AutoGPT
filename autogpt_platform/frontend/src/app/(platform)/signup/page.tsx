@@ -2,6 +2,8 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
+import { Link } from "@/components/atoms/Link/Link";
+import { Text } from "@/components/atoms/Text/Text";
 import { AuthCard } from "@/components/auth/AuthCard";
 import AuthFeedback from "@/components/auth/AuthFeedback";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
@@ -15,11 +17,10 @@ import {
   FormField,
   FormItem,
   FormLabel,
-  FormMessage,
 } from "@/components/ui/form";
-import LoadingBox from "@/components/ui/loading";
 import { getBehaveAs } from "@/lib/utils";
-import Link from "next/link";
+import { WarningOctagonIcon } from "@phosphor-icons/react/dist/ssr";
+import { LoadingSignup } from "./components/LoadingSignup";
 import { useSignupPage } from "./useSignupPage";
 
 export default function SignupPage() {
@@ -41,7 +42,7 @@ export default function SignupPage() {
   } = useSignupPage();
 
   if (isUserLoading || isLoggedIn) {
-    return <LoadingBox className="h-[80vh]" />;
+    return <LoadingSignup />;
   }
 
   if (!isSupabaseAvailable) {
@@ -51,6 +52,10 @@ export default function SignupPage() {
       </div>
     );
   }
+
+  const confirmPasswordError = form.formState.errors.confirmPassword?.message;
+  const withConfirmPassword = form.getValues("confirmPassword").length > 0;
+  const termsError = form.formState.errors.agreeToTerms?.message;
 
   return (
     <div className="flex h-full min-h-[85vh] flex-col items-center justify-center">
@@ -73,7 +78,7 @@ export default function SignupPage() {
         ) : null}
 
         <Form {...form}>
-          <form onSubmit={handleSubmit} className="flex w-full flex-col gap-6">
+          <form onSubmit={handleSubmit} className="flex w-full flex-col gap-1">
             <FormField
               control={form.control}
               name="email"
@@ -112,13 +117,72 @@ export default function SignupPage() {
                     placeholder="********"
                     type="password"
                     autoComplete="new-password"
-                    error={form.formState.errors.confirmPassword?.message}
+                    error={confirmPasswordError}
                     {...field}
                   />
-                  <p className="text-sm font-normal leading-tight text-slate-500">
-                    Password needs to be at least 12 characters long
-                  </p>
+                  {!confirmPasswordError && !withConfirmPassword ? (
+                    <Text
+                      variant="small"
+                      className="relative -top-7 !text-slate-500"
+                    >
+                      Password needs to be at least 12 characters long
+                    </Text>
+                  ) : null}
                 </div>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="agreeToTerms"
+              render={({ field }) => (
+                <>
+                  <FormItem className="mt-6 flex w-full flex-row items-center -space-y-1 space-x-2">
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        className="relative bottom-px"
+                      />
+                    </FormControl>
+                    <div>
+                      <FormLabel className="flex items-center gap-1">
+                        <Text
+                          variant="body-medium"
+                          className="inline-block text-slate-950"
+                        >
+                          I agree to the
+                        </Text>
+                        <Link
+                          href="https://auto-gpt.notion.site/Terms-of-Use-11400ef5bece80d0b087d7831c5fd6bf"
+                          variant="secondary"
+                        >
+                          Terms of Use
+                        </Link>
+                        <Text
+                          variant="body-medium"
+                          className="inline-block text-slate-950"
+                        >
+                          and
+                        </Text>
+                        <Link
+                          href="https://www.notion.so/auto-gpt/Privacy-Policy-ab11c9c20dbd4de1a15dcffe84d77984"
+                          variant="secondary"
+                        >
+                          Privacy Policy
+                        </Link>
+                      </FormLabel>
+                    </div>
+                  </FormItem>
+                  {termsError ? (
+                    <div className="flex items-center gap-2">
+                      <WarningOctagonIcon className="h-4 w-4 text-red-500" />
+                      <Text variant="small-medium" className="!text-red-500">
+                        {termsError}
+                      </Text>
+                    </div>
+                  ) : null}
+                </>
               )}
             />
 
@@ -142,43 +206,6 @@ export default function SignupPage() {
             >
               Sign up
             </Button>
-            <FormField
-              control={form.control}
-              name="agreeToTerms"
-              render={({ field }) => (
-                <FormItem className="mt-6 flex flex-row items-start -space-y-1 space-x-2">
-                  <FormControl>
-                    <Checkbox
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                  <div className="">
-                    <FormLabel>
-                      <span className="mr-1 text-sm font-normal leading-normal text-slate-950">
-                        I agree to the
-                      </span>
-                      <Link
-                        href="https://auto-gpt.notion.site/Terms-of-Use-11400ef5bece80d0b087d7831c5fd6bf"
-                        className="text-sm font-normal leading-normal text-slate-950 underline"
-                      >
-                        Terms of Use
-                      </Link>
-                      <span className="mx-1 text-sm font-normal leading-normal text-slate-950">
-                        and
-                      </span>
-                      <Link
-                        href="https://www.notion.so/auto-gpt/Privacy-Policy-ab11c9c20dbd4de1a15dcffe84d77984"
-                        className="text-sm font-normal leading-normal text-slate-950 underline"
-                      >
-                        Privacy Policy
-                      </Link>
-                    </FormLabel>
-                    <FormMessage />
-                  </div>
-                </FormItem>
-              )}
-            />
           </form>
         </Form>
         <AuthFeedback

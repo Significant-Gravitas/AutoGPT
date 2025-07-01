@@ -160,7 +160,10 @@ export default function ResetPasswordPage() {
     <div className="flex h-full min-h-[85vh] flex-col items-center justify-center">
       <AuthCard title="Reset Password">
         {user ? (
-          <form onSubmit={changePasswordForm.handleSubmit(onChangePassword)}>
+          <form
+            onSubmit={changePasswordForm.handleSubmit(onChangePassword)}
+            className="flex w-full flex-col gap-1"
+          >
             <Form {...changePasswordForm}>
               <FormField
                 control={changePasswordForm.control}
@@ -222,7 +225,10 @@ export default function ResetPasswordPage() {
             </Form>
           </form>
         ) : (
-          <form onSubmit={sendEmailForm.handleSubmit(onSendEmail)}>
+          <form
+            onSubmit={sendEmailForm.handleSubmit(onSendEmail)}
+            className="flex w-full flex-col gap-1"
+          >
             <Form {...sendEmailForm}>
               <FormField
                 control={sendEmailForm.control}
