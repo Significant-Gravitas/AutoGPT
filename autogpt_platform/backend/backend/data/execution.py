@@ -588,18 +588,19 @@ async def update_graph_execution_start_time(
 
 async def update_graph_execution_stats(
     graph_exec_id: str,
-    status: ExecutionStatus,
+    status: ExecutionStatus | None = None,
     stats: GraphExecutionStats | None = None,
 ) -> GraphExecution | None:
-    update_data: AgentGraphExecutionUpdateManyMutationInput = {
-        "executionStatus": status
-    }
+    update_data: AgentGraphExecutionUpdateManyMutationInput = {}
 
     if stats:
         stats_dict = stats.model_dump()
         if isinstance(stats_dict.get("error"), Exception):
             stats_dict["error"] = str(stats_dict["error"])
         update_data["stats"] = Json(stats_dict)
+
+    if status:
+        update_data["executionStatus"] = status
 
     updated_count = await AgentGraphExecution.prisma().update_many(
         where={
