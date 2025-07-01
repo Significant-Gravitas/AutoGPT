@@ -14,24 +14,24 @@ export type As =
 
 export const variants = {
   // Headings
-  h1: "font-poppins text-5xl font-semibold leading-[56px] text-zinc-800",
-  h2: "font-poppins text-4xl font-normal leading-[52px] text-zinc-800",
-  h3: "font-poppins text-3xl font-medium leading-10 text-zinc-800",
-  h4: "font-poppins text-base font-medium leading-normal text-zinc-800",
+  h1: "font-poppins text-[2.75rem] font-semibold leading-[3.5rem] text-zinc-800",
+  h2: "font-poppins text-[2.25rem] font-normal leading-[3.25rem] text-zinc-800",
+  h3: "font-poppins text-[1.75rem] font-medium leading-[2.5rem] text-zinc-800",
+  h4: "font-poppins text-[1rem] font-medium leading-[1.5rem] text-zinc-800",
 
   // Body Text
-  lead: "font-sans text-xl font-normal leading-loose text-muted-zinc-800",
-  large: "font-sans text-base font-normal leading-normal text-zinc-800",
+  lead: "font-sans text-[1.25rem] font-normal leading-[2rem] text-zinc-800",
+  large: "font-sans text-[1rem] font-normal leading-[1.5rem] text-zinc-800",
   "large-medium":
-    "font-sans text-base font-medium leading-normal text-zinc-800",
+    "font-sans text-[1rem] font-medium leading-[1.5rem] text-zinc-800",
   "large-semibold":
-    "font-sans text-base font-semibold leading-normal text-zinc-800",
-  body: "font-sans text-sm font-normal leading-snug text-zinc-800",
+    "font-sans text-[1rem] font-semibold leading-[1.5rem] text-zinc-800",
+  body: "font-sans text-[0.875rem] font-normal leading-[1.375rem] text-zinc-800",
   "body-medium": "font-sans text-sm font-medium leading-snug text-zinc-800",
-  small: "font-sans text-xs font-normal leading-tight text-zinc-800",
-  "small-medium": "font-sans text-xs font-medium leading-tight text-zinc-800",
-  subtle:
-    "font-sans text-xs font-medium uppercase leading-tight tracking-wide text-zinc-800",
+  small:
+    "font-sans text-[0.75rem] font-normal leading-[1.125rem] text-zinc-800",
+  "small-medium":
+    "font-sans text-[0.75rem] font-medium leading-[1.125rem] text-zinc-800",
 } as const;
 
 export type Variant = keyof typeof variants;
@@ -49,5 +49,4 @@ export const variantElementMap: Record<Variant, As> = {
   "body-medium": "p",
   small: "p",
   "small-medium": "p",
-  subtle: "p",
 };

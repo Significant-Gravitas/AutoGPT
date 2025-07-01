@@ -15,7 +15,7 @@ export function GoogleOAuthButton({
   return (
     <Button
       type="button"
-      variant="primary"
+      variant="secondary"
       className="w-full gap-3"
       onClick={onClick}
       disabled={disabled}

@@ -105,7 +105,7 @@ export default function LoginPage() {
             />
 
             <Button
-              variant="secondary"
+              variant="primary"
               loading={isLoading}
               type="submit"
               className="mt-6 w-full"
