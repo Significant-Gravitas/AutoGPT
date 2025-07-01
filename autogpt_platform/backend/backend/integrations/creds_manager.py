@@ -7,7 +7,7 @@ from autogpt_libs.utils.synchronize import AsyncRedisKeyedMutex
 from redis.asyncio.lock import Lock as AsyncRedisLock
 
 from backend.data.model import Credentials, OAuth2Credentials
-from backend.data.redis import get_redis_async
+from backend.data.redis_client import get_redis_async
 from backend.integrations.credentials_store import IntegrationCredentialsStore
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName

@@ -80,8 +80,8 @@ enum OnboardingStep {
 }
 
 model UserOnboarding {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now())
+  id        String    @id @default(uuid())
+  createdAt DateTime  @default(now())
   updatedAt DateTime? @updatedAt
 
   completedSteps                OnboardingStep[] @default([])
@@ -122,7 +122,7 @@ model AgentGraph {
 
   forkedFromId      String?
   forkedFromVersion Int?
-  forkedFrom        AgentGraph? @relation("AgentGraphForks", fields: [forkedFromId, forkedFromVersion], references: [id, version])
+  forkedFrom        AgentGraph?  @relation("AgentGraphForks", fields: [forkedFromId, forkedFromVersion], references: [id, version])
   forks             AgentGraph[] @relation("AgentGraphForks")
 
   Nodes      AgentNode[]
@@ -168,6 +168,10 @@ model AgentPreset {
 
   InputPresets AgentNodeExecutionInputOutput[] @relation("AgentPresetsInputData")
   Executions   AgentGraphExecution[]
+
+  // For webhook-triggered agents: reference to the webhook that triggers the agent
+  webhookId String?
+  Webhook   IntegrationWebhook? @relation(fields: [webhookId], references: [id])
 
   isDeleted Boolean @default(false)
 
@@ -390,7 +394,7 @@ model AgentNodeExecutionInputOutput {
   id String @id @default(uuid())
 
   name String
-  data Json
+  data Json?
   time DateTime @default(now())
 
   // Prisma requires explicit back-references.
@@ -428,7 +432,8 @@ model IntegrationWebhook {
 
   providerWebhookId String // Webhook ID assigned by the provider
 
-  AgentNodes AgentNode[]
+  AgentNodes    AgentNode[]
+  AgentPresets  AgentPreset[]
 
   @@index([userId])
 }

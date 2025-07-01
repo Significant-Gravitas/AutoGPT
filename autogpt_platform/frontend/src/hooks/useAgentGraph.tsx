@@ -1073,16 +1073,21 @@ export default function useAgentGraph(
 
   // runs after saving cron expression and inputs (if exists)
   const scheduleRunner = useCallback(
-    async (cronExpression: string, inputs: InputItem[]) => {
+    async (
+      cronExpression: string,
+      inputs: InputItem[],
+      scheduleName: string,
+    ) => {
       await saveAgent();
       try {
         if (flowID) {
-          await api.createSchedule({
+          await api.createGraphExecutionSchedule({
             graph_id: flowID,
             // flowVersion is always defined here because scheduling is opened for a specific version
             graph_version: flowVersion!,
+            name: scheduleName,
             cron: cronExpression,
-            input_data: inputs.reduce(
+            inputs: inputs.reduce(
               (acc, input) => ({
                 ...acc,
                 [input.hardcodedValues.name]: input.hardcodedValues.value,

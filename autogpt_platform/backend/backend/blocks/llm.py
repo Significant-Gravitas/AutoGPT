@@ -23,6 +23,7 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util import json
 from backend.util.logging import TruncatedLogger
+from backend.util.prompt import compress_prompt, estimate_token_count
 from backend.util.text import TextFormatter
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
@@ -40,7 +41,7 @@ LLMProviderName = Literal[
 AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
 
 TEST_CREDENTIALS = APIKeyCredentials(
-    id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
+    id="769f6af7-820b-4d5d-9b7a-ab82bbc165f",
     provider="openai",
     api_key=SecretStr("mock-openai-api-key"),
     title="Mock OpenAI API key",
@@ -306,13 +307,6 @@ def convert_openai_tool_fmt_to_anthropic(
     return anthropic_tools
 
 
-def estimate_token_count(prompt_messages: list[dict]) -> int:
-    char_count = sum(len(str(msg.get("content", ""))) for msg in prompt_messages)
-    message_overhead = len(prompt_messages) * 4
-    estimated_tokens = (char_count // 4) + message_overhead
-    return int(estimated_tokens * 1.2)
-
-
 async def llm_call(
     credentials: APIKeyCredentials,
     llm_model: LlmModel,
@@ -321,7 +315,8 @@ async def llm_call(
     max_tokens: int | None,
     tools: list[dict] | None = None,
     ollama_host: str = "localhost:11434",
-    parallel_tool_calls: bool | None = None,
+    parallel_tool_calls=None,
+    compress_prompt_to_fit: bool = True,
 ) -> LLMResponse:
     """
     Make a call to a language model.
@@ -344,28 +339,31 @@ async def llm_call(
             - completion_tokens: The number of tokens used in the completion.
     """
     provider = llm_model.metadata.provider
+    context_window = llm_model.context_window
+
+    if compress_prompt_to_fit:
+        prompt = compress_prompt(
+            messages=prompt,
+            target_tokens=llm_model.context_window // 2,
+            lossy_ok=True,
+        )
 
     # Calculate available tokens based on context window and input length
     estimated_input_tokens = estimate_token_count(prompt)
-    context_window = llm_model.context_window
-    model_max_output = llm_model.max_output_tokens or 4096
+    model_max_output = llm_model.max_output_tokens or int(2**15)
     user_max = max_tokens or model_max_output
     available_tokens = max(context_window - estimated_input_tokens, 0)
-    max_tokens = max(min(available_tokens, model_max_output, user_max), 0)
+    max_tokens = max(min(available_tokens, model_max_output, user_max), 1)
 
     if provider == "openai":
         tools_param = tools if tools else openai.NOT_GIVEN
         oai_client = openai.AsyncOpenAI(api_key=credentials.api_key.get_secret_value())
         response_format = None
 
-        if llm_model in [LlmModel.O1_MINI, LlmModel.O1_PREVIEW]:
-            sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
-            usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
-            prompt = [
-                {"role": "user", "content": "\n".join(sys_messages)},
-                {"role": "user", "content": "\n".join(usr_messages)},
-            ]
-        elif json_format:
+        if llm_model.startswith("o") or parallel_tool_calls is None:
+            parallel_tool_calls = openai.NOT_GIVEN
+
+        if json_format:
             response_format = {"type": "json_object"}
 
         response = await oai_client.chat.completions.create(
@@ -374,9 +372,7 @@ async def llm_call(
             response_format=response_format,  # type: ignore
             max_completion_tokens=max_tokens,
             tools=tools_param,  # type: ignore
-            parallel_tool_calls=(
-                openai.NOT_GIVEN if parallel_tool_calls is None else parallel_tool_calls
-            ),
+            parallel_tool_calls=parallel_tool_calls,
         )
 
         if response.choices[0].message.tool_calls:
@@ -663,6 +659,11 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             description="Expected format of the response. If provided, the response will be validated against this format. "
             "The keys should be the expected fields in the response, and the values should be the description of the field.",
         )
+        list_result: bool = SchemaField(
+            title="List Result",
+            default=False,
+            description="Whether the response should be a list of objects in the expected format.",
+        )
         model: LlmModel = SchemaField(
             title="LLM Model",
             default=LlmModel.GPT4O,
@@ -694,7 +695,11 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             default=None,
             description="The maximum number of tokens to generate in the chat completion.",
         )
-
+        compress_prompt_to_fit: bool = SchemaField(
+            advanced=True,
+            default=True,
+            description="Whether to compress the prompt to fit within the model's context window.",
+        )
         ollama_host: str = SchemaField(
             advanced=True,
             default="localhost:11434",
@@ -702,7 +707,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         )
 
     class Output(BlockSchema):
-        response: dict[str, Any] = SchemaField(
+        response: dict[str, Any] | list[dict[str, Any]] = SchemaField(
             description="The response object generated by the language model."
         )
         prompt: list = SchemaField(description="The prompt sent to the language model.")
@@ -752,6 +757,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         llm_model: LlmModel,
         prompt: list[dict],
         json_format: bool,
+        compress_prompt_to_fit: bool,
         max_tokens: int | None,
         tools: list[dict] | None = None,
         ollama_host: str = "localhost:11434",
@@ -769,6 +775,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             max_tokens=max_tokens,
             tools=tools,
             ollama_host=ollama_host,
+            compress_prompt_to_fit=compress_prompt_to_fit,
         )
 
     async def run(
@@ -793,13 +800,22 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             expected_format = [
                 f'"{k}": "{v}"' for k, v in input_data.expected_format.items()
             ]
-            format_prompt = ",\n  ".join(expected_format)
+            if input_data.list_result:
+                format_prompt = (
+                    f'"results": [\n  {{\n  {", ".join(expected_format)}\n  }}\n]'
+                )
+            else:
+                format_prompt = "\n  ".join(expected_format)
+
             sys_prompt = trim_prompt(
                 f"""
                   |Reply strictly only in the following JSON format:
                   |{{
                   |  {format_prompt}
                   |}}
+                  |
+                  |Ensure the response is valid JSON. Do not include any additional text outside of the JSON.
+                  |If you cannot provide all the keys, provide an empty string for the values you cannot answer.
                 """
             )
             prompt.append({"role": "system", "content": sys_prompt})
@@ -807,19 +823,18 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         if input_data.prompt:
             prompt.append({"role": "user", "content": input_data.prompt})
 
-        def parse_response(resp: str) -> tuple[dict[str, Any], str | None]:
+        def validate_response(parsed: object) -> str | None:
             try:
-                parsed = json.loads(resp)
                 if not isinstance(parsed, dict):
-                    return {}, f"Expected a dictionary, but got {type(parsed)}"
+                    return f"Expected a dictionary, but got {type(parsed)}"
                 miss_keys = set(input_data.expected_format.keys()) - set(parsed.keys())
                 if miss_keys:
-                    return parsed, f"Missing keys: {miss_keys}"
-                return parsed, None
+                    return f"Missing keys: {miss_keys}"
+                return None
             except JSONDecodeError as e:
-                return {}, f"JSON decode error: {e}"
+                return f"JSON decode error: {e}"
 
-        logger.info(f"LLM request: {prompt}")
+        logger.debug(f"LLM request: {prompt}")
         retry_prompt = ""
         llm_model = input_data.model
 
@@ -829,6 +844,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     credentials=credentials,
                     llm_model=llm_model,
                     prompt=prompt,
+                    compress_prompt_to_fit=input_data.compress_prompt_to_fit,
                     json_format=bool(input_data.expected_format),
                     ollama_host=input_data.ollama_host,
                     max_tokens=input_data.max_tokens,
@@ -840,21 +856,32 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                         output_token_count=llm_response.completion_tokens,
                     )
                 )
-                logger.info(f"LLM attempt-{retry_count} response: {response_text}")
+                logger.debug(f"LLM attempt-{retry_count} response: {response_text}")
 
                 if input_data.expected_format:
-                    parsed_dict, parsed_error = parse_response(response_text)
-                    if not parsed_error:
-                        yield "response", {
-                            k: (
-                                json.loads(v)
-                                if isinstance(v, str)
-                                and v.startswith("[")
-                                and v.endswith("]")
-                                else (", ".join(v) if isinstance(v, list) else v)
+
+                    response_obj = json.loads(response_text)
+
+                    if input_data.list_result and isinstance(response_obj, dict):
+                        if "results" in response_obj:
+                            response_obj = response_obj.get("results", [])
+                        elif len(response_obj) == 1:
+                            response_obj = list(response_obj.values())
+
+                    response_error = "\n".join(
+                        [
+                            validation_error
+                            for response_item in (
+                                response_obj
+                                if isinstance(response_obj, list)
+                                else [response_obj]
                             )
-                            for k, v in parsed_dict.items()
-                        }
+                            if (validation_error := validate_response(response_item))
+                        ]
+                    )
+
+                    if not response_error:
+                        yield "response", response_obj
                         yield "prompt", self.prompt
                         return
                 else:
@@ -871,7 +898,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                   |
                   |And this is the error:
                   |--
-                  |{parsed_error}
+                  |{response_error}
                   |--
                 """
                 )

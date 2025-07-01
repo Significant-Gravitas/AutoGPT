@@ -32,7 +32,7 @@ from prisma.types import (
     AgentNodeExecutionUpdateInput,
     AgentNodeExecutionWhereInput,
 )
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, JsonValue
 from pydantic.fields import Field
 
 from backend.server.v2.store.exceptions import DatabaseError
@@ -48,14 +48,14 @@ from .block import (
     get_webhook_block_ids,
 )
 from .db import BaseDbModel
+from .event_bus import AsyncRedisEventBus, RedisEventBus
 from .includes import (
     EXECUTION_RESULT_INCLUDE,
     EXECUTION_RESULT_ORDER,
     GRAPH_EXECUTION_INCLUDE_WITH_NODES,
     graph_execution_include,
 )
-from .model import CredentialsMetaInput, GraphExecutionStats, NodeExecutionStats
-from .queue import AsyncRedisEventBus, RedisEventBus
+from .model import GraphExecutionStats, NodeExecutionStats
 
 T = TypeVar("T")
 
@@ -271,7 +271,7 @@ class GraphExecutionWithNodes(GraphExecution):
             graph_id=self.graph_id,
             graph_version=self.graph_version or 0,
             graph_exec_id=self.id,
-            node_credentials_input_map={},  # FIXME
+            nodes_input_masks={},  # FIXME: store credentials on AgentGraphExecution
         )
 
 
@@ -556,18 +556,18 @@ async def upsert_execution_input(
 async def upsert_execution_output(
     node_exec_id: str,
     output_name: str,
-    output_data: Any,
+    output_data: Any | None,
 ) -> None:
     """
     Insert AgentNodeExecutionInputOutput record for as one of AgentNodeExecution.Output.
     """
-    await AgentNodeExecutionInputOutput.prisma().create(
-        data=AgentNodeExecutionInputOutputCreateInput(
-            name=output_name,
-            data=Json(output_data),
-            referencedByOutputExecId=node_exec_id,
-        )
+    data = AgentNodeExecutionInputOutputCreateInput(
+        name=output_name,
+        referencedByOutputExecId=node_exec_id,
     )
+    if output_data is not None:
+        data["data"] = Json(output_data)
+    await AgentNodeExecutionInputOutput.prisma().create(data=data)
 
 
 async def update_graph_execution_start_time(
@@ -588,18 +588,19 @@ async def update_graph_execution_start_time(
 
 async def update_graph_execution_stats(
     graph_exec_id: str,
-    status: ExecutionStatus,
+    status: ExecutionStatus | None = None,
     stats: GraphExecutionStats | None = None,
 ) -> GraphExecution | None:
-    update_data: AgentGraphExecutionUpdateManyMutationInput = {
-        "executionStatus": status
-    }
+    update_data: AgentGraphExecutionUpdateManyMutationInput = {}
 
     if stats:
         stats_dict = stats.model_dump()
         if isinstance(stats_dict.get("error"), Exception):
             stats_dict["error"] = str(stats_dict["error"])
         update_data["stats"] = Json(stats_dict)
+
+    if status:
+        update_data["executionStatus"] = status
 
     updated_count = await AgentGraphExecution.prisma().update_many(
         where={
@@ -783,7 +784,7 @@ class GraphExecutionEntry(BaseModel):
     graph_exec_id: str
     graph_id: str
     graph_version: int
-    node_credentials_input_map: Optional[dict[str, dict[str, CredentialsMetaInput]]]
+    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None
 
 
 class NodeExecutionEntry(BaseModel):

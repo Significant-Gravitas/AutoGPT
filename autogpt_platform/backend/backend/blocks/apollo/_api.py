@@ -4,6 +4,7 @@ from typing import List
 from backend.blocks.apollo._auth import ApolloCredentials
 from backend.blocks.apollo.models import (
     Contact,
+    EnrichPersonRequest,
     Organization,
     SearchOrganizationsRequest,
     SearchOrganizationsResponse,
@@ -29,10 +30,10 @@ class ApolloClient:
 
     async def search_people(self, query: SearchPeopleRequest) -> List[Contact]:
         """Search for people in Apollo"""
-        response = await self.requests.get(
+        response = await self.requests.post(
             f"{self.API_URL}/mixed_people/search",
             headers=self._get_headers(),
-            params=query.model_dump(exclude={"credentials", "max_results"}),
+            json=query.model_dump(exclude={"max_results"}),
         )
         data = response.json()
         parsed_response = SearchPeopleResponse(**data)
@@ -53,10 +54,10 @@ class ApolloClient:
                 and len(parsed_response.people) > 0
             ):
                 query.page += 1
-                response = await self.requests.get(
+                response = await self.requests.post(
                     f"{self.API_URL}/mixed_people/search",
                     headers=self._get_headers(),
-                    params=query.model_dump(exclude={"credentials", "max_results"}),
+                    json=query.model_dump(exclude={"max_results"}),
                 )
                 data = response.json()
                 parsed_response = SearchPeopleResponse(**data)
@@ -69,10 +70,10 @@ class ApolloClient:
         self, query: SearchOrganizationsRequest
     ) -> List[Organization]:
         """Search for organizations in Apollo"""
-        response = await self.requests.get(
+        response = await self.requests.post(
             f"{self.API_URL}/mixed_companies/search",
             headers=self._get_headers(),
-            params=query.model_dump(exclude={"credentials", "max_results"}),
+            json=query.model_dump(exclude={"max_results"}),
         )
         data = response.json()
         parsed_response = SearchOrganizationsResponse(**data)
@@ -93,10 +94,10 @@ class ApolloClient:
                 and len(parsed_response.organizations) > 0
             ):
                 query.page += 1
-                response = await self.requests.get(
+                response = await self.requests.post(
                     f"{self.API_URL}/mixed_companies/search",
                     headers=self._get_headers(),
-                    params=query.model_dump(exclude={"credentials", "max_results"}),
+                    json=query.model_dump(exclude={"max_results"}),
                 )
                 data = response.json()
                 parsed_response = SearchOrganizationsResponse(**data)
@@ -110,3 +111,21 @@ class ApolloClient:
         return (
             organizations[: query.max_results] if query.max_results else organizations
         )
+
+    async def enrich_person(self, query: EnrichPersonRequest) -> Contact:
+        """Enrich a person's data including email & phone reveal"""
+        response = await self.requests.post(
+            f"{self.API_URL}/people/match",
+            headers=self._get_headers(),
+            json=query.model_dump(),
+            params={
+                "reveal_personal_emails": "true",
+            },
+        )
+        data = response.json()
+        if "person" not in data:
+            raise ValueError(f"Person not found or enrichment failed: {data}")
+
+        contact = Contact(**data["person"])
+        contact.email = contact.email or "-"
+        return contact
