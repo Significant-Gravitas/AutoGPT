@@ -135,7 +135,7 @@ export default function SignupPage() {
                       />
                     </FormControl>
                     <div>
-                      <FormLabel className="flex items-center gap-1">
+                      <FormLabel className="flex flex-wrap items-center gap-1">
                         <Text
                           variant="body-medium"
                           className="inline-block text-slate-950"

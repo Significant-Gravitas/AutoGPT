@@ -1,36 +1,16 @@
 import { IconAutoGPTLogo, IconType } from "@/components/ui/icons";
 import { ProfileDetails } from "@/lib/autogpt-server-api/types";
 import Link from "next/link";
-import { MobileNavBar } from "./MobileNavBar";
-import { NavbarLink } from "./NavbarLink";
-import { ProfilePopoutMenu } from "./ProfilePopoutMenu";
-import Wallet from "./Wallet";
+import { MobileNavBar } from "../../agptui/MobileNavBar";
+import Wallet from "../../agptui/Wallet";
+import { NavbarLink } from "./components/NavbarLink";
+import { ProfilePopoutMenu } from "./components/ProfilePopoutMenu";
 
 import BackendAPI from "@/lib/autogpt-server-api";
 import { getServerUser } from "@/lib/supabase/server/getServerUser";
 import { SignInIcon } from "@phosphor-icons/react/dist/ssr";
-import { Button } from "../atoms/Button/Button";
-
-// Disable theme toggle for now
-// import { ThemeToggle } from "./ThemeToggle";
-
-interface NavLink {
-  name: string;
-  href: string;
-}
-
-interface NavbarProps {
-  links: NavLink[];
-  menuItemGroups: {
-    groupName?: string;
-    items: {
-      icon: IconType;
-      text: string;
-      href?: string;
-      onClick?: () => void;
-    }[];
-  }[];
-}
+import { Button } from "../../atoms/Button/Button";
+import { accountMeunItems, loggedInLinks } from "./helpers";
 
 async function getProfileData() {
   const api = new BackendAPI();
@@ -39,32 +19,38 @@ async function getProfileData() {
   return profile;
 }
 
-export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
+export async function Navbar() {
   const { user } = await getServerUser();
   const isLoggedIn = user !== null;
+
   let profile: ProfileDetails | null = null;
+
   if (isLoggedIn) {
     profile = await getProfileData();
   }
 
   return (
     <>
-      <nav className="sticky top-0 z-40 mx-[16px] hidden h-16 items-center justify-between rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] dark:border-gray-700 dark:bg-gray-900 md:inline-flex">
-        <div className="flex items-center gap-11">
-          <div className="relative h-10 w-[88.87px]">
-            <IconAutoGPTLogo className="h-full w-full" />
-          </div>
-          {links.map((link) => (
+      <nav className="sticky top-0 z-40 mx-[16px] hidden h-16 items-center rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] dark:border-gray-700 dark:bg-gray-900 md:inline-flex">
+        {/* Left section */}
+        <div className="flex flex-1 items-center gap-6">
+          {loggedInLinks.map((link) => (
             <NavbarLink key={link.name} name={link.name} href={link.href} />
           ))}
         </div>
-        {/* Profile section */}
-        <div className="flex items-center gap-4">
+
+        {/* Centered logo */}
+        <div className="absolute left-1/2 top-1/2 h-10 w-[88.87px] -translate-x-1/2 -translate-y-1/2">
+          <IconAutoGPTLogo className="h-full w-full" />
+        </div>
+
+        {/* Right section */}
+        <div className="flex flex-1 items-center justify-end gap-4">
           {isLoggedIn ? (
             <div className="flex items-center gap-4">
               {profile && <Wallet />}
               <ProfilePopoutMenu
-                menuItemGroups={menuItemGroups}
+                menuItemGroups={accountMeunItems}
                 userName={profile?.username}
                 userEmail={profile?.name}
                 avatarSrc={profile?.avatar_url}
@@ -133,4 +119,4 @@ export const Navbar = async ({ links, menuItemGroups }: NavbarProps) => {
       </>
     </>
   );
-};
+}

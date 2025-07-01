@@ -1,12 +1,13 @@
 "use client";
-import Link from "next/link";
+import { IconLaptop } from "@/components/ui/icons";
 import {
-  IconShoppingCart,
-  IconBoxes,
-  IconLibrary,
-  IconLaptop,
-} from "@/components/ui/icons";
+  CubeIcon,
+  HouseIcon,
+  StorefrontIcon,
+} from "@phosphor-icons/react/dist/ssr";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Text } from "../../../atoms/Text/Text";
 
 interface NavbarLinkProps {
   name: string;
@@ -25,19 +26,19 @@ export const NavbarLink = ({ name, href }: NavbarLinkProps) => {
       className="font-poppins text-[20px] leading-[28px]"
     >
       <div
-        className={`h-[48px] px-5 py-4 ${
+        className={`p-2 ${
           activeLink === href
             ? "rounded-2xl bg-neutral-800 dark:bg-neutral-200"
             : ""
-        } flex items-center justify-start gap-3`}
+        } flex items-center justify-start gap-1`}
       >
         {href === "/marketplace" && (
-          <IconShoppingCart
+          <StorefrontIcon
             className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
           />
         )}
         {href === "/build" && (
-          <IconBoxes
+          <CubeIcon
             className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
           />
         )}
@@ -47,19 +48,20 @@ export const NavbarLink = ({ name, href }: NavbarLinkProps) => {
           />
         )}
         {href === "/library" && (
-          <IconLibrary
+          <HouseIcon
             className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
           />
         )}
-        <div
-          className={`hidden font-poppins text-[20px] font-medium leading-[28px] lg:block ${
+        <Text
+          variant="body-medium"
+          className={`hidden lg:block ${
             activeLink === href
               ? "text-neutral-50 dark:text-neutral-900"
               : "text-neutral-900 dark:text-neutral-50"
           }`}
         >
           {name}
-        </div>
+        </Text>
       </div>
     </Link>
   );

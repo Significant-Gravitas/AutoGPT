@@ -1,40 +1,32 @@
-import * as React from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Popover,
-  PopoverTrigger,
   PopoverContent,
+  PopoverTrigger,
 } from "@/components/ui/popover";
+import Link from "next/link";
+import * as React from "react";
+import { ProfilePopoutMenuLogoutButton } from "../../../agptui/ProfilePopoutMenuLogoutButton";
+import { PublishAgentPopout } from "../../../agptui/composite/PublishAgentPopout";
 import {
-  IconType,
+  IconBuilder,
   IconEdit,
   IconLayoutDashboard,
-  IconUploadCloud,
-  IconSettings,
-  IconLogOut,
-  IconRefresh,
-  IconMarketplace,
   IconLibrary,
-  IconBuilder,
-} from "../ui/icons";
-import Link from "next/link";
-import { ProfilePopoutMenuLogoutButton } from "./ProfilePopoutMenuLogoutButton";
-import { PublishAgentPopout } from "./composite/PublishAgentPopout";
+  IconLogOut,
+  IconMarketplace,
+  IconRefresh,
+  IconSettings,
+  IconType,
+  IconUploadCloud,
+} from "../../../ui/icons";
 
 interface ProfilePopoutMenuProps {
   userName?: string;
   userEmail?: string;
   avatarSrc?: string;
   hideNavBarUsername?: boolean;
-  menuItemGroups: {
-    groupName?: string;
-    items: {
-      icon: IconType;
-      text: string;
-      href?: string;
-      onClick?: () => void;
-    }[];
-  }[];
+  menuItemGroups: MenuItemGroup[];
 }
 
 export function ProfilePopoutMenu({
