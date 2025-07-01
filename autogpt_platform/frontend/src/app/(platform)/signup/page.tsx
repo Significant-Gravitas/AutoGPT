@@ -54,7 +54,6 @@ export default function SignupPage() {
   }
 
   const confirmPasswordError = form.formState.errors.confirmPassword?.message;
-  const withConfirmPassword = form.getValues("confirmPassword").length > 0;
   const termsError = form.formState.errors.agreeToTerms?.message;
 
   return (
@@ -111,24 +110,14 @@ export default function SignupPage() {
               control={form.control}
               name="confirmPassword"
               render={({ field }) => (
-                <div className="space-y-2">
-                  <Input
-                    label="Confirm Password"
-                    placeholder="********"
-                    type="password"
-                    autoComplete="new-password"
-                    error={confirmPasswordError}
-                    {...field}
-                  />
-                  {!confirmPasswordError && !withConfirmPassword ? (
-                    <Text
-                      variant="small"
-                      className="relative -top-7 !text-slate-500"
-                    >
-                      Password needs to be at least 12 characters long
-                    </Text>
-                  ) : null}
-                </div>
+                <Input
+                  label="Confirm Password"
+                  placeholder="********"
+                  type="password"
+                  autoComplete="new-password"
+                  error={confirmPasswordError}
+                  {...field}
+                />
               )}
             />
 

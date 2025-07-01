@@ -157,7 +157,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="flex h-full min-h-[85vh] flex-col items-center justify-center">
+    <div className="flex h-full min-h-[85vh] w-full flex-col items-center justify-center">
       <AuthCard title="Reset Password">
         {user ? (
           <form

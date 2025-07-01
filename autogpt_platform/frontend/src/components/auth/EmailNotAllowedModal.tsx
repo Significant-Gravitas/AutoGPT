@@ -1,11 +1,6 @@
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { Button } from "../atoms/Button/Button";
+import { Text } from "../atoms/Text/Text";
+import { Dialog } from "../molecules/Dialog/Dialog";
 
 interface Props {
   isOpen: boolean;
@@ -14,23 +9,26 @@ interface Props {
 
 export function EmailNotAllowedModal({ isOpen, onClose }: Props) {
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Access Restricted</DialogTitle>
-          <DialogDescription className="pt-2">
+    <Dialog
+      controlled={{ isOpen, set: onClose }}
+      styling={{ maxWidth: "35rem" }}
+    >
+      <Dialog.Content>
+        <div className="flex flex-col items-center gap-8 py-4">
+          <Text variant="h3">Access Restricted</Text>
+          <Text variant="large-medium" className="text-center">
             We&apos;re currently in a limited access phase. Your email address
-            isn&apos;t on our current allowlist for early access.
-            <br />
-            <br />
-            If you believe this is an error or would like to request access,
-            please contact our support team.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex justify-end pt-4">
-          <Button onClick={onClose}>I understand</Button>
+            isn&apos;t on our current allowlist for early access. If you believe
+            this is an error or would like to request access, please contact our
+            support team.
+          </Text>
+          <div className="flex justify-end pt-4">
+            <Button variant="primary" onClick={onClose}>
+              I understand
+            </Button>
+          </div>
         </div>
-      </DialogContent>
+      </Dialog.Content>
     </Dialog>
   );
 }

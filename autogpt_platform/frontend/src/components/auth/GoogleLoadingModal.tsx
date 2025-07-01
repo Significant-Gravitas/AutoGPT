@@ -1,11 +1,7 @@
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { GoogleLogoIcon } from "@phosphor-icons/react/dist/ssr";
+import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
+import Image from "next/image";
+import { Text } from "../atoms/Text/Text";
+import { Dialog } from "../molecules/Dialog/Dialog";
 
 interface GoogleLoadingModalProps {
   isOpen: boolean;
@@ -13,25 +9,25 @@ interface GoogleLoadingModalProps {
 
 export function GoogleLoadingModal({ isOpen }: GoogleLoadingModalProps) {
   return (
-    <Dialog open={isOpen}>
-      <DialogContent className="sm:max-w-md [&>button]:hidden">
-        <DialogHeader>
+    <Dialog forceOpen={isOpen} styling={{ maxWidth: "32rem" }}>
+      <Dialog.Content>
+        <div className="flex flex-col items-center gap-8 py-4">
           <div className="mb-2 flex items-center justify-center gap-3">
-            <GoogleLogoIcon size={24} />
-            <DialogTitle>Signing in with Google</DialogTitle>
+            <Image src="/google-logo.svg" alt="Google" width={20} height={20} />
+            <Text variant="h3">Signing in with Google</Text>
           </div>
-          <DialogDescription className="text-center">
+          <CircleNotchIcon
+            className="h-10 w-10 animate-spin"
+            weight="regular"
+          />
+          <Text variant="large-medium" className="text-center">
             You&apos;re being redirected to Google to complete the sign-in
             process.
-            <br />
-            <br />
-            Please don&apos;t close this tab or navigate away from this page.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex justify-center pt-4">
-          <div className="h-8 w-8 animate-spin rounded-full border-b-2 border-gray-900"></div>
+            <br /> Please don&apos;t close this tab or navigate away from this
+            page.
+          </Text>
         </div>
-      </DialogContent>
+      </Dialog.Content>
     </Dialog>
   );
 }

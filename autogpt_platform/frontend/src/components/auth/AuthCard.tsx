@@ -42,7 +42,7 @@ interface Props {
 
 export function AuthCard({ children, title }: Props) {
   return (
-    <Card className="mx-auto flex min-h-[50vh] w-full max-w-[32rem] flex-col items-center justify-center gap-8">
+    <Card className="mx-auto flex min-h-[40vh] w-full max-w-[32rem] flex-col items-center justify-center gap-8">
       <Text variant="h3" as="h2" className="mb-3">
         {title}
       </Text>
