@@ -16,11 +16,6 @@ export default defineConfig({
       client: "react-query",
       httpClient: "fetch",
       indexFiles: false,
-      mock: {
-        type: "msw",
-        delay: 1000, // artifical latency
-        generateEachHttpStatus: true, // helps us test error-handling scenarios and generate mocks for all HTTP statuses
-      },
       override: {
         mutator: {
           path: "./mutators/custom-mutator.ts",
@@ -45,23 +40,23 @@ export default defineConfig({
       afterAllFilesWrite: "prettier --write",
     },
   },
-  autogpt_zod_schema: {
-    input: {
-      target: `./src/app/api/openapi.json`,
-      override: {
-        transformer: "./src/app/api/transformers/fix-tags.mjs",
-      },
-    },
-    output: {
-      workspace: "./src/app/api",
-      target: `./__generated__/zod-schema`,
-      schemas: "./__generated__/models",
-      mode: "tags-split",
-      client: "zod",
-      indexFiles: false,
-    },
-    hooks: {
-      afterAllFilesWrite: "prettier --write",
-    },
-  },
+  // autogpt_zod_schema: {
+  //   input: {
+  //     target: `./src/app/api/openapi.json`,
+  //     override: {
+  //       transformer: "./src/app/api/transformers/fix-tags.mjs",
+  //     },
+  //   },
+  //   output: {
+  //     workspace: "./src/app/api",
+  //     target: `./__generated__/zod-schema`,
+  //     schemas: "./__generated__/models",
+  //     mode: "tags-split",
+  //     client: "zod",
+  //     indexFiles: false,
+  //   },
+  //   hooks: {
+  //     afterAllFilesWrite: "prettier --write",
+  //   },
+  // },
 });
