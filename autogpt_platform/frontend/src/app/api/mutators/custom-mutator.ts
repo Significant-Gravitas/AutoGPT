@@ -1,4 +1,4 @@
-const BASE_URL = "/api/proxy"; // Sending request via nextjs Server
+const BASE_URL = `${process.env.NEXT_PUBLIC_FRONTEND_BASE_URL}/api/proxy`; // Sending request via nextjs Server
 
 const getBody = <T>(c: Response | Request): Promise<T> => {
   const contentType = c.headers.get("content-type");
