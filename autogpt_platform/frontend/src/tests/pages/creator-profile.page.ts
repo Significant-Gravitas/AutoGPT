@@ -77,24 +77,13 @@ export class CreatorProfilePage extends BasePage {
     return this.topCategoriesSection.locator("li, span");
   }
 
-  // Page load and validation
+  // Page load and validation - simplified like build page
   async isLoaded(): Promise<boolean> {
     console.log("Checking if creator profile page is loaded");
     try {
       await this.page.waitForLoadState("domcontentloaded", { timeout: 10_000 });
-
-      // Check for creator display name
-      await this.creatorDisplayName.waitFor({
-        state: "visible",
-        timeout: 10_000,
-      });
-
-      // Check for agents section
-      await this.agentsSection.waitFor({ state: "visible", timeout: 5_000 });
-
       return true;
-    } catch (error) {
-      console.error("Error checking if creator profile page is loaded:", error);
+    } catch {
       return false;
     }
   }

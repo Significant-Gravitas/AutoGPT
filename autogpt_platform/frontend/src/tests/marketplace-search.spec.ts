@@ -10,8 +10,11 @@ test.describe("Marketplace Search and Filtering", () => {
     marketplacePage = new MarketplacePage(page);
     agentDetailPage = new AgentDetailPage(page);
 
-    // Navigate to marketplace
+    // Navigate to marketplace with workaround for #8788
     await page.goto("/marketplace");
+    // workaround for #8788 - same as build tests
+    await page.reload();
+    await page.reload();
     await marketplacePage.waitForPageLoad();
   });
 
@@ -281,8 +284,11 @@ test.describe("Marketplace Search and Filtering", () => {
 
       if (agents.length > 0) {
         const firstAgent = agents[0];
-        await marketplacePage.clickAgentCard(firstAgent.name);
+        await marketplacePage.clickAgentCard(firstAgent.agent_name);
         await page.waitForTimeout(2000);
+        // workaround for #8788
+        await page.reload();
+        await agentDetailPage.waitForPageLoad();
 
         // Should navigate to agent detail page
         await test.expect(page.url()).toMatch(/\/marketplace\/agent\/.*\/.*/);
@@ -300,12 +306,19 @@ test.describe("Marketplace Search and Filtering", () => {
 
       if (agents.length > 0) {
         // Go to agent detail
-        await marketplacePage.clickAgentCard(agents[0].name);
+        await marketplacePage.clickAgentCard(agents[0].agent_name);
         await page.waitForTimeout(2000);
+        // workaround for #8788
+        await page.reload();
+        await agentDetailPage.waitForPageLoad();
 
         // Navigate back to marketplace
         await agentDetailPage.navigateBackToMarketplace();
         await page.waitForTimeout(2000);
+        // workaround for #8788
+        await page.reload();
+        await page.reload();
+        await marketplacePage.waitForPageLoad();
 
         // Should return to marketplace with search preserved
         await test.expect(page.url()).toMatch(/\/marketplace/);
@@ -325,7 +338,7 @@ test.describe("Marketplace Search and Filtering", () => {
         const firstAgent = agents[0];
 
         // Agent cards should have all required information
-        await test.expect(firstAgent.name).toBeTruthy();
+        await test.expect(firstAgent.agent_name).toBeTruthy();
         await test.expect(firstAgent.creator).toBeTruthy();
         await test.expect(typeof firstAgent.runs).toBe("number");
         await test.expect(typeof firstAgent.rating).toBe("number");
@@ -335,6 +348,9 @@ test.describe("Marketplace Search and Filtering", () => {
 
   test.describe("Performance and User Experience", () => {
     test("search response time is reasonable", async ({ page }, testInfo) => {
+      // Use the same timeout multiplier as build tests
+      await test.setTimeout(testInfo.timeout * 10);
+
       const startTime = Date.now();
 
       await marketplacePage.searchAgents("Lead Finder");
@@ -353,6 +369,9 @@ test.describe("Marketplace Search and Filtering", () => {
     test("category filtering response time is reasonable", async ({
       page,
     }, testInfo) => {
+      // Use the same timeout multiplier as build tests
+      await test.setTimeout(testInfo.timeout * 10);
+
       const categories = await marketplacePage.getAvailableCategories();
 
       if (categories.length > 0) {

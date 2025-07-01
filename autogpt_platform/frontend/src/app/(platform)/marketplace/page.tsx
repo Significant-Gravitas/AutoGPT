@@ -68,7 +68,7 @@ export default async function MarketplacePage(): Promise<React.ReactElement> {
 
   return (
     <div className="mx-auto w-screen max-w-[1360px]">
-      <main className="px-4">
+      <main className="px-4" data-testid="marketplace-page">
         <HeroSection />
         <FeaturedSection featuredAgents={featuredAgents.agents} />
         {/* 100px margin because our featured sections button are placed 40px below the container */}

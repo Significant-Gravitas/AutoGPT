@@ -148,11 +148,13 @@ const agents = await marketplacePage.getAgentCards();
 ## Test Data
 
 ### Search Queries
+
 - **Valid queries**: "Lead", "test", "automation", "marketing"
 - **Special characters**: "@test", "#hashtag", "test!@#"
 - **Edge cases**: Empty string, very long strings, non-existent terms
 
 ### Categories
+
 - Marketing
 - SEO
 - Content Creation
@@ -161,7 +163,9 @@ const agents = await marketplacePage.getAgentCards();
 - Productivity
 
 ### Test Agents
+
 Tests work with any agents available in the marketplace, but expect at least:
+
 - Some agents with "Lead" in the name/description
 - Multiple creators with multiple agents
 - Featured agents and creators
@@ -257,6 +261,7 @@ Tests work with any agents available in the marketplace, but expect at least:
 ## Accessibility Testing
 
 Tests include basic accessibility checks:
+
 - Keyboard navigation
 - ARIA attributes
 - Proper heading structure
@@ -265,6 +270,7 @@ Tests include basic accessibility checks:
 ## Error Handling
 
 Tests verify graceful handling of:
+
 - Non-existent agents/creators
 - Network issues
 - Empty search results
@@ -280,12 +286,12 @@ export const MarketplaceTestConfig = {
   timeouts: {
     pageLoad: 10_000,
     navigation: 5_000,
-    search: 3_000
+    search: 3_000,
   },
   performance: {
     maxPageLoadTime: 15_000,
-    maxSearchTime: 5_000
-  }
+    maxSearchTime: 5_000,
+  },
 };
 ```
 
@@ -316,24 +322,27 @@ export const MarketplaceTestConfig = {
 ### Debug Tips
 
 1. **Use headed mode** for visual debugging:
+
    ```bash
    pnpm test-ui marketplace.spec.ts
    ```
 
 2. **Add debug logs** in tests:
+
    ```typescript
    console.log("Current URL:", page.url());
    console.log("Agent count:", agents.length);
    ```
 
 3. **Take screenshots** on failure:
+
    ```typescript
-   await page.screenshot({ path: 'debug-screenshot.png' });
+   await page.screenshot({ path: "debug-screenshot.png" });
    ```
 
 4. **Check browser console**:
    ```typescript
-   page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+   page.on("console", (msg) => console.log("PAGE LOG:", msg.text()));
    ```
 
 ## Maintenance
@@ -380,6 +389,7 @@ Use these tags to categorize tests:
 - `@responsive` - Responsive design testing
 
 Example:
+
 ```typescript
 test("search functionality works @smoke @search", async ({ page }) => {
   // Test implementation

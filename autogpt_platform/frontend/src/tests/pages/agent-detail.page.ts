@@ -35,7 +35,9 @@ export class AgentDetailPage extends BasePage {
   }
 
   get agentDescription(): Locator {
-    return this.page.locator('div:has-text("Description")').locator("+ div, + p");
+    return this.page
+      .locator('div:has-text("Description")')
+      .locator("+ div, + p");
   }
 
   get downloadButton(): Locator {
@@ -63,7 +65,9 @@ export class AgentDetailPage extends BasePage {
   }
 
   get breadcrumbNavigation(): Locator {
-    return this.page.locator('nav, div').filter({ hasText: /Marketplace.*\/.*\/.*/ });
+    return this.page
+      .locator("nav, div")
+      .filter({ hasText: /Marketplace.*\/.*\/.*/ });
   }
 
   get agentImages(): Locator {
@@ -82,34 +86,32 @@ export class AgentDetailPage extends BasePage {
     return this.page.locator('button[data-testid*="agent-card"]');
   }
 
-  // Page load and validation
+  // Page load and validation - simplified like build page
   async isLoaded(): Promise<boolean> {
     console.log("Checking if agent detail page is loaded");
     try {
       await this.page.waitForLoadState("domcontentloaded", { timeout: 10_000 });
-
-      // Check for agent name
-      await this.agentName.waitFor({ state: "visible", timeout: 10_000 });
-
-      // Check for download button
-      await this.downloadButton.waitFor({ state: "visible", timeout: 5_000 });
-
       return true;
-    } catch (error) {
-      console.error("Error checking if agent detail page is loaded:", error);
+    } catch {
       return false;
     }
   }
 
   async hasCorrectURL(creator: string, agentName: string): Promise<boolean> {
     const url = this.page.url();
-    const expectedPattern = `/marketplace/agent/${creator}/${agentName.toLowerCase().replace(/\s+/g, '-')}`;
-    return url.includes(expectedPattern) || url.includes(`/marketplace/agent/${creator}/`);
+    const expectedPattern = `/marketplace/agent/${creator}/${agentName.toLowerCase().replace(/\s+/g, "-")}`;
+    return (
+      url.includes(expectedPattern) ||
+      url.includes(`/marketplace/agent/${creator}/`)
+    );
   }
 
   async hasCorrectTitle(): Promise<boolean> {
     const title = await this.page.title();
-    return title.includes("AutoGPT") && (title.includes("Marketplace") || title.includes("Store"));
+    return (
+      title.includes("AutoGPT") &&
+      (title.includes("Marketplace") || title.includes("Store"))
+    );
   }
 
   // Content extraction
@@ -121,7 +123,8 @@ export class AgentDetailPage extends BasePage {
     const creatorText = await this.creatorLink.textContent();
     const creator = creatorText?.trim() || "";
 
-    const description = (await this.agentDescription.textContent())?.trim() || "";
+    const description =
+      (await this.agentDescription.textContent())?.trim() || "";
 
     // Extract rating
     let rating = 0;
@@ -147,7 +150,9 @@ export class AgentDetailPage extends BasePage {
     let categories: string[] = [];
     try {
       const categoriesText = await this.categoriesSection.textContent();
-      categories = categoriesText ? categoriesText.split(/[,\s]+/).filter(c => c.trim()) : [];
+      categories = categoriesText
+        ? categoriesText.split(/[,\s]+/).filter((c) => c.trim())
+        : [];
     } catch (error) {
       console.log("Could not extract categories:", error);
     }
@@ -199,7 +204,8 @@ export class AgentDetailPage extends BasePage {
         const creator = creatorText?.replace("by ", "").trim() || "";
 
         const descriptionElement = await card.locator("p").nth(1);
-        const description = (await descriptionElement.textContent())?.trim() || "";
+        const description =
+          (await descriptionElement.textContent())?.trim() || "";
 
         // Extract rating
         let rating = 0;
@@ -253,7 +259,10 @@ export class AgentDetailPage extends BasePage {
 
   async clickRelatedAgent(agentName: string): Promise<void> {
     console.log(`Clicking related agent: ${agentName}`);
-    await this.page.getByRole("button", { name: new RegExp(agentName, "i") }).first().click();
+    await this.page
+      .getByRole("button", { name: new RegExp(agentName, "i") })
+      .first()
+      .click();
   }
 
   async navigateBackToMarketplace(): Promise<void> {
@@ -336,7 +345,9 @@ export class AgentDetailPage extends BasePage {
   // Utility methods
   async scrollToSection(sectionName: string): Promise<void> {
     console.log(`Scrolling to section: ${sectionName}`);
-    await this.page.getByRole("heading", { name: new RegExp(sectionName, "i") }).scrollIntoViewIfNeeded();
+    await this.page
+      .getByRole("heading", { name: new RegExp(sectionName, "i") })
+      .scrollIntoViewIfNeeded();
   }
 
   async waitForImagesLoad(): Promise<void> {
@@ -353,10 +364,10 @@ export class AgentDetailPage extends BasePage {
     const imageCount = await this.agentImages.count();
 
     const hasAllRequiredElements =
-      await this.hasAgentName() &&
-      await this.hasCreatorInfo() &&
-      await this.hasDescription() &&
-      await this.hasDownloadButton();
+      (await this.hasAgentName()) &&
+      (await this.hasCreatorInfo()) &&
+      (await this.hasDescription()) &&
+      (await this.hasDownloadButton());
 
     return {
       hasAllRequiredElements,

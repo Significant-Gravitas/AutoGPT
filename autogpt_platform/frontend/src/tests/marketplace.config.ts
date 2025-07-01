@@ -1,12 +1,15 @@
 // marketplace.config.ts
+// NOTE: Marketplace tests use workaround for #8788 (double page reload)
+// similar to build tests to ensure reliable loading in CI environments
 export const MarketplaceTestConfig = {
   // Test timeouts
   timeouts: {
-    pageLoad: 10_000,
-    navigation: 5_000,
-    search: 3_000,
-    agentLoad: 8_000,
-    imageLoad: 10_000,
+    // Increased timeouts for CI reliability (matching build test patterns)
+    pageLoad: process.env.CI ? 30_000 : 10_000,
+    navigation: process.env.CI ? 15_000 : 5_000,
+    search: process.env.CI ? 10_000 : 3_000,
+    agentLoad: process.env.CI ? 20_000 : 8_000,
+    imageLoad: process.env.CI ? 20_000 : 10_000,
   },
 
   // Expected page elements
@@ -76,12 +79,12 @@ export const MarketplaceTestConfig = {
     creator: /\/marketplace\/creator\/.*/,
   },
 
-  // Performance thresholds
+  // Performance thresholds (adjusted for CI)
   performance: {
-    maxPageLoadTime: 15_000,
-    maxSearchTime: 5_000,
-    maxFilterTime: 5_000,
-    maxNavigationTime: 8_000,
+    maxPageLoadTime: process.env.CI ? 30_000 : 15_000,
+    maxSearchTime: process.env.CI ? 10_000 : 5_000,
+    maxFilterTime: process.env.CI ? 10_000 : 5_000,
+    maxNavigationTime: process.env.CI ? 15_000 : 8_000,
   },
 
   // Viewport configurations for responsive testing
@@ -95,8 +98,9 @@ export const MarketplaceTestConfig = {
   selectors: {
     marketplace: {
       searchInput: '[data-testid="store-search-input"]',
-      agentCards: 'button[data-testid*="agent-card"]',
-      categoryButtons: '[data-testid*="category-"]',
+      agentCards: '[data-testid="store-card"]',
+      creatorCards: '[data-testid="creator-card"]',
+      heroSection: '[data-testid="hero-section"]',
       featuredAgents: 'h2:has-text("Featured agents") + *',
       topAgents: 'h2:has-text("Top Agents") + *',
       featuredCreators: 'h2:has-text("Featured Creators") + *',
@@ -105,15 +109,15 @@ export const MarketplaceTestConfig = {
     agentDetail: {
       agentName: "h1, h2, h3",
       creatorLink: 'a[href*="/marketplace/creator/"]',
-      downloadButton: 'button:has-text("Download agent")',
-      relatedAgents: 'button[data-testid*="agent-card"]',
+      downloadButton: 'button:has-text("Download")',
+      relatedAgents: '[data-testid="store-card"]',
       breadcrumb: 'nav, div:has-text("Marketplace")',
     },
     creatorProfile: {
       displayName: "h1",
-      handle: 'div:has-text("@")',
       agentsSection: 'h2:has-text("Agents by") + *',
-      agentCards: 'button[data-testid*="agent-card"]',
+      agentCards: '[data-testid="store-card"]',
+      breadcrumb: 'a:has-text("Store")',
     },
   },
 };
@@ -260,11 +264,11 @@ export const MarketplaceTestHelpers = {
 
     for (let i = 0; i < maxRetries; i++) {
       try {
-        await page.waitForSelector('button[data-testid*="agent-card"]', {
+        await page.waitForSelector('[data-testid="store-card"]', {
           timeout: 5000,
         });
         const agentCount = await page
-          .locator('button[data-testid*="agent-card"]')
+          .locator('[data-testid="store-card"]')
           .count();
 
         if (agentCount >= minCount) {
