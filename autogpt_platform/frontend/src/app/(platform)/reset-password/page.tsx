@@ -1,5 +1,6 @@
 "use client";
-import AuthButton from "@/components/auth/AuthButton";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
 import { AuthCard } from "@/components/auth/AuthCard";
 import AuthFeedback from "@/components/auth/AuthFeedback";
 import { PasswordInput } from "@/components/auth/PasswordInput";
@@ -13,7 +14,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import LoadingBox from "@/components/ui/loading";
 import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
@@ -204,13 +204,15 @@ export default function ResetPasswordPage() {
                 shouldRender={changePasswordTurnstile.shouldRender}
               />
 
-              <AuthButton
-                onClick={() => onChangePassword(changePasswordForm.getValues())}
-                isLoading={isLoading}
+              <Button
+                variant="primary"
+                loading={isLoading}
                 type="submit"
+                className="mt-6 w-full"
+                onClick={() => onChangePassword(changePasswordForm.getValues())}
               >
                 Update password
-              </AuthButton>
+              </Button>
               <AuthFeedback
                 type="login"
                 message={feedback}
@@ -227,11 +229,15 @@ export default function ResetPasswordPage() {
                 name="email"
                 render={({ field }) => (
                   <FormItem className="mb-6">
-                    <FormLabel>Email</FormLabel>
                     <FormControl>
-                      <Input placeholder="m@example.com" {...field} />
+                      <Input
+                        label="Email"
+                        placeholder="m@example.com"
+                        type="email"
+                        error={sendEmailForm.formState.errors.email?.message}
+                        {...field}
+                      />
                     </FormControl>
-                    <FormMessage />
                   </FormItem>
                 )}
               />
@@ -248,14 +254,16 @@ export default function ResetPasswordPage() {
                 shouldRender={sendEmailTurnstile.shouldRender}
               />
 
-              <AuthButton
-                onClick={() => onSendEmail(sendEmailForm.getValues())}
-                isLoading={isLoading}
+              <Button
+                variant="primary"
+                loading={isLoading}
                 disabled={disabled}
                 type="submit"
+                className="mt-6 w-full"
+                onClick={() => onSendEmail(sendEmailForm.getValues())}
               >
                 Send reset email
-              </AuthButton>
+              </Button>
               <AuthFeedback
                 type="login"
                 message={feedback}

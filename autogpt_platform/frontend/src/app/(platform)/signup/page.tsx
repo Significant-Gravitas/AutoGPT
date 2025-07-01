@@ -1,24 +1,22 @@
 "use client";
 
-import AuthButton from "@/components/auth/AuthButton";
+import { Button } from "@/components/atoms/Button/Button";
+import { Input } from "@/components/atoms/Input/Input";
 import { AuthCard } from "@/components/auth/AuthCard";
 import AuthFeedback from "@/components/auth/AuthFeedback";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
 import { GoogleLoadingModal } from "@/components/auth/GoogleLoadingModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
-import { PasswordInput } from "@/components/auth/PasswordInput";
 import Turnstile from "@/components/auth/Turnstile";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import LoadingBox from "@/components/ui/loading";
 import { getBehaveAs } from "@/lib/utils";
 import Link from "next/link";
@@ -75,52 +73,52 @@ export default function SignupPage() {
         ) : null}
 
         <Form {...form}>
-          <form onSubmit={handleSubmit} className="w-full">
+          <form onSubmit={handleSubmit} className="flex w-full flex-col gap-6">
             <FormField
               control={form.control}
               name="email"
               render={({ field }) => (
-                <FormItem className="mb-6">
-                  <FormLabel>Email</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder="m@example.com"
-                      {...field}
-                      type="email"
-                      autoComplete="email"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+                <Input
+                  label="Email"
+                  placeholder="m@example.com"
+                  type="email"
+                  autoComplete="email"
+                  error={form.formState.errors.email?.message}
+                  {...field}
+                />
               )}
             />
             <FormField
               control={form.control}
               name="password"
               render={({ field }) => (
-                <FormItem className="mb-6">
-                  <FormLabel>Password</FormLabel>
-                  <FormControl>
-                    <PasswordInput {...field} autoComplete="new-password" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
+                <Input
+                  label="Password"
+                  placeholder="********"
+                  type="password"
+                  autoComplete="new-password"
+                  error={form.formState.errors.password?.message}
+                  {...field}
+                />
               )}
             />
             <FormField
               control={form.control}
               name="confirmPassword"
               render={({ field }) => (
-                <FormItem className="mb-4">
-                  <FormLabel>Confirm Password</FormLabel>
-                  <FormControl>
-                    <PasswordInput {...field} autoComplete="new-password" />
-                  </FormControl>
-                  <FormDescription className="text-sm font-normal leading-tight text-slate-500">
+                <div className="space-y-2">
+                  <Input
+                    label="Confirm Password"
+                    placeholder="********"
+                    type="password"
+                    autoComplete="new-password"
+                    error={form.formState.errors.confirmPassword?.message}
+                    {...field}
+                  />
+                  <p className="text-sm font-normal leading-tight text-slate-500">
                     Password needs to be at least 12 characters long
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
+                  </p>
+                </div>
               )}
             />
 
@@ -136,9 +134,14 @@ export default function SignupPage() {
               shouldRender={turnstile.shouldRender}
             />
 
-            <AuthButton isLoading={isLoading} type="submit">
+            <Button
+              variant="primary"
+              loading={isLoading}
+              type="submit"
+              className="mt-6 w-full"
+            >
               Sign up
-            </AuthButton>
+            </Button>
             <FormField
               control={form.control}
               name="agreeToTerms"

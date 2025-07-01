@@ -33,7 +33,7 @@ export default function AuthFeedback({
   }
 
   return (
-    <div className="mt-4 space-y-4">
+    <div className="mt-4 w-full space-y-4">
       {/* Message feedback */}
       {displayMessage && (
         <div className="text-center text-sm font-medium leading-normal">
@@ -93,31 +93,29 @@ export default function AuthFeedback({
 
       {/* Local-specific help */}
       {showLocalHelp && (
-        <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-          <CardContent className="p-0">
-            <div className="space-y-4 divide-y divide-slate-100">
-              <HelpItem
-                title="Having trouble getting AutoGPT running locally?"
-                description="Ask for help on our"
-                linkText="Discord"
-                href="https://discord.gg/autogpt"
-              />
+        <Card className="w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="w-full divide-y divide-slate-100">
+            <HelpItem
+              title="Having trouble getting AutoGPT running locally?"
+              description="Ask for help on our"
+              linkText="Discord"
+              href="https://discord.gg/autogpt"
+            />
 
-              <HelpItem
-                title="Think you've found a bug?"
-                description="Open an issue on our"
-                linkText="GitHub"
-                href="https://github.com/Significant-Gravitas/AutoGPT"
-              />
+            <HelpItem
+              title="Think you've found a bug?"
+              description="Open an issue on our"
+              linkText="GitHub"
+              href="https://github.com/Significant-Gravitas/AutoGPT"
+            />
 
-              <HelpItem
-                title="Interested in the cloud-hosted version?"
-                description="Join our"
-                linkText="waitlist here"
-                href="https://agpt.co/waitlist"
-              />
-            </div>
-          </CardContent>
+            <HelpItem
+              title="Interested in the cloud-hosted version?"
+              description="Join our"
+              linkText="waitlist here"
+              href="https://agpt.co/waitlist"
+            />
+          </div>
         </Card>
       )}
     </div>
