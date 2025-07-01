@@ -71,7 +71,7 @@ class AddMemoryBlock(Block, Mem0Base):
             description="Limit the memory to the run", default=False
         )
         limit_memory_to_agent: bool = SchemaField(
-            description="Limit the memory to the agent", default=False
+            description="Limit the memory to the agent", default=True
         )
 
     class Output(BlockSchema):
@@ -279,7 +279,7 @@ class GetAllMemoriesBlock(Block, Mem0Base):
             description="Limit the memory to the run", default=False
         )
         limit_memory_to_agent: bool = SchemaField(
-            description="Limit the memory to the agent", default=False
+            description="Limit the memory to the agent", default=True
         )
 
     class Output(BlockSchema):
@@ -371,7 +371,7 @@ class GetLatestMemoryBlock(Block, Mem0Base):
             description="Limit the memory to the run", default=False
         )
         limit_memory_to_agent: bool = SchemaField(
-            description="Limit the memory to the agent", default=False
+            description="Limit the memory to the agent", default=True
         )
 
     class Output(BlockSchema):
