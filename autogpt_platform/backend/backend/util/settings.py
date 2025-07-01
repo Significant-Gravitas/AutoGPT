@@ -262,6 +262,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=False,
         description="Whether to mark failed scans as clean or not",
     )
+    
+    enable_example_blocks: bool = Field(
+        default=False,
+        description="Whether to enable example blocks in production",
+    )
 
     @field_validator("platform_base_url", "frontend_base_url")
     @classmethod
