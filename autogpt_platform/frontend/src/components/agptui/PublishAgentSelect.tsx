@@ -3,7 +3,7 @@
 import * as React from "react";
 import Image from "next/image";
 import { Button } from "../agptui/Button";
-import { IconClose } from "../ui/icons";
+import { IconCross } from "../ui/icons";
 
 export interface Agent {
   name: string;
@@ -56,7 +56,7 @@ export const PublishAgentSelect: React.FC<PublishAgentSelectProps> = ({
             className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
             aria-label="Close"
           >
-            <IconClose
+            <IconCross
               size="default"
               className="text-neutral-600 dark:text-neutral-400"
             />

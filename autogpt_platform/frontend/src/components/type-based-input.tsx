@@ -21,8 +21,20 @@ import {
   SelectContent,
   SelectItem,
 } from "@/components/ui/select";
-import { determineDataType, DataType } from "@/lib/autogpt-server-api/types";
-import { BlockIOSubSchema } from "@/lib/autogpt-server-api/types";
+import {
+  MultiSelector,
+  MultiSelectorContent,
+  MultiSelectorInput,
+  MultiSelectorItem,
+  MultiSelectorList,
+  MultiSelectorTrigger,
+} from "@/components/ui/multiselect";
+import {
+  BlockIOObjectSubSchema,
+  BlockIOSubSchema,
+  DataType,
+  determineDataType,
+} from "@/lib/autogpt-server-api/types";
 
 /**
  * A generic prop structure for the TypeBasedInput.
@@ -37,7 +49,7 @@ export interface TypeBasedInputProps {
   onChange: (value: any) => void;
 }
 
-const inputClasses = "min-h-11 rounded-full border px-4 py-2.5";
+const inputClasses = "min-h-11 rounded-[1.375rem] border px-4 py-2.5 bg-text";
 
 function Input({
   className,
@@ -170,6 +182,46 @@ export const TypeBasedInput: FC<
         );
         break;
       }
+
+    case DataType.MULTI_SELECT:
+      const _schema = schema as BlockIOObjectSubSchema;
+
+      innerInputElement = (
+        <MultiSelector
+          className="nodrag"
+          values={Object.entries(value || {})
+            .filter(([_, v]) => v)
+            .map(([k, _]) => k)}
+          onValuesChange={(values: string[]) => {
+            const allKeys = Object.keys(_schema.properties);
+            onChange(
+              Object.fromEntries(
+                allKeys.map((opt) => [opt, values.includes(opt)]),
+              ),
+            );
+          }}
+        >
+          <MultiSelectorTrigger className={inputClasses}>
+            <MultiSelectorInput
+              placeholder={schema.placeholder ?? `Select ${schema.title}...`}
+            />
+          </MultiSelectorTrigger>
+          <MultiSelectorContent className="nowheel">
+            <MultiSelectorList
+              className={cn(inputClasses, "agpt-border-input bg-white")}
+            >
+              {Object.keys(_schema.properties)
+                .map((key) => ({ ..._schema.properties[key], key }))
+                .map(({ key, title, description }) => (
+                  <MultiSelectorItem key={key} value={key} title={description}>
+                    {title ?? key}
+                  </MultiSelectorItem>
+                ))}
+            </MultiSelectorList>
+          </MultiSelectorContent>
+        </MultiSelector>
+      );
+      break;
 
     case DataType.SHORT_TEXT:
     default:

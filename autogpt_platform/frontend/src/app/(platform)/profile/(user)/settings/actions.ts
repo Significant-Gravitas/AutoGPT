@@ -2,8 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
-import BackendApi from "@/lib/autogpt-server-api";
 import { NotificationPreferenceDTO } from "@/lib/autogpt-server-api/types";
+import {
+  postV1UpdateNotificationPreferences,
+  postV1UpdateUserEmail,
+} from "@/app/api/__generated__/endpoints/auth/auth";
 
 export async function updateSettings(formData: FormData) {
   const supabase = await getServerSupabase();
@@ -29,8 +32,7 @@ export async function updateSettings(formData: FormData) {
     const { error: emailError } = await supabase.auth.updateUser({
       email,
     });
-    const api = new BackendApi();
-    await api.updateUserEmail(email);
+    await postV1UpdateUserEmail(email);
 
     if (emailError) {
       throw new Error(`${emailError.message}`);
@@ -38,7 +40,6 @@ export async function updateSettings(formData: FormData) {
   }
 
   try {
-    const api = new BackendApi();
     const preferences: NotificationPreferenceDTO = {
       email: user?.email || "",
       preferences: {
@@ -55,7 +56,7 @@ export async function updateSettings(formData: FormData) {
       },
       daily_limit: 0,
     };
-    await api.updateUserPreferences(preferences);
+    await postV1UpdateNotificationPreferences(preferences);
   } catch (error) {
     console.error(error);
     throw new Error(`Failed to update preferences: ${error}`);
@@ -63,10 +64,4 @@ export async function updateSettings(formData: FormData) {
 
   revalidatePath("/profile/settings");
   return { success: true };
-}
-
-export async function getUserPreferences(): Promise<NotificationPreferenceDTO> {
-  const api = new BackendApi();
-  const preferences = await api.getUserPreferences();
-  return preferences;
 }

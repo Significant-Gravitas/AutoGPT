@@ -23,6 +23,7 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util import json
 from backend.util.logging import TruncatedLogger
+from backend.util.prompt import compress_prompt, estimate_token_count
 from backend.util.text import TextFormatter
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
@@ -40,7 +41,7 @@ LLMProviderName = Literal[
 AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
 
 TEST_CREDENTIALS = APIKeyCredentials(
-    id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
+    id="769f6af7-820b-4d5d-9b7a-ab82bbc165f",
     provider="openai",
     api_key=SecretStr("mock-openai-api-key"),
     title="Mock OpenAI API key",
@@ -306,13 +307,6 @@ def convert_openai_tool_fmt_to_anthropic(
     return anthropic_tools
 
 
-def estimate_token_count(prompt_messages: list[dict]) -> int:
-    char_count = sum(len(str(msg.get("content", ""))) for msg in prompt_messages)
-    message_overhead = len(prompt_messages) * 4
-    estimated_tokens = (char_count // 4) + message_overhead
-    return int(estimated_tokens * 1.2)
-
-
 async def llm_call(
     credentials: APIKeyCredentials,
     llm_model: LlmModel,
@@ -321,7 +315,8 @@ async def llm_call(
     max_tokens: int | None,
     tools: list[dict] | None = None,
     ollama_host: str = "localhost:11434",
-    parallel_tool_calls: bool | None = None,
+    parallel_tool_calls=None,
+    compress_prompt_to_fit: bool = True,
 ) -> LLMResponse:
     """
     Make a call to a language model.
@@ -344,10 +339,17 @@ async def llm_call(
             - completion_tokens: The number of tokens used in the completion.
     """
     provider = llm_model.metadata.provider
+    context_window = llm_model.context_window
+
+    if compress_prompt_to_fit:
+        prompt = compress_prompt(
+            messages=prompt,
+            target_tokens=llm_model.context_window // 2,
+            lossy_ok=True,
+        )
 
     # Calculate available tokens based on context window and input length
     estimated_input_tokens = estimate_token_count(prompt)
-    context_window = llm_model.context_window
     model_max_output = llm_model.max_output_tokens or int(2**15)
     user_max = max_tokens or model_max_output
     available_tokens = max(context_window - estimated_input_tokens, 0)
@@ -358,14 +360,10 @@ async def llm_call(
         oai_client = openai.AsyncOpenAI(api_key=credentials.api_key.get_secret_value())
         response_format = None
 
-        if llm_model in [LlmModel.O1_MINI, LlmModel.O1_PREVIEW]:
-            sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
-            usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
-            prompt = [
-                {"role": "user", "content": "\n".join(sys_messages)},
-                {"role": "user", "content": "\n".join(usr_messages)},
-            ]
-        elif json_format:
+        if llm_model.startswith("o") or parallel_tool_calls is None:
+            parallel_tool_calls = openai.NOT_GIVEN
+
+        if json_format:
             response_format = {"type": "json_object"}
 
         response = await oai_client.chat.completions.create(
@@ -374,9 +372,7 @@ async def llm_call(
             response_format=response_format,  # type: ignore
             max_completion_tokens=max_tokens,
             tools=tools_param,  # type: ignore
-            parallel_tool_calls=(
-                openai.NOT_GIVEN if parallel_tool_calls is None else parallel_tool_calls
-            ),
+            parallel_tool_calls=parallel_tool_calls,
         )
 
         if response.choices[0].message.tool_calls:
@@ -699,7 +695,11 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             default=None,
             description="The maximum number of tokens to generate in the chat completion.",
         )
-
+        compress_prompt_to_fit: bool = SchemaField(
+            advanced=True,
+            default=True,
+            description="Whether to compress the prompt to fit within the model's context window.",
+        )
         ollama_host: str = SchemaField(
             advanced=True,
             default="localhost:11434",
@@ -757,6 +757,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         llm_model: LlmModel,
         prompt: list[dict],
         json_format: bool,
+        compress_prompt_to_fit: bool,
         max_tokens: int | None,
         tools: list[dict] | None = None,
         ollama_host: str = "localhost:11434",
@@ -774,6 +775,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             max_tokens=max_tokens,
             tools=tools,
             ollama_host=ollama_host,
+            compress_prompt_to_fit=compress_prompt_to_fit,
         )
 
     async def run(
@@ -832,7 +834,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             except JSONDecodeError as e:
                 return f"JSON decode error: {e}"
 
-        logger.info(f"LLM request: {prompt}")
+        logger.debug(f"LLM request: {prompt}")
         retry_prompt = ""
         llm_model = input_data.model
 
@@ -842,6 +844,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     credentials=credentials,
                     llm_model=llm_model,
                     prompt=prompt,
+                    compress_prompt_to_fit=input_data.compress_prompt_to_fit,
                     json_format=bool(input_data.expected_format),
                     ollama_host=input_data.ollama_host,
                     max_tokens=input_data.max_tokens,
@@ -853,7 +856,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                         output_token_count=llm_response.completion_tokens,
                     )
                 )
-                logger.info(f"LLM attempt-{retry_count} response: {response_text}")
+                logger.debug(f"LLM attempt-{retry_count} response: {response_text}")
 
                 if input_data.expected_format:
 
