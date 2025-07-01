@@ -71,6 +71,9 @@ This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-opti
 
 ## 🔄 Data Fetching Strategy
 
+> [!NOTE]
+> You don't need to run the OpenAPI commands below to run the Front-end. You might need to run when adding/modifying endpoints in the Back-end, however, the CI is setup to let you know 👍🏽 (it'll pull the latest OpenAPI spec, generate the clients and run the types on the Front-end to check everything works)
+
 This project uses an auto-generated API client powered by [**Orval**](https://orval.dev/), which creates type-safe API clients from OpenAPI specifications.
 
 ### How It Works
