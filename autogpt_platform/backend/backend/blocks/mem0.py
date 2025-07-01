@@ -244,8 +244,7 @@ class SearchMemoryBlock(Block, Mem0Base):
             if input_data.limit_memory_to_agent:
                 filters["AND"].append({"agent_id": graph_id})
             if input_data.metadata_filter:
-                for key, value in input_data.metadata_filter.items():
-                    filters["AND"].append({f"metadata.{key}": value})
+                filters["AND"].append({"metadata": input_data.metadata_filter})
 
             result: list[dict[str, Any]] = client.search(
                 input_data.query, version="v2", filters=filters
@@ -330,8 +329,7 @@ class GetAllMemoriesBlock(Block, Mem0Base):
                     {"categories": {"contains": input_data.categories}}
                 )
             if input_data.metadata_filter:
-                for key, value in input_data.metadata_filter.items():
-                    filters["AND"].append({f"metadata.{key}": value})
+                filters["AND"].append({"metadata": input_data.metadata_filter})
 
             memories: list[dict[str, Any]] = client.get_all(
                 filters=filters,
@@ -426,8 +424,7 @@ class GetLatestMemoryBlock(Block, Mem0Base):
                     {"categories": {"contains": input_data.categories}}
                 )
             if input_data.metadata_filter:
-                for key, value in input_data.metadata_filter.items():
-                    filters["AND"].append({f"metadata.{key}": value})
+                filters["AND"].append({"metadata": input_data.metadata_filter})
 
             memories: list[dict[str, Any]] = client.get_all(
                 filters=filters,
