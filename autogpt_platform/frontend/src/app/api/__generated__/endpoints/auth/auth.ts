@@ -419,6 +419,32 @@ export function useGetV1GetNotificationPreferences<
 }
 
 /**
+ * @summary Get notification preferences
+ */
+export const prefetchGetV1GetNotificationPreferencesQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetNotificationPreferences>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetNotificationPreferences>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetNotificationPreferencesQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Update notification preferences
  */
 export type postV1UpdateNotificationPreferencesResponse200 = {
