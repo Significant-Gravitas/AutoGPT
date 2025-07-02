@@ -1,5 +1,17 @@
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 
+export class ApiError extends Error {
+  public status: number;
+  public response?: any;
+
+  constructor(message: string, status: number, response?: any) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.response = response;
+  }
+}
+
 export function buildRequestUrl(
   baseUrl: string,
   path: string,
@@ -172,6 +184,17 @@ export async function makeAuthenticatedRequest(
   if (!response.ok) {
     const errorDetail = await parseApiError(response);
 
+    // Try to parse the full response body for better error context
+    let responseData = null;
+    try {
+      const responseText = await response.clone().text();
+      if (responseText) {
+        responseData = JSON.parse(responseText);
+      }
+    } catch {
+      // Ignore parsing errors
+    }
+
     // Handle authentication errors gracefully during logout
     if (isAuthenticationError(response, errorDetail)) {
       if (isLogoutInProgress()) {
@@ -189,8 +212,8 @@ export async function makeAuthenticatedRequest(
       return null;
     }
 
-    // For other errors, throw as normal
-    throw new Error(errorDetail);
+    // For other errors, throw ApiError with proper status code
+    throw new ApiError(errorDetail, response.status, responseData);
   }
 
   return parseApiResponse(response);
@@ -218,6 +241,17 @@ export async function makeAuthenticatedFileUpload(
     // Handle authentication errors gracefully for file uploads too
     const errorMessage = `Error uploading file: ${response.statusText}`;
 
+    // Try to parse error response
+    let responseData = null;
+    try {
+      const responseText = await response.clone().text();
+      if (responseText) {
+        responseData = JSON.parse(responseText);
+      }
+    } catch {
+      // Ignore parsing errors
+    }
+
     if (response.status === 401 || response.status === 403) {
       if (isLogoutInProgress()) {
         console.debug(
@@ -229,7 +263,7 @@ export async function makeAuthenticatedFileUpload(
       return "";
     }
 
-    throw new Error(errorMessage);
+    throw new ApiError(errorMessage, response.status, responseData);
   }
 
   return await response.text();

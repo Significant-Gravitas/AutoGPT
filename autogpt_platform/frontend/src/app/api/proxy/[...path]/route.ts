@@ -1,4 +1,5 @@
 import {
+  ApiError,
   makeAuthenticatedFileUpload,
   makeAuthenticatedRequest,
 } from "@/lib/autogpt-server-api/helpers";
@@ -97,6 +98,16 @@ function createResponse(
 
 function createErrorResponse(error: unknown): NextResponse {
   console.error("API proxy error:", error);
+
+  // If it's our custom ApiError, preserve the original status and response
+  if (error instanceof ApiError) {
+    return NextResponse.json(
+      error.response || { error: error.message, detail: error.message },
+      { status: error.status },
+    );
+  }
+
+  // For other errors, use generic response
   const detail =
     error instanceof Error ? error.message : "An unknown error occurred";
   return NextResponse.json(
