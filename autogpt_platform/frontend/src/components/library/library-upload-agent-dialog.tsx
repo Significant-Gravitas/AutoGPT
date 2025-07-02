@@ -82,8 +82,7 @@ export default function LibraryUploadAgentDialog(): React.ReactNode {
         description: "Agent uploaded successfully",
         variant: "default",
       });
-      const qID = "flowID";
-      window.location.href = `/build?${qID}=${response.id}`;
+      window.location.href = `/library`;
     } catch (error) {
       form.setError("root", {
         message: `Could not create agent: ${error}`,
