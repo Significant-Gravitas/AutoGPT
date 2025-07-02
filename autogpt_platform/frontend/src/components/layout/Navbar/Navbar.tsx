@@ -1,35 +1,26 @@
+"use client";
+
 import { IconAutoGPTLogo, IconType } from "@/components/ui/icons";
-import { ProfileDetails } from "@/lib/autogpt-server-api/types";
 import Wallet from "../../agptui/Wallet";
 import { AccountMenu } from "./components/AccountMenu/AccountMenu";
+import { AgentNotifications } from "./components/AgentNotifications/AgentNotifications";
+import { LoginButton } from "./components/LoginButton";
 import { MobileNavBar } from "./components/MobileNavbar/MobileNavBar";
 import { NavbarLink } from "./components/NavbarLink";
-
-import BackendAPI from "@/lib/autogpt-server-api";
-import { getServerUser } from "@/lib/supabase/server/getServerUser";
-import { LoginButton } from "./components/LoginButton";
+import { NavbarLoading } from "./components/NavbarLoading";
 import { accountMenuItems, loggedInLinks, loggedOutLinks } from "./helpers";
+import { useNavbar } from "./useNavbar";
 
-async function getProfileData() {
-  const api = new BackendAPI();
-  const profile = await Promise.resolve(api.getStoreProfile());
+export function Navbar() {
+  const { isLoggedIn, profile, isLoading } = useNavbar();
 
-  return profile;
-}
-
-export async function Navbar() {
-  const { user } = await getServerUser();
-  const isLoggedIn = user !== null;
-
-  let profile: ProfileDetails | null = null;
-
-  if (isLoggedIn) {
-    profile = await getProfileData();
+  if (isLoading) {
+    return <NavbarLoading />;
   }
 
   return (
     <>
-      <nav className="sticky top-0 z-40 mx-[16px] hidden h-16 items-center rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 p-3 backdrop-blur-[26px] dark:border-gray-700 dark:bg-gray-900 md:inline-flex">
+      <nav className="sticky top-0 z-40 hidden h-16 items-center rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 p-3 backdrop-blur-[26px] md:inline-flex">
         {/* Left section */}
         <div className="flex flex-1 items-center gap-6">
           {isLoggedIn
@@ -50,11 +41,12 @@ export async function Navbar() {
         <div className="flex flex-1 items-center justify-end gap-4">
           {isLoggedIn ? (
             <div className="flex items-center gap-4">
+              <AgentNotifications />
               {profile && <Wallet />}
               <AccountMenu
                 userName={profile?.username}
                 userEmail={profile?.name}
-                avatarSrc={profile?.avatar_url}
+                avatarSrc={profile?.avatar_url ?? ""}
                 menuItemGroups={accountMenuItems}
               />
             </div>
@@ -91,7 +83,7 @@ export async function Navbar() {
                 ...accountMenuItems,
               ]}
               userEmail={profile?.name}
-              avatarSrc={profile?.avatar_url}
+              avatarSrc={profile?.avatar_url ?? ""}
             />
           </div>
         ) : null}

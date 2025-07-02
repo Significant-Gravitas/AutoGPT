@@ -18,9 +18,7 @@ interface Props {
 
 export function NavbarLink({ name, href }: Props) {
   const pathname = usePathname();
-  const parts = pathname.split("/");
-  const activeLink = "/" + (parts.length > 2 ? parts[2] : parts[1]);
-  const isActive = activeLink === href;
+  const isActive = pathname.includes(href);
 
   return (
     <Link

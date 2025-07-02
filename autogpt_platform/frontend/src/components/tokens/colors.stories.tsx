@@ -36,6 +36,8 @@ const colorCategories = Object.entries(colors)
       orange: "Warnings, notifications, and secondary call-to-actions",
       yellow: "Highlights, cautions, and attention-grabbing elements",
       green: "Success states, confirmations, and positive actions",
+      purple: "Brand accents, premium features, and creative elements",
+      pink: "Highlights, special promotions, and playful interactions",
     };
 
     return {
@@ -312,6 +314,8 @@ export function AllVariants() {
 <div className="bg-green-50 border-green-200 text-green-800">Success</div>
 <div className="bg-red-50 border-red-200 text-red-800">Error</div>
 <div className="bg-yellow-50 border-yellow-200 text-yellow-800">Warning</div>
+<div className="bg-purple-50 border-purple-200 text-purple-800">Premium</div>
+<div className="bg-pink-50 border-pink-200 text-pink-800">Special</div>
 
 // ❌ INCORRECT - Don't use these  
 <div className="bg-blue-500 text-purple-600">❌ Not approved</div>
