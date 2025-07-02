@@ -24,8 +24,14 @@ import ActionButtonGroup from "@/components/agptui/action-button-group";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { useToast } from "@/components/ui/use-toast";
+import { CopyIcon } from "@phosphor-icons/react";
 import { isEmpty } from "lodash";
+import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/ui/input";
+
+import AgentStatusChip, {
+  AgentStatus,
+} from "@/components/agents/agent-status-chip";
 
 export default function AgentRunDraftView({
   agent,
@@ -481,9 +487,73 @@ export default function AgentRunDraftView({
     ],
   );
 
+  const triggerStatus: AgentStatus | null = !agentPreset
+    ? null
+    : !agentPreset.webhook
+      ? "broken"
+      : agentPreset.is_active
+        ? "active"
+        : "inactive";
+
   return (
     <div className="agpt-div flex gap-6">
       <div className="flex flex-1 flex-col gap-4">
+        {agent.has_external_trigger && agentPreset && (
+          <Card className="agpt-box">
+            <CardHeader className="flex-row items-center justify-between">
+              <CardTitle className="font-poppins text-lg">
+                Trigger status
+              </CardTitle>
+              {triggerStatus && <AgentStatusChip status={triggerStatus} />}
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {!agentPreset.webhook_id ? (
+                /* Shouldn't happen, but technically possible */
+                <p className="text-sm text-destructive">
+                  This trigger is not attached to a webhook. Use &quot;Set up
+                  trigger&quot; to fix this.
+                </p>
+              ) : !agent.trigger_setup_info.credentials_input_name ? (
+                /* Expose webhook URL if not auto-setup */
+                <div className="text-sm">
+                  <p>
+                    This trigger is ready to be used. Use the Webhook URL below
+                    to set up the trigger connection with the service of your
+                    choosing.
+                  </p>
+                  <div className="nodrag mr-5 flex flex-col gap-1">
+                    Webhook URL:
+                    <div className="flex gap-2 rounded-md bg-gray-50 p-2">
+                      <code className="select-all text-sm">
+                        {agentPreset.webhook.url}
+                      </code>
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="size-7 flex-none"
+                        onClick={() =>
+                          agentPreset.webhook &&
+                          navigator.clipboard.writeText(agentPreset.webhook.url)
+                        }
+                        title="Copy webhook URL"
+                      >
+                        <CopyIcon className="size-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  This agent trigger is{" "}
+                  {agentPreset.is_active
+                    ? "ready. When a trigger is received, it will run with the provided settings."
+                    : "disabled. It will not respond to triggers until you enable it."}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         <Card className="agpt-box">
           <CardHeader>
             <CardTitle className="font-poppins text-lg">Input</CardTitle>
