@@ -44,6 +44,10 @@ export function useLoginPage() {
 
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);
+
+    // Artificially wait 2 seconds
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+
     try {
       const error = await providerLogin(provider);
       if (error) throw error;
