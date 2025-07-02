@@ -8,7 +8,7 @@ from .projects import LinearSearchProjectsBlock
 
 __all__ = [
     "LinearCreateCommentBlock",
-    "LinearCreateIssueBlock", 
+    "LinearCreateIssueBlock",
     "LinearSearchIssuesBlock",
     "LinearSearchProjectsBlock",
 ]

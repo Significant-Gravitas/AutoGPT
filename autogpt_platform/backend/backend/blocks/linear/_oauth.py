@@ -7,9 +7,9 @@ from typing import Optional
 from urllib.parse import urlencode
 
 from backend.sdk import (
+    APIKeyCredentials,
     BaseOAuthHandler,
     OAuth2Credentials,
-    APIKeyCredentials,
     ProviderName,
     Requests,
     SecretStr,
@@ -18,6 +18,7 @@ from backend.sdk import (
 
 class LinearAPIException(Exception):
     """Exception for Linear API errors."""
+
     def __init__(self, message: str, status_code: int):
         super().__init__(message)
         self.status_code = status_code
@@ -106,9 +107,7 @@ class LinearOAuthHandler(BaseOAuthHandler):
             **params,
         }
 
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded"
-        }
+        headers = {"Content-Type": "application/x-www-form-urlencoded"}
         response = await Requests().post(
             self.token_url, data=request_body, headers=headers
         )
@@ -130,9 +129,7 @@ class LinearOAuthHandler(BaseOAuthHandler):
         new_credentials = OAuth2Credentials(
             provider=self.PROVIDER_NAME,
             title=current_credentials.title if current_credentials else None,
-            username=token_data.get("user", {}).get(
-                "name", "Unknown User"
-            ),
+            username=token_data.get("user", {}).get("name", "Unknown User"),
             access_token=token_data["access_token"],
             scopes=token_data["scope"].split(
                 ","

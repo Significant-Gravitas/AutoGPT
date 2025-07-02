@@ -1,17 +1,18 @@
 from backend.sdk import (
+    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    CredentialsMetaInput,
+    OAuth2Credentials,
     SchemaField,
     String,
-    OAuth2Credentials,
-    APIKeyCredentials,
-    CredentialsMetaInput,
 )
+
 from ._api import LinearAPIException, LinearClient
-from .models import CreateIssueResponse, Issue
 from ._config import linear
+from .models import CreateIssueResponse, Issue
 
 
 class LinearCreateIssueBlock(Block):
@@ -23,7 +24,9 @@ class LinearCreateIssueBlock(Block):
             required_scopes={"read", "issues:create"},
         )
         title: String = SchemaField(description="Title of the issue")
-        description: String = SchemaField(description="Description of the issue", default="")
+        description: String = SchemaField(
+            description="Description of the issue", default=""
+        )
         team_name: String = SchemaField(
             description="Name of the team to create the issue on"
         )
@@ -86,7 +89,7 @@ class LinearCreateIssueBlock(Block):
         input_data: Input,
         *,
         credentials: OAuth2Credentials | APIKeyCredentials,
-        **kwargs
+        **kwargs,
     ) -> BlockOutput:
         """Execute the issue creation"""
         try:
@@ -147,7 +150,7 @@ class LinearSearchIssuesBlock(Block):
         input_data: Input,
         *,
         credentials: OAuth2Credentials | APIKeyCredentials,
-        **kwargs
+        **kwargs,
     ) -> BlockOutput:
         """Execute the issue search"""
         try:

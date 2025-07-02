@@ -3,7 +3,9 @@ Shared configuration for all Linear blocks using the new SDK pattern.
 """
 
 import os
+
 from backend.sdk import BlockCostType, ProviderBuilder
+
 from ._oauth import LinearOAuthHandler
 
 # Check if Linear OAuth is configured
@@ -17,8 +19,7 @@ builder = ProviderBuilder("linear").with_base_cost(1, BlockCostType.RUN)
 # Add OAuth support if configured
 if LINEAR_OAUTH_IS_CONFIGURED:
     builder = builder.with_oauth(
-        LinearOAuthHandler,
-        scopes=["read", "write", "issues:create", "comments:create"]
+        LinearOAuthHandler, scopes=["read", "write", "issues:create", "comments:create"]
     )
 
 # Add API key support as a fallback

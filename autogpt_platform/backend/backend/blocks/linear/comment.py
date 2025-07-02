@@ -1,17 +1,18 @@
 from backend.sdk import (
+    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchema,
+    CredentialsMetaInput,
+    OAuth2Credentials,
     SchemaField,
     String,
-    OAuth2Credentials,
-    APIKeyCredentials,
-    CredentialsMetaInput,
 )
+
 from ._api import LinearAPIException, LinearClient
-from .models import CreateCommentResponse
 from ._config import linear
+from .models import CreateCommentResponse
 
 
 class LinearCreateCommentBlock(Block):
@@ -58,7 +59,7 @@ class LinearCreateCommentBlock(Block):
         input_data: Input,
         *,
         credentials: OAuth2Credentials | APIKeyCredentials,
-        **kwargs
+        **kwargs,
     ) -> BlockOutput:
         """Execute the comment creation"""
         try:

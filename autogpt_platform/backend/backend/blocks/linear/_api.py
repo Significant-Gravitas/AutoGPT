@@ -3,13 +3,9 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Optional, Union
 
-from backend.sdk import OAuth2Credentials, APIKeyCredentials, Requests
-from .models import (
-    CreateCommentResponse,
-    CreateIssueResponse,
-    Issue,
-    Project,
-)
+from backend.sdk import APIKeyCredentials, OAuth2Credentials, Requests
+
+from .models import CreateCommentResponse, CreateIssueResponse, Issue, Project
 
 
 class LinearAPIException(Exception):
@@ -39,9 +35,13 @@ class LinearClient:
             }
             if credentials:
                 if isinstance(credentials, OAuth2Credentials):
-                    headers["Authorization"] = f"Bearer {credentials.access_token.get_secret_value()}"
+                    headers["Authorization"] = (
+                        f"Bearer {credentials.access_token.get_secret_value()}"
+                    )
                 elif isinstance(credentials, APIKeyCredentials):
-                    headers["Authorization"] = f"{credentials.api_key.get_secret_value()}"
+                    headers["Authorization"] = (
+                        f"{credentials.api_key.get_secret_value()}"
+                    )
 
             self._requests = Requests(
                 extra_headers=headers,
