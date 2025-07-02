@@ -461,8 +461,16 @@ export type LibraryAgentPreset = {
   name: string;
   description: string;
   is_active: boolean;
-  webhook_id?: string;
-};
+} & (
+  | {
+      webhook_id: string;
+      webhook: Webhook;
+    }
+  | {
+      webhook_id?: undefined;
+      webhook?: undefined;
+    }
+);
 
 export type LibraryAgentPresetID = Brand<string, "LibraryAgentPresetID">;
 
@@ -604,9 +612,9 @@ export type Webhook = {
   id: string;
   url: string;
   provider: CredentialsProviderName;
-  credentials_id: string;
+  credentials_id: string; // empty string if not appicable
   webhook_type: string;
-  resource?: string;
+  resource: string; // empty string if not appicable
   events: string[];
   secret: string;
   config: Record<string, any>;

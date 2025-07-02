@@ -8,6 +8,7 @@
 import type { LibraryAgentPresetInputs } from "./libraryAgentPresetInputs";
 import type { LibraryAgentPresetCredentials } from "./libraryAgentPresetCredentials";
 import type { LibraryAgentPresetWebhookId } from "./libraryAgentPresetWebhookId";
+import type { LibraryAgentPresetWebhook } from "./libraryAgentPresetWebhook";
 
 /**
  * Represents a preset configuration for a library agent.
@@ -24,4 +25,5 @@ export interface LibraryAgentPreset {
   id: string;
   user_id: string;
   updated_at: string;
+  webhook: LibraryAgentPresetWebhook;
 }
