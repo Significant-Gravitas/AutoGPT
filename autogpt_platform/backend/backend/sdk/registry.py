@@ -54,6 +54,16 @@ class AutoRegistry:
 
             # Register OAuth handler if provided
             if provider.oauth_handler:
+                # Dynamically set PROVIDER_NAME if not already set
+                if (
+                    not hasattr(provider.oauth_handler, "PROVIDER_NAME")
+                    or provider.oauth_handler.PROVIDER_NAME is None
+                ):
+                    # Import ProviderName to create dynamic enum value
+                    from backend.integrations.providers import ProviderName
+
+                    # This works because ProviderName has _missing_ method
+                    provider.oauth_handler.PROVIDER_NAME = ProviderName(provider.name)
                 cls._oauth_handlers[provider.name] = provider.oauth_handler
 
             # Register webhook manager if provided
@@ -136,57 +146,8 @@ class AutoRegistry:
     @classmethod
     def patch_integrations(cls) -> None:
         """Patch existing integration points to use AutoRegistry."""
-        # Patch oauth handlers
-        try:
-            import backend.integrations.oauth as oauth
-
-            if hasattr(oauth, "HANDLERS_BY_NAME"):
-                # Create a new dict that includes both original and SDK handlers
-                original_handlers = dict(oauth.HANDLERS_BY_NAME)
-
-                class PatchedHandlersDict(dict):  # type: ignore
-                    def __getitem__(self, key):
-                        # First try SDK handlers
-                        sdk_handlers = cls.get_oauth_handlers()
-                        if key in sdk_handlers:
-                            return sdk_handlers[key]
-                        # Fall back to original
-                        return original_handlers[key]
-
-                    def get(self, key, default=None):
-                        try:
-                            return self[key]
-                        except KeyError:
-                            return default
-
-                    def __contains__(self, key):
-                        sdk_handlers = cls.get_oauth_handlers()
-                        return key in sdk_handlers or key in original_handlers
-
-                    def keys(self):  # type: ignore[override]
-                        sdk_handlers = cls.get_oauth_handlers()
-                        all_keys = set(original_handlers.keys()) | set(
-                            sdk_handlers.keys()
-                        )
-                        return all_keys
-
-                    def values(self):
-                        combined = dict(original_handlers)
-                        sdk_handlers = cls.get_oauth_handlers()
-                        if isinstance(sdk_handlers, dict):
-                            combined.update(sdk_handlers)  # type: ignore
-                        return combined.values()
-
-                    def items(self):
-                        combined = dict(original_handlers)
-                        sdk_handlers = cls.get_oauth_handlers()
-                        if isinstance(sdk_handlers, dict):
-                            combined.update(sdk_handlers)  # type: ignore
-                        return combined.items()
-
-                oauth.HANDLERS_BY_NAME = PatchedHandlersDict()
-        except Exception as e:
-            logging.warning(f"Failed to patch oauth handlers: {e}")
+        # OAuth handlers are now handled by SDKAwareHandlersDict in oauth/__init__.py
+        # No patching needed for OAuth handlers
 
         # Patch webhook managers
         try:

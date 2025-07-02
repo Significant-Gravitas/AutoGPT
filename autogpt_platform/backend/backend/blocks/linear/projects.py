@@ -1,5 +1,4 @@
 from backend.sdk import (
-    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
@@ -42,7 +41,7 @@ class LinearSearchProjectsBlock(Block):
 
     @staticmethod
     async def search_projects(
-        credentials: OAuth2Credentials | APIKeyCredentials,
+        credentials: OAuth2Credentials,
         term: str,
     ) -> list[Project]:
         client = LinearClient(credentials=credentials)
@@ -53,7 +52,7 @@ class LinearSearchProjectsBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: OAuth2Credentials | APIKeyCredentials,
+        credentials: OAuth2Credentials,
         **kwargs,
     ) -> BlockOutput:
         """Execute the project search"""

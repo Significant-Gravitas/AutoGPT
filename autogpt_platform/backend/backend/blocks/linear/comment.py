@@ -1,5 +1,4 @@
 from backend.sdk import (
-    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
@@ -46,7 +45,7 @@ class LinearCreateCommentBlock(Block):
 
     @staticmethod
     async def create_comment(
-        credentials: OAuth2Credentials | APIKeyCredentials, issue_id: str, comment: str
+        credentials: OAuth2Credentials, issue_id: str, comment: str
     ) -> tuple[str, str]:
         client = LinearClient(credentials=credentials)
         response: CreateCommentResponse = await client.try_create_comment(
@@ -58,7 +57,7 @@ class LinearCreateCommentBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: OAuth2Credentials | APIKeyCredentials,
+        credentials: OAuth2Credentials,
         **kwargs,
     ) -> BlockOutput:
         """Execute the comment creation"""

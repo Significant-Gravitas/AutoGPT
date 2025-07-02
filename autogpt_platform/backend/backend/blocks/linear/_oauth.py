@@ -7,7 +7,6 @@ from typing import Optional
 from urllib.parse import urlencode
 
 from backend.sdk import (
-    APIKeyCredentials,
     BaseOAuthHandler,
     OAuth2Credentials,
     ProviderName,
@@ -29,7 +28,9 @@ class LinearOAuthHandler(BaseOAuthHandler):
     OAuth2 handler for Linear.
     """
 
-    PROVIDER_NAME = ProviderName.LINEAR
+    # Provider name will be set dynamically by the SDK when registered
+    # We use a placeholder that will be replaced by AutoRegistry.register_provider()
+    PROVIDER_NAME = ProviderName("linear")
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
@@ -149,14 +150,15 @@ class LinearOAuthHandler(BaseOAuthHandler):
         from ._api import LinearClient
 
         try:
-            linear_client = LinearClient(
-                APIKeyCredentials(
-                    api_key=SecretStr(access_token),
-                    title="temp",
-                    provider=self.PROVIDER_NAME,
-                    expires_at=None,
-                )
+            # Create a temporary OAuth2Credentials object for the LinearClient
+            temp_creds = OAuth2Credentials(
+                id="temp",
+                provider=self.PROVIDER_NAME,
+                title="temp",
+                access_token=SecretStr(access_token),
+                scopes=[],
             )
+            linear_client = LinearClient(credentials=temp_creds)
 
             query = """
                 query Viewer {

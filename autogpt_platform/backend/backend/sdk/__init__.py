@@ -129,10 +129,6 @@ CredentialsMetaInput = _CredentialsMetaInput[
 ]
 
 
-# Initialize the registry's integration patches
-AutoRegistry.patch_integrations()
-
-
 # === COMPREHENSIVE __all__ EXPORT ===
 __all__ = [
     # Core Block System

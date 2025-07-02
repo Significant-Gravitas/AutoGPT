@@ -477,10 +477,23 @@ async def remove_all_webhooks_for_credentials(
 def _get_provider_oauth_handler(
     req: Request, provider_name: ProviderName
 ) -> "BaseOAuthHandler":
-    if provider_name not in HANDLERS_BY_NAME:
+    # Ensure blocks are loaded so SDK providers are available
+    try:
+        from backend.blocks import load_all_blocks
+
+        load_all_blocks()  # This is cached, so it only runs once
+    except Exception as e:
+        logger.warning(f"Failed to load blocks: {e}")
+
+    # Convert provider_name to string for lookup
+    provider_key = (
+        provider_name.value if hasattr(provider_name, "value") else str(provider_name)
+    )
+
+    if provider_key not in HANDLERS_BY_NAME:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Provider '{provider_name.value}' does not support OAuth",
+            detail=f"Provider '{provider_key}' does not support OAuth",
         )
 
     client_id = getattr(settings.secrets, f"{provider_name.value}_client_id")
@@ -497,7 +510,7 @@ def _get_provider_oauth_handler(
             },
         )
 
-    handler_class = HANDLERS_BY_NAME[provider_name]
+    handler_class = HANDLERS_BY_NAME[provider_key]
     frontend_base_url = (
         settings.config.frontend_base_url
         or settings.config.platform_base_url

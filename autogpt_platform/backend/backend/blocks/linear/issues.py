@@ -1,5 +1,4 @@
 from backend.sdk import (
-    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
@@ -59,7 +58,7 @@ class LinearCreateIssueBlock(Block):
 
     @staticmethod
     async def create_issue(
-        credentials: OAuth2Credentials | APIKeyCredentials,
+        credentials: OAuth2Credentials,
         team_name: str,
         title: str,
         description: str = "",
@@ -88,7 +87,7 @@ class LinearCreateIssueBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: OAuth2Credentials | APIKeyCredentials,
+        credentials: OAuth2Credentials,
         **kwargs,
     ) -> BlockOutput:
         """Execute the issue creation"""
@@ -138,7 +137,7 @@ class LinearSearchIssuesBlock(Block):
 
     @staticmethod
     async def search_issues(
-        credentials: OAuth2Credentials | APIKeyCredentials,
+        credentials: OAuth2Credentials,
         term: str,
     ) -> list[Issue]:
         client = LinearClient(credentials=credentials)
@@ -149,7 +148,7 @@ class LinearSearchIssuesBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: OAuth2Credentials | APIKeyCredentials,
+        credentials: OAuth2Credentials,
         **kwargs,
     ) -> BlockOutput:
         """Execute the issue search"""
