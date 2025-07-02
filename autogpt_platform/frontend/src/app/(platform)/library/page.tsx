@@ -1,5 +1,5 @@
+"use client";
 import Link from "next/link";
-import { Metadata } from "next/types";
 
 import {
   ArrowBottomRightIcon,
@@ -7,15 +7,9 @@ import {
 } from "@radix-ui/react-icons";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-import { LibraryPageStateProvider } from "./state-provider";
-import LibraryActionSubHeader from "@/components/library/library-action-sub-header";
-import LibraryActionHeader from "@/components/library/library-action-header";
-import LibraryAgentList from "@/components/library/library-agent-list";
-
-export const metadata: Metadata = {
-  title: "Library - AutoGPT Platform",
-  description: "Your collection of Agents on the AutoGPT Platform",
-};
+import { LibraryPageStateProvider } from "./components/state-provider";
+import LibraryActionHeader from "./components/LibraryActionHeader/LibraryActionHeader";
+import LibraryAgentList from "./components/LibraryAgentList/LibraryAgentList";
 
 /**
  * LibraryPage Component
@@ -25,13 +19,7 @@ export default function LibraryPage() {
   return (
     <main className="container min-h-screen space-y-4 pb-20 sm:px-8 md:px-12">
       <LibraryPageStateProvider>
-        {/* Header section containing notifications, search functionality and upload mechanism */}
         <LibraryActionHeader />
-
-        {/* Subheader section containing agent counts and filtering options */}
-        <LibraryActionSubHeader />
-
-        {/* Content section displaying agent list with counter and filtering options */}
         <LibraryAgentList />
       </LibraryPageStateProvider>
 

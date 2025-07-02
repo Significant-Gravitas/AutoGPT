@@ -13,52 +13,56 @@ const meta: Meta = {
 
 export default meta;
 
-// Border radius scale data with rem and px values
-// https://tailwindcss.com/docs/border-radius
+// Border radius scale data based on Figma design tokens
+// Custom naming convention: xs, s, m, l, xl, 2xl, full
 const borderRadiusScale = [
-  { name: "none", value: "0px", rem: "0rem", px: "0px", class: "rounded-none" },
   {
-    name: "sm",
-    value: "0.125rem",
-    rem: "0.125rem",
-    px: "2px",
-    class: "rounded-sm",
-  },
-  {
-    name: "DEFAULT",
+    name: "xs",
     value: "0.25rem",
     rem: "0.25rem",
     px: "4px",
-    class: "rounded",
+    class: "rounded-xs",
+    description: "Extra small - for subtle rounding",
   },
   {
-    name: "md",
-    value: "0.375rem",
-    rem: "0.375rem",
-    px: "6px",
-    class: "rounded-md",
-  },
-  {
-    name: "lg",
+    name: "s",
     value: "0.5rem",
     rem: "0.5rem",
     px: "8px",
-    class: "rounded-lg",
+    class: "rounded-s",
+    description: "Small - for cards and containers",
   },
   {
-    name: "xl",
+    name: "m",
     value: "0.75rem",
     rem: "0.75rem",
     px: "12px",
-    class: "rounded-xl",
+    class: "rounded-m",
+    description: "Medium - for buttons and inputs",
   },
-  { name: "2xl", value: "1rem", rem: "1rem", px: "16px", class: "rounded-2xl" },
   {
-    name: "3xl",
+    name: "l",
+    value: "1rem",
+    rem: "1rem",
+    px: "16px",
+    class: "rounded-l",
+    description: "Large - for panels and modals",
+  },
+  {
+    name: "xl",
+    value: "1.25rem",
+    rem: "1.25rem",
+    px: "20px",
+    class: "rounded-xl",
+    description: "Extra large - for hero sections",
+  },
+  {
+    name: "2xl",
     value: "1.5rem",
     rem: "1.5rem",
     px: "24px",
-    class: "rounded-3xl",
+    class: "rounded-2xl",
+    description: "2X large - for major containers",
   },
   {
     name: "full",
@@ -66,6 +70,7 @@ const borderRadiusScale = [
     rem: "9999px",
     px: "9999px",
     class: "rounded-full",
+    description: "Full - for pill buttons and circular elements",
   },
 ];
 
@@ -79,9 +84,10 @@ export function AllVariants() {
             Border Radius
           </Text>
           <Text variant="large" className="text-zinc-600">
-            Our border radius system uses a consistent scale to create visual
-            hierarchy and maintain design consistency across all components.
-            From subtle rounded corners to fully circular elements.
+            Our border radius system uses a simplified naming convention (xs, s,
+            m, l, xl, 2xl, full) based on our Figma design tokens. This creates
+            visual hierarchy and maintains design consistency across all
+            components.
           </Text>
         </div>
 
@@ -119,18 +125,21 @@ export function AllVariants() {
                   Directional Classes
                 </Text>
                 <Text variant="body" className="mb-2 text-zinc-600">
-                  Apply radius to specific corners or sides
+                  Apply radius to specific corners or sides using our design
+                  tokens
                 </Text>
                 <div className="space-y-1 font-mono text-sm text-zinc-800">
-                  <div>rounded-t-lg → top corners</div>
-                  <div>rounded-r-lg → right corners</div>
-                  <div>rounded-b-lg → bottom corners</div>
-                  <div>rounded-l-lg → left corners</div>
+                  <div>rounded-t-m → top corners</div>
+                  <div>rounded-r-m → right corners</div>
+                  <div>rounded-b-m → bottom corners</div>
+                  <div>rounded-l-m → left corners</div>
                 </div>
               </div>
               <Text variant="body" className="mb-4 text-zinc-600">
-                We follow Tailwind CSS border radius system, which provides a
-                comprehensive set of radius values for different use cases.
+                We use a custom border radius system based on our Figma design
+                tokens, with simplified naming (xs, s, m, l, xl, 2xl, full) that
+                provides consistent radius values optimized for our design
+                system.
               </Text>
             </div>
           </div>
@@ -174,11 +183,12 @@ export function AllVariants() {
             variant="h2"
             className="mb-2 text-xl font-semibold text-zinc-800"
           >
-            Complete Border Radius Scale
+            Design System Border Radius Tokens
           </Text>
           <Text variant="body" className="mb-6 text-zinc-600">
-            All available border radius values in our design system. Each value
-            can be applied to all corners or specific corners/sides.
+            All border radius values from our Figma design tokens. Each value
+            can be applied to all corners or specific corners/sides using our
+            simplified naming convention.
           </Text>
         </div>
 
@@ -221,28 +231,31 @@ export function AllVariants() {
         </div>
 
         <StoryCode
-          code={`// Border radius examples
-<div className="rounded-none">No rounding (0px)</div>
-<div className="rounded-sm">Small rounding (2px)</div>
-<div className="rounded">Default rounding (4px)</div>
-<div className="rounded-md">Medium rounding (6px)</div>
-<div className="rounded-lg">Large rounding (8px)</div>
-<div className="rounded-xl">Extra large rounding (12px)</div>
-<div className="rounded-2xl">2X large rounding (16px)</div>
-<div className="rounded-3xl">3X large rounding (24px)</div>
-<div className="rounded-full">Fully rounded (circular)</div>
+          code={`// Border radius examples - Design System Tokens
+<div className="rounded-xs">Extra small rounding (4px)</div>
+<div className="rounded-s">Small rounding (8px)</div>
+<div className="rounded-m">Medium rounding (12px)</div>
+<div className="rounded-l">Large rounding (16px)</div>
+<div className="rounded-xl">Extra large rounding (20px)</div>
+<div className="rounded-2xl">2X large rounding (24px)</div>
+<div className="rounded-full">Pill buttons (circular)</div>
 
-// Directional rounding
-<div className="rounded-t-lg">Top corners only</div>
-<div className="rounded-r-lg">Right corners only</div>
-<div className="rounded-b-lg">Bottom corners only</div>
-<div className="rounded-l-lg">Left corners only</div>
+// Directional rounding (works with all sizes)
+<div className="rounded-t-m">Top corners only</div>
+<div className="rounded-r-m">Right corners only</div>
+<div className="rounded-b-m">Bottom corners only</div>
+<div className="rounded-l-m">Left corners only</div>
 
 // Individual corners
-<div className="rounded-tl-lg">Top-left corner</div>
-<div className="rounded-tr-lg">Top-right corner</div>
-<div className="rounded-bl-lg">Bottom-left corner</div>
-<div className="rounded-br-lg">Bottom-right corner</div>`}
+<div className="rounded-tl-m">Top-left corner</div>
+<div className="rounded-tr-m">Top-right corner</div>
+<div className="rounded-bl-m">Bottom-left corner</div>
+<div className="rounded-br-m">Bottom-right corner</div>
+
+// Usage recommendations
+<button className="rounded-full">Pill Button</button>
+<div className="rounded-m">Card Container</div>
+<input className="rounded-s">Input Field</input>`}
         />
       </div>
     </div>
