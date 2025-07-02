@@ -353,6 +353,10 @@ class Requests:
         max_redirects: int = 10,
         **kwargs,
     ) -> Response:
+        # Convert auth tuple to aiohttp.BasicAuth if necessary
+        if "auth" in kwargs and isinstance(kwargs["auth"], tuple):
+            kwargs["auth"] = aiohttp.BasicAuth(*kwargs["auth"])
+
         if files is not None:
             if json is not None:
                 raise ValueError(
