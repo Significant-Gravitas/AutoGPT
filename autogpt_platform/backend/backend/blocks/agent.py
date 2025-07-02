@@ -15,7 +15,7 @@ from backend.data.block import (
 )
 from backend.data.execution import ExecutionStatus
 from backend.data.model import SchemaField
-from backend.util import json
+from backend.util import json, retry
 
 _logger = logging.getLogger(__name__)
 
@@ -97,19 +97,19 @@ class AgentExecutorBlock(Block):
             ):
                 yield name, data
         except asyncio.CancelledError:
-            await execution_utils.stop_graph_execution(
+            await self._stop(
                 graph_exec_id=graph_exec.id,
-                user_id=graph_exec.user_id,
-                use_db_query=False,
+                user_id=input_data.user_id,
+                logger=logger,
             )
             logger.warning(
                 f"Execution of graph {input_data.graph_id}v{input_data.graph_version} was cancelled."
             )
         except Exception as e:
-            await execution_utils.stop_graph_execution(
+            await self._stop(
                 graph_exec_id=graph_exec.id,
-                user_id=graph_exec.user_id,
-                use_db_query=False,
+                user_id=input_data.user_id,
+                logger=logger,
             )
             logger.error(
                 f"Execution of graph {input_data.graph_id}v{input_data.graph_version} failed: {e}, execution is stopped."
@@ -175,3 +175,25 @@ class AgentExecutorBlock(Block):
                     f"Execution {log_id} produced {output_name}: {output_data}"
                 )
                 yield output_name, output_data
+
+    @retry.func_retry
+    async def _stop(
+        self,
+        graph_exec_id: str,
+        user_id: str,
+        logger,
+    ) -> None:
+        from backend.executor import utils as execution_utils
+
+        log_id = f"Graph exec-id: {graph_exec_id}"
+        logger.info(f"Stopping execution of {log_id}")
+
+        try:
+            await execution_utils.stop_graph_execution(
+                graph_exec_id=graph_exec_id,
+                user_id=user_id,
+                use_db_query=False,
+            )
+            logger.info(f"Execution {log_id} stopped successfully.")
+        except Exception as e:
+            logger.error(f"Failed to stop execution {log_id}: {e}")
