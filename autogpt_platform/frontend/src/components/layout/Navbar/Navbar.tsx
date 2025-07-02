@@ -1,16 +1,14 @@
 import { IconAutoGPTLogo, IconType } from "@/components/ui/icons";
 import { ProfileDetails } from "@/lib/autogpt-server-api/types";
-import Link from "next/link";
-import { MobileNavBar } from "../../agptui/MobileNavBar";
 import Wallet from "../../agptui/Wallet";
+import { AccountMenu } from "./components/AccountMenu/AccountMenu";
+import { MobileNavBar } from "./components/MobileNavbar/MobileNavBar";
 import { NavbarLink } from "./components/NavbarLink";
-import { ProfilePopoutMenu } from "./components/ProfilePopoutMenu";
 
 import BackendAPI from "@/lib/autogpt-server-api";
 import { getServerUser } from "@/lib/supabase/server/getServerUser";
-import { SignInIcon } from "@phosphor-icons/react/dist/ssr";
-import { Button } from "../../atoms/Button/Button";
-import { accountMeunItems, loggedInLinks } from "./helpers";
+import { LoginButton } from "./components/LoginButton";
+import { accountMenuItems, loggedInLinks, loggedOutLinks } from "./helpers";
 
 async function getProfileData() {
   const api = new BackendAPI();
@@ -31,12 +29,16 @@ export async function Navbar() {
 
   return (
     <>
-      <nav className="sticky top-0 z-40 mx-[16px] hidden h-16 items-center rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 py-3 pl-6 pr-3 backdrop-blur-[26px] dark:border-gray-700 dark:bg-gray-900 md:inline-flex">
+      <nav className="sticky top-0 z-40 mx-[16px] hidden h-16 items-center rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 p-3 backdrop-blur-[26px] dark:border-gray-700 dark:bg-gray-900 md:inline-flex">
         {/* Left section */}
         <div className="flex flex-1 items-center gap-6">
-          {loggedInLinks.map((link) => (
-            <NavbarLink key={link.name} name={link.name} href={link.href} />
-          ))}
+          {isLoggedIn
+            ? loggedInLinks.map((link) => (
+                <NavbarLink key={link.name} name={link.name} href={link.href} />
+              ))
+            : loggedOutLinks.map((link) => (
+                <NavbarLink key={link.name} name={link.name} href={link.href} />
+              ))}
         </div>
 
         {/* Centered logo */}
@@ -49,24 +51,15 @@ export async function Navbar() {
           {isLoggedIn ? (
             <div className="flex items-center gap-4">
               {profile && <Wallet />}
-              <ProfilePopoutMenu
-                menuItemGroups={accountMeunItems}
+              <AccountMenu
                 userName={profile?.username}
                 userEmail={profile?.name}
                 avatarSrc={profile?.avatar_url}
+                menuItemGroups={accountMenuItems}
               />
             </div>
           ) : (
-            <Link href="/login">
-              <Button
-                size="small"
-                className="flex items-center justify-end space-x-2"
-                leftIcon={<SignInIcon className="h-5 w-5" />}
-                variant="secondary"
-              >
-                Log In
-              </Button>
-            </Link>
+            <LoginButton />
           )}
           {/* <ThemeToggle /> */}
         </div>
@@ -80,7 +73,7 @@ export async function Navbar() {
               menuItemGroups={[
                 {
                   groupName: "Navigation",
-                  items: links.map((link) => ({
+                  items: loggedInLinks.map((link) => ({
                     icon:
                       link.name === "Marketplace"
                         ? IconType.Marketplace
@@ -95,27 +88,13 @@ export async function Navbar() {
                     href: link.href,
                   })),
                 },
-                ...menuItemGroups,
+                ...accountMenuItems,
               ]}
               userEmail={profile?.name}
               avatarSrc={profile?.avatar_url}
             />
           </div>
-        ) : (
-          <Link
-            href="/login"
-            className="fixed right-4 top-4 z-50 mt-4 inline-flex h-8 items-center justify-end rounded-lg pr-4 md:hidden"
-          >
-            <Button
-              size="small"
-              className="flex items-center justify-end space-x-2"
-              leftIcon={<SignInIcon className="h-5 w-5" />}
-              variant="secondary"
-            >
-              Log In
-            </Button>
-          </Link>
-        )}
+        ) : null}
       </>
     </>
   );

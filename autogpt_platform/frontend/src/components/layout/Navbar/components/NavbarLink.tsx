@@ -1,5 +1,7 @@
 "use client";
+
 import { IconLaptop } from "@/components/ui/icons";
+import { cn } from "@/lib/utils";
 import {
   CubeIcon,
   HouseIcon,
@@ -9,15 +11,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Text } from "../../../atoms/Text/Text";
 
-interface NavbarLinkProps {
+interface Props {
   name: string;
   href: string;
 }
 
-export const NavbarLink = ({ name, href }: NavbarLinkProps) => {
+export function NavbarLink({ name, href }: Props) {
   const pathname = usePathname();
   const parts = pathname.split("/");
   const activeLink = "/" + (parts.length > 2 ? parts[2] : parts[1]);
+  const isActive = activeLink === href;
 
   return (
     <Link
@@ -26,43 +29,42 @@ export const NavbarLink = ({ name, href }: NavbarLinkProps) => {
       className="font-poppins text-[20px] leading-[28px]"
     >
       <div
-        className={`p-2 ${
-          activeLink === href
-            ? "rounded-2xl bg-neutral-800 dark:bg-neutral-200"
-            : ""
-        } flex items-center justify-start gap-1`}
+        className={cn(
+          "flex items-center justify-start gap-1 p-2",
+          isActive &&
+            "rounded-small bg-neutral-800 p-2 transition-all duration-300 dark:bg-neutral-200",
+        )}
       >
         {href === "/marketplace" && (
           <StorefrontIcon
-            className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
+            className={cn("h-6 w-6", isActive && "text-white dark:text-black")}
           />
         )}
         {href === "/build" && (
           <CubeIcon
-            className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
+            className={cn("h-6 w-6", isActive && "text-white dark:text-black")}
           />
         )}
         {href === "/monitor" && (
           <IconLaptop
-            className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
+            className={cn("h-6 w-6", isActive && "text-white dark:text-black")}
           />
         )}
         {href === "/library" && (
           <HouseIcon
-            className={`h-6 w-6 ${activeLink === href ? "text-white dark:text-black" : ""}`}
+            className={cn("h-6 w-6", isActive && "text-white dark:text-black")}
           />
         )}
         <Text
           variant="body-medium"
-          className={`hidden lg:block ${
-            activeLink === href
-              ? "text-neutral-50 dark:text-neutral-900"
-              : "text-neutral-900 dark:text-neutral-50"
-          }`}
+          className={cn(
+            "hidden lg:block",
+            isActive ? "!text-white" : "!text-black",
+          )}
         >
           {name}
         </Text>
       </div>
     </Link>
   );
-};
+}

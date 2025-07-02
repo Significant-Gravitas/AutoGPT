@@ -6,22 +6,11 @@ import {
 } from "@/components/ui/popover";
 import Link from "next/link";
 import * as React from "react";
-import { ProfilePopoutMenuLogoutButton } from "../../../agptui/ProfilePopoutMenuLogoutButton";
-import { PublishAgentPopout } from "../../../agptui/composite/PublishAgentPopout";
-import {
-  IconBuilder,
-  IconEdit,
-  IconLayoutDashboard,
-  IconLibrary,
-  IconLogOut,
-  IconMarketplace,
-  IconRefresh,
-  IconSettings,
-  IconType,
-  IconUploadCloud,
-} from "../../../ui/icons";
+import { ProfilePopoutMenuLogoutButton } from "../../../../agptui/ProfilePopoutMenuLogoutButton";
+import { PublishAgentPopout } from "../../../../agptui/composite/PublishAgentPopout";
+import { getAccountMenuOptionIcon, MenuItemGroup } from "../../helpers";
 
-interface ProfilePopoutMenuProps {
+interface Props {
   userName?: string;
   userEmail?: string;
   avatarSrc?: string;
@@ -29,37 +18,13 @@ interface ProfilePopoutMenuProps {
   menuItemGroups: MenuItemGroup[];
 }
 
-export function ProfilePopoutMenu({
+export function AccountMenu({
   userName,
   userEmail,
   avatarSrc,
   menuItemGroups,
-}: ProfilePopoutMenuProps) {
+}: Props) {
   const popupId = React.useId();
-
-  const getIcon = (icon: IconType) => {
-    const iconClass = "w-6 h-6";
-    switch (icon) {
-      case IconType.LayoutDashboard:
-        return <IconLayoutDashboard className={iconClass} />;
-      case IconType.UploadCloud:
-        return <IconUploadCloud className={iconClass} />;
-      case IconType.Edit:
-        return <IconEdit className={iconClass} />;
-      case IconType.Settings:
-        return <IconSettings className={iconClass} />;
-      case IconType.LogOut:
-        return <IconLogOut className={iconClass} />;
-      case IconType.Marketplace:
-        return <IconMarketplace className={iconClass} />;
-      case IconType.Library:
-        return <IconLibrary className={iconClass} />;
-      case IconType.Builder:
-        return <IconBuilder className={iconClass} />;
-      default:
-        return <IconRefresh className={iconClass} />;
-    }
-  };
 
   return (
     <Popover>
@@ -119,7 +84,7 @@ export function ProfilePopoutMenu({
                       className="inline-flex w-full items-center justify-start gap-2.5"
                     >
                       <div className="relative h-6 w-6">
-                        {getIcon(item.icon)}
+                        {getAccountMenuOptionIcon(item.icon)}
                       </div>
                       <div className="font-sans text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
                         {item.text}
@@ -135,7 +100,7 @@ export function ProfilePopoutMenu({
                       trigger={
                         <div className="inline-flex w-full items-center justify-start gap-2.5">
                           <div className="relative h-6 w-6">
-                            {getIcon(item.icon)}
+                            {getAccountMenuOptionIcon(item.icon)}
                           </div>
                           <div className="font-sans text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
                             {item.text}
@@ -157,7 +122,7 @@ export function ProfilePopoutMenu({
                       tabIndex={0}
                     >
                       <div className="relative h-6 w-6">
-                        {getIcon(item.icon)}
+                        {getAccountMenuOptionIcon(item.icon)}
                       </div>
                       <div className="font-sans text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
                         {item.text}
