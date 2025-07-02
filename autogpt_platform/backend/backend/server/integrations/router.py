@@ -34,6 +34,11 @@ from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
 from backend.sdk.registry import AutoRegistry
+from backend.server.integrations.models import (
+    ProviderConstants,
+    ProviderNamesResponse,
+    get_all_provider_names,
+)
 from backend.server.v2.library.db import set_preset_webhook, update_preset
 from backend.util.exceptions import NeedConfirmation, NotFoundError
 from backend.util.settings import Settings
@@ -516,78 +521,55 @@ async def list_providers() -> List[str]:
 
     Returns both statically defined providers (from ProviderName enum)
     and dynamically registered providers (from SDK decorators).
+    
+    Note: The complete list of provider names is also available as a constant
+    in the generated TypeScript client via PROVIDER_NAMES.
     """
-    # Get static providers from enum
-    static_providers = [member.value for member in ProviderName]
-
-    # Get dynamic providers from registry
-    dynamic_providers = list(AutoRegistry._providers.keys())
-
-    # Combine and deduplicate
-    all_providers = list(set(static_providers + dynamic_providers))
-    all_providers.sort()
-
-    logger.info(f"Returning {len(all_providers)} providers")
+    # Get all providers at runtime
+    all_providers = get_all_provider_names()
     return all_providers
 
 
-class ProviderDetails(BaseModel):
-    name: str
-    source: Literal["static", "dynamic", "both"]
-    has_oauth: bool
-    has_webhooks: bool
-    supported_credential_types: List[CredentialsType] = Field(default_factory=list)
-
-
-@router.get("/providers/details", response_model=Dict[str, ProviderDetails])
-async def get_providers_details() -> Dict[str, ProviderDetails]:
+@router.get("/providers/names", response_model=ProviderNamesResponse)
+async def get_provider_names() -> ProviderNamesResponse:
     """
-    Get detailed information about all providers.
-
-    Returns a dictionary mapping provider names to their details,
-    including supported credential types and other metadata.
+    Get all provider names in a structured format.
+    
+    This endpoint is specifically designed to expose the provider names
+    in the OpenAPI schema so that code generators like Orval can create
+    appropriate TypeScript constants.
     """
-    # AutoRegistry is used directly as a class with class methods
+    return ProviderNamesResponse()
 
-    # Build provider details
-    provider_details: Dict[str, ProviderDetails] = {}
 
-    # Add static providers
-    for member in ProviderName:
-        provider_details[member.value] = ProviderDetails(
-            name=member.value,
-            source="static",
-            has_oauth=member.value in AutoRegistry._oauth_handlers,
-            has_webhooks=member.value in AutoRegistry._webhook_managers,
-        )
+@router.get("/providers/constants", response_model=ProviderConstants)
+async def get_provider_constants() -> ProviderConstants:
+    """
+    Get provider names as constants.
+    
+    This endpoint returns a model with provider names as constants,
+    specifically designed for OpenAPI code generation tools to create
+    TypeScript constants.
+    """
+    return ProviderConstants()
 
-    # Add/update with dynamic providers
-    for provider in AutoRegistry._providers:
-        if provider not in provider_details:
-            provider_details[provider] = ProviderDetails(
-                name=provider,
-                source="dynamic",
-                has_oauth=provider in AutoRegistry._oauth_handlers,
-                has_webhooks=provider in AutoRegistry._webhook_managers,
-            )
-        else:
-            provider_details[provider].source = "both"
-            provider_details[provider].has_oauth = (
-                provider in AutoRegistry._oauth_handlers
-            )
-            provider_details[provider].has_webhooks = (
-                provider in AutoRegistry._webhook_managers
-            )
 
-    # Determine supported credential types for each provider
-    # This is a simplified version - in reality, you might want to inspect
-    # the blocks or credentials to determine this more accurately
-    for provider_name, details in provider_details.items():
-        credential_types = []
-        if details.has_oauth:
-            credential_types.append("oauth2")
-        # Most providers support API keys
-        credential_types.append("api_key")
-        details.supported_credential_types = credential_types
+class ProviderEnumResponse(BaseModel):
+    """Response containing a provider from the enum."""
+    provider: str = Field(
+        description="A provider name from the complete list of providers"
+    )
 
-    return provider_details
+
+@router.get("/providers/enum-example", response_model=ProviderEnumResponse)
+async def get_provider_enum_example() -> ProviderEnumResponse:
+    """
+    Example endpoint that uses the CompleteProviderNames enum.
+    
+    This endpoint exists to ensure that the CompleteProviderNames enum is included
+    in the OpenAPI schema, which will cause Orval to generate it as a
+    TypeScript enum/constant.
+    """
+    # Return the first provider as an example
+    all_providers = get_all_provider_names()
+    return ProviderEnumResponse(provider=all_providers[0] if all_providers else "openai")

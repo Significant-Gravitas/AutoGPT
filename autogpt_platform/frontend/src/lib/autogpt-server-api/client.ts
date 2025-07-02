@@ -358,6 +358,10 @@ export default class BackendAPI {
     );
   }
 
+  listProviders(): Promise<string[]> {
+    return this._get("/integrations/providers");
+  }
+
   listCredentials(provider?: string): Promise<CredentialsMetaResponse[]> {
     return this._get(
       provider

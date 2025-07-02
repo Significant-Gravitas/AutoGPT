@@ -34,6 +34,7 @@ def load_all_blocks() -> dict[str, type["Block"]]:
             
         module_path = str(relative_path)[:-3].replace(os.path.sep, ".")
         modules.append(module_path)
+        
     for module in modules:
         if not re.match("^[a-z0-9_.]+$", module):
             raise ValueError(
