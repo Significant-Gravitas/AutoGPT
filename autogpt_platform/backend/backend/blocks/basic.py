@@ -529,7 +529,7 @@ class CreateListBlock(Block):
                 cur_size, cur_tokens = cur_size + 1, cur_tokens + tokens
 
         # Yield final chunk if any
-        if chunk:
+        if chunk or not input_data.values:
             yield "list", chunk
 
 

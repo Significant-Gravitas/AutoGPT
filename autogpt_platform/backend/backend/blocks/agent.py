@@ -17,7 +17,7 @@ from backend.data.execution import ExecutionStatus
 from backend.data.model import SchemaField
 from backend.util import json
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 class AgentExecutorBlock(Block):
@@ -77,27 +77,42 @@ class AgentExecutorBlock(Block):
             use_db_query=False,
         )
 
+        logger = execution_utils.LogMetadata(
+            logger=_logger,
+            user_id=input_data.user_id,
+            graph_eid=graph_exec.id,
+            graph_id=input_data.graph_id,
+            node_eid="*",
+            node_id="*",
+            block_name=self.name,
+        )
+
         try:
             async for name, data in self._run(
                 graph_id=input_data.graph_id,
                 graph_version=input_data.graph_version,
                 graph_exec_id=graph_exec.id,
                 user_id=input_data.user_id,
+                logger=logger,
             ):
                 yield name, data
         except asyncio.CancelledError:
-            logger.warning(
-                f"Execution of graph {input_data.graph_id} version {input_data.graph_version} was cancelled."
-            )
             await execution_utils.stop_graph_execution(
-                graph_exec.id, use_db_query=False
+                graph_exec_id=graph_exec.id,
+                user_id=graph_exec.user_id,
+                use_db_query=False,
+            )
+            logger.warning(
+                f"Execution of graph {input_data.graph_id}v{input_data.graph_version} was cancelled."
             )
         except Exception as e:
-            logger.error(
-                f"Execution of graph {input_data.graph_id} version {input_data.graph_version} failed: {e}, stopping execution."
-            )
             await execution_utils.stop_graph_execution(
-                graph_exec.id, use_db_query=False
+                graph_exec_id=graph_exec.id,
+                user_id=graph_exec.user_id,
+                use_db_query=False,
+            )
+            logger.error(
+                f"Execution of graph {input_data.graph_id}v{input_data.graph_version} failed: {e}, execution is stopped."
             )
             raise
 
@@ -107,6 +122,7 @@ class AgentExecutorBlock(Block):
         graph_version: int,
         graph_exec_id: str,
         user_id: str,
+        logger,
     ) -> BlockOutput:
 
         from backend.data.execution import ExecutionEventType
