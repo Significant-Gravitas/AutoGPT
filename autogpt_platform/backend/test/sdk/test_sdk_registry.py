@@ -247,39 +247,6 @@ class TestAutoRegistryPatching:
         """Clear registry before each test."""
         AutoRegistry.clear()
 
-    @patch("backend.integrations.oauth.HANDLERS_BY_NAME", {})
-    def test_oauth_handler_patching(self):
-        """Test that OAuth handlers are patched into the system."""
-
-        # Create a test OAuth handler
-        class TestOAuthHandler(BaseOAuthHandler):
-            PROVIDER_NAME = ProviderName.GITHUB
-
-        # Register a provider with OAuth
-        provider = Provider(
-            name="patched_provider",
-            oauth_handler=TestOAuthHandler,
-            webhook_manager=None,
-            default_credentials=[],
-            base_costs=[],
-            supported_auth_types={"oauth2"},
-        )
-
-        AutoRegistry.register_provider(provider)
-
-        # Mock the oauth module
-        mock_oauth = MagicMock()
-        mock_oauth.HANDLERS_BY_NAME = {}
-
-        with patch("backend.integrations.oauth", mock_oauth):
-            # Apply patches
-            AutoRegistry.patch_integrations()
-
-            # Verify the patched dict works
-            patched_dict = mock_oauth.HANDLERS_BY_NAME
-            assert "patched_provider" in patched_dict
-            assert patched_dict["patched_provider"] == TestOAuthHandler
-
     @patch("backend.integrations.webhooks.load_webhook_managers")
     def test_webhook_manager_patching(self, mock_load_managers):
         """Test that webhook managers are patched into the system."""
@@ -306,7 +273,9 @@ class TestAutoRegistryPatching:
         mock_webhooks = MagicMock()
         mock_webhooks.load_webhook_managers = mock_load_managers
 
-        with patch("backend.integrations.webhooks", mock_webhooks):
+        with patch.dict(
+            "sys.modules", {"backend.integrations.webhooks": mock_webhooks}
+        ):
             # Apply patches
             AutoRegistry.patch_integrations()
 

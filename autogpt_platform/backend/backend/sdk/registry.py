@@ -146,12 +146,21 @@ class AutoRegistry:
     @classmethod
     def patch_integrations(cls) -> None:
         """Patch existing integration points to use AutoRegistry."""
-        # OAuth handlers are now handled by SDKAwareHandlersDict in oauth/__init__.py
+        # OAuth handlers are handled by SDKAwareHandlersDict in oauth/__init__.py
         # No patching needed for OAuth handlers
 
         # Patch webhook managers
         try:
-            import backend.integrations.webhooks as webhooks
+            import sys
+            from typing import Any
+
+            # Get the module from sys.modules to respect mocking
+            if "backend.integrations.webhooks" in sys.modules:
+                webhooks: Any = sys.modules["backend.integrations.webhooks"]
+            else:
+                import backend.integrations.webhooks
+
+                webhooks: Any = backend.integrations.webhooks
 
             if hasattr(webhooks, "load_webhook_managers"):
                 original_load = webhooks.load_webhook_managers
