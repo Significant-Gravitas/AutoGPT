@@ -673,14 +673,7 @@ export default function useAgentGraph(
       savedAgent &&
       saveRunRequest.activeExecutionID
     ) {
-      setSaveRunRequest({
-        request: "stop",
-        state: "stopping",
-        activeExecutionID: saveRunRequest.activeExecutionID,
-      });
-      api
-        .stopGraphExecution(savedAgent.id, saveRunRequest.activeExecutionID)
-        .then(() => setSaveRunRequest({ request: "none", state: "none" }));
+      api.stopGraphExecution(savedAgent.id, saveRunRequest.activeExecutionID);
     }
   }, [
     api,
