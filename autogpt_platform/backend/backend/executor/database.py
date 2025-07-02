@@ -204,6 +204,7 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     create_graph_execution = d.create_graph_execution
     get_latest_node_execution = d.get_latest_node_execution
     get_graph = d.get_graph
+    get_graph_execution_meta = d.get_graph_execution_meta
     get_node = d.get_node
     get_node_execution = d.get_node_execution
     get_node_executions = d.get_node_executions
