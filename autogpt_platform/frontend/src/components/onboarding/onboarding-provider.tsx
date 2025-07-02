@@ -45,6 +45,7 @@ export function useOnboarding(step?: number, completeStep?: OnboardingStep) {
     if (
       !completeStep ||
       !context.state ||
+      !context.state.completedSteps ||
       context.state.completedSteps.includes(completeStep)
     )
       return;
@@ -79,22 +80,32 @@ export default function OnboardingProvider({
 
   useEffect(() => {
     const fetchOnboarding = async () => {
-      const enabled = await api.isOnboardingEnabled();
-      if (!enabled && pathname.startsWith("/onboarding")) {
-        router.push("/marketplace");
-        return;
-      }
-      const onboarding = await api.getUserOnboarding();
-      setState((prev) => ({ ...onboarding, ...prev }));
+      try {
+        const enabled = await api.isOnboardingEnabled();
+        if (!enabled && pathname.startsWith("/onboarding")) {
+          router.push("/marketplace");
+          return;
+        }
+        const onboarding = await api.getUserOnboarding();
 
-      // Redirect outside onboarding if completed
-      // If user did CONGRATS step, that means they completed introductory onboarding
-      if (
-        onboarding.completedSteps.includes("CONGRATS") &&
-        pathname.startsWith("/onboarding") &&
-        !pathname.startsWith("/onboarding/reset")
-      ) {
-        router.push("/marketplace");
+        // Only update state if onboarding data is valid
+        if (onboarding) {
+          setState((prev) => ({ ...onboarding, ...prev }));
+
+          // Redirect outside onboarding if completed
+          // If user did CONGRATS step, that means they completed introductory onboarding
+          if (
+            onboarding.completedSteps &&
+            onboarding.completedSteps.includes("CONGRATS") &&
+            pathname.startsWith("/onboarding") &&
+            !pathname.startsWith("/onboarding/reset")
+          ) {
+            router.push("/marketplace");
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch onboarding data:", error);
+        // Don't update state on error to prevent null access issues
       }
     };
     if (isUserLoading || !user) {
@@ -138,7 +149,12 @@ export default function OnboardingProvider({
 
   const completeStep = useCallback(
     (step: OnboardingStep) => {
-      if (!state || state.completedSteps.includes(step)) return;
+      if (
+        !state ||
+        !state.completedSteps ||
+        state.completedSteps.includes(step)
+      )
+        return;
 
       updateState({
         completedSteps: [...state.completedSteps, step],
@@ -148,7 +164,12 @@ export default function OnboardingProvider({
   );
 
   const incrementRuns = useCallback(() => {
-    if (!state || state.completedSteps.includes("RUN_AGENTS")) return;
+    if (
+      !state ||
+      !state.completedSteps ||
+      state.completedSteps.includes("RUN_AGENTS")
+    )
+      return;
 
     const finished = state.agentRuns + 1 >= 10;
     setNpsDialogOpen(finished);
