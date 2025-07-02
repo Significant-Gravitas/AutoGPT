@@ -1,3 +1,4 @@
+import { useToast } from "@/components/ui/use-toast";
 import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { BehaveAs, getBehaveAs } from "@/lib/utils";
@@ -14,6 +15,7 @@ export function useSignupPage() {
   const { supabase, user, isUserLoading } = useSupabase();
   const [feedback, setFeedback] = useState<string | null>(null);
   const [captchaKey, setCaptchaKey] = useState(0);
+  const { toast } = useToast();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
@@ -52,7 +54,10 @@ export function useSignupPage() {
     setIsGoogleLoading(false);
     if (error) {
       resetCaptcha();
-      setFeedback(error);
+      toast({
+        title: error,
+        variant: "destructive",
+      });
       return;
     }
     setFeedback(null);
@@ -62,16 +67,21 @@ export function useSignupPage() {
     setIsLoading(true);
 
     if (!turnstile.verified) {
-      setFeedback("Please complete the CAPTCHA challenge.");
+      toast({
+        title: "Please complete the CAPTCHA challenge.",
+        variant: "default",
+      });
       setIsLoading(false);
       resetCaptcha();
       return;
     }
 
     if (data.email.includes("@agpt.co")) {
-      setFeedback(
-        "Please use Google SSO to create an account using an AutoGPT email.",
-      );
+      toast({
+        title:
+          "Please use Google SSO to create an account using an AutoGPT email.",
+        variant: "default",
+      });
 
       setIsLoading(false);
       resetCaptcha();
@@ -88,7 +98,10 @@ export function useSignupPage() {
       } else if (error === "not_allowed") {
         setShowNotAllowedModal(true);
       } else {
-        setFeedback(error);
+        toast({
+          title: error,
+          variant: "destructive",
+        });
         resetCaptcha();
         turnstile.reset();
       }

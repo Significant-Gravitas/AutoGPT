@@ -1,3 +1,4 @@
+import { useToast } from "@/components/ui/use-toast";
 import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { BehaveAs, getBehaveAs } from "@/lib/utils";
@@ -14,6 +15,7 @@ export function useLoginPage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [captchaKey, setCaptchaKey] = useState(0);
   const router = useRouter();
+  const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
@@ -68,14 +70,22 @@ export function useLoginPage() {
   async function handleLogin(data: z.infer<typeof loginFormSchema>) {
     setIsLoading(true);
     if (!turnstile.verified) {
-      setFeedback("Please complete the CAPTCHA challenge.");
+      toast({
+        title: "Please complete the CAPTCHA challenge.",
+        variant: "default",
+      });
+
       setIsLoading(false);
       resetCaptcha();
       return;
     }
 
     if (data.email.includes("@agpt.co")) {
-      setFeedback("Please use Google SSO to login using an AutoGPT email.");
+      toast({
+        title: "Please use Google SSO to login using an AutoGPT email.",
+        variant: "default",
+      });
+
       setIsLoading(false);
       resetCaptcha();
       return;
@@ -85,7 +95,11 @@ export function useLoginPage() {
     await supabase?.auth.refreshSession();
     setIsLoading(false);
     if (error) {
-      setFeedback(error);
+      toast({
+        title: error,
+        variant: "destructive",
+      });
+
       resetCaptcha();
       // Always reset the turnstile on any error
       turnstile.reset();
