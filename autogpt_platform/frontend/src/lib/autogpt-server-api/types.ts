@@ -157,7 +157,7 @@ export type Credentials =
 // This allows for SDK-registered providers without hardcoding
 export type CredentialsProviderName = string;
 
-// For backward compatibility, we'll keep PROVIDER_NAMES but it should be 
+// For backward compatibility, we'll keep PROVIDER_NAMES but it should be
 // populated dynamically from the API. This is a placeholder that will be
 // replaced with actual values from the /api/integrations/providers endpoint
 export const PROVIDER_NAMES = {} as Record<string, string>;

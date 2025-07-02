@@ -25,15 +25,15 @@ function toDisplayName(provider: string): string {
     smtp: "SMTP",
     revid: "Rev.ID",
   };
-  
+
   if (specialCases[provider]) {
     return specialCases[provider];
   }
-  
+
   // General case: convert snake_case to Title Case
   return provider
     .split(/[_-]/)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(" ");
 }
 
@@ -127,7 +127,11 @@ export default function CredentialsProvider({
       state_token: string,
     ): Promise<CredentialsMetaResponse> => {
       try {
-        const credsMeta = await api.oAuthCallback(provider as string, code, state_token);
+        const credsMeta = await api.oAuthCallback(
+          provider as string,
+          code,
+          state_token,
+        );
         addCredentials(provider as string, credsMeta);
         return credsMeta;
       } catch (error) {
@@ -211,7 +215,11 @@ export default function CredentialsProvider({
       CredentialsDeleteResponse | CredentialsDeleteNeedConfirmationResponse
     > => {
       try {
-        const result = await api.deleteCredentials(provider as string, id, force);
+        const result = await api.deleteCredentials(
+          provider as string,
+          id,
+          force,
+        );
         if (!result.deleted) {
           return result;
         }

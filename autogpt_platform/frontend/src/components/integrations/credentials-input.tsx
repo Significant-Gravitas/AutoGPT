@@ -37,10 +37,9 @@ const fallbackIcon = FaKey;
 
 // --8<-- [start:ProviderIconsEmbed]
 // Provider icons mapping - uses fallback for unknown providers
-export const providerIcons: Partial<Record<
-  string,
-  React.FC<{ className?: string }>
->> = {
+export const providerIcons: Partial<
+  Record<string, React.FC<{ className?: string }>>
+> = {
   aiml_api: fallbackIcon,
   anthropic: fallbackIcon,
   apollo: fallbackIcon,
