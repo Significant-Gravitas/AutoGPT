@@ -1,79 +1,67 @@
-from backend.blocks.linear._api import LinearAPIException, LinearClient
-from backend.blocks.linear._auth import (
-    LINEAR_OAUTH_IS_CONFIGURED,
-    TEST_CREDENTIALS_INPUT_OAUTH,
-    TEST_CREDENTIALS_OAUTH,
-    LinearCredentials,
-    LinearCredentialsField,
-    LinearCredentialsInput,
-    LinearScope,
+from backend.sdk import (
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    SchemaField,
+    String,
+    OAuth2Credentials,
+    APIKeyCredentials,
+    CredentialsMetaInput,
 )
-from backend.blocks.linear.models import CreateIssueResponse, Issue
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
+from ._api import LinearAPIException, LinearClient
+from .models import CreateIssueResponse, Issue
+from ._config import linear
 
 
 class LinearCreateIssueBlock(Block):
     """Block for creating issues on Linear"""
 
     class Input(BlockSchema):
-        credentials: LinearCredentialsInput = LinearCredentialsField(
-            scopes=[LinearScope.ISSUES_CREATE],
+        credentials: CredentialsMetaInput = linear.credentials_field(
+            description="Linear credentials with issue creation permissions",
+            required_scopes={"read", "issues:create"},
         )
-        title: str = SchemaField(description="Title of the issue")
-        description: str | None = SchemaField(description="Description of the issue")
-        team_name: str = SchemaField(
+        title: String = SchemaField(description="Title of the issue")
+        description: String = SchemaField(description="Description of the issue", default="")
+        team_name: String = SchemaField(
             description="Name of the team to create the issue on"
         )
-        priority: int | None = SchemaField(
-            description="Priority of the issue",
-            default=None,
+        priority: int = SchemaField(
+            description="Priority of the issue (0-4, where 0 is no priority, 1 is urgent, 2 is high, 3 is normal, 4 is low)",
+            default=3,
             ge=0,
             le=4,
         )
-        project_name: str | None = SchemaField(
+        project_name: String = SchemaField(
             description="Name of the project to create the issue on",
-            default=None,
+            default="",
         )
 
     class Output(BlockSchema):
-        issue_id: str = SchemaField(description="ID of the created issue")
-        issue_title: str = SchemaField(description="Title of the created issue")
-        error: str = SchemaField(description="Error message if issue creation failed")
+        issue_id: String = SchemaField(description="ID of the created issue")
+        issue_title: String = SchemaField(description="Title of the created issue")
+        error: String = SchemaField(
+            description="Error message if issue creation failed", default=""
+        )
 
     def __init__(self):
         super().__init__(
             id="f9c68f55-dcca-40a8-8771-abf9601680aa",
             description="Creates a new issue on Linear",
-            disabled=not LINEAR_OAUTH_IS_CONFIGURED,
             input_schema=self.Input,
             output_schema=self.Output,
-            categories={BlockCategory.PRODUCTIVITY, BlockCategory.ISSUE_TRACKING},
-            test_input={
-                "title": "Test issue",
-                "description": "Test description",
-                "team_name": "Test team",
-                "project_name": "Test project",
-                "credentials": TEST_CREDENTIALS_INPUT_OAUTH,
-            },
-            test_credentials=TEST_CREDENTIALS_OAUTH,
-            test_output=[("issue_id", "abc123"), ("issue_title", "Test issue")],
-            test_mock={
-                "create_issue": lambda *args, **kwargs: (
-                    "abc123",
-                    "Test issue",
-                )
-            },
+            categories={BlockCategory.PRODUCTIVITY},
         )
 
     @staticmethod
     async def create_issue(
-        credentials: LinearCredentials,
+        credentials: OAuth2Credentials | APIKeyCredentials,
         team_name: str,
         title: str,
-        description: str | None = None,
-        priority: int | None = None,
-        project_name: str | None = None,
+        description: str = "",
+        priority: int = 3,
+        project_name: str = "",
     ) -> tuple[str, str]:
         client = LinearClient(credentials=credentials)
         team_id = await client.try_get_team_by_name(team_name=team_name)
@@ -87,14 +75,18 @@ class LinearCreateIssueBlock(Block):
         response: CreateIssueResponse = await client.try_create_issue(
             team_id=team_id,
             title=title,
-            description=description,
-            priority=priority,
+            description=description if description else None,
+            priority=priority if priority != 3 else None,
             project_id=project_id,
         )
         return response.issue.identifier, response.issue.title
 
     async def run(
-        self, input_data: Input, *, credentials: LinearCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: OAuth2Credentials | APIKeyCredentials,
+        **kwargs
     ) -> BlockOutput:
         """Execute the issue creation"""
         try:
@@ -120,13 +112,17 @@ class LinearSearchIssuesBlock(Block):
     """Block for searching issues on Linear"""
 
     class Input(BlockSchema):
-        term: str = SchemaField(description="Term to search for issues")
-        credentials: LinearCredentialsInput = LinearCredentialsField(
-            scopes=[LinearScope.READ],
+        credentials: CredentialsMetaInput = linear.credentials_field(
+            description="Linear credentials with read permissions",
+            required_scopes={"read"},
         )
+        term: String = SchemaField(description="Term to search for issues")
 
     class Output(BlockSchema):
         issues: list[Issue] = SchemaField(description="List of issues")
+        error: String = SchemaField(
+            description="Error message if search failed", default=""
+        )
 
     def __init__(self):
         super().__init__(
@@ -134,42 +130,12 @@ class LinearSearchIssuesBlock(Block):
             description="Searches for issues on Linear",
             input_schema=self.Input,
             output_schema=self.Output,
-            disabled=not LINEAR_OAUTH_IS_CONFIGURED,
-            test_input={
-                "term": "Test issue",
-                "credentials": TEST_CREDENTIALS_INPUT_OAUTH,
-            },
-            test_credentials=TEST_CREDENTIALS_OAUTH,
-            test_output=[
-                (
-                    "issues",
-                    [
-                        Issue(
-                            id="abc123",
-                            identifier="abc123",
-                            title="Test issue",
-                            description="Test description",
-                            priority=1,
-                        )
-                    ],
-                )
-            ],
-            test_mock={
-                "search_issues": lambda *args, **kwargs: [
-                    Issue(
-                        id="abc123",
-                        identifier="abc123",
-                        title="Test issue",
-                        description="Test description",
-                        priority=1,
-                    )
-                ]
-            },
+            categories={BlockCategory.PRODUCTIVITY},
         )
 
     @staticmethod
     async def search_issues(
-        credentials: LinearCredentials,
+        credentials: OAuth2Credentials | APIKeyCredentials,
         term: str,
     ) -> list[Issue]:
         client = LinearClient(credentials=credentials)
@@ -177,7 +143,11 @@ class LinearSearchIssuesBlock(Block):
         return response
 
     async def run(
-        self, input_data: Input, *, credentials: LinearCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: OAuth2Credentials | APIKeyCredentials,
+        **kwargs
     ) -> BlockOutput:
         """Execute the issue search"""
         try:

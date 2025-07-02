@@ -115,7 +115,7 @@ class AutoRegistry:
         """Get a registered provider by name."""
         with cls._lock:
             return cls._providers.get(name)
-    
+
     @classmethod
     def get_all_provider_names(cls) -> List[str]:
         """Get all registered provider names."""

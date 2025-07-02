@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Annotated, Awaitable, Dict, List, Literal
+from typing import TYPE_CHECKING, Annotated, Awaitable, List, Literal
 
 from fastapi import (
     APIRouter,
@@ -33,7 +33,6 @@ from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.oauth import HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
-from backend.sdk.registry import AutoRegistry
 from backend.server.integrations.models import (
     ProviderConstants,
     ProviderNamesResponse,
@@ -521,7 +520,7 @@ async def list_providers() -> List[str]:
 
     Returns both statically defined providers (from ProviderName enum)
     and dynamically registered providers (from SDK decorators).
-    
+
     Note: The complete list of provider names is also available as a constant
     in the generated TypeScript client via PROVIDER_NAMES.
     """
@@ -534,7 +533,7 @@ async def list_providers() -> List[str]:
 async def get_provider_names() -> ProviderNamesResponse:
     """
     Get all provider names in a structured format.
-    
+
     This endpoint is specifically designed to expose the provider names
     in the OpenAPI schema so that code generators like Orval can create
     appropriate TypeScript constants.
@@ -546,7 +545,7 @@ async def get_provider_names() -> ProviderNamesResponse:
 async def get_provider_constants() -> ProviderConstants:
     """
     Get provider names as constants.
-    
+
     This endpoint returns a model with provider names as constants,
     specifically designed for OpenAPI code generation tools to create
     TypeScript constants.
@@ -556,6 +555,7 @@ async def get_provider_constants() -> ProviderConstants:
 
 class ProviderEnumResponse(BaseModel):
     """Response containing a provider from the enum."""
+
     provider: str = Field(
         description="A provider name from the complete list of providers"
     )
@@ -565,11 +565,13 @@ class ProviderEnumResponse(BaseModel):
 async def get_provider_enum_example() -> ProviderEnumResponse:
     """
     Example endpoint that uses the CompleteProviderNames enum.
-    
+
     This endpoint exists to ensure that the CompleteProviderNames enum is included
     in the OpenAPI schema, which will cause Orval to generate it as a
     TypeScript enum/constant.
     """
     # Return the first provider as an example
     all_providers = get_all_provider_names()
-    return ProviderEnumResponse(provider=all_providers[0] if all_providers else "openai")
+    return ProviderEnumResponse(
+        provider=all_providers[0] if all_providers else "openai"
+    )

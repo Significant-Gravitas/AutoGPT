@@ -1,15 +1,26 @@
+"""
+Linear OAuth handler implementation.
+"""
+
 import json
 from typing import Optional
 from urllib.parse import urlencode
 
-from pydantic import SecretStr
+from backend.sdk import (
+    BaseOAuthHandler,
+    OAuth2Credentials,
+    APIKeyCredentials,
+    ProviderName,
+    Requests,
+    SecretStr,
+)
 
-from backend.blocks.linear._api import LinearAPIException
-from backend.data.model import APIKeyCredentials, OAuth2Credentials
-from backend.integrations.providers import ProviderName
-from backend.util.request import Requests
 
-from .base import BaseOAuthHandler
+class LinearAPIException(Exception):
+    """Exception for Linear API errors."""
+    def __init__(self, message: str, status_code: int):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class LinearOAuthHandler(BaseOAuthHandler):
@@ -24,17 +35,16 @@ class LinearOAuthHandler(BaseOAuthHandler):
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
         self.auth_base_url = "https://linear.app/oauth/authorize"
-        self.token_url = "https://api.linear.app/oauth/token"  # Correct token URL
+        self.token_url = "https://api.linear.app/oauth/token"
         self.revoke_url = "https://api.linear.app/oauth/revoke"
 
     def get_login_url(
         self, scopes: list[str], state: str, code_challenge: Optional[str]
     ) -> str:
-
         params = {
             "client_id": self.client_id,
             "redirect_uri": self.redirect_uri,
-            "response_type": "code",  # Important: include "response_type"
+            "response_type": "code",
             "scope": ",".join(scopes),  # Comma-separated, not space-separated
             "state": state,
         }
@@ -92,13 +102,13 @@ class LinearOAuthHandler(BaseOAuthHandler):
         request_body = {
             "client_id": self.client_id,
             "client_secret": self.client_secret,
-            "grant_type": "authorization_code",  # Ensure grant_type is correct
+            "grant_type": "authorization_code",
             **params,
         }
 
         headers = {
             "Content-Type": "application/x-www-form-urlencoded"
-        }  # Correct header for token request
+        }
         response = await Requests().post(
             self.token_url, data=request_body, headers=headers
         )
@@ -122,7 +132,7 @@ class LinearOAuthHandler(BaseOAuthHandler):
             title=current_credentials.title if current_credentials else None,
             username=token_data.get("user", {}).get(
                 "name", "Unknown User"
-            ),  # extract name or set appropriate
+            ),
             access_token=token_data["access_token"],
             scopes=token_data["scope"].split(
                 ","
@@ -139,7 +149,7 @@ class LinearOAuthHandler(BaseOAuthHandler):
 
     async def _request_username(self, access_token: str) -> Optional[str]:
         # Use the LinearClient to fetch user details using GraphQL
-        from backend.blocks.linear._api import LinearClient
+        from ._api import LinearClient
 
         try:
             linear_client = LinearClient(
@@ -149,7 +159,7 @@ class LinearOAuthHandler(BaseOAuthHandler):
                     provider=self.PROVIDER_NAME,
                     expires_at=None,
                 )
-            )  # Temporary credentials for this request
+            )
 
             query = """
                 query Viewer {
@@ -162,6 +172,6 @@ class LinearOAuthHandler(BaseOAuthHandler):
             response = await linear_client.query(query)
             return response["viewer"]["name"]
 
-        except Exception as e:  # Handle any errors
+        except Exception as e:
             print(f"Error fetching username: {e}")
             return None

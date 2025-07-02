@@ -4,7 +4,6 @@ from backend.integrations.oauth.todoist import TodoistOAuthHandler
 
 from .github import GitHubOAuthHandler
 from .google import GoogleOAuthHandler
-from .linear import LinearOAuthHandler
 from .notion import NotionOAuthHandler
 from .twitter import TwitterOAuthHandler
 
@@ -20,7 +19,6 @@ HANDLERS_BY_NAME: dict["ProviderName", type["BaseOAuthHandler"]] = {
         GoogleOAuthHandler,
         NotionOAuthHandler,
         TwitterOAuthHandler,
-        LinearOAuthHandler,
         TodoistOAuthHandler,
     ]
 }

@@ -26,15 +26,15 @@ def load_all_blocks() -> dict[str, type["Block"]]:
     for f in current_dir.rglob("*.py"):
         if not f.is_file() or f.name == "__init__.py" or f.name.startswith("test_"):
             continue
-        
+
         # Skip examples directory if not enabled
         relative_path = f.relative_to(current_dir)
         if not load_examples and relative_path.parts[0] == "examples":
             continue
-            
+
         module_path = str(relative_path)[:-3].replace(os.path.sep, ".")
         modules.append(module_path)
-        
+
     for module in modules:
         if not re.match("^[a-z0-9_.]+$", module):
             raise ValueError(

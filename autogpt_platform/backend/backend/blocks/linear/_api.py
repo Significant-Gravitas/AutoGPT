@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
-from backend.blocks.linear._auth import LinearCredentials
-from backend.blocks.linear.models import (
+from backend.sdk import OAuth2Credentials, APIKeyCredentials, Requests
+from .models import (
     CreateCommentResponse,
     CreateIssueResponse,
     Issue,
     Project,
 )
-from backend.util.request import Requests
 
 
 class LinearAPIException(Exception):
@@ -29,18 +28,20 @@ class LinearClient:
 
     def __init__(
         self,
-        credentials: LinearCredentials | None = None,
+        credentials: Union[OAuth2Credentials, APIKeyCredentials, None] = None,
         custom_requests: Optional[Requests] = None,
     ):
         if custom_requests:
             self._requests = custom_requests
         else:
-
             headers: Dict[str, str] = {
                 "Content-Type": "application/json",
             }
             if credentials:
-                headers["Authorization"] = credentials.auth_header()
+                if isinstance(credentials, OAuth2Credentials):
+                    headers["Authorization"] = f"Bearer {credentials.access_token.get_secret_value()}"
+                elif isinstance(credentials, APIKeyCredentials):
+                    headers["Authorization"] = f"{credentials.api_key.get_secret_value()}"
 
             self._requests = Requests(
                 extra_headers=headers,
