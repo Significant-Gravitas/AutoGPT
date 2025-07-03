@@ -2,7 +2,6 @@ import { getWebSocketToken } from "@/lib/supabase/actions";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { proxyApiRequest, proxyFileUpload } from "./proxy-action";
 import type {
   AddUserCreditsResponse,
   AnalyticsDetails,
@@ -27,6 +26,7 @@ import type {
   GraphID,
   GraphMeta,
   GraphUpdateable,
+  HostScopedCredentials,
   LibraryAgent,
   LibraryAgentID,
   LibraryAgentPreset,
@@ -62,11 +62,22 @@ import type {
   User,
   UserOnboarding,
   UserPasswordCredentials,
-  HostScopedCredentials,
   UsersBalanceHistoryResponse,
 } from "./types";
 
 const isClient = typeof window !== "undefined";
+
+class ApiError extends Error {
+  public status: number;
+  public response?: any;
+
+  constructor(message: string, status: number, response?: any) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.response = response;
+  }
+}
 
 export default class BackendAPI {
   private baseUrl: string;
@@ -521,8 +532,6 @@ export default class BackendAPI {
   }
 
   uploadStoreSubmissionMedia(file: File): Promise<string> {
-    const formData = new FormData();
-    formData.append("file", file);
     return this._uploadFile("/store/submissions/media", file);
   }
 
@@ -813,8 +822,29 @@ export default class BackendAPI {
     const formData = new FormData();
     formData.append("file", file);
 
-    // Use proxy server action for secure file upload
-    return await proxyFileUpload(path, formData, this.baseUrl);
+    // Use existing proxy route with form data
+    // The existing proxy removes /api from base URL, so we need to add it back
+    const uploadUrl = `/api/proxy/api${path}`;
+
+    const response = await fetch(uploadUrl, {
+      method: "POST",
+      body: formData,
+      credentials: "include", // Include cookies for authentication
+    });
+
+    if (!response.ok) {
+      const errorData = await response
+        .json()
+        .catch(() => ({ error: response.statusText }));
+      throw new ApiError(
+        errorData.error || "Upload failed",
+        response.status,
+        errorData,
+      );
+    }
+
+    // Return the response as text (typically a URL)
+    return await response.text();
   }
 
   private async _request(
@@ -826,13 +856,37 @@ export default class BackendAPI {
       console.debug(`${method} ${path} payload:`, payload);
     }
 
-    // Always use proxy server action to not expose any auth tokens to the browser
-    return await proxyApiRequest({
+    // Build URL with query params for GET/DELETE requests
+    // The existing proxy removes /api from base URL, so we need to add it back
+    let url = `/api/proxy/api${path}`;
+    const payloadAsQuery = ["GET", "DELETE"].includes(method);
+
+    if (payloadAsQuery && payload) {
+      const queryParams = new URLSearchParams(payload);
+      url += `?${queryParams.toString()}`;
+    }
+
+    const response = await fetch(url, {
       method,
-      path,
-      payload,
-      baseUrl: this.baseUrl,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: !payloadAsQuery && payload ? JSON.stringify(payload) : undefined,
+      credentials: "include", // Include cookies for authentication
     });
+
+    if (!response.ok) {
+      const errorData = await response
+        .json()
+        .catch(() => ({ error: response.statusText }));
+      throw new ApiError(
+        errorData.error || "Request failed",
+        response.status,
+        errorData,
+      );
+    }
+
+    return await response.json();
   }
 
   ////////////////////////////////////////
