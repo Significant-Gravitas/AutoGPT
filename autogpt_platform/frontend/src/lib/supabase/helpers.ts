@@ -1,4 +1,5 @@
 import { type CookieOptions } from "@supabase/ssr";
+import { SupabaseClient } from "@supabase/supabase-js";
 
 // Detect if we're in a Playwright test environment
 const isTest = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -105,7 +106,7 @@ export interface CodeExchangeResult {
 }
 
 export async function exchangePasswordResetCode(
-  supabase: any,
+  supabase: SupabaseClient<any, "public", any>,
   code: string,
 ): Promise<CodeExchangeResult> {
   try {
