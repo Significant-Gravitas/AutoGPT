@@ -822,29 +822,38 @@ export default class BackendAPI {
     const formData = new FormData();
     formData.append("file", file);
 
-    // Use existing proxy route with form data
-    // The existing proxy removes /api from base URL, so we need to add it back
-    const uploadUrl = `/api/proxy/api${path}`;
+    if (isClient) {
+      // Client-side: use the proxy route
+      const uploadUrl = `/api/proxy/api${path}`;
 
-    const response = await fetch(uploadUrl, {
-      method: "POST",
-      body: formData,
-      credentials: "include", // Include cookies for authentication
-    });
+      const response = await fetch(uploadUrl, {
+        method: "POST",
+        body: formData,
+        credentials: "include", // Include cookies for authentication
+      });
 
-    if (!response.ok) {
-      const errorData = await response
-        .json()
-        .catch(() => ({ error: response.statusText }));
-      throw new ApiError(
-        errorData.error || "Upload failed",
-        response.status,
-        errorData,
-      );
+      if (!response.ok) {
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: response.statusText }));
+        throw new ApiError(
+          errorData.error || "Upload failed",
+          response.status,
+          errorData,
+        );
+      }
+
+      // Return the response as text (typically a URL)
+      return await response.text();
+    } else {
+      // Server-side: use the authentication helpers
+      const { makeAuthenticatedFileUpload } = await import("./helpers");
+      const baseUrl =
+        process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
+      const url = `${baseUrl}${path}`;
+
+      return await makeAuthenticatedFileUpload(url, formData);
     }
-
-    // Return the response as text (typically a URL)
-    return await response.text();
   }
 
   private async _request(
@@ -857,36 +866,48 @@ export default class BackendAPI {
     }
 
     // Build URL with query params for GET/DELETE requests
-    // The existing proxy removes /api from base URL, so we need to add it back
-    let url = `/api/proxy/api${path}`;
+    let url: string;
     const payloadAsQuery = ["GET", "DELETE"].includes(method);
 
-    if (payloadAsQuery && payload) {
-      const queryParams = new URLSearchParams(payload);
-      url += `?${queryParams.toString()}`;
+    if (isClient) {
+      // Client-side: use relative URLs to the proxy
+      url = `/api/proxy/api${path}`;
+
+      if (payloadAsQuery && payload) {
+        const queryParams = new URLSearchParams(payload);
+        url += `?${queryParams.toString()}`;
+      }
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: !payloadAsQuery && payload ? JSON.stringify(payload) : undefined,
+        credentials: "include", // Include cookies for authentication
+      });
+
+      if (!response.ok) {
+        const errorData = await response
+          .json()
+          .catch(() => ({ error: response.statusText }));
+        throw new ApiError(
+          errorData.error || "Request failed",
+          response.status,
+          errorData,
+        );
+      }
+
+      return await response.json();
+    } else {
+      // Server-side: use the authentication helpers for proper server-side auth
+      const { makeAuthenticatedRequest } = await import("./helpers");
+      const baseUrl =
+        process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
+      url = `${baseUrl}${path}`;
+
+      return await makeAuthenticatedRequest(method, url, payload);
     }
-
-    const response = await fetch(url, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: !payloadAsQuery && payload ? JSON.stringify(payload) : undefined,
-      credentials: "include", // Include cookies for authentication
-    });
-
-    if (!response.ok) {
-      const errorData = await response
-        .json()
-        .catch(() => ({ error: response.statusText }));
-      throw new ApiError(
-        errorData.error || "Request failed",
-        response.status,
-        errorData,
-      );
-    }
-
-    return await response.json();
   }
 
   ////////////////////////////////////////
