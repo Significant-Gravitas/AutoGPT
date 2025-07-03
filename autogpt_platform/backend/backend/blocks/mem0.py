@@ -77,6 +77,9 @@ class AddMemoryBlock(Block, Mem0Base):
     class Output(BlockSchema):
         action: str = SchemaField(description="Action of the operation")
         memory: str = SchemaField(description="Memory created")
+        results: list[dict[str, str]] = SchemaField(
+            description="List of all results from the operation"
+        )
         error: str = SchemaField(description="Error message if operation fails")
 
     def __init__(self):
@@ -104,8 +107,10 @@ class AddMemoryBlock(Block, Mem0Base):
                 },
             ],
             test_output=[
+                ("results", [{"event": "CREATED", "memory": "test memory"}]),
                 ("action", "CREATED"),
                 ("memory", "test memory"),
+                ("results", [{"event": "CREATED", "memory": "test memory"}]),
                 ("action", "CREATED"),
                 ("memory", "test memory"),
             ],
@@ -150,8 +155,11 @@ class AddMemoryBlock(Block, Mem0Base):
                 **params,
             )
 
-            if len(result.get("results", [])) > 0:
-                for result in result.get("results", []):
+            results = result.get("results", [])
+            yield "results", results
+
+            if len(results) > 0:
+                for result in results:
                     yield "action", result["event"]
                     yield "memory", result["memory"]
             else:
