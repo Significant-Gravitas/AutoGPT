@@ -51,7 +51,7 @@ export function NotificationDropdown({
   return (
     <div>
       {/* Header */}
-      <div className="px-4 pt-4">
+      <div className="sticky top-0 z-10 px-4 pb-2 pt-4">
         <Text variant="body-medium" className="font-semibold text-gray-900">
           Agent Activity
         </Text>

@@ -48,16 +48,7 @@ export function useAgentNotifications() {
   // Update agent info map when library agents data changes
   useEffect(() => {
     if (myAgentsResponse?.data?.agents) {
-      console.log(
-        "[AgentNotifications] Processing library agents:",
-        myAgentsResponse.data.agents.length,
-      );
       const agentMap = createAgentInfoMap(myAgentsResponse.data.agents);
-      console.log(
-        "[AgentNotifications] Agent info map created:",
-        agentMap.size,
-        "agents",
-      );
       setAgentInfoMap(agentMap);
     }
   }, [myAgentsResponse]);
@@ -65,10 +56,6 @@ export function useAgentNotifications() {
   // Handle real-time execution updates
   const handleExecutionEvent = useCallback(
     (execution: GraphExecution) => {
-      console.log(
-        "[AgentNotifications] Received graph execution event:",
-        execution,
-      );
       setNotifications((currentState) =>
         handleExecutionUpdate(currentState, execution, agentInfoMap),
       );
@@ -83,21 +70,10 @@ export function useAgentNotifications() {
       !isExecutionsLoading &&
       agentInfoMap.size > 0
     ) {
-      console.log(
-        "[AgentNotifications] Processing executions:",
-        executionsResponse.data.length,
-      );
-
       const newNotifications = categorizeExecutions(
         executionsResponse.data,
         agentInfoMap,
       );
-
-      console.log("[AgentNotifications] Processed notifications:", {
-        active: newNotifications.activeExecutions.length,
-        completed: newNotifications.recentCompletions.length,
-        failed: newNotifications.recentFailures.length,
-      });
 
       setNotifications(newNotifications);
     }
@@ -106,9 +82,6 @@ export function useAgentNotifications() {
   // Initialize WebSocket connection for real-time updates
   useEffect(() => {
     const connectHandler = api.onWebSocketConnect(() => {
-      console.log(
-        "[AgentNotifications] WebSocket connected - setting up execution subscriptions",
-      );
       setIsConnected(true);
 
       // Subscribe to graph executions for all user agents
@@ -127,7 +100,6 @@ export function useAgentNotifications() {
     });
 
     const disconnectHandler = api.onWebSocketDisconnect(() => {
-      console.log("[AgentNotifications] WebSocket disconnected");
       setIsConnected(false);
     });
 
@@ -136,7 +108,6 @@ export function useAgentNotifications() {
       handleExecutionEvent,
     );
 
-    console.log("[AgentNotifications] Starting WebSocket connection...");
     api.connectWebSocket();
 
     return () => {
