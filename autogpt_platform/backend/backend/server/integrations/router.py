@@ -511,11 +511,14 @@ def _get_provider_oauth_handler(
         )
 
     handler_class = HANDLERS_BY_NAME[provider_key]
-    frontend_base_url = (
-        settings.config.frontend_base_url
-        or settings.config.platform_base_url
-        or str(req.base_url)
-    )
+    frontend_base_url = settings.config.frontend_base_url
+    
+    if not frontend_base_url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Frontend base URL is not configured",
+        )
+
     return handler_class(
         client_id=client_id,
         client_secret=client_secret,
