@@ -5,12 +5,14 @@ from backend.data import db
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     create_graph_execution,
+    get_execution_kv_data,
     get_graph_execution,
     get_graph_execution_meta,
     get_graph_executions,
     get_latest_node_execution,
     get_node_execution,
     get_node_executions,
+    set_execution_kv_data,
     update_graph_execution_start_time,
     update_graph_execution_stats,
     update_node_execution_stats,
@@ -101,6 +103,8 @@ class DatabaseManager(AppService):
     update_node_execution_stats = _(update_node_execution_stats)
     upsert_execution_input = _(upsert_execution_input)
     upsert_execution_output = _(upsert_execution_output)
+    get_execution_kv_data = _(get_execution_kv_data)
+    set_execution_kv_data = _(set_execution_kv_data)
 
     # Graphs
     get_node = _(get_node)
@@ -159,6 +163,8 @@ class DatabaseManagerClient(AppServiceClient):
     update_node_execution_stats = _(d.update_node_execution_stats)
     upsert_execution_input = _(d.upsert_execution_input)
     upsert_execution_output = _(d.upsert_execution_output)
+    get_execution_kv_data = _(d.get_execution_kv_data)
+    set_execution_kv_data = _(d.set_execution_kv_data)
 
     # Graphs
     get_node = _(d.get_node)
@@ -202,8 +208,11 @@ class DatabaseManagerAsyncClient(AppServiceClient):
         return DatabaseManager
 
     create_graph_execution = d.create_graph_execution
+    get_connected_output_nodes = d.get_connected_output_nodes
     get_latest_node_execution = d.get_latest_node_execution
     get_graph = d.get_graph
+    get_graph_metadata = d.get_graph_metadata
+    get_graph_execution_meta = d.get_graph_execution_meta
     get_node = d.get_node
     get_node_execution = d.get_node_execution
     get_node_executions = d.get_node_executions
@@ -215,3 +224,5 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_node_execution_status = d.update_node_execution_status
     update_node_execution_status_batch = d.update_node_execution_status_batch
     update_user_integrations = d.update_user_integrations
+    get_execution_kv_data = d.get_execution_kv_data
+    set_execution_kv_data = d.set_execution_kv_data

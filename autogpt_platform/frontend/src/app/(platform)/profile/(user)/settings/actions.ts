@@ -6,7 +6,7 @@ import { NotificationPreferenceDTO } from "@/lib/autogpt-server-api/types";
 import {
   postV1UpdateNotificationPreferences,
   postV1UpdateUserEmail,
-} from "@/api/__generated__/endpoints/auth/auth";
+} from "@/app/api/__generated__/endpoints/auth/auth";
 
 export async function updateSettings(formData: FormData) {
   const supabase = await getServerSupabase();

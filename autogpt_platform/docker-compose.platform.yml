@@ -93,7 +93,7 @@ services:
       - SCHEDULER_HOST=scheduler_server
       - EXECUTIONMANAGER_HOST=executor
       - NOTIFICATIONMANAGER_HOST=rest_server
-      - FRONTEND_BASE_URL=http://localhost:3000
+      - NEXT_PUBLIC_FRONTEND_BASE_URL=http://localhost:3000
       - BACKEND_CORS_ALLOW_ORIGINS=["http://localhost:3000"]
       - ENCRYPTION_KEY=dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw= # DO NOT USE IN PRODUCTION!!
       - UNSUBSCRIBE_SECRET_KEY=HlP8ivStJjmbf6NKi78m_3FnOogut0t5ckzjsIqeaio= # DO NOT USE IN PRODUCTION!!

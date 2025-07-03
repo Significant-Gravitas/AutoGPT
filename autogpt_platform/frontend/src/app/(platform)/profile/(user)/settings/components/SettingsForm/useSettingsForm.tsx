@@ -5,7 +5,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { updateSettings } from "../../actions";
 import { useToast } from "@/components/ui/use-toast";
-import { NotificationPreference } from "@/api/__generated__/models/notificationPreference";
+import { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
 import { User } from "@supabase/supabase-js";
 
 export const useSettingsForm = ({
