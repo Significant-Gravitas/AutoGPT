@@ -29,6 +29,42 @@ export function buildRequestUrl(
   return url;
 }
 
+export function buildClientUrl(path: string): string {
+  return `/api/proxy/api${path}`;
+}
+
+export function buildServerUrl(path: string): string {
+  const baseUrl =
+    process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
+  return `${baseUrl}${path}`;
+}
+
+export function buildUrlWithQuery(
+  url: string,
+  payload?: Record<string, any>,
+): string {
+  if (!payload) return url;
+
+  const queryParams = new URLSearchParams(payload);
+  return `${url}?${queryParams.toString()}`;
+}
+
+export function handleFetchError(response: Response, errorData: any): ApiError {
+  return new ApiError(
+    errorData?.error || "Request failed",
+    response.status,
+    errorData,
+  );
+}
+
+export async function parseErrorResponse(response: Response): Promise<any> {
+  try {
+    return await response.json();
+  } catch {
+    return { error: response.statusText };
+  }
+}
+
 export async function getServerAuthToken(): Promise<string> {
   const supabase = await getServerSupabase();
 

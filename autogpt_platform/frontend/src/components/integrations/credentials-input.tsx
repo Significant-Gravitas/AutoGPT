@@ -1,23 +1,5 @@
-import { FC, useEffect, useMemo, useState } from "react";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import SchemaTooltip from "@/components/SchemaTooltip";
-import useCredentials from "@/hooks/useCredentials";
-import { NotionLogoIcon } from "@radix-ui/react-icons";
-import {
-  FaDiscord,
-  FaGithub,
-  FaTwitter,
-  FaGoogle,
-  FaMedium,
-  FaKey,
-  FaHubspot,
-} from "react-icons/fa";
-import {
-  BlockIOCredentialsSubSchema,
-  CredentialsMetaInput,
-  CredentialsProviderName,
-} from "@/lib/autogpt-server-api/types";
+import { Button } from "@/components/ui/button";
 import { IconKey, IconKeyPlus, IconUserPlus } from "@/components/ui/icons";
 import {
   Select,
@@ -27,12 +9,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import useCredentials from "@/hooks/useCredentials";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import {
+  BlockIOCredentialsSubSchema,
+  CredentialsMetaInput,
+  CredentialsProviderName,
+} from "@/lib/autogpt-server-api/types";
+import { cn } from "@/lib/utils";
+import { getHostFromUrl } from "@/lib/utils/url";
+import { NotionLogoIcon } from "@radix-ui/react-icons";
+import { FC, useEffect, useMemo, useState } from "react";
+import {
+  FaDiscord,
+  FaGithub,
+  FaGoogle,
+  FaHubspot,
+  FaKey,
+  FaMedium,
+  FaTwitter,
+} from "react-icons/fa";
 import { APIKeyCredentialsModal } from "./api-key-credentials-modal";
-import { UserPasswordCredentialsModal } from "./user-password-credentials-modal";
 import { HostScopedCredentialsModal } from "./host-scoped-credentials-modal";
 import { OAuth2FlowWaitingModal } from "./oauth2-flow-waiting-modal";
-import { getHostFromUrl } from "@/lib/utils/url";
+import { UserPasswordCredentialsModal } from "./user-password-credentials-modal";
 
 const fallbackIcon = FaKey;
 
