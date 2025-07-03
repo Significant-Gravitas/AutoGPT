@@ -67,18 +67,6 @@ import type {
 
 const isClient = typeof window !== "undefined";
 
-class ApiError extends Error {
-  public status: number;
-  public response?: any;
-
-  constructor(message: string, status: number, response?: any) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.response = response;
-  }
-}
-
 export default class BackendAPI {
   private baseUrl: string;
   private wsUrl: string;
@@ -823,37 +811,47 @@ export default class BackendAPI {
     formData.append("file", file);
 
     if (isClient) {
-      // Client-side: use the proxy route
-      const uploadUrl = `/api/proxy/api${path}`;
-
-      const response = await fetch(uploadUrl, {
-        method: "POST",
-        body: formData,
-        credentials: "include", // Include cookies for authentication
-      });
-
-      if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => ({ error: response.statusText }));
-        throw new ApiError(
-          errorData.error || "Upload failed",
-          response.status,
-          errorData,
-        );
-      }
-
-      // Return the response as text (typically a URL)
-      return await response.text();
+      return this._makeClientFileUpload(path, formData);
     } else {
-      // Server-side: use the authentication helpers
-      const { makeAuthenticatedFileUpload } = await import("./helpers");
-      const baseUrl =
-        process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
-      const url = `${baseUrl}${path}`;
-
-      return await makeAuthenticatedFileUpload(url, formData);
+      return this._makeServerFileUpload(path, formData);
     }
+  }
+
+  private async _makeClientFileUpload(
+    path: string,
+    formData: FormData,
+  ): Promise<string> {
+    // Dynamic import is required even for client-only functions because helpers.ts
+    // has server-only imports (like getServerSupabase) at the top level. Static imports
+    // would bundle server-only code into the client bundle, causing runtime errors.
+    const { buildClientUrl, parseErrorResponse, handleFetchError } =
+      await import("./helpers");
+
+    const uploadUrl = buildClientUrl(path);
+
+    const response = await fetch(uploadUrl, {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      const errorData = await parseErrorResponse(response);
+      throw handleFetchError(response, errorData);
+    }
+
+    return await response.text();
+  }
+
+  private async _makeServerFileUpload(
+    path: string,
+    formData: FormData,
+  ): Promise<string> {
+    const { makeAuthenticatedFileUpload, buildServerUrl } = await import(
+      "./helpers"
+    );
+    const url = buildServerUrl(path);
+    return await makeAuthenticatedFileUpload(url, formData);
   }
 
   private async _request(
@@ -865,49 +863,62 @@ export default class BackendAPI {
       console.debug(`${method} ${path} payload:`, payload);
     }
 
-    // Build URL with query params for GET/DELETE requests
-    let url: string;
-    const payloadAsQuery = ["GET", "DELETE"].includes(method);
-
     if (isClient) {
-      // Client-side: use relative URLs to the proxy
-      url = `/api/proxy/api${path}`;
-
-      if (payloadAsQuery && payload) {
-        const queryParams = new URLSearchParams(payload);
-        url += `?${queryParams.toString()}`;
-      }
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: !payloadAsQuery && payload ? JSON.stringify(payload) : undefined,
-        credentials: "include", // Include cookies for authentication
-      });
-
-      if (!response.ok) {
-        const errorData = await response
-          .json()
-          .catch(() => ({ error: response.statusText }));
-        throw new ApiError(
-          errorData.error || "Request failed",
-          response.status,
-          errorData,
-        );
-      }
-
-      return await response.json();
+      return this._makeClientRequest(method, path, payload);
     } else {
-      // Server-side: use the authentication helpers for proper server-side auth
-      const { makeAuthenticatedRequest } = await import("./helpers");
-      const baseUrl =
-        process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
-      url = `${baseUrl}${path}`;
-
-      return await makeAuthenticatedRequest(method, url, payload);
+      return this._makeServerRequest(method, path, payload);
     }
+  }
+
+  private async _makeClientRequest(
+    method: string,
+    path: string,
+    payload?: Record<string, any>,
+  ) {
+    // Dynamic import is required even for client-only functions because helpers.ts
+    // has server-only imports (like getServerSupabase) at the top level. Static imports
+    // would bundle server-only code into the client bundle, causing runtime errors.
+    const {
+      buildClientUrl,
+      buildUrlWithQuery,
+      parseErrorResponse,
+      handleFetchError,
+    } = await import("./helpers");
+
+    const payloadAsQuery = ["GET", "DELETE"].includes(method);
+    let url = buildClientUrl(path);
+
+    if (payloadAsQuery && payload) {
+      url = buildUrlWithQuery(url, payload);
+    }
+
+    const response = await fetch(url, {
+      method,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: !payloadAsQuery && payload ? JSON.stringify(payload) : undefined,
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      const errorData = await parseErrorResponse(response);
+      throw handleFetchError(response, errorData);
+    }
+
+    return await response.json();
+  }
+
+  private async _makeServerRequest(
+    method: string,
+    path: string,
+    payload?: Record<string, any>,
+  ) {
+    const { makeAuthenticatedRequest, buildServerUrl } = await import(
+      "./helpers"
+    );
+    const url = buildServerUrl(path);
+    return await makeAuthenticatedRequest(method, url, payload);
   }
 
   ////////////////////////////////////////
