@@ -17,6 +17,12 @@ from ._auth import (
     GoogleCredentialsInput,
 )
 
+settings = Settings()
+GOOGLE_SHEETS_DISABLED = (
+    not GOOGLE_OAUTH_IS_CONFIGURED
+    or settings.config.app_env == AppEnvironment.PRODUCTION
+)
+
 
 def parse_a1_notation(a1: str) -> tuple[str | None, str]:
     """Split an A1‑notation string into *(sheet_name, cell_range)*.
@@ -129,15 +135,13 @@ class GoogleSheetsReadBlock(Block):
         )
 
     def __init__(self):
-        settings = Settings()
         super().__init__(
             id="5724e902-3635-47e9-a108-aaa0263a4988",
             description="This block reads data from a Google Sheets spreadsheet.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsReadBlock.Input,
             output_schema=GoogleSheetsReadBlock.Output,
-            disabled=not GOOGLE_OAUTH_IS_CONFIGURED
-            or settings.config.app_env == AppEnvironment.PRODUCTION,
+            disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
                 "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                 "range": "Sheet1!A1:B2",
@@ -206,7 +210,7 @@ class GoogleSheetsWriteBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsWriteBlock.Input,
             output_schema=GoogleSheetsWriteBlock.Output,
-            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
+            disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
                 "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                 "range": "Sheet1!A1:B2",
@@ -286,7 +290,7 @@ class GoogleSheetsAppendBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsAppendBlock.Input,
             output_schema=GoogleSheetsAppendBlock.Output,
-            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
+            disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
                 "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                 "values": [["Charlie", "95"]],
@@ -368,7 +372,7 @@ class GoogleSheetsClearBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsClearBlock.Input,
             output_schema=GoogleSheetsClearBlock.Output,
-            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
+            disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
                 "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                 "range": "Sheet1!A1:B2",
@@ -431,7 +435,7 @@ class GoogleSheetsMetadataBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsMetadataBlock.Input,
             output_schema=GoogleSheetsMetadataBlock.Output,
-            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
+            disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
                 "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -515,7 +519,7 @@ class GoogleSheetsManageSheetBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsManageSheetBlock.Input,
             output_schema=GoogleSheetsManageSheetBlock.Output,
-            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
+            disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
                 "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                 "operation": SheetOperation.CREATE,
@@ -617,7 +621,7 @@ class GoogleSheetsBatchOperationsBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsBatchOperationsBlock.Input,
             output_schema=GoogleSheetsBatchOperationsBlock.Output,
-            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
+            disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
                 "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                 "operations": [
@@ -747,7 +751,7 @@ class GoogleSheetsFindReplaceBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsFindReplaceBlock.Input,
             output_schema=GoogleSheetsFindReplaceBlock.Output,
-            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
+            disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
                 "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                 "find_text": "old_value",
@@ -837,7 +841,7 @@ class GoogleSheetsFormatBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsFormatBlock.Input,
             output_schema=GoogleSheetsFormatBlock.Output,
-            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
+            disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
                 "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
                 "range": "A1:B2",
@@ -971,7 +975,7 @@ class GoogleSheetsCreateSpreadsheetBlock(Block):
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsCreateSpreadsheetBlock.Input,
             output_schema=GoogleSheetsCreateSpreadsheetBlock.Output,
-            disabled=not GOOGLE_OAUTH_IS_CONFIGURED,
+            disabled=GOOGLE_SHEETS_DISABLED,
             test_input={
                 "title": "Test Spreadsheet",
                 "sheet_names": ["Sheet1", "Data", "Summary"],
