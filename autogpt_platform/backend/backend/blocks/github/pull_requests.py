@@ -34,7 +34,7 @@ class GithubListPullRequestsBlock(Block):
         pull_requests: list[PRItem] = SchemaField(
             description="List of pull requests with their title and URL"
         )
-        error: str = SchemaField(description="Error message if listing issues failed")
+        error: str = SchemaField(description="Error message if listing pull requests failed")
 
     def __init__(self):
         super().__init__(
