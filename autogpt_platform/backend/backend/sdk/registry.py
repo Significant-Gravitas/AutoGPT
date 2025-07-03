@@ -68,6 +68,16 @@ class AutoRegistry:
 
             # Register webhook manager if provided
             if provider.webhook_manager:
+                # Dynamically set PROVIDER_NAME if not already set
+                if (
+                    not hasattr(provider.webhook_manager, "PROVIDER_NAME")
+                    or provider.webhook_manager.PROVIDER_NAME is None
+                ):
+                    # Import ProviderName to create dynamic enum value
+                    from backend.integrations.providers import ProviderName
+
+                    # This works because ProviderName has _missing_ method
+                    provider.webhook_manager.PROVIDER_NAME = ProviderName(provider.name)
                 cls._webhook_managers[provider.name] = provider.webhook_manager
 
             # Register default credentials
@@ -171,7 +181,13 @@ class AutoRegistry:
                     # Add SDK-registered managers
                     sdk_managers = cls.get_webhook_managers()
                     if isinstance(sdk_managers, dict):
-                        managers.update(sdk_managers)  # type: ignore
+                        # Import ProviderName for conversion
+                        from backend.integrations.providers import ProviderName
+
+                        # Convert string keys to ProviderName for consistency
+                        for provider_str, manager in sdk_managers.items():
+                            provider_name = ProviderName(provider_str)
+                            managers[provider_name] = manager
                     return managers
 
                 webhooks.load_webhook_managers = patched_load

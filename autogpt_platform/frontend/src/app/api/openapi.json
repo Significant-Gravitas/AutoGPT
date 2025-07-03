@@ -1480,7 +1480,7 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/GraphExecution" }
+                "schema": { "$ref": "#/components/schemas/GraphExecutionMeta" }
               }
             }
           },
@@ -1496,6 +1496,49 @@
       }
     },
     "/api/executions": {
+      "post": {
+        "tags": ["v1", "graphs"],
+        "summary": "Stop graph executions",
+        "operationId": "postV1Stop graph executions",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Id" }
+          },
+          {
+            "name": "graph_exec_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Exec Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GraphExecutionMeta"
+                  },
+                  "title": "Response Postv1Stop Graph Executions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": ["v1", "graphs"],
         "summary": "Get all executions",
@@ -1506,10 +1549,10 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/GraphExecutionMeta"
                   },
-                  "type": "array",
                   "title": "Response Getv1Get All Executions"
                 }
               }
