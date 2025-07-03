@@ -413,6 +413,16 @@ model AgentNodeExecutionInputOutput {
   @@index([name, time])
 }
 
+model AgentNodeExecutionKeyValueData {
+  userId                String
+  key                   String
+  agentNodeExecutionId  String
+  data                  Json?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime? @updatedAt
+  @@id([userId, key])
+}
+
 // Webhook that is registered with a provider and propagates to one or more nodes
 model IntegrationWebhook {
   id        String    @id @default(uuid())
@@ -432,8 +442,8 @@ model IntegrationWebhook {
 
   providerWebhookId String // Webhook ID assigned by the provider
 
-  AgentNodes    AgentNode[]
-  AgentPresets  AgentPreset[]
+  AgentNodes   AgentNode[]
+  AgentPresets AgentPreset[]
 
   @@index([userId])
 }
