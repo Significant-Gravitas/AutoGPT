@@ -305,6 +305,7 @@ CredentialsType = Literal["api_key", "oauth2", "user_password", "host_scoped"]
 class OAuthState(BaseModel):
     token: str
     provider: str
+    user_id: Optional[str] = None
     expires_at: int
     code_verifier: Optional[str] = None
     """Unix timestamp (seconds) indicating when this OAuth state expires"""

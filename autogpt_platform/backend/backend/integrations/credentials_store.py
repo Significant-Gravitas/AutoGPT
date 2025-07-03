@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Optional
@@ -23,6 +24,7 @@ from backend.data.model import (
 )
 from backend.util.settings import Settings
 
+logger = logging.getLogger(__name__)
 settings = Settings()
 
 # This is an overrride since ollama doesn't actually require an API key, but the creddential system enforces one be attached
@@ -369,13 +371,13 @@ class IntegrationCredentialsStore:
         state = OAuthState(
             token=token,
             provider=provider,
+            user_id=user_id,
             code_verifier=code_verifier,
             expires_at=int(expires_at.timestamp()),
             scopes=scopes,
         )
 
         async with await self.locked_user_integrations(user_id):
-
             user_integrations = await self._get_user_integrations(user_id)
             oauth_states = user_integrations.oauth_states
             oauth_states.append(state)
@@ -384,6 +386,11 @@ class IntegrationCredentialsStore:
             await self.db_manager.update_user_integrations(
                 user_id=user_id, data=user_integrations
             )
+
+        # Store token-to-user mapping in Redis for efficient OAuth callback verification
+        redis = await get_redis_async()
+        token_key = f"oauth_state:{token}:{provider}"
+        await redis.setex(token_key, 600, user_id)  # 10 minutes TTL
 
         return token, code_challenge
 
@@ -417,14 +424,59 @@ class IntegrationCredentialsStore:
             )
 
             if valid_state:
+                # If this is an old state without user_id, add it for consistency
+                if valid_state.user_id is None:
+                    valid_state.user_id = user_id
+                
                 # Remove the used state
                 oauth_states.remove(valid_state)
                 user_integrations.oauth_states = oauth_states
                 await self.db_manager.update_user_integrations(
                     user_id, user_integrations
                 )
+                
+                # Clean up Redis mapping
+                redis = await get_redis_async()
+                token_key = f"oauth_state:{token}:{provider}"
+                await redis.delete(token_key)
+                
                 return valid_state
 
+        return None
+
+    async def verify_state_token_global(
+        self, token: str, provider: str
+    ) -> Optional[OAuthState]:
+        """
+        Verify state token without requiring user_id parameter.
+        Uses Redis mapping for efficient lookup, eliminating the need for 
+        cookie-based authentication during OAuth callbacks.
+        """
+        # Look up user_id from Redis token mapping
+        redis = await get_redis_async()
+        token_key = f"oauth_state:{token}:{provider}"
+        user_id = await redis.get(token_key)
+        
+        if user_id:
+            user_id = user_id.decode() if isinstance(user_id, bytes) else user_id
+            # Now verify the token using the standard method
+            return await self.verify_state_token(user_id, token, provider)
+        
+        # Fallback for existing OAuth states created before Redis mapping
+        # This should be rare and will be removed as old states expire
+        # We'll search through recently active users to find the state
+        # Note: This is a temporary fallback that will naturally phase out
+        # as old states expire (OAuth states expire in 10 minutes)
+        logger.warning(
+            f"OAuth state token not found in Redis for provider {provider}. "
+            "This may be an old state created before Redis mapping was implemented."
+        )
+        
+        # Since we can't efficiently search all users, we'll return None
+        # and let the OAuth flow restart. This is acceptable since:
+        # 1. OAuth states expire in 10 minutes
+        # 2. This only affects states created during the brief deployment window
+        # 3. Users can simply retry the OAuth flow
         return None
 
     async def _set_user_integration_creds(

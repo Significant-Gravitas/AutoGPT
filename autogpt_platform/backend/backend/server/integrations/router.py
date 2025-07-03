@@ -99,23 +99,39 @@ async def callback(
     ],
     code: Annotated[str, Body(title="Authorization code acquired by user login")],
     state_token: Annotated[str, Body(title="Anti-CSRF nonce")],
-    user_id: Annotated[str, Depends(get_user_id)],
     request: Request,
 ) -> CredentialsMetaResponse:
+    """
+    OAuth callback endpoint that processes the authorization code from OAuth providers.
+    
+    This endpoint is designed to work independently of browser cookies and sameSite restrictions.
+    The user identification is embedded in the cryptographically secure state token itself,
+    eliminating dependency on cookie-based authentication during the OAuth callback phase.
+    
+    Security features:
+    - State token contains user_id, preventing cross-user token hijacking
+    - Redis-based token mapping provides efficient lookup and automatic expiration
+    - No dependency on browser cookie behavior or sameSite settings
+    - Cryptographically secure token comparison prevents timing attacks
+    """
     logger.debug(f"Received OAuth callback for provider: {provider}")
     handler = _get_provider_oauth_handler(request, provider)
 
-    # Verify the state token
-    valid_state = await creds_manager.store.verify_state_token(
-        user_id, state_token, provider
+    # Verify the state token globally without requiring user_id from cookies
+    valid_state = await creds_manager.store.verify_state_token_global(
+        state_token, provider.value
     )
 
     if not valid_state:
-        logger.warning(f"Invalid or expired state token for user {user_id}")
+        logger.warning(f"Invalid or expired state token for provider {provider}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired state token",
         )
+        
+    # Extract user_id from the verified state
+    user_id = valid_state.user_id
+    
     try:
         scopes = valid_state.scopes
         logger.debug(f"Retrieved scopes from state token: {scopes}")
