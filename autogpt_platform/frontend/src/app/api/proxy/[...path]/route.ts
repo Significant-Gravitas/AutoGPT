@@ -14,8 +14,9 @@ function getBackendBaseUrl() {
 }
 
 function buildBackendUrl(path: string[], queryString: string): string {
-  const backendPath = path.join("/");
-  return `${getBackendBaseUrl()}/${backendPath}${queryString}`;
+  const actualPath = path[0] === "api" ? path.slice(1) : path;
+  const backendPath = actualPath.join("/");
+  return `${getBackendBaseUrl()}/api/${backendPath}${queryString}`;
 }
 
 async function handleJsonRequest(
