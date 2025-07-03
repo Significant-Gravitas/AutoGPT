@@ -41,6 +41,23 @@ def parse_a1_notation(a1: str) -> tuple[str | None, str]:
     return None, a1
 
 
+def extract_spreadsheet_id(spreadsheet_id_or_url: str) -> str:
+    """Extract spreadsheet ID from either a direct ID or a Google Sheets URL.
+
+    Examples
+    --------
+    >>> extract_spreadsheet_id("1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms")
+    "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+    >>> extract_spreadsheet_id("https://docs.google.com/spreadsheets/d/1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms/edit")
+    "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms"
+    """
+    if "/spreadsheets/d/" in spreadsheet_id_or_url:
+        # Extract ID from URL: https://docs.google.com/spreadsheets/d/{ID}/edit...
+        parts = spreadsheet_id_or_url.split("/d/")[1].split("/")[0]
+        return parts
+    return spreadsheet_id_or_url
+
+
 def _first_sheet_meta(service, spreadsheet_id: str) -> tuple[str, int]:
     """Return *(title, sheetId)* for the first sheet in *spreadsheet_id*."""
 
@@ -99,6 +116,16 @@ class SheetOperation(str, Enum):
     COPY = "copy"
 
 
+class ValueInputOption(str, Enum):
+    RAW = "RAW"
+    USER_ENTERED = "USER_ENTERED"
+
+
+class InsertDataOption(str, Enum):
+    OVERWRITE = "OVERWRITE"
+    INSERT_ROWS = "INSERT_ROWS"
+
+
 class BatchOperationType(str, Enum):
     UPDATE = "update"
     CLEAR = "clear"
@@ -120,7 +147,8 @@ class GoogleSheetsReadBlock(Block):
             ["https://www.googleapis.com/auth/spreadsheets.readonly"]
         )
         spreadsheet_id: str = SchemaField(
-            description="The ID of the spreadsheet to read from",
+            description="The ID or URL of the spreadsheet to read from",
+            title="Spreadsheet ID or URL",
         )
         range: str = SchemaField(
             description="The A1 notation of the range to read",
@@ -169,8 +197,9 @@ class GoogleSheetsReadBlock(Block):
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = _build_sheets_service(credentials)
+        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
         data = await asyncio.to_thread(
-            self._read_sheet, service, input_data.spreadsheet_id, input_data.range
+            self._read_sheet, service, spreadsheet_id, input_data.range
         )
         yield "result", data
 
@@ -186,7 +215,8 @@ class GoogleSheetsWriteBlock(Block):
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
         spreadsheet_id: str = SchemaField(
-            description="The ID of the spreadsheet to write to",
+            description="The ID or URL of the spreadsheet to write to",
+            title="Spreadsheet ID or URL",
         )
         range: str = SchemaField(
             description="The A1 notation of the range to write",
@@ -240,10 +270,11 @@ class GoogleSheetsWriteBlock(Block):
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = _build_sheets_service(credentials)
+        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
         result = await asyncio.to_thread(
             self._write_sheet,
             service,
-            input_data.spreadsheet_id,
+            spreadsheet_id,
             input_data.range,
             input_data.values,
         )
@@ -272,12 +303,30 @@ class GoogleSheetsAppendBlock(Block):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
-        spreadsheet_id: str = SchemaField(description="Spreadsheet ID")
+        spreadsheet_id: str = SchemaField(
+            description="Spreadsheet ID or URL",
+            title="Spreadsheet ID or URL",
+        )
         sheet_name: str = SchemaField(
             description="Optional sheet to append to (defaults to first sheet)",
             default="",
         )
         values: list[list[str]] = SchemaField(description="Rows to append")
+        range: str = SchemaField(
+            description="Range to append to (e.g. 'A:A' for column A only, 'A:C' for columns A-C, or leave empty for unlimited columns). When empty, data will span as many columns as needed.",
+            default="",
+            advanced=True,
+        )
+        value_input_option: ValueInputOption = SchemaField(
+            description="How input data should be interpreted",
+            default=ValueInputOption.USER_ENTERED,
+            advanced=True,
+        )
+        insert_data_option: InsertDataOption = SchemaField(
+            description="How new data should be inserted",
+            default=InsertDataOption.INSERT_ROWS,
+            advanced=True,
+        )
 
     class Output(BlockSchema):
         result: dict = SchemaField(description="Append API response")
@@ -286,7 +335,7 @@ class GoogleSheetsAppendBlock(Block):
     def __init__(self):
         super().__init__(
             id="531d50c0-d6b9-4cf9-a013-7bf783d313c7",
-            description="Append data to a Google Sheet (sheet optional)",
+            description="Append data to a Google Sheet. Data is added to the next empty row without overwriting existing content. Leave range empty for unlimited columns, or specify range like 'A:A' to constrain to specific columns.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsAppendBlock.Input,
             output_schema=GoogleSheetsAppendBlock.Output,
@@ -313,12 +362,16 @@ class GoogleSheetsAppendBlock(Block):
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = _build_sheets_service(credentials)
+        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
         result = await asyncio.to_thread(
             self._append_sheet,
             service,
-            input_data.spreadsheet_id,
+            spreadsheet_id,
             input_data.sheet_name,
             input_data.values,
+            input_data.range,
+            input_data.value_input_option,
+            input_data.insert_data_option,
         )
         yield "result", result
 
@@ -328,17 +381,23 @@ class GoogleSheetsAppendBlock(Block):
         spreadsheet_id: str,
         sheet_name: str,
         values: list[list[str]],
+        range: str,
+        value_input_option: ValueInputOption,
+        insert_data_option: InsertDataOption,
     ) -> dict:
         target_sheet = resolve_sheet_name(service, spreadsheet_id, sheet_name)
+        # If no range specified, use just the sheet name to allow unlimited columns
+        # If range specified, use it to constrain columns (e.g., A:A for column A only)
+        append_range = f"{target_sheet}!{range}" if range else target_sheet
         body = {"values": values}
         return (
             service.spreadsheets()
             .values()
             .append(
                 spreadsheetId=spreadsheet_id,
-                range=f"{target_sheet}!A:A",
-                valueInputOption="USER_ENTERED",
-                insertDataOption="INSERT_ROWS",
+                range=append_range,
+                valueInputOption=value_input_option.value,
+                insertDataOption=insert_data_option.value,
                 body=body,
             )
             .execute()
@@ -351,7 +410,8 @@ class GoogleSheetsClearBlock(Block):
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
         spreadsheet_id: str = SchemaField(
-            description="The ID of the spreadsheet to clear",
+            description="The ID or URL of the spreadsheet to clear",
+            title="Spreadsheet ID or URL",
         )
         range: str = SchemaField(
             description="The A1 notation of the range to clear",
@@ -393,10 +453,11 @@ class GoogleSheetsClearBlock(Block):
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = _build_sheets_service(credentials)
+        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
         result = await asyncio.to_thread(
             self._clear_range,
             service,
-            input_data.spreadsheet_id,
+            spreadsheet_id,
             input_data.range,
         )
         yield "result", result
@@ -417,7 +478,8 @@ class GoogleSheetsMetadataBlock(Block):
             ["https://www.googleapis.com/auth/spreadsheets.readonly"]
         )
         spreadsheet_id: str = SchemaField(
-            description="The ID of the spreadsheet to get metadata for",
+            description="The ID or URL of the spreadsheet to get metadata for",
+            title="Spreadsheet ID or URL",
         )
 
     class Output(BlockSchema):
@@ -462,10 +524,11 @@ class GoogleSheetsMetadataBlock(Block):
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = _build_sheets_service(credentials)
+        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
         result = await asyncio.to_thread(
             self._get_metadata,
             service,
-            input_data.spreadsheet_id,
+            spreadsheet_id,
         )
         yield "result", result
 
@@ -495,7 +558,10 @@ class GoogleSheetsManageSheetBlock(Block):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
-        spreadsheet_id: str = SchemaField(description="Spreadsheet ID")
+        spreadsheet_id: str = SchemaField(
+            description="Spreadsheet ID or URL",
+            title="Spreadsheet ID or URL",
+        )
         operation: SheetOperation = SchemaField(description="Operation to perform")
         sheet_name: str = SchemaField(
             description="Target sheet name (defaults to first sheet for delete)",
@@ -540,10 +606,11 @@ class GoogleSheetsManageSheetBlock(Block):
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = _build_sheets_service(credentials)
+        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
         result = await asyncio.to_thread(
             self._manage_sheet,
             service,
-            input_data.spreadsheet_id,
+            spreadsheet_id,
             input_data.operation,
             input_data.sheet_name,
             input_data.source_sheet_id,
@@ -600,7 +667,8 @@ class GoogleSheetsBatchOperationsBlock(Block):
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
         spreadsheet_id: str = SchemaField(
-            description="The ID of the spreadsheet to perform batch operations on",
+            description="The ID or URL of the spreadsheet to perform batch operations on",
+            title="Spreadsheet ID or URL",
         )
         operations: list[BatchOperation] = SchemaField(
             description="List of operations to perform",
@@ -654,10 +722,11 @@ class GoogleSheetsBatchOperationsBlock(Block):
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = _build_sheets_service(credentials)
+        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
         result = await asyncio.to_thread(
             self._batch_operations,
             service,
-            input_data.spreadsheet_id,
+            spreadsheet_id,
             input_data.operations,
         )
         yield "result", result
@@ -715,7 +784,8 @@ class GoogleSheetsFindReplaceBlock(Block):
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
         spreadsheet_id: str = SchemaField(
-            description="The ID of the spreadsheet to perform find/replace on",
+            description="The ID or URL of the spreadsheet to perform find/replace on",
+            title="Spreadsheet ID or URL",
         )
         find_text: str = SchemaField(
             description="The text to find",
@@ -773,10 +843,11 @@ class GoogleSheetsFindReplaceBlock(Block):
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = _build_sheets_service(credentials)
+        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
         result = await asyncio.to_thread(
             self._find_replace,
             service,
-            input_data.spreadsheet_id,
+            spreadsheet_id,
             input_data.find_text,
             input_data.replace_text,
             input_data.sheet_id,
@@ -822,7 +893,10 @@ class GoogleSheetsFormatBlock(Block):
         credentials: GoogleCredentialsInput = GoogleCredentialsField(
             ["https://www.googleapis.com/auth/spreadsheets"]
         )
-        spreadsheet_id: str = SchemaField(description="Spreadsheet ID")
+        spreadsheet_id: str = SchemaField(
+            description="Spreadsheet ID or URL",
+            title="Spreadsheet ID or URL",
+        )
         range: str = SchemaField(description="A1 notation – sheet optional")
         background_color: dict = SchemaField(default={})
         text_color: dict = SchemaField(default={})
@@ -858,10 +932,11 @@ class GoogleSheetsFormatBlock(Block):
         self, input_data: Input, *, credentials: GoogleCredentials, **kwargs
     ) -> BlockOutput:
         service = _build_sheets_service(credentials)
+        spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
         result = await asyncio.to_thread(
             self._format_cells,
             service,
-            input_data.spreadsheet_id,
+            spreadsheet_id,
             input_data.range,
             input_data.background_color,
             input_data.text_color,
