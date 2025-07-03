@@ -43,7 +43,7 @@ class PersistInformationBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="6b6e8d42-9f3c-4c8e-a7d2-3e5f4a9b8c7d",
+            id="1d055e55-a2b9-4547-8311-907d05b0304d",
             description="Persist key-value information for the current user",
             categories={BlockCategory.DATA},
             input_schema=PersistInformationBlock.Input,
@@ -113,7 +113,7 @@ class RetrieveInformationBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="8a7f9e6d-4c5b-3a2f-9e8d-7c6b5a4f3e2d",
+            id="d8710fc9-6e29-481e-a7d5-165eb16f8471",
             description="Retrieve key-value information for the current user",
             categories={BlockCategory.DATA},
             input_schema=RetrieveInformationBlock.Input,
