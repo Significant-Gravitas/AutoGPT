@@ -1,6 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { getCookieSettings, isAdminPage, isProtectedPage } from "./helpers";
+import {
+  exchangePasswordResetCode,
+  getCookieSettings,
+  isAdminPage,
+  isProtectedPage,
+} from "./helpers";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -43,17 +48,29 @@ export async function updateSession(request: NextRequest) {
       },
     );
 
+    const userResponse = await supabase.auth.getUser();
+    const user = userResponse.data.user;
+    const userRole = user?.role;
+
+    // RESET PASSWORD CODE EXCHANGE
+    const url = request.nextUrl.clone();
+    const pathname = request.nextUrl.pathname;
+    if (pathname === "/reset-password" && url.searchParams.has("code")) {
+      const code = url.searchParams.get("code");
+      const result = await exchangePasswordResetCode(supabase, code!);
+
+      url.searchParams.delete("code");
+
+      if (!result.success) {
+        url.searchParams.set("error", result.error || "Password reset failed");
+      }
+
+      return NextResponse.redirect(url);
+    }
+
     // IMPORTANT: Avoid writing any logic between createServerClient and
     // supabase.auth.getUser(). A simple mistake could make it very hard to debug
     // issues with users being randomly logged out.
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    const userRole = user?.role;
-    const url = request.nextUrl.clone();
-    const pathname = request.nextUrl.pathname;
 
     // AUTH REDIRECTS
     // 1. Check if user is not authenticated but trying to access protected content

@@ -98,3 +98,38 @@ export function setupSessionEventListeners(
     },
   };
 }
+
+export interface CodeExchangeResult {
+  success: boolean;
+  error?: string;
+}
+
+export async function exchangePasswordResetCode(
+  supabase: any,
+  code: string,
+): Promise<CodeExchangeResult> {
+  try {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+    if (error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+
+    if (!data.session) {
+      return {
+        success: false,
+        error: "Failed to create session",
+      };
+    }
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
