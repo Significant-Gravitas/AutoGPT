@@ -31,6 +31,9 @@ class GithubListPullRequestsBlock(Block):
         pull_request: PRItem = SchemaField(
             title="Pull Request", description="PRs with their title and URL"
         )
+        pull_requests: list[PRItem] = SchemaField(
+            description="List of pull requests with their title and URL"
+        )
         error: str = SchemaField(description="Error message if listing issues failed")
 
     def __init__(self):
@@ -52,7 +55,16 @@ class GithubListPullRequestsBlock(Block):
                         "title": "Pull request 1",
                         "url": "https://github.com/owner/repo/pull/1",
                     },
-                )
+                ),
+                (
+                    "pull_requests",
+                    [
+                        {
+                            "title": "Pull request 1",
+                            "url": "https://github.com/owner/repo/pull/1",
+                        }
+                    ],
+                ),
             ],
             test_mock={
                 "list_prs": lambda *args, **kwargs: [
@@ -88,6 +100,7 @@ class GithubListPullRequestsBlock(Block):
             credentials,
             input_data.repo_url,
         )
+        yield "pull_requests", pull_requests
         for pr in pull_requests:
             yield "pull_request", pr
 
@@ -460,6 +473,9 @@ class GithubListPRReviewersBlock(Block):
             title="Reviewer",
             description="Reviewers with their username and profile URL",
         )
+        reviewers: list[ReviewerItem] = SchemaField(
+            description="List of reviewers with their username and profile URL"
+        )
         error: str = SchemaField(
             description="Error message if listing reviewers failed"
         )
@@ -483,7 +499,16 @@ class GithubListPRReviewersBlock(Block):
                         "username": "reviewer1",
                         "url": "https://github.com/reviewer1",
                     },
-                )
+                ),
+                (
+                    "reviewers",
+                    [
+                        {
+                            "username": "reviewer1",
+                            "url": "https://github.com/reviewer1",
+                        }
+                    ],
+                ),
             ],
             test_mock={
                 "list_reviewers": lambda *args, **kwargs: [
@@ -516,10 +541,12 @@ class GithubListPRReviewersBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        for reviewer in await self.list_reviewers(
+        reviewers = await self.list_reviewers(
             credentials,
             input_data.pr_url,
-        ):
+        )
+        yield "reviewers", reviewers
+        for reviewer in reviewers:
             yield "reviewer", reviewer
 
 

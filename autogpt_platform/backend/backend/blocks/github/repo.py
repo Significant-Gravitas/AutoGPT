@@ -31,6 +31,9 @@ class GithubListTagsBlock(Block):
         tag: TagItem = SchemaField(
             title="Tag", description="Tags with their name and file tree browser URL"
         )
+        tags: list[TagItem] = SchemaField(
+            description="List of tags with their name and file tree browser URL"
+        )
         error: str = SchemaField(description="Error message if listing tags failed")
 
     def __init__(self):
@@ -52,7 +55,16 @@ class GithubListTagsBlock(Block):
                         "name": "v1.0.0",
                         "url": "https://github.com/owner/repo/tree/v1.0.0",
                     },
-                )
+                ),
+                (
+                    "tags",
+                    [
+                        {
+                            "name": "v1.0.0",
+                            "url": "https://github.com/owner/repo/tree/v1.0.0",
+                        }
+                    ],
+                ),
             ],
             test_mock={
                 "list_tags": lambda *args, **kwargs: [
@@ -93,6 +105,7 @@ class GithubListTagsBlock(Block):
             credentials,
             input_data.repo_url,
         )
+        yield "tags", tags
         for tag in tags:
             yield "tag", tag
 
@@ -113,6 +126,9 @@ class GithubListBranchesBlock(Block):
         branch: BranchItem = SchemaField(
             title="Branch",
             description="Branches with their name and file tree browser URL",
+        )
+        branches: list[BranchItem] = SchemaField(
+            description="List of branches with their name and file tree browser URL"
         )
         error: str = SchemaField(description="Error message if listing branches failed")
 
@@ -135,7 +151,16 @@ class GithubListBranchesBlock(Block):
                         "name": "main",
                         "url": "https://github.com/owner/repo/tree/main",
                     },
-                )
+                ),
+                (
+                    "branches",
+                    [
+                        {
+                            "name": "main",
+                            "url": "https://github.com/owner/repo/tree/main",
+                        }
+                    ],
+                ),
             ],
             test_mock={
                 "list_branches": lambda *args, **kwargs: [
@@ -176,6 +201,7 @@ class GithubListBranchesBlock(Block):
             credentials,
             input_data.repo_url,
         )
+        yield "branches", branches
         for branch in branches:
             yield "branch", branch
 
@@ -198,6 +224,9 @@ class GithubListDiscussionsBlock(Block):
 
         discussion: DiscussionItem = SchemaField(
             title="Discussion", description="Discussions with their title and URL"
+        )
+        discussions: list[DiscussionItem] = SchemaField(
+            description="List of discussions with their title and URL"
         )
         error: str = SchemaField(
             description="Error message if listing discussions failed"
@@ -223,7 +252,16 @@ class GithubListDiscussionsBlock(Block):
                         "title": "Discussion 1",
                         "url": "https://github.com/owner/repo/discussions/1",
                     },
-                )
+                ),
+                (
+                    "discussions",
+                    [
+                        {
+                            "title": "Discussion 1",
+                            "url": "https://github.com/owner/repo/discussions/1",
+                        }
+                    ],
+                ),
             ],
             test_mock={
                 "list_discussions": lambda *args, **kwargs: [
@@ -279,6 +317,7 @@ class GithubListDiscussionsBlock(Block):
             input_data.repo_url,
             input_data.num_discussions,
         )
+        yield "discussions", discussions
         for discussion in discussions:
             yield "discussion", discussion
 
@@ -299,6 +338,9 @@ class GithubListReleasesBlock(Block):
         release: ReleaseItem = SchemaField(
             title="Release",
             description="Releases with their name and file tree browser URL",
+        )
+        releases: list[ReleaseItem] = SchemaField(
+            description="List of releases with their name and file tree browser URL"
         )
         error: str = SchemaField(description="Error message if listing releases failed")
 
@@ -321,7 +363,16 @@ class GithubListReleasesBlock(Block):
                         "name": "v1.0.0",
                         "url": "https://github.com/owner/repo/releases/tag/v1.0.0",
                     },
-                )
+                ),
+                (
+                    "releases",
+                    [
+                        {
+                            "name": "v1.0.0",
+                            "url": "https://github.com/owner/repo/releases/tag/v1.0.0",
+                        }
+                    ],
+                ),
             ],
             test_mock={
                 "list_releases": lambda *args, **kwargs: [
@@ -357,6 +408,7 @@ class GithubListReleasesBlock(Block):
             credentials,
             input_data.repo_url,
         )
+        yield "releases", releases
         for release in releases:
             yield "release", release
 
@@ -1041,6 +1093,9 @@ class GithubListStargazersBlock(Block):
             title="Stargazer",
             description="Stargazers with their username and profile URL",
         )
+        stargazers: list[StargazerItem] = SchemaField(
+            description="List of stargazers with their username and profile URL"
+        )
         error: str = SchemaField(
             description="Error message if listing stargazers failed"
         )
@@ -1064,7 +1119,16 @@ class GithubListStargazersBlock(Block):
                         "username": "octocat",
                         "url": "https://github.com/octocat",
                     },
-                )
+                ),
+                (
+                    "stargazers",
+                    [
+                        {
+                            "username": "octocat",
+                            "url": "https://github.com/octocat",
+                        }
+                    ],
+                ),
             ],
             test_mock={
                 "list_stargazers": lambda *args, **kwargs: [
@@ -1104,5 +1168,6 @@ class GithubListStargazersBlock(Block):
             credentials,
             input_data.repo_url,
         )
+        yield "stargazers", stargazers
         for stargazer in stargazers:
             yield "stargazer", stargazer
