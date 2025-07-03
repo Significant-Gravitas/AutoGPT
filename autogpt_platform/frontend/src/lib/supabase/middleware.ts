@@ -1,11 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import {
-  exchangePasswordResetCode,
-  getCookieSettings,
-  isAdminPage,
-  isProtectedPage,
-} from "./helpers";
+import { getCookieSettings, isAdminPage, isProtectedPage } from "./helpers";
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -52,21 +47,8 @@ export async function updateSession(request: NextRequest) {
     const user = userResponse.data.user;
     const userRole = user?.role;
 
-    // RESET PASSWORD CODE EXCHANGE
     const url = request.nextUrl.clone();
     const pathname = request.nextUrl.pathname;
-    if (pathname === "/reset-password" && url.searchParams.has("code")) {
-      const code = url.searchParams.get("code");
-      const result = await exchangePasswordResetCode(supabase, code!);
-
-      url.searchParams.delete("code");
-
-      if (!result.success) {
-        url.searchParams.set("error", result.error || "Password reset failed");
-      }
-
-      return NextResponse.redirect(url);
-    }
 
     // IMPORTANT: Avoid writing any logic between createServerClient and
     // supabase.auth.getUser(). A simple mistake could make it very hard to debug
