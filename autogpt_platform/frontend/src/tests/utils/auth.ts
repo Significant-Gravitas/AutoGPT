@@ -17,9 +17,19 @@ export async function createTestUser(page: Page): Promise<TestUser> {
   };
 
   console.log(`🚀 Creating test user: ${testUser.email}`);
+  console.log(`🌐 Current URL before navigation: ${page.url()}`);
 
   // Navigate to signup page
+  console.log(`🔄 Navigating to signup page...`);
   await page.goto("/signup");
+  console.log(`✅ Navigated to: ${page.url()}`);
+
+  // Clear any existing session after navigation
+  await page.context().clearCookies();
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
 
   // Fill out the signup form
   await page.getByPlaceholder("m@example.com").fill(testUser.email);
@@ -30,7 +40,7 @@ export async function createTestUser(page: Page): Promise<TestUser> {
   await passwordInputs.nth(1).fill(testUser.password); // Confirm password field
 
   // Agree to terms
-  await page.getByRole("button", { name: "checkbox" }).click();
+  await page.getByRole("checkbox").click();
 
   // Submit the form
   await page.getByRole("button", { name: "Sign up" }).click();
@@ -72,7 +82,9 @@ export async function completeOnboarding(page: Page): Promise<void> {
 
   // Select a couple of integrations
   await page.getByText("Discord").click();
-  await page.getByText("GitHub").click();
+  await page
+    .getByRole("button", { name: "Logo of GitHub GitHub AutoGPT" })
+    .click();
   await page.getByRole("link", { name: "Next" }).click();
 
   // Step 4: Choose agent
@@ -87,13 +99,14 @@ export async function completeOnboarding(page: Page): Promise<void> {
   await agentCards.first().click();
   await page.getByRole("link", { name: "Next" }).click();
 
-  // Step 5: Run agent page - this is where we navigate away
+  // Step 5: Run agent page - skip to marketplace
   await page.waitForURL("/onboarding/5-run");
   await expect(page.getByText("Run your first agent")).toBeVisible();
 
-  console.log("🛒 Navigating to marketplace at step 5...");
-  // Navigate directly to marketplace instead of completing the run
-  await page.goto("/marketplace");
+  console.log("🛒 Navigating to marketplace to complete onboarding...");
+  // Navigate directly to marketplace and wait for it to load
+  await page.goto("/marketplace", { waitUntil: "networkidle" });
+  await page.waitForLoadState("domcontentloaded");
 
   // Verify we're on marketplace and user is ready
   await expect(
@@ -142,9 +155,35 @@ export async function loginUser(page: Page, email: string, password: string) {
 
   // Check if we landed on onboarding
   if (currentUrl.includes("/onboarding")) {
-    // Navigate to marketplace
+    // Wait for any ongoing navigation to complete
+    await page.waitForLoadState("networkidle");
+
+    // Navigate to marketplace with retry logic
     console.log("🛒 Navigating to marketplace...");
-    await page.goto("/marketplace");
+    let navigationSuccess = false;
+    let attempts = 0;
+    const maxAttempts = 3;
+
+    while (!navigationSuccess && attempts < maxAttempts) {
+      try {
+        await page.goto("/marketplace", {
+          waitUntil: "networkidle",
+          timeout: 10000,
+        });
+        navigationSuccess = true;
+      } catch (error) {
+        attempts++;
+        console.log(
+          `⚠️ Navigation attempt ${attempts} failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        if (attempts < maxAttempts) {
+          await page.waitForTimeout(2000);
+        } else {
+          throw error;
+        }
+      }
+    }
+
     await page.waitForLoadState("load");
 
     // Verify we're now on marketplace
@@ -154,7 +193,6 @@ export async function loginUser(page: Page, email: string, password: string) {
       ),
     ).toBeVisible();
     await expect(page).toHaveURL("/marketplace");
-    // If we landed on marketplace
   } else if (
     currentUrl === "http://localhost:3000/marketplace" ||
     currentUrl.endsWith("/marketplace")
