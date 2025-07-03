@@ -17,11 +17,12 @@ def get_database_manager_client():
     return get_service_client(DatabaseManagerAsyncClient, health_check=False)
 
 
-def get_storage_key(key: str, scope: str, graph_id: str) -> str:
+StorageScope = Literal["within_agent", "across_agents"]
+
+
+def get_storage_key(key: str, scope: StorageScope, graph_id: str) -> str:
     """Generate the storage key based on scope"""
-    if scope == "within_agent":
-        return f"agent#{graph_id}#{key}"
-    elif scope == "across_agents":
+    if scope == "across_agents":
         return f"global#{key}"
     else:
         return f"agent#{graph_id}#{key}"
@@ -33,7 +34,7 @@ class PersistInformationBlock(Block):
     class Input(BlockSchema):
         key: str = SchemaField(description="Key to store the information under")
         value: Any = SchemaField(description="Value to store")
-        scope: Literal["within_agent", "across_agents"] = SchemaField(
+        scope: StorageScope = SchemaField(
             description="Scope of persistence: within_agent (shared across all runs of this agent) or across_agents (shared across all agents for this user)",
             default="within_agent",
         )
@@ -100,7 +101,7 @@ class RetrieveInformationBlock(Block):
 
     class Input(BlockSchema):
         key: str = SchemaField(description="Key to retrieve the information for")
-        scope: Literal["within_agent", "across_agents"] = SchemaField(
+        scope: StorageScope = SchemaField(
             description="Scope of persistence: within_agent (shared across all runs of this agent) or across_agents (shared across all agents for this user)",
             default="within_agent",
         )
