@@ -57,6 +57,17 @@ class ReadRSSFeedBlock(Block):
             },
             test_output=[
                 (
+                    "entry",
+                    RSSEntry(
+                        title="Example RSS Item",
+                        link="https://example.com/article",
+                        description="This is an example RSS item description.",
+                        pub_date=datetime(2023, 6, 23, 12, 30, 0, tzinfo=timezone.utc),
+                        author="John Doe",
+                        categories=["Technology", "News"],
+                    ),
+                ),
+                (
                     "entries",
                     [
                         RSSEntry(
@@ -70,17 +81,6 @@ class ReadRSSFeedBlock(Block):
                             categories=["Technology", "News"],
                         ),
                     ],
-                ),
-                (
-                    "entry",
-                    RSSEntry(
-                        title="Example RSS Item",
-                        link="https://example.com/article",
-                        description="This is an example RSS item description.",
-                        pub_date=datetime(2023, 6, 23, 12, 30, 0, tzinfo=timezone.utc),
-                        author="John Doe",
-                        categories=["Technology", "News"],
-                    ),
                 ),
             ],
             test_mock={

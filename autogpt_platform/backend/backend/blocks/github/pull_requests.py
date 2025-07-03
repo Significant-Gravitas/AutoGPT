@@ -34,7 +34,9 @@ class GithubListPullRequestsBlock(Block):
         pull_requests: list[PRItem] = SchemaField(
             description="List of pull requests with their title and URL"
         )
-        error: str = SchemaField(description="Error message if listing pull requests failed")
+        error: str = SchemaField(
+            description="Error message if listing pull requests failed"
+        )
 
     def __init__(self):
         super().__init__(
@@ -50,13 +52,6 @@ class GithubListPullRequestsBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
-                    "pull_request",
-                    {
-                        "title": "Pull request 1",
-                        "url": "https://github.com/owner/repo/pull/1",
-                    },
-                ),
-                (
                     "pull_requests",
                     [
                         {
@@ -64,6 +59,13 @@ class GithubListPullRequestsBlock(Block):
                             "url": "https://github.com/owner/repo/pull/1",
                         }
                     ],
+                ),
+                (
+                    "pull_request",
+                    {
+                        "title": "Pull request 1",
+                        "url": "https://github.com/owner/repo/pull/1",
+                    },
                 ),
             ],
             test_mock={
@@ -494,13 +496,6 @@ class GithubListPRReviewersBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
-                    "reviewer",
-                    {
-                        "username": "reviewer1",
-                        "url": "https://github.com/reviewer1",
-                    },
-                ),
-                (
                     "reviewers",
                     [
                         {
@@ -508,6 +503,13 @@ class GithubListPRReviewersBlock(Block):
                             "url": "https://github.com/reviewer1",
                         }
                     ],
+                ),
+                (
+                    "reviewer",
+                    {
+                        "username": "reviewer1",
+                        "url": "https://github.com/reviewer1",
+                    },
                 ),
             ],
             test_mock={

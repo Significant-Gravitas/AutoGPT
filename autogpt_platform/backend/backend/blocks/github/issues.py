@@ -517,13 +517,6 @@ class GithubListIssuesBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
-                    "issue",
-                    {
-                        "title": "Issue 1",
-                        "url": "https://github.com/owner/repo/issues/1",
-                    },
-                ),
-                (
                     "issues",
                     [
                         {
@@ -531,6 +524,13 @@ class GithubListIssuesBlock(Block):
                             "url": "https://github.com/owner/repo/issues/1",
                         }
                     ],
+                ),
+                (
+                    "issue",
+                    {
+                        "title": "Issue 1",
+                        "url": "https://github.com/owner/repo/issues/1",
+                    },
                 ),
             ],
             test_mock={

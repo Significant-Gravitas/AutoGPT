@@ -118,6 +118,18 @@ class GetRedditPostsBlock(Block):
             },
             test_output=[
                 (
+                    "post",
+                    RedditPost(
+                        id="id1", subreddit="subreddit", title="title1", body="body1"
+                    ),
+                ),
+                (
+                    "post",
+                    RedditPost(
+                        id="id2", subreddit="subreddit", title="title2", body="body2"
+                    ),
+                ),
+                (
                     "posts",
                     [
                         RedditPost(
@@ -133,18 +145,6 @@ class GetRedditPostsBlock(Block):
                             body="body2",
                         ),
                     ],
-                ),
-                (
-                    "post",
-                    RedditPost(
-                        id="id1", subreddit="subreddit", title="title1", body="body1"
-                    ),
-                ),
-                (
-                    "post",
-                    RedditPost(
-                        id="id2", subreddit="subreddit", title="title2", body="body2"
-                    ),
                 ),
             ],
             test_mock={

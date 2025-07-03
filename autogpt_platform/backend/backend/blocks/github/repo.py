@@ -50,13 +50,6 @@ class GithubListTagsBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
-                    "tag",
-                    {
-                        "name": "v1.0.0",
-                        "url": "https://github.com/owner/repo/tree/v1.0.0",
-                    },
-                ),
-                (
                     "tags",
                     [
                         {
@@ -64,6 +57,13 @@ class GithubListTagsBlock(Block):
                             "url": "https://github.com/owner/repo/tree/v1.0.0",
                         }
                     ],
+                ),
+                (
+                    "tag",
+                    {
+                        "name": "v1.0.0",
+                        "url": "https://github.com/owner/repo/tree/v1.0.0",
+                    },
                 ),
             ],
             test_mock={
@@ -146,13 +146,6 @@ class GithubListBranchesBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
-                    "branch",
-                    {
-                        "name": "main",
-                        "url": "https://github.com/owner/repo/tree/main",
-                    },
-                ),
-                (
                     "branches",
                     [
                         {
@@ -160,6 +153,13 @@ class GithubListBranchesBlock(Block):
                             "url": "https://github.com/owner/repo/tree/main",
                         }
                     ],
+                ),
+                (
+                    "branch",
+                    {
+                        "name": "main",
+                        "url": "https://github.com/owner/repo/tree/main",
+                    },
                 ),
             ],
             test_mock={
@@ -247,13 +247,6 @@ class GithubListDiscussionsBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
-                    "discussion",
-                    {
-                        "title": "Discussion 1",
-                        "url": "https://github.com/owner/repo/discussions/1",
-                    },
-                ),
-                (
                     "discussions",
                     [
                         {
@@ -261,6 +254,13 @@ class GithubListDiscussionsBlock(Block):
                             "url": "https://github.com/owner/repo/discussions/1",
                         }
                     ],
+                ),
+                (
+                    "discussion",
+                    {
+                        "title": "Discussion 1",
+                        "url": "https://github.com/owner/repo/discussions/1",
+                    },
                 ),
             ],
             test_mock={
@@ -358,13 +358,6 @@ class GithubListReleasesBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
-                    "release",
-                    {
-                        "name": "v1.0.0",
-                        "url": "https://github.com/owner/repo/releases/tag/v1.0.0",
-                    },
-                ),
-                (
                     "releases",
                     [
                         {
@@ -372,6 +365,13 @@ class GithubListReleasesBlock(Block):
                             "url": "https://github.com/owner/repo/releases/tag/v1.0.0",
                         }
                     ],
+                ),
+                (
+                    "release",
+                    {
+                        "name": "v1.0.0",
+                        "url": "https://github.com/owner/repo/releases/tag/v1.0.0",
+                    },
                 ),
             ],
             test_mock={
@@ -1114,13 +1114,6 @@ class GithubListStargazersBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
-                    "stargazer",
-                    {
-                        "username": "octocat",
-                        "url": "https://github.com/octocat",
-                    },
-                ),
-                (
                     "stargazers",
                     [
                         {
@@ -1128,6 +1121,13 @@ class GithubListStargazersBlock(Block):
                             "url": "https://github.com/octocat",
                         }
                     ],
+                ),
+                (
+                    "stargazer",
+                    {
+                        "username": "octocat",
+                        "url": "https://github.com/octocat",
+                    },
                 ),
             ],
             test_mock={
