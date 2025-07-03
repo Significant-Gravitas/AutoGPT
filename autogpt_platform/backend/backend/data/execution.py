@@ -347,6 +347,7 @@ class NodeExecutionResult(BaseModel):
 
 
 async def get_graph_executions(
+    graph_exec_id: str | None = None,
     graph_id: str | None = None,
     user_id: str | None = None,
     statuses: list[ExecutionStatus] | None = None,
@@ -357,6 +358,8 @@ async def get_graph_executions(
     where_filter: AgentGraphExecutionWhereInput = {
         "isDeleted": False,
     }
+    if graph_exec_id:
+        where_filter["id"] = graph_exec_id
     if user_id:
         where_filter["userId"] = user_id
     if graph_id:
