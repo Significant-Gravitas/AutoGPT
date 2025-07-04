@@ -235,17 +235,39 @@ class CodeExecutorComponent(
             bool: True if the command is allowed, False otherwise
             bool: True if the command may be executed in a shell, False otherwise
         """
-        if not command_line:
+        if not command_line or not command_line.strip():
             return False, False
 
-        command_name = shlex.split(command_line)[0]
+        # SECURITY: Validate command_line for shell injection patterns
+        # Block dangerous shell metacharacters that could enable command injection
+        dangerous_chars = [';', '|', '&', '$', '`', '>', '<', '(', ')', '{', '}']
+        if any(char in command_line for char in dangerous_chars):
+            logger.warning(f"Command '{command_line}' contains dangerous shell metacharacters")
+            return False, False
 
+        try:
+            command_name = shlex.split(command_line)[0]
+        except (ValueError, IndexError) as e:
+            # shlex.split can raise ValueError for malformed shell commands or IndexError for empty results
+            logger.warning(f"Command '{command_line}' has malformed syntax: {e}")
+            return False, False
+
+        # SECURITY: Enforce strict validation based on shell_command_control
         if self.config.shell_command_control == "allowlist":
-            return command_name in self.config.shell_allowlist, False
+            # Only allow commands explicitly in the allowlist
+            is_allowed = command_name in self.config.shell_allowlist
+            # NEVER allow shell execution with allowlist mode for security
+            return is_allowed, False
         elif self.config.shell_command_control == "denylist":
-            return command_name not in self.config.shell_denylist, False
+            # Block commands in the denylist
+            is_allowed = command_name not in self.config.shell_denylist
+            # NEVER allow shell execution with denylist mode for security
+            return is_allowed, False
         else:
-            return True, True
+            # SECURITY FIX: Default to secure behavior instead of allowing everything
+            # This prevents command injection if shell_command_control is somehow set to an invalid value
+            logger.error(f"Invalid shell_command_control value: {self.config.shell_command_control}. Defaulting to secure mode.")
+            return False, False
 
     @command(
         ["execute_shell"],
