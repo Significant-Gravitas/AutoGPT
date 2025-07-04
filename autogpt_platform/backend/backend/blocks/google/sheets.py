@@ -58,6 +58,26 @@ def extract_spreadsheet_id(spreadsheet_id_or_url: str) -> str:
     return spreadsheet_id_or_url
 
 
+def format_sheet_name(sheet_name: str) -> str:
+    """Format sheet name for Google Sheets API, adding quotes if needed.
+
+    Examples
+    --------
+    >>> format_sheet_name("Sheet1")
+    "Sheet1"
+    >>> format_sheet_name("Non-matching Leads")
+    "'Non-matching Leads'"
+    """
+    # If sheet name contains spaces, special characters, or starts with a digit, wrap in quotes
+    if (
+        " " in sheet_name
+        or any(char in sheet_name for char in "!@#$%^&*()+-=[]{}|;:,.<>?")
+        or (sheet_name and sheet_name[0].isdigit())
+    ):
+        return f"'{sheet_name}'"
+    return sheet_name
+
+
 def _first_sheet_meta(service, spreadsheet_id: str) -> tuple[str, int]:
     """Return *(title, sheetId)* for the first sheet in *spreadsheet_id*."""
 
@@ -386,9 +406,14 @@ class GoogleSheetsAppendBlock(Block):
         insert_data_option: InsertDataOption,
     ) -> dict:
         target_sheet = resolve_sheet_name(service, spreadsheet_id, sheet_name)
-        # If no range specified, use just the sheet name to allow unlimited columns
+        formatted_sheet = format_sheet_name(target_sheet)
+        # If no range specified, use A1 to let Google Sheets find the next empty row with unlimited columns
         # If range specified, use it to constrain columns (e.g., A:A for column A only)
-        append_range = f"{target_sheet}!{range}" if range else target_sheet
+        if range:
+            append_range = f"{formatted_sheet}!{range}"
+        else:
+            # Use A1 as starting point for unlimited columns - Google Sheets will find next empty row
+            append_range = f"{formatted_sheet}!A1"
         body = {"values": values}
         return (
             service.spreadsheets()
