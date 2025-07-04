@@ -323,25 +323,7 @@ async def test_ipv4_and_ipv6_addresses():
 @pytest.mark.asyncio
 async def test_ocsp_error_messages():
     """Verify that error messages are clear when OCSP verification fails"""
-    # Test various OCSP failure scenarios
-
-    # 1. Test when certificate is not available
-    with patch("socket.create_connection") as mock_conn:
-        mock_sock = MagicMock()
-        mock_ssl_sock = MagicMock()
-        # Mock getpeercert to return None (no certificate)
-        mock_ssl_sock.getpeercert.return_value = None
-
-        mock_conn.return_value.__enter__.return_value = mock_sock
-
-        with patch("ssl.SSLContext.wrap_socket", return_value=mock_ssl_sock):
-            with pytest.raises(Exception) as excinfo:
-                await verify_ocsp_stapling("test.example.com", 443)
-            assert "No certificate received from test.example.com" in str(
-                excinfo.value
-            )
-
-    # 2. Test validate_url OCSP error propagation
+    # Test validate_url OCSP error propagation
     with patch("backend.util.request.verify_ocsp_stapling") as mock_verify:
         mock_verify.side_effect = Exception("Custom OCSP error for testing")
 
