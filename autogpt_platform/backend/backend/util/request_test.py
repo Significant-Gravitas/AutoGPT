@@ -142,7 +142,9 @@ async def test_ocsp_stapling_no_ocsp_server():
         mock_ssl_sock = MagicMock()
         # Mock getpeercert to return a valid certificate
         mock_ssl_sock.getpeercert.return_value = {"subject": "test"}
-        mock_ssl_sock.getpeercert.side_effect = lambda binary_form=False: b"fake_cert" if binary_form else {"subject": "test"}
+        mock_ssl_sock.getpeercert.side_effect = lambda binary_form=False: (
+            b"fake_cert" if binary_form else {"subject": "test"}
+        )
 
         mock_conn.return_value.__enter__.return_value = mock_sock
 
@@ -262,7 +264,9 @@ async def test_async_event_loop_not_blocked():
         mock_ssl_sock = MagicMock()
         # Mock getpeercert to return a valid certificate
         mock_ssl_sock.getpeercert.return_value = {"subject": "test"}
-        mock_ssl_sock.getpeercert.side_effect = lambda binary_form=False: b"fake_cert" if binary_form else {"subject": "test"}
+        mock_ssl_sock.getpeercert.side_effect = lambda binary_form=False: (
+            b"fake_cert" if binary_form else {"subject": "test"}
+        )
 
         mock_conn.return_value.__enter__.return_value = mock_sock
 
