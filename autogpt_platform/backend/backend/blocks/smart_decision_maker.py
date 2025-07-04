@@ -26,10 +26,10 @@ logger = logging.getLogger(__name__)
 
 @thread_cached
 def get_database_manager_client():
-    from backend.executor import DatabaseManagerClient
+    from backend.executor import DatabaseManagerAsyncClient
     from backend.util.service import get_service_client
 
-    return get_service_client(DatabaseManagerClient)
+    return get_service_client(DatabaseManagerAsyncClient, health_check=False)
 
 
 def _get_tool_requests(entry: dict[str, Any]) -> list[str]:
@@ -273,7 +273,7 @@ class SmartDecisionMakerBlock(Block):
         return re.sub(r"[^a-zA-Z0-9_-]", "_", s).lower()
 
     @staticmethod
-    def _create_block_function_signature(
+    async def _create_block_function_signature(
         sink_node: "Node", links: list["Link"]
     ) -> dict[str, Any]:
         """
@@ -312,7 +312,7 @@ class SmartDecisionMakerBlock(Block):
         return {"type": "function", "function": tool_function}
 
     @staticmethod
-    def _create_agent_function_signature(
+    async def _create_agent_function_signature(
         sink_node: "Node", links: list["Link"]
     ) -> dict[str, Any]:
         """
@@ -334,7 +334,7 @@ class SmartDecisionMakerBlock(Block):
             raise ValueError("Graph ID or Graph Version not found in sink node.")
 
         db_client = get_database_manager_client()
-        sink_graph_meta = db_client.get_graph_metadata(graph_id, graph_version)
+        sink_graph_meta = await db_client.get_graph_metadata(graph_id, graph_version)
         if not sink_graph_meta:
             raise ValueError(
                 f"Sink graph metadata not found: {graph_id} {graph_version}"
@@ -374,7 +374,7 @@ class SmartDecisionMakerBlock(Block):
         return {"type": "function", "function": tool_function}
 
     @staticmethod
-    def _create_function_signature(node_id: str) -> list[dict[str, Any]]:
+    async def _create_function_signature(node_id: str) -> list[dict[str, Any]]:
         """
         Creates function signatures for tools linked to a specified node within a graph.
 
@@ -396,13 +396,13 @@ class SmartDecisionMakerBlock(Block):
         db_client = get_database_manager_client()
         tools = [
             (link, node)
-            for link, node in db_client.get_connected_output_nodes(node_id)
+            for link, node in await db_client.get_connected_output_nodes(node_id)
             if link.source_name.startswith("tools_^_") and link.source_id == node_id
         ]
         if not tools:
             raise ValueError("There is no next node to execute.")
 
-        return_tool_functions = []
+        return_tool_functions: list[dict[str, Any]] = []
 
         grouped_tool_links: dict[str, tuple["Node", list["Link"]]] = {}
         for link, node in tools:
@@ -417,13 +417,13 @@ class SmartDecisionMakerBlock(Block):
 
             if sink_node.block_id == AgentExecutorBlock().id:
                 return_tool_functions.append(
-                    SmartDecisionMakerBlock._create_agent_function_signature(
+                    await SmartDecisionMakerBlock._create_agent_function_signature(
                         sink_node, links
                     )
                 )
             else:
                 return_tool_functions.append(
-                    SmartDecisionMakerBlock._create_block_function_signature(
+                    await SmartDecisionMakerBlock._create_block_function_signature(
                         sink_node, links
                     )
                 )
@@ -442,7 +442,7 @@ class SmartDecisionMakerBlock(Block):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
-        tool_functions = self._create_function_signature(node_id)
+        tool_functions = await self._create_function_signature(node_id)
         yield "tool_functions", json.dumps(tool_functions)
 
         input_data.conversation_history = input_data.conversation_history or []

@@ -17,6 +17,7 @@ export const agentRunStatusMap: Record<
   GraphExecutionMeta["status"],
   AgentRunStatus
 > = {
+  INCOMPLETE: "draft",
   COMPLETED: "success",
   FAILED: "failed",
   QUEUED: "queued",
@@ -57,9 +58,9 @@ export default function AgentRunStatusChip({
   return (
     <Badge
       variant="secondary"
-      className={`text-xs font-medium ${statusStyles[statusData[status].variant]} rounded-[45px] px-[9px] py-[3px]`}
+      className={`text-xs font-medium ${statusStyles[statusData[status]?.variant]} rounded-[45px] px-[9px] py-[3px]`}
     >
-      {statusData[status].label}
+      {statusData[status]?.label}
     </Badge>
   );
 }

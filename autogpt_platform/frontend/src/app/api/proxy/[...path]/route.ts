@@ -1,4 +1,5 @@
 import {
+  ApiError,
   makeAuthenticatedFileUpload,
   makeAuthenticatedRequest,
 } from "@/lib/autogpt-server-api/helpers";
@@ -22,7 +23,16 @@ async function handleJsonRequest(
   method: string,
   backendUrl: string,
 ): Promise<any> {
-  const payload = await req.json();
+  let payload;
+
+  try {
+    payload = await req.json();
+  } catch (error) {
+    // Handle cases where request body is empty, invalid JSON, or already consumed
+    console.warn("Failed to parse JSON from request body:", error);
+    payload = null;
+  }
+
   return await makeAuthenticatedRequest(
     method,
     backendUrl,
@@ -97,6 +107,16 @@ function createResponse(
 
 function createErrorResponse(error: unknown): NextResponse {
   console.error("API proxy error:", error);
+
+  // If it's our custom ApiError, preserve the original status and response
+  if (error instanceof ApiError) {
+    return NextResponse.json(
+      error.response || { error: error.message, detail: error.message },
+      { status: error.status },
+    );
+  }
+
+  // For other errors, use generic response
   const detail =
     error instanceof Error ? error.message : "An unknown error occurred";
   return NextResponse.json(

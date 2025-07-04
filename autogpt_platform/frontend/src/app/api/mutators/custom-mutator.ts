@@ -1,4 +1,6 @@
-const BASE_URL = `${process.env.NEXT_PUBLIC_FRONTEND_BASE_URL}/api/proxy`; // Sending request via nextjs Server
+const FRONTEND_BASE_URL =
+  process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
+const API_PROXY_BASE_URL = `${FRONTEND_BASE_URL}/api/proxy`; // Sending request via nextjs Server
 
 const getBody = <T>(c: Response | Request): Promise<T> => {
   const contentType = c.headers.get("content-type");
@@ -43,7 +45,7 @@ export const customMutator = async <T = any>(
     ? "?" + new URLSearchParams(params).toString()
     : "";
 
-  const response = await fetch(`${BASE_URL}${url}${queryString}`, {
+  const response = await fetch(`${API_PROXY_BASE_URL}${url}${queryString}`, {
     ...requestOptions,
     method,
     headers,
