@@ -3,6 +3,7 @@
 import * as React from "react";
 import Image from "next/image";
 import { IconStarFilled, IconMore } from "@/components/ui/icons";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 import { Status, StatusType } from "./Status";
 import { StoreSubmissionRequest } from "@/lib/autogpt-server-api";
 
@@ -47,6 +48,7 @@ export const AgentTableCard: React.FC<AgentTableCardProps> = ({
       categories: [],
     });
   };
+  const showRatings = useFeatureFlag("marketplace-agent-ratings");
 
   return (
     <div className="border-b border-neutral-300 p-4 dark:border-neutral-700">
@@ -83,12 +85,14 @@ export const AgentTableCard: React.FC<AgentTableCardProps> = ({
         <div className="text-sm text-neutral-600 dark:text-neutral-400">
           {runs.toLocaleString()} runs
         </div>
-        <div className="flex items-center gap-1">
-          <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
-            {rating.toFixed(1)}
-          </span>
-          <IconStarFilled className="h-4 w-4 text-neutral-800 dark:text-neutral-200" />
-        </div>
+        {showRatings && (
+          <div className="flex items-center gap-1">
+            <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+              {rating.toFixed(1)}
+            </span>
+            <IconStarFilled className="h-4 w-4 text-neutral-800 dark:text-neutral-200" />
+          </div>
+        )}
       </div>
     </div>
   );

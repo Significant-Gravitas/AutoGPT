@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { StarRatingIcons } from "@/components/ui/icons";
+import { useFeatureFlag } from "@/hooks/useFeatureFlag";
 
 interface CreatorInfoCardProps {
   username: string;
@@ -19,6 +20,7 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
   averageRating,
   totalRuns,
 }) => {
+  const showRatings = useFeatureFlag("marketplace-agent-ratings");
   return (
     <div
       className="inline-flex h-auto min-h-[500px] w-full max-w-[440px] flex-col items-start justify-between rounded-[26px] bg-violet-100 p-4 dark:bg-violet-900 sm:h-[632px] sm:w-[440px] sm:p-6"
@@ -80,23 +82,25 @@ export const CreatorInfoCard: React.FC<CreatorInfoCardProps> = ({
         <div className="flex w-full flex-col items-start justify-start gap-3">
           <div className="h-px w-full bg-neutral-700 dark:bg-neutral-300" />
           <div className="flex w-full flex-col items-start justify-between gap-4 sm:flex-row sm:gap-0">
-            <div className="flex w-full flex-col items-start justify-start gap-2.5 sm:w-[164px]">
-              <div className="w-full text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
-                Average rating
-              </div>
-              <div className="inline-flex items-center gap-2">
-                <div className="text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
-                  {averageRating.toFixed(1)}
+            {showRatings && (
+              <div className="flex w-full flex-col items-start justify-start gap-2.5 sm:w-[164px]">
+                <div className="w-full text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
+                  Average rating
                 </div>
-                <div
-                  className="flex items-center gap-px"
-                  role="img"
-                  aria-label={`Rating: ${averageRating} out of 5 stars`}
-                >
-                  {StarRatingIcons(averageRating)}
+                <div className="inline-flex items-center gap-2">
+                  <div className="text-[18px] font-semibold leading-[28px] text-neutral-800 dark:text-neutral-200">
+                    {averageRating.toFixed(1)}
+                  </div>
+                  <div
+                    className="flex items-center gap-px"
+                    role="img"
+                    aria-label={`Rating: ${averageRating} out of 5 stars`}
+                  >
+                    {StarRatingIcons(averageRating)}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
             <div className="flex w-full flex-col items-start justify-start gap-2.5 sm:w-[164px]">
               <div className="w-full text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
                 Number of runs
