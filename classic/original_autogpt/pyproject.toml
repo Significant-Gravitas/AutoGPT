@@ -19,10 +19,10 @@ serve = "autogpt.app.cli:serve"
 
 
 [tool.poetry.dependencies]
-python = "^3.10"
+python = "^3.12"
 autogpt-forge = { path = "../forge", develop = true }
 # autogpt-forge = {git = "https://github.com/Significant-Gravitas/AutoGPT.git", subdirectory = "forge"}
-click = "*"
+click = "^8.2.1"
 colorama = "^0.4.6"
 distro = "^1.8.0"
 fastapi = "^0.109.1"
@@ -32,8 +32,8 @@ openai = "^1.7.2"
 orjson = "^3.8.10"
 pydantic = "^2.7.2"
 python-dotenv = "^1.0.0"
-requests = "*"
-sentry-sdk = "^1.40.4"
+requests = "^2.32.4"
+sentry-sdk = "^2.32.0"
 
 # Benchmarking
 agbenchmark = { path = "../benchmark", optional = true }
@@ -46,11 +46,11 @@ benchmark = ["agbenchmark"]
 black = "^23.12.1"
 flake8 = "^7.0.0"
 isort = "^5.13.1"
-pre-commit = "*"
+pre-commit = "^4.2.0"
 pyright = "^1.1.364"
 
 # Type stubs
-types-colorama = "*"
+types-colorama = "^0.4.15.20240311"
 
 # Testing
 pytest = "*"
@@ -64,7 +64,7 @@ pytest-xdist = "*"
 optional = true
 
 [tool.poetry.group.build.dependencies]
-cx-freeze = { git = "https://github.com/ntindle/cx_Freeze.git", rev = "main" }
+cx-freeze = "^8.3.0"
 # HACK: switch to cx-freeze release package after #2442 and #2472 are merged: https://github.com/marcelotduarte/cx_Freeze/pulls?q=is:pr+%232442+OR+%232472+
 # cx-freeze = { version = "^7.2.0", optional = true }
 
