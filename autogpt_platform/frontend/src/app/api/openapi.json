@@ -3237,48 +3237,6 @@
         }
       }
     },
-    "/api/library/agents/by-graph/{graph_id}": {
-      "get": {
-        "tags": ["v2", "library", "private"],
-        "summary": "Get Library Agent By Graph Id",
-        "operationId": "getV2GetLibraryAgentByGraphId",
-        "parameters": [
-          {
-            "name": "graph_id",
-            "in": "path",
-            "required": true,
-            "schema": { "type": "string", "title": "Graph Id" }
-          },
-          {
-            "name": "version",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [{ "type": "integer" }, { "type": "null" }],
-              "title": "Version"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/LibraryAgent" }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/library/agents/marketplace/{store_listing_version_id}": {
       "get": {
         "tags": ["v2", "library", "private", "store, library"],
@@ -5184,7 +5142,6 @@
           "AGENT_INPUT",
           "CONGRATS",
           "GET_RESULTS",
-          "RUN_AGENTS",
           "MARKETPLACE_VISIT",
           "MARKETPLACE_ADD_AGENT",
           "MARKETPLACE_RUN_AGENT",

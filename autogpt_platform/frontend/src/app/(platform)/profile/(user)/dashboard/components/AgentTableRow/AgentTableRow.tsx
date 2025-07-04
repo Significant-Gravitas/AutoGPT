@@ -1,12 +1,12 @@
 "use client";
 
-import * as React from "react";
 import Image from "next/image";
 import { IconStarFilled, IconMore, IconEdit } from "@/components/ui/icons";
-import { Status, StatusType } from "./Status";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { TrashIcon } from "@radix-ui/react-icons";
-import { StoreSubmissionRequest } from "@/lib/autogpt-server-api/types";
+import { Status, StatusType } from "@/components/agptui/Status";
+import { useAgentTableRow } from "./useAgentTableRow";
+import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
 
 export interface AgentTableRowProps {
   agent_id: string;
@@ -27,7 +27,7 @@ export interface AgentTableRowProps {
   onDeleteSubmission: (submission_id: string) => void;
 }
 
-export const AgentTableRow: React.FC<AgentTableRowProps> = ({
+export const AgentTableRow = ({
   agent_id,
   agent_version,
   agentName,
@@ -43,43 +43,21 @@ export const AgentTableRow: React.FC<AgentTableRowProps> = ({
   setSelectedAgents,
   onEditSubmission,
   onDeleteSubmission,
-}) => {
-  // Create a unique ID for the checkbox
-  const checkboxId = `agent-${id}-checkbox`;
-
-  const handleEdit = React.useCallback(() => {
-    onEditSubmission({
+}: AgentTableRowProps) => {
+  const { checkboxId, handleEdit, handleDelete, handleCheckboxChange } =
+    useAgentTableRow({
+      id,
+      onEditSubmission,
+      onDeleteSubmission,
       agent_id,
       agent_version,
-      slug: "",
-      name: agentName,
+      agentName,
       sub_heading,
       description,
-      image_urls: imageSrc,
-      categories: [],
-    } satisfies StoreSubmissionRequest);
-  }, [
-    agent_id,
-    agent_version,
-    agentName,
-    sub_heading,
-    description,
-    imageSrc,
-    onEditSubmission,
-  ]);
-
-  const handleDelete = React.useCallback(() => {
-    onDeleteSubmission(agent_id);
-  }, [agent_id, onDeleteSubmission]);
-
-  const handleCheckboxChange = React.useCallback(() => {
-    if (selectedAgents.has(agent_id)) {
-      selectedAgents.delete(agent_id);
-    } else {
-      selectedAgents.add(agent_id);
-    }
-    setSelectedAgents(new Set(selectedAgents));
-  }, [agent_id, selectedAgents, setSelectedAgents]);
+      imageSrc,
+      selectedAgents,
+      setSelectedAgents,
+    });
 
   return (
     <div className="hidden items-center border-b border-neutral-300 px-4 py-4 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 md:flex">
