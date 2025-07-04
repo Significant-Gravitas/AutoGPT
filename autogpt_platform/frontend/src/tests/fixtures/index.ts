@@ -1,11 +1,9 @@
 /* eslint-disable react-hooks/rules-of-hooks */
 import { test as base } from "@playwright/test";
-import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { faker } from "@faker-js/faker";
 import fs from "fs";
 import path from "path";
-import { TestUser } from "./test-user.fixture";
 import { LoginPage } from "../pages/login.page";
+import { TestUser } from "../utils/auth";
 
 // Extend both worker state and test-specific fixtures
 type WorkerFixtures = {
@@ -17,26 +15,8 @@ type TestFixtures = {
   loginPage: LoginPage;
 };
 
-let supabase: SupabaseClient;
-
-function getSupabaseAdmin() {
-  if (!supabase) {
-    supabase = createClient(
-      process.env.SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      },
-    );
-  }
-  return supabase;
-}
-
 export const test = base.extend<TestFixtures, WorkerFixtures>({
-  // Define the worker-level fixture that creates and manages worker-specific auth
+  // Define the worker-level fixture that loads pre-created worker-specific auth
   workerAuth: [
     async ({}, use, workerInfo) => {
       const workerId = workerInfo.workerIndex;
@@ -45,52 +25,23 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         `.auth/worker-${workerId}.json`,
       );
 
-      // Create directory if it doesn't exist
-      const dirPath = path.dirname(fileName);
-      if (!fs.existsSync(dirPath)) {
-        fs.mkdirSync(dirPath, { recursive: true });
+      if (!fs.existsSync(fileName)) {
+        throw new Error(
+          `Test user not found for worker ${workerId}. Run global setup first.`,
+        );
       }
 
-      let auth: TestUser;
-      if (fs.existsSync(fileName)) {
-        auth = JSON.parse(fs.readFileSync(fileName, "utf-8"));
-      } else {
-        // Generate new worker-specific test user
-        auth = {
-          email: `test.worker.${workerId}.${Date.now()}@example.com`,
-          password: faker.internet.password({ length: 12 }),
-        };
-
-        const supabase = getSupabaseAdmin();
-        const {
-          data: { user },
-          error: signUpError,
-        } = await supabase.auth.signUp({
-          email: auth.email,
-          password: auth.password,
-        });
-
-        if (signUpError) {
-          throw signUpError;
-        }
-
-        auth.id = user?.id;
-        fs.writeFileSync(fileName, JSON.stringify(auth));
-      }
-
+      const auth: TestUser = JSON.parse(fs.readFileSync(fileName, "utf-8"));
       await use(auth);
 
       // Cleanup code is commented out to preserve test users during development
       /*
-    if (workerInfo.project.metadata.teardown) {
-      if (auth.id) {
-        await deleteTestUser(auth.id);
+      if (workerInfo.project.metadata.teardown) {
+        if (fs.existsSync(fileName)) {
+          fs.unlinkSync(fileName);
+        }
       }
-      if (fs.existsSync(fileName)) {
-        fs.unlinkSync(fileName);
-      }
-    }
-    */
+      */
     },
     { scope: "worker" },
   ],
@@ -100,7 +51,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     await use(workerAuth);
   },
 
-  // Update login page fixture to use worker auth by default
+  // Login page fixture
   loginPage: async ({ page }, use) => {
     await use(new LoginPage(page));
   },
