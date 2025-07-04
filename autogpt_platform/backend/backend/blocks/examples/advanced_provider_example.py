@@ -14,10 +14,8 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
-    Boolean,
     CredentialsMetaInput,
     SchemaField,
-    String,
 )
 
 from ._config import advanced_service, custom_api
@@ -33,19 +31,19 @@ class AdvancedProviderBlock(Block):
         credentials: CredentialsMetaInput = advanced_service.credentials_field(
             description="Credentials for Advanced Service",
         )
-        operation: String = SchemaField(
+        operation: str = SchemaField(
             description="Operation to perform",
             default="read",
         )
-        data: String = SchemaField(
+        data: str = SchemaField(
             description="Data to process",
             default="",
         )
 
     class Output(BlockSchema):
-        result: String = SchemaField(description="Operation result")
-        auth_type: String = SchemaField(description="Authentication type used")
-        success: Boolean = SchemaField(description="Whether operation succeeded")
+        result: str = SchemaField(description="Operation result")
+        auth_type: str = SchemaField(description="Authentication type used")
+        success: bool = SchemaField(description="Whether operation succeeded")
 
     def __init__(self):
         super().__init__(
@@ -89,18 +87,18 @@ class CustomAPIBlock(Block):
         credentials: CredentialsMetaInput = custom_api.credentials_field(
             description="Credentials for Custom API",
         )
-        endpoint: String = SchemaField(
+        endpoint: str = SchemaField(
             description="API endpoint to call",
             default="/data",
         )
-        payload: String = SchemaField(
+        payload: str = SchemaField(
             description="Payload to send",
             default="{}",
         )
 
     class Output(BlockSchema):
-        response: String = SchemaField(description="API response")
-        status: String = SchemaField(description="Response status")
+        response: str = SchemaField(description="API response")
+        status: str = SchemaField(description="Response status")
 
     def __init__(self):
         super().__init__(

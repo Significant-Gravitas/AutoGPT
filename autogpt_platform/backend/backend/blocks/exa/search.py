@@ -6,13 +6,9 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
-    Boolean,
     CredentialsMetaInput,
-    Integer,
-    List,
     Requests,
     SchemaField,
-    String,
 )
 
 from ._config import exa
@@ -24,23 +20,21 @@ class ExaSearchBlock(Block):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
-        query: String = SchemaField(description="The search query")
-        use_auto_prompt: Boolean = SchemaField(
+        query: str = SchemaField(description="The search query")
+        use_auto_prompt: bool = SchemaField(
             description="Whether to use autoprompt", default=True, advanced=True
         )
-        type: String = SchemaField(
-            description="Type of search", default="", advanced=True
-        )
-        category: String = SchemaField(
+        type: str = SchemaField(description="Type of search", default="", advanced=True)
+        category: str = SchemaField(
             description="Category to search within", default="", advanced=True
         )
-        number_of_results: Integer = SchemaField(
+        number_of_results: int = SchemaField(
             description="Number of results to return", default=10, advanced=True
         )
-        include_domains: List[String] = SchemaField(
+        include_domains: list[str] = SchemaField(
             description="Domains to include in search", default_factory=list
         )
-        exclude_domains: List[String] = SchemaField(
+        exclude_domains: list[str] = SchemaField(
             description="Domains to exclude from search",
             default_factory=list,
             advanced=True,
@@ -57,10 +51,10 @@ class ExaSearchBlock(Block):
         end_published_date: datetime = SchemaField(
             description="End date for published content"
         )
-        include_text: List[String] = SchemaField(
+        include_text: list[str] = SchemaField(
             description="Text patterns to include", default_factory=list, advanced=True
         )
-        exclude_text: List[String] = SchemaField(
+        exclude_text: list[str] = SchemaField(
             description="Text patterns to exclude", default_factory=list, advanced=True
         )
         contents: ContentSettings = SchemaField(
@@ -70,10 +64,10 @@ class ExaSearchBlock(Block):
         )
 
     class Output(BlockSchema):
-        results: List = SchemaField(
+        results: list = SchemaField(
             description="List of search results", default_factory=list
         )
-        error: String = SchemaField(
+        error: str = SchemaField(
             description="Error message if the request failed", default=""
         )
 

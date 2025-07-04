@@ -13,14 +13,6 @@ This module provides:
 - Auto-registration decorators
 """
 
-# Standard library imports
-from typing import Any
-from typing import Dict as DictType
-from typing import List as ListType
-from typing import Literal
-from typing import Literal as _Literal
-from typing import Optional, Union
-
 # Third-party imports
 from pydantic import BaseModel, Field, SecretStr
 
@@ -115,16 +107,9 @@ except ImportError:
     BaseOAuthHandler = None
 
 
-# === VARIABLE ASSIGNMENTS AND TYPE ALIASES ===
-# Type aliases for block development
-String = str
-Integer = int
-Float = float
-Boolean = bool
-List = ListType
-Dict = DictType
-
 # Credential type with proper provider name
+from typing import Literal as _Literal
+
 CredentialsMetaInput = _CredentialsMetaInput[
     ProviderName, _Literal["api_key", "oauth2", "user_password"]
 ]
@@ -167,17 +152,6 @@ __all__ = [
     "convert",
     "TextFormatter",
     "TruncatedLogger",
-    # Type aliases for blocks
-    "String",
-    "Integer",
-    "Float",
-    "Boolean",
-    "List",
-    "Dict",
-    "Optional",
-    "Any",
-    "Union",
-    "Literal",
     "BaseModel",
     "Field",
     "SecretStr",

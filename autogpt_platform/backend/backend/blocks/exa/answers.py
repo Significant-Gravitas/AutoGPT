@@ -4,13 +4,9 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
-    Boolean,
     CredentialsMetaInput,
-    Dict,
-    List,
     Requests,
     SchemaField,
-    String,
 )
 
 from ._config import exa
@@ -21,21 +17,21 @@ class ExaAnswerBlock(Block):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
-        query: String = SchemaField(
+        query: str = SchemaField(
             description="The question or query to answer",
             placeholder="What is the latest valuation of SpaceX?",
         )
-        stream: Boolean = SchemaField(
+        stream: bool = SchemaField(
             default=False,
             description="If true, the response is returned as a server-sent events (SSE) stream",
             advanced=True,
         )
-        text: Boolean = SchemaField(
+        text: bool = SchemaField(
             default=False,
             description="If true, the response includes full text content in the search results",
             advanced=True,
         )
-        model: String = SchemaField(
+        model: str = SchemaField(
             default="exa",
             description="The search model to use (exa or exa-pro)",
             placeholder="exa",
@@ -43,17 +39,17 @@ class ExaAnswerBlock(Block):
         )
 
     class Output(BlockSchema):
-        answer: String = SchemaField(
+        answer: str = SchemaField(
             description="The generated answer based on search results"
         )
-        citations: List[Dict] = SchemaField(
+        citations: list[dict] = SchemaField(
             description="Search results used to generate the answer",
             default_factory=list,
         )
-        cost_dollars: Dict = SchemaField(
+        cost_dollars: dict = SchemaField(
             description="Cost breakdown of the request", default_factory=dict
         )
-        error: String = SchemaField(
+        error: str = SchemaField(
             description="Error message if the request failed", default=""
         )
 

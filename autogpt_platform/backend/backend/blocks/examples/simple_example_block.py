@@ -15,15 +15,7 @@ After SDK: Single import statement
 # from pydantic import SecretStr
 
 # === NEW WAY (With SDK) ===
-from backend.sdk import (
-    Block,
-    BlockCategory,
-    BlockOutput,
-    BlockSchema,
-    Integer,
-    SchemaField,
-    String,
-)
+from backend.sdk import Block, BlockCategory, BlockOutput, BlockSchema, SchemaField
 
 
 class SimpleExampleBlock(Block):
@@ -36,11 +28,11 @@ class SimpleExampleBlock(Block):
     """
 
     class Input(BlockSchema):
-        text: String = SchemaField(description="Input text")
-        count: Integer = SchemaField(description="Number of repetitions", default=1)
+        text: str = SchemaField(description="Input text")
+        count: int = SchemaField(description="Number of repetitions", default=1)
 
     class Output(BlockSchema):
-        result: String = SchemaField(description="Output result")
+        result: str = SchemaField(description="Output result")
 
     def __init__(self):
         super().__init__(

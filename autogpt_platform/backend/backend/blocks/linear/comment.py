@@ -6,7 +6,6 @@ from backend.sdk import (
     CredentialsMetaInput,
     OAuth2Credentials,
     SchemaField,
-    String,
 )
 
 from ._api import LinearAPIException, LinearClient
@@ -22,15 +21,15 @@ class LinearCreateCommentBlock(Block):
             description="Linear credentials with comment creation permissions",
             required_scopes={"read", "comments:create"},
         )
-        issue_id: String = SchemaField(description="ID of the issue to comment on")
-        comment: String = SchemaField(description="Comment text to add to the issue")
+        issue_id: str = SchemaField(description="ID of the issue to comment on")
+        comment: str = SchemaField(description="Comment text to add to the issue")
 
     class Output(BlockSchema):
-        comment_id: String = SchemaField(description="ID of the created comment")
-        comment_body: String = SchemaField(
+        comment_id: str = SchemaField(description="ID of the created comment")
+        comment_body: str = SchemaField(
             description="Text content of the created comment"
         )
-        error: String = SchemaField(
+        error: str = SchemaField(
             description="Error message if comment creation failed", default=""
         )
 

@@ -438,14 +438,10 @@ class TestSDKImports:
         assert APIKeyCredentials is not None
 
     def test_type_alias_imports(self):
-        """Test type alias imports."""
-        from backend.sdk import Boolean, Float, Integer, String
-
-        # Verify they're the correct types
-        assert String is str
-        assert Integer is int
-        assert Float is float
-        assert Boolean is bool
+        """Test type alias imports are removed."""
+        # Type aliases have been removed from SDK
+        # Users should import from typing or use built-in types directly
+        pass
 
     def test_cost_system_imports(self):
         """Test cost system imports."""

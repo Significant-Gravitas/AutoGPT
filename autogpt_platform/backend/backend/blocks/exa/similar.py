@@ -1,18 +1,15 @@
 from datetime import datetime
+from typing import Any
 
 from backend.sdk import (
-    Any,
     APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
     BlockSchema,
     CredentialsMetaInput,
-    Integer,
-    List,
     Requests,
     SchemaField,
-    String,
 )
 
 from ._config import exa
@@ -24,18 +21,18 @@ class ExaFindSimilarBlock(Block):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
-        url: String = SchemaField(
+        url: str = SchemaField(
             description="The url for which you would like to find similar links"
         )
-        number_of_results: Integer = SchemaField(
+        number_of_results: int = SchemaField(
             description="Number of results to return", default=10, advanced=True
         )
-        include_domains: List[String] = SchemaField(
+        include_domains: list[str] = SchemaField(
             description="Domains to include in search",
             default_factory=list,
             advanced=True,
         )
-        exclude_domains: List[String] = SchemaField(
+        exclude_domains: list[str] = SchemaField(
             description="Domains to exclude from search",
             default_factory=list,
             advanced=True,
@@ -52,12 +49,12 @@ class ExaFindSimilarBlock(Block):
         end_published_date: datetime = SchemaField(
             description="End date for published content"
         )
-        include_text: List[String] = SchemaField(
+        include_text: list[str] = SchemaField(
             description="Text patterns to include (max 1 string, up to 5 words)",
             default_factory=list,
             advanced=True,
         )
-        exclude_text: List[String] = SchemaField(
+        exclude_text: list[str] = SchemaField(
             description="Text patterns to exclude (max 1 string, up to 5 words)",
             default_factory=list,
             advanced=True,
@@ -69,11 +66,11 @@ class ExaFindSimilarBlock(Block):
         )
 
     class Output(BlockSchema):
-        results: List[Any] = SchemaField(
+        results: list[Any] = SchemaField(
             description="List of similar documents with title, URL, published date, author, and score",
             default_factory=list,
         )
-        error: String = SchemaField(
+        error: str = SchemaField(
             description="Error message if the request failed", default=""
         )
 

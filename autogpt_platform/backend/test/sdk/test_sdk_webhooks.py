@@ -19,15 +19,12 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     BlockWebhookConfig,
-    Boolean,
     CredentialsField,
     CredentialsMetaInput,
     Field,
-    Integer,
     ProviderBuilder,
     SchemaField,
     SecretStr,
-    String,
 )
 
 
@@ -90,10 +87,10 @@ class TestWebhookBlock(Block):
             supported_credential_types={"api_key"},
             description="Webhook service credentials",
         )
-        webhook_url: String = SchemaField(
+        webhook_url: str = SchemaField(
             description="URL to receive webhooks",
         )
-        resource_id: String = SchemaField(
+        resource_id: str = SchemaField(
             description="Resource to monitor",
         )
         events: list[TestWebhookTypes] = SchemaField(
@@ -106,9 +103,9 @@ class TestWebhookBlock(Block):
         )
 
     class Output(BlockSchema):
-        webhook_id: String = SchemaField(description="Registered webhook ID")
-        is_active: Boolean = SchemaField(description="Webhook is active")
-        event_count: Integer = SchemaField(description="Number of events configured")
+        webhook_id: str = SchemaField(description="Registered webhook ID")
+        is_active: bool = SchemaField(description="Webhook is active")
+        event_count: int = SchemaField(description="Number of events configured")
 
     def __init__(self):
         super().__init__(
@@ -207,7 +204,7 @@ class TestWebhookBlockCreation:
                     provider="test_webhooks",
                     supported_credential_types={"api_key"},
                 )
-                resource: String = SchemaField(description="Resource to monitor")
+                resource: str = SchemaField(description="Resource to monitor")
                 filters: EventFilterModel = SchemaField(
                     description="Event filters",
                     default_factory=EventFilterModel,
@@ -218,8 +215,8 @@ class TestWebhookBlockCreation:
                 )
 
             class Output(BlockSchema):
-                webhook_active: Boolean = SchemaField(description="Webhook active")
-                filter_summary: String = SchemaField(description="Active filters")
+                webhook_active: bool = SchemaField(description="Webhook active")
+                filter_summary: str = SchemaField(description="Active filters")
 
             def __init__(self):
                 super().__init__(
@@ -357,15 +354,15 @@ class TestWebhookManagerIntegration:
                     provider="integrated_webhooks",
                     supported_credential_types={"api_key"},
                 )
-                target: String = SchemaField(description="Webhook target")
+                target: str = SchemaField(description="Webhook target")
                 payload: dict = SchemaField(
                     description="Webhook payload",
                     default={},
                 )
 
             class Output(BlockSchema):
-                status: String = SchemaField(description="Webhook status")
-                manager_type: String = SchemaField(description="Manager type used")
+                status: str = SchemaField(description="Webhook status")
+                manager_type: str = SchemaField(description="Manager type used")
 
             def __init__(self):
                 super().__init__(
@@ -430,17 +427,17 @@ class TestWebhookEventHandling:
             """Block that processes webhook events."""
 
             class Input(BlockSchema):
-                event_type: String = SchemaField(description="Type of webhook event")
+                event_type: str = SchemaField(description="Type of webhook event")
                 payload: dict = SchemaField(description="Webhook payload")
-                verify_signature: Boolean = SchemaField(
+                verify_signature: bool = SchemaField(
                     description="Whether to verify webhook signature",
                     default=True,
                 )
 
             class Output(BlockSchema):
-                processed: Boolean = SchemaField(description="Event was processed")
-                event_summary: String = SchemaField(description="Summary of event")
-                action_required: Boolean = SchemaField(description="Action required")
+                processed: bool = SchemaField(description="Event was processed")
+                event_summary: str = SchemaField(description="Summary of event")
+                action_required: bool = SchemaField(description="Action required")
 
             def __init__(self):
                 super().__init__(

@@ -13,11 +13,8 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
-    Boolean,
     CredentialsMetaInput,
-    Integer,
     SchemaField,
-    String,
 )
 
 from ._config import (
@@ -44,18 +41,16 @@ class ExampleSDKBlock(Block):
         credentials: CredentialsMetaInput = example_service.credentials_field(
             description="Credentials for Example Service API",
         )
-        text: String = SchemaField(
-            description="Text to process", default="Hello, World!"
-        )
-        max_length: Integer = SchemaField(
+        text: str = SchemaField(description="Text to process", default="Hello, World!")
+        max_length: int = SchemaField(
             description="Maximum length of output", default=100
         )
 
     class Output(BlockSchema):
-        result: String = SchemaField(description="Processed text result")
-        length: Integer = SchemaField(description="Length of the result")
-        api_key_used: Boolean = SchemaField(description="Whether API key was used")
-        error: String = SchemaField(description="Error message if any")
+        result: str = SchemaField(description="Processed text result")
+        length: int = SchemaField(description="Length of the result")
+        api_key_used: bool = SchemaField(description="Whether API key was used")
+        error: str = SchemaField(description="Error message if any")
 
     def __init__(self):
         super().__init__(

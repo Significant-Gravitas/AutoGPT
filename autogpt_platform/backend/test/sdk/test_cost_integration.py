@@ -108,7 +108,6 @@ class TestCostIntegration:
             BlockSchema,
             CredentialsMetaInput,
             SchemaField,
-            String,
             cost,
         )
 
@@ -118,10 +117,10 @@ class TestCostIntegration:
                 credentials: CredentialsMetaInput = example_service.credentials_field(
                     description="Test credentials"
                 )
-                data: String = SchemaField(description="Data")
+                data: str = SchemaField(description="Data")
 
             class Output(BlockSchema):
-                result: String = SchemaField(description="Result")
+                result: str = SchemaField(description="Result")
 
             def __init__(self):
                 super().__init__(

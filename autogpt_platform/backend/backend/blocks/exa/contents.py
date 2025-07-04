@@ -5,10 +5,8 @@ from backend.sdk import (
     BlockOutput,
     BlockSchema,
     CredentialsMetaInput,
-    List,
     Requests,
     SchemaField,
-    String,
 )
 
 from ._config import exa
@@ -20,7 +18,7 @@ class ExaContentsBlock(Block):
         credentials: CredentialsMetaInput = exa.credentials_field(
             description="The Exa integration requires an API Key."
         )
-        ids: List[String] = SchemaField(
+        ids: list[str] = SchemaField(
             description="Array of document IDs obtained from searches"
         )
         contents: ContentSettings = SchemaField(
@@ -30,10 +28,10 @@ class ExaContentsBlock(Block):
         )
 
     class Output(BlockSchema):
-        results: List = SchemaField(
+        results: list = SchemaField(
             description="List of document contents", default_factory=list
         )
-        error: String = SchemaField(
+        error: str = SchemaField(
             description="Error message if the request failed", default=""
         )
 

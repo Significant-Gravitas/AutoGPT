@@ -17,11 +17,9 @@ from backend.sdk import (
     BlockType,
     BlockWebhookConfig,
     CredentialsMetaInput,
-    Dict,
     Field,
     ProviderName,
     SchemaField,
-    String,
 )
 
 from ._config import example_webhook
@@ -79,7 +77,7 @@ class ExampleWebhookSDKBlock(Block):
         credentials: CredentialsMetaInput = example_webhook.credentials_field(
             description="Credentials for webhook service",
         )
-        webhook_url: String = SchemaField(
+        webhook_url: str = SchemaField(
             description="URL to receive webhooks (auto-generated)",
             default="",
             hidden=True,
@@ -87,15 +85,15 @@ class ExampleWebhookSDKBlock(Block):
         event_filter: ExampleEventFilter = SchemaField(
             description="Filter for specific events", default=ExampleEventFilter()
         )
-        payload: Dict = SchemaField(
+        payload: dict = SchemaField(
             description="Webhook payload data", default={}, hidden=True
         )
 
     class Output(BlockSchema):
-        event_type: String = SchemaField(description="Type of webhook event")
-        event_data: Dict = SchemaField(description="Event payload data")
-        timestamp: String = SchemaField(description="Event timestamp")
-        error: String = SchemaField(description="Error message if any")
+        event_type: str = SchemaField(description="Type of webhook event")
+        event_data: dict = SchemaField(description="Event payload data")
+        timestamp: str = SchemaField(description="Event timestamp")
+        error: str = SchemaField(description="Error message if any")
 
     def __init__(self):
         super().__init__(

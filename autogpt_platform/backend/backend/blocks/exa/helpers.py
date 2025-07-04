@@ -1,13 +1,15 @@
-from backend.sdk import BaseModel, Boolean, Integer, List, Optional, SchemaField, String
+from typing import Optional
+
+from backend.sdk import BaseModel, SchemaField
 
 
 class TextSettings(BaseModel):
-    max_characters: Integer = SchemaField(
+    max_characters: int = SchemaField(
         default=1000,
         description="Maximum number of characters to return",
         placeholder="1000",
     )
-    include_html_tags: Boolean = SchemaField(
+    include_html_tags: bool = SchemaField(
         default=False,
         description="Whether to include HTML tags in the text",
         placeholder="False",
@@ -15,12 +17,12 @@ class TextSettings(BaseModel):
 
 
 class HighlightSettings(BaseModel):
-    num_sentences: Integer = SchemaField(
+    num_sentences: int = SchemaField(
         default=3,
         description="Number of sentences per highlight",
         placeholder="3",
     )
-    highlights_per_url: Integer = SchemaField(
+    highlights_per_url: int = SchemaField(
         default=3,
         description="Number of highlights per URL",
         placeholder="3",
@@ -28,7 +30,7 @@ class HighlightSettings(BaseModel):
 
 
 class SummarySettings(BaseModel):
-    query: Optional[String] = SchemaField(
+    query: Optional[str] = SchemaField(
         default="",
         description="Query string for summarization",
         placeholder="Enter query",
@@ -52,7 +54,7 @@ class ContentSettings(BaseModel):
 
 # Websets Models
 class WebsetEntitySettings(BaseModel):
-    type: Optional[String] = SchemaField(
+    type: Optional[str] = SchemaField(
         default=None,
         description="Entity type (e.g., 'company', 'person')",
         placeholder="company",
@@ -60,11 +62,11 @@ class WebsetEntitySettings(BaseModel):
 
 
 class WebsetCriterion(BaseModel):
-    description: String = SchemaField(
+    description: str = SchemaField(
         description="Description of the criterion",
         placeholder="Must be based in the US",
     )
-    success_rate: Optional[Integer] = SchemaField(
+    success_rate: Optional[int] = SchemaField(
         default=None,
         description="Success rate percentage",
         ge=0,
@@ -73,11 +75,11 @@ class WebsetCriterion(BaseModel):
 
 
 class WebsetSearchConfig(BaseModel):
-    query: String = SchemaField(
+    query: str = SchemaField(
         description="Search query",
         placeholder="Marketing agencies based in the US",
     )
-    count: Integer = SchemaField(
+    count: int = SchemaField(
         default=10,
         description="Number of results to return",
         ge=1,
@@ -87,11 +89,11 @@ class WebsetSearchConfig(BaseModel):
         default=None,
         description="Entity settings for the search",
     )
-    criteria: Optional[List[WebsetCriterion]] = SchemaField(
+    criteria: Optional[list[WebsetCriterion]] = SchemaField(
         default=None,
         description="Search criteria",
     )
-    behavior: Optional[String] = SchemaField(
+    behavior: Optional[str] = SchemaField(
         default="override",
         description="Behavior when updating results ('override' or 'append')",
         placeholder="override",
@@ -99,32 +101,32 @@ class WebsetSearchConfig(BaseModel):
 
 
 class EnrichmentOption(BaseModel):
-    label: String = SchemaField(
+    label: str = SchemaField(
         description="Label for the enrichment option",
         placeholder="Option 1",
     )
 
 
 class WebsetEnrichmentConfig(BaseModel):
-    title: String = SchemaField(
+    title: str = SchemaField(
         description="Title of the enrichment",
         placeholder="Company Details",
     )
-    description: String = SchemaField(
+    description: str = SchemaField(
         description="Description of what this enrichment does",
         placeholder="Extract company information",
     )
-    format: String = SchemaField(
+    format: str = SchemaField(
         default="text",
         description="Format of the enrichment result",
         placeholder="text",
     )
-    instructions: Optional[String] = SchemaField(
+    instructions: Optional[str] = SchemaField(
         default=None,
         description="Instructions for the enrichment",
         placeholder="Extract key company metrics",
     )
-    options: Optional[List[EnrichmentOption]] = SchemaField(
+    options: Optional[list[EnrichmentOption]] = SchemaField(
         default=None,
         description="Options for the enrichment",
     )

@@ -11,11 +11,8 @@ from backend.sdk import (
     BlockCostType,
     BlockOutput,
     BlockSchema,
-    Boolean,
     CredentialsMetaInput,
-    Integer,
     SchemaField,
-    String,
     cost,
 )
 
@@ -28,11 +25,11 @@ class FixedCostBlock(Block):
     """Block with a fixed cost per run."""
 
     class Input(BlockSchema):
-        data: String = SchemaField(description="Input data")
+        data: str = SchemaField(description="Input data")
 
     class Output(BlockSchema):
-        result: String = SchemaField(description="Processed data")
-        cost: Integer = SchemaField(description="Cost in credits")
+        result: str = SchemaField(description="Processed data")
+        cost: int = SchemaField(description="Cost in credits")
 
     def __init__(self):
         super().__init__(
@@ -70,16 +67,16 @@ class TieredCostBlock(Block):
     """Block with different costs based on selected tier."""
 
     class Input(BlockSchema):
-        data: String = SchemaField(description="Input data")
-        tier: String = SchemaField(
+        data: str = SchemaField(description="Input data")
+        tier: str = SchemaField(
             description="Service tier (basic, standard, or premium)",
             default="basic",
         )
 
     class Output(BlockSchema):
-        result: String = SchemaField(description="Processed data")
-        tier_used: String = SchemaField(description="Service tier used")
-        cost: Integer = SchemaField(description="Cost in credits")
+        result: str = SchemaField(description="Processed data")
+        tier_used: str = SchemaField(description="Service tier used")
+        cost: int = SchemaField(description="Cost in credits")
 
     def __init__(self):
         super().__init__(
@@ -108,11 +105,11 @@ class ProviderCostBlock(Block):
         credentials: CredentialsMetaInput = example_service.credentials_field(
             description="Example service credentials",
         )
-        data: String = SchemaField(description="Input data")
+        data: str = SchemaField(description="Input data")
 
     class Output(BlockSchema):
-        result: String = SchemaField(description="Processed data")
-        provider_used: String = SchemaField(description="Provider name")
+        result: str = SchemaField(description="Processed data")
+        provider_used: str = SchemaField(description="Provider name")
 
     def __init__(self):
         super().__init__(
@@ -140,16 +137,16 @@ class DataBasedCostBlock(Block):
     """Block that charges based on data size."""
 
     class Input(BlockSchema):
-        data: String = SchemaField(description="Input data")
-        process_intensive: Boolean = SchemaField(
+        data: str = SchemaField(description="Input data")
+        process_intensive: bool = SchemaField(
             description="Use intensive processing",
             default=False,
         )
 
     class Output(BlockSchema):
-        result: String = SchemaField(description="Processed data")
-        data_size: Integer = SchemaField(description="Data size in bytes")
-        estimated_cost: String = SchemaField(description="Estimated cost")
+        result: str = SchemaField(description="Processed data")
+        data_size: int = SchemaField(description="Data size in bytes")
+        estimated_cost: str = SchemaField(description="Estimated cost")
 
     def __init__(self):
         super().__init__(

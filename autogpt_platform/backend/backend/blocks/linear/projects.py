@@ -6,7 +6,6 @@ from backend.sdk import (
     CredentialsMetaInput,
     OAuth2Credentials,
     SchemaField,
-    String,
 )
 
 from ._api import LinearAPIException, LinearClient
@@ -22,11 +21,11 @@ class LinearSearchProjectsBlock(Block):
             description="Linear credentials with read permissions",
             required_scopes={"read"},
         )
-        term: String = SchemaField(description="Term to search for projects")
+        term: str = SchemaField(description="Term to search for projects")
 
     class Output(BlockSchema):
         projects: list[Project] = SchemaField(description="List of projects")
-        error: String = SchemaField(
+        error: str = SchemaField(
             description="Error message if search failed", default=""
         )
 

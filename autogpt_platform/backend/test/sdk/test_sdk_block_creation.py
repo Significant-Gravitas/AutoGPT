@@ -5,6 +5,8 @@ This test suite verifies that blocks can be created using only SDK imports
 and that they work correctly without decorators.
 """
 
+from typing import Optional
+
 import pytest
 
 from backend.sdk import (
@@ -13,13 +15,9 @@ from backend.sdk import (
     BlockCategory,
     BlockOutput,
     BlockSchema,
-    Boolean,
     CredentialsMetaInput,
-    Integer,
-    Optional,
     SchemaField,
     SecretStr,
-    String,
 )
 
 from ._config import test_api, test_service
@@ -36,11 +34,11 @@ class TestBasicBlockCreation:
             """A simple test block."""
 
             class Input(BlockSchema):
-                text: String = SchemaField(description="Input text")
-                count: Integer = SchemaField(description="Repeat count", default=1)
+                text: str = SchemaField(description="Input text")
+                count: int = SchemaField(description="Repeat count", default=1)
 
             class Output(BlockSchema):
-                result: String = SchemaField(description="Output result")
+                result: str = SchemaField(description="Output result")
 
             def __init__(self):
                 super().__init__(
@@ -80,11 +78,11 @@ class TestBasicBlockCreation:
                 credentials: CredentialsMetaInput = test_api.credentials_field(
                     description="API credentials for test service",
                 )
-                query: String = SchemaField(description="API query")
+                query: str = SchemaField(description="API query")
 
             class Output(BlockSchema):
-                response: String = SchemaField(description="API response")
-                authenticated: Boolean = SchemaField(description="Was authenticated")
+                response: str = SchemaField(description="API response")
+                authenticated: bool = SchemaField(description="Was authenticated")
 
             def __init__(self):
                 super().__init__(
@@ -141,13 +139,13 @@ class TestBasicBlockCreation:
             """Block with multiple outputs."""
 
             class Input(BlockSchema):
-                text: String = SchemaField(description="Input text")
+                text: str = SchemaField(description="Input text")
 
             class Output(BlockSchema):
-                uppercase: String = SchemaField(description="Uppercase version")
-                lowercase: String = SchemaField(description="Lowercase version")
-                length: Integer = SchemaField(description="Text length")
-                is_empty: Boolean = SchemaField(description="Is text empty")
+                uppercase: str = SchemaField(description="Uppercase version")
+                lowercase: str = SchemaField(description="Lowercase version")
+                length: int = SchemaField(description="Text length")
+                is_empty: bool = SchemaField(description="Is text empty")
 
             def __init__(self):
                 super().__init__(
@@ -192,11 +190,11 @@ class TestBlockWithProvider:
                 credentials: CredentialsMetaInput = test_service.credentials_field(
                     description="Test service credentials",
                 )
-                action: String = SchemaField(description="Action to perform")
+                action: str = SchemaField(description="Action to perform")
 
             class Output(BlockSchema):
-                result: String = SchemaField(description="Action result")
-                provider_name: String = SchemaField(description="Provider used")
+                result: str = SchemaField(description="Action result")
+                provider_name: str = SchemaField(description="Provider used")
 
             def __init__(self):
                 super().__init__(
@@ -254,22 +252,22 @@ class TestComplexBlockScenarios:
             """Block with optional fields."""
 
             class Input(BlockSchema):
-                required_field: String = SchemaField(description="Required field")
-                optional_field: Optional[String] = SchemaField(
+                required_field: str = SchemaField(description="Required field")
+                optional_field: Optional[str] = SchemaField(
                     description="Optional field",
                     default=None,
                 )
-                optional_with_default: String = SchemaField(
+                optional_with_default: str = SchemaField(
                     description="Optional with default",
                     default="default value",
                 )
 
             class Output(BlockSchema):
-                has_optional: Boolean = SchemaField(description="Has optional value")
-                optional_value: Optional[String] = SchemaField(
+                has_optional: bool = SchemaField(description="Has optional value")
+                optional_value: Optional[str] = SchemaField(
                     description="Optional value"
                 )
-                default_value: String = SchemaField(description="Default value")
+                default_value: str = SchemaField(description="Default value")
 
             def __init__(self):
                 super().__init__(
@@ -316,21 +314,20 @@ class TestComplexBlockScenarios:
     @pytest.mark.asyncio
     async def test_block_with_complex_types(self):
         """Test block with complex input/output types."""
-        from backend.sdk import Dict, List
 
         class ComplexBlock(Block):
             """Block with complex types."""
 
             class Input(BlockSchema):
-                items: List[String] = SchemaField(description="List of items")
-                mapping: Dict[String, Integer] = SchemaField(
+                items: list[str] = SchemaField(description="List of items")
+                mapping: dict[str, int] = SchemaField(
                     description="String to int mapping"
                 )
 
             class Output(BlockSchema):
-                item_count: Integer = SchemaField(description="Number of items")
-                total_value: Integer = SchemaField(description="Sum of mapping values")
-                combined: List[String] = SchemaField(description="Combined results")
+                item_count: int = SchemaField(description="Number of items")
+                total_value: int = SchemaField(description="Sum of mapping values")
+                combined: list[str] = SchemaField(description="Combined results")
 
             def __init__(self):
                 super().__init__(
@@ -376,15 +373,15 @@ class TestComplexBlockScenarios:
             """Block that demonstrates error handling."""
 
             class Input(BlockSchema):
-                value: Integer = SchemaField(description="Input value")
-                should_error: Boolean = SchemaField(
+                value: int = SchemaField(description="Input value")
+                should_error: bool = SchemaField(
                     description="Whether to trigger an error",
                     default=False,
                 )
 
             class Output(BlockSchema):
-                result: Integer = SchemaField(description="Result")
-                error_message: Optional[String] = SchemaField(
+                result: int = SchemaField(description="Result")
+                error_message: Optional[str] = SchemaField(
                     description="Error if any", default=None
                 )
 

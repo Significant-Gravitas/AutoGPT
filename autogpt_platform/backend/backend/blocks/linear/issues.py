@@ -6,7 +6,6 @@ from backend.sdk import (
     CredentialsMetaInput,
     OAuth2Credentials,
     SchemaField,
-    String,
 )
 
 from ._api import LinearAPIException, LinearClient
@@ -22,11 +21,11 @@ class LinearCreateIssueBlock(Block):
             description="Linear credentials with issue creation permissions",
             required_scopes={"read", "issues:create"},
         )
-        title: String = SchemaField(description="Title of the issue")
-        description: String = SchemaField(
+        title: str = SchemaField(description="Title of the issue")
+        description: str = SchemaField(
             description="Description of the issue", default=""
         )
-        team_name: String = SchemaField(
+        team_name: str = SchemaField(
             description="Name of the team to create the issue on"
         )
         priority: int = SchemaField(
@@ -35,15 +34,15 @@ class LinearCreateIssueBlock(Block):
             ge=0,
             le=4,
         )
-        project_name: String = SchemaField(
+        project_name: str = SchemaField(
             description="Name of the project to create the issue on",
             default="",
         )
 
     class Output(BlockSchema):
-        issue_id: String = SchemaField(description="ID of the created issue")
-        issue_title: String = SchemaField(description="Title of the created issue")
-        error: String = SchemaField(
+        issue_id: str = SchemaField(description="ID of the created issue")
+        issue_title: str = SchemaField(description="Title of the created issue")
+        error: str = SchemaField(
             description="Error message if issue creation failed", default=""
         )
 
@@ -118,11 +117,11 @@ class LinearSearchIssuesBlock(Block):
             description="Linear credentials with read permissions",
             required_scopes={"read"},
         )
-        term: String = SchemaField(description="Term to search for issues")
+        term: str = SchemaField(description="Term to search for issues")
 
     class Output(BlockSchema):
         issues: list[Issue] = SchemaField(description="List of issues")
-        error: String = SchemaField(
+        error: str = SchemaField(
             description="Error message if search failed", default=""
         )
 
