@@ -2,39 +2,26 @@
 import { Button } from "@/components/atoms/Button/Button";
 import { Input } from "@/components/atoms/Input/Input";
 import { AuthCard } from "@/components/auth/AuthCard";
-import AuthFeedback from "@/components/auth/AuthFeedback";
-import { PasswordInput } from "@/components/auth/PasswordInput";
 import Turnstile from "@/components/auth/Turnstile";
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
+import { Form, FormField } from "@/components/ui/form";
 import LoadingBox from "@/components/ui/loading";
 import { useToast } from "@/components/ui/use-toast";
 import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
-import { getBehaveAs } from "@/lib/utils";
 import { changePasswordFormSchema, sendEmailFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { changePassword, sendResetEmail } from "./actions";
 
-export default function ResetPasswordPage() {
+function ResetPasswordContent() {
   const { supabase, user, isUserLoading } = useSupabase();
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const [isError, setIsError] = useState(false);
   const [disabled, setDisabled] = useState(false);
   const [sendEmailCaptchaKey, setSendEmailCaptchaKey] = useState(0);
   const [changePasswordCaptchaKey, setChangePasswordCaptchaKey] = useState(0);
@@ -94,7 +81,6 @@ export default function ResetPasswordPage() {
   const onSendEmail = useCallback(
     async (data: z.infer<typeof sendEmailFormSchema>) => {
       setIsLoading(true);
-      setFeedback(null);
 
       if (!(await sendEmailForm.trigger())) {
         setIsLoading(false);
@@ -102,8 +88,11 @@ export default function ResetPasswordPage() {
       }
 
       if (!sendEmailTurnstile.verified) {
-        setFeedback("Please complete the CAPTCHA challenge.");
-        setIsError(true);
+        toast({
+          title: "CAPTCHA Required",
+          description: "Please complete the CAPTCHA challenge.",
+          variant: "destructive",
+        });
         setIsLoading(false);
         resetSendEmailCaptcha();
         return;
@@ -115,24 +104,28 @@ export default function ResetPasswordPage() {
       );
       setIsLoading(false);
       if (error) {
-        setFeedback(error);
-        setIsError(true);
+        toast({
+          title: "Error",
+          description: error,
+          variant: "destructive",
+        });
         resetSendEmailCaptcha();
         return;
       }
       setDisabled(true);
-      setFeedback(
-        "Password reset email sent if user exists. Please check your email.",
-      );
-      setIsError(false);
+      toast({
+        title: "Email Sent",
+        description:
+          "Password reset email sent if user exists. Please check your email.",
+        variant: "default",
+      });
     },
-    [sendEmailForm, sendEmailTurnstile, resetSendEmailCaptcha],
+    [sendEmailForm, sendEmailTurnstile, resetSendEmailCaptcha, toast],
   );
 
   const onChangePassword = useCallback(
     async (data: z.infer<typeof changePasswordFormSchema>) => {
       setIsLoading(true);
-      setFeedback(null);
 
       if (!(await changePasswordForm.trigger())) {
         setIsLoading(false);
@@ -140,8 +133,11 @@ export default function ResetPasswordPage() {
       }
 
       if (!changePasswordTurnstile.verified) {
-        setFeedback("Please complete the CAPTCHA challenge.");
-        setIsError(true);
+        toast({
+          title: "CAPTCHA Required",
+          description: "Please complete the CAPTCHA challenge.",
+          variant: "destructive",
+        });
         setIsLoading(false);
         resetChangePasswordCaptcha();
         return;
@@ -153,15 +149,26 @@ export default function ResetPasswordPage() {
       );
       setIsLoading(false);
       if (error) {
-        setFeedback(error);
-        setIsError(true);
+        toast({
+          title: "Error",
+          description: error,
+          variant: "destructive",
+        });
         resetChangePasswordCaptcha();
         return;
       }
-      setFeedback("Password changed successfully. Redirecting to login.");
-      setIsError(false);
+      toast({
+        title: "Success",
+        description: "Password changed successfully. Redirecting to login.",
+        variant: "default",
+      });
     },
-    [changePasswordForm, changePasswordTurnstile, resetChangePasswordCaptcha],
+    [
+      changePasswordForm,
+      changePasswordTurnstile,
+      resetChangePasswordCaptcha,
+      toast,
+    ],
   );
 
   if (isUserLoading) {
@@ -189,29 +196,31 @@ export default function ResetPasswordPage() {
                 control={changePasswordForm.control}
                 name="password"
                 render={({ field }) => (
-                  <FormItem className="mb-6">
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <PasswordInput {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
+                  <Input
+                    label="Password"
+                    type="password"
+                    placeholder="••••••••"
+                    error={
+                      changePasswordForm.formState.errors.password?.message
+                    }
+                    {...field}
+                  />
                 )}
               />
               <FormField
                 control={changePasswordForm.control}
                 name="confirmPassword"
                 render={({ field }) => (
-                  <FormItem className="mb-6">
-                    <FormLabel>Confirm Password</FormLabel>
-                    <FormControl>
-                      <PasswordInput {...field} />
-                    </FormControl>
-                    <FormDescription className="text-sm font-normal leading-tight text-slate-500">
-                      Password needs to be at least 12 characters long
-                    </FormDescription>
-                    <FormMessage />
-                  </FormItem>
+                  <Input
+                    label="Confirm Password"
+                    type="password"
+                    placeholder="••••••••"
+                    error={
+                      changePasswordForm.formState.errors.confirmPassword
+                        ?.message
+                    }
+                    {...field}
+                  />
                 )}
               />
 
@@ -236,12 +245,6 @@ export default function ResetPasswordPage() {
               >
                 Update password
               </Button>
-              <AuthFeedback
-                type="login"
-                message={feedback}
-                isError={isError}
-                behaveAs={getBehaveAs()}
-              />
             </Form>
           </form>
         ) : (
@@ -254,17 +257,13 @@ export default function ResetPasswordPage() {
                 control={sendEmailForm.control}
                 name="email"
                 render={({ field }) => (
-                  <FormItem className="mb-6">
-                    <FormControl>
-                      <Input
-                        label="Email"
-                        placeholder="m@example.com"
-                        type="email"
-                        error={sendEmailForm.formState.errors.email?.message}
-                        {...field}
-                      />
-                    </FormControl>
-                  </FormItem>
+                  <Input
+                    label="Email"
+                    placeholder="m@example.com"
+                    type="email"
+                    error={sendEmailForm.formState.errors.email?.message}
+                    {...field}
+                  />
                 )}
               />
 
@@ -290,16 +289,18 @@ export default function ResetPasswordPage() {
               >
                 Send reset email
               </Button>
-              <AuthFeedback
-                type="login"
-                message={feedback}
-                isError={isError}
-                behaveAs={getBehaveAs()}
-              />
             </Form>
           </form>
         )}
       </AuthCard>
     </div>
+  );
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<LoadingBox className="h-[80vh]" />}>
+      <ResetPasswordContent />
+    </Suspense>
   );
 }

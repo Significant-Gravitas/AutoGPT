@@ -84,7 +84,7 @@ export default function LoginPage() {
               render={({ field }) => (
                 <Input
                   label="Password"
-                  placeholder="********"
+                  placeholder="•••••••••••••••••••••"
                   type="password"
                   autoComplete="current-password"
                   error={form.formState.errors.password?.message}

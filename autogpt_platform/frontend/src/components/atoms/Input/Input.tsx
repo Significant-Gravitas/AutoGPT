@@ -31,10 +31,6 @@ export function Input({
         "h-[2.875rem] rounded-3xl border border-zinc-200 bg-white px-4 py-2.5 shadow-none",
         "font-normal text-black",
         "placeholder:font-normal placeholder:text-zinc-400",
-        // Fix password placeholder alignment - ensure consistent line-height for all inputs
-        props.type === "password"
-          ? "leading-[2.875rem] placeholder:relative placeholder:top-1"
-          : "leading-6",
         // Focus and hover states
         "focus:border-zinc-400 focus:shadow-none focus:outline-none focus:ring-1 focus:ring-zinc-400 focus:ring-offset-0",
         // Error state
