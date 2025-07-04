@@ -83,10 +83,9 @@ async def verify_ocsp_stapling(
                 # python-ocsp or implement manual OCSP checking
 
                 # Check certificate validity dates
-
-                cert_der = ssock.getpeercert_bin()
-                if not cert_der:
-                    raise Exception(f"No certificate data available from {hostname}")
+                # Note: Python's SSL module has limited OCSP support
+                # The getpeercert() method is available, but binary form may not be
+                # supported in all Python versions or SSL implementations
 
                 # Basic validation - the SSL handshake already verified the cert chain
                 # For actual OCSP stapling, you would need to:

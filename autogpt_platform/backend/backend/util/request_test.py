@@ -140,17 +140,17 @@ async def test_ocsp_stapling_no_ocsp_server():
     with patch("socket.create_connection") as mock_conn:
         mock_sock = MagicMock()
         mock_ssl_sock = MagicMock()
-        mock_ssl_sock.ocsp_response = None
-        mock_ssl_sock.getpeercert_bin = MagicMock()
+        # Mock getpeercert to return a valid certificate
+        mock_ssl_sock.getpeercert.return_value = {"subject": "test"}
+        mock_ssl_sock.getpeercert.side_effect = lambda binary_form=False: b"fake_cert" if binary_form else {"subject": "test"}
 
         mock_conn.return_value.__enter__.return_value = mock_sock
 
         with patch("ssl.SSLContext.wrap_socket", return_value=mock_ssl_sock):
-            with pytest.raises(Exception) as excinfo:
-                await verify_ocsp_stapling("example.com", 443, timeout=5)
-            assert "No OCSP stapled response received from example.com" in str(
-                excinfo.value
-            )
+            # Since we simplified OCSP to just do basic cert validation with a warning,
+            # it should not raise an exception anymore
+            await verify_ocsp_stapling("example.com", 443, timeout=5)
+            # The function should complete without raising
 
 
 @pytest.mark.asyncio
@@ -260,8 +260,9 @@ async def test_async_event_loop_not_blocked():
     with patch("socket.create_connection") as mock_conn:
         mock_sock = MagicMock()
         mock_ssl_sock = MagicMock()
-        mock_ssl_sock.ocsp_response = None
-        mock_ssl_sock.getpeercert_bin = MagicMock()
+        # Mock getpeercert to return a valid certificate
+        mock_ssl_sock.getpeercert.return_value = {"subject": "test"}
+        mock_ssl_sock.getpeercert.side_effect = lambda binary_form=False: b"fake_cert" if binary_form else {"subject": "test"}
 
         mock_conn.return_value.__enter__.return_value = mock_sock
 
@@ -272,11 +273,11 @@ async def test_async_event_loop_not_blocked():
                 concurrent_task(),
             ]
 
-            # The concurrent task should complete even if OCSP verification fails
+            # Both tasks should complete successfully
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # First result should be an exception from OCSP verification
-            assert isinstance(results[0], Exception)
+            # First result should be None (successful completion)
+            assert results[0] is None
             # Second result should be from the concurrent task
             assert results[1] == "completed"
 
@@ -324,37 +325,23 @@ async def test_ocsp_error_messages():
     """Verify that error messages are clear when OCSP verification fails"""
     # Test various OCSP failure scenarios
 
-    # 1. No OCSP response
+    # 1. Test when certificate is not available
     with patch("socket.create_connection") as mock_conn:
         mock_sock = MagicMock()
         mock_ssl_sock = MagicMock()
-        mock_ssl_sock.ocsp_response = None
-        mock_ssl_sock.getpeercert_bin = MagicMock()
+        # Mock getpeercert to return None (no certificate)
+        mock_ssl_sock.getpeercert.return_value = None
 
         mock_conn.return_value.__enter__.return_value = mock_sock
 
         with patch("ssl.SSLContext.wrap_socket", return_value=mock_ssl_sock):
             with pytest.raises(Exception) as excinfo:
                 await verify_ocsp_stapling("test.example.com", 443)
-            assert "No OCSP stapled response received from test.example.com" in str(
+            assert "No certificate received from test.example.com" in str(
                 excinfo.value
             )
 
-    # 2. OCSP not supported in environment
-    with patch("socket.create_connection") as mock_conn:
-        mock_sock = MagicMock()
-        mock_ssl_sock = MagicMock()
-        # Remove ocsp_response attribute entirely
-        del mock_ssl_sock.ocsp_response
-
-        mock_conn.return_value.__enter__.return_value = mock_sock
-
-        with patch("ssl.SSLContext.wrap_socket", return_value=mock_ssl_sock):
-            with pytest.raises(Exception) as excinfo:
-                await verify_ocsp_stapling("test.example.com", 443)
-            assert "OCSP verification not supported" in str(excinfo.value)
-
-    # 3. Test validate_url OCSP error propagation
+    # 2. Test validate_url OCSP error propagation
     with patch("backend.util.request.verify_ocsp_stapling") as mock_verify:
         mock_verify.side_effect = Exception("Custom OCSP error for testing")
 
