@@ -353,6 +353,10 @@ class Requests:
         max_redirects: int = 10,
         **kwargs,
     ) -> Response:
+        # Convert auth tuple to aiohttp.BasicAuth if necessary
+        if "auth" in kwargs and isinstance(kwargs["auth"], tuple):
+            kwargs["auth"] = aiohttp.BasicAuth(*kwargs["auth"])
+
         if files is not None:
             if json is not None:
                 raise ValueError(
@@ -430,7 +434,13 @@ class Requests:
             ) as response:
 
                 if self.raise_for_status:
-                    response.raise_for_status()
+                    try:
+                        response.raise_for_status()
+                    except ClientResponseError as e:
+                        body = await response.read()
+                        raise Exception(
+                            f"HTTP {response.status} Error: {response.reason}, Body: {body.decode(errors='replace')}"
+                        ) from e
 
                 # If allowed and a redirect is received, follow the redirect manually
                 if allow_redirects and response.status in (301, 302, 303, 307, 308):

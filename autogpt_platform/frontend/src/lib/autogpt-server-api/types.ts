@@ -285,7 +285,13 @@ export type GraphExecutionMeta = {
   graph_id: GraphID;
   graph_version: number;
   preset_id?: LibraryAgentPresetID;
-  status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
+  status:
+    | "QUEUED"
+    | "RUNNING"
+    | "COMPLETED"
+    | "TERMINATED"
+    | "FAILED"
+    | "INCOMPLETE";
   started_at: Date;
   ended_at: Date;
   stats?: {
@@ -771,6 +777,7 @@ export type ProfileDetails = {
   avatar_url: string;
 };
 
+/* Mirror of backend/executor/scheduler.py:GraphExecutionJobInfo */
 export type Schedule = {
   id: ScheduleID;
   name: string;
@@ -778,17 +785,21 @@ export type Schedule = {
   user_id: UserID;
   graph_id: GraphID;
   graph_version: number;
-  input_data: { [key: string]: any };
+  input_data: Record<string, any>;
+  input_credentials: Record<string, CredentialsMetaInput>;
   next_run_time: Date;
 };
 
 export type ScheduleID = Brand<string, "ScheduleID">;
 
+/* Mirror of backend/server/routers/v1.py:ScheduleCreationRequest */
 export type ScheduleCreatable = {
-  cron: string;
   graph_id: GraphID;
   graph_version: number;
-  input_data: { [key: string]: any };
+  name: string;
+  cron: string;
+  inputs: Record<string, any>;
+  credentials?: Record<string, CredentialsMetaInput>;
 };
 
 export type MyAgent = {

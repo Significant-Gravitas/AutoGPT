@@ -5,6 +5,7 @@ const config: StorybookConfig = {
     "../src/components/overview.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/components/tokens/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/components/atoms/**/*.stories.@(js|jsx|mjs|ts|tsx)",
+    "../src/components/molecules/**/*.stories.@(js|jsx|mjs|ts|tsx)",
     "../src/components/agptui/**/*.stories.@(js|jsx|mjs|ts|tsx)",
   ],
   addons: [

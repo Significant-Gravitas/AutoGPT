@@ -51,7 +51,7 @@ class ServiceTestClient(AppServiceClient):
     subtract_async = endpoint_to_async(ServiceTest.subtract)
 
 
-@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.asyncio
 async def test_service_creation(server):
     with ServiceTest():
         client = get_service_client(ServiceTestClient)

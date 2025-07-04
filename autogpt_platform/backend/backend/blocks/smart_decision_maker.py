@@ -26,10 +26,10 @@ logger = logging.getLogger(__name__)
 
 @thread_cached
 def get_database_manager_client():
-    from backend.executor import DatabaseManagerClient
+    from backend.executor import DatabaseManagerAsyncClient
     from backend.util.service import get_service_client
 
-    return get_service_client(DatabaseManagerClient)
+    return get_service_client(DatabaseManagerAsyncClient, health_check=False)
 
 
 def _get_tool_requests(entry: dict[str, Any]) -> list[str]:
@@ -85,7 +85,7 @@ def _get_tool_responses(entry: dict[str, Any]) -> list[str]:
     return tool_call_ids
 
 
-def _create_tool_response(call_id: str, output: dict[str, Any]) -> dict[str, Any]:
+def _create_tool_response(call_id: str, output: Any) -> dict[str, Any]:
     """
     Create a tool response message for either OpenAI or Anthropics,
     based on the tool_id format.
@@ -212,6 +212,15 @@ class SmartDecisionMakerBlock(Block):
                     "link like the output of `StoreValue` or `AgentInput` block"
                 )
 
+            # Check that both conversation_history and last_tool_output are connected together
+            if any(link.sink_name == "conversation_history" for link in links) != any(
+                link.sink_name == "last_tool_output" for link in links
+            ):
+                raise ValueError(
+                    "Last Tool Output is needed when Conversation History is used, "
+                    "and vice versa. Please connect both inputs together."
+                )
+
             return missing_links
 
         @classmethod
@@ -222,8 +231,15 @@ class SmartDecisionMakerBlock(Block):
             conversation_history = data.get("conversation_history", [])
             pending_tool_calls = get_pending_tool_calls(conversation_history)
             last_tool_output = data.get("last_tool_output")
-            if not last_tool_output and pending_tool_calls:
+
+            # Tool call is pending, wait for the tool output to be provided.
+            if last_tool_output is None and pending_tool_calls:
                 return {"last_tool_output"}
+
+            # No tool call is pending, wait for the conversation history to be updated.
+            if last_tool_output is not None and not pending_tool_calls:
+                return {"conversation_history"}
+
             return set()
 
     class Output(BlockSchema):
@@ -257,7 +273,7 @@ class SmartDecisionMakerBlock(Block):
         return re.sub(r"[^a-zA-Z0-9_-]", "_", s).lower()
 
     @staticmethod
-    def _create_block_function_signature(
+    async def _create_block_function_signature(
         sink_node: "Node", links: list["Link"]
     ) -> dict[str, Any]:
         """
@@ -296,7 +312,7 @@ class SmartDecisionMakerBlock(Block):
         return {"type": "function", "function": tool_function}
 
     @staticmethod
-    def _create_agent_function_signature(
+    async def _create_agent_function_signature(
         sink_node: "Node", links: list["Link"]
     ) -> dict[str, Any]:
         """
@@ -318,7 +334,7 @@ class SmartDecisionMakerBlock(Block):
             raise ValueError("Graph ID or Graph Version not found in sink node.")
 
         db_client = get_database_manager_client()
-        sink_graph_meta = db_client.get_graph_metadata(graph_id, graph_version)
+        sink_graph_meta = await db_client.get_graph_metadata(graph_id, graph_version)
         if not sink_graph_meta:
             raise ValueError(
                 f"Sink graph metadata not found: {graph_id} {graph_version}"
@@ -358,7 +374,7 @@ class SmartDecisionMakerBlock(Block):
         return {"type": "function", "function": tool_function}
 
     @staticmethod
-    def _create_function_signature(node_id: str) -> list[dict[str, Any]]:
+    async def _create_function_signature(node_id: str) -> list[dict[str, Any]]:
         """
         Creates function signatures for tools linked to a specified node within a graph.
 
@@ -380,13 +396,13 @@ class SmartDecisionMakerBlock(Block):
         db_client = get_database_manager_client()
         tools = [
             (link, node)
-            for link, node in db_client.get_connected_output_nodes(node_id)
+            for link, node in await db_client.get_connected_output_nodes(node_id)
             if link.source_name.startswith("tools_^_") and link.source_id == node_id
         ]
         if not tools:
             raise ValueError("There is no next node to execute.")
 
-        return_tool_functions = []
+        return_tool_functions: list[dict[str, Any]] = []
 
         grouped_tool_links: dict[str, tuple["Node", list["Link"]]] = {}
         for link, node in tools:
@@ -401,13 +417,13 @@ class SmartDecisionMakerBlock(Block):
 
             if sink_node.block_id == AgentExecutorBlock().id:
                 return_tool_functions.append(
-                    SmartDecisionMakerBlock._create_agent_function_signature(
+                    await SmartDecisionMakerBlock._create_agent_function_signature(
                         sink_node, links
                     )
                 )
             else:
                 return_tool_functions.append(
-                    SmartDecisionMakerBlock._create_block_function_signature(
+                    await SmartDecisionMakerBlock._create_block_function_signature(
                         sink_node, links
                     )
                 )
@@ -426,14 +442,14 @@ class SmartDecisionMakerBlock(Block):
         user_id: str,
         **kwargs,
     ) -> BlockOutput:
-        tool_functions = self._create_function_signature(node_id)
+        tool_functions = await self._create_function_signature(node_id)
         yield "tool_functions", json.dumps(tool_functions)
 
         input_data.conversation_history = input_data.conversation_history or []
         prompt = [json.to_dict(p) for p in input_data.conversation_history if p]
 
         pending_tool_calls = get_pending_tool_calls(input_data.conversation_history)
-        if pending_tool_calls and not input_data.last_tool_output:
+        if pending_tool_calls and input_data.last_tool_output is None:
             raise ValueError(f"Tool call requires an output for {pending_tool_calls}")
 
         # Prefill all missing tool calls with the last tool output/
@@ -497,7 +513,7 @@ class SmartDecisionMakerBlock(Block):
             max_tokens=input_data.max_tokens,
             tools=tool_functions,
             ollama_host=input_data.ollama_host,
-            parallel_tool_calls=True if input_data.multiple_tool_calls else None,
+            parallel_tool_calls=input_data.multiple_tool_calls,
         )
 
         if not response.tool_calls:

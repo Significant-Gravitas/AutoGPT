@@ -7,18 +7,28 @@ interface LinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
   children: React.ReactNode;
   className?: string;
   isExternal?: boolean;
+  variant?: "primary" | "secondary";
   title?: string;
 }
 
 const Link = forwardRef<HTMLAnchorElement, LinkProps>(function Link(
-  { href, children, className, isExternal = false, title, ...props },
+  {
+    href,
+    children,
+    className,
+    isExternal = false,
+		title,
+    variant = "primary",
+    ...props
+  },
   ref,
 ) {
   const linkClasses = cn(
     // Base styles from Figma
     "font-['Geist'] text-sm font-medium leading-[22px] text-[var(--AutoGPT-Text-text-black,#141414)]",
-    // Hover state
-    "hover:underline",
+    // Variant-specific underline styles
+    variant === "primary" && "hover:underline",
+    variant === "secondary" && "underline",
     // Focus state for accessibility
     "focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-sm",
     className,

@@ -10,7 +10,8 @@ export async function sendResetEmail(email: string, turnstileToken: string) {
     {},
     async () => {
       const supabase = await getServerSupabase();
-      const origin = process.env.FRONTEND_BASE_URL || "http://localhost:3000";
+      const origin =
+        process.env.NEXT_PUBLIC_FRONTEND_BASE_URL || "http://localhost:3000";
 
       if (!supabase) {
         redirect("/error");
@@ -26,7 +27,7 @@ export async function sendResetEmail(email: string, turnstileToken: string) {
       }
 
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${origin}/reset-password`,
+        redirectTo: `${origin}/api/auth/callback/reset-password`,
       });
 
       if (error) {
