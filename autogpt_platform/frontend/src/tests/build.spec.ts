@@ -79,7 +79,7 @@ test.describe("Build", () => { //(1)!
     // check that we can save the agent with all the blocks
     await buildPage.saveAgent("all blocks test", "all blocks test");
     // page should have a url like http://localhost:3000/build?flowID=f4f3a1da-cfb3-430f-a074-a455b047e340
-    await test.expect(page).toHaveURL(new RegExp("/.*build\\?flowID=.+"));
+    await test.expect(page).toHaveURL(new RegExp("/.*library/agents/.+"));
   });
 
   test("user can add all blocks m-z", async ({ page }, testInfo) => {
@@ -119,7 +119,7 @@ test.describe("Build", () => { //(1)!
     // check that we can save the agent with all the blocks
     await buildPage.saveAgent("all blocks test", "all blocks test");
     // page should have a url like http://localhost:3000/build?flowID=f4f3a1da-cfb3-430f-a074-a455b047e340
-    await test.expect(page).toHaveURL(new RegExp("/.*build\\?flowID=.+"));
+    await test.expect(page).toHaveURL(new RegExp("/.*library/agents/.+"));
   });
 
   test("build navigation is accessible from navbar", async ({ page }) => {
@@ -179,7 +179,7 @@ test.describe("Build", () => { //(1)!
       "Connected Blocks Test",
       "Testing block connections",
     );
-    await test.expect(page).toHaveURL(new RegExp("/.*build\\?flowID=.+"));
+    await test.expect(page).toHaveURL(new RegExp("/.*library/agents/.+"));
 
     // Wait for the save button to be enabled again
     await buildPage.waitForSaveButton();
@@ -286,7 +286,7 @@ test.describe("Build", () => { //(1)!
       "Input and Output Blocks Test",
       "Testing input and output blocks",
     );
-    await test.expect(page).toHaveURL(new RegExp("/.*build\\?flowID=.+"));
+    await test.expect(page).toHaveURL(new RegExp("/.*library/agents/.+"));
 
     // Wait for save to complete
     await page.waitForTimeout(1000);
