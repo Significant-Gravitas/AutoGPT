@@ -12,7 +12,7 @@ from backend.util import json
 
 def _tok_len(text: str, enc) -> int:
     """True token length of *text* in tokenizer *enc* (no wrapper cost)."""
-    return len(enc.encode(text))
+    return len(enc.encode(str(text)))
 
 
 def _msg_tokens(msg: dict, enc) -> int:
@@ -29,7 +29,7 @@ def _truncate_middle_tokens(text: str, enc, max_tok: int) -> str:
     Return *text* shortened to ≈max_tok tokens by keeping the head & tail
     and inserting an ellipsis token in the middle.
     """
-    ids = enc.encode(text)
+    ids = enc.encode(str(text))
     if len(ids) <= max_tok:
         return text  # nothing to do
 
