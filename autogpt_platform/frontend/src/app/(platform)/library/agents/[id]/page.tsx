@@ -496,16 +496,23 @@ export default function AgentRunsPage(): React.ReactElement {
 
         {/* Run / Schedule views */}
         {(selectedView.type == "run" && selectedView.id ? (
-          selectedRun && (
-            <AgentRunDetailsView
-              agent={agent}
-              graph={graphVersions.current[selectedRun.graph_version] ?? graph}
-              run={selectedRun}
-              agentActions={agentActions}
-              onRun={selectRun}
-              deleteRun={() => setConfirmingDeleteAgentRun(selectedRun)}
-            />
-          )
+          selectedRun &&
+          (() => {
+            const runGraph =
+              graphVersions.current[selectedRun.graph_version] ?? graph;
+            return runGraph ? (
+              <AgentRunDetailsView
+                agent={agent}
+                graph={runGraph}
+                run={selectedRun}
+                agentActions={agentActions}
+                onRun={selectRun}
+                deleteRun={() => setConfirmingDeleteAgentRun(selectedRun)}
+              />
+            ) : (
+              <LoadingBox className="h-[70vh]" />
+            );
+          })()
         ) : selectedView.type == "run" ? (
           /* Draft new runs / Create new presets */
           <AgentRunDraftView
@@ -529,7 +536,8 @@ export default function AgentRunsPage(): React.ReactElement {
             agentActions={agentActions}
           />
         ) : selectedView.type == "schedule" ? (
-          selectedSchedule && (
+          selectedSchedule &&
+          graph && (
             <AgentScheduleDetailsView
               graph={graph}
               schedule={selectedSchedule}
