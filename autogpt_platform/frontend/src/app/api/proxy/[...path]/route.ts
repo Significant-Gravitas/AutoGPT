@@ -77,7 +77,7 @@ function createUnsupportedContentTypeResponse(
         "application/x-www-form-urlencoded",
       ],
     },
-    { status: 415 }, // Unsupported Media Type
+    { status: 415 },
   );
 }
 
@@ -113,7 +113,7 @@ function createErrorResponse(error: unknown): NextResponse {
         error: "Invalid response from backend",
         detail: error.message ?? "Backend returned non-JSON response",
       },
-      { status: 502 }, // Bad Gateway
+      { status: 502 },
     );
   }
 
@@ -122,7 +122,7 @@ function createErrorResponse(error: unknown): NextResponse {
     error instanceof Error ? error.message : "An unknown error occurred";
   return NextResponse.json(
     { error: "Proxy request failed", detail },
-    { status: 500 }, // Internal Server Error
+    { status: 500 },
   );
 }
 
