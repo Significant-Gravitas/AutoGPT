@@ -236,6 +236,32 @@ export function useGetV2GetUserProfile<
 }
 
 /**
+ * @summary Get user profile
+ */
+export const prefetchGetV2GetUserProfileQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetUserProfile>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetUserProfile>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetUserProfileQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * Update the store profile for the authenticated user.
 
 Args:
@@ -588,6 +614,33 @@ export function useGetV2ListStoreAgents<
 }
 
 /**
+ * @summary List store agents
+ */
+export const prefetchGetV2ListStoreAgentsQuery = async <
+  TData = Awaited<ReturnType<typeof getV2ListStoreAgents>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  params?: GetV2ListStoreAgentsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2ListStoreAgents>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2ListStoreAgentsQueryOptions(params, options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * This is only used on the AgentDetails Page
 
 It returns the store listing agents details.
@@ -802,6 +855,38 @@ export function useGetV2GetSpecificAgent<
 }
 
 /**
+ * @summary Get specific agent
+ */
+export const prefetchGetV2GetSpecificAgentQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetSpecificAgent>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  username: string,
+  agentName: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetSpecificAgent>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetSpecificAgentQueryOptions(
+    username,
+    agentName,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * Get Agent Graph from Store Listing Version ID.
  * @summary Get agent graph
  */
@@ -1000,6 +1085,36 @@ export function useGetV2GetAgentGraph<
 
   return query;
 }
+
+/**
+ * @summary Get agent graph
+ */
+export const prefetchGetV2GetAgentGraphQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetAgentGraph>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  storeListingVersionId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetAgentGraph>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetAgentGraphQueryOptions(
+    storeListingVersionId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * Get Store Agent Details from Store Listing Version ID.
@@ -1204,6 +1319,36 @@ export function useGetV2GetAgentByVersion<
 
   return query;
 }
+
+/**
+ * @summary Get agent by version
+ */
+export const prefetchGetV2GetAgentByVersionQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetAgentByVersion>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  storeListingVersionId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetAgentByVersion>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetAgentByVersionQueryOptions(
+    storeListingVersionId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * Create a review for a store agent.
@@ -1548,6 +1693,33 @@ export function useGetV2ListStoreCreators<
 }
 
 /**
+ * @summary List store creators
+ */
+export const prefetchGetV2ListStoreCreatorsQuery = async <
+  TData = Awaited<ReturnType<typeof getV2ListStoreCreators>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  params?: GetV2ListStoreCreatorsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2ListStoreCreators>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2ListStoreCreatorsQueryOptions(params, options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * Get the details of a creator
 - Creator Details Page
  * @summary Get creator details
@@ -1744,6 +1916,33 @@ export function useGetV2GetCreatorDetails<
 }
 
 /**
+ * @summary Get creator details
+ */
+export const prefetchGetV2GetCreatorDetailsQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetCreatorDetails>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  username: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetCreatorDetails>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetCreatorDetailsQueryOptions(username, options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Get my agents
  */
 export type getV2GetMyAgentsResponse200 = {
@@ -1906,6 +2105,32 @@ export function useGetV2GetMyAgents<
 
   return query;
 }
+
+/**
+ * @summary Get my agents
+ */
+export const prefetchGetV2GetMyAgentsQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetMyAgents>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetMyAgents>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetMyAgentsQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * Delete a store listing submission.
@@ -2242,6 +2467,33 @@ export function useGetV2ListMySubmissions<
 
   return query;
 }
+
+/**
+ * @summary List my submissions
+ */
+export const prefetchGetV2ListMySubmissionsQuery = async <
+  TData = Awaited<ReturnType<typeof getV2ListMySubmissions>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  params?: GetV2ListMySubmissionsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2ListMySubmissions>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2ListMySubmissionsQueryOptions(params, options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * Create a new store listing submission.
@@ -2839,3 +3091,33 @@ export function useGetV2DownloadAgentFile<
 
   return query;
 }
+
+/**
+ * @summary Download agent file
+ */
+export const prefetchGetV2DownloadAgentFileQuery = async <
+  TData = Awaited<ReturnType<typeof getV2DownloadAgentFile>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  storeListingVersionId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2DownloadAgentFile>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2DownloadAgentFileQueryOptions(
+    storeListingVersionId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};

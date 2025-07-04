@@ -29,8 +29,6 @@ import type { BodyPostV2AddMarketplaceAgent } from "../../models/bodyPostV2AddMa
 
 import type { GetV2GetAgentByStoreId200 } from "../../models/getV2GetAgentByStoreId200";
 
-import type { GetV2GetLibraryAgentByGraphIdParams } from "../../models/getV2GetLibraryAgentByGraphIdParams";
-
 import type { GetV2ListLibraryAgentsParams } from "../../models/getV2ListLibraryAgentsParams";
 
 import type { HTTPValidationError } from "../../models/hTTPValidationError";
@@ -308,6 +306,38 @@ export function useGetV2ListLibraryAgentsInfinite<
   return query;
 }
 
+/**
+ * @summary List Library Agents
+ */
+export const prefetchGetV2ListLibraryAgentsInfiniteQuery = async <
+  TData = Awaited<ReturnType<typeof getV2ListLibraryAgents>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  params?: GetV2ListLibraryAgentsParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getV2ListLibraryAgents>>,
+        TError,
+        TData,
+        QueryKey,
+        GetV2ListLibraryAgentsParams["page"]
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2ListLibraryAgentsInfiniteQueryOptions(
+    params,
+    options,
+  );
+
+  await queryClient.prefetchInfiniteQuery(queryOptions);
+
+  return queryClient;
+};
+
 export const getGetV2ListLibraryAgentsQueryOptions = <
   TData = Awaited<ReturnType<typeof getV2ListLibraryAgents>>,
   TError = HTTPValidationError,
@@ -453,6 +483,33 @@ export function useGetV2ListLibraryAgents<
 
   return query;
 }
+
+/**
+ * @summary List Library Agents
+ */
+export const prefetchGetV2ListLibraryAgentsQuery = async <
+  TData = Awaited<ReturnType<typeof getV2ListLibraryAgents>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  params?: GetV2ListLibraryAgentsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2ListLibraryAgents>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2ListLibraryAgentsQueryOptions(params, options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * Add an agent from the marketplace to the user's library.
@@ -783,6 +840,36 @@ export function useGetV2GetLibraryAgent<
 }
 
 /**
+ * @summary Get Library Agent
+ */
+export const prefetchGetV2GetLibraryAgentQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetLibraryAgent>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  libraryAgentId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetLibraryAgent>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetLibraryAgentQueryOptions(
+    libraryAgentId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * Update the library agent with the given fields.
 
 Args:
@@ -1046,235 +1133,6 @@ export const useDeleteV2DeleteLibraryAgent = <
   return useMutation(mutationOptions, queryClient);
 };
 /**
- * @summary Get Library Agent By Graph Id
- */
-export type getV2GetLibraryAgentByGraphIdResponse200 = {
-  data: LibraryAgent;
-  status: 200;
-};
-
-export type getV2GetLibraryAgentByGraphIdResponse422 = {
-  data: HTTPValidationError;
-  status: 422;
-};
-
-export type getV2GetLibraryAgentByGraphIdResponseComposite =
-  | getV2GetLibraryAgentByGraphIdResponse200
-  | getV2GetLibraryAgentByGraphIdResponse422;
-
-export type getV2GetLibraryAgentByGraphIdResponse =
-  getV2GetLibraryAgentByGraphIdResponseComposite & {
-    headers: Headers;
-  };
-
-export const getGetV2GetLibraryAgentByGraphIdUrl = (
-  graphId: string,
-  params?: GetV2GetLibraryAgentByGraphIdParams,
-) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? "null" : value.toString());
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0
-    ? `/api/library/agents/by-graph/${graphId}?${stringifiedParams}`
-    : `/api/library/agents/by-graph/${graphId}`;
-};
-
-export const getV2GetLibraryAgentByGraphId = async (
-  graphId: string,
-  params?: GetV2GetLibraryAgentByGraphIdParams,
-  options?: RequestInit,
-): Promise<getV2GetLibraryAgentByGraphIdResponse> => {
-  return customMutator<getV2GetLibraryAgentByGraphIdResponse>(
-    getGetV2GetLibraryAgentByGraphIdUrl(graphId, params),
-    {
-      ...options,
-      method: "GET",
-    },
-  );
-};
-
-export const getGetV2GetLibraryAgentByGraphIdQueryKey = (
-  graphId: string,
-  params?: GetV2GetLibraryAgentByGraphIdParams,
-) => {
-  return [
-    `/api/library/agents/by-graph/${graphId}`,
-    ...(params ? [params] : []),
-  ] as const;
-};
-
-export const getGetV2GetLibraryAgentByGraphIdQueryOptions = <
-  TData = Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>,
-  TError = HTTPValidationError,
->(
-  graphId: string,
-  params?: GetV2GetLibraryAgentByGraphIdParams,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<
-        Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>,
-        TError,
-        TData
-      >
-    >;
-    request?: SecondParameter<typeof customMutator>;
-  },
-) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
-
-  const queryKey =
-    queryOptions?.queryKey ??
-    getGetV2GetLibraryAgentByGraphIdQueryKey(graphId, params);
-
-  const queryFn: QueryFunction<
-    Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>
-  > = ({ signal }) =>
-    getV2GetLibraryAgentByGraphId(graphId, params, {
-      signal,
-      ...requestOptions,
-    });
-
-  return {
-    queryKey,
-    queryFn,
-    enabled: !!graphId,
-    ...queryOptions,
-  } as UseQueryOptions<
-    Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>,
-    TError,
-    TData
-  > & { queryKey: DataTag<QueryKey, TData, TError> };
-};
-
-export type GetV2GetLibraryAgentByGraphIdQueryResult = NonNullable<
-  Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>
->;
-export type GetV2GetLibraryAgentByGraphIdQueryError = HTTPValidationError;
-
-export function useGetV2GetLibraryAgentByGraphId<
-  TData = Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>,
-  TError = HTTPValidationError,
->(
-  graphId: string,
-  params: undefined | GetV2GetLibraryAgentByGraphIdParams,
-  options: {
-    query: Partial<
-      UseQueryOptions<
-        Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>,
-        TError,
-        TData
-      >
-    > &
-      Pick<
-        DefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>,
-          TError,
-          Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>
-        >,
-        "initialData"
-      >;
-    request?: SecondParameter<typeof customMutator>;
-  },
-  queryClient?: QueryClient,
-): DefinedUseQueryResult<TData, TError> & {
-  queryKey: DataTag<QueryKey, TData, TError>;
-};
-export function useGetV2GetLibraryAgentByGraphId<
-  TData = Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>,
-  TError = HTTPValidationError,
->(
-  graphId: string,
-  params?: GetV2GetLibraryAgentByGraphIdParams,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<
-        Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>,
-        TError,
-        TData
-      >
-    > &
-      Pick<
-        UndefinedInitialDataOptions<
-          Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>,
-          TError,
-          Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>
-        >,
-        "initialData"
-      >;
-    request?: SecondParameter<typeof customMutator>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & {
-  queryKey: DataTag<QueryKey, TData, TError>;
-};
-export function useGetV2GetLibraryAgentByGraphId<
-  TData = Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>,
-  TError = HTTPValidationError,
->(
-  graphId: string,
-  params?: GetV2GetLibraryAgentByGraphIdParams,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<
-        Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>,
-        TError,
-        TData
-      >
-    >;
-    request?: SecondParameter<typeof customMutator>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & {
-  queryKey: DataTag<QueryKey, TData, TError>;
-};
-/**
- * @summary Get Library Agent By Graph Id
- */
-
-export function useGetV2GetLibraryAgentByGraphId<
-  TData = Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>,
-  TError = HTTPValidationError,
->(
-  graphId: string,
-  params?: GetV2GetLibraryAgentByGraphIdParams,
-  options?: {
-    query?: Partial<
-      UseQueryOptions<
-        Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>,
-        TError,
-        TData
-      >
-    >;
-    request?: SecondParameter<typeof customMutator>;
-  },
-  queryClient?: QueryClient,
-): UseQueryResult<TData, TError> & {
-  queryKey: DataTag<QueryKey, TData, TError>;
-} {
-  const queryOptions = getGetV2GetLibraryAgentByGraphIdQueryOptions(
-    graphId,
-    params,
-    options,
-  );
-
-  const query = useQuery(queryOptions, queryClient) as UseQueryResult<
-    TData,
-    TError
-  > & { queryKey: DataTag<QueryKey, TData, TError> };
-
-  query.queryKey = queryOptions.queryKey;
-
-  return query;
-}
-
-/**
  * Get Library Agent from Store Listing Version ID.
  * @summary Get Agent By Store ID
  */
@@ -1477,6 +1335,36 @@ export function useGetV2GetAgentByStoreId<
 
   return query;
 }
+
+/**
+ * @summary Get Agent By Store ID
+ */
+export const prefetchGetV2GetAgentByStoreIdQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetAgentByStoreId>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  storeListingVersionId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetAgentByStoreId>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetAgentByStoreIdQueryOptions(
+    storeListingVersionId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * @summary Fork Library Agent

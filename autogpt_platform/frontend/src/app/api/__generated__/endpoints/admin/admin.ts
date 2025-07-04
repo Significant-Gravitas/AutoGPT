@@ -265,6 +265,36 @@ export function useGetV2GetAdminListingsHistory<
 }
 
 /**
+ * @summary Get Admin Listings History
+ */
+export const prefetchGetV2GetAdminListingsHistoryQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetAdminListingsHistory>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  params?: GetV2GetAdminListingsHistoryParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetAdminListingsHistory>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetAdminListingsHistoryQueryOptions(
+    params,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * Review a store listing submission.
 
 Args:
@@ -611,6 +641,36 @@ export function useGetV2AdminDownloadAgentFile<
 }
 
 /**
+ * @summary Admin Download Agent File
+ */
+export const prefetchGetV2AdminDownloadAgentFileQuery = async <
+  TData = Awaited<ReturnType<typeof getV2AdminDownloadAgentFile>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  storeListingVersionId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2AdminDownloadAgentFile>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2AdminDownloadAgentFileQueryOptions(
+    storeListingVersionId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Add Credits to User
  */
 export type postV2AddCreditsToUserResponse200 = {
@@ -929,3 +989,30 @@ export function useGetV2GetAllUsersHistory<
 
   return query;
 }
+
+/**
+ * @summary Get All Users History
+ */
+export const prefetchGetV2GetAllUsersHistoryQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetAllUsersHistory>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  params?: GetV2GetAllUsersHistoryParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetAllUsersHistory>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetAllUsersHistoryQueryOptions(params, options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};

@@ -185,3 +185,29 @@ export function useGetHealthHealth<
 
   return query;
 }
+
+/**
+ * @summary Health
+ */
+export const prefetchGetHealthHealthQuery = async <
+  TData = Awaited<ReturnType<typeof getHealthHealth>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getHealthHealth>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetHealthHealthQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};

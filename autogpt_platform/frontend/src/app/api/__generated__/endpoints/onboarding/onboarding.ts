@@ -204,6 +204,32 @@ export function useGetV1GetOnboardingStatus<
 }
 
 /**
+ * @summary Get onboarding status
+ */
+export const prefetchGetV1GetOnboardingStatusQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetOnboardingStatus>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetOnboardingStatus>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetOnboardingStatusQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Update onboarding progress
  */
 export type patchV1UpdateOnboardingProgressResponse200 = {
@@ -491,6 +517,32 @@ export function useGetV1GetRecommendedAgents<
 }
 
 /**
+ * @summary Get recommended agents
+ */
+export const prefetchGetV1GetRecommendedAgentsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetRecommendedAgents>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetRecommendedAgents>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetRecommendedAgentsQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Check onboarding enabled
  */
 export type getV1CheckOnboardingEnabledResponse200 = {
@@ -664,3 +716,29 @@ export function useGetV1CheckOnboardingEnabled<
 
   return query;
 }
+
+/**
+ * @summary Check onboarding enabled
+ */
+export const prefetchGetV1CheckOnboardingEnabledQuery = async <
+  TData = Awaited<ReturnType<typeof getV1CheckOnboardingEnabled>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1CheckOnboardingEnabled>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1CheckOnboardingEnabledQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
