@@ -1,4 +1,5 @@
 import { type CookieOptions } from "@supabase/ssr";
+import { SupabaseClient } from "@supabase/supabase-js";
 
 // Detect if we're in a Playwright test environment
 const isTest = process.env.NEXT_PUBLIC_PW_TEST === "true";
@@ -97,4 +98,39 @@ export function setupSessionEventListeners(
       window.removeEventListener("storage", onStorageChange);
     },
   };
+}
+
+export interface CodeExchangeResult {
+  success: boolean;
+  error?: string;
+}
+
+export async function exchangePasswordResetCode(
+  supabase: SupabaseClient<any, "public", any>,
+  code: string,
+): Promise<CodeExchangeResult> {
+  try {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+    if (error) {
+      return {
+        success: false,
+        error: error.message,
+      };
+    }
+
+    if (!data.session) {
+      return {
+        success: false,
+        error: "Failed to create session",
+      };
+    }
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
 }
