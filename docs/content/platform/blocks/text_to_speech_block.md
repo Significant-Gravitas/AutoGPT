@@ -13,7 +13,7 @@ The block sends the provided text and voice selection to the Unreal Speech API. 
 | Input | Description |
 |-------|-------------|
 | Text | The text you want to convert into speech. This could be a sentence, paragraph, or any written content you'd like to hear spoken aloud. |
-| Voice ID | The identifier for the voice you want to use for the speech. By default, it uses a voice called "Scarlett," but you can change this to other available voices. |
+| Voice ID | The identifier for the voice you want to use for the speech. By default, it uses a voice called "Sierra," but you can change this to other available voices. |
 | API Key | Your personal key to access the Unreal Speech API. This is kept secret and secure. |
 
 ### Outputs
