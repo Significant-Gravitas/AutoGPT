@@ -101,10 +101,9 @@ function createErrorResponse(error: unknown): NextResponse {
 
   // If it's our custom ApiError, preserve the original status and response
   if (error instanceof ApiError) {
-    return NextResponse.json(
-      error.response || { error: error.message, detail: error.message },
-      { status: error.status },
-    );
+    return NextResponse.json(error.response || { error: error.message }, {
+      status: error.status,
+    });
   }
 
   // For JSON parsing errors, provide more context
@@ -112,7 +111,7 @@ function createErrorResponse(error: unknown): NextResponse {
     return NextResponse.json(
       {
         error: "Invalid response from backend",
-        detail: "Backend returned non-JSON response",
+        detail: error.message ?? "Backend returned non-JSON response",
       },
       { status: 502 }, // Bad Gateway
     );
