@@ -27,7 +27,7 @@ export async function sendResetEmail(email: string, turnstileToken: string) {
       }
 
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${origin}/reset-password`,
+        redirectTo: `${origin}/api/auth/callback/reset-password`,
       });
 
       if (error) {
