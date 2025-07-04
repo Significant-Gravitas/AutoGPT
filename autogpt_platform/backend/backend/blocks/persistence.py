@@ -128,6 +128,7 @@ class RetrieveInformationBlock(Block):
                 ("value", {"theme": "light", "language": "en"}),
             ],
             test_mock={"_retrieve_data": lambda *args, **kwargs: None},
+            static_output=True,
         )
 
     async def run(
