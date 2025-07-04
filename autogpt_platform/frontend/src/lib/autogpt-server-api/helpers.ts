@@ -78,7 +78,15 @@ export async function getServerAuthToken(): Promise<string> {
       error,
     } = await supabase.auth.getSession();
 
-    if (error || !session?.access_token) {
+    if (error) {
+      return "no-token-found";
+    }
+
+    if (!session) {
+      return "no-token-found";
+    }
+
+    if (!session.access_token) {
       return "no-token-found";
     }
 

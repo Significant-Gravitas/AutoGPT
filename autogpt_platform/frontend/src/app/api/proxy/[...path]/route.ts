@@ -107,6 +107,17 @@ function createErrorResponse(error: unknown): NextResponse {
     );
   }
 
+  // For JSON parsing errors, provide more context
+  if (error instanceof SyntaxError && error.message.includes("JSON")) {
+    return NextResponse.json(
+      {
+        error: "Invalid response from backend",
+        detail: "Backend returned non-JSON response",
+      },
+      { status: 502 }, // Bad Gateway
+    );
+  }
+
   // For other errors, use generic response
   const detail =
     error instanceof Error ? error.message : "An unknown error occurred";
