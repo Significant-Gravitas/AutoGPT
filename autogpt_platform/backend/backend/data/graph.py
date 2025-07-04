@@ -389,8 +389,10 @@ class GraphModel(Graph):
 
         # Reassign Link IDs
         for link in graph.links:
-            link.source_id = id_map[link.source_id]
-            link.sink_id = id_map[link.sink_id]
+            if link.source_id in id_map:
+                link.source_id = id_map[link.source_id]
+            if link.sink_id in id_map:
+                link.sink_id = id_map[link.sink_id]
 
         # Reassign User IDs for agent blocks
         for node in graph.nodes:
