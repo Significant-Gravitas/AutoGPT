@@ -508,9 +508,7 @@ export default function AgentRunsPage(): React.ReactElement {
               onRun={selectRun}
               deleteRun={() => setConfirmingDeleteAgentRun(selectedRun)}
             />
-          ) : (
-            <LoadingBox className="h-[70vh]" />
-          )
+          ) : null
         ) : selectedView.type == "run" ? (
           /* Draft new runs / Create new presets */
           <AgentRunDraftView
