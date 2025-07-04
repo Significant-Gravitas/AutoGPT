@@ -273,6 +273,7 @@ class LLMResponse(BaseModel):
     tool_calls: Optional[List[ToolContentBlock]] | None
     prompt_tokens: int
     completion_tokens: int
+    reasoning: Optional[str] = None
 
 
 def convert_openai_tool_fmt_to_anthropic(
@@ -305,6 +306,46 @@ def convert_openai_tool_fmt_to_anthropic(
         anthropic_tools.append(anthropic_tool)
 
     return anthropic_tools
+
+
+def extract_openai_reasoning(response) -> str | None:
+    """Extract reasoning from OpenAI-compatible response if available."""
+    """Note: This will likely not working since the reasoning is not present in another Response API"""
+    reasoning = None
+    choice = response.choices[0]
+    if hasattr(choice, "reasoning") and getattr(choice, "reasoning", None):
+        reasoning = str(getattr(choice, "reasoning"))
+    elif hasattr(response, "reasoning") and getattr(response, "reasoning", None):
+        reasoning = str(getattr(response, "reasoning"))
+    elif hasattr(choice.message, "reasoning") and getattr(
+        choice.message, "reasoning", None
+    ):
+        reasoning = str(getattr(choice.message, "reasoning"))
+    return reasoning
+
+
+def extract_openai_tool_calls(response) -> list[ToolContentBlock] | None:
+    """Extract tool calls from OpenAI-compatible response."""
+    if response.choices[0].message.tool_calls:
+        return [
+            ToolContentBlock(
+                id=tool.id,
+                type=tool.type,
+                function=ToolCall(
+                    name=tool.function.name,
+                    arguments=tool.function.arguments,
+                ),
+            )
+            for tool in response.choices[0].message.tool_calls
+        ]
+    return None
+
+
+def get_parallel_tool_calls_param(llm_model: LlmModel, parallel_tool_calls):
+    """Get the appropriate parallel_tool_calls parameter for OpenAI-compatible APIs."""
+    if llm_model.startswith("o") or parallel_tool_calls is None:
+        return openai.NOT_GIVEN
+    return parallel_tool_calls
 
 
 async def llm_call(
@@ -360,8 +401,9 @@ async def llm_call(
         oai_client = openai.AsyncOpenAI(api_key=credentials.api_key.get_secret_value())
         response_format = None
 
-        if llm_model.startswith("o") or parallel_tool_calls is None:
-            parallel_tool_calls = openai.NOT_GIVEN
+        parallel_tool_calls = get_parallel_tool_calls_param(
+            llm_model, parallel_tool_calls
+        )
 
         if json_format:
             response_format = {"type": "json_object"}
@@ -375,20 +417,8 @@ async def llm_call(
             parallel_tool_calls=parallel_tool_calls,
         )
 
-        if response.choices[0].message.tool_calls:
-            tool_calls = [
-                ToolContentBlock(
-                    id=tool.id,
-                    type=tool.type,
-                    function=ToolCall(
-                        name=tool.function.name,
-                        arguments=tool.function.arguments,
-                    ),
-                )
-                for tool in response.choices[0].message.tool_calls
-            ]
-        else:
-            tool_calls = None
+        tool_calls = extract_openai_tool_calls(response)
+        reasoning = extract_openai_reasoning(response)
 
         return LLMResponse(
             raw_response=response.choices[0].message,
@@ -397,6 +427,7 @@ async def llm_call(
             tool_calls=tool_calls,
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
+            reasoning=reasoning,
         )
     elif provider == "anthropic":
 
@@ -458,6 +489,12 @@ async def llm_call(
                     f"Tool use stop reason but no tool calls found in content. {resp}"
                 )
 
+            reasoning = None
+            for content_block in resp.content:
+                if hasattr(content_block, "type") and content_block.type == "thinking":
+                    reasoning = content_block.thinking
+                    break
+
             return LLMResponse(
                 raw_response=resp,
                 prompt=prompt,
@@ -469,6 +506,7 @@ async def llm_call(
                 tool_calls=tool_calls,
                 prompt_tokens=resp.usage.input_tokens,
                 completion_tokens=resp.usage.output_tokens,
+                reasoning=reasoning,
             )
         except anthropic.APIError as e:
             error_message = f"Anthropic API error: {str(e)}"
@@ -493,6 +531,7 @@ async def llm_call(
             tool_calls=None,
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
+            reasoning=None,
         )
     elif provider == "ollama":
         if tools:
@@ -514,12 +553,17 @@ async def llm_call(
             tool_calls=None,
             prompt_tokens=response.get("prompt_eval_count") or 0,
             completion_tokens=response.get("eval_count") or 0,
+            reasoning=None,
         )
     elif provider == "open_router":
         tools_param = tools if tools else openai.NOT_GIVEN
         client = openai.AsyncOpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=credentials.api_key.get_secret_value(),
+        )
+
+        parallel_tool_calls_param = get_parallel_tool_calls_param(
+            llm_model, parallel_tool_calls
         )
 
         response = await client.chat.completions.create(
@@ -531,6 +575,7 @@ async def llm_call(
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
+            parallel_tool_calls=parallel_tool_calls_param,
         )
 
         # If there's no response, raise an error
@@ -540,19 +585,8 @@ async def llm_call(
             else:
                 raise ValueError("No response from OpenRouter.")
 
-        if response.choices[0].message.tool_calls:
-            tool_calls = [
-                ToolContentBlock(
-                    id=tool.id,
-                    type=tool.type,
-                    function=ToolCall(
-                        name=tool.function.name, arguments=tool.function.arguments
-                    ),
-                )
-                for tool in response.choices[0].message.tool_calls
-            ]
-        else:
-            tool_calls = None
+        tool_calls = extract_openai_tool_calls(response)
+        reasoning = extract_openai_reasoning(response)
 
         return LLMResponse(
             raw_response=response.choices[0].message,
@@ -561,12 +595,17 @@ async def llm_call(
             tool_calls=tool_calls,
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
+            reasoning=reasoning,
         )
     elif provider == "llama_api":
         tools_param = tools if tools else openai.NOT_GIVEN
         client = openai.AsyncOpenAI(
             base_url="https://api.llama.com/compat/v1/",
             api_key=credentials.api_key.get_secret_value(),
+        )
+
+        parallel_tool_calls_param = get_parallel_tool_calls_param(
+            llm_model, parallel_tool_calls
         )
 
         response = await client.chat.completions.create(
@@ -578,9 +617,7 @@ async def llm_call(
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
-            parallel_tool_calls=(
-                openai.NOT_GIVEN if parallel_tool_calls is None else parallel_tool_calls
-            ),
+            parallel_tool_calls=parallel_tool_calls_param,
         )
 
         # If there's no response, raise an error
@@ -590,19 +627,8 @@ async def llm_call(
             else:
                 raise ValueError("No response from Llama API.")
 
-        if response.choices[0].message.tool_calls:
-            tool_calls = [
-                ToolContentBlock(
-                    id=tool.id,
-                    type=tool.type,
-                    function=ToolCall(
-                        name=tool.function.name, arguments=tool.function.arguments
-                    ),
-                )
-                for tool in response.choices[0].message.tool_calls
-            ]
-        else:
-            tool_calls = None
+        tool_calls = extract_openai_tool_calls(response)
+        reasoning = extract_openai_reasoning(response)
 
         return LLMResponse(
             raw_response=response.choices[0].message,
@@ -611,6 +637,7 @@ async def llm_call(
             tool_calls=tool_calls,
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
+            reasoning=reasoning,
         )
     elif provider == "aiml_api":
         client = openai.OpenAI(
@@ -634,6 +661,7 @@ async def llm_call(
             completion_tokens=(
                 completion.usage.completion_tokens if completion.usage else 0
             ),
+            reasoning=None,
         )
     else:
         raise ValueError(f"Unsupported LLM provider: {provider}")
@@ -747,6 +775,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     tool_calls=None,
                     prompt_tokens=0,
                     completion_tokens=0,
+                    reasoning=None,
                 )
             },
         )
