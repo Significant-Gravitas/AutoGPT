@@ -1,5 +1,6 @@
 import asyncio
 from enum import Enum
+from typing import Any
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -90,10 +91,27 @@ def _first_sheet_meta(service, spreadsheet_id: str) -> tuple[str, int]:
     return first["title"], first["sheetId"]
 
 
-def resolve_sheet_name(service, spreadsheet_id: str, sheet_name: str | None) -> str:
-    """Resolve *sheet_name*, falling back to the workbook's first sheet if empty."""
+def get_all_sheet_names(service, spreadsheet_id: str) -> list[str]:
+    """Get all sheet names in the spreadsheet."""
+    meta = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    return [
+        sheet.get("properties", {}).get("title", "") for sheet in meta.get("sheets", [])
+    ]
 
+
+def resolve_sheet_name(service, spreadsheet_id: str, sheet_name: str | None) -> str:
+    """Resolve *sheet_name*, falling back to the workbook's first sheet if empty.
+
+    Validates that the sheet exists in the spreadsheet and provides helpful error info.
+    """
     if sheet_name:
+        # Validate that the sheet exists
+        all_sheets = get_all_sheet_names(service, spreadsheet_id)
+        if sheet_name not in all_sheets:
+            raise ValueError(
+                f'Sheet "{sheet_name}" not found in spreadsheet. '
+                f"Available sheets: {all_sheets}"
+            )
         return sheet_name
     title, _ = _first_sheet_meta(service, spreadsheet_id)
     return title
@@ -107,6 +125,35 @@ def sheet_id_by_name(service, spreadsheet_id: str, sheet_name: str) -> int | Non
         if sh.get("properties", {}).get("title") == sheet_name:
             return sh["properties"]["sheetId"]
     return None
+
+
+def _convert_dicts_to_rows(
+    data: list[dict[str, Any]], headers: list[str]
+) -> list[list[str]]:
+    """Convert list of dictionaries to list of rows using the specified header order.
+
+    Args:
+        data: List of dictionaries to convert
+        headers: List of column headers to use for ordering
+
+    Returns:
+        List of rows where each row is a list of string values in header order
+    """
+    if not data:
+        return []
+
+    if not headers:
+        raise ValueError("Headers are required when using list[dict] format")
+
+    rows = []
+    for item in data:
+        row = []
+        for header in headers:
+            value = item.get(header, "")
+            row.append(str(value) if value is not None else "")
+        rows.append(row)
+
+    return rows
 
 
 def _build_sheets_service(credentials: GoogleCredentials):
@@ -331,7 +378,18 @@ class GoogleSheetsAppendBlock(Block):
             description="Optional sheet to append to (defaults to first sheet)",
             default="",
         )
-        values: list[list[str]] = SchemaField(description="Rows to append")
+        values: list[list[str]] = SchemaField(
+            description="Rows to append as list of rows (list[list[str]])",
+            default=[],
+        )
+        dict_values: list[dict[str, Any]] = SchemaField(
+            description="Rows to append as list of dictionaries (list[dict])",
+            default=[],
+        )
+        headers: list[str] = SchemaField(
+            description="Column headers to use for ordering dict values (required when dict_values is provided)",
+            default=[],
+        )
         range: str = SchemaField(
             description="Range to append to (e.g. 'A:A' for column A only, 'A:C' for columns A-C, or leave empty for unlimited columns). When empty, data will span as many columns as needed.",
             default="",
@@ -355,7 +413,7 @@ class GoogleSheetsAppendBlock(Block):
     def __init__(self):
         super().__init__(
             id="531d50c0-d6b9-4cf9-a013-7bf783d313c7",
-            description="Append data to a Google Sheet. Data is added to the next empty row without overwriting existing content. Leave range empty for unlimited columns, or specify range like 'A:A' to constrain to specific columns.",
+            description="Append data to a Google Sheet. Use 'values' for list of rows (list[list[str]]) or 'dict_values' with 'headers' for list of dictionaries (list[dict]). Data is added to the next empty row without overwriting existing content. Leave range empty for unlimited columns, or specify range like 'A:A' to constrain to specific columns.",
             categories={BlockCategory.DATA},
             input_schema=GoogleSheetsAppendBlock.Input,
             output_schema=GoogleSheetsAppendBlock.Output,
@@ -383,12 +441,30 @@ class GoogleSheetsAppendBlock(Block):
     ) -> BlockOutput:
         service = _build_sheets_service(credentials)
         spreadsheet_id = extract_spreadsheet_id(input_data.spreadsheet_id)
+        # Determine which values to use and convert if needed
+        processed_values: list[list[str]]
+
+        # Validate that only one format is provided
+        if input_data.values and input_data.dict_values:
+            raise ValueError("Provide either 'values' or 'dict_values', not both")
+
+        if input_data.dict_values:
+            if not input_data.headers:
+                raise ValueError("Headers are required when using dict_values")
+            processed_values = _convert_dicts_to_rows(
+                input_data.dict_values, input_data.headers
+            )
+        elif input_data.values:
+            processed_values = input_data.values
+        else:
+            raise ValueError("Either 'values' or 'dict_values' must be provided")
+
         result = await asyncio.to_thread(
             self._append_sheet,
             service,
             spreadsheet_id,
             input_data.sheet_name,
-            input_data.values,
+            processed_values,
             input_data.range,
             input_data.value_input_option,
             input_data.insert_data_option,
