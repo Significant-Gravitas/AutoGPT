@@ -184,7 +184,7 @@ async def test_ocsp_timeout():
         mock_conn.side_effect = asyncio.TimeoutError("Connection timed out")
 
         with pytest.raises(asyncio.TimeoutError):
-            await verify_ocsp_stapling("slow.example.com", 443, timeout=0.001)
+            await verify_ocsp_stapling("slow.example.com", 443, timeout=1)
 
 
 @pytest.mark.asyncio
