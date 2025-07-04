@@ -19,6 +19,7 @@ class ProviderName(str, Enum):
     GROQ = "groq"
     HTTP = "http"
     HUBSPOT = "hubspot"
+    PROXYCURL = "proxycurl"
     IDEOGRAM = "ideogram"
     JINA = "jina"
     LINEAR = "linear"

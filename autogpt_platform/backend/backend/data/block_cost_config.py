@@ -18,6 +18,12 @@ from backend.blocks.llm import (
     AITextSummarizerBlock,
     LlmModel,
 )
+from backend.blocks.proxycurl.proxycurl import (
+    ProxycurlPersonLookupBlock,
+    ProxycurlProfileFetchBlock,
+    ProxycurlProfilePictureBlock,
+    ProxycurlRoleLookupBlock,
+)
 from backend.blocks.replicate_flux_advanced import ReplicateFluxAdvancedModelBlock
 from backend.blocks.smart_decision_maker import SmartDecisionMakerBlock
 from backend.blocks.talking_head import CreateTalkingAvatarVideoBlock
@@ -35,6 +41,7 @@ from backend.integrations.credentials_store import (
     llama_api_credentials,
     open_router_credentials,
     openai_credentials,
+    proxycurl_credentials,
     replicate_credentials,
     revid_credentials,
     unreal_credentials,
@@ -344,6 +351,54 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
                     "id": unreal_credentials.id,
                     "provider": unreal_credentials.provider,
                     "type": unreal_credentials.type,
+                }
+            },
+        )
+    ],
+    ProxycurlProfileFetchBlock: [
+        BlockCost(
+            cost_amount=1,
+            cost_filter={
+                "credentials": {
+                    "id": proxycurl_credentials.id,
+                    "provider": proxycurl_credentials.provider,
+                    "type": proxycurl_credentials.type,
+                }
+            },
+        )
+    ],
+    ProxycurlPersonLookupBlock: [
+        BlockCost(
+            cost_amount=2,
+            cost_filter={
+                "credentials": {
+                    "id": proxycurl_credentials.id,
+                    "provider": proxycurl_credentials.provider,
+                    "type": proxycurl_credentials.type,
+                }
+            },
+        )
+    ],
+    ProxycurlRoleLookupBlock: [
+        BlockCost(
+            cost_amount=3,
+            cost_filter={
+                "credentials": {
+                    "id": proxycurl_credentials.id,
+                    "provider": proxycurl_credentials.provider,
+                    "type": proxycurl_credentials.type,
+                }
+            },
+        )
+    ],
+    ProxycurlProfilePictureBlock: [
+        BlockCost(
+            cost_amount=3,
+            cost_filter={
+                "credentials": {
+                    "id": proxycurl_credentials.id,
+                    "provider": proxycurl_credentials.provider,
+                    "type": proxycurl_credentials.type,
                 }
             },
         )
