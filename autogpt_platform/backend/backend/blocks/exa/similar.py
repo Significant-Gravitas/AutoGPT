@@ -1,57 +1,60 @@
 from datetime import datetime
-from typing import Any, List
+from typing import Any
 
-from backend.blocks.exa._auth import (
-    ExaCredentials,
-    ExaCredentialsField,
-    ExaCredentialsInput,
+from backend.sdk import (
+    APIKeyCredentials,
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    CredentialsMetaInput,
+    Requests,
+    SchemaField,
 )
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
-from backend.util.request import Requests
 
+from ._config import exa
 from .helpers import ContentSettings
 
 
 class ExaFindSimilarBlock(Block):
     class Input(BlockSchema):
-        credentials: ExaCredentialsInput = ExaCredentialsField()
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="The Exa integration requires an API Key."
+        )
         url: str = SchemaField(
             description="The url for which you would like to find similar links"
         )
         number_of_results: int = SchemaField(
-            description="Number of results to return",
-            default=10,
-            advanced=True,
+            description="Number of results to return", default=10, advanced=True
         )
-        include_domains: List[str] = SchemaField(
+        include_domains: list[str] = SchemaField(
             description="Domains to include in search",
             default_factory=list,
             advanced=True,
         )
-        exclude_domains: List[str] = SchemaField(
+        exclude_domains: list[str] = SchemaField(
             description="Domains to exclude from search",
             default_factory=list,
             advanced=True,
         )
         start_crawl_date: datetime = SchemaField(
-            description="Start date for crawled content",
+            description="Start date for crawled content"
         )
         end_crawl_date: datetime = SchemaField(
-            description="End date for crawled content",
+            description="End date for crawled content"
         )
         start_published_date: datetime = SchemaField(
-            description="Start date for published content",
+            description="Start date for published content"
         )
         end_published_date: datetime = SchemaField(
-            description="End date for published content",
+            description="End date for published content"
         )
-        include_text: List[str] = SchemaField(
+        include_text: list[str] = SchemaField(
             description="Text patterns to include (max 1 string, up to 5 words)",
             default_factory=list,
             advanced=True,
         )
-        exclude_text: List[str] = SchemaField(
+        exclude_text: list[str] = SchemaField(
             description="Text patterns to exclude (max 1 string, up to 5 words)",
             default_factory=list,
             advanced=True,
@@ -63,11 +66,13 @@ class ExaFindSimilarBlock(Block):
         )
 
     class Output(BlockSchema):
-        results: List[Any] = SchemaField(
+        results: list[Any] = SchemaField(
             description="List of similar documents with title, URL, published date, author, and score",
             default_factory=list,
         )
-        error: str = SchemaField(description="Error message if the request failed")
+        error: str = SchemaField(
+            description="Error message if the request failed", default=""
+        )
 
     def __init__(self):
         super().__init__(
@@ -79,7 +84,7 @@ class ExaFindSimilarBlock(Block):
         )
 
     async def run(
-        self, input_data: Input, *, credentials: ExaCredentials, **kwargs
+        self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         url = "https://api.exa.ai/findSimilar"
         headers = {
@@ -90,7 +95,7 @@ class ExaFindSimilarBlock(Block):
         payload = {
             "url": input_data.url,
             "numResults": input_data.number_of_results,
-            "contents": input_data.contents.dict(),
+            "contents": input_data.contents.model_dump(),
         }
 
         optional_field_mapping = {

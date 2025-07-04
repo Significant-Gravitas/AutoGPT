@@ -62,6 +62,10 @@ def launch_darkly_context():
 async def lifespan_context(app: fastapi.FastAPI):
     await backend.data.db.connect()
     await backend.data.block.initialize_blocks()
+
+    # SDK auto-registration is now handled by AutoRegistry.patch_integrations()
+    # which is called when the SDK module is imported
+
     await backend.data.user.migrate_and_encrypt_user_integrations()
     await backend.data.graph.fix_llm_provider_credentials()
     await backend.data.graph.migrate_llm_models(LlmModel.GPT4O)

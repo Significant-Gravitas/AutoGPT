@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from backend.sdk import BaseModel
 
 
 class Comment(BaseModel):
