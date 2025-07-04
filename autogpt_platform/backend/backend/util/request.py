@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import ipaddress
 import re
 import socket
@@ -11,6 +12,7 @@ from urllib.parse import quote, urljoin, urlparse
 import aiohttp
 import idna
 from aiohttp import FormData, abc
+from cryptography.x509 import ocsp
 from tenacity import retry, retry_if_result, wait_exponential_jitter
 
 from backend.util.json import json
@@ -42,6 +44,51 @@ ALLOWED_SCHEMES = ["http", "https"]
 HOSTNAME_REGEX = re.compile(r"^[A-Za-z0-9.-]+$")  # Basic DNS-safe hostname pattern
 
 
+async def verify_ocsp_stapling(
+    hostname: str, port: int = 443, timeout: int = 5
+) -> None:
+    """
+    Verifies OCSP stapling for the given hostname.
+
+    Raises:
+        Exception: If OCSP verification fails
+    """
+    ctx = ssl.create_default_context()
+    ctx.verify_mode = ssl.CERT_REQUIRED
+    ctx.check_hostname = True
+    ctx.ocsp_response = True
+
+    loop = asyncio.get_running_loop()
+
+    def _verify_sync():
+        with socket.create_connection((hostname, port), timeout=timeout) as sock:
+            with ctx.wrap_socket(sock, server_hostname=hostname) as ssock:
+                ocsp_response_data = ssock.ocsp_response
+                if not ocsp_response_data:
+                    raise Exception(
+                        f"No OCSP stapled response received from {hostname}"
+                    )
+
+                ocsp_resp = ocsp.load_der_ocsp_response(ocsp_response_data)
+                status = ocsp_resp.response_status
+
+                if status != ocsp.OCSPResponseStatus.SUCCESSFUL:
+                    raise Exception(f"OCSP response not successful: {status}")
+
+                cert_status = ocsp_resp.cert_status
+                if cert_status != ocsp.OCSPCertStatus.GOOD:
+                    raise Exception(f"Certificate is not valid: status={cert_status}")
+
+                if (
+                    ocsp_resp.next_update
+                    and ocsp_resp.next_update < datetime.datetime.utcnow()
+                ):
+                    raise Exception(f"OCSP response is expired for {hostname}")
+
+    # Run in executor to avoid blocking
+    await loop.run_in_executor(None, _verify_sync)
+
+
 def _is_ip_blocked(ip: str) -> bool:
     """
     Checks if the IP address is in a blocked network.
@@ -64,6 +111,21 @@ def _remove_insecure_headers(headers: dict, old_url: URL, new_url: URL) -> dict:
         headers.pop("Proxy-Authorization", None)
         headers.pop("Cookie", None)
     return headers
+
+
+class SSLContextWithOCSP:
+    """
+    Custom SSL context that enforces OCSP verification.
+    """
+
+    def __init__(self, verify_ocsp: bool = True):
+        self.verify_ocsp = verify_ocsp
+        self._default_context = ssl.create_default_context()
+        self._default_context.check_hostname = True
+        self._default_context.verify_mode = ssl.CERT_REQUIRED
+
+    def __call__(self) -> ssl.SSLContext:
+        return self._default_context
 
 
 class HostResolver(abc.AbstractResolver):
@@ -119,12 +181,15 @@ async def _resolve_host(hostname: str) -> list[str]:
 
 
 async def validate_url(
-    url: str, trusted_origins: list[str]
+    url: str,
+    trusted_origins: list[str],
+    verify_ocsp: bool = True,
+    ocsp_timeout: int = 5,
 ) -> tuple[URL, bool, list[str]]:
     """
     Validates the URL to prevent SSRF attacks by ensuring it does not point
     to a private, link-local, or otherwise blocked IP address — unless
-    the hostname is explicitly trusted.
+    the hostname is explicitly trusted. Also verifies OCSP stapling for HTTPS URLs.
 
     Returns:
         str: The validated, canonicalized, parsed URL
@@ -160,6 +225,14 @@ async def validate_url(
 
     # Check if hostname is trusted
     is_trusted = ascii_hostname in trusted_origins
+
+    # Verify OCSP stapling for HTTPS URLs (unless trusted or disabled)
+    if verify_ocsp and parsed.scheme == "https" and not is_trusted:
+        try:
+            port = parsed.port or 443
+            await verify_ocsp_stapling(ascii_hostname, port, timeout=ocsp_timeout)
+        except Exception as e:
+            raise ValueError(f"OCSP verification failed for {ascii_hostname}: {str(e)}")
 
     # If not trusted, validate IP addresses
     ip_addresses: list[str] = []
@@ -284,7 +357,7 @@ class Requests:
     """
     A wrapper around an aiohttp ClientSession that validates URLs before
     making requests, preventing SSRF by blocking private networks and
-    other disallowed address spaces.
+    other disallowed address spaces. Also verifies OCSP stapling for HTTPS requests.
     """
 
     def __init__(
@@ -294,6 +367,8 @@ class Requests:
         extra_url_validator: Callable[[URL], URL] | None = None,
         extra_headers: dict[str, str] | None = None,
         retry_max_wait: float = 300.0,
+        verify_ocsp: bool = True,
+        ocsp_timeout: int = 5,
     ):
         self.trusted_origins = []
         for url in trusted_origins or []:
@@ -306,6 +381,8 @@ class Requests:
         self.extra_url_validator = extra_url_validator
         self.extra_headers = extra_headers
         self.retry_max_wait = retry_max_wait
+        self.verify_ocsp = verify_ocsp
+        self.ocsp_timeout = ocsp_timeout
 
     async def request(
         self,
@@ -385,9 +462,9 @@ class Requests:
 
             data = form
 
-        # Validate URL and get trust status
+        # Validate URL and get trust status (includes OCSP verification)
         parsed_url, is_trusted, ip_addresses = await validate_url(
-            url, self.trusted_origins
+            url, self.trusted_origins, self.verify_ocsp, self.ocsp_timeout
         )
 
         # Apply any extra user-defined validation/transformation
@@ -404,7 +481,7 @@ class Requests:
         if not is_trusted:
             # Replace hostname with IP for connection but preserve SNI via resolver
             resolver = HostResolver(ssl_hostname=hostname, ip_addresses=ip_addresses)
-            ssl_context = ssl.create_default_context()
+            ssl_context = SSLContextWithOCSP(verify_ocsp=self.verify_ocsp)()
             connector = aiohttp.TCPConnector(resolver=resolver, ssl=ssl_context)
         session_kwargs = {}
         if connector:
