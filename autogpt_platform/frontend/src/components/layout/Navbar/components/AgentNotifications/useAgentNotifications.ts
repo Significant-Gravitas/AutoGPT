@@ -1,5 +1,7 @@
 import { useGetV1GetAllExecutions } from "@/app/api/__generated__/endpoints/graphs/graphs";
 import { useGetV2GetMyAgents } from "@/app/api/__generated__/endpoints/store/store";
+import { useGetV2ListLibraryAgents } from "@/app/api/__generated__/endpoints/library/library";
+import { LibraryAgent } from "@/app/api/__generated__/models/libraryAgent";
 import BackendAPI from "@/lib/autogpt-server-api/client";
 import type { GraphExecution } from "@/lib/autogpt-server-api/types";
 import { useCallback, useEffect, useState } from "react";
@@ -10,6 +12,11 @@ import {
   handleExecutionUpdate,
 } from "./helpers";
 
+type AgentInfoMap = Map<
+  string,
+  { name: string; description: string; library_agent_id?: string }
+>;
+
 export function useAgentNotifications() {
   const [api] = useState(() => new BackendAPI());
   const [notifications, setNotifications] = useState<NotificationState>({
@@ -19,9 +26,7 @@ export function useAgentNotifications() {
     totalCount: 0,
   });
   const [isConnected, setIsConnected] = useState(false);
-  const [agentInfoMap, setAgentInfoMap] = useState<
-    Map<string, { name: string; description: string }>
-  >(new Map());
+  const [agentInfoMap, setAgentInfoMap] = useState<AgentInfoMap>(new Map());
 
   // Get library agents using generated hook
   const {
@@ -34,6 +39,20 @@ export function useAgentNotifications() {
     },
   });
 
+  // Get library agents data to map graph_id to library_agent_id
+  const {
+    data: libraryAgentsResponse,
+    isLoading: isLibraryAgentsLoading,
+    error: libraryAgentsError,
+  } = useGetV2ListLibraryAgents(
+    {},
+    {
+      query: {
+        enabled: true,
+      },
+    },
+  );
+
   // Get all executions using generated hook
   const {
     data: executionsResponse,
@@ -45,13 +64,31 @@ export function useAgentNotifications() {
     },
   });
 
-  // Update agent info map when library agents data changes
+  // Update agent info map when both agent data sources change
   useEffect(() => {
-    if (myAgentsResponse?.data?.agents) {
+    if (
+      myAgentsResponse?.data?.agents &&
+      libraryAgentsResponse?.data &&
+      "agents" in libraryAgentsResponse.data
+    ) {
       const agentMap = createAgentInfoMap(myAgentsResponse.data.agents);
+
+      // Add library agent ID mapping
+      libraryAgentsResponse.data.agents.forEach(
+        (libraryAgent: LibraryAgent) => {
+          const existingInfo = agentMap.get(libraryAgent.graph_id);
+          if (existingInfo) {
+            agentMap.set(libraryAgent.graph_id, {
+              ...existingInfo,
+              library_agent_id: libraryAgent.id,
+            });
+          }
+        },
+      );
+
       setAgentInfoMap(agentMap);
     }
-  }, [myAgentsResponse]);
+  }, [myAgentsResponse, libraryAgentsResponse]);
 
   // Handle real-time execution updates
   const handleExecutionEvent = useCallback(
@@ -121,7 +158,7 @@ export function useAgentNotifications() {
   return {
     ...notifications,
     isConnected,
-    isLoading: isAgentsLoading || isExecutionsLoading,
-    error: agentsError || executionsError,
+    isLoading: isAgentsLoading || isExecutionsLoading || isLibraryAgentsLoading,
+    error: agentsError || executionsError || libraryAgentsError,
   };
 }

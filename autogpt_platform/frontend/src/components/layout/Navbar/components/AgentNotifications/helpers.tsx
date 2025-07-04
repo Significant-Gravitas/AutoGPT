@@ -91,6 +91,7 @@ export function formatNotificationCount(count: number): string {
 export interface AgentExecutionWithInfo extends GeneratedGraphExecutionMeta {
   agent_name: string;
   agent_description: string;
+  library_agent_id?: string;
 }
 
 export interface NotificationState {
@@ -102,13 +103,20 @@ export interface NotificationState {
 
 export function createAgentInfoMap(
   agents: MyAgent[],
-): Map<string, { name: string; description: string }> {
-  const agentMap = new Map<string, { name: string; description: string }>();
+): Map<
+  string,
+  { name: string; description: string; library_agent_id?: string }
+> {
+  const agentMap = new Map<
+    string,
+    { name: string; description: string; library_agent_id?: string }
+  >();
 
   agents.forEach((agent) => {
     agentMap.set(agent.agent_id, {
       name: agent.agent_name,
       description: agent.description,
+      library_agent_id: undefined, // MyAgent doesn't have library_agent_id
     });
   });
 
@@ -140,13 +148,17 @@ export function convertLegacyExecutionToGenerated(
 
 export function enrichExecutionWithAgentInfo(
   execution: GeneratedGraphExecutionMeta,
-  agentInfoMap: Map<string, { name: string; description: string }>,
+  agentInfoMap: Map<
+    string,
+    { name: string; description: string; library_agent_id?: string }
+  >,
 ): AgentExecutionWithInfo {
   const agentInfo = agentInfoMap.get(execution.graph_id);
   return {
     ...execution,
     agent_name: agentInfo?.name || `Graph ${execution.graph_id.slice(0, 8)}...`,
     agent_description: agentInfo?.description ?? "",
+    library_agent_id: agentInfo?.library_agent_id,
   };
 }
 
@@ -196,7 +208,10 @@ export function isRecentNotification(
 
 export function categorizeExecutions(
   executions: GeneratedGraphExecutionMeta[],
-  agentInfoMap: Map<string, { name: string; description: string }>,
+  agentInfoMap: Map<
+    string,
+    { name: string; description: string; library_agent_id?: string }
+  >,
 ): NotificationState {
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
@@ -301,7 +316,10 @@ export function calculateTotalCount(
 export function handleExecutionUpdate(
   currentState: NotificationState,
   execution: GraphExecution,
-  agentInfoMap: Map<string, { name: string; description: string }>,
+  agentInfoMap: Map<
+    string,
+    { name: string; description: string; library_agent_id?: string }
+  >,
 ): NotificationState {
   // Convert and enrich the execution
   const convertedExecution = convertLegacyExecutionToGenerated(execution);

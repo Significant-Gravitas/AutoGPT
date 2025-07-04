@@ -14,6 +14,7 @@ import {
   getExecutionDuration,
   getStatusColorClass,
 } from "../helpers";
+import { useRouter } from "next/navigation";
 
 interface NotificationItemProps {
   execution: AgentExecutionWithInfo;
@@ -21,6 +22,8 @@ interface NotificationItemProps {
 }
 
 export function NotificationItem({ execution, type }: NotificationItemProps) {
+  const router = useRouter();
+
   function getStatusIcon() {
     switch (type) {
       case "running":
@@ -61,7 +64,14 @@ export function NotificationItem({ execution, type }: NotificationItemProps) {
   }
 
   return (
-    <div className="cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors hover:bg-gray-50">
+    <div
+      className="cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors hover:bg-gray-50"
+      onClick={() => {
+        const agentId = execution.library_agent_id || execution.graph_id;
+        router.push(`/library/agents/${agentId}?executionId=${execution.id}`);
+      }}
+      role="button"
+    >
       {/* Icon + Agent Name */}
       <div className="flex items-center space-x-3">
         {getStatusIcon()}

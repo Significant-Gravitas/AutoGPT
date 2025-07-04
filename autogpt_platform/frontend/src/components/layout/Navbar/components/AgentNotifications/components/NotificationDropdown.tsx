@@ -2,6 +2,7 @@
 
 import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
 import { Text } from "@/components/atoms/Text/Text";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Bell } from "@phosphor-icons/react";
 import { AgentExecutionWithInfo } from "../helpers";
 import { NotificationItem } from "./NotificationItem";
@@ -58,7 +59,7 @@ export function NotificationDropdown({
       </div>
 
       {/* Content */}
-      <div className="max-h-96 overflow-y-auto">
+      <ScrollArea className="h-96">
         {sortedExecutions.length > 0 ? (
           <div className="p-2">
             {sortedExecutions.map((execution) => (
@@ -75,7 +76,7 @@ export function NotificationDropdown({
             <p>No recent activity</p>
           </div>
         )}
-      </div>
+      </ScrollArea>
     </div>
   );
 }

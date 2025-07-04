@@ -10,22 +10,25 @@ import { LaunchDarklyProvider } from "@/components/feature-flag/feature-flag-pro
 import OnboardingProvider from "@/components/onboarding/onboarding-provider";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { getQueryClient } from "@/lib/react-query/queryClient";
+import { NuqsAdapter } from "nuqs/adapters/next/app";
 
 export function Providers({ children, ...props }: ThemeProviderProps) {
   const queryClient = getQueryClient();
   return (
     <QueryClientProvider client={queryClient}>
-      <NextThemesProvider {...props}>
-        <BackendAPIProvider>
-          <CredentialsProvider>
-            <LaunchDarklyProvider>
-              <OnboardingProvider>
-                <TooltipProvider>{children}</TooltipProvider>
-              </OnboardingProvider>
-            </LaunchDarklyProvider>
-          </CredentialsProvider>
-        </BackendAPIProvider>
-      </NextThemesProvider>
+      <NuqsAdapter>
+        <NextThemesProvider {...props}>
+          <BackendAPIProvider>
+            <CredentialsProvider>
+              <LaunchDarklyProvider>
+                <OnboardingProvider>
+                  <TooltipProvider>{children}</TooltipProvider>
+                </OnboardingProvider>
+              </LaunchDarklyProvider>
+            </CredentialsProvider>
+          </BackendAPIProvider>
+        </NextThemesProvider>
+      </NuqsAdapter>
     </QueryClientProvider>
   );
 }

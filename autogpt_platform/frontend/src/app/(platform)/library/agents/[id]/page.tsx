@@ -1,5 +1,6 @@
 "use client";
 import { useParams, useRouter } from "next/navigation";
+import { useQueryState } from "nuqs";
 import React, {
   useCallback,
   useEffect,
@@ -45,6 +46,7 @@ import { useToast } from "@/components/ui/use-toast";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
+  const [executionId, setExecutionId] = useQueryState("executionId");
   const { toast } = useToast();
   const router = useRouter();
   const api = useBackendAPI();
@@ -201,6 +203,15 @@ export default function AgentRunsPage(): React.ReactElement {
     selectRun,
     selectPreset,
   ]);
+
+  // Check for execution ID in URL search params and select that run
+  useEffect(() => {
+    if (executionId) {
+      selectRun(executionId as GraphExecutionID);
+      // Clean up the URL parameter after selecting the run
+      setExecutionId(null);
+    }
+  }, [executionId, selectRun, setExecutionId]);
 
   // Initial load
   useEffect(() => {
