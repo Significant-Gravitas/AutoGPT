@@ -9,6 +9,16 @@ async function globalSetup(config: FullConfig) {
   console.log("🚀 Starting global test setup...");
 
   try {
+    // Detect current browser from environment or config
+    const currentProject = process.env.CI
+      ? process.argv.find((arg) => arg.includes("--project="))?.split("=")[1] ||
+        "chromium"
+      : "chromium";
+
+    // Set browser type for user creation
+    process.env.BROWSER_TYPE = currentProject;
+    console.log(`🌐 Using browser for user creation: ${currentProject}`);
+
     // Check if user pool already exists
     const existingUserPool = await loadUserPool();
 
