@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       cache-key: ${{ steps.cache-key.outputs.key }}
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -115,7 +115,7 @@ jobs:
     needs: setup
     # Only run on dev branch pushes or PRs targeting dev
     if: github.ref == 'refs/heads/dev' || github.base_ref == 'dev'
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -212,6 +212,8 @@ jobs:
 
       - name: Run Playwright tests
         run: pnpm test:no-build --project=${{ matrix.browser }}
+        env:
+          BROWSER_TYPE: ${{ matrix.browser }}
 
       - name: Print Final Docker Compose logs
         if: always()
