@@ -197,9 +197,10 @@ function useToastOnFail() {
   return React.useCallback(
     (action: string, { rethrow = false }: ToastOnFailOptions = {}) =>
       (error: any) => {
+        const err = error as Error;
         toast({
           title: `Unable to ${action}`,
-          description: (error as Error)?.message ?? "Something went wrong",
+          description: err.message ?? "Something went wrong",
           variant: "destructive",
           duration: 10000,
         });
@@ -211,4 +212,4 @@ function useToastOnFail() {
   );
 }
 
-export { useToast, toast, useToastOnFail };
+export { toast, useToast, useToastOnFail };
