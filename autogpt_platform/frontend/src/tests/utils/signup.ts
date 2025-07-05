@@ -18,8 +18,6 @@ export async function signupTestUser(
   const userEmail = email || faker.internet.email();
   const userPassword = password || faker.internet.password({ length: 12 });
 
-  console.log(`👤 Creating test user via signup: ${userEmail}`);
-
   try {
     // Navigate to signup page
     await page.goto("http://localhost:3000/signup");
@@ -34,17 +32,12 @@ export async function signupTestUser(
     await passwordInputs.nth(0).fill(userPassword);
     await passwordInputs.nth(1).fill(userPassword);
 
-    // Agree to terms
-    console.log("✅ Agreeing to terms...");
+    // Agree to terms and submit
     await page.getByRole("checkbox").click();
-
-    // Submit the form
-    console.log("🚀 Submitting signup form...");
     const signupButton = page.getByRole("button", { name: "Sign up" });
     await signupButton.click();
 
     // Wait for successful signup - could redirect to onboarding or marketplace
-    console.log("⏳ Waiting for redirect after signup...");
 
     try {
       // Wait for either onboarding or marketplace redirect
@@ -61,19 +54,11 @@ export async function signupTestUser(
     }
 
     const currentUrl = page.url();
-    console.log(`✅ User signup successful, redirected to: ${currentUrl}`);
 
     // Handle onboarding or marketplace redirect
-    if (currentUrl.includes("/onboarding")) {
-      console.log("📋 Landed on onboarding page");
-
-      if (ignoreOnboarding) {
-        console.log("🛒 Skipping onboarding, navigating to marketplace...");
-        await page.goto("http://localhost:3000/marketplace");
-        await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
-      }
-    } else if (currentUrl.includes("/marketplace")) {
-      console.log("🛒 Landed directly on marketplace (onboarding skipped)");
+    if (currentUrl.includes("/onboarding") && ignoreOnboarding) {
+      await page.goto("http://localhost:3000/marketplace");
+      await page.waitForLoadState("domcontentloaded", { timeout: 10000 });
     }
 
     // Verify we're on the expected final page
@@ -89,8 +74,6 @@ export async function signupTestUser(
       await page
         .getByTestId("profile-popout-menu-trigger")
         .waitFor({ state: "visible", timeout: 10000 });
-
-      console.log("✅ Successfully authenticated and on marketplace");
     }
 
     const testUser: TestUser = {
@@ -99,7 +82,6 @@ export async function signupTestUser(
       createdAt: new Date().toISOString(),
     };
 
-    console.log(`✅ Successfully created test user: ${userEmail}`);
     return testUser;
   } catch (error) {
     console.error(`❌ Error creating test user ${userEmail}:`, error);

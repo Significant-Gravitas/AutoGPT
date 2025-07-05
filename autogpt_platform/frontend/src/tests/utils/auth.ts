@@ -35,11 +35,8 @@ export async function createTestUser(
   const userEmail = email || faker.internet.email();
   const userPassword = password || faker.internet.password({ length: 12 });
 
-  console.log(`👤 Creating test user: ${userEmail}`);
-
   try {
     const browserType = process.env.BROWSER_TYPE || "chromium";
-    console.log(`🌐 Using browser: ${browserType}`);
 
     const browser =
       browserType === "webkit"
@@ -105,12 +102,9 @@ export async function saveUserPool(
   const defaultPath = path.resolve(process.cwd(), ".auth", "user-pool.json");
   const finalPath = filePath || defaultPath;
 
-  console.log(`💾 Saving ${users.length} users to: ${finalPath}`);
-
-  // Ensure directory exists
+  // Ensure .auth directory exists
   const dirPath = path.dirname(finalPath);
   if (!fs.existsSync(dirPath)) {
-    console.log(`📁 Creating directory: ${dirPath}`);
     fs.mkdirSync(dirPath, { recursive: true });
   }
 
