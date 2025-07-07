@@ -14,7 +14,6 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
-  CredentialsProviderName,
 } from "@/lib/autogpt-server-api/types";
 import { cn } from "@/lib/utils";
 import { getHostFromUrl } from "@/lib/utils/url";
