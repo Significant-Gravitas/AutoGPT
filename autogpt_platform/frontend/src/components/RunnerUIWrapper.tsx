@@ -4,33 +4,14 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import RunnerOutputUI, { BlockOutput } from "./runner-ui/RunnerOutputUI";
-import RunnerInputUI from "./runner-ui/RunnerInputUI";
+import RunnerOutputUI, { OutputNodeInfo } from "./runner-ui/RunnerOutputUI";
+import { RunnerInputDialog, InputNodeInfo } from "./runner-ui/RunnerInputUI";
 import { Node } from "@xyflow/react";
-import { filterBlocksByType } from "@/lib/utils";
-import {
-  BlockIOObjectSubSchema,
-  BlockIORootSchema,
-  BlockUIType,
-} from "@/lib/autogpt-server-api/types";
-import { CustomNode } from "./CustomNode";
-
-interface HardcodedValues {
-  name: any;
-  description: any;
-  value: any;
-  placeholder_values: any;
-}
-
-export interface InputItem {
-  id: string;
-  type: "input";
-  inputSchema: BlockIORootSchema;
-  hardcodedValues: HardcodedValues;
-}
+import { BlockIORootSchema, BlockUIType } from "@/lib/autogpt-server-api/types";
+import { CustomNode, CustomNodeData } from "./CustomNode";
 
 interface RunnerUIWrapperProps {
-  nodes: Node[];
+  nodes: Node<CustomNodeData>[];
   setNodes: React.Dispatch<React.SetStateAction<CustomNode[]>>;
   setIsScheduling: React.Dispatch<React.SetStateAction<boolean>>;
   isRunning: boolean;
@@ -38,8 +19,8 @@ interface RunnerUIWrapperProps {
   requestSaveAndRun: () => void;
   scheduleRunner: (
     cronExpression: string,
-    input: InputItem[],
     scheduleName: string,
+    input: Record<string, any>,
   ) => Promise<void>;
 }
 
@@ -72,51 +53,48 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
     const [cronExpression, setCronExpression] = useState("");
     const [scheduleName, setScheduleName] = useState("");
 
-    const getBlockInputsAndOutputs = useCallback((): {
-      inputs: InputItem[];
-      outputs: BlockOutput[];
+    const getGraphInputsAndOutputs = useCallback((): {
+      inputs: InputNodeInfo[];
+      outputs: OutputNodeInfo[];
     } => {
-      const inputBlocks = filterBlocksByType(
-        nodes,
+      const inputNodes = nodes.filter(
         (node) => node.data.uiType === BlockUIType.INPUT,
       );
 
-      const outputBlocks = filterBlocksByType(
-        nodes,
+      const outputNodes = nodes.filter(
         (node) => node.data.uiType === BlockUIType.OUTPUT,
       );
 
-      const inputs = inputBlocks.map(
+      const inputs = inputNodes.map(
         (node) =>
           ({
             id: node.id,
-            type: "input" as const,
-            inputSchema: (node.data.inputSchema as BlockIOObjectSubSchema)
-              .properties.value as BlockIORootSchema,
-            hardcodedValues: {
-              name: (node.data.hardcodedValues as any).name || "",
-              description: (node.data.hardcodedValues as any).description || "",
-              value: (node.data.hardcodedValues as any).value,
-              placeholder_values:
-                (node.data.hardcodedValues as any).placeholder_values || [],
+            inputSchema: node.data.inputSchema.properties
+              .value as BlockIORootSchema,
+            inputConfig: {
+              name: node.data.hardcodedValues.name || "",
+              description: node.data.hardcodedValues.description || "",
+              defaultValue: node.data.hardcodedValues.value,
+              placeholderValues:
+                node.data.hardcodedValues.placeholder_values || [],
             },
-          }) satisfies InputItem,
+          }) satisfies InputNodeInfo,
       );
 
-      const outputs = outputBlocks.map(
+      const outputs = outputNodes.map(
         (node) =>
           ({
             metadata: {
-              name: (node.data.hardcodedValues as any).name || "Output",
+              name: node.data.hardcodedValues.name || "Output",
               description:
-                (node.data.hardcodedValues as any).description ||
+                node.data.hardcodedValues.description ||
                 "Output from the agent",
             },
             result:
               (node.data.executionResults as any)
                 ?.map((result: any) => result?.data?.output)
                 .join("\n--\n") || "No output yet",
-          }) satisfies BlockOutput,
+          }) satisfies OutputNodeInfo,
       );
 
       return { inputs, outputs };
@@ -132,7 +110,7 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
                 data: {
                   ...node.data,
                   hardcodedValues: {
-                    ...(node.data.hardcodedValues as any),
+                    ...node.data.hardcodedValues,
                     [field]: value,
                   },
                 },
@@ -149,7 +127,7 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
     const openRunnerOutput = () => setIsRunnerOutputOpen(true);
 
     const runOrOpenInput = () => {
-      const { inputs } = getBlockInputsAndOutputs();
+      const { inputs } = getGraphInputsAndOutputs();
       if (inputs.length > 0) {
         openRunnerInput();
       } else {
@@ -161,7 +139,7 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
       cronExpression: string,
       scheduleName: string,
     ) => {
-      const { inputs } = getBlockInputsAndOutputs();
+      const { inputs } = getGraphInputsAndOutputs();
       setCronExpression(cronExpression);
       setScheduleName(scheduleName);
 
@@ -169,7 +147,7 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
         setScheduledInput(true);
         setIsRunnerInputOpen(true);
       } else {
-        scheduleRunner(cronExpression, [], scheduleName);
+        scheduleRunner(cronExpression, scheduleName, {});
       }
     };
 
@@ -182,12 +160,12 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
 
     return (
       <>
-        <RunnerInputUI
+        <RunnerInputDialog
           isOpen={isRunnerInputOpen}
-          onClose={() => setIsRunnerInputOpen(false)}
-          blockInputs={getBlockInputsAndOutputs().inputs}
+          doClose={() => setIsRunnerInputOpen(false)}
+          inputs={getGraphInputsAndOutputs().inputs}
           onInputChange={handleInputChange}
-          onRun={() => {
+          doRun={() => {
             setIsRunnerInputOpen(false);
             requestSaveAndRun();
           }}
@@ -197,8 +175,14 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
             setIsScheduling(true);
             await scheduleRunner(
               cronExpression,
-              getBlockInputsAndOutputs().inputs,
               scheduleName,
+              getGraphInputsAndOutputs().inputs.reduce(
+                (acc, input) => ({
+                  ...acc,
+                  [input.inputConfig.name]: input.inputConfig.defaultValue,
+                }),
+                {},
+              ),
             );
             setIsScheduling(false);
             setIsRunnerInputOpen(false);
@@ -208,8 +192,8 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
         />
         <RunnerOutputUI
           isOpen={isRunnerOutputOpen}
-          onClose={() => setIsRunnerOutputOpen(false)}
-          blockOutputs={getBlockInputsAndOutputs().outputs}
+          doClose={() => setIsRunnerOutputOpen(false)}
+          outputs={getGraphInputsAndOutputs().outputs}
         />
       </>
     );

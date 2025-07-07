@@ -1,7 +1,6 @@
 import { CustomEdge } from "@/components/CustomEdge";
 import { CustomNode } from "@/components/CustomNode";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
-import { InputItem } from "@/components/RunnerUIWrapper";
 import { useToast } from "@/components/ui/use-toast";
 import BackendAPI, {
   Block,
@@ -1068,8 +1067,8 @@ export default function useAgentGraph(
   const scheduleRunner = useCallback(
     async (
       cronExpression: string,
-      inputs: InputItem[],
       scheduleName: string,
+      inputs: Record<string, any>,
     ) => {
       await saveAgent();
       try {
@@ -1080,13 +1079,7 @@ export default function useAgentGraph(
             graph_version: flowVersion!,
             name: scheduleName,
             cron: cronExpression,
-            inputs: inputs.reduce(
-              (acc, input) => ({
-                ...acc,
-                [input.hardcodedValues.name]: input.hardcodedValues.value,
-              }),
-              {},
-            ),
+            inputs: inputs,
           });
           toast({
             title: "Agent scheduling successful",

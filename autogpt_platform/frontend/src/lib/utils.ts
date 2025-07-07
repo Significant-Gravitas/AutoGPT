@@ -227,13 +227,6 @@ export function getPrimaryCategoryColor(categories: Category[]): string {
   );
 }
 
-export function filterBlocksByType<T>(
-  blocks: T[],
-  predicate: (block: T) => boolean,
-): T[] {
-  return blocks.filter(predicate);
-}
-
 export enum BehaveAs {
   CLOUD = "CLOUD",
   LOCAL = "LOCAL",

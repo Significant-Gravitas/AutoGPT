@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import {
   GraphExecutionMeta,
   Graph,
@@ -25,7 +25,7 @@ import {
   TrashIcon,
 } from "@radix-ui/react-icons";
 import Link from "next/link";
-import { exportAsJSONFile, filterBlocksByType } from "@/lib/utils";
+import { exportAsJSONFile } from "@/lib/utils";
 import { FlowRunsStats } from "@/components/monitor/index";
 import {
   Dialog,
@@ -35,7 +35,10 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import RunnerInputUI from "@/components/runner-ui/RunnerInputUI";
+import {
+  RunnerInputDialog,
+  InputNodeInfo,
+} from "@/components/runner-ui/RunnerInputUI";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
@@ -66,44 +69,27 @@ export const FlowInfo: React.FC<
   const [isRunnerInputOpen, setIsRunnerInputOpen] = useState(false);
   const isDisabled = !selectedFlowVersion;
 
-  const getBlockInputsAndOutputs = useCallback(() => {
-    const inputBlocks = filterBlocksByType(
-      nodes,
+  const graphInputs = useMemo(() => {
+    const inputNodes = nodes.filter(
       (node) => node.data.uiType === BlockUIType.INPUT,
     );
 
-    const outputBlocks = filterBlocksByType(
-      nodes,
-      (node) => node.data.uiType === BlockUIType.OUTPUT,
+    const inputs = inputNodes.map(
+      (node) =>
+        ({
+          id: node.id,
+          inputSchema: node.data.inputSchema as BlockIORootSchema,
+          inputConfig: {
+            name: node.data.hardcodedValues.name || "",
+            description: node.data.hardcodedValues.description || "",
+            defaultValue: node.data.hardcodedValues.value,
+            placeholderValues:
+              node.data.hardcodedValues.placeholder_values || [],
+          },
+        }) satisfies InputNodeInfo,
     );
 
-    const inputs = inputBlocks.map((node) => ({
-      id: node.id,
-      type: "input" as const,
-      inputSchema: node.data.inputSchema as BlockIORootSchema,
-      hardcodedValues: {
-        name: (node.data.hardcodedValues as any).name || "",
-        description: (node.data.hardcodedValues as any).description || "",
-        value: (node.data.hardcodedValues as any).value,
-        placeholder_values:
-          (node.data.hardcodedValues as any).placeholder_values || [],
-      },
-    }));
-
-    const outputs = outputBlocks.map((node) => ({
-      id: node.id,
-      type: "output" as const,
-      hardcodedValues: {
-        name: (node.data.hardcodedValues as any).name || "Output",
-        description:
-          (node.data.hardcodedValues as any).description ||
-          "Output from the agent",
-        value: (node.data.hardcodedValues as any).value,
-      },
-      result: (node.data.executionResults as any)?.at(-1)?.data?.output,
-    }));
-
-    return { inputs, outputs };
+    return inputs;
   }, [nodes]);
 
   useEffect(() => {
@@ -115,8 +101,7 @@ export const FlowInfo: React.FC<
   const openRunnerInput = () => setIsRunnerInputOpen(true);
 
   const runOrOpenInput = () => {
-    const { inputs } = getBlockInputsAndOutputs();
-    if (inputs.length > 0) {
+    if (graphInputs.length > 0) {
       openRunnerInput();
     } else {
       requestSaveAndRun();
@@ -133,7 +118,7 @@ export const FlowInfo: React.FC<
               data: {
                 ...node.data,
                 hardcodedValues: {
-                  ...(node.data.hardcodedValues as any),
+                  ...node.data.hardcodedValues,
                   [field]: value,
                 },
               },
@@ -282,12 +267,12 @@ export const FlowInfo: React.FC<
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <RunnerInputUI
+      <RunnerInputDialog
         isOpen={isRunnerInputOpen}
-        onClose={() => setIsRunnerInputOpen(false)}
-        blockInputs={getBlockInputsAndOutputs().inputs}
+        doClose={() => setIsRunnerInputOpen(false)}
+        inputs={graphInputs}
         onInputChange={handleInputChange}
-        onRun={() => {
+        doRun={() => {
           setIsRunnerInputOpen(false);
           requestSaveAndRun();
         }}

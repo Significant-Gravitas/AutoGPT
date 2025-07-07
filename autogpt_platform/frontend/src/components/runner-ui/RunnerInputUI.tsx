@@ -11,52 +11,52 @@ import { Button } from "@/components/ui/button";
 import { BlockIORootSchema } from "@/lib/autogpt-server-api/types";
 import { InputList } from "./RunnerInputList";
 
-export interface BlockInput {
+export interface InputNodeInfo {
   id: string;
   inputSchema: BlockIORootSchema;
-  hardcodedValues: {
+  inputConfig: {
     name: string;
     description: string;
-    value: any;
-    placeholder_values?: any[];
+    defaultValue: any;
+    placeholderValues?: any[];
   };
 }
 
-interface RunSettingsUiProps {
+interface RunInputDialogProps {
   isOpen: boolean;
-  onClose: () => void;
-  blockInputs: BlockInput[];
+  doClose: () => void;
+  inputs: InputNodeInfo[];
   onInputChange: (nodeId: string, field: string, value: any) => void;
-  onRun: () => void;
+  doRun: () => void;
   onSchedule: () => Promise<void>;
   scheduledInput: boolean;
   isScheduling: boolean;
   isRunning: boolean;
 }
 
-export function RunnerInputUI({
+export function RunnerInputDialog({
   isOpen,
-  onClose,
-  blockInputs,
+  doClose,
+  inputs: inputNodes,
   isScheduling,
   onInputChange,
-  onRun,
+  doRun,
   onSchedule,
   scheduledInput,
   isRunning,
-}: RunSettingsUiProps) {
+}: RunInputDialogProps) {
   const handleRun = () => {
-    onRun();
-    onClose();
+    doRun();
+    doClose();
   };
 
   const handleSchedule = async () => {
-    onClose();
+    doClose();
     await onSchedule();
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={doClose}>
       <DialogContent className="flex flex-col px-10 py-8">
         <DialogHeader>
           <DialogTitle className="text-2xl">
@@ -67,7 +67,7 @@ export function RunnerInputUI({
           </DialogDescription>
         </DialogHeader>
         <div className="flex-grow overflow-y-auto">
-          <InputList blockInputs={blockInputs} onInputChange={onInputChange} />
+          <InputList inputNodes={inputNodes} onInputChange={onInputChange} />
         </div>
         <DialogFooter>
           <Button
@@ -83,5 +83,3 @@ export function RunnerInputUI({
     </Dialog>
   );
 }
-
-export default RunnerInputUI;
