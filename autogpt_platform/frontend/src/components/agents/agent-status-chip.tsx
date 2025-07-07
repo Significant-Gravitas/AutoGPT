@@ -34,7 +34,7 @@ export default function AgentStatusChip({
       variant="secondary"
       className={`text-xs font-medium ${statusStyles[statusData[status]?.variant]} rounded-[45px] px-[9px] py-[3px]`}
     >
-      {statusData[status].label}
+      {statusData[status]?.label}
     </Badge>
   );
 }

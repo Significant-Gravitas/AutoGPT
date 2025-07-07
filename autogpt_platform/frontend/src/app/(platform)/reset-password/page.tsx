@@ -18,24 +18,44 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import LoadingBox from "@/components/ui/loading";
+import { useToast } from "@/components/ui/use-toast";
 import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { getBehaveAs } from "@/lib/utils";
 import { changePasswordFormSchema, sendEmailFormSchema } from "@/types/auth";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useCallback, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { changePassword, sendResetEmail } from "./actions";
 
 export default function ResetPasswordPage() {
   const { supabase, user, isUserLoading } = useSupabase();
+  const { toast } = useToast();
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
   const [disabled, setDisabled] = useState(false);
   const [sendEmailCaptchaKey, setSendEmailCaptchaKey] = useState(0);
   const [changePasswordCaptchaKey, setChangePasswordCaptchaKey] = useState(0);
+
+  useEffect(() => {
+    const error = searchParams.get("error");
+    if (error) {
+      toast({
+        title: "Password Reset Failed",
+        description: error,
+        variant: "destructive",
+      });
+
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete("error");
+      router.replace(newUrl.pathname + newUrl.search);
+    }
+  }, [searchParams, toast, router]);
 
   const sendEmailTurnstile = useTurnstile({
     action: "reset_password",

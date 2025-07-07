@@ -170,7 +170,14 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         if not library_agent:
             raise NotFoundError(f"Library agent #{id} not found")
 
-        return library_model.LibraryAgent.from_db(library_agent)
+        return library_model.LibraryAgent.from_db(
+            library_agent,
+            sub_graphs=(
+                await graph_db.get_sub_graphs(library_agent.AgentGraph)
+                if library_agent.AgentGraph
+                else None
+            ),
+        )
 
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error fetching library agent: {e}")

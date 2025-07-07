@@ -22,6 +22,7 @@ from prisma.models import (
     AgentGraphExecution,
     AgentNodeExecution,
     AgentNodeExecutionInputOutput,
+    AgentNodeExecutionKeyValueData,
 )
 from prisma.types import (
     AgentGraphExecutionCreateInput,
@@ -29,6 +30,7 @@ from prisma.types import (
     AgentGraphExecutionWhereInput,
     AgentNodeExecutionCreateInput,
     AgentNodeExecutionInputOutputCreateInput,
+    AgentNodeExecutionKeyValueDataCreateInput,
     AgentNodeExecutionUpdateInput,
     AgentNodeExecutionWhereInput,
 )
@@ -907,3 +909,57 @@ class AsyncRedisExecutionEventBus(AsyncRedisEventBus[ExecutionEvent]):
     ) -> AsyncGenerator[ExecutionEvent, None]:
         async for event in self.listen_events(f"{user_id}/{graph_id}/{graph_exec_id}"):
             yield event
+
+
+# --------------------- KV Data Functions --------------------- #
+
+
+async def get_execution_kv_data(user_id: str, key: str) -> Any | None:
+    """
+    Get key-value data for a user and key.
+
+    Args:
+        user_id: The id of the User.
+        key: The key to retrieve data for.
+
+    Returns:
+        The data associated with the key, or None if not found.
+    """
+    kv_data = await AgentNodeExecutionKeyValueData.prisma().find_unique(
+        where={"userId_key": {"userId": user_id, "key": key}}
+    )
+    return (
+        type_utils.convert(kv_data.data, type[Any])
+        if kv_data and kv_data.data
+        else None
+    )
+
+
+async def set_execution_kv_data(
+    user_id: str, node_exec_id: str, key: str, data: Any
+) -> Any | None:
+    """
+    Set key-value data for a user and key.
+
+    Args:
+        user_id: The id of the User.
+        node_exec_id: The id of the AgentNodeExecution.
+        key: The key to store data under.
+        data: The data to store.
+    """
+    resp = await AgentNodeExecutionKeyValueData.prisma().upsert(
+        where={"userId_key": {"userId": user_id, "key": key}},
+        data={
+            "create": AgentNodeExecutionKeyValueDataCreateInput(
+                userId=user_id,
+                agentNodeExecutionId=node_exec_id,
+                key=key,
+                data=Json(data) if data is not None else None,
+            ),
+            "update": {
+                "agentNodeExecutionId": node_exec_id,
+                "data": Json(data) if data is not None else None,
+            },
+        },
+    )
+    return type_utils.convert(resp.data, type[Any]) if resp and resp.data else None

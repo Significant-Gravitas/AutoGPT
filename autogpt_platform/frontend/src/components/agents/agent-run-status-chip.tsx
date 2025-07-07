@@ -17,6 +17,7 @@ export const agentRunStatusMap: Record<
   GraphExecutionMeta["status"],
   AgentRunStatus
 > = {
+  INCOMPLETE: "draft",
   COMPLETED: "success",
   FAILED: "failed",
   QUEUED: "queued",

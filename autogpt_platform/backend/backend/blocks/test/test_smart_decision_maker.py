@@ -161,7 +161,7 @@ async def test_smart_decision_maker_function_signature(server: SpinTestServer):
     )
     test_graph = await create_graph(server, test_graph, test_user)
 
-    tool_functions = SmartDecisionMakerBlock._create_function_signature(
+    tool_functions = await SmartDecisionMakerBlock._create_function_signature(
         test_graph.nodes[0].id
     )
     assert tool_functions is not None, "Tool functions should not be None"

@@ -285,7 +285,13 @@ export type GraphExecutionMeta = {
   graph_id: GraphID;
   graph_version: number;
   preset_id?: LibraryAgentPresetID;
-  status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
+  status:
+    | "QUEUED"
+    | "RUNNING"
+    | "COMPLETED"
+    | "TERMINATED"
+    | "FAILED"
+    | "INCOMPLETE";
   started_at: Date;
   ended_at: Date;
   stats?: {
