@@ -1,11 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search } from "lucide-react";
-import { CreditTransactionType } from "@/lib/autogpt-server-api";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -13,8 +9,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CreditTransactionType } from "@/lib/autogpt-server-api";
+import { Search } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 
-export function SearchAndFilterAdminSpending({
+function SearchAndFilterAdminSpendingContent({
   initialSearch,
 }: {
   initialStatus?: CreditTransactionType;
@@ -100,5 +100,22 @@ export function SearchAndFilterAdminSpending({
         </SelectContent>
       </Select>
     </div>
+  );
+}
+
+export function SearchAndFilterAdminSpending({
+  initialSearch,
+}: {
+  initialStatus?: CreditTransactionType;
+  initialSearch?: string;
+}) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center">Loading...</div>
+      }
+    >
+      <SearchAndFilterAdminSpendingContent initialSearch={initialSearch} />
+    </Suspense>
   );
 }
