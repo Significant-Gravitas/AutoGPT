@@ -1,7 +1,6 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   CredentialsMetaInput,
   GraphExecutionID,
@@ -11,21 +10,21 @@ import {
   LibraryAgentPresetUpdatable,
   Schedule,
 } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
+import ActionButtonGroup from "@/components/agptui/action-button-group";
 import type { ButtonAction } from "@/components/agptui/types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
-import { CalendarClockIcon, Trash2Icon } from "lucide-react";
 import { CronSchedulerDialog } from "@/components/cron-scheduler-dialog";
 import { CredentialsInput } from "@/components/integrations/credentials-input";
-import { TypeBasedInput } from "@/components/type-based-input";
-import { useToastOnFail } from "@/components/ui/use-toast";
-import ActionButtonGroup from "@/components/agptui/action-button-group";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import SchemaTooltip from "@/components/SchemaTooltip";
-import { useToast } from "@/components/ui/use-toast";
-import { isEmpty } from "lodash";
+import { TypeBasedInput } from "@/components/type-based-input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
+import { useToast, useToastOnFail } from "@/components/ui/use-toast";
+import { isEmpty } from "lodash";
+import { CalendarClockIcon, Trash2Icon } from "lucide-react";
 
 export default function AgentRunDraftView({
   agent,
@@ -98,7 +97,7 @@ export default function AgentRunDraftView({
     [agentInputSchema],
   );
   const agentCredentialsInputFields = useMemo(
-    () => agent.credentials_input_schema.properties,
+    () => agent.credentials_input_schema?.properties,
     [agent],
   );
 
