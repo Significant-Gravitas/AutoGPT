@@ -325,10 +325,6 @@ class ReplicateAsyncModelBlock(Block):
         # Start the prediction
         prediction = client.run(model_ref, input=model_inputs)
 
-        # For synchronous models, just return the result immediately
-        # For async models, we would need to implement proper polling
-        # For now, we'll assume the model completes quickly
-
         # Get the result
         result = prediction
         if hasattr(prediction, "__iter__") and not isinstance(
