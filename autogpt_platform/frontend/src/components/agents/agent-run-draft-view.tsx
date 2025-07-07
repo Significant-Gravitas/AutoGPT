@@ -110,7 +110,14 @@ export default function AgentRunDraftView({
 
   const [allRequiredInputsAreSet, missingInputs] = useMemo(() => {
     const nonEmptyInputs = new Set(
-      Object.keys(inputValues).filter((k) => !isEmpty(inputValues[k])),
+      Object.keys(inputValues).filter((k) => {
+        const value = inputValues[k];
+        return (
+          value !== undefined &&
+          value !== "" &&
+          (typeof value !== "object" || !isEmpty(value))
+        );
+      }),
     );
     const requiredInputs = new Set(
       agentInputSchema.required as string[] | undefined,

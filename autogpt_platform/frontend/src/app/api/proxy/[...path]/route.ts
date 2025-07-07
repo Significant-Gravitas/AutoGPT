@@ -23,7 +23,16 @@ async function handleJsonRequest(
   method: string,
   backendUrl: string,
 ): Promise<any> {
-  const payload = await req.json();
+  let payload;
+
+  try {
+    payload = await req.json();
+  } catch (error) {
+    // Handle cases where request body is empty, invalid JSON, or already consumed
+    console.warn("Failed to parse JSON from request body:", error);
+    payload = null;
+  }
+
   return await makeAuthenticatedRequest(
     method,
     backendUrl,
