@@ -83,6 +83,7 @@ export default function SignupPage() {
               name="email"
               render={({ field }) => (
                 <Input
+                  id={field.name}
                   label="Email"
                   placeholder="m@example.com"
                   type="email"
@@ -95,22 +96,27 @@ export default function SignupPage() {
             <FormField
               control={form.control}
               name="password"
-              render={({ field }) => (
-                <Input
-                  label="Password"
-                  placeholder="•••••••••••••••••••••"
-                  type="password"
-                  autoComplete="new-password"
-                  error={form.formState.errors.password?.message}
-                  {...field}
-                />
-              )}
+              render={({ field }) => {
+                console.log(field);
+                return (
+                  <Input
+                    id={field.name}
+                    label="Password"
+                    placeholder="•••••••••••••••••••••"
+                    type="password"
+                    autoComplete="new-password"
+                    error={form.formState.errors.password?.message}
+                    {...field}
+                  />
+                );
+              }}
             />
             <FormField
               control={form.control}
               name="confirmPassword"
               render={({ field }) => (
                 <Input
+                  id={field.name}
                   label="Confirm Password"
                   placeholder="•••••••••••••••••••••"
                   type="password"
@@ -120,7 +126,6 @@ export default function SignupPage() {
                 />
               )}
             />
-
             <FormField
               control={form.control}
               name="agreeToTerms"

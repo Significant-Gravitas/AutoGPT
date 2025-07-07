@@ -6,6 +6,7 @@ import { useInput } from "./useInput";
 
 export interface TextFieldProps extends InputProps {
   label: string;
+  id: string;
   hideLabel?: boolean;
   decimalCount?: number; // Only used for type="amount"
   error?: string;
@@ -66,7 +67,7 @@ export function Input({
   return hideLabel ? (
     inputWithError
   ) : (
-    <label className="flex flex-col gap-2">
+    <label htmlFor={props.id} className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <Text variant="body-medium" as="span" className="text-black">
           {label}

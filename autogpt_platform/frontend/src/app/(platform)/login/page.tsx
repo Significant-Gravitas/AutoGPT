@@ -69,6 +69,7 @@ export default function LoginPage() {
               name="email"
               render={({ field }) => (
                 <Input
+                  id={field.name}
                   label="Email"
                   placeholder="m@example.com"
                   type="email"
@@ -84,6 +85,7 @@ export default function LoginPage() {
               name="password"
               render={({ field }) => (
                 <Input
+                  id={field.name}
                   label="Password"
                   placeholder="•••••••••••••••••••••"
                   type="password"

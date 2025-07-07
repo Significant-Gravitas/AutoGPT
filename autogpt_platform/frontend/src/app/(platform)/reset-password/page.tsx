@@ -197,6 +197,7 @@ function ResetPasswordContent() {
                 name="password"
                 render={({ field }) => (
                   <Input
+                    id={field.name}
                     label="Password"
                     type="password"
                     placeholder="••••••••••••••••"
@@ -212,6 +213,7 @@ function ResetPasswordContent() {
                 name="confirmPassword"
                 render={({ field }) => (
                   <Input
+                    id={field.name}
                     label="Confirm Password"
                     type="password"
                     placeholder="••••••••••••••••"
@@ -258,6 +260,7 @@ function ResetPasswordContent() {
                 name="email"
                 render={({ field }) => (
                   <Input
+                    id={field.name}
                     label="Email"
                     placeholder="m@example.com"
                     type="email"
