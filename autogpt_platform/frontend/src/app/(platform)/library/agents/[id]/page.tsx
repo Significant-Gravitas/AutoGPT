@@ -1,4 +1,6 @@
 "use client";
+import { useParams, useRouter } from "next/navigation";
+import { useQueryState } from "nuqs";
 import React, {
   useCallback,
   useEffect,
@@ -6,31 +8,31 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { useParams, useRouter } from "next/navigation";
 
-import { exportAsJSONFile } from "@/lib/utils";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
+  Graph,
   GraphExecution,
   GraphExecutionID,
   GraphExecutionMeta,
-  Graph,
   GraphID,
   LibraryAgent,
   LibraryAgentID,
-  Schedule,
-  ScheduleID,
   LibraryAgentPreset,
   LibraryAgentPresetID,
+  Schedule,
+  ScheduleID,
 } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { exportAsJSONFile } from "@/lib/utils";
 
-import type { ButtonAction } from "@/components/agptui/types";
-import DeleteConfirmDialog from "@/components/agptui/delete-confirm-dialog";
-import AgentRunDraftView from "@/components/agents/agent-run-draft-view";
 import AgentRunDetailsView from "@/components/agents/agent-run-details-view";
+import AgentRunDraftView from "@/components/agents/agent-run-draft-view";
 import AgentRunsSelectorList from "@/components/agents/agent-runs-selector-list";
 import AgentScheduleDetailsView from "@/components/agents/agent-schedule-details-view";
+import DeleteConfirmDialog from "@/components/agptui/delete-confirm-dialog";
+import type { ButtonAction } from "@/components/agptui/types";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -39,12 +41,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { useToast } from "@/components/ui/use-toast";
 import LoadingBox, { LoadingSpinner } from "@/components/ui/loading";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
+  const [executionId, setExecutionId] = useQueryState("executionId");
   const { toast } = useToast();
   const router = useRouter();
   const api = useBackendAPI();
@@ -201,6 +203,15 @@ export default function AgentRunsPage(): React.ReactElement {
     selectRun,
     selectPreset,
   ]);
+
+  // Check for execution ID in URL search params and select that run
+  useEffect(() => {
+    if (executionId) {
+      selectRun(executionId as GraphExecutionID);
+      // Clean up the URL parameter after selecting the run
+      setExecutionId(null);
+    }
+  }, [executionId, selectRun, setExecutionId]);
 
   // Initial load
   useEffect(() => {
@@ -465,7 +476,7 @@ export default function AgentRunsPage(): React.ReactElement {
   }
 
   return (
-    <div className="container justify-stretch p-0 lg:flex">
+    <div className="container justify-stretch p-0 pt-16 lg:flex">
       {/* Sidebar w/ list of runs */}
       {/* TODO: render this below header in sm and md layouts */}
       <AgentRunsSelectorList

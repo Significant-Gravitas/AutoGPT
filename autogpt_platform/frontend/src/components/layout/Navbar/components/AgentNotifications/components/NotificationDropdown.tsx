@@ -1,0 +1,82 @@
+"use client";
+
+import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecutionStatus";
+import { Text } from "@/components/atoms/Text/Text";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Bell } from "@phosphor-icons/react";
+import { AgentExecutionWithInfo } from "../helpers";
+import { NotificationItem } from "./NotificationItem";
+
+interface NotificationDropdownProps {
+  activeExecutions: AgentExecutionWithInfo[];
+  recentCompletions: AgentExecutionWithInfo[];
+  recentFailures: AgentExecutionWithInfo[];
+}
+
+export function NotificationDropdown({
+  activeExecutions,
+  recentCompletions,
+  recentFailures,
+}: NotificationDropdownProps) {
+  // Combine and sort all executions - running/queued at top, then by most recent
+  function getSortedExecutions() {
+    const allExecutions = [
+      ...activeExecutions.map((e) => ({ ...e, type: "running" as const })),
+      ...recentCompletions.map((e) => ({ ...e, type: "completed" as const })),
+      ...recentFailures.map((e) => ({ ...e, type: "failed" as const })),
+    ];
+
+    return allExecutions.sort((a, b) => {
+      // Running/queued always at top
+      const aIsActive =
+        a.status === AgentExecutionStatus.RUNNING ||
+        a.status === AgentExecutionStatus.QUEUED;
+      const bIsActive =
+        b.status === AgentExecutionStatus.RUNNING ||
+        b.status === AgentExecutionStatus.QUEUED;
+
+      if (aIsActive && !bIsActive) return -1;
+      if (!aIsActive && bIsActive) return 1;
+
+      // Within same category, sort by most recent
+      const aTime = aIsActive ? a.started_at : a.ended_at;
+      const bTime = bIsActive ? b.started_at : b.ended_at;
+
+      if (!aTime || !bTime) return 0;
+      return new Date(bTime).getTime() - new Date(aTime).getTime();
+    });
+  }
+
+  const sortedExecutions = getSortedExecutions();
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="sticky top-0 z-10 px-4 pb-1 pt-4">
+        <Text variant="body-medium" className="font-semibold text-gray-900">
+          Agent Activity
+        </Text>
+      </div>
+
+      {/* Content */}
+      <ScrollArea className="min-h-[10rem]">
+        {sortedExecutions.length > 0 ? (
+          <div className="p-2">
+            {sortedExecutions.map((execution) => (
+              <NotificationItem
+                key={execution.id}
+                execution={execution}
+                type={execution.type}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="p-8 text-center text-gray-500">
+            <Bell size={32} className="mx-auto mb-2 opacity-50" />
+            <p>No recent activity</p>
+          </div>
+        )}
+      </ScrollArea>
+    </div>
+  );
+}
