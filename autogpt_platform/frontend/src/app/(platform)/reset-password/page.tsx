@@ -199,7 +199,7 @@ function ResetPasswordContent() {
                   <Input
                     label="Password"
                     type="password"
-                    placeholder="••••••••"
+                    placeholder="••••••••••••••••"
                     error={
                       changePasswordForm.formState.errors.password?.message
                     }
@@ -214,7 +214,7 @@ function ResetPasswordContent() {
                   <Input
                     label="Confirm Password"
                     type="password"
-                    placeholder="••••••••"
+                    placeholder="••••••••••••••••"
                     error={
                       changePasswordForm.formState.errors.confirmPassword
                         ?.message
@@ -243,7 +243,7 @@ function ResetPasswordContent() {
                 className="mt-6 w-full"
                 onClick={() => onChangePassword(changePasswordForm.getValues())}
               >
-                Update password
+                {isLoading ? "Updating password..." : "Update password"}
               </Button>
             </Form>
           </form>

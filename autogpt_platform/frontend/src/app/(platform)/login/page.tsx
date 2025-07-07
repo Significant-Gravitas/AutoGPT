@@ -21,6 +21,7 @@ export default function LoginPage() {
     captchaKey,
     isLoading,
     isLoggedIn,
+    isCloudEnv,
     isUserLoading,
     isGoogleLoading,
     showNotAllowedModal,
@@ -43,9 +44,9 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex h-full min-h-[85vh] flex-col items-center justify-center">
+    <div className="mt-16 flex h-full min-h-[85vh] flex-col items-center justify-center md:mt-0">
       <AuthCard title="Login to your account">
-        {true ? (
+        {isCloudEnv ? (
           <>
             <div className="mb-3 w-full">
               <GoogleOAuthButton
@@ -116,7 +117,7 @@ export default function LoginPage() {
               type="submit"
               className="mt-6 w-full"
             >
-              Login
+              {isLoading ? "Logging in..." : "Login"}
             </Button>
           </form>
           <AuthFeedback

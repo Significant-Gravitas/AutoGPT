@@ -57,7 +57,7 @@ export default function SignupPage() {
   const termsError = form.formState.errors.agreeToTerms?.message;
 
   return (
-    <div className="mt-10 flex h-full min-h-[85vh] flex-col items-center justify-center">
+    <div className="mt-24 flex h-full min-h-[85vh] flex-col items-center justify-center md:mt-0">
       <AuthCard title="Create a new account">
         {isCloudEnv ? (
           <>
@@ -98,7 +98,7 @@ export default function SignupPage() {
               render={({ field }) => (
                 <Input
                   label="Password"
-                  placeholder="********"
+                  placeholder="•••••••••••••••••••••"
                   type="password"
                   autoComplete="new-password"
                   error={form.formState.errors.password?.message}
@@ -112,7 +112,7 @@ export default function SignupPage() {
               render={({ field }) => (
                 <Input
                   label="Confirm Password"
-                  placeholder="********"
+                  placeholder="•••••••••••••••••••••"
                   type="password"
                   autoComplete="new-password"
                   error={confirmPasswordError}
@@ -193,7 +193,7 @@ export default function SignupPage() {
               type="submit"
               className="mt-6 w-full"
             >
-              Sign up
+              {isLoading ? "Signing up..." : "Sign up"}
             </Button>
           </form>
         </Form>
