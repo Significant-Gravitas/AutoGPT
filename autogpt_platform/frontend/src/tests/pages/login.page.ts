@@ -10,22 +10,22 @@ export class LoginPage {
     });
 
     // Fill email
-    const emailInput = this.page.getByPlaceholder("m@example.com");
+    const emailInput = this.page.getByLabel("Email");
     await emailInput.waitFor({ state: "visible" });
     await emailInput.fill(email);
 
     // Fill password
-    const passwordInput = this.page.getByTitle("Password");
+    const passwordInput = this.page.getByLabel("Password");
     await passwordInput.waitFor({ state: "visible" });
     await passwordInput.fill(password);
 
     // TODO: This is a workaround to wait for the page to load after filling the email and password
-    const emailInput2 = this.page.getByPlaceholder("m@example.com");
+    const emailInput2 = this.page.getByLabel("Email");
     await emailInput2.waitFor({ state: "visible" });
     await emailInput2.fill(email);
 
     // Fill password
-    const passwordInput2 = this.page.getByTitle("Password");
+    const passwordInput2 = this.page.getByLabel("Password");
     await passwordInput2.waitFor({ state: "visible" });
     await passwordInput2.fill(password);
 

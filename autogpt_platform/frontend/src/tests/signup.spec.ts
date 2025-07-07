@@ -1,9 +1,9 @@
-import { test, expect } from "./fixtures";
+import { expect, test } from "./fixtures";
 import {
-  signupTestUser,
-  validateSignupForm,
   generateTestEmail,
   generateTestPassword,
+  signupTestUser,
+  validateSignupForm,
 } from "./utils/signup";
 
 test.describe("Signup Flow", () => {
@@ -45,10 +45,11 @@ test.describe("Signup Flow", () => {
 
     // Test with mismatched passwords
     console.log("❌ Testing mismatched passwords...");
-    await page.getByPlaceholder("m@example.com").fill(generateTestEmail());
-    const passwordInputs = page.getByTitle("Password");
-    await passwordInputs.nth(0).fill("password1");
-    await passwordInputs.nth(1).fill("password2");
+    await page.getByLabel("Email").fill(generateTestEmail());
+    const passwordInput = page.getByLabel("Password");
+    const confirmPasswordInput = page.getByLabel("Confirm Password");
+    await passwordInput.fill("password1");
+    await confirmPasswordInput.fill("password2");
     await page.getByRole("checkbox").click();
     await page.getByRole("button", { name: "Sign up" }).click();
 
