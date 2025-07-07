@@ -8,26 +8,24 @@ import { TypeBasedInput } from "@/components/type-based-input";
 import SchemaTooltip from "../SchemaTooltip";
 
 interface InputBlockProps {
-  id: string;
   name: string;
   schema: BlockIOSubSchema;
   description?: string;
-  value: string;
-  placeholder_values?: any[];
-  onInputChange: (id: string, field: string, value: string) => void;
+  defaultValue?: any;
+  placeholderValues?: any[];
+  onInputChange: (value: any) => void;
 }
 
 export function InputBlock({
-  id,
   name,
   schema,
   description,
-  value,
-  placeholder_values,
+  defaultValue,
+  placeholderValues,
   onInputChange,
 }: InputBlockProps) {
-  if (placeholder_values && placeholder_values.length > 0) {
-    schema = { ...schema, enum: placeholder_values } as BlockIOStringSubSchema;
+  if (placeholderValues && placeholderValues.length > 0) {
+    schema = { ...schema, enum: placeholderValues } as BlockIOStringSubSchema;
   }
 
   return (
@@ -37,12 +35,11 @@ export function InputBlock({
         <SchemaTooltip description={description} />
       </label>
       <TypeBasedInput
-        id={`${id}-Value`}
         data-testid={`run-dialog-input-${name}`}
         schema={schema}
-        value={value}
+        defaultValue={defaultValue}
         placeholder={description}
-        onChange={(value) => onInputChange(id, "value", value)}
+        onChange={onInputChange}
       />
     </div>
   );

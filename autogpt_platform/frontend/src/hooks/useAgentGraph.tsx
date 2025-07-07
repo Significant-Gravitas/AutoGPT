@@ -35,11 +35,10 @@ export default function useAgentGraph(
   passDataToBeads?: boolean,
 ) {
   const { toast } = useToast();
-  const [router, searchParams, pathname] = [
-    useRouter(),
-    useSearchParams(),
-    usePathname(),
-  ];
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [isScheduling, setIsScheduling] = useState(false);
   const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>("");
@@ -61,8 +60,17 @@ export default function useAgentGraph(
    */
   const [saveRunRequest, setSaveRunRequest] = useState<
     | {
-        request: "none" | "save" | "run";
-        state: "none" | "saving" | "error";
+        request: "none";
+        state: "none";
+      }
+    | {
+        request: "save";
+        state: "saving" | "error";
+      }
+    | {
+        request: "run";
+        state: "saving";
+        inputs?: Record<string, any>;
       }
     | {
         request: "run" | "stop";
@@ -633,7 +641,11 @@ export default function useAgentGraph(
         }
         setSaveRunRequest({ request: "run", state: "running" });
         api
-          .executeGraph(savedAgent.id, savedAgent.version)
+          .executeGraph(
+            savedAgent.id,
+            savedAgent.version,
+            saveRunRequest.inputs || {},
+          )
           .then((graphExecution) => {
             setSaveRunRequest({
               request: "run",
@@ -1038,13 +1050,17 @@ export default function useAgentGraph(
     });
   }, [saveAgent, saveRunRequest.state]);
 
-  const requestSaveAndRun = useCallback(() => {
-    saveAgent();
-    setSaveRunRequest({
-      request: "run",
-      state: "saving",
-    });
-  }, [saveAgent]);
+  const requestSaveAndRun = useCallback(
+    (inputs: Record<string, any> = {}) => {
+      saveAgent();
+      setSaveRunRequest({
+        request: "run",
+        state: "saving",
+        inputs,
+      });
+    },
+    [saveAgent],
+  );
 
   const requestStopRun = useCallback(() => {
     if (saveRunRequest.state != "running") {

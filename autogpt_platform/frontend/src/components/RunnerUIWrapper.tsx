@@ -4,19 +4,23 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import RunnerOutputUI, { OutputNodeInfo } from "./runner-ui/RunnerOutputUI";
-import { RunnerInputDialog, InputNodeInfo } from "./runner-ui/RunnerInputUI";
 import { Node } from "@xyflow/react";
+import { CustomNodeData } from "@/components/CustomNode";
 import { BlockIORootSchema, BlockUIType } from "@/lib/autogpt-server-api/types";
-import { CustomNode, CustomNodeData } from "./CustomNode";
+import RunnerOutputUI, {
+  OutputNodeInfo,
+} from "@/components/runner-ui/RunnerOutputUI";
+import {
+  RunnerInputDialog,
+  InputNodeInfo,
+} from "@/components/runner-ui/RunnerInputUI";
 
 interface RunnerUIWrapperProps {
   nodes: Node<CustomNodeData>[];
-  setNodes: React.Dispatch<React.SetStateAction<CustomNode[]>>;
   setIsScheduling: React.Dispatch<React.SetStateAction<boolean>>;
   isRunning: boolean;
   isScheduling: boolean;
-  requestSaveAndRun: () => void;
+  requestSaveAndRun: (inputs?: Record<string, any>) => void;
   scheduleRunner: (
     cronExpression: string,
     scheduleName: string,
@@ -39,7 +43,6 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
     {
       nodes,
       setIsScheduling,
-      setNodes,
       isScheduling,
       isRunning,
       requestSaveAndRun,
@@ -100,29 +103,6 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
       return { inputs, outputs };
     }, [nodes]);
 
-    const handleInputChange = useCallback(
-      (nodeId: string, field: string, value: any) => {
-        setNodes((nds) =>
-          nds.map((node) => {
-            if (node.id === nodeId) {
-              return {
-                ...node,
-                data: {
-                  ...node.data,
-                  hardcodedValues: {
-                    ...node.data.hardcodedValues,
-                    [field]: value,
-                  },
-                },
-              };
-            }
-            return node;
-          }),
-        );
-      },
-      [setNodes],
-    );
-
     const openRunnerInput = () => setIsRunnerInputOpen(true);
     const openRunnerOutput = () => setIsRunnerOutputOpen(true);
 
@@ -131,7 +111,7 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
       if (inputs.length > 0) {
         openRunnerInput();
       } else {
-        requestSaveAndRun();
+        requestSaveAndRun({});
       }
     };
 
@@ -164,16 +144,12 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
           isOpen={isRunnerInputOpen}
           doClose={() => setIsRunnerInputOpen(false)}
           inputs={getGraphInputsAndOutputs().inputs}
-          onInputChange={handleInputChange}
-          doRun={() => {
-            setIsRunnerInputOpen(false);
-            requestSaveAndRun();
-          }}
+          doRun={requestSaveAndRun}
           scheduledInput={scheduledInput}
           isScheduling={isScheduling}
-          onSchedule={async () => {
+          doCreateSchedule={() => {
             setIsScheduling(true);
-            await scheduleRunner(
+            scheduleRunner(
               cronExpression,
               scheduleName,
               getGraphInputsAndOutputs().inputs.reduce(
@@ -183,10 +159,10 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
                 }),
                 {},
               ),
-            );
-            setIsScheduling(false);
-            setIsRunnerInputOpen(false);
-            setScheduledInput(false);
+            ).then(() => {
+              setIsScheduling(false);
+              setScheduledInput(false);
+            });
           }}
           isRunning={isRunning}
         />

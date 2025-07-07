@@ -24,7 +24,7 @@ import ActionButtonGroup from "@/components/agptui/action-button-group";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { useToast } from "@/components/ui/use-toast";
-import { isEmpty } from "lodash";
+import { isEmpty } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 
 export default function AgentRunDraftView({
@@ -104,14 +104,7 @@ export default function AgentRunDraftView({
 
   const [allRequiredInputsAreSet, missingInputs] = useMemo(() => {
     const nonEmptyInputs = new Set(
-      Object.keys(inputValues).filter((k) => {
-        const value = inputValues[k];
-        return (
-          value !== undefined &&
-          value !== "" &&
-          (typeof value !== "object" || !isEmpty(value))
-        );
-      }),
+      Object.keys(inputValues).filter((k) => !isEmpty(inputValues[k])),
     );
     const requiredInputs = new Set(
       agentInputSchema.required as string[] | undefined,

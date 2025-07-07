@@ -50,8 +50,12 @@ export const FlowInfo: React.FC<
     refresh: () => void;
   }
 > = ({ flow, executions, flowVersion, refresh, ...props }) => {
-  const { requestSaveAndRun, requestStopRun, isRunning, nodes, setNodes } =
-    useAgentGraph(flow.graph_id, flow.graph_version, undefined, false);
+  const { requestSaveAndRun, requestStopRun, isRunning, nodes } = useAgentGraph(
+    flow.graph_id,
+    flow.graph_version,
+    undefined,
+    false,
+  );
 
   const api = useBackendAPI();
 
@@ -107,29 +111,6 @@ export const FlowInfo: React.FC<
       requestSaveAndRun();
     }
   };
-
-  const handleInputChange = useCallback(
-    (nodeId: string, field: string, value: any) => {
-      setNodes((nds) =>
-        nds.map((node) => {
-          if (node.id === nodeId) {
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                hardcodedValues: {
-                  ...node.data.hardcodedValues,
-                  [field]: value,
-                },
-              },
-            };
-          }
-          return node;
-        }),
-      );
-    },
-    [setNodes],
-  );
 
   return (
     <Card {...props}>
@@ -271,7 +252,6 @@ export const FlowInfo: React.FC<
         isOpen={isRunnerInputOpen}
         doClose={() => setIsRunnerInputOpen(false)}
         inputs={graphInputs}
-        onInputChange={handleInputChange}
         doRun={() => {
           setIsRunnerInputOpen(false);
           requestSaveAndRun();
@@ -279,7 +259,7 @@ export const FlowInfo: React.FC<
         isRunning={isRunning}
         scheduledInput={false}
         isScheduling={false}
-        onSchedule={async () => {}} // Fixed type error by making async
+        doCreateSchedule={async () => {}} // Fixed type error by making async
       />
     </Card>
   );

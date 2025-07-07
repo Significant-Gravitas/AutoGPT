@@ -5,7 +5,7 @@ import { InputNodeInfo } from "./RunnerInputUI";
 
 interface InputListProps {
   inputNodes: InputNodeInfo[];
-  onInputChange: (nodeId: string, field: string, value: any) => void;
+  onInputChange: (inputName: string, value: any) => void;
 }
 
 export function InputList({ inputNodes, onInputChange }: InputListProps) {
@@ -16,13 +16,14 @@ export function InputList({ inputNodes, onInputChange }: InputListProps) {
           inputNodes.map((inputNode) => (
             <InputBlock
               key={inputNode.id}
-              id={inputNode.id}
               schema={inputNode.inputSchema}
               name={inputNode.inputConfig.name}
               description={inputNode.inputConfig.description}
-              value={inputNode.inputConfig.defaultValue ?? ""}
-              placeholder_values={inputNode.inputConfig.placeholderValues}
-              onInputChange={onInputChange}
+              defaultValue={inputNode.inputConfig.defaultValue}
+              placeholderValues={inputNode.inputConfig.placeholderValues}
+              onInputChange={(value) =>
+                onInputChange(inputNode.inputConfig.name, value)
+              }
             />
           ))
         ) : (

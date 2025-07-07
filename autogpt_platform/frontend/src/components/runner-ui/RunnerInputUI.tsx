@@ -1,4 +1,6 @@
 import React from "react";
+
+import { type BlockIORootSchema } from "@/lib/autogpt-server-api/types";
 import {
   Dialog,
   DialogContent,
@@ -8,7 +10,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { BlockIORootSchema } from "@/lib/autogpt-server-api/types";
+import { isEmpty } from "@/lib/utils";
+import { useToast } from "@/components/ui/use-toast";
 import { InputList } from "./RunnerInputList";
 
 export interface InputNodeInfo {
@@ -26,9 +29,8 @@ interface RunInputDialogProps {
   isOpen: boolean;
   doClose: () => void;
   inputs: InputNodeInfo[];
-  onInputChange: (nodeId: string, field: string, value: any) => void;
-  doRun: () => void;
-  onSchedule: () => Promise<void>;
+  doRun: (inputs: Record<string, any>) => void;
+  doCreateSchedule: () => void;
   scheduledInput: boolean;
   isScheduling: boolean;
   isRunning: boolean;
@@ -37,22 +39,55 @@ interface RunInputDialogProps {
 export function RunnerInputDialog({
   isOpen,
   doClose,
-  inputs: inputNodes,
+  inputs,
   isScheduling,
-  onInputChange,
   doRun,
-  onSchedule,
+  doCreateSchedule,
   scheduledInput,
   isRunning,
 }: RunInputDialogProps) {
+  const { toast } = useToast();
+  const [inputValues, setInputValues] = React.useState<Record<string, any>>({});
+
+  const handleInputChange = (inputName: string, value: any) => {
+    setInputValues((prev) => ({
+      ...prev,
+      [inputName]: value,
+    }));
+  };
+  const requiredInputs = new Set(
+    inputs
+      .filter((input) => !input.inputConfig.defaultValue)
+      .map((input) => input.inputConfig.name),
+  );
+  const missingInputs = requiredInputs.difference(
+    new Set(Object.keys(inputValues).filter((k) => !isEmpty(inputValues[k]))),
+  );
+  const notifyMissingInputs = () => {
+    toast({
+      title: "⚠️ Not all required inputs are set",
+      description: `Please set ${Array.from(missingInputs)
+        .map((k) => `\`${k}\``)
+        .join(", ")}`,
+    });
+  };
+
   const handleRun = () => {
-    doRun();
+    if (missingInputs.size > 0) {
+      notifyMissingInputs();
+      return;
+    }
+    doRun(inputValues);
     doClose();
   };
 
   const handleSchedule = async () => {
+    if (missingInputs.size > 0) {
+      notifyMissingInputs();
+      return;
+    }
     doClose();
-    await onSchedule();
+    doCreateSchedule();
   };
 
   return (
@@ -67,17 +102,28 @@ export function RunnerInputDialog({
           </DialogDescription>
         </DialogHeader>
         <div className="flex-grow overflow-y-auto">
-          <InputList inputNodes={inputNodes} onInputChange={onInputChange} />
+          <InputList inputNodes={inputs} onInputChange={handleInputChange} />
         </div>
         <DialogFooter>
-          <Button
-            data-testid="run-dialog-run-button"
-            onClick={scheduledInput ? handleSchedule : handleRun}
-            className="text-lg"
-            disabled={scheduledInput ? isScheduling : isRunning}
-          >
-            {scheduledInput ? "Schedule" : isRunning ? "Running..." : "Run"}
-          </Button>
+          {scheduledInput ? (
+            <Button
+              data-testid="run-dialog-schedule-button"
+              onClick={handleSchedule}
+              className="text-lg"
+              disabled={isScheduling}
+            >
+              Schedule
+            </Button>
+          ) : (
+            <Button
+              data-testid="run-dialog-run-button"
+              onClick={handleRun}
+              className="text-lg"
+              disabled={isRunning}
+            >
+              {isRunning ? "Running..." : "Run"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

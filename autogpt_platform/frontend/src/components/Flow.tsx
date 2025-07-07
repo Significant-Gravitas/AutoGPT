@@ -797,7 +797,6 @@ const FlowEditor: React.FC<{
       <RunnerUIWrapper
         ref={runnerUIRef}
         nodes={nodes}
-        setNodes={setNodes}
         setIsScheduling={setIsScheduling}
         isScheduling={isScheduling}
         isRunning={isRunning}
