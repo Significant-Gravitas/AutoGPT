@@ -4614,6 +4614,12 @@
             "type": "string",
             "format": "date-time",
             "title": "Updated At"
+          },
+          "webhook": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/Webhook" },
+              { "type": "null" }
+            ]
           }
         },
         "type": "object",
@@ -4626,7 +4632,8 @@
           "description",
           "id",
           "user_id",
-          "updated_at"
+          "updated_at",
+          "webhook"
         ],
         "title": "LibraryAgentPreset",
         "description": "Represents a preset configuration for a library agent."

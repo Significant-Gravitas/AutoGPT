@@ -75,3 +75,9 @@ def library_agent_include(user_id: str) -> prisma.types.LibraryAgentInclude:
         },
         "Creator": True,
     }
+
+
+AGENT_PRESET_INCLUDE: prisma.types.AgentPresetInclude = {
+    "InputPresets": True,
+    "Webhook": True,
+}
