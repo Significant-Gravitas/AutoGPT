@@ -57,21 +57,21 @@ export default function SignupPage() {
   const termsError = form.formState.errors.agreeToTerms?.message;
 
   return (
-    <div className="flex h-full min-h-[85vh] flex-col items-center justify-center">
+    <div className="mt-10 flex h-full min-h-[85vh] flex-col items-center justify-center">
       <AuthCard title="Create a new account">
         {isCloudEnv ? (
           <>
-            <div className="mb-6">
+            <div className="mb-2 w-full">
               <GoogleOAuthButton
                 onClick={() => handleProviderSignup("google")}
                 isLoading={isGoogleLoading}
                 disabled={isLoading}
               />
             </div>
-            <div className="mb-6 flex items-center">
-              <div className="flex-1 border-t border-gray-300"></div>
-              <span className="mx-3 text-sm text-gray-500">or</span>
-              <div className="flex-1 border-t border-gray-300"></div>
+            <div className="mb-3 flex w-full items-center">
+              <div className="h-px flex-1 bg-gray-300"></div>
+              <span className="text-md mx-3 text-gray-500">or</span>
+              <div className="h-px flex-1 bg-gray-300"></div>
             </div>
           </>
         ) : null}

@@ -52,14 +52,14 @@ export function NotificationDropdown({
   return (
     <div>
       {/* Header */}
-      <div className="sticky top-0 z-10 px-4 pb-2 pt-4">
+      <div className="sticky top-0 z-10 px-4 pb-1 pt-4">
         <Text variant="body-medium" className="font-semibold text-gray-900">
           Agent Activity
         </Text>
       </div>
 
       {/* Content */}
-      <ScrollArea className="h-96">
+      <ScrollArea className="min-h-[10rem]">
         {sortedExecutions.length > 0 ? (
           <div className="p-2">
             {sortedExecutions.map((execution) => (

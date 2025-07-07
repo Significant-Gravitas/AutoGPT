@@ -8,13 +8,13 @@ import {
   Clock,
   WarningOctagonIcon,
 } from "@phosphor-icons/react";
+import { useRouter } from "next/navigation";
 import type { AgentExecutionWithInfo } from "../helpers";
 import {
   formatTimeAgo,
   getExecutionDuration,
   getStatusColorClass,
 } from "../helpers";
-import { useRouter } from "next/navigation";
 
 interface NotificationItemProps {
   execution: AgentExecutionWithInfo;
@@ -65,7 +65,7 @@ export function NotificationItem({ execution, type }: NotificationItemProps) {
 
   return (
     <div
-      className="cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors hover:bg-gray-50"
+      className="cursor-pointer border-b border-slate-50 px-2 py-3 transition-colors last:border-b-0 hover:bg-lightGrey"
       onClick={() => {
         const agentId = execution.library_agent_id || execution.graph_id;
         router.push(`/library/agents/${agentId}?executionId=${execution.id}`);

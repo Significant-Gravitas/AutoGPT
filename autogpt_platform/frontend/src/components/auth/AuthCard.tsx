@@ -19,7 +19,7 @@ AuthCard.BottomText = function BottomText({
     <div
       className={cn(
         className,
-        "mt-8 inline-flex w-full items-center justify-center gap-1",
+        "mt-4 inline-flex w-full items-center justify-center gap-1",
       )}
     >
       <Text variant="body-medium" className="text-slate-950">
