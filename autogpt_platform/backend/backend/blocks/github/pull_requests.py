@@ -553,11 +553,10 @@ class GithubListPRReviewersBlock(Block):
 
 
 def prepare_pr_api_url(pr_url: str, path: str) -> str:
-    # Pattern to capture the base repository URL and the pull request number
-    pattern = r"^(?:https?://)?([^/]+/[^/]+/[^/]+)/pull/(\d+)"
+    pattern = r"^(?:https?://)?github\.com/([^/]+/[^/]+)/pull/(\d+)"
     match = re.match(pattern, pr_url)
     if not match:
-        return pr_url
+        raise ValueError(f"Invalid GitHub PR URL: {pr_url}. URL must be a valid pull request URL, e.g., https://github.com/owner/repo/pull/123")
 
-    base_url, pr_number = match.groups()
-    return f"{base_url}/pulls/{pr_number}/{path}"
+    repo_path, pr_number = match.groups()
+    return f"{repo_path}/pulls/{pr_number}/{path}"
