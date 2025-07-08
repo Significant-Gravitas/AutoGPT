@@ -46,8 +46,10 @@ test.describe("Signup Flow", () => {
     // Test with mismatched passwords
     console.log("❌ Testing mismatched passwords...");
     await page.getByLabel("Email").fill(generateTestEmail());
-    const passwordInput = page.getByLabel("Password");
-    const confirmPasswordInput = page.getByLabel("Confirm Password");
+    const passwordInput = page.getByLabel("Password", { exact: true });
+    const confirmPasswordInput = page.getByLabel("Confirm Password", {
+      exact: true,
+    });
     await passwordInput.fill("password1");
     await confirmPasswordInput.fill("password2");
     await page.getByRole("checkbox").click();

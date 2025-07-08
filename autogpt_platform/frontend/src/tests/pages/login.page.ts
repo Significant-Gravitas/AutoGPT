@@ -15,7 +15,7 @@ export class LoginPage {
     await emailInput.fill(email);
 
     // Fill password
-    const passwordInput = this.page.getByLabel("Password");
+    const passwordInput = this.page.getByLabel("Password", { exact: true });
     await passwordInput.waitFor({ state: "visible" });
     await passwordInput.fill(password);
 
@@ -25,7 +25,7 @@ export class LoginPage {
     await emailInput2.fill(email);
 
     // Fill password
-    const passwordInput2 = this.page.getByLabel("Password");
+    const passwordInput2 = this.page.getByLabel("Password", { exact: true });
     await passwordInput2.waitFor({ state: "visible" });
     await passwordInput2.fill(password);
 
