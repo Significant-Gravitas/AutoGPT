@@ -24,7 +24,7 @@ from backend.data.notifications import (
     NotificationType,
 )
 from backend.data.rabbitmq import SyncRabbitMQ
-from backend.executor.utils import create_execution_queue_config
+from backend.executor.utils import LogMetadata, create_execution_queue_config
 from backend.notifications.notifications import queue_notification
 from backend.util.exceptions import InsufficientBalanceError
 
@@ -35,7 +35,7 @@ from autogpt_libs.utils.cache import thread_cached
 from prometheus_client import Gauge, start_http_server
 
 from backend.blocks.agent import AgentExecutorBlock
-from backend.data import redis
+from backend.data import redis_client as redis
 from backend.data.block import (
     BlockData,
     BlockInput,
@@ -98,35 +98,6 @@ utilization_gauge = Gauge(
 )
 
 
-class LogMetadata(TruncatedLogger):
-    def __init__(
-        self,
-        user_id: str,
-        graph_eid: str,
-        graph_id: str,
-        node_eid: str,
-        node_id: str,
-        block_name: str,
-        max_length: int = 1000,
-    ):
-        metadata = {
-            "component": "ExecutionManager",
-            "user_id": user_id,
-            "graph_eid": graph_eid,
-            "graph_id": graph_id,
-            "node_eid": node_eid,
-            "node_id": node_id,
-            "block_name": block_name,
-        }
-        prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"
-        super().__init__(
-            _logger,
-            max_length=max_length,
-            prefix=prefix,
-            metadata=metadata,
-        )
-
-
 T = TypeVar("T")
 
 
@@ -158,6 +129,7 @@ async def execute_node(
     node_block = node.block
 
     log_metadata = LogMetadata(
+        logger=_logger,
         user_id=user_id,
         graph_eid=graph_exec_id,
         graph_id=graph_id,
@@ -421,7 +393,7 @@ class Executor:
     """
 
     @classmethod
-    @async_error_logged
+    @async_error_logged(swallow=True)
     async def on_node_execution(
         cls,
         node_exec: NodeExecutionEntry,
@@ -429,6 +401,7 @@ class Executor:
         nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
     ) -> NodeExecutionStats:
         log_metadata = LogMetadata(
+            logger=_logger,
             user_id=node_exec.user_id,
             graph_eid=node_exec.graph_exec_id,
             graph_id=node_exec.graph_id,
@@ -529,11 +502,12 @@ class Executor:
         logger.info(f"[GraphExecutor] {cls.pid} started")
 
     @classmethod
-    @error_logged
+    @error_logged(swallow=False)
     def on_graph_execution(
         cls, graph_exec: GraphExecutionEntry, cancel: threading.Event
     ):
         log_metadata = LogMetadata(
+            logger=_logger,
             user_id=graph_exec.user_id,
             graph_eid=graph_exec.graph_exec_id,
             graph_id=graph_exec.graph_id,
@@ -580,6 +554,15 @@ class Executor:
         exec_stats.walltime += timing_info.wall_time
         exec_stats.cputime += timing_info.cpu_time
         exec_stats.error = str(error) if error else exec_stats.error
+
+        if status not in {
+            ExecutionStatus.COMPLETED,
+            ExecutionStatus.TERMINATED,
+            ExecutionStatus.FAILED,
+        }:
+            raise RuntimeError(
+                f"Graph Execution #{graph_exec.graph_exec_id} ended with unexpected status {status}"
+            )
 
         if graph_exec_result := db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
@@ -684,7 +667,6 @@ class Executor:
 
             if _graph_exec := db_client.update_graph_execution_stats(
                 graph_exec_id=graph_exec.graph_exec_id,
-                status=execution_status,
                 stats=execution_stats,
             ):
                 send_execution_update(_graph_exec)
@@ -853,6 +835,7 @@ class Executor:
                 f"Failed graph execution {graph_exec.graph_exec_id}: {error}"
             )
         finally:
+            # Cancel and wait for all node executions to complete
             for node_id, inflight_exec in running_node_execution.items():
                 if inflight_exec.is_done():
                     continue
@@ -864,6 +847,28 @@ class Executor:
                     continue
                 log_metadata.info(f"Stopping node evaluation {node_id}")
                 inflight_eval.cancel()
+
+            for node_id, inflight_exec in running_node_execution.items():
+                if inflight_exec.is_done():
+                    continue
+                try:
+                    inflight_exec.wait_for_cancellation(timeout=60.0)
+                except TimeoutError:
+                    log_metadata.exception(
+                        f"Node execution #{node_id} did not stop in time, "
+                        "it may be stuck or taking too long."
+                    )
+
+            for node_id, inflight_eval in running_node_evaluation.items():
+                if inflight_eval.done():
+                    continue
+                try:
+                    inflight_eval.result(timeout=60.0)
+                except TimeoutError:
+                    log_metadata.exception(
+                        f"Node evaluation #{node_id} did not stop in time, "
+                        "it may be stuck or taking too long."
+                    )
 
             if execution_status in [ExecutionStatus.TERMINATED, ExecutionStatus.FAILED]:
                 inflight_executions = db_client.get_node_executions(

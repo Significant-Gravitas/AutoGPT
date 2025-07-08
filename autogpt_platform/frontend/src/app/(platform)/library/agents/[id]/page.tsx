@@ -1,4 +1,5 @@
 "use client";
+import { useParams, useRouter } from "next/navigation";
 import React, {
   useCallback,
   useEffect,
@@ -6,31 +7,31 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { useParams, useRouter } from "next/navigation";
 
-import { exportAsJSONFile } from "@/lib/utils";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
+  Graph,
   GraphExecution,
   GraphExecutionID,
   GraphExecutionMeta,
-  Graph,
   GraphID,
   LibraryAgent,
   LibraryAgentID,
-  Schedule,
-  ScheduleID,
   LibraryAgentPreset,
   LibraryAgentPresetID,
+  Schedule,
+  ScheduleID,
 } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { exportAsJSONFile } from "@/lib/utils";
 
-import type { ButtonAction } from "@/components/agptui/types";
-import DeleteConfirmDialog from "@/components/agptui/delete-confirm-dialog";
-import AgentRunDraftView from "@/components/agents/agent-run-draft-view";
 import AgentRunDetailsView from "@/components/agents/agent-run-details-view";
+import AgentRunDraftView from "@/components/agents/agent-run-draft-view";
 import AgentRunsSelectorList from "@/components/agents/agent-runs-selector-list";
 import AgentScheduleDetailsView from "@/components/agents/agent-schedule-details-view";
+import DeleteConfirmDialog from "@/components/agptui/delete-confirm-dialog";
+import type { ButtonAction } from "@/components/agptui/types";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -39,9 +40,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { useToast } from "@/components/ui/use-toast";
 import LoadingBox, { LoadingSpinner } from "@/components/ui/loading";
+import { useToast } from "@/components/ui/use-toast";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
@@ -64,9 +64,10 @@ export default function AgentRunsPage(): React.ReactElement {
   const [selectedRun, setSelectedRun] = useState<
     GraphExecution | GraphExecutionMeta | null
   >(null);
-  const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(
-    null,
-  );
+  const selectedSchedule =
+    selectedView.type == "schedule"
+      ? schedules.find((s) => s.id == selectedView.id)
+      : null;
   const [isFirstLoad, setIsFirstLoad] = useState<boolean>(true);
   const [agentDeleteDialogOpen, setAgentDeleteDialogOpen] =
     useState<boolean>(false);
@@ -100,9 +101,8 @@ export default function AgentRunsPage(): React.ReactElement {
     selectView({ type: "preset", id });
   }, []);
 
-  const selectSchedule = useCallback((schedule: Schedule) => {
-    selectView({ type: "schedule", id: schedule.id });
-    setSelectedSchedule(schedule);
+  const selectSchedule = useCallback((id: ScheduleID) => {
+    selectView({ type: "schedule", id });
   }, []);
 
   const graphVersions = useRef<Record<number, Graph>>({});
@@ -315,11 +315,8 @@ export default function AgentRunsPage(): React.ReactElement {
   const fetchSchedules = useCallback(async () => {
     if (!agent) return;
 
-    // TODO: filter in backend - https://github.com/Significant-Gravitas/AutoGPT/issues/9183
-    setSchedules(
-      (await api.listSchedules()).filter((s) => s.graph_id == agent.graph_id),
-    );
-  }, [api, agent]);
+    setSchedules(await api.listGraphExecutionSchedules(agent.graph_id));
+  }, [api, agent?.graph_id]);
 
   useEffect(() => {
     fetchSchedules();
@@ -358,8 +355,28 @@ export default function AgentRunsPage(): React.ReactElement {
 
   const deleteSchedule = useCallback(
     async (scheduleID: ScheduleID) => {
-      const removedSchedule = await api.deleteSchedule(scheduleID);
-      setSchedules(schedules.filter((s) => s.id !== removedSchedule.id));
+      const removedSchedule =
+        await api.deleteGraphExecutionSchedule(scheduleID);
+
+      setSchedules((schedules) => {
+        const newSchedules = schedules.filter(
+          (s) => s.id !== removedSchedule.id,
+        );
+        if (
+          selectedView.type == "schedule" &&
+          selectedView.id == removedSchedule.id
+        ) {
+          if (newSchedules.length > 0) {
+            // Select next schedule if available
+            selectSchedule(newSchedules[0].id);
+          } else {
+            // Reset to draft view if current schedule was deleted
+            openRunDraftView();
+          }
+        }
+        return newSchedules;
+      });
+      openRunDraftView();
     },
     [schedules, api],
   );
@@ -417,6 +434,17 @@ export default function AgentRunsPage(): React.ReactElement {
     [agent, downloadGraph],
   );
 
+  const runGraph =
+    graphVersions.current[selectedRun?.graph_version ?? 0] ?? graph;
+
+  const onCreateSchedule = useCallback(
+    (schedule: Schedule) => {
+      setSchedules((prev) => [...prev, schedule]);
+      selectSchedule(schedule.id);
+    },
+    [selectView],
+  );
+
   const onCreatePreset = useCallback(
     (preset: LibraryAgentPreset) => {
       setAgentPresets((prev) => [...prev, preset]);
@@ -454,9 +482,9 @@ export default function AgentRunsPage(): React.ReactElement {
         onSelectPreset={selectPreset}
         onSelectSchedule={selectSchedule}
         onSelectDraftNewRun={openRunDraftView}
-        onDeleteRun={setConfirmingDeleteAgentRun}
-        onDeletePreset={setConfirmingDeleteAgentPreset}
-        onDeleteSchedule={deleteSchedule}
+        doDeleteRun={setConfirmingDeleteAgentRun}
+        doDeletePreset={setConfirmingDeleteAgentPreset}
+        doDeleteSchedule={deleteSchedule}
       />
 
       <div className="flex-1">
@@ -471,21 +499,22 @@ export default function AgentRunsPage(): React.ReactElement {
 
         {/* Run / Schedule views */}
         {(selectedView.type == "run" && selectedView.id ? (
-          selectedRun && (
+          selectedRun && runGraph ? (
             <AgentRunDetailsView
               agent={agent}
-              graph={graphVersions.current[selectedRun.graph_version] ?? graph}
+              graph={runGraph}
               run={selectedRun}
               agentActions={agentActions}
               onRun={selectRun}
               deleteRun={() => setConfirmingDeleteAgentRun(selectedRun)}
             />
-          )
+          ) : null
         ) : selectedView.type == "run" ? (
           /* Draft new runs / Create new presets */
           <AgentRunDraftView
             agent={agent}
             onRun={selectRun}
+            onCreateSchedule={onCreateSchedule}
             onCreatePreset={onCreatePreset}
             agentActions={agentActions}
           />
@@ -497,17 +526,21 @@ export default function AgentRunsPage(): React.ReactElement {
               agentPresets.find((preset) => preset.id == selectedView.id)!
             }
             onRun={selectRun}
+            onCreateSchedule={onCreateSchedule}
             onUpdatePreset={onUpdatePreset}
             doDeletePreset={setConfirmingDeleteAgentPreset}
             agentActions={agentActions}
           />
         ) : selectedView.type == "schedule" ? (
-          selectedSchedule && (
+          selectedSchedule &&
+          graph && (
             <AgentScheduleDetailsView
               graph={graph}
               schedule={selectedSchedule}
-              onForcedRun={selectRun}
+              // agent={agent}
               agentActions={agentActions}
+              onForcedRun={selectRun}
+              doDeleteSchedule={deleteSchedule}
             />
           )
         ) : null) || <LoadingBox className="h-[70vh]" />}

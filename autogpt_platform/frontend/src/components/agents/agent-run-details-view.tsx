@@ -1,9 +1,8 @@
 "use client";
-import React, { useCallback, useMemo } from "react";
 import { isEmpty } from "lodash";
 import moment from "moment";
+import React, { useCallback, useMemo } from "react";
 
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   Graph,
   GraphExecution,
@@ -11,14 +10,15 @@ import {
   GraphExecutionMeta,
   LibraryAgent,
 } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
+import ActionButtonGroup from "@/components/agptui/action-button-group";
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconRefresh, IconSquare } from "@/components/ui/icons";
-import { useToastOnFail } from "@/components/ui/use-toast";
-import ActionButtonGroup from "@/components/agptui/action-button-group";
-import LoadingBox from "@/components/ui/loading";
 import { Input } from "@/components/ui/input";
+import LoadingBox from "@/components/ui/loading";
+import { useToastOnFail } from "@/components/ui/use-toast";
 
 import {
   AgentRunStatus,
@@ -199,7 +199,7 @@ export default function AgentRunDetailsView({
       stopRun,
       deleteRun,
       graph.has_webhook_trigger,
-      graph.credentials_input_schema.properties,
+      graph.credentials_input_schema?.properties,
       agent.can_access_graph,
       run.graph_id,
       run.graph_version,
@@ -242,7 +242,7 @@ export default function AgentRunDetailsView({
                       </label>
                       {values.map((value, i) => (
                         <p
-                          className="resize-none whitespace-pre-wrap break-words border-none text-sm text-neutral-700 disabled:cursor-not-allowed"
+                          className="resize-none overflow-x-auto whitespace-pre-wrap break-words border-none text-sm text-neutral-700 disabled:cursor-not-allowed"
                           key={i}
                         >
                           {value}

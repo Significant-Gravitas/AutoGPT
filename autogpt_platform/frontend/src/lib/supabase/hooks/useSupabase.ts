@@ -1,8 +1,15 @@
 "use client";
-import { useEffect, useMemo, useState, useRef } from "react";
 import { createBrowserClient } from "@supabase/ssr";
 import { User } from "@supabase/supabase-js";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  getCurrentUser,
+  refreshSession,
+  serverLogout,
+  ServerLogoutOptions,
+  validateSession,
+} from "../actions";
 import {
   broadcastLogout,
   getRedirectPath,
@@ -12,16 +19,23 @@ import {
 
 export function useSupabase() {
   const router = useRouter();
+  const pathname = usePathname();
   const [user, setUser] = useState<User | null>(null);
   const [isUserLoading, setIsUserLoading] = useState(true);
   const lastValidationRef = useRef<number>(0);
+  const isValidatingRef = useRef(false);
 
   const supabase = useMemo(() => {
     try {
       return createBrowserClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-        { isSingleton: true },
+        {
+          isSingleton: true,
+          auth: {
+            persistSession: false, // Don't persist session on client with httpOnly cookies
+          },
+        },
       );
     } catch (error) {
       console.error("Error creating Supabase client", error);
@@ -29,75 +43,92 @@ export function useSupabase() {
     }
   }, []);
 
-  async function logOut() {
-    if (!supabase) return;
-
+  async function logOut(options: ServerLogoutOptions = {}) {
     broadcastLogout();
 
-    const { error } = await supabase.auth.signOut({
-      scope: "global",
-    });
-    if (error) console.error("Error logging out:", error);
-
-    router.push("/login");
+    try {
+      await serverLogout(options);
+    } catch (error) {
+      console.error("Error logging out:", error);
+      router.push("/login");
+    }
   }
 
-  async function validateSession() {
-    if (!supabase) return false;
+  async function validateSessionServer() {
+    // Prevent concurrent validation calls
+    if (isValidatingRef.current) return true;
 
     // Simple debounce - only validate if 2 seconds have passed
     const now = Date.now();
     if (now - lastValidationRef.current < 2000) {
       return true;
     }
+
+    isValidatingRef.current = true;
     lastValidationRef.current = now;
 
     try {
-      const {
-        data: { user: apiUser },
-        error,
-      } = await supabase.auth.getUser();
+      const result = await validateSession(pathname);
 
-      if (error || !apiUser) {
-        // Session is invalid, clear local state
+      if (!result.isValid) {
         setUser(null);
-        const redirectPath = getRedirectPath(window.location.pathname);
-        if (redirectPath) {
-          router.push(redirectPath);
+        if (result.redirectPath) {
+          router.push(result.redirectPath);
         }
         return false;
       }
 
-      // Update local state if we have a valid user but no local user
-      if (apiUser && !user) {
-        setUser(apiUser);
+      // Update local state with server user data
+      if (result.user) {
+        setUser((currentUser) => {
+          // Only update if user actually changed to prevent unnecessary re-renders
+          if (currentUser?.id !== result.user?.id) {
+            return result.user;
+          }
+          return currentUser;
+        });
       }
 
       return true;
     } catch (error) {
       console.error("Session validation error:", error);
       setUser(null);
-      const redirectPath = getRedirectPath(window.location.pathname);
+      const redirectPath = getRedirectPath(pathname);
       if (redirectPath) {
         router.push(redirectPath);
       }
       return false;
+    } finally {
+      isValidatingRef.current = false;
+    }
+  }
+
+  async function getUserFromServer() {
+    try {
+      const { user: serverUser, error } = await getCurrentUser();
+
+      if (error || !serverUser) {
+        setUser(null);
+        return null;
+      }
+
+      setUser(serverUser);
+      return serverUser;
+    } catch (error) {
+      console.error("Get user error:", error);
+      setUser(null);
+      return null;
     }
   }
 
   function handleCrossTabLogout(e: StorageEvent) {
     if (!isLogoutEvent(e)) return;
 
-    // Clear the Supabase session first
-    if (supabase) {
-      supabase.auth.signOut({ scope: "global" }).catch(console.error);
-    }
-
     // Clear local state immediately
     setUser(null);
     router.refresh();
 
-    const redirectPath = getRedirectPath(window.location.pathname);
+    const redirectPath = getRedirectPath(pathname);
     if (redirectPath) {
       router.push(redirectPath);
     }
@@ -105,36 +136,20 @@ export function useSupabase() {
 
   function handleVisibilityChange() {
     if (document.visibilityState === "visible") {
-      validateSession();
+      validateSessionServer();
     }
   }
 
   function handleFocus() {
-    validateSession();
+    validateSessionServer();
   }
 
   useEffect(() => {
-    if (!supabase) {
-      setIsUserLoading(false);
-      return;
-    }
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_, session) => {
-      const newUser = session?.user ?? null;
-
-      // Only update if user actually changed to prevent unnecessary re-renders
-      setUser((currentUser) => {
-        if (currentUser?.id !== newUser?.id) {
-          return newUser;
-        }
-        return currentUser;
-      });
-
+    getUserFromServer().finally(() => {
       setIsUserLoading(false);
     });
 
+    // Set up event listeners for cross-tab logout, focus, and visibility change
     const eventListeners = setupSessionEventListeners(
       handleVisibilityChange,
       handleFocus,
@@ -142,17 +157,17 @@ export function useSupabase() {
     );
 
     return () => {
-      subscription.unsubscribe();
       eventListeners.cleanup();
     };
-  }, [supabase]);
+  }, []);
 
   return {
-    supabase,
+    supabase, // Available for non-auth operations like real-time subscriptions
     user,
     isLoggedIn: !isUserLoading ? !!user : null,
     isUserLoading,
     logOut,
-    validateSession,
+    validateSession: validateSessionServer,
+    refreshSession,
   };
 }

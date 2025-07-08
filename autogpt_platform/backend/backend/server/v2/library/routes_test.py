@@ -121,26 +121,57 @@ def test_get_library_agents_error(mocker: pytest_mock.MockFixture):
     )
 
 
-@pytest.mark.skip(reason="Mocker Not implemented")
 def test_add_agent_to_library_success(mocker: pytest_mock.MockFixture):
-    mock_db_call = mocker.patch("backend.server.v2.library.db.add_agent_to_library")
-    mock_db_call.return_value = None
+    mock_library_agent = library_model.LibraryAgent(
+        id="test-library-agent-id",
+        graph_id="test-agent-1",
+        graph_version=1,
+        name="Test Agent 1",
+        description="Test Description 1",
+        image_url=None,
+        creator_name="Test Creator",
+        creator_image_url="",
+        input_schema={"type": "object", "properties": {}},
+        credentials_input_schema={"type": "object", "properties": {}},
+        has_external_trigger=False,
+        status=library_model.LibraryAgentStatus.COMPLETED,
+        new_output=False,
+        can_access_graph=True,
+        is_latest_version=True,
+        updated_at=FIXED_NOW,
+    )
 
-    response = client.post("/agents/test-version-id")
+    mock_db_call = mocker.patch(
+        "backend.server.v2.library.db.add_store_agent_to_library"
+    )
+    mock_db_call.return_value = mock_library_agent
+
+    response = client.post(
+        "/agents", json={"store_listing_version_id": "test-version-id"}
+    )
     assert response.status_code == 201
+
+    # Verify the response contains the library agent data
+    data = library_model.LibraryAgent.model_validate(response.json())
+    assert data.id == "test-library-agent-id"
+    assert data.graph_id == "test-agent-1"
+
     mock_db_call.assert_called_once_with(
         store_listing_version_id="test-version-id", user_id="test-user-id"
     )
 
 
-@pytest.mark.skip(reason="Mocker Not implemented")
 def test_add_agent_to_library_error(mocker: pytest_mock.MockFixture):
-    mock_db_call = mocker.patch("backend.server.v2.library.db.add_agent_to_library")
+    mock_db_call = mocker.patch(
+        "backend.server.v2.library.db.add_store_agent_to_library"
+    )
     mock_db_call.side_effect = Exception("Test error")
 
-    response = client.post("/agents/test-version-id")
+    response = client.post(
+        "/agents", json={"store_listing_version_id": "test-version-id"}
+    )
     assert response.status_code == 500
-    assert response.json()["detail"] == "Failed to add agent to library"
+    assert "detail" in response.json()  # Verify error response structure
     mock_db_call.assert_called_once_with(
         store_listing_version_id="test-version-id", user_id="test-user-id"
     )

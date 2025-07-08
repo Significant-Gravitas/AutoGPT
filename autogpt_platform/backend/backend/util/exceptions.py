@@ -10,6 +10,10 @@ class NeedConfirmation(Exception):
     """The user must explicitly confirm that they want to proceed"""
 
 
+class NotAuthorizedError(ValueError):
+    """The user is not authorized to perform the requested operation"""
+
+
 class InsufficientBalanceError(ValueError):
     user_id: str
     message: str
