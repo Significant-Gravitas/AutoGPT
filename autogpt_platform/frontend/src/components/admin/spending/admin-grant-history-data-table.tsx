@@ -48,7 +48,7 @@ export async function AdminUserGrantHistory({
     const isPurchased = type === CreditTransactionType.TOP_UP;
     const isSpent = type === CreditTransactionType.USAGE;
 
-    let displayText = type;
+    const displayText = type;
     let bgColor = "";
 
     if (isGrant) {

@@ -46,6 +46,6 @@ class GenericWebhookTriggerBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "constants", input_data.constants
         yield "payload", input_data.payload

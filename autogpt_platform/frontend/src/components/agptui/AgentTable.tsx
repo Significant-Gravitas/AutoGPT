@@ -90,7 +90,7 @@ export const AgentTable: React.FC<AgentTableProps> = ({
       {/* Table body */}
       {agents.length > 0 ? (
         <div className="flex flex-col">
-          {agents.map((agent, index) => (
+          {agents.map((agent) => (
             <div key={agent.id} className="md:block">
               <AgentTableRow
                 {...agent}

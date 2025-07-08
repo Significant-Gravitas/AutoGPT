@@ -108,11 +108,16 @@ class TestDatabaseIsolation:
             where={"email": {"contains": "@test.example"}}
         )
 
+    @pytest.fixture(scope="session")
     async def test_create_user(self, test_db_connection):
         """Test that demonstrates proper isolation."""
         # This test has access to a clean database
         user = await test_db_connection.user.create(
-            data={"email": "test@test.example", "name": "Test User"}
+            data={
+                "id": "test-user-id",
+                "email": "test@test.example",
+                "name": "Test User",
+            }
         )
         assert user.email == "test@test.example"
         # User will be cleaned up automatically

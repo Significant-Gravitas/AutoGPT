@@ -60,7 +60,6 @@ export default function WalletRefill() {
 
   // Pre-fill the auto-refill form with existing values
   useEffect(() => {
-    const values = autoRefillForm.getValues();
     if (
       autoTopUpConfig &&
       autoTopUpConfig.amount > 0 &&

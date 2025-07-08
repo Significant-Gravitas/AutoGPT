@@ -140,15 +140,21 @@ export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
   secret?: boolean;
 };
 
-export type CredentialsType = "api_key" | "oauth2" | "user_password";
+export type CredentialsType =
+  | "api_key"
+  | "oauth2"
+  | "user_password"
+  | "host_scoped";
 
 export type Credentials =
   | APIKeyCredentials
   | OAuth2Credentials
-  | UserPasswordCredentials;
+  | UserPasswordCredentials
+  | HostScopedCredentials;
 
 // --8<-- [start:BlockIOCredentialsSubSchema]
 export const PROVIDER_NAMES = {
+  AIML_API: "aiml_api",
   ANTHROPIC: "anthropic",
   APOLLO: "apollo",
   D_ID: "d_id",
@@ -160,6 +166,7 @@ export const PROVIDER_NAMES = {
   GOOGLE: "google",
   GOOGLE_MAPS: "google_maps",
   GROQ: "groq",
+  HTTP: "http",
   HUBSPOT: "hubspot",
   IDEOGRAM: "ideogram",
   JINA: "jina",
@@ -198,6 +205,7 @@ export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   credentials_types: Array<CredentialsType>;
   discriminator?: string;
   discriminator_mapping?: { [key: string]: CredentialsProviderName };
+  discriminator_values?: any[];
   secret?: boolean;
 };
 
@@ -277,7 +285,13 @@ export type GraphExecutionMeta = {
   graph_id: GraphID;
   graph_version: number;
   preset_id?: LibraryAgentPresetID;
-  status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
+  status:
+    | "QUEUED"
+    | "RUNNING"
+    | "COMPLETED"
+    | "TERMINATED"
+    | "FAILED"
+    | "INCOMPLETE";
   started_at: Date;
   ended_at: Date;
   stats?: {
@@ -400,11 +414,29 @@ export type LibraryAgent = {
   updated_at: Date;
   name: string;
   description: string;
-  input_schema: BlockIOObjectSubSchema;
+  input_schema: GraphIOSchema;
+  credentials_input_schema: {
+    type: "object";
+    properties: { [key: string]: BlockIOCredentialsSubSchema };
+    required: (keyof LibraryAgent["credentials_input_schema"]["properties"])[];
+  };
   new_output: boolean;
   can_access_graph: boolean;
   is_latest_version: boolean;
-};
+} & (
+  | {
+      has_external_trigger: true;
+      trigger_setup_info: {
+        provider: CredentialsProviderName;
+        config_schema: BlockIORootSchema;
+        credentials_input_name?: string;
+      };
+    }
+  | {
+      has_external_trigger: false;
+      trigger_setup_info?: null;
+    }
+);
 
 export type LibraryAgentID = Brand<string, "LibraryAgentID">;
 
@@ -431,9 +463,11 @@ export type LibraryAgentPreset = {
   graph_id: GraphID;
   graph_version: number;
   inputs: { [key: string]: any };
+  credentials: Record<string, CredentialsMetaInput>;
   name: string;
   description: string;
   is_active: boolean;
+  webhook_id?: string;
 };
 
 export type LibraryAgentPresetID = Brand<string, "LibraryAgentPresetID">;
@@ -480,6 +514,7 @@ export type CredentialsMetaResponse = {
   title?: string;
   scopes?: Array<string>;
   username?: string;
+  host?: string;
 };
 
 /* Mirror of backend/server/integrations/router.py:CredentialsDeletionResponse */
@@ -536,6 +571,14 @@ export type UserPasswordCredentials = BaseCredentials & {
   title: string;
   username: string;
   password: string;
+};
+
+/* Mirror of backend/backend/data/model.py:HostScopedCredentials */
+export type HostScopedCredentials = BaseCredentials & {
+  type: "host_scoped";
+  title: string;
+  host: string;
+  headers: Record<string, string>;
 };
 
 // Mirror of backend/backend/data/notifications.py:NotificationType
@@ -629,6 +672,7 @@ export type StoreAgent = {
   description: string;
   runs: number;
   rating: number;
+  updated_at: string;
 };
 
 export type StoreAgentsResponse = {
@@ -733,6 +777,7 @@ export type ProfileDetails = {
   avatar_url: string;
 };
 
+/* Mirror of backend/executor/scheduler.py:GraphExecutionJobInfo */
 export type Schedule = {
   id: ScheduleID;
   name: string;
@@ -740,17 +785,21 @@ export type Schedule = {
   user_id: UserID;
   graph_id: GraphID;
   graph_version: number;
-  input_data: { [key: string]: any };
+  input_data: Record<string, any>;
+  input_credentials: Record<string, CredentialsMetaInput>;
   next_run_time: Date;
 };
 
 export type ScheduleID = Brand<string, "ScheduleID">;
 
+/* Mirror of backend/server/routers/v1.py:ScheduleCreationRequest */
 export type ScheduleCreatable = {
-  cron: string;
   graph_id: GraphID;
   graph_version: number;
-  input_data: { [key: string]: any };
+  name: string;
+  cron: string;
+  inputs: Record<string, any>;
+  credentials?: Record<string, CredentialsMetaInput>;
 };
 
 export type MyAgent = {

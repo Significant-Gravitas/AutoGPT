@@ -1,5 +1,5 @@
 import { AlertCircle, CheckCircle } from "lucide-react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { HelpItem } from "@/components/auth/help-item";
 import { BehaveAs } from "@/lib/utils";
 

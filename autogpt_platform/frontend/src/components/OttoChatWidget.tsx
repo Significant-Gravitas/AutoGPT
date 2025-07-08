@@ -212,7 +212,7 @@ export default function OttoChatWidget({
                       <p className="mb-2 last:mb-0">{children}</p>
                     ),
                     code(props) {
-                      const { children, className, node, ...rest } = props;
+                      const { children, className, node: _, ...rest } = props;
                       const match = /language-(\w+)/.exec(className || "");
                       return match ? (
                         <pre className="overflow-x-auto rounded-md bg-muted-foreground/20 p-3">

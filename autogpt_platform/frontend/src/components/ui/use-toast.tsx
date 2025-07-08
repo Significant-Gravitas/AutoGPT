@@ -16,12 +16,12 @@ type ToasterToast = ToastProps & {
   dismissable?: boolean;
 };
 
-const actionTypes = {
-  ADD_TOAST: "ADD_TOAST",
-  UPDATE_TOAST: "UPDATE_TOAST",
-  DISMISS_TOAST: "DISMISS_TOAST",
-  REMOVE_TOAST: "REMOVE_TOAST",
-} as const;
+type ActionTypes = {
+  ADD_TOAST: "ADD_TOAST";
+  UPDATE_TOAST: "UPDATE_TOAST";
+  DISMISS_TOAST: "DISMISS_TOAST";
+  REMOVE_TOAST: "REMOVE_TOAST";
+};
 
 let count = 0;
 
@@ -30,7 +30,7 @@ function genId() {
   return count.toString();
 }
 
-type ActionType = typeof actionTypes;
+type ActionType = ActionTypes;
 
 type Action =
   | {
@@ -197,9 +197,10 @@ function useToastOnFail() {
   return React.useCallback(
     (action: string, { rethrow = false }: ToastOnFailOptions = {}) =>
       (error: any) => {
+        const err = error as Error;
         toast({
           title: `Unable to ${action}`,
-          description: (error as Error)?.message ?? "Something went wrong",
+          description: err.message ?? "Something went wrong",
           variant: "destructive",
           duration: 10000,
         });
@@ -211,4 +212,4 @@ function useToastOnFail() {
   );
 }
 
-export { useToast, toast, useToastOnFail };
+export { toast, useToast, useToastOnFail };

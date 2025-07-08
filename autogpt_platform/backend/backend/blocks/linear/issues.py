@@ -67,7 +67,7 @@ class LinearCreateIssueBlock(Block):
         )
 
     @staticmethod
-    def create_issue(
+    async def create_issue(
         credentials: LinearCredentials,
         team_name: str,
         title: str,
@@ -76,15 +76,15 @@ class LinearCreateIssueBlock(Block):
         project_name: str | None = None,
     ) -> tuple[str, str]:
         client = LinearClient(credentials=credentials)
-        team_id = client.try_get_team_by_name(team_name=team_name)
+        team_id = await client.try_get_team_by_name(team_name=team_name)
         project_id: str | None = None
         if project_name:
-            projects = client.try_search_projects(term=project_name)
+            projects = await client.try_search_projects(term=project_name)
             if projects:
                 project_id = projects[0].id
             else:
                 raise LinearAPIException("Project not found", status_code=404)
-        response: CreateIssueResponse = client.try_create_issue(
+        response: CreateIssueResponse = await client.try_create_issue(
             team_id=team_id,
             title=title,
             description=description,
@@ -93,12 +93,12 @@ class LinearCreateIssueBlock(Block):
         )
         return response.issue.identifier, response.issue.title
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: LinearCredentials, **kwargs
     ) -> BlockOutput:
         """Execute the issue creation"""
         try:
-            issue_id, issue_title = self.create_issue(
+            issue_id, issue_title = await self.create_issue(
                 credentials=credentials,
                 team_name=input_data.team_name,
                 title=input_data.title,
@@ -168,20 +168,22 @@ class LinearSearchIssuesBlock(Block):
         )
 
     @staticmethod
-    def search_issues(
+    async def search_issues(
         credentials: LinearCredentials,
         term: str,
     ) -> list[Issue]:
         client = LinearClient(credentials=credentials)
-        response: list[Issue] = client.try_search_issues(term=term)
+        response: list[Issue] = await client.try_search_issues(term=term)
         return response
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: LinearCredentials, **kwargs
     ) -> BlockOutput:
         """Execute the issue search"""
         try:
-            issues = self.search_issues(credentials=credentials, term=input_data.term)
+            issues = await self.search_issues(
+                credentials=credentials, term=input_data.term
+            )
             yield "issues", issues
         except LinearAPIException as e:
             yield "error", str(e)

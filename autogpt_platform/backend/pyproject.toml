@@ -10,6 +10,7 @@ packages = [{ include = "backend", format = "sdist" }]
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
 aio-pika = "^9.5.5"
+aiodns = "^3.1.1"
 anthropic = "^0.51.0"
 apscheduler = "^3.11.0"
 autogpt-libs = { path = "../autogpt_libs", develop = true }
@@ -66,6 +67,10 @@ youtube-transcript-api = "^0.6.2"
 zerobouncesdk = "^1.1.1"
 # NOTE: please insert new dependencies in their alphabetical location
 pytest-snapshot = "^0.9.0"
+aiofiles = "^24.1.0"
+tiktoken = "^0.9.0"
+aioclamd = "^1.0.0"
+setuptools = "^80.9.0"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"
@@ -110,6 +115,11 @@ ignore_patterns = []
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+filterwarnings = [
+    "ignore:'audioop' is deprecated:DeprecationWarning:discord.player",
+    "ignore:invalid escape sequence:DeprecationWarning:tweepy.api",
+]
 
 [tool.ruff]
 target-version = "py310"

@@ -11,14 +11,14 @@ from backend.blocks.apollo.models import (
     SearchOrganizationsRequest,
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
+from backend.data.model import CredentialsField, SchemaField
 
 
 class SearchOrganizationsBlock(Block):
     """Search for organizations in Apollo"""
 
     class Input(BlockSchema):
-        organization_num_empoloyees_range: list[int] = SchemaField(
+        organization_num_employees_range: list[int] = SchemaField(
             description="""The number range of employees working for the company. This enables you to find companies based on headcount. You can add multiple ranges to expand your search results.
 
 Each range you add needs to be a string, with the upper and lower numbers of the range separated only by a comma.""",
@@ -65,7 +65,7 @@ To find IDs, identify the values for organization_id when you call this endpoint
             le=50000,
             advanced=True,
         )
-        credentials: ApolloCredentialsInput = SchemaField(
+        credentials: ApolloCredentialsInput = CredentialsField(
             description="Apollo credentials",
         )
 
@@ -201,19 +201,17 @@ To find IDs, identify the values for organization_id when you call this endpoint
         )
 
     @staticmethod
-    def search_organizations(
+    async def search_organizations(
         query: SearchOrganizationsRequest, credentials: ApolloCredentials
     ) -> list[Organization]:
         client = ApolloClient(credentials)
-        return client.search_organizations(query)
+        return await client.search_organizations(query)
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: ApolloCredentials, **kwargs
     ) -> BlockOutput:
-        query = SearchOrganizationsRequest(
-            **input_data.model_dump(exclude={"credentials"})
-        )
-        organizations = self.search_organizations(query, credentials)
+        query = SearchOrganizationsRequest(**input_data.model_dump())
+        organizations = await self.search_organizations(query, credentials)
         for organization in organizations:
             yield "organization", organization
         yield "organizations", organizations

@@ -20,7 +20,7 @@ def load_all_blocks() -> dict[str, type["Block"]]:
     modules = [
         str(f.relative_to(current_dir))[:-3].replace(os.path.sep, ".")
         for f in current_dir.rglob("*.py")
-        if f.is_file() and f.name != "__init__.py"
+        if f.is_file() and f.name != "__init__.py" and not f.name.startswith("test_")
     ]
     for module in modules:
         if not re.match("^[a-z0-9_.]+$", module):

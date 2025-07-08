@@ -1,12 +1,12 @@
 "use client";
-import useSupabase from "@/lib/supabase/useSupabase";
 import { IconLogOut } from "@/components/ui/icons";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { cn } from "@/lib/utils";
+import * as Sentry from "@sentry/nextjs";
+import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { LoadingSpinner } from "../ui/loading";
-import { cn } from "@/lib/utils";
-import { useRouter } from "next/navigation";
 import { toast } from "../ui/use-toast";
-import * as Sentry from "@sentry/nextjs";
 
 export function ProfilePopoutMenuLogoutButton() {
   const router = useRouter();

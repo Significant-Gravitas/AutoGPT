@@ -1,3 +1,4 @@
+import inspect
 import logging
 import time
 import uuid
@@ -93,7 +94,7 @@ async def wait_execution(
     assert False, "Execution did not complete in time."
 
 
-def execute_block_test(block: Block):
+async def execute_block_test(block: Block):
     prefix = f"[Test-{block.name}]"
 
     if not block.test_input or not block.test_output:
@@ -110,10 +111,25 @@ def execute_block_test(block: Block):
 
     for mock_name, mock_obj in (block.test_mock or {}).items():
         log.info(f"{prefix} mocking {mock_name}...")
-        if hasattr(block, mock_name):
-            setattr(block, mock_name, mock_obj)
-        else:
+        # check whether the field mock_name is an async function or not
+        if not hasattr(block, mock_name):
             log.info(f"{prefix} mock {mock_name} not found in block")
+            continue
+
+        fun = getattr(block, mock_name)
+        is_async = inspect.iscoroutinefunction(fun) or inspect.isasyncgenfunction(fun)
+
+        if is_async:
+
+            async def async_mock(
+                *args, _mock_name=mock_name, _mock_obj=mock_obj, **kwargs
+            ):
+                return _mock_obj(*args, **kwargs)
+
+            setattr(block, mock_name, async_mock)
+
+        else:
+            setattr(block, mock_name, mock_obj)
 
     # Populate credentials argument(s)
     extra_exec_kwargs: dict = {
@@ -141,7 +157,9 @@ def execute_block_test(block: Block):
     for input_data in block.test_input:
         log.info(f"{prefix} in: {input_data}")
 
-        for output_name, output_data in block.execute(input_data, **extra_exec_kwargs):
+        async for output_name, output_data in block.execute(
+            input_data, **extra_exec_kwargs
+        ):
             if output_index >= len(block.test_output):
                 raise ValueError(
                     f"{prefix} produced output more than expected {output_index} >= {len(block.test_output)}:\nOutput Expected:\t\t{block.test_output}\nFailed Output Produced:\t('{output_name}', {output_data})\nNote that this may not be the one that was unexpected, but it is the first that triggered the extra output warning"

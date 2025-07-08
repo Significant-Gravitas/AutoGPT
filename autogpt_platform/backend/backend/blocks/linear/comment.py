@@ -54,21 +54,21 @@ class LinearCreateCommentBlock(Block):
         )
 
     @staticmethod
-    def create_comment(
+    async def create_comment(
         credentials: LinearCredentials, issue_id: str, comment: str
     ) -> tuple[str, str]:
         client = LinearClient(credentials=credentials)
-        response: CreateCommentResponse = client.try_create_comment(
+        response: CreateCommentResponse = await client.try_create_comment(
             issue_id=issue_id, comment=comment
         )
         return response.comment.id, response.comment.body
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: LinearCredentials, **kwargs
     ) -> BlockOutput:
         """Execute the comment creation"""
         try:
-            comment_id, comment_body = self.create_comment(
+            comment_id, comment_body = await self.create_comment(
                 credentials=credentials,
                 issue_id=input_data.issue_id,
                 comment=input_data.comment,
