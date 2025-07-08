@@ -8,6 +8,8 @@ This demonstrates more advanced provider configurations including:
 4. Multiple provider configurations
 """
 
+import logging
+
 from backend.sdk import (
     APIKeyCredentials,
     Block,
@@ -19,6 +21,8 @@ from backend.sdk import (
 )
 
 from ._config import advanced_service, custom_api
+
+logger = logging.getLogger(__name__)
 
 
 class AdvancedProviderBlock(Block):
@@ -62,17 +66,25 @@ class AdvancedProviderBlock(Block):
         **kwargs,
     ) -> BlockOutput:
         try:
+            logger.debug(
+                "Starting AdvancedProviderBlock run with operation: %s",
+                input_data.operation,
+            )
             # Use API key authentication
             _ = (
                 credentials.api_key.get_secret_value()
             )  # Would be used in real implementation
+            logger.debug("Successfully authenticated with API key")
+
             result = f"Performed {input_data.operation} with API key auth"
+            logger.debug("Operation completed successfully")
 
             yield "result", result
             yield "auth_type", "api_key"
             yield "success", True
 
         except Exception as e:
+            logger.error("Error in AdvancedProviderBlock: %s", str(e))
             yield "result", f"Error: {str(e)}"
             yield "auth_type", "error"
             yield "success", False
@@ -113,19 +125,26 @@ class CustomAPIBlock(Block):
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         try:
+            logger.debug(
+                "Starting CustomAPIBlock run with endpoint: %s", input_data.endpoint
+            )
             # Get API client from provider
             api_client = custom_api.get_api(credentials)
+            logger.debug("Successfully obtained API client")
 
             # Make API request
+            logger.debug("Making API request with payload: %s", input_data.payload)
             response = await api_client.request(
                 method="POST",
                 endpoint=input_data.endpoint,
                 data=input_data.payload,
             )
+            logger.debug("Received API response: %s", response)
 
             yield "response", str(response)
             yield "status", response.get("status", "unknown")
 
         except Exception as e:
+            logger.error("Error in CustomAPIBlock: %s", str(e))
             yield "response", f"Error: {str(e)}"
             yield "status", "error"

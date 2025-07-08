@@ -5,7 +5,7 @@ This module provides models that will be included in the OpenAPI schema generati
 allowing frontend code generators like Orval to create corresponding TypeScript types.
 """
 
-from typing import Dict, List, Literal
+from typing import List, Literal
 
 from pydantic import BaseModel, Field, create_model
 
@@ -83,7 +83,7 @@ class ProviderConstants(BaseModel):
     This is designed to be converted by Orval into a TypeScript constant.
     """
 
-    PROVIDER_NAMES: Dict[str, str] = Field(
+    PROVIDER_NAMES: dict[str, str] = Field(
         description="All available provider names as a constant mapping",
         default_factory=lambda: {
             name.upper().replace("-", "_"): name for name in get_all_provider_names()

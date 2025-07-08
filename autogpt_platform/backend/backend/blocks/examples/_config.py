@@ -30,17 +30,21 @@ EXAMPLE_SERVICE_TEST_CREDENTIALS_INPUT = {
 
 # Configure the example webhook provider
 example_webhook = (
-    ProviderBuilder("examplewebhook")
-    .with_api_key("EXAMPLE_WEBHOOK_API_KEY", "Example Webhook API Key")
-    .with_base_cost(0, BlockCostType.RUN)  # Webhooks typically don't have run costs
+    ProviderBuilder(name="examplewebhook")
+    .with_api_key(
+        env_var_name="EXAMPLE_WEBHOOK_API_KEY", title="Example Webhook API Key"
+    )
+    .with_base_cost(
+        amount=0, cost_type=BlockCostType.RUN
+    )  # Webhooks typically don't have run costs
     .build()
 )
 
 # Advanced provider configuration
 advanced_service = (
-    ProviderBuilder("advanced-service")
-    .with_api_key("ADVANCED_API_KEY", "Advanced Service API Key")
-    .with_base_cost(2, BlockCostType.RUN)
+    ProviderBuilder(name="advanced-service")
+    .with_api_key(env_var_name="ADVANCED_API_KEY", title="Advanced Service API Key")
+    .with_base_cost(amount=2, cost_type=BlockCostType.RUN)
     .build()
 )
 
@@ -53,15 +57,27 @@ class CustomAPIProvider:
         self.credentials = credentials
 
     async def request(self, method: str, endpoint: str, **kwargs):
-        # Simulated API request
+        # Example of how to use Requests module:
+        # from backend.sdk import Requests
+        # response = await Requests().post(
+        #     url="https://api.example.com" + endpoint,
+        #     headers={
+        #         "Content-Type": "application/json",
+        #         "x-api-key": self.credentials.api_key.get_secret_value()
+        #     },
+        #     json=kwargs.get("data", {})
+        # )
+        # return response.json()
+
+        # Simulated API request for example
         return {"status": "ok", "data": kwargs.get("data", {})}
 
 
 # Configure provider with custom API client
 custom_api = (
-    ProviderBuilder("custom-api")
-    .with_api_key("CUSTOM_API_KEY", "Custom API Key")
-    .with_api_client(lambda creds: CustomAPIProvider(creds))
-    .with_base_cost(3, BlockCostType.RUN)
+    ProviderBuilder(name="custom-api")
+    .with_api_key(env_var_name="CUSTOM_API_KEY", title="Custom API Key")
+    .with_api_client(factory=lambda creds: CustomAPIProvider(creds))
+    .with_base_cost(amount=3, cost_type=BlockCostType.RUN)
     .build()
 )
