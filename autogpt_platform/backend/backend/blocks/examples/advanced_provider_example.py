@@ -47,7 +47,7 @@ class AdvancedProviderBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            id="d0086843-4c6c-4b9a-a490-d0e7b4cb317e",
             description="Advanced provider example with multiple auth types",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=AdvancedProviderBlock.Input,
@@ -102,7 +102,7 @@ class CustomAPIBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f9e8d7c6-b5a4-3210-fedc-ba9876543210",
+            id="979ccdfd-db5a-4179-ad57-aeb277999d79",
             description="Example using custom API client provider",
             categories={BlockCategory.DEVELOPER_TOOLS},
             input_schema=CustomAPIBlock.Input,

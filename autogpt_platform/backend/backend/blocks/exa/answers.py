@@ -88,7 +88,7 @@ class ExaAnswerBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f8e7d6c5-b4a3-5c2d-9e1f-3a7b8c9d4e6f",
+            id="b79ca4cc-9d5e-47d1-9d4f-e3a2d7f28df5",
             description="Get an LLM answer to a question informed by Exa search results",
             categories={BlockCategory.SEARCH, BlockCategory.AI},
             input_schema=ExaAnswerBlock.Input,
