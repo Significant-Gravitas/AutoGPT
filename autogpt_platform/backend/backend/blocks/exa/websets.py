@@ -57,7 +57,7 @@ class ExaCreateWebsetBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="a7c3b1d4-9e2f-4c5a-8f1b-3e6d7a9c2b5e",
+            id="0cda29ff-c549-4a19-8805-c982b7d4ec34",
             description="Create a new Exa Webset for persistent web search collections",
             categories={BlockCategory.SEARCH},
             input_schema=ExaCreateWebsetBlock.Input,
@@ -139,7 +139,7 @@ class ExaUpdateWebsetBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="c9e5d3f6-2a4b-6e7c-1f3d-5a8b9c4e7d2f",
+            id="89ccd99a-3c2b-4fbf-9e25-0ffa398d0314",
             description="Update metadata for an existing Webset",
             categories={BlockCategory.SEARCH},
             input_schema=ExaUpdateWebsetBlock.Input,
@@ -211,7 +211,7 @@ class ExaListWebsetsBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="f3h8g6i9-5d7e-9b1f-4c6g-8d2f3h7i1a5c",
+            id="1dcd8fd6-c13f-4e6f-bd4c-654428fa4757",
             description="List all Websets with pagination support",
             categories={BlockCategory.SEARCH},
             input_schema=ExaListWebsetsBlock.Input,
@@ -294,7 +294,7 @@ class ExaGetWebsetBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="b8d4c2e5-1f3a-5d6b-9e2c-4f7a8b3d6c9f",
+            id="6ab8e12a-132c-41bf-b5f3-d662620fa832",
             description="Retrieve a Webset by ID or external ID",
             categories={BlockCategory.SEARCH},
             input_schema=ExaGetWebsetBlock.Input,
@@ -367,7 +367,7 @@ class ExaDeleteWebsetBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="d1f6e4g7-3b5c-7f8d-2a4e-6b9c1d5f8e3a",
+            id="aa6994a2-e986-421f-8d4c-7671d3be7b7e",
             description="Delete a Webset and all its items",
             categories={BlockCategory.SEARCH},
             input_schema=ExaDeleteWebsetBlock.Input,
@@ -425,7 +425,7 @@ class ExaCancelWebsetBlock(Block):
 
     def __init__(self):
         super().__init__(
-            id="e2g7f5h8-4c6d-8a9e-3b5f-7c1d2e6g9f4b",
+            id="e40a6420-1db8-47bb-b00a-0e6aecd74176",
             description="Cancel all operations being performed on a Webset",
             categories={BlockCategory.SEARCH},
             input_schema=ExaCancelWebsetBlock.Input,

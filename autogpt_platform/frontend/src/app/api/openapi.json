@@ -1480,7 +1480,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/GraphExecutionMeta" }
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/GraphExecutionMeta" },
+                    { "type": "null" }
+                  ],
+                  "title": "Response Postv1Stop Graph Execution"
+                }
               }
             }
           },
@@ -4667,8 +4673,10 @@
             "title": "Input Schema"
           },
           "credentials_input_schema": {
-            "additionalProperties": true,
-            "type": "object",
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
             "title": "Credentials Input Schema",
             "description": "Input schema for credentials required by the agent"
           },

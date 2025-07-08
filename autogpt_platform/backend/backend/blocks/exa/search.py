@@ -68,7 +68,7 @@ class ExaSearchBlock(Block):
             description="List of search results", default_factory=list
         )
         error: str = SchemaField(
-            description="Error message if the request failed", default=""
+            description="Error message if the request failed",
         )
 
     def __init__(self):

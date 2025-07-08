@@ -38,24 +38,14 @@ class SummarySettings(BaseModel):
 
 
 class ContentSettings(BaseModel):
-    text: dict = SchemaField(
-        description="Text content settings",
-        default={"maxCharacters": 1000, "includeHtmlTags": False},
-        advanced=True,
+    text: TextSettings = SchemaField(
+        default=TextSettings(),
     )
-    highlights: dict = SchemaField(
-        description="Highlight settings",
-        default={
-            "numSentences": 3,
-            "highlightsPerUrl": 3,
-            "query": "",
-        },
-        advanced=True,
+    highlights: HighlightSettings = SchemaField(
+        default=HighlightSettings(),
     )
-    summary: dict = SchemaField(
-        description="Summary settings",
-        default={"query": ""},
-        advanced=True,
+    summary: SummarySettings = SchemaField(
+        default=SummarySettings(),
     )
 
 

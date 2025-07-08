@@ -54,23 +54,11 @@ class ExaContentsBlock(Block):
         }
 
         # Convert ContentSettings to API format
-        contents_dict = input_data.contents.model_dump()
         payload = {
             "ids": input_data.ids,
-            "text": {
-                "maxCharacters": contents_dict["text"]["max_characters"],
-                "includeHtmlTags": contents_dict["text"]["include_html_tags"],
-            },
-            "highlights": {
-                "numSentences": contents_dict["highlights"]["num_sentences"],
-                "highlightsPerUrl": contents_dict["highlights"]["highlights_per_url"],
-                "query": contents_dict["summary"][
-                    "query"
-                ],  # Note: query comes from summary
-            },
-            "summary": {
-                "query": contents_dict["summary"]["query"],
-            },
+            "text": input_data.contents.text,
+            "highlights": input_data.contents.highlights,
+            "summary": input_data.contents.summary,
         }
 
         try:

@@ -45,6 +45,8 @@ import type { HTTPValidationError } from "../../models/hTTPValidationError";
 
 import type { PostV1ExecuteGraphAgentParams } from "../../models/postV1ExecuteGraphAgentParams";
 
+import type { PostV1StopGraphExecution200 } from "../../models/postV1StopGraphExecution200";
+
 import type { PostV1StopGraphExecutionsParams } from "../../models/postV1StopGraphExecutionsParams";
 
 import type { SetGraphActiveVersion } from "../../models/setGraphActiveVersion";
@@ -1498,7 +1500,7 @@ export const usePostV1ExecuteGraphAgent = <
  * @summary Stop graph execution
  */
 export type postV1StopGraphExecutionResponse200 = {
-  data: GraphExecutionMeta;
+  data: PostV1StopGraphExecution200;
   status: 200;
 };
 
