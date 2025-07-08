@@ -21,11 +21,6 @@ class ExaAnswerBlock(Block):
             description="The question or query to answer",
             placeholder="What is the latest valuation of SpaceX?",
         )
-        stream: bool = SchemaField(
-            default=False,
-            description="If true, the response is returned as a server-sent events (SSE) stream",
-            advanced=True,
-        )
         text: bool = SchemaField(
             default=False,
             description="If true, the response includes full text content in the search results",
@@ -74,7 +69,6 @@ class ExaAnswerBlock(Block):
         # Build the payload
         payload = {
             "query": input_data.query,
-            "stream": input_data.stream,
             "text": input_data.text,
             "model": input_data.model,
         }
