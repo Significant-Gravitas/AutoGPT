@@ -23,10 +23,10 @@ export async function signupTestUser(
     await page.goto("http://localhost:3000/signup");
 
     // Wait for page to load
-    const emailInput = page.getByLabel("Email");
-    await emailInput.waitFor({ state: "visible", timeout: 10000 });
+    await page.getByText("Create a new account");
 
     // Fill form
+    const emailInput = page.getByLabel("Email");
     await emailInput.fill(userEmail);
     const passwordInput = page.locator("#password");
     await passwordInput.fill(userPassword);
