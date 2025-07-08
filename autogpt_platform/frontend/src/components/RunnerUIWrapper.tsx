@@ -1,8 +1,8 @@
 import React, {
   useState,
-  useCallback,
   forwardRef,
   useImperativeHandle,
+  useMemo,
 } from "react";
 import { Node } from "@xyflow/react";
 import { CustomNodeData } from "@/components/CustomNode";
@@ -56,19 +56,12 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
     const [cronExpression, setCronExpression] = useState("");
     const [scheduleName, setScheduleName] = useState("");
 
-    const getGraphInputsAndOutputs = useCallback((): {
-      inputs: InputNodeInfo[];
-      outputs: OutputNodeInfo[];
-    } => {
+    const graphInputs = useMemo((): InputNodeInfo[] => {
       const inputNodes = nodes.filter(
         (node) => node.data.uiType === BlockUIType.INPUT,
       );
 
-      const outputNodes = nodes.filter(
-        (node) => node.data.uiType === BlockUIType.OUTPUT,
-      );
-
-      const inputs = inputNodes.map(
+      return inputNodes.map(
         (node) =>
           ({
             id: node.id,
@@ -83,8 +76,14 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
             },
           }) satisfies InputNodeInfo,
       );
+    }, [nodes]);
 
-      const outputs = outputNodes.map(
+    const graphOutputs = useMemo((): OutputNodeInfo[] => {
+      const outputNodes = nodes.filter(
+        (node) => node.data.uiType === BlockUIType.OUTPUT,
+      );
+
+      return outputNodes.map(
         (node) =>
           ({
             metadata: {
@@ -99,16 +98,13 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
                 .join("\n--\n") || "No output yet",
           }) satisfies OutputNodeInfo,
       );
-
-      return { inputs, outputs };
     }, [nodes]);
 
     const openRunnerInput = () => setIsRunnerInputOpen(true);
     const openRunnerOutput = () => setIsRunnerOutputOpen(true);
 
     const runOrOpenInput = () => {
-      const { inputs } = getGraphInputsAndOutputs();
-      if (inputs.length > 0) {
+      if (graphInputs.length > 0) {
         openRunnerInput();
       } else {
         requestSaveAndRun({});
@@ -119,11 +115,10 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
       cronExpression: string,
       scheduleName: string,
     ) => {
-      const { inputs } = getGraphInputsAndOutputs();
       setCronExpression(cronExpression);
       setScheduleName(scheduleName);
 
-      if (inputs.length > 0) {
+      if (graphOutputs.length > 0) {
         setScheduledInput(true);
         setIsRunnerInputOpen(true);
       } else {
@@ -143,7 +138,7 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
         <RunnerInputDialog
           isOpen={isRunnerInputOpen}
           doClose={() => setIsRunnerInputOpen(false)}
-          inputs={getGraphInputsAndOutputs().inputs}
+          inputs={graphInputs}
           doRun={requestSaveAndRun}
           scheduledInput={scheduledInput}
           isScheduling={isScheduling}
@@ -152,7 +147,7 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
             scheduleRunner(
               cronExpression,
               scheduleName,
-              getGraphInputsAndOutputs().inputs.reduce(
+              graphInputs.reduce(
                 (acc, input) => ({
                   ...acc,
                   [input.inputConfig.name]: input.inputConfig.defaultValue,
@@ -169,7 +164,7 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
         <RunnerOutputUI
           isOpen={isRunnerOutputOpen}
           doClose={() => setIsRunnerOutputOpen(false)}
-          outputs={getGraphInputsAndOutputs().outputs}
+          outputs={graphOutputs}
         />
       </>
     );
