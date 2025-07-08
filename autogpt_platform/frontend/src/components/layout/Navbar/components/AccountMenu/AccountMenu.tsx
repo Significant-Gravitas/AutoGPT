@@ -6,9 +6,9 @@ import {
 } from "@/components/ui/popover";
 import Link from "next/link";
 import * as React from "react";
-import { ProfilePopoutMenuLogoutButton } from "../../../../agptui/ProfilePopoutMenuLogoutButton";
 import { PublishAgentPopout } from "../../../../agptui/composite/PublishAgentPopout";
 import { getAccountMenuOptionIcon, MenuItemGroup } from "../../helpers";
+import { AccountLogoutOption } from "./components/AccountLogoutOption";
 
 interface Props {
   userName?: string;
@@ -92,7 +92,7 @@ export function AccountMenu({
                     </Link>
                   );
                 } else if (item.text === "Log out") {
-                  return <ProfilePopoutMenuLogoutButton key={itemIndex} />;
+                  return <AccountLogoutOption key={itemIndex} />;
                 } else if (item.text === "Publish an agent") {
                   return (
                     <PublishAgentPopout

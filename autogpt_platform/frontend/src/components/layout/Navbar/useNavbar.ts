@@ -4,6 +4,8 @@ import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 export function useNavbar() {
   const { isLoggedIn, isUserLoading } = useSupabase();
 
+  console.log("isLoggedIn", isLoggedIn);
+
   const {
     data: profileResponse,
     isLoading: isProfileLoading,

@@ -2,18 +2,22 @@
 
 import { Button } from "@/components/atoms/Button/Button";
 import { SignInIcon } from "@phosphor-icons/react/dist/ssr";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 export function LoginButton() {
+  const router = useRouter();
   const pathname = usePathname();
   const isLoginPage = pathname.includes("/login");
 
   if (isLoginPage) return null;
 
+  function handleLogin() {
+    router.push("/login");
+  }
+
   return (
     <Button
-      as="NextLink"
-      href="/login"
+      onClick={handleLogin}
       size="small"
       className="flex items-center justify-end space-x-2"
       leftIcon={<SignInIcon className="h-5 w-5" />}
