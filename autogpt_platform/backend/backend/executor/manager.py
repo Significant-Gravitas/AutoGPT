@@ -433,9 +433,6 @@ class Executor:
             node_exec.node_exec_id, execution_stats
         )
         await send_async_execution_update(exec_update)
-        print(
-            f">>>>>>>>> Node execution stats for block {node.block.name}: {execution_stats}"
-        )
         return execution_stats
 
     @classmethod
