@@ -1,0 +1,249 @@
+{
+  "provider": "elevenlabs",
+  "auth_type": "api_key",
+  "test_api_key": "test-elevenlabs-key",
+  "base_url": "https://api.elevenlabs.io/v1",
+  "api_calls": [
+    {
+      "name": "list_voices",
+      "method": "GET",
+      "url_pattern": "https://api.elevenlabs.io/v1/voices",
+      "headers": {
+        "xi-api-key": "{{api_key}}"
+      },
+      "response": {
+        "voices": [
+          {
+            "voice_id": "voice_test123",
+            "name": "Test Voice",
+            "category": "generated",
+            "labels": {
+              "accent": "american",
+              "gender": "male"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "list_voices_v2",
+      "method": "GET",
+      "url_pattern": "https://api.elevenlabs.io/v2/voices",
+      "headers": {
+        "xi-api-key": "{{api_key}}"
+      },
+      "response": {
+        "voices": [
+          {
+            "voice_id": "voice_test123",
+            "name": "Test Voice",
+            "category": "generated",
+            "labels": {
+              "accent": "american",
+              "gender": "male"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_voice",
+      "method": "GET",
+      "url_pattern": "https://api.elevenlabs.io/v1/voices/{voice_id}",
+      "headers": {
+        "xi-api-key": "{{api_key}}"
+      },
+      "query_params": {
+        "with_settings": null
+      },
+      "response": {
+        "voice_id": "voice_test123",
+        "name": "Test Voice",
+        "samples": [],
+        "category": "generated",
+        "settings": {
+          "stability": 0.5,
+          "similarity_boost": 0.5
+        }
+      }
+    },
+    {
+      "name": "text_to_speech",
+      "method": "POST",
+      "url_pattern": "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+      "headers": {
+        "xi-api-key": "{{api_key}}",
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg"
+      },
+      "body": {
+        "text": "{{string}}",
+        "model_id": null,
+        "voice_settings": null
+      },
+      "response": "binary_audio_data",
+      "status": 200
+    },
+    {
+      "name": "text_to_speech_with_timestamps",
+      "method": "POST",
+      "url_pattern": "https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/with-timestamps",
+      "headers": {
+        "xi-api-key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "text": "{{string}}",
+        "model_id": null,
+        "voice_settings": null
+      },
+      "response": {
+        "audio_base64": "base64_encoded_audio",
+        "alignment": {
+          "characters": ["H", "e", "l", "l", "o"],
+          "character_start_times_seconds": [0.0, 0.1, 0.2, 0.3, 0.4],
+          "character_end_times_seconds": [0.1, 0.2, 0.3, 0.4, 0.5]
+        }
+      }
+    },
+    {
+      "name": "speech_to_text",
+      "method": "POST",
+      "url_pattern": "https://api.elevenlabs.io/v1/speech-to-text",
+      "headers": {
+        "xi-api-key": "{{api_key}}"
+      },
+      "body": "multipart/form-data",
+      "response": {
+        "status": "processing",
+        "id": "stt_test123"
+      }
+    },
+    {
+      "name": "speech_to_text_result",
+      "method": "GET",
+      "url_pattern": "https://api.elevenlabs.io/v1/speech-to-text/{id}",
+      "headers": {
+        "xi-api-key": "{{api_key}}"
+      },
+      "response": {
+        "status": "completed",
+        "text": "Hello world",
+        "chunks": [
+          {
+            "text": "Hello world",
+            "timestamp": [0.0, 1.0]
+          }
+        ]
+      }
+    },
+    {
+      "name": "create_voice",
+      "method": "POST",
+      "url_pattern": "https://api.elevenlabs.io/v1/voices/add",
+      "headers": {
+        "xi-api-key": "{{api_key}}"
+      },
+      "body": "multipart/form-data",
+      "response": {
+        "voice_id": "voice_new123"
+      }
+    },
+    {
+      "name": "delete_voice",
+      "method": "DELETE",
+      "url_pattern": "https://api.elevenlabs.io/v1/voices/{voice_id}",
+      "headers": {
+        "xi-api-key": "{{api_key}}"
+      },
+      "response": {},
+      "status": 200
+    },
+    {
+      "name": "list_models",
+      "method": "GET",
+      "url_pattern": "https://api.elevenlabs.io/v1/models",
+      "headers": {
+        "xi-api-key": "{{api_key}}"
+      },
+      "response": [
+        {
+          "model_id": "eleven_monolingual_v1",
+          "name": "Eleven English v1",
+          "can_do_text_to_speech": true,
+          "can_do_voice_conversion": false
+        }
+      ]
+    },
+    {
+      "name": "get_usage",
+      "method": "GET",
+      "url_pattern": "https://api.elevenlabs.io/v1/usage/character-stats",
+      "headers": {
+        "xi-api-key": "{{api_key}}"
+      },
+      "query_params": {
+        "start_unix": null,
+        "end_unix": null
+      },
+      "response": {
+        "usage": [
+          {
+            "date": "2024-01-01",
+            "character_count": 1000
+          }
+        ],
+        "total_character_count": 1000
+      }
+    }
+  ],
+  "webhooks": {
+    "allowed_webhook_types": ["notification"],
+    "resource_format_pattern": "",
+    "event_types": [
+      "speech_to_text_completed",
+      "post_call_transcription",
+      "voice_removal_notice",
+      "voice_removed",
+      "voice_removal_notice_withdrawn"
+    ],
+    "description": "ElevenLabs webhook notifications for STT, voice events, and conversational AI",
+    "supports_auto_setup": true,
+    "webhook_blocks": ["ElevenLabsWebhookTriggerBlock"]
+  },
+  "test_scenarios": {
+    "ElevenLabsListVoicesBlock": [
+      {
+        "name": "List all voices",
+        "input": {},
+        "expected_calls": ["list_voices"],
+        "expected_outputs": {
+          "voices": [
+            {
+              "voice_id": "voice_test123",
+              "name": "Test Voice",
+              "category": "generated",
+              "labels": {
+                "accent": "american",
+                "gender": "male"
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "ElevenLabsGenerateSpeechBlock": [
+      {
+        "name": "Generate speech from text",
+        "input": {
+          "text": "Hello world",
+          "voice_id": "voice_test123"
+        },
+        "expected_calls": ["text_to_speech"],
+        "expected_outputs": {
+          "audio": "binary_audio_data"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,121 @@
+{
+  "provider": "github",
+  "auth_type": "oauth2",
+  "test_api_key": "test-github-token",
+  "base_url": "https://api.github.com",
+  "api_calls": [
+    {
+      "name": "create_webhook",
+      "method": "POST",
+      "url_pattern": "https://api.github.com/repos/{owner}/{repo}/hooks",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}",
+        "Accept": "application/vnd.github.v3+json",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "name": "web",
+        "active": true,
+        "events": "{{array}}",
+        "config": {
+          "url": "{{url}}",
+          "content_type": "json",
+          "insecure_ssl": "0"
+        }
+      },
+      "response": {
+        "id": 12345,
+        "name": "web",
+        "active": true,
+        "events": ["pull_request"],
+        "config": {
+          "url": "https://example.com/webhook",
+          "content_type": "json"
+        }
+      }
+    },
+    {
+      "name": "delete_webhook",
+      "method": "DELETE",
+      "url_pattern": "https://api.github.com/repos/{owner}/{repo}/hooks/{hook_id}",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}",
+        "Accept": "application/vnd.github.v3+json"
+      },
+      "response": {},
+      "status": 204
+    },
+    {
+      "name": "list_webhooks",
+      "method": "GET",
+      "url_pattern": "https://api.github.com/repos/{owner}/{repo}/hooks",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}",
+        "Accept": "application/vnd.github.v3+json"
+      },
+      "response": [
+        {
+          "id": 12345,
+          "name": "web",
+          "active": true,
+          "events": ["pull_request"],
+          "config": {
+            "url": "https://example.com/webhook"
+          }
+        }
+      ]
+    }
+  ],
+  "webhooks": {
+    "allowed_webhook_types": ["repo"],
+    "resource_format_pattern": "{owner}/{repo}",
+    "event_types": [
+      "pull_request.opened",
+      "pull_request.edited",
+      "pull_request.closed",
+      "pull_request.reopened",
+      "pull_request.synchronize",
+      "pull_request.assigned",
+      "pull_request.unassigned",
+      "pull_request.labeled",
+      "pull_request.unlabeled",
+      "pull_request.converted_to_draft",
+      "pull_request.locked",
+      "pull_request.unlocked",
+      "pull_request.enqueued",
+      "pull_request.dequeued",
+      "pull_request.milestoned",
+      "pull_request.demilestoned",
+      "pull_request.ready_for_review",
+      "pull_request.review_requested",
+      "pull_request.review_request_removed",
+      "pull_request.auto_merge_enabled",
+      "pull_request.auto_merge_disabled"
+    ],
+    "description": "GitHub webhooks for repository events including pull requests, issues, and more",
+    "supports_auto_setup": true,
+    "webhook_blocks": ["GithubPullRequestTriggerBlock"]
+  },
+  "test_scenarios": {
+    "GithubPullRequestTriggerBlock": [
+      {
+        "name": "Trigger on pull request event",
+        "input": {
+          "repo": "owner/repo",
+          "events": {
+            "opened": true,
+            "synchronize": true
+          }
+        },
+        "expected_outputs": {
+          "payload": true,
+          "triggered_by_user": true,
+          "event": true,
+          "number": true,
+          "pull_request": true,
+          "pull_request_url": true
+        }
+      }
+    ]
+  }
+}

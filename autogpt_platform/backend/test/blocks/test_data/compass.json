@@ -1,0 +1,49 @@
+{
+  "provider": "compass",
+  "auth_type": "none",
+  "test_api_key": "",
+  "base_url": "",
+  "api_calls": [],
+  "webhooks": {
+    "allowed_webhook_types": ["transcription"],
+    "resource_format_pattern": "",
+    "event_types": [
+      "transcription.completed"
+    ],
+    "description": "Compass AI hardware transcription webhooks",
+    "supports_auto_setup": false,
+    "webhook_blocks": ["CompassAITriggerBlock"]
+  },
+  "test_scenarios": {
+    "CompassAITriggerBlock": [
+      {
+        "name": "Receive transcription",
+        "input": {
+          "payload": {
+            "date": "2024-01-01",
+            "transcription": "This is a test transcription from Compass AI hardware.",
+            "transcriptions": [
+              {
+                "text": "This is a test",
+                "speaker": "Speaker 1",
+                "start": 0.0,
+                "end": 2.0,
+                "duration": 2.0
+              },
+              {
+                "text": "transcription from Compass AI hardware.",
+                "speaker": "Speaker 1",
+                "start": 2.0,
+                "end": 5.0,
+                "duration": 3.0
+              }
+            ]
+          }
+        },
+        "expected_outputs": {
+          "transcription": "This is a test transcription from Compass AI hardware."
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,351 @@
+{
+  "provider": "oxylabs",
+  "auth_type": "user_password",
+  "test_username": "test-user",
+  "test_password": "test-pass",
+  "base_url": "https://realtime.oxylabs.io/v1",
+  "secondary_url": "https://data.oxylabs.io/v1",
+  "api_calls": [
+    {
+      "name": "scrape_url_realtime",
+      "method": "POST",
+      "url_pattern": "https://realtime.oxylabs.io/v1/queries",
+      "headers": {
+        "Authorization": "Basic {{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "source": "{{string}}",
+        "url": "{{url}}",
+        "user_agent_type": null,
+        "callback_url": null,
+        "context": null,
+        "parse": null,
+        "parsing_instructions": null
+      },
+      "response": {
+        "results": [
+          {
+            "content": "<html>...</html>",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z",
+            "page": 1,
+            "status_code": 200
+          }
+        ]
+      }
+    },
+    {
+      "name": "google_search",
+      "method": "POST", 
+      "url_pattern": "https://realtime.oxylabs.io/v1/queries",
+      "headers": {
+        "Authorization": "Basic {{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "source": "google",
+        "query": "{{string}}",
+        "domain": null,
+        "start_page": null,
+        "pages": null,
+        "locale": null,
+        "geo_location": null,
+        "user_agent_type": null,
+        "parse": null,
+        "context": null
+      },
+      "response": {
+        "results": [
+          {
+            "content": {
+              "results": {
+                "organic": [
+                  {
+                    "url": "https://example.com",
+                    "title": "Example Result",
+                    "description": "This is an example search result"
+                  }
+                ],
+                "paid": [],
+                "featured_snippet": null
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "google_shopping",
+      "method": "POST",
+      "url_pattern": "https://realtime.oxylabs.io/v1/queries",
+      "headers": {
+        "Authorization": "Basic {{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "source": "google_shopping_search",
+        "query": "{{string}}",
+        "domain": null,
+        "pages": null,
+        "locale": null,
+        "geo_location": null,
+        "context": null,
+        "parse": null
+      },
+      "response": {
+        "results": [
+          {
+            "content": {
+              "results": {
+                "organic": [
+                  {
+                    "url": "https://example.com/product",
+                    "title": "Product Name",
+                    "price": "$99.99",
+                    "merchant": "Example Store"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "amazon_search",
+      "method": "POST",
+      "url_pattern": "https://realtime.oxylabs.io/v1/queries",
+      "headers": {
+        "Authorization": "Basic {{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "source": "amazon_search",
+        "query": "{{string}}",
+        "domain": null,
+        "start_page": null,
+        "pages": null,
+        "geo_location": null,
+        "parse": null,
+        "context": null
+      },
+      "response": {
+        "results": [
+          {
+            "content": {
+              "results": {
+                "organic": [
+                  {
+                    "asin": "B001234567",
+                    "url": "https://amazon.com/dp/B001234567",
+                    "title": "Product Title",
+                    "price": 49.99,
+                    "rating": 4.5
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "amazon_product",
+      "method": "POST",
+      "url_pattern": "https://realtime.oxylabs.io/v1/queries",
+      "headers": {
+        "Authorization": "Basic {{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "source": "amazon_product",
+        "url": "{{url}}",
+        "geo_location": null,
+        "parse": null,
+        "context": null
+      },
+      "response": {
+        "results": [
+          {
+            "content": {
+              "asin": "B001234567",
+              "title": "Product Title",
+              "price": 49.99,
+              "description": "Product description...",
+              "images": ["https://example.com/image1.jpg"],
+              "rating": 4.5,
+              "reviews_count": 1234
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "serp_google_trends",
+      "method": "POST",
+      "url_pattern": "https://realtime.oxylabs.io/v1/queries",
+      "headers": {
+        "Authorization": "Basic {{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "source": "google_trends_explore",
+        "query": "{{string}}",
+        "time_range": null,
+        "category": null,
+        "geo": null
+      },
+      "response": {
+        "results": [
+          {
+            "content": {
+              "interest_over_time": [
+                {
+                  "date": "2024-01-01",
+                  "value": 75
+                }
+              ],
+              "related_queries": [
+                {
+                  "query": "related search",
+                  "value": 100
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "submit_job_async",
+      "method": "POST",
+      "url_pattern": "https://data.oxylabs.io/v1/queries",
+      "headers": {
+        "Authorization": "Basic {{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "source": "{{string}}",
+        "url": "{{url}}",
+        "callback_url": null,
+        "parse": null
+      },
+      "response": {
+        "id": "job_test123",
+        "status": "pending",
+        "_links": [
+          {
+            "rel": "self",
+            "href": "https://data.oxylabs.io/v1/queries/job_test123"
+          },
+          {
+            "rel": "results",
+            "href": "https://data.oxylabs.io/v1/queries/job_test123/results"
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_job_status",
+      "method": "GET",
+      "url_pattern": "https://data.oxylabs.io/v1/queries/{job_id}",
+      "headers": {
+        "Authorization": "Basic {{api_key}}"
+      },
+      "response": {
+        "id": "job_test123",
+        "status": "done",
+        "created_at": "2024-01-01T00:00:00Z"
+      }
+    },
+    {
+      "name": "get_job_results",
+      "method": "GET",
+      "url_pattern": "https://data.oxylabs.io/v1/queries/{job_id}/results",
+      "headers": {
+        "Authorization": "Basic {{api_key}}"
+      },
+      "response": {
+        "results": [
+          {
+            "content": "<html>...</html>",
+            "created_at": "2024-01-01T00:00:00Z"
+          }
+        ]
+      }
+    },
+    {
+      "name": "submit_batch",
+      "method": "POST",
+      "url_pattern": "https://data.oxylabs.io/v1/queries/batch",
+      "headers": {
+        "Authorization": "Basic {{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "queries": "{{array}}"
+      },
+      "response": {
+        "queries": [
+          {
+            "id": "job_batch1",
+            "status": "pending"
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_callbacker_ips",
+      "method": "GET",
+      "url_pattern": "https://data.oxylabs.io/v1/info/callbacker_ips",
+      "headers": {
+        "Authorization": "Basic {{api_key}}"
+      },
+      "response": {
+        "ips": ["192.168.1.1", "192.168.1.2"]
+      }
+    }
+  ],
+  "test_scenarios": {
+    "OxylabsScrapeWebPageBlock": [
+      {
+        "name": "Scrape a webpage",
+        "input": {
+          "url": "https://example.com",
+          "source": "universal"
+        },
+        "expected_calls": ["scrape_url"],
+        "expected_outputs": {
+          "content": true,
+          "status_code": true
+        }
+      }
+    ],
+    "OxylabsGoogleSearchBlock": [
+      {
+        "name": "Search Google for results",
+        "input": {
+          "query": "artificial intelligence news",
+          "pages": 1
+        },
+        "expected_calls": ["google_search"],
+        "expected_outputs": {
+          "results": true
+        }
+      }
+    ],
+    "OxylabsAmazonProductBlock": [
+      {
+        "name": "Get Amazon product details",
+        "input": {
+          "url": "https://amazon.com/dp/B001234567"
+        },
+        "expected_calls": ["amazon_product"],
+        "expected_outputs": {
+          "product_data": true
+        }
+      }
+    ]
+  }
+}

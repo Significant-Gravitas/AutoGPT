@@ -1,0 +1,124 @@
+{
+  "provider": "slant3d",
+  "auth_type": "api_key",
+  "test_api_key": "test-slant3d-key",
+  "base_url": "https://www.slant3dapi.com/api",
+  "api_calls": [
+    {
+      "name": "create_order",
+      "method": "POST",
+      "url_pattern": "https://www.slant3dapi.com/api/order",
+      "headers": {
+        "api-key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "email": "{{string}}",
+        "phone": "{{string}}",
+        "name": "{{string}}",
+        "orderNumber": "{{string}}",
+        "filename": "{{string}}",
+        "fileURL": "{{url}}",
+        "bill_to_street_1": "{{string}}",
+        "bill_to_city": "{{string}}",
+        "bill_to_state": "{{string}}",
+        "bill_to_zip": "{{string}}",
+        "bill_to_country_as_iso": "{{string}}",
+        "ship_to_name": "{{string}}",
+        "ship_to_street_1": "{{string}}",
+        "ship_to_city": "{{string}}",
+        "ship_to_state": "{{string}}",
+        "ship_to_zip": "{{string}}",
+        "ship_to_country_as_iso": "{{string}}",
+        "order_item_name": "{{string}}",
+        "order_quantity": "{{number}}",
+        "order_item_SKU": "{{string}}"
+      },
+      "response": {
+        "orderId": "order_123456",
+        "status": "processing"
+      }
+    },
+    {
+      "name": "register_webhook",
+      "method": "POST",
+      "url_pattern": "https://www.slant3dapi.com/api/webhook/register",
+      "headers": {
+        "api-key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "url": "{{url}}"
+      },
+      "response": {
+        "success": true,
+        "webhook_id": "webhook_123"
+      }
+    },
+    {
+      "name": "unregister_webhook",
+      "method": "DELETE",
+      "url_pattern": "https://www.slant3dapi.com/api/webhook/{webhook_id}",
+      "headers": {
+        "api-key": "{{api_key}}"
+      },
+      "response": {
+        "success": true
+      }
+    },
+    {
+      "name": "get_order_status",
+      "method": "GET",
+      "url_pattern": "https://www.slant3dapi.com/api/order/{order_id}",
+      "headers": {
+        "api-key": "{{api_key}}"
+      },
+      "response": {
+        "orderId": "order_123456",
+        "status": "SHIPPED",
+        "trackingNumber": "1Z999AA10123456784",
+        "carrierCode": "usps"
+      }
+    }
+  ],
+  "webhooks": {
+    "allowed_webhook_types": ["orders"],
+    "resource_format_pattern": "",
+    "event_types": [
+      "order.shipped"
+    ],
+    "description": "Slant3D webhooks for order status updates",
+    "supports_auto_setup": true,
+    "webhook_blocks": ["Slant3DOrderWebhookBlock"]
+  },
+  "test_scenarios": {
+    "Slant3DOrderWebhookBlock": [
+      {
+        "name": "Receive order shipped notification",
+        "input": {
+          "events": {
+            "shipped": true
+          },
+          "payload": {
+            "orderId": "1234567890",
+            "status": "SHIPPED",
+            "trackingNumber": "ABCDEF123456",
+            "carrierCode": "usps"
+          }
+        },
+        "expected_outputs": {
+          "payload": {
+            "orderId": "1234567890",
+            "status": "SHIPPED",
+            "trackingNumber": "ABCDEF123456",
+            "carrierCode": "usps"
+          },
+          "order_id": "1234567890",
+          "status": "SHIPPED",
+          "tracking_number": "ABCDEF123456",
+          "carrier_code": "usps"
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,312 @@
+{
+  "provider": "baas",
+  "auth_type": "api_key",
+  "test_api_key": "test-baas-key",
+  "base_url": "https://api.meetingbaas.com",
+  "api_calls": [
+    {
+      "name": "bot_join_meeting",
+      "method": "POST",
+      "url_pattern": "https://api.meetingbaas.com/bots",
+      "headers": {
+        "x-meeting-baas-api-key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "meeting_url": "{{url}}",
+        "bot_name": "{{string}}",
+        "bot_image": null,
+        "entry_message": null,
+        "reserved": null,
+        "deduplication_key": null,
+        "mp4": null,
+        "real_time_transcription": null,
+        "real_time_media": null,
+        "speech_to_text": null
+      },
+      "response": {
+        "bot_id": "bot_test123",
+        "meeting_url": "https://zoom.us/j/123456789",
+        "status": "joining"
+      }
+    },
+    {
+      "name": "bot_leave_meeting",
+      "method": "POST",
+      "url_pattern": "https://api.meetingbaas.com/bots/{bot_id}/leave",
+      "headers": {
+        "x-meeting-baas-api-key": "{{api_key}}"
+      },
+      "response": {
+        "bot_id": "bot_test123",
+        "status": "leaving"
+      }
+    },
+    {
+      "name": "bot_get_meeting_data",
+      "method": "GET",
+      "url_pattern": "https://api.meetingbaas.com/bots/{bot_id}",
+      "headers": {
+        "x-meeting-baas-api-key": "{{api_key}}"
+      },
+      "response": {
+        "bot_id": "bot_test123",
+        "meeting_url": "https://zoom.us/j/123456789",
+        "status": "complete",
+        "mp4": "https://example.com/recording.mp4",
+        "transcript": [
+          {
+            "speaker": "John",
+            "text": "Hello everyone",
+            "timestamp": 0
+          }
+        ]
+      }
+    },
+    {
+      "name": "bot_get_screenshots",
+      "method": "GET",
+      "url_pattern": "https://api.meetingbaas.com/bots/{bot_id}/screenshots",
+      "headers": {
+        "x-meeting-baas-api-key": "{{api_key}}"
+      },
+      "query_params": {
+        "offset": null,
+        "limit": null
+      },
+      "response": {
+        "screenshots": [
+          {
+            "timestamp": 1000,
+            "url": "https://example.com/screenshot1.jpg"
+          }
+        ],
+        "total": 1
+      }
+    },
+    {
+      "name": "bot_delete_recording",
+      "method": "DELETE",
+      "url_pattern": "https://api.meetingbaas.com/bots/{bot_id}/recordings",
+      "headers": {
+        "x-meeting-baas-api-key": "{{api_key}}"
+      },
+      "response": {
+        "success": true
+      },
+      "status": 204
+    },
+    {
+      "name": "bot_delete",
+      "method": "DELETE",
+      "url_pattern": "https://api.meetingbaas.com/bots/{bot_id}",
+      "headers": {
+        "x-meeting-baas-api-key": "{{api_key}}"
+      },
+      "response": {
+        "success": true
+      },
+      "status": 204
+    },
+    {
+      "name": "calendar_connect",
+      "method": "POST",
+      "url_pattern": "https://api.meetingbaas.com/calendars",
+      "headers": {
+        "x-meeting-baas-api-key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "oauth_client_id": "{{string}}",
+        "oauth_client_secret": "{{string}}",
+        "oauth_refresh_token": "{{string}}",
+        "platform": "{{string}}",
+        "calendar_email": null
+      },
+      "response": {
+        "uuid": "cal_test123",
+        "email": "test@example.com",
+        "platform": "google"
+      }
+    },
+    {
+      "name": "calendar_list",
+      "method": "GET",
+      "url_pattern": "https://api.meetingbaas.com/calendars",
+      "headers": {
+        "x-meeting-baas-api-key": "{{api_key}}"
+      },
+      "response": [
+        {
+          "uuid": "cal_test123",
+          "email": "test@example.com",
+          "platform": "google"
+        }
+      ]
+    },
+    {
+      "name": "event_list",
+      "method": "GET",
+      "url_pattern": "https://api.meetingbaas.com/calendar_events",
+      "headers": {
+        "x-meeting-baas-api-key": "{{api_key}}"
+      },
+      "query_params": {
+        "calendar_id": "{{string}}",
+        "start_date_gte": null,
+        "start_date_lte": null,
+        "cursor": null
+      },
+      "response": {
+        "events": [
+          {
+            "uuid": "evt_test123",
+            "calendar_id": "cal_test123",
+            "title": "Test Meeting",
+            "start_time": "2024-01-01T10:00:00Z",
+            "meeting_url": "https://zoom.us/j/123456789"
+          }
+        ],
+        "next": null
+      }
+    },
+    {
+      "name": "event_schedule_bot",
+      "method": "POST",
+      "url_pattern": "https://api.meetingbaas.com/calendar_events/{event_id}/bot",
+      "headers": {
+        "x-meeting-baas-api-key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "query_params": {
+        "all_occurrences": null
+      },
+      "body": {
+        "bot_name": "{{string}}",
+        "bot_image": null,
+        "entry_message": null
+      },
+      "response": {
+        "uuid": "evt_test123",
+        "bot_scheduled": true
+      }
+    },
+    {
+      "name": "event_unschedule_bot",
+      "method": "DELETE",
+      "url_pattern": "https://api.meetingbaas.com/calendar_events/{event_id}/bot",
+      "headers": {
+        "x-meeting-baas-api-key": "{{api_key}}"
+      },
+      "query_params": {
+        "all_occurrences": null
+      },
+      "response": {
+        "uuid": "evt_test123",
+        "bot_scheduled": false
+      }
+    },
+    {
+      "name": "event_patch_bot",
+      "method": "PATCH",
+      "url_pattern": "https://api.meetingbaas.com/calendar_events/{event_id}/bot",
+      "headers": {
+        "x-meeting-baas-api-key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "query_params": {
+        "all_occurrences": null
+      },
+      "body": "{{object}}",
+      "response": {
+        "uuid": "evt_test123",
+        "bot_config": "{{object}}"
+      }
+    },
+    {
+      "name": "calendar_update",
+      "method": "PATCH",
+      "url_pattern": "https://api.meetingbaas.com/calendars/{calendar_id}",
+      "headers": {
+        "x-meeting-baas-api-key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": "{{object}}",
+      "response": {
+        "uuid": "cal_test123",
+        "updated": true
+      }
+    },
+    {
+      "name": "calendar_delete",
+      "method": "DELETE",
+      "url_pattern": "https://api.meetingbaas.com/calendars/{calendar_id}",
+      "headers": {
+        "x-meeting-baas-api-key": "{{api_key}}"
+      },
+      "response": {},
+      "status": 204
+    },
+    {
+      "name": "calendar_resync_all",
+      "method": "POST",
+      "url_pattern": "https://api.meetingbaas.com/internal/calendar/resync_all",
+      "headers": {
+        "x-meeting-baas-api-key": "{{api_key}}"
+      },
+      "response": {
+        "synced_calendars": ["cal_test123"],
+        "errors": []
+      }
+    }
+  ],
+  "webhooks": {
+    "allowed_webhook_types": ["meeting_event", "calendar_event"],
+    "resource_format_pattern": "",
+    "event_types": [
+      "bot.status_change",
+      "complete",
+      "failed",
+      "transcription_complete",
+      "event.added",
+      "event.updated",
+      "event.deleted",
+      "calendar.synced"
+    ],
+    "description": "Meeting BaaS webhooks for meeting and calendar events",
+    "supports_auto_setup": true,
+    "webhook_blocks": ["BaasOnMeetingEventBlock", "BaasOnCalendarEventBlock"]
+  },
+  "test_scenarios": {
+    "BaasBotJoinMeetingBlock": [
+      {
+        "name": "Join meeting successfully",
+        "input": {
+          "meeting_url": "https://zoom.us/j/123456789",
+          "bot_name": "Test Bot"
+        },
+        "expected_calls": ["bot_join_meeting"],
+        "expected_outputs": {
+          "bot_id": "bot_test123",
+          "status": "joining"
+        }
+      }
+    ],
+    "BaasCalendarListAllBlock": [
+      {
+        "name": "List calendars",
+        "input": {},
+        "expected_calls": ["calendar_list"],
+        "expected_outputs": {
+          "calendars": [
+            {
+              "uuid": "cal_test123",
+              "email": "test@example.com",
+              "platform": "google"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

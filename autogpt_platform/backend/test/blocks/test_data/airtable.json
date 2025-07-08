@@ -1,0 +1,234 @@
+{
+  "provider": "airtable",
+  "auth_type": "api_key",
+  "test_api_key": "test-airtable-key",
+  "base_url": "https://api.airtable.com/v0",
+  "api_calls": [
+    {
+      "name": "list_bases",
+      "method": "GET",
+      "url_pattern": "https://api.airtable.com/v0/meta/bases",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}"
+      },
+      "query_params": {
+        "offset": null
+      },
+      "response": {
+        "bases": [
+          {
+            "id": "appTest123",
+            "name": "Test Base",
+            "permissionLevel": "create"
+          }
+        ]
+      }
+    },
+    {
+      "name": "list_records",
+      "method": "GET",
+      "url_pattern": "https://api.airtable.com/v0/{base_id}/{table_id}",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}"
+      },
+      "query_params": {
+        "pageSize": null,
+        "offset": null,
+        "view": null,
+        "filterByFormula": null,
+        "sort": null
+      },
+      "response": {
+        "records": [
+          {
+            "id": "recTest123",
+            "createdTime": "2024-01-01T00:00:00.000Z",
+            "fields": {
+              "Name": "Test Record",
+              "Status": "Active"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_record",
+      "method": "GET",
+      "url_pattern": "https://api.airtable.com/v0/{base_id}/{table_id}/{record_id}",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}"
+      },
+      "response": {
+        "id": "recTest123",
+        "createdTime": "2024-01-01T00:00:00.000Z",
+        "fields": {
+          "Name": "Test Record",
+          "Status": "Active"
+        }
+      }
+    },
+    {
+      "name": "create_records",
+      "method": "POST",
+      "url_pattern": "https://api.airtable.com/v0/{base_id}/{table_id}",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "records": "{{array}}",
+        "typecast": null
+      },
+      "response": {
+        "records": [
+          {
+            "id": "recNew123",
+            "createdTime": "2024-01-01T00:00:00.000Z",
+            "fields": {
+              "Name": "New Record"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "update_records",
+      "method": "PATCH",
+      "url_pattern": "https://api.airtable.com/v0/{base_id}/{table_id}",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "records": "{{array}}",
+        "typecast": null
+      },
+      "response": {
+        "records": [
+          {
+            "id": "recTest123",
+            "fields": {
+              "Status": "Updated"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "delete_records",
+      "method": "DELETE",
+      "url_pattern": "https://api.airtable.com/v0/{base_id}/{table_id}",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}"
+      },
+      "query_params": {
+        "records[]": "{{array}}"
+      },
+      "response": {
+        "records": [
+          {
+            "id": "recTest123",
+            "deleted": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "list_tables",
+      "method": "GET",
+      "url_pattern": "https://api.airtable.com/v0/meta/bases/{base_id}/tables",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}"
+      },
+      "response": {
+        "tables": [
+          {
+            "id": "tblTest123",
+            "name": "Test Table",
+            "primaryFieldId": "fldPrimary",
+            "fields": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "create_webhook",
+      "method": "POST",
+      "url_pattern": "https://api.airtable.com/v0/bases/{base_id}/webhooks",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "notificationUrl": "{{url}}",
+        "specification": {
+          "options": {
+            "filters": "{{object}}"
+          }
+        }
+      },
+      "response": {
+        "id": "achTest123",
+        "macSecretBase64": "testSecret",
+        "expirationTime": "2025-01-01T00:00:00.000Z"
+      }
+    }
+  ],
+  "webhooks": {
+    "allowed_webhook_types": ["table_change"],
+    "resource_format_pattern": "{base_id}/{table_id_or_name}",
+    "event_types": ["tableData", "tableFields", "tableMetadata"],
+    "description": "Airtable webhooks monitor changes to bases and tables",
+    "supports_auto_setup": true,
+    "webhook_blocks": ["AirtableWebhookTriggerBlock"]
+  },
+  "test_scenarios": {
+    "AirtableListRecordsBlock": [
+      {
+        "name": "List records successfully",
+        "input": {
+          "base_id": "appTest123",
+          "table_id_or_name": "tblTest123"
+        },
+        "expected_calls": ["list_records"],
+        "expected_outputs": {
+          "records": [
+            {
+              "id": "recTest123",
+              "createdTime": "2024-01-01T00:00:00.000Z",
+              "fields": {
+                "Name": "Test Record",
+                "Status": "Active"
+              }
+            }
+          ],
+          "offset": ""
+        }
+      }
+    ],
+    "AirtableCreateRecordsBlock": [
+      {
+        "name": "Create single record",
+        "input": {
+          "base_id": "appTest123",
+          "table_id_or_name": "tblTest123",
+          "records": [
+            {"Name": "New Record"}
+          ]
+        },
+        "expected_calls": ["create_records"],
+        "expected_outputs": {
+          "created_records": [
+            {
+              "id": "recNew123",
+              "createdTime": "2024-01-01T00:00:00.000Z",
+              "fields": {
+                "Name": "New Record"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

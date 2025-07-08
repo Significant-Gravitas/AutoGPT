@@ -1,0 +1,372 @@
+{
+  "provider": "gem",
+  "auth_type": "api_key",
+  "test_api_key": "test-gem-key",
+  "base_url": "https://api.gem.com/v0",
+  "api_calls": [
+    {
+      "name": "list_users",
+      "method": "GET",
+      "url_pattern": "https://api.gem.com/v0/users",
+      "headers": {
+        "X-API-Key": "{{api_key}}"
+      },
+      "query_params": {
+        "email": null,
+        "page": null,
+        "page_size": null
+      },
+      "response": [
+        {
+          "id": "user_test123",
+          "email": "test@example.com",
+          "name": "Test User"
+        }
+      ]
+    },
+    {
+      "name": "list_candidates",
+      "method": "GET",
+      "url_pattern": "https://api.gem.com/v0/candidates",
+      "headers": {
+        "X-API-Key": "{{api_key}}"
+      },
+      "query_params": {
+        "page": null,
+        "page_size": null
+      },
+      "response": [
+        {
+          "id": "candidate_test123",
+          "name": "Test Candidate",
+          "email": "candidate@example.com"
+        }
+      ]
+    },
+    {
+      "name": "create_candidate",
+      "method": "POST",
+      "url_pattern": "https://api.gem.com/v0/candidates",
+      "headers": {
+        "X-API-Key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "email": "{{string}}",
+        "name": "{{string}}",
+        "profile_url": null
+      },
+      "response": {
+        "id": "candidate_new123",
+        "email": "new@example.com"
+      }
+    },
+    {
+      "name": "create_note",
+      "method": "POST",
+      "url_pattern": "https://api.gem.com/v0/notes",
+      "headers": {
+        "X-API-Key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "candidate_id": "{{string}}",
+        "text": "{{string}}",
+        "privacy": null
+      },
+      "response": {
+        "id": "note_test123",
+        "created_at": "2024-01-01T00:00:00Z"
+      }
+    },
+    {
+      "name": "list_projects",
+      "method": "GET",
+      "url_pattern": "https://api.gem.com/v0/projects",
+      "headers": {
+        "X-API-Key": "{{api_key}}"
+      },
+      "response": [
+        {
+          "id": "project_test123",
+          "name": "Test Project"
+        }
+      ]
+    },
+    {
+      "name": "create_project",
+      "method": "POST",
+      "url_pattern": "https://api.gem.com/v0/projects",
+      "headers": {
+        "X-API-Key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "name": "{{string}}",
+        "type": null
+      },
+      "response": {
+        "id": "project_new123",
+        "name": "New Project"
+      }
+    },
+    {
+      "name": "list_custom_fields",
+      "method": "GET",
+      "url_pattern": "https://api.gem.com/v0/custom_fields",
+      "headers": {
+        "X-API-Key": "{{api_key}}"
+      },
+      "response": [
+        {
+          "id": "field_test123",
+          "name": "Test Field",
+          "type": "text"
+        }
+      ]
+    },
+    {
+      "name": "update_custom_field",
+      "method": "PUT",
+      "url_pattern": "https://api.gem.com/v0/custom_fields",
+      "headers": {
+        "X-API-Key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "custom_field_id": "{{string}}",
+        "value": "{{any}}"
+      },
+      "response": {
+        "success": true
+      }
+    },
+    {
+      "name": "list_sequences",
+      "method": "GET",
+      "url_pattern": "https://api.gem.com/v0/sequences",
+      "headers": {
+        "X-API-Key": "{{api_key}}"
+      },
+      "response": [
+        {
+          "id": "sequence_test123",
+          "name": "Test Sequence"
+        }
+      ]
+    },
+    {
+      "name": "request_data_export",
+      "method": "POST",
+      "url_pattern": "https://api.gem.com/v0/data_export",
+      "headers": {
+        "X-API-Key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "export_type": "{{string}}",
+        "start_date": null,
+        "end_date": null
+      },
+      "response": {
+        "export_id": "export_test123",
+        "status": "processing"
+      }
+    },
+    {
+      "name": "talent_search",
+      "method": "POST",
+      "url_pattern": "https://api.gem.com/v0/talent/search",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "query": "{{string}}",
+        "filters": null,
+        "page": null,
+        "pageSize": null
+      },
+      "response": {
+        "data": [
+          {
+            "id": "talent_test123",
+            "name": "John Doe",
+            "title": "Software Engineer",
+            "company": "Example Corp",
+            "location": "San Francisco, CA",
+            "email": "john@example.com"
+          }
+        ],
+        "pagination": {
+          "page": 1,
+          "pageSize": 20,
+          "total": 100
+        }
+      }
+    },
+    {
+      "name": "get_talent_profile",
+      "method": "GET",
+      "url_pattern": "https://api.gem.com/v0/talent/{talent_id}",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}"
+      },
+      "response": {
+        "id": "talent_test123",
+        "name": "John Doe",
+        "title": "Software Engineer",
+        "company": "Example Corp",
+        "experience": [
+          {
+            "company": "Example Corp",
+            "title": "Software Engineer",
+            "startDate": "2020-01",
+            "current": true
+          }
+        ],
+        "skills": ["Python", "JavaScript", "AWS"]
+      }
+    },
+    {
+      "name": "create_outreach",
+      "method": "POST",
+      "url_pattern": "https://api.gem.com/v0/outreach",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "talentId": "{{string}}",
+        "subject": "{{string}}",
+        "message": "{{string}}",
+        "scheduleSend": null
+      },
+      "response": {
+        "id": "outreach_test123",
+        "status": "scheduled",
+        "talentId": "talent_test123",
+        "sentAt": null
+      }
+    },
+    {
+      "name": "create_project",
+      "method": "POST",
+      "url_pattern": "https://api.gem.com/v0/projects",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "name": "{{string}}",
+        "description": null,
+        "type": null
+      },
+      "response": {
+        "id": "project_test123",
+        "name": "Test Project",
+        "createdAt": "2024-01-01T00:00:00Z"
+      }
+    },
+    {
+      "name": "add_talent_to_project",
+      "method": "POST",
+      "url_pattern": "https://api.gem.com/v0/projects/{project_id}/talent",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "talentIds": "{{array}}"
+      },
+      "response": {
+        "added": 1,
+        "skipped": 0
+      }
+    },
+    {
+      "name": "get_analytics",
+      "method": "GET",
+      "url_pattern": "https://api.gem.com/v0/analytics/overview",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}"
+      },
+      "query_params": {
+        "startDate": null,
+        "endDate": null,
+        "metric": null
+      },
+      "response": {
+        "metrics": {
+          "totalOutreach": 100,
+          "responseRate": 0.25,
+          "acceptanceRate": 0.10
+        },
+        "timeRange": {
+          "start": "2024-01-01",
+          "end": "2024-01-31"
+        }
+      }
+    },
+    {
+      "name": "export_data",
+      "method": "POST",
+      "url_pattern": "https://api.gem.com/v0/exports",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "type": "{{string}}",
+        "filters": null,
+        "format": null
+      },
+      "response": {
+        "id": "export_test123",
+        "status": "processing"
+      }
+    },
+    {
+      "name": "get_export_status",
+      "method": "GET",
+      "url_pattern": "https://api.gem.com/v0/exports/{export_id}",
+      "headers": {
+        "Authorization": "Bearer {{api_key}}"
+      },
+      "response": {
+        "id": "export_test123",
+        "status": "completed",
+        "downloadUrl": "https://gem.com/exports/download/test123"
+      }
+    }
+  ],
+  "test_scenarios": {
+    "GemTalentSearchBlock": [
+      {
+        "name": "Search for software engineers",
+        "input": {
+          "query": "software engineer python",
+          "page_size": 10
+        },
+        "expected_calls": ["talent_search"],
+        "expected_outputs": {
+          "results": true,
+          "total": true
+        }
+      }
+    ],
+    "GemCreateProjectBlock": [
+      {
+        "name": "Create new recruiting project",
+        "input": {
+          "name": "Q1 2024 Engineering Hires",
+          "description": "Hiring for backend team"
+        },
+        "expected_calls": ["create_project"],
+        "expected_outputs": {
+          "project_id": true
+        }
+      }
+    ]
+  }
+}

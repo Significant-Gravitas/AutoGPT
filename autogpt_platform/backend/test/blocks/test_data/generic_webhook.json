@@ -1,0 +1,38 @@
+{
+  "provider": "generic_webhook",
+  "auth_type": "none",
+  "test_api_key": "",
+  "base_url": "",
+  "api_calls": [],
+  "webhooks": {
+    "allowed_webhook_types": ["plain"],
+    "resource_format_pattern": "",
+    "event_types": ["*"],
+    "description": "Generic webhook handler for any external service",
+    "supports_auto_setup": false,
+    "webhook_blocks": ["GenericWebhookTriggerBlock"]
+  },
+  "test_scenarios": {
+    "GenericWebhookTriggerBlock": [
+      {
+        "name": "Receive generic webhook payload",
+        "input": {
+          "constants": {
+            "key": "value"
+          },
+          "payload": {
+            "message": "Hello, World!"
+          }
+        },
+        "expected_outputs": {
+          "constants": {
+            "key": "value"
+          },
+          "payload": {
+            "message": "Hello, World!"
+          }
+        }
+      }
+    ]
+  }
+}

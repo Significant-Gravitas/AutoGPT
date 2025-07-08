@@ -1,0 +1,242 @@
+{
+  "provider": "exa",
+  "auth_type": "api_key",
+  "test_api_key": "test-exa-key",
+  "base_url": "https://api.exa.ai",
+  "api_calls": [
+    {
+      "name": "search",
+      "method": "POST",
+      "url_pattern": "https://api.exa.ai/search",
+      "headers": {
+        "x-api-key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "query": "{{string}}",
+        "numResults": null,
+        "searchType": null,
+        "contents": null,
+        "useAutoprompt": null,
+        "category": null,
+        "startPublishedDate": null,
+        "endPublishedDate": null,
+        "startCrawledDate": null,
+        "endCrawledDate": null,
+        "includeDomains": null,
+        "excludeDomains": null
+      },
+      "response": {
+        "results": [
+          {
+            "id": "result_test123",
+            "url": "https://example.com/article",
+            "title": "Test Article",
+            "score": 0.95,
+            "publishedDate": "2024-01-01",
+            "text": "Article content..."
+          }
+        ]
+      }
+    },
+    {
+      "name": "find_similar",
+      "method": "POST",
+      "url_pattern": "https://api.exa.ai/findSimilar",
+      "headers": {
+        "x-api-key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "url": "{{url}}",
+        "numResults": null,
+        "contents": null,
+        "category": null,
+        "startPublishedDate": null,
+        "endPublishedDate": null,
+        "startCrawledDate": null,
+        "endCrawledDate": null,
+        "includeDomains": null,
+        "excludeDomains": null,
+        "excludeSourceDomain": null
+      },
+      "response": {
+        "results": [
+          {
+            "id": "similar_test123",
+            "url": "https://example.com/similar",
+            "title": "Similar Article",
+            "score": 0.90
+          }
+        ]
+      }
+    },
+    {
+      "name": "get_contents",
+      "method": "POST",
+      "url_pattern": "https://api.exa.ai/contents",
+      "headers": {
+        "x-api-key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "ids": "{{array}}"
+      },
+      "response": {
+        "results": [
+          {
+            "id": "result_test123",
+            "url": "https://example.com/article",
+            "title": "Test Article",
+            "text": "Full article content...",
+            "author": "Test Author"
+          }
+        ]
+      }
+    },
+    {
+      "name": "create_webset",
+      "method": "POST",
+      "url_pattern": "https://api.exa.ai/websets/v0/websets",
+      "headers": {
+        "x-api-key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "name": "{{string}}",
+        "urls": "{{array}}"
+      },
+      "response": {
+        "id": "webset_test123",
+        "name": "Test Webset",
+        "urlCount": 10
+      }
+    },
+    {
+      "name": "get_webset",
+      "method": "GET",
+      "url_pattern": "https://api.exa.ai/websets/v0/websets/{webset_id}",
+      "headers": {
+        "x-api-key": "{{api_key}}"
+      },
+      "response": {
+        "id": "webset_test123",
+        "name": "Test Webset",
+        "urls": ["https://example.com/1", "https://example.com/2"],
+        "createdAt": "2024-01-01T00:00:00Z"
+      }
+    },
+    {
+      "name": "create_webhook",
+      "method": "POST",
+      "url_pattern": "https://api.exa.ai/v0/webhooks",
+      "headers": {
+        "x-api-key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "url": "{{url}}",
+        "secret": "{{string}}",
+        "websetId": "{{string}}"
+      },
+      "response": {
+        "id": "webhook_test123",
+        "url": "https://example.com/webhook",
+        "websetId": "webset_test123"
+      }
+    },
+    {
+      "name": "delete_webhook",
+      "method": "DELETE",
+      "url_pattern": "https://api.exa.ai/v0/webhooks/{webhook_id}",
+      "headers": {
+        "x-api-key": "{{api_key}}"
+      },
+      "response": {},
+      "status": 204
+    },
+    {
+      "name": "answer_question",
+      "method": "POST",
+      "url_pattern": "https://api.exa.ai/answer",
+      "headers": {
+        "x-api-key": "{{api_key}}",
+        "Content-Type": "application/json"
+      },
+      "body": {
+        "question": "{{string}}",
+        "answer": "{{string}}",
+        "urls": "{{array}}"
+      },
+      "response": {
+        "answer": "This is the generated answer",
+        "sources": ["https://example.com/source1", "https://example.com/source2"]
+      }
+    },
+    {
+      "name": "cancel_webset",
+      "method": "POST", 
+      "url_pattern": "https://api.exa.ai/websets/v0/websets/{webset_id}/cancel",
+      "headers": {
+        "x-api-key": "{{api_key}}"
+      },
+      "response": {
+        "id": "webset_test123",
+        "status": "cancelled"
+      }
+    }
+  ],
+  "webhooks": {
+    "allowed_webhook_types": ["webset"],
+    "resource_format_pattern": "{webset_id}",
+    "event_types": [
+      "webset.created",
+      "webset.deleted",
+      "webset.paused",
+      "webset.idle",
+      "webset.search.created",
+      "webset.search.completed",
+      "webset.search.canceled",
+      "webset.search.updated",
+      "webset.item.created",
+      "webset.item.enriched",
+      "webset.export.created",
+      "webset.export.completed",
+      "import.created",
+      "import.completed",
+      "import.processing"
+    ],
+    "description": "Exa webhooks for webset events and updates",
+    "supports_auto_setup": true,
+    "webhook_blocks": ["ExaWebsetWebhookBlock"]
+  },
+  "test_scenarios": {
+    "ExaSearchBlock": [
+      {
+        "name": "Search for content",
+        "input": {
+          "query": "artificial intelligence",
+          "num_results": 10
+        },
+        "expected_calls": ["search"],
+        "expected_outputs": {
+          "results": true
+        }
+      }
+    ],
+    "ExaCreateWebsetBlock": [
+      {
+        "name": "Create a new webset",
+        "input": {
+          "name": "Test Webset",
+          "urls": ["https://example.com/1", "https://example.com/2"]
+        },
+        "expected_calls": ["create_webset"],
+        "expected_outputs": {
+          "webset_id": true,
+          "url_count": true
+        }
+      }
+    ]
+  }
+}
