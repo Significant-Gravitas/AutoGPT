@@ -13,11 +13,9 @@ from backend.sdk import (
 from ._config import exa
 
 
-
-
 class CostBreakdown(BaseModel):
     keywordSearch: float
-    neuralSearch: float 
+    neuralSearch: float
     contentText: float
     contentHighlight: float
     contentSummary: float
