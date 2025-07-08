@@ -1,5 +1,6 @@
 from backend.sdk import (
     APIKeyCredentials,
+    BaseModel,
     Block,
     BlockCategory,
     BlockOutput,
@@ -10,6 +11,43 @@ from backend.sdk import (
 )
 
 from ._config import exa
+
+
+
+
+class CostBreakdown(BaseModel):
+    keywordSearch: float
+    neuralSearch: float 
+    contentText: float
+    contentHighlight: float
+    contentSummary: float
+
+
+class SearchBreakdown(BaseModel):
+    search: float
+    contents: float
+    breakdown: CostBreakdown
+
+
+class PerRequestPrices(BaseModel):
+    neuralSearch_1_25_results: float
+    neuralSearch_26_100_results: float
+    neuralSearch_100_plus_results: float
+    keywordSearch_1_100_results: float
+    keywordSearch_100_plus_results: float
+
+
+class PerPagePrices(BaseModel):
+    contentText: float
+    contentHighlight: float
+    contentSummary: float
+
+
+class CostDollars(BaseModel):
+    total: float
+    breakDown: list[SearchBreakdown]
+    perRequestPrices: PerRequestPrices
+    perPagePrices: PerPagePrices
 
 
 class ExaAnswerBlock(Block):
@@ -41,8 +79,8 @@ class ExaAnswerBlock(Block):
             description="Search results used to generate the answer",
             default_factory=list,
         )
-        cost_dollars: dict = SchemaField(
-            description="Cost breakdown of the request", default_factory=dict
+        cost_dollars: CostDollars = SchemaField(
+            description="Cost breakdown of the request"
         )
         error: str = SchemaField(
             description="Error message if the request failed", default=""
@@ -74,8 +112,6 @@ class ExaAnswerBlock(Block):
         }
 
         try:
-            # Note: This endpoint doesn't support streaming in our block implementation
-            # If stream=True is requested, we still make a regular request
             response = await Requests().post(url, headers=headers, json=payload)
             data = response.json()
 
