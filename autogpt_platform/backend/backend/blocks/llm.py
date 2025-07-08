@@ -227,11 +227,11 @@ MODEL_METADATA = {
     LlmModel.EVA_QWEN_2_5_32B: ModelMetadata("open_router", 16384, 4096),
     LlmModel.DEEPSEEK_CHAT: ModelMetadata("open_router", 64000, 2048),
     LlmModel.PERPLEXITY_SONAR: ModelMetadata("open_router", 127000, 127000),
-    LlmModel.PERPLEXITY_SONAR_PRO: ModelMetadata("open_router", 200000, 200000),
+    LlmModel.PERPLEXITY_SONAR_PRO: ModelMetadata("open_router", 200000, 8000),
     LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: ModelMetadata(
         "open_router",
-        127000,
-        127000,
+        128000,
+        128000,
     ),
     LlmModel.QWEN_QWQ_32B_PREVIEW: ModelMetadata("open_router", 32768, 32768),
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: ModelMetadata(
