@@ -1,9 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { AgentTableRow, AgentTableRowProps } from "./AgentTableRow";
-import { AgentTableCard } from "./AgentTableCard";
-import { StoreSubmissionRequest } from "@/lib/autogpt-server-api/types";
+import { AgentTableCard } from "../AgentTableCard/AgentTableCard";
+import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
+import { useAgentTable } from "./useAgentTable";
+import {
+  AgentTableRow,
+  AgentTableRowProps,
+} from "../AgentTableRow/AgentTableRow";
 
 export interface AgentTableProps {
   agents: Omit<
@@ -22,22 +26,9 @@ export const AgentTable: React.FC<AgentTableProps> = ({
   onEditSubmission,
   onDeleteSubmission,
 }) => {
-  // Use state to track selected agents
-  const [selectedAgents, setSelectedAgents] = React.useState<Set<string>>(
-    new Set(),
-  );
-
-  // Handle select all checkbox
-  const handleSelectAll = React.useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (e.target.checked) {
-        setSelectedAgents(new Set(agents.map((agent) => agent.agent_id)));
-      } else {
-        setSelectedAgents(new Set());
-      }
-    },
-    [agents],
-  );
+  const { selectedAgents, handleSelectAll, setSelectedAgents } = useAgentTable({
+    agents,
+  });
 
   return (
     <div className="w-full">
