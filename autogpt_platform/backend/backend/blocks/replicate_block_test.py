@@ -209,17 +209,15 @@ class TestReplicateAsyncModelBlock:
 
             mock_prediction = MagicMock()
             mock_prediction.id = "test_prediction_id"
-            mock_prediction.__iter__ = lambda x: iter(["test_response"])
+            mock_prediction.status = "processing"  # Never succeeds
             mock_client.run.return_value = mock_prediction
 
-            # The simplified implementation doesn't do actual polling, so it should succeed
-            result, prediction_id, execution_time = await self.block.run_async_model(
-                "test/model", {"prompt": "test"}, "test_key", 1
-            )
-
-            assert result == ["test_response"]
-            assert prediction_id == "test_prediction_id"
-            assert execution_time > 0
+            with pytest.raises(
+                RuntimeError, match="Prediction timed out after 1 seconds"
+            ):
+                await self.block.run_async_model(
+                    "test/model", {"prompt": "test"}, "test_key", 1
+                )
 
     @pytest.mark.asyncio
     async def test_run_async_model_failure(self):
@@ -230,13 +228,72 @@ class TestReplicateAsyncModelBlock:
             mock_client = MagicMock()
             mock_client_class.return_value = mock_client
 
-            # Simulate an exception during client.run
-            mock_client.run.side_effect = Exception("API Error")
+            mock_prediction = MagicMock()
+            mock_prediction.id = "test_prediction_id"
+            mock_prediction.status = "failed"
+            mock_prediction.error = "Model error"
+            mock_client.run.return_value = mock_prediction
 
-            with pytest.raises(Exception, match="API Error"):
+            with pytest.raises(RuntimeError, match="Prediction failed: Model error"):
                 await self.block.run_async_model(
                     "test/model", {"prompt": "test"}, "test_key", 10
                 )
+
+    @pytest.mark.asyncio
+    async def test_run_async_model_canceled(self):
+        """Test canceled prediction handling"""
+        with patch(
+            "backend.blocks.replicate_block.ReplicateClient"
+        ) as mock_client_class:
+            mock_client = MagicMock()
+            mock_client_class.return_value = mock_client
+
+            mock_prediction = MagicMock()
+            mock_prediction.id = "test_prediction_id"
+            mock_prediction.status = "canceled"
+            mock_client.run.return_value = mock_prediction
+
+            with pytest.raises(RuntimeError, match="Prediction was canceled"):
+                await self.block.run_async_model(
+                    "test/model", {"prompt": "test"}, "test_key", 10
+                )
+
+    @pytest.mark.asyncio
+    async def test_run_async_model_polling_success(self):
+        """Test successful polling from processing to succeeded"""
+        with patch(
+            "backend.blocks.replicate_block.ReplicateClient"
+        ) as mock_client_class:
+            mock_client = MagicMock()
+            mock_client_class.return_value = mock_client
+
+            # Create a prediction that starts as processing, then succeeds
+            mock_prediction = MagicMock()
+            mock_prediction.id = "test_prediction_id"
+            mock_prediction.__iter__ = lambda x: iter(["test_response"])
+
+            # Use a simple counter to track status changes
+            call_count = 0
+
+            def status_property():
+                nonlocal call_count
+                call_count += 1
+                if call_count <= 2:
+                    return "processing"
+                else:
+                    return "succeeded"
+
+            # Set up the status property
+            type(mock_prediction).status = property(lambda self: status_property())
+            mock_client.run.return_value = mock_prediction
+
+            result, prediction_id, execution_time = await self.block.run_async_model(
+                "test/model", {"prompt": "test"}, "test_key", 10
+            )
+
+            assert result == ["test_response"]
+            assert prediction_id == "test_prediction_id"
+            assert execution_time > 0
 
 
 class TestBlockInitialization:

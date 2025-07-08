@@ -317,6 +317,7 @@ class ReplicateAsyncModelBlock(Block):
         Returns:
             Tuple of (result, prediction_id, execution_time)
         """
+        import asyncio
         import time
 
         start_time = time.time()
@@ -324,8 +325,48 @@ class ReplicateAsyncModelBlock(Block):
 
         # Start the prediction
         prediction = client.run(model_ref, input=model_inputs)
+        prediction_id = getattr(prediction, "id", "unknown")
 
-        # Get the result
+        logger.info(f"Started prediction {prediction_id} for model {model_ref}")
+
+        # Poll for completion
+        poll_interval = 2  # Poll every 2 seconds
+        elapsed_time = 0
+
+        while elapsed_time < max_wait_time:
+            # Check prediction status
+            try:
+                # Get the current status of the prediction
+                status = getattr(prediction, "status", "unknown")
+
+                if status == "succeeded":
+                    logger.info(f"Prediction {prediction_id} completed successfully")
+                    break
+                elif status == "failed":
+                    error_msg = getattr(prediction, "error", "Unknown error")
+                    raise RuntimeError(f"Prediction failed: {error_msg}")
+                elif status == "canceled":
+                    raise RuntimeError("Prediction was canceled")
+                elif status in ["starting", "processing"]:
+                    logger.info(f"Prediction {prediction_id} status: {status}")
+                    # Wait before next poll
+                    await asyncio.sleep(poll_interval)
+                    elapsed_time += poll_interval
+                else:
+                    # Unknown status, wait and continue
+                    logger.warning(f"Unknown prediction status: {status}")
+                    await asyncio.sleep(poll_interval)
+                    elapsed_time += poll_interval
+
+            except Exception as e:
+                logger.error(f"Error polling prediction {prediction_id}: {e}")
+                raise RuntimeError(f"Error during prediction polling: {e}")
+
+        # Check if we timed out
+        if elapsed_time >= max_wait_time:
+            raise RuntimeError(f"Prediction timed out after {max_wait_time} seconds")
+
+        # Get the final result
         result = prediction
         if hasattr(prediction, "__iter__") and not isinstance(
             prediction, (str, bytes, dict)
@@ -336,8 +377,10 @@ class ReplicateAsyncModelBlock(Block):
                 logger.warning(f"Could not convert generator to list: {e}")
                 result = prediction
 
-        prediction_id = getattr(prediction, "id", "unknown")
         execution_time = time.time() - start_time
+        logger.info(
+            f"Prediction {prediction_id} completed in {execution_time:.2f} seconds"
+        )
 
         return result, prediction_id, execution_time
 
