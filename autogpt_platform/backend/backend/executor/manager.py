@@ -207,9 +207,11 @@ async def execute_node(
 
         # Update execution stats
         if execution_stats is not None:
-            execution_stats = execution_stats.model_copy(
-                update=node_block.execution_stats.model_dump()
-            )
+            # The iteration set instead of using the model_copy is intentional,
+            # as we want to update the stats in place.
+            for key, value in node_block.execution_stats.model_dump().items():
+                if hasattr(execution_stats, key):
+                    setattr(execution_stats, key, value)
             execution_stats.input_size = input_size
             execution_stats.output_size = output_size
 
@@ -431,6 +433,9 @@ class Executor:
             node_exec.node_exec_id, execution_stats
         )
         await send_async_execution_update(exec_update)
+        print(
+            f">>>>>>>>> Node execution stats for block {node.block.name}: {execution_stats}"
+        )
         return execution_stats
 
     @classmethod
@@ -648,9 +653,11 @@ class Executor:
                 return
 
             nonlocal execution_stats
-            execution_stats.node_count += 1
-            execution_stats.nodes_cputime += result.cputime
-            execution_stats.nodes_walltime += result.walltime
+            node_stats = result  # Type narrowing for the result
+            execution_stats.node_count += 1 + node_stats.extra_steps
+            execution_stats.nodes_cputime += node_stats.cputime
+            execution_stats.nodes_walltime += node_stats.walltime
+            execution_stats.cost += node_stats.extra_cost
             if (err := result.error) and isinstance(err, Exception):
                 execution_stats.node_error_count += 1
                 update_node_execution_status(

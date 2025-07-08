@@ -618,6 +618,8 @@ class NodeExecutionStats(BaseModel):
     llm_retry_count: int = 0
     input_token_count: int = 0
     output_token_count: int = 0
+    extra_cost: int = 0
+    extra_steps: int = 0
 
 
 class GraphExecutionStats(BaseModel):
