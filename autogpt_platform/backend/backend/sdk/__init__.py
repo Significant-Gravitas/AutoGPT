@@ -27,7 +27,7 @@ from backend.data.block import (
     BlockWebhookConfig,
 )
 from backend.data.integrations import Webhook
-from backend.data.model import APIKeyCredentials, CredentialsField
+from backend.data.model import APIKeyCredentials, Credentials, CredentialsField
 from backend.data.model import CredentialsMetaInput as _CredentialsMetaInput
 from backend.data.model import (
     NodeExecutionStats,
@@ -127,6 +127,7 @@ __all__ = [
     "BlockManualWebhookConfig",
     # Schema and Model Components
     "SchemaField",
+    "Credentials",
     "CredentialsField",
     "CredentialsMetaInput",
     "APIKeyCredentials",

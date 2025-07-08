@@ -6,10 +6,10 @@ import hashlib
 import hmac
 from enum import Enum
 
-from backend.data.model import Credentials
 from backend.sdk import (
     APIKeyCredentials,
     BaseWebhooksManager,
+    Credentials,
     ProviderName,
     Requests,
     Webhook,

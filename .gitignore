@@ -177,3 +177,6 @@ autogpt_platform/backend/settings.py
 *.ign.*
 .test-contents
 .claude/settings.local.json
+
+api.md
+blocks.md

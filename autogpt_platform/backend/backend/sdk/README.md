@@ -194,6 +194,39 @@ if OAUTH_IS_CONFIGURED:
 my_service = builder.build()
 ```
 
+### Username/Password Authentication
+
+For services that use HTTP Basic Auth or username/password authentication:
+
+```python
+# In _config.py
+from backend.sdk import BlockCostType, ProviderBuilder
+
+my_service = (
+    ProviderBuilder("my-service")
+    .with_user_password("MY_SERVICE_USERNAME", "MY_SERVICE_PASSWORD", "My Service Credentials")
+    .with_base_cost(1, BlockCostType.RUN)
+    .build()
+)
+```
+
+In your blocks, the credentials will be provided as `UserPasswordCredentials`:
+
+```python
+from backend.sdk import UserPasswordCredentials
+
+async def run(
+    self, 
+    input_data: Input, 
+    *, 
+    credentials: UserPasswordCredentials,
+    **kwargs
+) -> BlockOutput:
+    username = credentials.username.get_secret_value()
+    password = credentials.password.get_secret_value()
+    # Use for HTTP Basic Auth or other authentication
+```
+
 ### Multiple Authentication Methods
 
 Providers built with ProviderBuilder can support multiple authentication methods:
@@ -816,6 +849,164 @@ class DataWebhookBlock(Block):
         yield "resource_id", resource_id
         yield "data", payload.get("data", {})
         yield "timestamp", payload.get("timestamp", "")
+```
+
+### Real-World Example: Exa Webhook Integration
+
+```python
+# _webhook.py
+from enum import Enum
+import hashlib
+import hmac
+
+from backend.sdk import (
+    BaseWebhooksManager,
+    Webhook,
+    ProviderName,
+    Requests,
+    APIKeyCredentials,
+)
+from backend.data.model import Credentials
+
+class ExaWebhookManager(BaseWebhooksManager):
+    """Webhook manager for Exa API."""
+    
+    PROVIDER_NAME = ProviderName("exa")
+    
+    class WebhookType(str, Enum):
+        WEBSET = "webset"
+    
+    @classmethod
+    async def validate_payload(cls, webhook: Webhook, request) -> tuple[dict, str]:
+        """Validate incoming webhook payload and signature."""
+        payload = await request.json()
+        event_type = payload.get("eventType", "unknown")
+        
+        # Verify webhook signature if secret is available
+        if webhook.secret:
+            signature = request.headers.get("X-Exa-Signature")
+            if signature:
+                body = await request.body()
+                expected_signature = hmac.new(
+                    webhook.secret.encode(),
+                    body,
+                    hashlib.sha256
+                ).hexdigest()
+                
+                if not hmac.compare_digest(signature, expected_signature):
+                    raise ValueError("Invalid webhook signature")
+        
+        return payload, event_type
+    
+    async def _register_webhook(
+        self,
+        credentials: Credentials,
+        webhook_type: str,
+        resource: str,
+        events: list[str],
+        ingress_url: str,
+        secret: str,
+    ) -> tuple[str, dict]:
+        """Register webhook with Exa API."""
+        if not isinstance(credentials, APIKeyCredentials):
+            raise ValueError("Exa webhooks require API key credentials")
+        api_key = credentials.api_key.get_secret_value()
+        
+        response = await Requests().post(
+            "https://api.exa.ai/v0/webhooks",
+            headers={"x-api-key": api_key},
+            json={
+                "url": ingress_url,
+                "events": events,
+                "metadata": {"resource": resource}
+            }
+        )
+        
+        webhook_data = response.json()
+        return webhook_data["id"], {
+            "events": events,
+            "exa_secret": webhook_data.get("secret"),
+        }
+    
+    async def _deregister_webhook(self, webhook: Webhook, credentials: Credentials) -> None:
+        """Deregister webhook from Exa API."""
+        if not isinstance(credentials, APIKeyCredentials):
+            raise ValueError("Exa webhooks require API key credentials")
+        api_key = credentials.api_key.get_secret_value()
+        
+        await Requests().delete(
+            f"https://api.exa.ai/v0/webhooks/{webhook.provider_webhook_id}",
+            headers={"x-api-key": api_key}
+        )
+
+# _config.py
+from backend.sdk import BlockCostType, ProviderBuilder
+from ._webhook import ExaWebhookManager
+
+exa = (
+    ProviderBuilder("exa")
+    .with_api_key("EXA_API_KEY", "Exa API Key")
+    .with_webhook_manager(ExaWebhookManager)
+    .with_base_cost(1, BlockCostType.RUN)
+    .build()
+)
+
+# webhook_blocks.py
+from backend.sdk import *
+from ._config import exa
+
+class ExaWebsetWebhookBlock(Block):
+    """Receives webhook notifications for Exa webset events."""
+    
+    class Input(BlockSchema):
+        credentials: CredentialsMetaInput = exa.credentials_field(
+            description="Exa API credentials"
+        )
+        webhook_url: str = SchemaField(
+            description="URL to receive webhooks (auto-generated)",
+            default="",
+            hidden=True,
+        )
+        webset_id: str = SchemaField(
+            description="The webset ID to monitor",
+            default="",
+        )
+        event_filter: dict = SchemaField(
+            description="Configure which events to receive",
+            default={}
+        )
+        payload: dict = SchemaField(
+            description="Webhook payload data",
+            default={},
+            hidden=True
+        )
+    
+    class Output(BlockSchema):
+        event_type: str = SchemaField(description="Type of event")
+        webset_id: str = SchemaField(description="ID of the affected webset")
+        data: dict = SchemaField(description="Event data")
+    
+    def __init__(self):
+        super().__init__(
+            id="d1e2f3a4-b5c6-7d8e-9f0a-1b2c3d4e5f6a",
+            description="Receive notifications for Exa webset events",
+            categories={BlockCategory.INPUT},
+            input_schema=self.Input,
+            output_schema=self.Output,
+            block_type=BlockType.WEBHOOK,
+            webhook_config=BlockWebhookConfig(
+                provider=ProviderName("exa"),
+                webhook_type="webset",
+                event_filter_input="event_filter",
+                resource_format="{webset_id}",
+            ),
+        )
+    
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+        payload = input_data.payload
+        yield "event_type", payload.get("eventType", "unknown")
+        yield "webset_id", payload.get("websetId", input_data.webset_id)
+        yield "data", payload.get("data", {})
 ```
 
 For more examples, see the `/autogpt_platform/backend/backend/blocks/examples/` directory.

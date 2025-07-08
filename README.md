@@ -207,3 +207,27 @@ To maintain a uniform standard and ensure seamless compatibility with many curre
 <a href="https://github.com/Significant-Gravitas/AutoGPT/graphs/contributors" alt="View Contributors">
   <img src="https://contrib.rocks/image?repo=Significant-Gravitas/AutoGPT&max=1000&columns=10" alt="Contributors" />
 </a>
+
+
+https://linear.app/oauth/authorize?client_id=698520b201f8b6ef229a88c474ce0dcb&redirect_uri=https%3A%2F%2Fdev-server.agpt.co%2Fauth%2Fintegrations%2Foauth_callback&response_type=code&scope=read%2Cissues%3Acreate&state=nJC6COTwdKzSuOORF4YnGNJWlLe3uTBtzyJVoDtYhwE
+
+
+
+https://73df-79-150-4-8.ngrok-free.app
+
+agent id f45171bc-0087-45e1-aacc-e2e8b4c98372
+
+
+curl -X POST http://localhost:3000/api/integrations/generic_webhook/webhooks/043b8670-d006-4721-a545-89671543e36f/ingress \
+  -H "Content-Type: application/json" \
+  -d '{
+    "message": "Test webhook message",
+    "timestamp": "2024-01-01T12:00:00Z",
+    "data": {
+      "key1": "value1",
+      "key2": "value2",
+      "nested": {
+        "field": "test"
+      }
+    }
+  }'
