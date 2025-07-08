@@ -2886,7 +2886,7 @@ description = "Fundamental package for array computing in Python"
 optional = false
 python-versions = ">=3.11"
 groups = ["main"]
-markers = "python_version >= \"3.11\""
+markers = "python_version == \"3.11\" or python_version == \"3.12\""
 files = [
     {file = "numpy-2.3.1-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:6ea9e48336a402551f52cd8f593343699003d2353daa4b72ce8d34f66b722070"},
     {file = "numpy-2.3.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:5ccb7336eaf0e77c1635b232c141846493a588ec9ea777a7c24d7166bb8533ae"},
@@ -3425,14 +3425,14 @@ tests = ["pytest (>=5.4.1)", "pytest-cov (>=2.8.1)", "pytest-mypy (>=0.8.0)", "p
 
 [[package]]
 name = "postgrest"
-version = "1.0.2"
+version = "1.1.1"
 description = "PostgREST client for Python. This library provides an ORM interface to PostgREST."
 optional = false
 python-versions = "<4.0,>=3.9"
 groups = ["main"]
 files = [
-    {file = "postgrest-1.0.2-py3-none-any.whl", hash = "sha256:d115c56d3bd2672029a3805e9c73c14aa6608343dc5228db18e0e5e6134a3c62"},
-    {file = "postgrest-1.0.2.tar.gz", hash = "sha256:42fa3a6e493d6c9e54afd907213608dcacb1f3d2f276ada19ef7b22bf64c78bd"},
+    {file = "postgrest-1.1.1-py3-none-any.whl", hash = "sha256:98a6035ee1d14288484bfe36235942c5fb2d26af6d8120dfe3efbe007859251a"},
+    {file = "postgrest-1.1.1.tar.gz", hash = "sha256:f3bb3e8c4602775c75c844a31f565f5f3dd584df4d36d683f0b67d01a86be322"},
 ]
 
 [package.dependencies]
@@ -4625,21 +4625,19 @@ all = ["numpy"]
 
 [[package]]
 name = "realtime"
-version = "2.4.3"
+version = "2.5.3"
 description = ""
 optional = false
 python-versions = "<4.0,>=3.9"
 groups = ["main"]
 files = [
-    {file = "realtime-2.4.3-py3-none-any.whl", hash = "sha256:09ff3b61ac928413a27765640b67362380eaddba84a7037a17972a64b1ac52f7"},
-    {file = "realtime-2.4.3.tar.gz", hash = "sha256:152febabc822ce60e11f202842c5aa6858ae4bd04920bfd6a00c1dd492f426b0"},
+    {file = "realtime-2.5.3-py3-none-any.whl", hash = "sha256:eb0994636946eff04c4c7f044f980c8c633c7eb632994f549f61053a474ac970"},
+    {file = "realtime-2.5.3.tar.gz", hash = "sha256:0587594f3bc1c84bf007ff625075b86db6528843e03250dc84f4f2808be3d99a"},
 ]
 
 [package.dependencies]
-aiohttp = ">=3.11.18,<4.0.0"
-python-dateutil = ">=2.8.1,<3.0.0"
-typing-extensions = ">=4.13.2,<5.0.0"
-websockets = ">=11,<15"
+typing-extensions = ">=4.14.0,<5.0.0"
+websockets = ">=11,<16"
 
 [[package]]
 name = "redis"
@@ -5328,17 +5326,18 @@ full = ["httpx (>=0.27.0,<0.29.0)", "itsdangerous", "jinja2", "python-multipart 
 
 [[package]]
 name = "storage3"
-version = "0.11.3"
+version = "0.12.0"
 description = "Supabase Storage client for Python."
 optional = false
 python-versions = "<4.0,>=3.9"
 groups = ["main"]
 files = [
-    {file = "storage3-0.11.3-py3-none-any.whl", hash = "sha256:090c42152217d5d39bd94af3ddeb60c8982f3a283dcd90b53d058f2db33e6007"},
-    {file = "storage3-0.11.3.tar.gz", hash = "sha256:883637132aad36d9d92b7c497a8a56dff7c51f15faf2ff7acbccefbbd5e97347"},
+    {file = "storage3-0.12.0-py3-none-any.whl", hash = "sha256:1c4585693ca42243ded1512b58e54c697111e91a20916cd14783eebc37e7c87d"},
+    {file = "storage3-0.12.0.tar.gz", hash = "sha256:94243f20922d57738bf42e96b9f5582b4d166e8bf209eccf20b146909f3f71b0"},
 ]
 
 [package.dependencies]
+deprecation = ">=2.1.0,<3.0.0"
 httpx = {version = ">=0.26,<0.29", extras = ["http2"]}
 python-dateutil = ">=2.8.2,<3.0.0"
 
@@ -5397,14 +5396,14 @@ supafunc = ">=0.9,<0.11"
 
 [[package]]
 name = "supafunc"
-version = "0.9.4"
+version = "0.10.1"
 description = "Library for Supabase Functions"
 optional = false
 python-versions = "<4.0,>=3.9"
 groups = ["main"]
 files = [
-    {file = "supafunc-0.9.4-py3-none-any.whl", hash = "sha256:2b34a794fb7930953150a434cdb93c24a04cf526b2f51a9e60b2be0b86d44fb2"},
-    {file = "supafunc-0.9.4.tar.gz", hash = "sha256:68824a9a7bcccf5ab1e038cda632ba47cba27f2a7dc606014206b56f5a071de2"},
+    {file = "supafunc-0.10.1-py3-none-any.whl", hash = "sha256:26df9bd25ff2ef56cb5bfb8962de98f43331f7f8ff69572bac3ed9c3a9672040"},
+    {file = "supafunc-0.10.1.tar.gz", hash = "sha256:a5b33c8baecb6b5297d25da29a2503e2ec67ee6986f3d44c137e651b8a59a17d"},
 ]
 
 [package.dependencies]
@@ -5762,7 +5761,7 @@ description = "Fast implementation of asyncio event loop on top of libuv"
 optional = false
 python-versions = ">=3.8.0"
 groups = ["main"]
-markers = "platform_python_implementation != \"PyPy\" and sys_platform != \"win32\" and sys_platform != \"cygwin\""
+markers = "sys_platform != \"win32\" and sys_platform != \"cygwin\" and platform_python_implementation != \"PyPy\""
 files = [
     {file = "uvloop-0.21.0-cp310-cp310-macosx_10_9_universal2.whl", hash = "sha256:ec7e6b09a6fdded42403182ab6b832b71f4edaf7f37a9a0e371a01db5f0cb45f"},
     {file = "uvloop-0.21.0-cp310-cp310-macosx_10_9_x86_64.whl", hash = "sha256:196274f2adb9689a289ad7d65700d37df0c0930fd8e4e743fa4834e850d7719d"},
