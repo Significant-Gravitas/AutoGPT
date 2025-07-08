@@ -90,14 +90,14 @@ export default function AgentRunDraftView({
   const agentInputFields = useMemo(
     () =>
       Object.fromEntries(
-        Object.entries(agentInputSchema.properties).filter(
+        Object.entries(agentInputSchema?.properties || {}).filter(
           ([_, subSchema]) => !subSchema.hidden,
         ),
       ),
     [agentInputSchema],
   );
   const agentCredentialsInputFields = useMemo(
-    () => agent.credentials_input_schema?.properties,
+    () => agent.credentials_input_schema?.properties || {},
     [agent],
   );
 
