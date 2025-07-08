@@ -217,6 +217,32 @@ export function useGetV1GetUserCredits<
 }
 
 /**
+ * @summary Get user credits
+ */
+export const prefetchGetV1GetUserCreditsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetUserCredits>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetUserCredits>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetUserCreditsQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Request credit top up
  */
 export type postV1RequestCreditTopUpResponse200 = {
@@ -714,6 +740,32 @@ export function useGetV1GetAutoTopUp<
 }
 
 /**
+ * @summary Get auto top up
+ */
+export const prefetchGetV1GetAutoTopUpQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetAutoTopUp>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetAutoTopUp>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetAutoTopUpQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Configure auto top up
  */
 export type postV1ConfigureAutoTopUpResponse200 = {
@@ -1101,6 +1153,32 @@ export function useGetV1ManagePaymentMethods<
 }
 
 /**
+ * @summary Manage payment methods
+ */
+export const prefetchGetV1ManagePaymentMethodsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1ManagePaymentMethods>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ManagePaymentMethods>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1ManagePaymentMethodsQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Get credit history
  */
 export type getV1GetCreditHistoryResponse200 = {
@@ -1306,6 +1384,33 @@ export function useGetV1GetCreditHistory<
 }
 
 /**
+ * @summary Get credit history
+ */
+export const prefetchGetV1GetCreditHistoryQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetCreditHistory>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  params?: GetV1GetCreditHistoryParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetCreditHistory>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetCreditHistoryQueryOptions(params, options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Get refund requests
  */
 export type getV1GetRefundRequestsResponse200 = {
@@ -1478,3 +1583,29 @@ export function useGetV1GetRefundRequests<
 
   return query;
 }
+
+/**
+ * @summary Get refund requests
+ */
+export const prefetchGetV1GetRefundRequestsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetRefundRequests>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetRefundRequests>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetRefundRequestsQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};

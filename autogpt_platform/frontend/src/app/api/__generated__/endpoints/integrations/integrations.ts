@@ -244,6 +244,30 @@ export function useGetV1Login<
 }
 
 /**
+ * @summary Login
+ */
+export const prefetchGetV1LoginQuery = async <
+  TData = Awaited<ReturnType<typeof getV1Login>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  provider: ProviderName,
+  params?: GetV1LoginParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<Awaited<ReturnType<typeof getV1Login>>, TError, TData>
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1LoginQueryOptions(provider, params, options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Callback
  */
 export type postV1CallbackResponse200 = {
@@ -526,6 +550,32 @@ export function useGetV1ListCredentials<
 }
 
 /**
+ * @summary List Credentials
+ */
+export const prefetchGetV1ListCredentialsQuery = async <
+  TData = Awaited<ReturnType<typeof getV1ListCredentials>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ListCredentials>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1ListCredentialsQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary List Credentials By Provider
  */
 export type getV1ListCredentialsByProviderResponse200 = {
@@ -726,6 +776,36 @@ export function useGetV1ListCredentialsByProvider<
 
   return query;
 }
+
+/**
+ * @summary List Credentials By Provider
+ */
+export const prefetchGetV1ListCredentialsByProviderQuery = async <
+  TData = Awaited<ReturnType<typeof getV1ListCredentialsByProvider>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  provider: ProviderName,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ListCredentialsByProvider>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1ListCredentialsByProviderQueryOptions(
+    provider,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * @summary Create Credentials
@@ -1048,6 +1128,38 @@ export function useGetV1GetCredential<
 
   return query;
 }
+
+/**
+ * @summary Get Credential
+ */
+export const prefetchGetV1GetCredentialQuery = async <
+  TData = Awaited<ReturnType<typeof getV1GetCredential>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  provider: ProviderName,
+  credId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1GetCredential>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1GetCredentialQueryOptions(
+    provider,
+    credId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * @summary Delete Credentials

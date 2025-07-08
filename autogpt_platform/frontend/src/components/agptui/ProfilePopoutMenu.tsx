@@ -19,7 +19,7 @@ import {
 } from "../ui/icons";
 import Link from "next/link";
 import { ProfilePopoutMenuLogoutButton } from "./ProfilePopoutMenuLogoutButton";
-import { PublishAgentPopout } from "./composite/PublishAgentPopout";
+import { PublishAgentPopout } from "@/app/(platform)/marketplace/components/PublishAgentPopout/PublishAgentPopout";
 
 interface ProfilePopoutMenuProps {
   userName?: string;

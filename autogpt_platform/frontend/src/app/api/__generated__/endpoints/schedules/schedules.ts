@@ -352,6 +352,36 @@ export function useGetV1ListExecutionSchedulesForAGraph<
 }
 
 /**
+ * @summary List execution schedules for a graph
+ */
+export const prefetchGetV1ListExecutionSchedulesForAGraphQuery = async <
+  TData = Awaited<ReturnType<typeof getV1ListExecutionSchedulesForAGraph>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  graphId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ListExecutionSchedulesForAGraph>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV1ListExecutionSchedulesForAGraphQueryOptions(
+    graphId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary List execution schedules for a user
  */
 export type getV1ListExecutionSchedulesForAUserResponse200 = {
@@ -526,6 +556,33 @@ export function useGetV1ListExecutionSchedulesForAUser<
 
   return query;
 }
+
+/**
+ * @summary List execution schedules for a user
+ */
+export const prefetchGetV1ListExecutionSchedulesForAUserQuery = async <
+  TData = Awaited<ReturnType<typeof getV1ListExecutionSchedulesForAUser>>,
+  TError = unknown,
+>(
+  queryClient: QueryClient,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV1ListExecutionSchedulesForAUser>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions =
+    getGetV1ListExecutionSchedulesForAUserQueryOptions(options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * @summary Delete execution schedule

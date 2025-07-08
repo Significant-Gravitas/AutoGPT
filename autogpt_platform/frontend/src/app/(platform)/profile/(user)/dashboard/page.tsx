@@ -5,7 +5,6 @@ import { AgentTable } from "@/components/agptui/AgentTable";
 import { Button } from "@/components/agptui/Button";
 import { Separator } from "@/components/ui/separator";
 import { StatusType } from "@/components/agptui/Status";
-import { PublishAgentPopout } from "@/components/agptui/composite/PublishAgentPopout";
 import { useCallback, useEffect, useState } from "react";
 import {
   StoreSubmissionsResponse,
@@ -13,6 +12,7 @@ import {
 } from "@/lib/autogpt-server-api/types";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { PublishAgentPopout } from "@/app/(platform)/marketplace/components/PublishAgentPopout/PublishAgentPopout";
 
 export default function Page() {
   const { supabase } = useSupabase();
