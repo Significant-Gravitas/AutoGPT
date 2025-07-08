@@ -124,9 +124,9 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     COHERE_COMMAND_R_PLUS_08_2024 = "cohere/command-r-plus-08-2024"
     EVA_QWEN_2_5_32B = "eva-unit-01/eva-qwen-2.5-32b"
     DEEPSEEK_CHAT = "deepseek/deepseek-chat"  # Actually: DeepSeek V3
-    PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE = (
-        "perplexity/llama-3.1-sonar-large-128k-online"
-    )
+    PERPLEXITY_SONAR = "perplexity/sonar"
+    PERPLEXITY_SONAR_PRO = "perplexity/sonar-pro"
+    PERPLEXITY_SONAR_DEEP_RESEARCH = "perplexity/sonar-deep-research"
     QWEN_QWQ_32B_PREVIEW = "qwen/qwq-32b-preview"
     NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B = "nousresearch/hermes-3-llama-3.1-405b"
     NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B = "nousresearch/hermes-3-llama-3.1-70b"
@@ -226,8 +226,12 @@ MODEL_METADATA = {
     LlmModel.COHERE_COMMAND_R_PLUS_08_2024: ModelMetadata("open_router", 128000, 4096),
     LlmModel.EVA_QWEN_2_5_32B: ModelMetadata("open_router", 16384, 4096),
     LlmModel.DEEPSEEK_CHAT: ModelMetadata("open_router", 64000, 2048),
-    LlmModel.PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE: ModelMetadata(
-        "open_router", 127072, 127072
+    LlmModel.PERPLEXITY_SONAR: ModelMetadata("open_router", 127000, 127000),
+    LlmModel.PERPLEXITY_SONAR_PRO: ModelMetadata("open_router", 200000, 200000),
+    LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: ModelMetadata(
+        "open_router",
+        127000,
+        127000,
     ),
     LlmModel.QWEN_QWQ_32B_PREVIEW: ModelMetadata("open_router", 32768, 32768),
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: ModelMetadata(
