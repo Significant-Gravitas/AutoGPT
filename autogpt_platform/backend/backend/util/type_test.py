@@ -1,3 +1,5 @@
+from typing import List, Optional
+
 from backend.util.type import convert
 
 
@@ -5,6 +7,8 @@ def test_type_conversion():
     assert convert(5.5, int) == 5
     assert convert("5.5", int) == 5
     assert convert([1, 2, 3], int) == 3
+    assert convert("7", Optional[int]) == 7
+    assert convert("7", int | None) == 7
 
     assert convert("5.5", float) == 5.5
     assert convert(5, float) == 5.0
@@ -24,8 +28,6 @@ def test_type_conversion():
     assert convert('{"a": 1, "b": 2}', dict) == {"a": 1, "b": 2}
     assert convert([1, 2, 3], dict) == {0: 1, 1: 2, 2: 3}
     assert convert((1, 2, 3), dict) == {0: 1, 1: 2, 2: 3}
-
-    from typing import List
 
     assert convert("5", List[int]) == [5]
     assert convert("[5,4,2]", List[int]) == [5, 4, 2]

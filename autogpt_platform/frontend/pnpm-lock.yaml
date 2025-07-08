@@ -291,6 +291,9 @@ importers:
       orval:
         specifier: 7.10.0
         version: 7.10.0(openapi-types@12.1.3)
+      pbkdf2:
+        specifier: 3.1.3
+        version: 3.1.3
       postcss:
         specifier: 8.5.6
         version: 8.5.6
@@ -11194,7 +11197,7 @@ snapshots:
     dependencies:
       cipher-base: 1.0.6
       inherits: 2.0.4
-      ripemd160: 2.0.1
+      ripemd160: 2.0.2
       sha.js: 2.4.11
 
   create-hash@1.2.0:
