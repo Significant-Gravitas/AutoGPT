@@ -28,9 +28,9 @@ export async function signupTestUser(
 
     // Fill form
     await emailInput.fill(userEmail);
-    const passwordInput = page.getByLabel("Password");
+    const passwordInput = page.locator("#password");
     await passwordInput.fill(userPassword);
-    const confirmPasswordInput = page.getByLabel("Confirm Password");
+    const confirmPasswordInput = page.locator("#confirmPassword");
     await confirmPasswordInput.fill(userPassword);
 
     // Agree to terms and submit

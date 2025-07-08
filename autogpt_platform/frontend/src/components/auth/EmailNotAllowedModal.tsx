@@ -19,8 +19,7 @@ export function EmailNotAllowedModal({ isOpen, onClose }: Props) {
           <Text variant="large-medium" className="text-center">
             We&apos;re currently in a limited access phase. Your email address
             isn&apos;t on our current allowlist for early access. If you believe
-            this is an error or would like to request access, please contact our
-            support team.
+            this is an error or would like to request access, please contact us.
           </Text>
           <div className="flex justify-end pt-4">
             <Button variant="primary" onClick={onClose}>

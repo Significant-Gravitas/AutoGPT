@@ -47,23 +47,19 @@ export function useLoginPage() {
   async function handleProviderLogin(provider: LoginProvider) {
     setIsGoogleLoading(true);
 
-    // Artificially wait 2 seconds
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
     try {
       const error = await providerLogin(provider);
       if (error) throw error;
       setFeedback(null);
     } catch (error) {
       resetCaptcha();
+      setIsGoogleLoading(false);
       const errorString = JSON.stringify(error);
       if (errorString.includes("not_allowed")) {
         setShowNotAllowedModal(true);
       } else {
         setFeedback(errorString);
       }
-    } finally {
-      setIsGoogleLoading(false);
     }
   }
 

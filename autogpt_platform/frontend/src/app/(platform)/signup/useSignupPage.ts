@@ -51,8 +51,8 @@ export function useSignupPage() {
   async function handleProviderSignup(provider: LoginProvider) {
     setIsGoogleLoading(true);
     const error = await providerLogin(provider);
-    setIsGoogleLoading(false);
     if (error) {
+      setIsGoogleLoading(false);
       resetCaptcha();
       toast({
         title: error,
