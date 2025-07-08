@@ -27,6 +27,7 @@ from backend.data.model import (
     CredentialsMetaInput,
     is_credentials_field_name,
 )
+from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
 
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
@@ -243,6 +244,8 @@ class Graph(BaseGraph):
             for other_field, other_keys in list(graph_cred_fields)[i + 1 :]:
                 if field.provider != other_field.provider:
                     continue
+                if ProviderName.HTTP in field.provider:
+                    continue
 
                 # If this happens, that means a block implementation probably needs
                 # to be updated.
@@ -264,6 +267,7 @@ class Graph(BaseGraph):
                     required_scopes=set(field_info.required_scopes or []),
                     discriminator=field_info.discriminator,
                     discriminator_mapping=field_info.discriminator_mapping,
+                    discriminator_values=field_info.discriminator_values,
                 ),
             )
             for agg_field_key, (field_info, _) in graph_credentials_inputs.items()
@@ -282,37 +286,40 @@ class Graph(BaseGraph):
         Returns:
             dict[aggregated_field_key, tuple(
                 CredentialsFieldInfo: A spec for one aggregated credentials field
+                    (now includes discriminator_values from matching nodes)
                 set[(node_id, field_name)]: Node credentials fields that are
                     compatible with this aggregated field spec
             )]
         """
-        return {
-            "_".join(sorted(agg_field_info.provider))
-            + "_"
-            + "_".join(sorted(agg_field_info.supported_types))
-            + "_credentials": (agg_field_info, node_fields)
-            for agg_field_info, node_fields in CredentialsFieldInfo.combine(
-                *(
-                    (
-                        # Apply discrimination before aggregating credentials inputs
-                        (
-                            field_info.discriminate(
-                                node.input_default[field_info.discriminator]
-                            )
-                            if (
-                                field_info.discriminator
-                                and node.input_default.get(field_info.discriminator)
-                            )
-                            else field_info
-                        ),
-                        (node.id, field_name),
+        # First collect all credential field data with input defaults
+        node_credential_data = []
+
+        for graph in [self] + self.sub_graphs:
+            for node in graph.nodes:
+                for (
+                    field_name,
+                    field_info,
+                ) in node.block.input_schema.get_credentials_fields_info().items():
+
+                    discriminator = field_info.discriminator
+                    if not discriminator:
+                        node_credential_data.append((field_info, (node.id, field_name)))
+                        continue
+
+                    discriminator_value = node.input_default.get(discriminator)
+                    if discriminator_value is None:
+                        node_credential_data.append((field_info, (node.id, field_name)))
+                        continue
+
+                    discriminated_info = field_info.discriminate(discriminator_value)
+                    discriminated_info.discriminator_values.add(discriminator_value)
+
+                    node_credential_data.append(
+                        (discriminated_info, (node.id, field_name))
                     )
-                    for graph in [self] + self.sub_graphs
-                    for node in graph.nodes
-                    for field_name, field_info in node.block.input_schema.get_credentials_fields_info().items()
-                )
-            )
-        }
+
+        # Combine credential field info (this will merge discriminator_values automatically)
+        return CredentialsFieldInfo.combine(*node_credential_data)
 
 
 class GraphModel(Graph):
@@ -382,8 +389,10 @@ class GraphModel(Graph):
 
         # Reassign Link IDs
         for link in graph.links:
-            link.source_id = id_map[link.source_id]
-            link.sink_id = id_map[link.sink_id]
+            if link.source_id in id_map:
+                link.source_id = id_map[link.source_id]
+            if link.sink_id in id_map:
+                link.sink_id = id_map[link.sink_id]
 
         # Reassign User IDs for agent blocks
         for node in graph.nodes:
@@ -391,7 +400,9 @@ class GraphModel(Graph):
                 continue
             node.input_default["user_id"] = user_id
             node.input_default.setdefault("inputs", {})
-            if (graph_id := node.input_default.get("graph_id")) in graph_id_map:
+            if (
+                graph_id := node.input_default.get("graph_id")
+            ) and graph_id in graph_id_map:
                 node.input_default["graph_id"] = graph_id_map[graph_id]
 
     def validate_graph(

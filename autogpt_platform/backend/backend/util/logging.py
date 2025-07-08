@@ -1,4 +1,4 @@
-from logging import Logger
+import logging
 
 from backend.util.settings import AppEnvironment, BehaveAs, Settings
 
@@ -6,8 +6,6 @@ settings = Settings()
 
 
 def configure_logging():
-    import logging
-
     import autogpt_libs.logging.config
 
     if (
@@ -25,7 +23,7 @@ def configure_logging():
 class TruncatedLogger:
     def __init__(
         self,
-        logger: Logger,
+        logger: logging.Logger,
         prefix: str = "",
         metadata: dict | None = None,
         max_length: int = 1000,
@@ -65,3 +63,13 @@ class TruncatedLogger:
         if len(text) > self.max_length:
             text = text[: self.max_length] + "..."
         return text
+
+
+class PrefixFilter(logging.Filter):
+    def __init__(self, prefix: str):
+        super().__init__()
+        self.prefix = prefix
+
+    def filter(self, record):
+        record.msg = f"{self.prefix} {record.msg}"
+        return True

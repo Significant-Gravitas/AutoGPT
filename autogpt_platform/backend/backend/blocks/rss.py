@@ -40,6 +40,7 @@ class ReadRSSFeedBlock(Block):
 
     class Output(BlockSchema):
         entry: RSSEntry = SchemaField(description="The RSS item")
+        entries: list[RSSEntry] = SchemaField(description="List of all RSS entries")
 
     def __init__(self):
         super().__init__(
@@ -65,6 +66,21 @@ class ReadRSSFeedBlock(Block):
                         author="John Doe",
                         categories=["Technology", "News"],
                     ),
+                ),
+                (
+                    "entries",
+                    [
+                        RSSEntry(
+                            title="Example RSS Item",
+                            link="https://example.com/article",
+                            description="This is an example RSS item description.",
+                            pub_date=datetime(
+                                2023, 6, 23, 12, 30, 0, tzinfo=timezone.utc
+                            ),
+                            author="John Doe",
+                            categories=["Technology", "News"],
+                        ),
+                    ],
                 ),
             ],
             test_mock={
@@ -96,21 +112,22 @@ class ReadRSSFeedBlock(Block):
             keep_going = input_data.run_continuously
 
             feed = self.parse_feed(input_data.rss_url)
+            all_entries = []
 
             for entry in feed["entries"]:
                 pub_date = datetime(*entry["published_parsed"][:6], tzinfo=timezone.utc)
 
                 if pub_date > start_time:
-                    yield (
-                        "entry",
-                        RSSEntry(
-                            title=entry["title"],
-                            link=entry["link"],
-                            description=entry.get("summary", ""),
-                            pub_date=pub_date,
-                            author=entry.get("author", ""),
-                            categories=[tag["term"] for tag in entry.get("tags", [])],
-                        ),
+                    rss_entry = RSSEntry(
+                        title=entry["title"],
+                        link=entry["link"],
+                        description=entry.get("summary", ""),
+                        pub_date=pub_date,
+                        author=entry.get("author", ""),
+                        categories=[tag["term"] for tag in entry.get("tags", [])],
                     )
+                    all_entries.append(rss_entry)
+                    yield "entry", rss_entry
 
+            yield "entries", all_entries
             await asyncio.sleep(input_data.polling_rate)

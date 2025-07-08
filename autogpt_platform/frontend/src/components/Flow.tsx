@@ -4,10 +4,12 @@ import React, {
   useState,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   MouseEvent,
   Suspense,
 } from "react";
+import Link from "next/link";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -32,7 +34,9 @@ import {
   formatEdgeID,
   GraphExecutionID,
   GraphID,
+  LibraryAgent,
 } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { getTypeColor, findNewlyAddedBlockCoordinates } from "@/lib/utils";
 import { history } from "./history";
 import { CustomEdge } from "./CustomEdge";
@@ -41,6 +45,7 @@ import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
 import { SaveControl } from "@/components/edit/control/SaveControl";
 import { BlocksControl } from "@/components/edit/control/BlocksControl";
 import { IconUndo2, IconRedo2 } from "@/components/ui/icons";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { startTutorial } from "./tutorial";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { v4 as uuidv4 } from "uuid";
@@ -48,11 +53,11 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import RunnerUIWrapper, {
   RunnerUIWrapperRef,
 } from "@/components/RunnerUIWrapper";
+import { CronSchedulerDialog } from "@/components/cron-scheduler-dialog";
 import PrimaryActionBar from "@/components/PrimaryActionButton";
 import OttoChatWidget from "@/components/OttoChatWidget";
 import { useToast } from "@/components/ui/use-toast";
 import { useCopyPaste } from "../hooks/useCopyPaste";
-import { CronScheduler } from "./cronScheduler";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -77,7 +82,7 @@ export const FlowContext = createContext<FlowContextType | null>(null);
 
 const FlowEditor: React.FC<{
   flowID?: GraphID;
-  flowVersion?: string;
+  flowVersion?: number;
   className?: string;
 }> = ({ flowID, flowVersion, className }) => {
   const {
@@ -118,10 +123,24 @@ const FlowEditor: React.FC<{
     setEdges,
   } = useAgentGraph(
     flowID,
-    flowVersion ? parseInt(flowVersion) : undefined,
+    flowVersion,
     flowExecutionID,
     visualizeBeads !== "no",
   );
+  const api = useBackendAPI();
+  const [libraryAgent, setLibraryAgent] = useState<LibraryAgent | null>(null);
+  useEffect(() => {
+    if (!flowID) return;
+    api
+      .getLibraryAgentByGraphID(flowID, flowVersion)
+      .then((libraryAgent) => setLibraryAgent(libraryAgent))
+      .catch((error) => {
+        console.warn(
+          `Failed to fetch LibraryAgent for graph #${flowID} v${flowVersion}`,
+          error,
+        );
+      });
+  }, [api, flowID, flowVersion]);
 
   const router = useRouter();
   const pathname = usePathname();
@@ -153,6 +172,16 @@ const FlowEditor: React.FC<{
       ? `${savedAgent.name} - Builder - AutoGPT Platform`
       : `Builder - AutoGPT Platform`;
   }, [savedAgent]);
+
+  const graphHasWebhookNodes = useMemo(
+    () =>
+      nodes.some((n) =>
+        [BlockUIType.WEBHOOK, BlockUIType.WEBHOOK_MANUAL].includes(
+          n.data.uiType,
+        ),
+      ),
+    [nodes],
+  );
 
   useEffect(() => {
     if (params.get("resetTutorial") === "true") {
@@ -639,8 +668,11 @@ const FlowEditor: React.FC<{
 
   // This function is called after cron expression is created
   // So you can collect inputs for scheduling
-  const afterCronCreation = (cronExpression: string) => {
-    runnerUIRef.current?.collectInputsForScheduling(cronExpression);
+  const afterCronCreation = (cronExpression: string, scheduleName: string) => {
+    runnerUIRef.current?.collectInputsForScheduling(
+      cronExpression,
+      scheduleName,
+    );
   };
 
   // This function Opens up form for creating cron expression
@@ -704,35 +736,62 @@ const FlowEditor: React.FC<{
               />
             }
           ></ControlPanel>
-          <PrimaryActionBar
-            className="absolute bottom-0 left-1/2 z-20 -translate-x-1/2"
-            onClickAgentOutputs={() => runnerUIRef.current?.openRunnerOutput()}
-            onClickRunAgent={() => {
-              if (!savedAgent) {
-                toast({
-                  title: `Please save the agent using the button in the left sidebar before running it.`,
-                  duration: 2000,
-                });
-                return;
-              }
-              if (!isRunning) {
-                runnerUIRef.current?.runOrOpenInput();
-              } else {
-                requestStopRun();
-              }
-            }}
-            onClickScheduleButton={handleScheduleButton}
-            isScheduling={isScheduling}
-            isDisabled={!savedAgent}
-            isRunning={isRunning}
-            requestStopRun={requestStopRun}
-            runAgentTooltip={!isRunning ? "Run Agent" : "Stop Agent"}
-          />
-          <CronScheduler
-            afterCronCreation={afterCronCreation}
-            open={openCron}
-            setOpen={setOpenCron}
-          />
+          {!graphHasWebhookNodes ? (
+            <>
+              <PrimaryActionBar
+                className="absolute bottom-0 left-1/2 z-20 -translate-x-1/2"
+                onClickAgentOutputs={() =>
+                  runnerUIRef.current?.openRunnerOutput()
+                }
+                onClickRunAgent={() => {
+                  if (isRunning) return;
+                  if (!savedAgent) {
+                    toast({
+                      title: `Please save the agent using the button in the left sidebar before running it.`,
+                      duration: 2000,
+                    });
+                    return;
+                  }
+                  runnerUIRef.current?.runOrOpenInput();
+                }}
+                onClickStopRun={requestStopRun}
+                onClickScheduleButton={handleScheduleButton}
+                isScheduling={isScheduling}
+                isDisabled={!savedAgent}
+                isRunning={isRunning}
+              />
+              <CronSchedulerDialog
+                afterCronCreation={afterCronCreation}
+                open={openCron}
+                setOpen={setOpenCron}
+                defaultScheduleName={agentName}
+              />
+            </>
+          ) : (
+            <Alert className="absolute bottom-4 left-1/2 z-20 w-auto -translate-x-1/2 select-none">
+              <AlertTitle>You are building a Trigger Agent</AlertTitle>
+              <AlertDescription>
+                Your agent{" "}
+                {savedAgent?.nodes.some((node) => node.webhook)
+                  ? "is listening"
+                  : "will listen"}{" "}
+                for its trigger and will run when the time is right.
+                <br />
+                You can view its activity in your
+                <Link
+                  href={
+                    libraryAgent
+                      ? `/library/agents/${libraryAgent.id}`
+                      : "/library"
+                  }
+                  className="underline"
+                >
+                  Agent Library
+                </Link>
+                .
+              </AlertDescription>
+            </Alert>
+          )}
         </ReactFlow>
       </div>
       <RunnerUIWrapper

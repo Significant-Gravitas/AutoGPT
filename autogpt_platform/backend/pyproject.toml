@@ -68,7 +68,9 @@ zerobouncesdk = "^1.1.1"
 # NOTE: please insert new dependencies in their alphabetical location
 pytest-snapshot = "^0.9.0"
 aiofiles = "^24.1.0"
-pyclamd = "^0.4.0"
+tiktoken = "^0.9.0"
+aioclamd = "^1.0.0"
+setuptools = "^80.9.0"
 
 [tool.poetry.group.dev.dependencies]
 aiohappyeyeballs = "^2.6.1"
@@ -113,6 +115,11 @@ ignore_patterns = []
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+filterwarnings = [
+    "ignore:'audioop' is deprecated:DeprecationWarning:discord.player",
+    "ignore:invalid escape sequence:DeprecationWarning:tweepy.api",
+]
 
 [tool.ruff]
 target-version = "py310"

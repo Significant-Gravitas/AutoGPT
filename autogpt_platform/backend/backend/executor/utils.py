@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 from collections import defaultdict
 from concurrent.futures import Future
 from typing import TYPE_CHECKING, Any, Callable, Optional, cast
@@ -7,6 +8,8 @@ from typing import TYPE_CHECKING, Any, Callable, Optional, cast
 from autogpt_libs.utils.cache import thread_cached
 from pydantic import BaseModel, JsonValue
 
+from backend.data import execution as execution_db
+from backend.data import graph as graph_db
 from backend.data.block import (
     Block,
     BlockData,
@@ -23,12 +26,8 @@ from backend.data.execution import (
     GraphExecutionStats,
     GraphExecutionWithNodes,
     RedisExecutionEventBus,
-    create_graph_execution,
-    get_node_executions,
-    update_graph_execution_stats,
-    update_node_execution_status_batch,
 )
-from backend.data.graph import GraphModel, Node, get_graph
+from backend.data.graph import GraphModel, Node
 from backend.data.model import CredentialsMetaInput
 from backend.data.rabbitmq import (
     AsyncRabbitMQ,
@@ -53,6 +52,36 @@ config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
 
 # ============ Resource Helpers ============ #
+
+
+class LogMetadata(TruncatedLogger):
+    def __init__(
+        self,
+        logger: logging.Logger,
+        user_id: str,
+        graph_eid: str,
+        graph_id: str,
+        node_eid: str,
+        node_id: str,
+        block_name: str,
+        max_length: int = 1000,
+    ):
+        metadata = {
+            "component": "ExecutionManager",
+            "user_id": user_id,
+            "graph_eid": graph_eid,
+            "graph_id": graph_id,
+            "node_eid": node_eid,
+            "node_id": node_id,
+            "block_name": block_name,
+        }
+        prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"
+        super().__init__(
+            logger,
+            max_length=max_length,
+            prefix=prefix,
+            metadata=metadata,
+        )
 
 
 @thread_cached
@@ -653,8 +682,10 @@ def create_execution_queue_config() -> RabbitMQConfig:
 
 
 async def stop_graph_execution(
+    user_id: str,
     graph_exec_id: str,
     use_db_query: bool = True,
+    wait_timeout: float = 60.0,
 ):
     """
     Mechanism:
@@ -664,66 +695,56 @@ async def stop_graph_execution(
     3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
     """
     queue_client = await get_async_execution_queue()
+    db = execution_db if use_db_query else get_db_async_client()
     await queue_client.publish_message(
         routing_key="",
         message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
         exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
     )
 
-    # Update the status of the graph execution
-    if use_db_query:
-        graph_execution = await update_graph_execution_stats(
-            graph_exec_id,
-            ExecutionStatus.TERMINATED,
-        )
-    else:
-        graph_execution = await get_db_async_client().update_graph_execution_stats(
-            graph_exec_id,
-            ExecutionStatus.TERMINATED,
+    if not wait_timeout:
+        return
+
+    start_time = time.time()
+    while time.time() - start_time < wait_timeout:
+        graph_exec = await db.get_graph_execution_meta(
+            execution_id=graph_exec_id, user_id=user_id
         )
 
-    if graph_execution:
-        await get_async_execution_event_bus().publish(graph_execution)
-    else:
-        raise NotFoundError(
-            f"Graph execution #{graph_exec_id} not found for termination."
-        )
+        if not graph_exec:
+            raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
 
-    # Update the status of the node executions
-    if use_db_query:
-        node_executions = await get_node_executions(
-            graph_exec_id=graph_exec_id,
-            statuses=[
-                ExecutionStatus.QUEUED,
-                ExecutionStatus.RUNNING,
-                ExecutionStatus.INCOMPLETE,
-            ],
-        )
-        await update_node_execution_status_batch(
-            [v.node_exec_id for v in node_executions],
+        if graph_exec.status in [
             ExecutionStatus.TERMINATED,
-        )
-    else:
-        node_executions = await get_db_async_client().get_node_executions(
-            graph_exec_id=graph_exec_id,
-            statuses=[
-                ExecutionStatus.QUEUED,
-                ExecutionStatus.RUNNING,
-                ExecutionStatus.INCOMPLETE,
-            ],
-        )
-        await get_db_async_client().update_node_execution_status_batch(
-            [v.node_exec_id for v in node_executions],
-            ExecutionStatus.TERMINATED,
-        )
+            ExecutionStatus.COMPLETED,
+            ExecutionStatus.FAILED,
+        ]:
+            # If graph execution is terminated/completed/failed, cancellation is complete
+            return
 
-    await asyncio.gather(
-        *[
-            get_async_execution_event_bus().publish(
-                v.model_copy(update={"status": ExecutionStatus.TERMINATED})
+        elif graph_exec.status in [
+            ExecutionStatus.QUEUED,
+            ExecutionStatus.INCOMPLETE,
+        ]:
+            # If the graph is still on the queue, we can prevent them from being executed
+            # by setting the status to TERMINATED.
+            node_execs = await db.get_node_executions(
+                graph_exec_id=graph_exec_id,
+                statuses=[ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE],
             )
-            for v in node_executions
-        ]
+            await db.update_node_execution_status_batch(
+                [node_exec.node_exec_id for node_exec in node_execs],
+                ExecutionStatus.TERMINATED,
+            )
+            await db.update_graph_execution_stats(
+                graph_exec_id=graph_exec_id,
+                status=ExecutionStatus.TERMINATED,
+            )
+
+        await asyncio.sleep(1.0)
+
+    raise TimeoutError(
+        f"Timed out waiting for graph execution #{graph_exec_id} to terminate."
     )
 
 
@@ -753,22 +774,16 @@ async def add_graph_execution(
         GraphExecutionEntry: The entry for the graph execution.
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
-    """  # noqa
-    if use_db_query:
-        graph: GraphModel | None = await get_graph(
-            graph_id=graph_id,
-            user_id=user_id,
-            version=graph_version,
-            include_subgraphs=True,
-        )
-    else:
-        graph: GraphModel | None = await get_db_async_client().get_graph(
-            graph_id=graph_id,
-            user_id=user_id,
-            version=graph_version,
-            include_subgraphs=True,
-        )
+    """
+    gdb = graph_db if use_db_query else get_db_async_client()
+    edb = execution_db if use_db_query else get_db_async_client()
 
+    graph: GraphModel | None = await gdb.get_graph(
+        graph_id=graph_id,
+        user_id=user_id,
+        version=graph_version,
+        include_subgraphs=True,
+    )
     if not graph:
         raise NotFoundError(f"Graph #{graph_id} not found.")
 
@@ -787,22 +802,13 @@ async def add_graph_execution(
         nodes_input_masks=nodes_input_masks,
     )
 
-    if use_db_query:
-        graph_exec = await create_graph_execution(
-            user_id=user_id,
-            graph_id=graph_id,
-            graph_version=graph.version,
-            starting_nodes_input=starting_nodes_input,
-            preset_id=preset_id,
-        )
-    else:
-        graph_exec = await get_db_async_client().create_graph_execution(
-            user_id=user_id,
-            graph_id=graph_id,
-            graph_version=graph.version,
-            starting_nodes_input=starting_nodes_input,
-            preset_id=preset_id,
-        )
+    graph_exec = await edb.create_graph_execution(
+        user_id=user_id,
+        graph_id=graph_id,
+        graph_version=graph.version,
+        starting_nodes_input=starting_nodes_input,
+        preset_id=preset_id,
+    )
 
     try:
         queue = await get_async_execution_queue()
@@ -821,28 +827,15 @@ async def add_graph_execution(
         return graph_exec
     except Exception as e:
         logger.error(f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {e}")
-
-        if use_db_query:
-            await update_node_execution_status_batch(
-                [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
-                ExecutionStatus.FAILED,
-            )
-            await update_graph_execution_stats(
-                graph_exec_id=graph_exec.id,
-                status=ExecutionStatus.FAILED,
-                stats=GraphExecutionStats(error=str(e)),
-            )
-        else:
-            await get_db_async_client().update_node_execution_status_batch(
-                [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
-                ExecutionStatus.FAILED,
-            )
-            await get_db_async_client().update_graph_execution_stats(
-                graph_exec_id=graph_exec.id,
-                status=ExecutionStatus.FAILED,
-                stats=GraphExecutionStats(error=str(e)),
-            )
-
+        await edb.update_node_execution_status_batch(
+            [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
+            ExecutionStatus.FAILED,
+        )
+        await edb.update_graph_execution_stats(
+            graph_exec_id=graph_exec.id,
+            status=ExecutionStatus.FAILED,
+            stats=GraphExecutionStats(error=str(e)),
+        )
         raise
 
 
@@ -897,14 +890,10 @@ class NodeExecutionProgress:
         try:
             self.tasks[exec_id].result(wait_time)
         except TimeoutError:
-            print(
-                ">>>>>>>  -- Timeout, after waiting for",
-                wait_time,
-                "seconds for node_id",
-                exec_id,
-            )
             pass
-
+        except Exception as e:
+            logger.error(f"Task for exec ID {exec_id} failed with error: {str(e)}")
+            pass
         return self.is_done(0)
 
     def stop(self) -> list[str]:
@@ -921,6 +910,25 @@ class NodeExecutionProgress:
             cancelled_ids.append(task_id)
         return cancelled_ids
 
+    def wait_for_cancellation(self, timeout: float = 5.0):
+        """
+        Wait for all cancelled tasks to complete cancellation.
+
+        Args:
+            timeout: Maximum time to wait for cancellation in seconds
+        """
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            # Check if all tasks are done (either completed or cancelled)
+            if all(task.done() for task in self.tasks.values()):
+                return True
+            time.sleep(0.1)  # Small delay to avoid busy waiting
+
+        raise TimeoutError(
+            f"Timeout waiting for cancellation of tasks: {list(self.tasks.keys())}"
+        )
+
     def _pop_done_task(self, exec_id: str) -> bool:
         task = self.tasks.get(exec_id)
         if not task:
@@ -933,8 +941,10 @@ class NodeExecutionProgress:
             return False
 
         if task := self.tasks.pop(exec_id):
-            self.on_done_task(exec_id, task.result())
-
+            try:
+                self.on_done_task(exec_id, task.result())
+            except Exception as e:
+                logger.error(f"Task for exec ID {exec_id} failed with error: {str(e)}")
         return True
 
     def _next_exec(self) -> str | None:

@@ -5,6 +5,7 @@ import { useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useToast } from "@/components/ui/use-toast";
 import { IconKey, IconUser } from "@/components/ui/icons";
 import { Trash2Icon } from "lucide-react";
+import { KeyIcon } from "@phosphor-icons/react/dist/ssr";
 import { providerIcons } from "@/components/integrations/credentials-input";
 import { CredentialsProvidersContext } from "@/components/integrations/credentials-provider";
 import {
@@ -140,11 +141,12 @@ export default function UserIntegrationsPage() {
             ...credentials,
             provider: provider.provider,
             providerName: provider.providerName,
-            ProviderIcon: providerIcons[provider.provider],
+            ProviderIcon: providerIcons[provider.provider] || KeyIcon,
             TypeIcon: {
               oauth2: IconUser,
               api_key: IconKey,
               user_password: IconKey,
+              host_scoped: IconKey,
             }[credentials.type],
           })),
       )
@@ -181,6 +183,7 @@ export default function UserIntegrationsPage() {
                       oauth2: "OAuth2 credentials",
                       api_key: "API key",
                       user_password: "Username & password",
+                      host_scoped: "Host-scoped credentials",
                     }[cred.type]
                   }{" "}
                   - <code>{cred.id}</code>

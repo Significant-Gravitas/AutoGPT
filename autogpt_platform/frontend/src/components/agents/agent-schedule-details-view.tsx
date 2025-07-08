@@ -5,27 +5,33 @@ import {
   GraphExecutionID,
   GraphMeta,
   Schedule,
+  ScheduleID,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
+import { AgentRunStatus } from "@/components/agents/agent-run-status-chip";
+import ActionButtonGroup from "@/components/agptui/action-button-group";
 import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AgentRunStatus } from "@/components/agents/agent-run-status-chip";
-import { useToastOnFail } from "@/components/ui/use-toast";
-import ActionButtonGroup from "@/components/agptui/action-button-group";
-import LoadingBox from "@/components/ui/loading";
+import { IconCross } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
+import LoadingBox from "@/components/ui/loading";
+import { useToastOnFail } from "@/components/ui/use-toast";
+import { humanizeCronExpression } from "@/lib/cron-expression-utils";
+import { PlayIcon } from "lucide-react";
 
 export default function AgentScheduleDetailsView({
   graph,
   schedule,
-  onForcedRun,
   agentActions,
+  onForcedRun,
+  doDeleteSchedule,
 }: {
   graph: GraphMeta;
   schedule: Schedule;
-  onForcedRun: (runID: GraphExecutionID) => void;
   agentActions: ButtonAction[];
+  onForcedRun: (runID: GraphExecutionID) => void;
+  doDeleteSchedule: (scheduleID: ScheduleID) => void;
 }): React.ReactNode {
   const api = useBackendAPI();
 
@@ -42,7 +48,11 @@ export default function AgentScheduleDetailsView({
           selectedRunStatus.slice(1),
       },
       {
-        label: "Scheduled for",
+        label: "Schedule",
+        value: humanizeCronExpression(schedule.cron),
+      },
+      {
+        label: "Next run",
         value: schedule.next_run_time.toLocaleString(),
       },
     ];
@@ -70,14 +80,39 @@ export default function AgentScheduleDetailsView({
   const runNow = useCallback(
     () =>
       api
-        .executeGraph(graph.id, graph.version, schedule.input_data)
+        .executeGraph(
+          graph.id,
+          graph.version,
+          schedule.input_data,
+          schedule.input_credentials,
+        )
         .then((run) => onForcedRun(run.graph_exec_id))
         .catch(toastOnFail("execute agent")),
     [api, graph, schedule, onForcedRun, toastOnFail],
   );
 
   const runActions: ButtonAction[] = useMemo(
-    () => [{ label: "Run now", callback: () => runNow() }],
+    () => [
+      {
+        label: (
+          <>
+            <PlayIcon className="mr-2 size-4" />
+            Run now
+          </>
+        ),
+        callback: runNow,
+      },
+      {
+        label: (
+          <>
+            <IconCross className="mr-2 size-4 px-0.5" />
+            Delete schedule
+          </>
+        ),
+        callback: () => doDeleteSchedule(schedule.id),
+        variant: "destructive",
+      },
+    ],
     [runNow],
   );
 
