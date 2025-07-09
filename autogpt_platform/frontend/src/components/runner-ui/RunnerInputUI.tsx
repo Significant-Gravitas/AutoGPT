@@ -1,7 +1,6 @@
 import React, { useCallback } from "react";
 
 import type {
-  BlockIORootSchema,
   CredentialsMetaInput,
   GraphMeta,
 } from "@/lib/autogpt-server-api/types";
@@ -13,17 +12,6 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import AgentRunDraftView from "@/components/agents/agent-run-draft-view";
-
-export interface InputNodeInfo {
-  id: string;
-  inputSchema: BlockIORootSchema;
-  inputConfig: {
-    name: string;
-    description: string;
-    defaultValue: any;
-    placeholderValues?: any[];
-  };
-}
 
 interface RunInputDialogProps {
   isOpen: boolean;
