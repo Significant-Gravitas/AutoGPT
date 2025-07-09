@@ -24,7 +24,6 @@ import {
   useReactFlow,
   applyEdgeChanges,
   applyNodeChanges,
-  useViewport,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { CustomNode } from "./CustomNode";
@@ -90,6 +89,7 @@ const FlowEditor: React.FC<{
     getNode,
     deleteElements,
     updateNode,
+    getViewport,
     setViewport,
   } = useReactFlow<CustomNode, CustomEdge>();
   const [nodeId, setNodeId] = useState<number>(1);
@@ -262,18 +262,16 @@ const FlowEditor: React.FC<{
   // Function to clear status, output, and close the output info dropdown of all nodes
   // and reset data beads on edges
   const clearNodesStatusAndOutput = useCallback(() => {
-    setNodes((nds) => {
-      const newNodes = nds.map((node) => ({
+    setNodes((nds) =>
+      nds.map((node) => ({
         ...node,
         data: {
           ...node.data,
           status: undefined,
           isOutputOpen: false,
         },
-      }));
-
-      return newNodes;
-    });
+      })),
+    );
   }, [setNodes]);
 
   const onNodesChange = useCallback(
@@ -453,10 +451,9 @@ const FlowEditor: React.FC<{
     return uuidv4();
   }, []);
 
-  const { x, y, zoom } = useViewport();
-
   // Set the initial view port to center the canvas.
   useEffect(() => {
+    const { x, y } = getViewport();
     if (nodes.length <= 0 || x !== 0 || y !== 0) {
       return;
     }
@@ -482,7 +479,7 @@ const FlowEditor: React.FC<{
       y: window.innerHeight / 2 - centerY * zoom,
       zoom: zoom,
     });
-  }, [nodes, setViewport, x, y]);
+  }, [nodes, getViewport, setViewport]);
 
   const addNode = useCallback(
     (blockId: string, nodeType: string, hardcodedValues: any = {}) => {
@@ -503,6 +500,7 @@ const FlowEditor: React.FC<{
 
       // Alternative: We could also use D3 force, Intersection for this (React flow Pro examples)
 
+      const { x, y } = getViewport();
       const viewportCoordinates =
         nodeDimensions && Object.keys(nodeDimensions).length > 0
           ? // we will get all the dimension of nodes, then store
@@ -563,14 +561,13 @@ const FlowEditor: React.FC<{
     },
     [
       nodeId,
+      getViewport,
       setViewport,
       availableBlocks,
       addNodes,
       nodeDimensions,
       deleteElements,
       clearNodesStatusAndOutput,
-      x,
-      y,
     ],
   );
 
@@ -582,6 +579,8 @@ const FlowEditor: React.FC<{
       if (nodeElement) {
         const rect = nodeElement.getBoundingClientRect();
         const { left, top, width, height } = rect;
+
+        const { x, y, zoom } = getViewport();
 
         // Convert screen coordinates to flow coordinates
         const flowX = (left - x) / zoom;
@@ -600,7 +599,7 @@ const FlowEditor: React.FC<{
     }, {} as NodeDimension);
 
     setNodeDimensions(newNodeDimensions);
-  }, [nodes, x, y, zoom]);
+  }, [nodes, getViewport]);
 
   useEffect(() => {
     findNodeDimensions();
@@ -656,6 +655,30 @@ const FlowEditor: React.FC<{
     },
   ];
 
+  const handleRunButton = useCallback(async () => {
+    if (isRunning) return;
+    if (!savedAgent) {
+      toast({
+        title: `Please save the agent first, using the button in the left sidebar.`,
+      });
+      return;
+    }
+    await saveAgent();
+    runnerUIRef.current?.runOrOpenInput();
+  }, [isRunning, savedAgent, toast, saveAgent]);
+
+  const handleScheduleButton = useCallback(async () => {
+    if (isScheduling) return;
+    if (!savedAgent) {
+      toast({
+        title: `Please save the agent first, using the button in the left sidebar.`,
+      });
+      return;
+    }
+    await saveAgent();
+    runnerUIRef.current?.openRunInputDialog();
+  }, [isScheduling, savedAgent, toast, saveAgent]);
+
   return (
     <FlowContext.Provider
       value={{ visualizeBeads, setIsAnyModalOpen, getNextNodeId }}
@@ -706,39 +729,15 @@ const FlowEditor: React.FC<{
             }
           ></ControlPanel>
           {!graphHasWebhookNodes ? (
-            <>
-              <PrimaryActionBar
-                className="absolute bottom-0 left-1/2 z-20 -translate-x-1/2"
-                onClickAgentOutputs={() =>
-                  runnerUIRef.current?.openRunnerOutput()
-                }
-                onClickRunAgent={async () => {
-                  if (isRunning) return;
-                  if (!savedAgent) {
-                    toast({
-                      title: `Please save the agent first, using the button in the left sidebar.`,
-                    });
-                    return;
-                  }
-                  await saveAgent();
-                  runnerUIRef.current?.runOrOpenInput();
-                }}
-                onClickStopRun={stopRun}
-                onClickScheduleButton={async () => {
-                  if (isScheduling) return;
-                  if (!savedAgent) {
-                    toast({
-                      title: `Please save the agent first, using the button in the left sidebar.`,
-                    });
-                    return;
-                  }
-                  await saveAgent();
-                  runnerUIRef.current?.openRunInputDialog();
-                }}
-                isDisabled={!savedAgent}
-                isRunning={isRunning}
-              />
-            </>
+            <PrimaryActionBar
+              className="absolute bottom-0 left-1/2 z-20 -translate-x-1/2"
+              onClickAgentOutputs={runnerUIRef.current?.openRunnerOutput}
+              onClickRunAgent={handleRunButton}
+              onClickStopRun={stopRun}
+              onClickScheduleButton={handleScheduleButton}
+              isDisabled={!savedAgent}
+              isRunning={isRunning}
+            />
           ) : (
             <Alert className="absolute bottom-4 left-1/2 z-20 w-auto -translate-x-1/2 select-none">
               <AlertTitle>You are building a Trigger Agent</AlertTitle>

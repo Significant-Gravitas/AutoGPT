@@ -257,20 +257,23 @@ export default function useAgentGraph(
   const cleanupSourceName = (sourceName: string) =>
     isToolSourceName(sourceName) ? "tools" : sourceName;
 
-  const getToolFuncName = (nodeId: string) => {
-    const sinkNode = xyNodes.find((node) => node.id === nodeId);
-    const sinkNodeName = sinkNode
-      ? sinkNode.data.block_id === SpecialBlockID.AGENT
-        ? sinkNode.data.hardcodedValues?.graph_id
-          ? availableFlows.find(
-              (flow) => flow.id === sinkNode.data.hardcodedValues.graph_id,
-            )?.name || "agentexecutorblock"
-          : "agentexecutorblock"
-        : sinkNode.data.title.split(" ")[0]
-      : "";
+  const getToolFuncName = useCallback(
+    (nodeID: string) => {
+      const sinkNode = xyNodes.find((node) => node.id === nodeID);
+      const sinkNodeName = sinkNode
+        ? sinkNode.data.block_id === SpecialBlockID.AGENT
+          ? sinkNode.data.hardcodedValues?.graph_id
+            ? availableFlows.find(
+                (flow) => flow.id === sinkNode.data.hardcodedValues.graph_id,
+              )?.name || "agentexecutorblock"
+            : "agentexecutorblock"
+          : sinkNode.data.title.split(" ")[0]
+        : "";
 
-    return sinkNodeName;
-  };
+      return sinkNodeName;
+    },
+    [xyNodes, availableFlows],
+  );
 
   const normalizeToolName = (str: string) =>
     str.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase(); // This normalization rule has to match with the one on smart_decision_maker.py
@@ -278,38 +281,36 @@ export default function useAgentGraph(
   /** ------------------------------ */
 
   const updateEdgeBeads = useCallback(
-    (executionData: NodeExecutionResult) => {
-      setXYEdges((edges) => {
-        return edges.map((e) => {
-          const edge = { ...e, data: { ...e.data } } as CustomEdge;
-          const execStatus =
-            edge.data!.beadData ||
+    (nodeExecUpdate: NodeExecutionResult) => {
+      setXYEdges((edges) =>
+        edges.map((edge): CustomEdge => {
+          if (edge.target !== getFrontendId(nodeExecUpdate.node_id, xyNodes)) {
+            // If the edge does not match the target node, skip it
+            return edge;
+          }
+
+          const execStatuses =
+            edge.data!.beadData ??
             new Map<string, NodeExecutionResult["status"]>();
 
-          // Update execution status for input edges
-          for (const key in executionData.input_data) {
-            if (
-              edge.target !== getFrontendId(executionData.node_id, xyNodes) ||
-              edge.targetHandle !== key
-            ) {
-              continue;
-            }
-
-            // Store only the execution status
-            execStatus.set(executionData.node_exec_id, executionData.status);
+          if (edge.targetHandle! in nodeExecUpdate.input_data) {
+            // If the execution event has an input from this edge, store its status
+            execStatuses.set(
+              nodeExecUpdate.node_exec_id,
+              nodeExecUpdate.status,
+            );
           }
 
           // Calculate bead counts based on execution status
-          let beadUp = 0;
-          let beadDown = 0;
-
-          execStatus.forEach((status: NodeExecutionResult["status"]) => {
-            beadUp++;
-            if (status !== "INCOMPLETE") {
+          // eslint-disable-next-line prefer-const
+          let [beadUp, beadDown] = execStatuses.values().reduce(
+            ([beadUp, beadDown], status) => [
+              beadUp + 1,
               // Count any non-incomplete execution as consumed
-              beadDown++;
-            }
-          });
+              status !== "INCOMPLETE" ? beadDown + 1 : beadDown,
+            ],
+            [0, 0],
+          );
 
           // For static edges, ensure beadUp is always beadDown + 1
           // This is because static edges represent reusable inputs that are never fully consumed
@@ -319,12 +320,17 @@ export default function useAgentGraph(
           }
 
           // Update edge data
-          edge.data!.beadUp = beadUp;
-          edge.data!.beadDown = beadDown;
-
-          return edge;
-        });
-      });
+          return {
+            ...edge,
+            data: {
+              ...edge.data!,
+              beadUp,
+              beadDown,
+              beadData: new Map(execStatuses.entries()),
+            },
+          };
+        }),
+      );
     },
     [getFrontendId, xyNodes],
   );
