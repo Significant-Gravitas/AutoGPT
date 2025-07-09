@@ -199,7 +199,7 @@ export default function AgentRunDetailsView({
       stopRun,
       deleteRun,
       graph.has_external_trigger,
-      graph.credentials_input_schema?.properties,
+      graph.credentials_input_schema.required,
       agent.can_access_graph,
       run.graph_id,
       run.graph_version,
