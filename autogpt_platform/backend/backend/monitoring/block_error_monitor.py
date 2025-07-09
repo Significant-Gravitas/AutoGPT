@@ -177,3 +177,9 @@ class BlockErrorMonitor:
 
         # Sort by frequency, most common first
         return dict(sorted(error_groups.items(), key=lambda x: x[1], reverse=True))
+
+
+def report_block_error_rates(**kwargs):
+    """Check block error rates and send Discord alerts if thresholds are exceeded."""
+    monitor = BlockErrorMonitor()
+    return monitor.check_block_error_rates()
