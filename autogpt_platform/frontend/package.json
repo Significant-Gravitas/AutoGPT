@@ -63,7 +63,7 @@
     "cmdk": "1.1.1",
     "cookie": "1.0.2",
     "date-fns": "4.1.0",
-    "dotenv": "16.5.0",
+    "dotenv": "17.2.0",
     "elliptic": "6.6.1",
     "embla-carousel-react": "8.6.0",
     "framer-motion": "12.23.0",
