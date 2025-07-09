@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconCross } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
 import LoadingBox from "@/components/ui/loading";
-import { useToastOnFail } from "@/components/ui/use-toast";
+import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import { PlayIcon } from "lucide-react";
 
