@@ -106,7 +106,7 @@
     "@types/canvas-confetti": "1.9.0",
     "@types/lodash": "4.17.20",
     "@types/negotiator": "0.6.4",
-    "@types/node": "22.15.30",
+    "@types/node": "24.0.12",
     "@types/react": "18.3.17",
     "@types/react-dom": "18.3.5",
     "@types/react-modal": "3.16.3",
