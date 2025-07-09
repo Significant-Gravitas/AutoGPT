@@ -38,9 +38,14 @@ class BlockStatsWithSamples(BaseModel):
 class BlockErrorMonitor:
     """Monitor block error rates and send alerts when thresholds are exceeded."""
 
-    def __init__(self):
+    def __init__(self, include_top_blocks: int | None = None):
         self.config = config
         self.notification_client = get_service_client(NotificationManagerClient)
+        self.include_top_blocks = (
+            include_top_blocks
+            if include_top_blocks is not None
+            else config.block_error_include_top_blocks
+        )
 
     def check_block_error_rates(self) -> str:
         """Check block error rates and send Discord alerts if thresholds are exceeded."""
@@ -65,55 +70,28 @@ class BlockErrorMonitor:
                     stats.error_samples = error_samples
 
             # Check thresholds and send alerts
-            alerts = []
-            high_error_blocks = []
+            critical_alerts = self._generate_critical_alerts(block_stats, threshold)
 
-            for block_name, stats in block_stats.items():
-                if stats.total_executions >= 10:
-                    if stats.error_rate >= threshold * 100:
-                        # Group similar errors
-                        error_groups = self._group_similar_errors(stats.error_samples)
-
-                        alert_msg = (
-                            f"🚨 Block '{block_name}' has {stats.error_rate:.1f}% error rate "
-                            f"({stats.failed_executions}/{stats.total_executions}) in the last 24 hours"
-                        )
-
-                        if error_groups:
-                            alert_msg += "\n\n📊 Error Types:"
-                            for error_pattern, count in error_groups.items():
-                                alert_msg += f"\n• {error_pattern} ({count}x)"
-
-                        alerts.append(alert_msg)
-                        high_error_blocks.append((block_name, stats))
-
-            # If no high error rate blocks, show top 3 blocks with most errors
-            if not alerts:
-                top_error_blocks = sorted(
-                    [
-                        (name, stats)
-                        for name, stats in block_stats.items()
-                        if stats.total_executions >= 10 and stats.failed_executions > 0
-                    ],
-                    key=lambda x: x[1].failed_executions,
-                    reverse=True,
-                )[:3]
-
-                if top_error_blocks:
-                    alert_msg = "📊 Top 3 blocks with most errors in the last 24 hours:"
-                    for block_name, stats in top_error_blocks:
-                        alert_msg += f"\n• {block_name}: {stats.failed_executions} errors ({stats.error_rate:.1f}% of {stats.total_executions})"
-
-                    alerts.append(alert_msg)
-
-            if alerts:
-                msg = "Block Error Rate Alert:\n\n" + "\n\n".join(alerts)
+            if critical_alerts:
+                msg = "Block Error Rate Alert:\n\n" + "\n\n".join(critical_alerts)
                 self.notification_client.discord_system_alert(msg)
-                logger.info(f"Sent block error rate alert for {len(alerts)} blocks")
-                return f"Alert sent for {len(alerts)} blocks with high error rates"
-            else:
-                logger.info("No blocks exceeded error rate threshold")
-                return "No blocks exceeded error rate threshold"
+                logger.info(
+                    f"Sent block error rate alert for {len(critical_alerts)} blocks"
+                )
+                return f"Alert sent for {len(critical_alerts)} blocks with high error rates"
+
+            # If no critical alerts, check if we should show top blocks
+            if self.include_top_blocks > 0:
+                top_blocks_msg = self._generate_top_blocks_alert(
+                    block_stats, start_time, end_time
+                )
+                if top_blocks_msg:
+                    self.notification_client.discord_system_alert(top_blocks_msg)
+                    logger.info("Sent top blocks summary")
+                    return "Sent top blocks summary"
+
+            logger.info("No blocks exceeded error rate threshold")
+            return "No errors reported for today"
 
         except Exception as e:
             logger.exception(f"Error checking block error rates: {e}")
@@ -146,6 +124,73 @@ class BlockErrorMonitor:
             )
 
         return block_stats
+
+    def _generate_critical_alerts(
+        self, block_stats: dict[str, BlockStatsWithSamples], threshold: float
+    ) -> list[str]:
+        """Generate alerts for blocks that exceed the error rate threshold."""
+        alerts = []
+
+        for block_name, stats in block_stats.items():
+            if stats.total_executions >= 10 and stats.error_rate >= threshold * 100:
+                error_groups = self._group_similar_errors(stats.error_samples)
+
+                alert_msg = (
+                    f"🚨 Block '{block_name}' has {stats.error_rate:.1f}% error rate "
+                    f"({stats.failed_executions}/{stats.total_executions}) in the last 24 hours"
+                )
+
+                if error_groups:
+                    alert_msg += "\n\n📊 Error Types:"
+                    for error_pattern, count in error_groups.items():
+                        alert_msg += f"\n• {error_pattern} ({count}x)"
+
+                alerts.append(alert_msg)
+
+        return alerts
+
+    def _generate_top_blocks_alert(
+        self,
+        block_stats: dict[str, BlockStatsWithSamples],
+        start_time: datetime,
+        end_time: datetime,
+    ) -> str | None:
+        """Generate top blocks summary when no critical alerts exist."""
+        top_error_blocks = sorted(
+            [
+                (name, stats)
+                for name, stats in block_stats.items()
+                if stats.total_executions >= 10 and stats.failed_executions > 0
+            ],
+            key=lambda x: x[1].failed_executions,
+            reverse=True,
+        )[: self.include_top_blocks]
+
+        if not top_error_blocks:
+            return "✅ No errors reported for today - all blocks are running smoothly!"
+
+        # Get error samples for top blocks
+        for block_name, stats in top_error_blocks:
+            if not stats.error_samples:
+                stats.error_samples = self._get_error_samples_for_block(
+                    stats.block_id, start_time, end_time, limit=2
+                )
+
+        count_text = (
+            f"top {self.include_top_blocks}" if self.include_top_blocks > 1 else "top"
+        )
+        alert_msg = f"📊 Daily Error Summary - {count_text} blocks with most errors:"
+        for block_name, stats in top_error_blocks:
+            alert_msg += f"\n• {block_name}: {stats.failed_executions} errors ({stats.error_rate:.1f}% of {stats.total_executions})"
+
+            if stats.error_samples:
+                error_groups = self._group_similar_errors(stats.error_samples)
+                if error_groups:
+                    # Show most common error
+                    most_common_error = next(iter(error_groups.items()))
+                    alert_msg += f"\n  └ Most common: {most_common_error[0]}"
+
+        return alert_msg
 
     def _get_error_samples_for_block(
         self, block_id: str, start_time: datetime, end_time: datetime, limit: int = 3
@@ -250,7 +295,7 @@ class BlockErrorMonitor:
         return dict(sorted(error_groups.items(), key=lambda x: x[1], reverse=True))
 
 
-def report_block_error_rates():
+def report_block_error_rates(include_top_blocks: int | None = None):
     """Check block error rates and send Discord alerts if thresholds are exceeded."""
-    monitor = BlockErrorMonitor()
+    monitor = BlockErrorMonitor(include_top_blocks=include_top_blocks)
     return monitor.check_block_error_rates()

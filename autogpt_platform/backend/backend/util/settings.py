@@ -132,6 +132,10 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=24 * 60 * 60,  # 24 hours
         description="Interval in seconds between block error rate checks.",
     )
+    block_error_include_top_blocks: int = Field(
+        default=3,
+        description="Number of top blocks with most errors to show when no blocks exceed threshold (0 to disable).",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
