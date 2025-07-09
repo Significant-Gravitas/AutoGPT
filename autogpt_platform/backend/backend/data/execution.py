@@ -753,7 +753,11 @@ async def get_node_executions(
 
     executions = await AgentNodeExecution.prisma().find_many(
         where=where_clause,
-        include=EXECUTION_RESULT_INCLUDE if include_exec_data else {"Node": True},
+        include=(
+            EXECUTION_RESULT_INCLUDE
+            if include_exec_data
+            else {"Node": True, "GraphExecution": True}
+        ),
         order=EXECUTION_RESULT_ORDER,
         take=limit,
     )
