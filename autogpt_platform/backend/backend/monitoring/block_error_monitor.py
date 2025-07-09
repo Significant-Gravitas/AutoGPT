@@ -203,7 +203,6 @@ class BlockErrorMonitor:
             created_time_gte=start_time,
             created_time_lte=end_time,
             limit=limit,  # Just get the limit we need
-            include_exec_data=True,
         )
 
         error_samples = []

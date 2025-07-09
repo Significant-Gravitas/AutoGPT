@@ -754,7 +754,7 @@ async def get_node_executions(
     limit: int | None = None,
     created_time_gte: datetime | None = None,
     created_time_lte: datetime | None = None,
-    include_exec_data: bool = False,
+    include_exec_data: bool = True,
 ) -> list[NodeExecutionResult]:
     where_clause: AgentNodeExecutionWhereInput = {}
     if graph_exec_id:
