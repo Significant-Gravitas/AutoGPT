@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
 from backend.data.block import BlockInput
+from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
 from backend.monitoring import (
@@ -80,7 +81,7 @@ async def _execute_graph(**kwargs):
     args = GraphExecutionJobArgs(**kwargs)
     try:
         logger.info(f"Executing recurring job for graph #{args.graph_id}")
-        await execution_utils.add_graph_execution(
+        graph_exec: GraphExecutionWithNodes = await execution_utils.add_graph_execution(
             user_id=args.user_id,
             graph_id=args.graph_id,
             graph_version=args.graph_version,
@@ -88,7 +89,9 @@ async def _execute_graph(**kwargs):
             graph_credentials_inputs=args.input_credentials,
             use_db_query=False,
         )
-        logger.info(f"Graph execution started for graph {args.graph_id}")
+        logger.info(
+            f"Graph execution started with ID {graph_exec.id} for graph {args.graph_id}"
+        )
     except Exception as e:
         logger.error(f"Error executing graph {args.graph_id}: {e}")
 
