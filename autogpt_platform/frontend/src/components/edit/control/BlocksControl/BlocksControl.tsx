@@ -198,6 +198,5 @@ function BlocksControlComponent({
   );
 }
 
-// Set display name and export memoized component
 BlocksControlComponent.displayName = "BlocksControl";
 export const BlocksControl = React.memo(BlocksControlComponent);
