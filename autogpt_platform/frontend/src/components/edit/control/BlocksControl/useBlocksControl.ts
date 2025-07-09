@@ -32,7 +32,6 @@ export function useBlocksControl({ blocks, flows, nodes, addBlock }: Args) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
-  // Debounce search query to reduce expensive operations
   const debouncedSearchQuery = useDebounce(searchQuery, 200);
 
   // Memoize graph state checks to avoid recalculating on every render
@@ -114,10 +113,8 @@ export function useBlocksControl({ blocks, flows, nodes, addBlock }: Args) {
     graphState,
   ]);
 
-  // Memoize unique categories extraction
   const categories = useMemo(() => extractCategories(blocks), [blocks]);
 
-  // Event handlers
   function resetFilters() {
     setSearchQuery("");
     setSelectedCategory(null);

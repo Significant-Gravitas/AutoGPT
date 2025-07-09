@@ -3,7 +3,6 @@ import { beautifyString } from "@/lib/utils";
 import { Block, BlockUIType } from "@/lib/autogpt-server-api";
 import jaro from "jaro-winkler";
 
-// Types for performance optimization
 export interface BlockSearchData {
   blockName: string;
   beautifiedName: string;
@@ -23,7 +22,6 @@ export interface GraphState {
   hasInputNodes: boolean;
 }
 
-// Custom hook for debouncing search input
 export function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
 
@@ -35,24 +33,24 @@ export function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-// Memoized function to precompute search data for blocks
-export const getBlockSearchData = (
+export function getBlockSearchData(
   block: Pick<Block, "name" | "description">,
-): BlockSearchData => ({
-  blockName: block.name.toLowerCase(),
-  beautifiedName: beautifyString(block.name).toLowerCase(),
-  description: block.description.toLowerCase(),
-});
+): BlockSearchData {
+  return {
+    blockName: block.name.toLowerCase(),
+    beautifiedName: beautifyString(block.name).toLowerCase(),
+    description: block.description.toLowerCase(),
+  };
+}
 
-// Optimized search matching function
-export const matchesSearch = (block: EnhancedBlock, query: string): number => {
+export function matchesSearch(block: EnhancedBlock, query: string): number {
   if (!query) return 1;
 
   const normalizedQuery = query.toLowerCase().trim();
   const queryWords = normalizedQuery.split(/\s+/);
   const { blockName, beautifiedName, description } = block.searchData;
 
-  // 1. Exact match in name (highest priority)
+  // Exact match in name (highest priority)
   if (
     blockName.includes(normalizedQuery) ||
     beautifiedName.includes(normalizedQuery)
@@ -60,13 +58,13 @@ export const matchesSearch = (block: EnhancedBlock, query: string): number => {
     return 3;
   }
 
-  // 2. All query words in name (regardless of order)
+  // All query words in name (regardless of order)
   const allWordsInName = queryWords.every(
     (word) => blockName.includes(word) || beautifiedName.includes(word),
   );
   if (allWordsInName) return 2;
 
-  // 3. Similarity with name (Jaro-Winkler) - Only for short queries to avoid performance issues
+  // Similarity with name (Jaro-Winkler) - Only for short queries to avoid performance issues
   if (normalizedQuery.length <= 12) {
     const similarityThreshold = 0.65;
     const nameSimilarity = jaro(blockName, normalizedQuery);
@@ -77,20 +75,19 @@ export const matchesSearch = (block: EnhancedBlock, query: string): number => {
     }
   }
 
-  // 4. All query words in description (lower priority)
+  // All query words in description (lower priority)
   const allWordsInDescription = queryWords.every((word) =>
     description.includes(word),
   );
   if (allWordsInDescription) return 0.5;
 
   return 0;
-};
+}
 
-// Helper to check block availability based on graph state
-export const getBlockAvailability = (
+export function getBlockAvailability(
   block: Block,
   graphState: GraphState,
-): string | null => {
+): string | null {
   if (block.uiType === BlockUIType.WEBHOOK && graphState.hasWebhookNodes) {
     return "Agents can only have one webhook-triggered block";
   }
@@ -104,10 +101,9 @@ export const getBlockAvailability = (
   }
 
   return null;
-};
+}
 
-// Helper to extract unique categories from blocks
-export const extractCategories = (blocks: Block[]): (string | null)[] => {
+export function extractCategories(blocks: Block[]): (string | null)[] {
   return Array.from(
     new Set([
       null,
@@ -116,4 +112,4 @@ export const extractCategories = (blocks: Block[]): (string | null)[] => {
         .sort(),
     ]),
   );
-};
+}
