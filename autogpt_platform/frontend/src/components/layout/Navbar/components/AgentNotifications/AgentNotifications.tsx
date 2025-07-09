@@ -34,7 +34,7 @@ export function AgentNotifications() {
                 <div className="absolute -inset-0.5 animate-spin rounded-full border-[3px] border-transparent border-r-purple-200 border-t-purple-200" />
               </div>
               {/* Running Agent Hover Hint */}
-              <div className="absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap rounded-small bg-white px-4 py-2 shadow-md group-hover:block">
+              <div className="rounded-small absolute bottom-[-2.5rem] left-1/2 z-50 hidden -translate-x-1/2 transform whitespace-nowrap bg-white px-4 py-2 shadow-md group-hover:block">
                 <Text variant="body-medium">
                   {activeExecutions.length} running agent
                   {activeExecutions.length > 1 ? "s" : ""}
