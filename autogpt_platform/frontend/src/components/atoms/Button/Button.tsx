@@ -19,7 +19,6 @@ const extendedButtonVariants = cva(
           "bg-transparent border-zinc-700 text-black hover:bg-zinc-100 hover:border-zinc-700 rounded-full disabled:border-zinc-200 disabled:text-zinc-200 disabled:opacity-1",
         ghost:
           "bg-transparent border-transparent text-black hover:bg-zinc-50 hover:border-zinc-50 rounded-full disabled:text-zinc-200 disabled:opacity-1",
-        link: "bg-transparent border-transparent text-black hover:underline rounded-none p-0 h-auto min-w-auto disabled:opacity-1",
         icon: "bg-white text-black border border-zinc-600 hover:bg-zinc-100 rounded-[96px] disabled:opacity-1",
       },
       size: {
@@ -56,6 +55,30 @@ function Button({
   ...props
 }: ButtonProps) {
   const isDisabled = disabled;
+
+  if (loading) {
+    return variant === "ghost" ? (
+      <button
+        className={cn(
+          extendedButtonVariants({ variant, size, className }),
+          "pointer-events-none",
+        )}
+      >
+        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
+        {children}
+      </button>
+    ) : (
+      <button
+        className={cn(
+          extendedButtonVariants({ variant: "primary", size, className }),
+          "pointer-events-none border-zinc-500 bg-zinc-500 text-white",
+        )}
+      >
+        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
+        {children}
+      </button>
+    );
+  }
 
   return (
     <button

@@ -673,14 +673,7 @@ export default function useAgentGraph(
       savedAgent &&
       saveRunRequest.activeExecutionID
     ) {
-      setSaveRunRequest({
-        request: "stop",
-        state: "stopping",
-        activeExecutionID: saveRunRequest.activeExecutionID,
-      });
-      api
-        .stopGraphExecution(savedAgent.id, saveRunRequest.activeExecutionID)
-        .then(() => setSaveRunRequest({ request: "none", state: "none" }));
+      api.stopGraphExecution(savedAgent.id, saveRunRequest.activeExecutionID);
     }
   }, [
     api,
@@ -1073,16 +1066,21 @@ export default function useAgentGraph(
 
   // runs after saving cron expression and inputs (if exists)
   const scheduleRunner = useCallback(
-    async (cronExpression: string, inputs: InputItem[]) => {
+    async (
+      cronExpression: string,
+      inputs: InputItem[],
+      scheduleName: string,
+    ) => {
       await saveAgent();
       try {
         if (flowID) {
-          await api.createSchedule({
+          await api.createGraphExecutionSchedule({
             graph_id: flowID,
             // flowVersion is always defined here because scheduling is opened for a specific version
             graph_version: flowVersion!,
+            name: scheduleName,
             cron: cronExpression,
-            input_data: inputs.reduce(
+            inputs: inputs.reduce(
               (acc, input) => ({
                 ...acc,
                 [input.hardcodedValues.name]: input.hardcodedValues.value,

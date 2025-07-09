@@ -116,11 +116,19 @@ const config = {
         96: "24rem",
       },
       borderRadius: {
+        // Design system border radius tokens from Figma
+        xs: "0.25rem", // 4px
+        s: "0.5rem", // 8px
+        m: "0.75rem", // 12px
+        l: "1rem", // 16px
+        xl: "1.25rem", // 20px
+        "2xl": "1.5rem", // 24px
+        full: "9999px", // For pill buttons
+
+        // Legacy values - kept for backward compatibility
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
-        // Add a full radius for pill-shaped buttons
-        full: "9999px",
       },
       boxShadow: {
         subtle: "0px 1px 2px 0px rgba(0,0,0,0.05)",

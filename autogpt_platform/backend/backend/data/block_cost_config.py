@@ -4,6 +4,7 @@ from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
 from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
 from backend.blocks.apollo.organization import SearchOrganizationsBlock
 from backend.blocks.apollo.people import SearchPeopleBlock
+from backend.blocks.apollo.person import GetPersonDetailBlock
 from backend.blocks.flux_kontext import AIImageEditorBlock, FluxKontextModelName
 from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
@@ -84,6 +85,9 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.EVA_QWEN_2_5_32B: 1,
     LlmModel.DEEPSEEK_CHAT: 2,
     LlmModel.PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE: 1,
+    LlmModel.PERPLEXITY_SONAR: 1,
+    LlmModel.PERPLEXITY_SONAR_PRO: 5,
+    LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: 10,
     LlmModel.QWEN_QWQ_32B_PREVIEW: 2,
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: 1,
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B: 1,
@@ -362,7 +366,31 @@ BLOCK_COSTS: dict[Type[Block], list[BlockCost]] = {
     ],
     SearchPeopleBlock: [
         BlockCost(
-            cost_amount=2,
+            cost_amount=10,
+            cost_filter={
+                "enrich_info": False,
+                "credentials": {
+                    "id": apollo_credentials.id,
+                    "provider": apollo_credentials.provider,
+                    "type": apollo_credentials.type,
+                },
+            },
+        ),
+        BlockCost(
+            cost_amount=20,
+            cost_filter={
+                "enrich_info": True,
+                "credentials": {
+                    "id": apollo_credentials.id,
+                    "provider": apollo_credentials.provider,
+                    "type": apollo_credentials.type,
+                },
+            },
+        ),
+    ],
+    GetPersonDetailBlock: [
+        BlockCost(
+            cost_amount=1,
             cost_filter={
                 "credentials": {
                     "id": apollo_credentials.id,

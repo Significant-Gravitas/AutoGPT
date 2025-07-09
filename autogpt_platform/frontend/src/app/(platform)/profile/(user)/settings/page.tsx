@@ -1,23 +1,37 @@
+"use client";
+import { useGetV1GetNotificationPreferences } from "@/app/api/__generated__/endpoints/auth/auth";
+import { SettingsForm } from "@/app/(platform)/profile/(user)/settings/components/SettingsForm/SettingsForm";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import * as React from "react";
-import { Metadata } from "next";
-import SettingsForm from "@/components/profile/settings/SettingsForm";
-import { getServerUser } from "@/lib/supabase/server/getServerUser";
+import SettingsLoading from "./loading";
 import { redirect } from "next/navigation";
-import { getUserPreferences } from "./actions";
 
-export const metadata: Metadata = {
-  title: "Settings - AutoGPT Platform",
-  description: "Manage your account settings and preferences.",
-};
+export default function SettingsPage() {
+  const {
+    data: preferences,
+    isError,
+    isLoading,
+  } = useGetV1GetNotificationPreferences({
+    query: {
+      select: (res) => {
+        return res.data;
+      },
+    },
+  });
 
-export default async function SettingsPage() {
-  const { user, error } = await getServerUser();
+  const { user, isUserLoading } = useSupabase();
 
-  if (error || !user) {
+  if (isLoading || isUserLoading) {
+    return <SettingsLoading />;
+  }
+
+  if (!user) {
     redirect("/login");
   }
 
-  const preferences = await getUserPreferences();
+  if (isError || !preferences || !preferences.preferences) {
+    return "Errror..."; // TODO: Will use a Error reusable components from Block Menu redesign
+  }
 
   return (
     <div className="container max-w-2xl space-y-6 py-10">
@@ -27,7 +41,7 @@ export default async function SettingsPage() {
           Manage your account settings and preferences.
         </p>
       </div>
-      <SettingsForm user={user} preferences={preferences} />
+      <SettingsForm preferences={preferences} user={user} />
     </div>
   );
 }
