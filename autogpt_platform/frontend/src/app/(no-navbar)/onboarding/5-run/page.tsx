@@ -46,7 +46,7 @@ export default function Page() {
         setStoreAgent(storeAgent);
       });
     api
-      .getAgentMetaByStoreListingVersionId(state?.selectedStoreListingVersionId)
+      .getGraphMetaByStoreListingVersionID(state.selectedStoreListingVersionId)
       .then((agent) => {
         setAgent(agent);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -169,7 +169,7 @@ export default function AgentRunDetailsView({
           ] satisfies ButtonAction[])
         : []),
       ...(["success", "failed", "stopped"].includes(runStatus) &&
-      !graph.has_webhook_trigger &&
+      !graph.has_external_trigger &&
       isEmpty(graph.credentials_input_schema.required) // TODO: enable re-run with credentials - https://linear.app/autogpt/issue/SECRT-1243
         ? [
             {
@@ -198,7 +198,7 @@ export default function AgentRunDetailsView({
       runAgain,
       stopRun,
       deleteRun,
-      graph.has_webhook_trigger,
+      graph.has_external_trigger,
       graph.credentials_input_schema?.properties,
       agent.can_access_graph,
       run.graph_id,

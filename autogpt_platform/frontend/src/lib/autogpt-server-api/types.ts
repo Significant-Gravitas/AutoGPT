@@ -314,6 +314,7 @@ export type GraphExecution = GraphExecutionMeta & {
   node_executions?: NodeExecutionResult[];
 };
 
+/* Mirror of backend/data/graph.py:GraphMeta */
 export type GraphMeta = {
   id: GraphID;
   user_id: UserID;
@@ -325,11 +326,8 @@ export type GraphMeta = {
   forked_from_version?: number | null;
   input_schema: GraphIOSchema;
   output_schema: GraphIOSchema;
-  credentials_input_schema: {
-    type: "object";
-    properties: { [key: string]: BlockIOCredentialsSubSchema };
-    required: (keyof GraphMeta["credentials_input_schema"]["properties"])[];
-  };
+  has_external_trigger: boolean;
+  credentials_input_schema: CredentialsInputSchema;
 };
 
 export type GraphID = Brand<string, "GraphID">;
@@ -350,11 +348,16 @@ export type GraphIOSubSchema = Omit<
   metadata?: any;
 };
 
+export type CredentialsInputSchema = {
+  type: "object";
+  properties: Record<string, BlockIOCredentialsSubSchema>;
+  required: (keyof CredentialsInputSchema["properties"])[];
+};
+
 /* Mirror of backend/data/graph.py:Graph */
 export type Graph = GraphMeta & {
   nodes: Array<Node>;
   links: Array<Link>;
-  has_webhook_trigger: boolean;
 };
 
 export type GraphUpdateable = Omit<
@@ -366,7 +369,7 @@ export type GraphUpdateable = Omit<
   | "input_schema"
   | "output_schema"
   | "credentials_input_schema"
-  | "has_webhook_trigger"
+  | "has_external_trigger"
 > & {
   version?: number;
   is_active?: boolean;
@@ -415,30 +418,28 @@ export type LibraryAgent = {
   name: string;
   description: string;
   input_schema: GraphIOSchema;
-  credentials_input_schema: {
-    type: "object";
-    properties: { [key: string]: BlockIOCredentialsSubSchema };
-    required: (keyof LibraryAgent["credentials_input_schema"]["properties"])[];
-  };
+  credentials_input_schema: CredentialsInputSchema;
   new_output: boolean;
   can_access_graph: boolean;
   is_latest_version: boolean;
 } & (
   | {
       has_external_trigger: true;
-      trigger_setup_info: {
-        provider: CredentialsProviderName;
-        config_schema: BlockIORootSchema;
-        credentials_input_name?: string;
-      };
+      trigger_setup_info: LibraryAgentTriggerInfo;
     }
   | {
       has_external_trigger: false;
-      trigger_setup_info?: null;
+      trigger_setup_info?: undefined;
     }
 );
 
 export type LibraryAgentID = Brand<string, "LibraryAgentID">;
+
+export type LibraryAgentTriggerInfo = {
+  provider: CredentialsProviderName;
+  config_schema: BlockIORootSchema;
+  credentials_input_name?: string;
+};
 
 export enum AgentStatus {
   COMPLETED = "COMPLETED",

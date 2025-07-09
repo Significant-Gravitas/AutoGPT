@@ -70,7 +70,7 @@ export const FlowInfo: React.FC<
   );
 
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [isRunnerInputOpen, setIsRunnerInputOpen] = useState(false);
+  const [isRunDialogOpen, setIsRunDialogOpen] = useState(false);
   const isDisabled = !selectedFlowVersion;
 
   const graphInputs = useMemo(() => {
@@ -102,11 +102,11 @@ export const FlowInfo: React.FC<
       .then((result) => setFlowVersions(result));
   }, [flow.graph_id, api]);
 
-  const openRunnerInput = () => setIsRunnerInputOpen(true);
+  const openRunDialog = () => setIsRunDialogOpen(true);
 
   const runOrOpenInput = () => {
     if (graphInputs.length > 0) {
-      openRunnerInput();
+      openRunDialog();
     } else {
       requestSaveAndRun();
     }
@@ -249,17 +249,10 @@ export const FlowInfo: React.FC<
         </DialogContent>
       </Dialog>
       <RunnerInputDialog
-        isOpen={isRunnerInputOpen}
-        doClose={() => setIsRunnerInputOpen(false)}
-        inputs={graphInputs}
-        doRun={() => {
-          setIsRunnerInputOpen(false);
-          requestSaveAndRun();
-        }}
-        isRunning={isRunning}
-        scheduledInput={false}
-        isScheduling={false}
-        doCreateSchedule={async () => {}} // Fixed type error by making async
+        isOpen={isRunDialogOpen}
+        doClose={() => setIsRunDialogOpen(false)}
+        graph={selectedFlowVersion!}
+        doRun={requestSaveAndRun}
       />
     </Card>
   );

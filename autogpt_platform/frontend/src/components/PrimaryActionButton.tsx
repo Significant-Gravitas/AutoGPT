@@ -1,8 +1,8 @@
 import React from "react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { FaSpinner } from "react-icons/fa";
-import { Clock, LogOut } from "lucide-react";
+import { LogOut } from "lucide-react";
+import { ClockIcon } from "@phosphor-icons/react";
 import { IconPlay, IconSquare } from "@/components/ui/icons";
 
 interface PrimaryActionBarProps {
@@ -12,7 +12,6 @@ interface PrimaryActionBarProps {
   onClickScheduleButton?: () => void;
   isRunning: boolean;
   isDisabled: boolean;
-  isScheduling: boolean;
   className?: string;
 }
 
@@ -23,7 +22,6 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
   onClickScheduleButton,
   isRunning,
   isDisabled,
-  isScheduling,
   className,
 }) => {
   const buttonClasses =
@@ -82,15 +80,10 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
             variant="outline"
             size="primary"
             onClick={onClickScheduleButton}
-            disabled={isScheduling}
             title="Set up a run schedule for the agent"
             data-id="primary-action-schedule-agent"
           >
-            {isScheduling ? (
-              <FaSpinner className="animate-spin" />
-            ) : (
-              <Clock className="hidden h-5 w-5 md:flex" />
-            )}
+            <ClockIcon className="hidden h-5 w-5 md:flex" />
             Schedule Run
           </Button>
         )}

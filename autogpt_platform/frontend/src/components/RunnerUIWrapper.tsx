@@ -6,77 +6,43 @@ import React, {
 } from "react";
 import { Node } from "@xyflow/react";
 import { CustomNodeData } from "@/components/CustomNode";
-import { BlockIORootSchema, BlockUIType } from "@/lib/autogpt-server-api/types";
+import { RunnerInputDialog } from "@/components/runner-ui/RunnerInputUI";
+import {
+  BlockUIType,
+  CredentialsMetaInput,
+  GraphMeta,
+} from "@/lib/autogpt-server-api/types";
 import RunnerOutputUI, {
   OutputNodeInfo,
 } from "@/components/runner-ui/RunnerOutputUI";
-import {
-  RunnerInputDialog,
-  InputNodeInfo,
-} from "@/components/runner-ui/RunnerInputUI";
 
 interface RunnerUIWrapperProps {
+  graph: GraphMeta;
   nodes: Node<CustomNodeData>[];
-  setIsScheduling: React.Dispatch<React.SetStateAction<boolean>>;
-  isRunning: boolean;
-  isScheduling: boolean;
-  requestSaveAndRun: (inputs?: Record<string, any>) => void;
-  scheduleRunner: (
+  saveAndRun: (
+    inputs: Record<string, any>,
+    credentialsInputs: Record<string, CredentialsMetaInput>,
+  ) => void;
+  createRunSchedule: (
     cronExpression: string,
     scheduleName: string,
-    input: Record<string, any>,
+    inputs: Record<string, any>,
+    credentialsInputs: Record<string, CredentialsMetaInput>,
   ) => Promise<void>;
 }
 
 export interface RunnerUIWrapperRef {
-  openRunnerInput: () => void;
+  openRunInputDialog: () => void;
   openRunnerOutput: () => void;
   runOrOpenInput: () => void;
-  collectInputsForScheduling: (
-    cronExpression: string,
-    scheduleName: string,
-  ) => void;
 }
 
 const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
-  (
-    {
-      nodes,
-      setIsScheduling,
-      isScheduling,
-      isRunning,
-      requestSaveAndRun,
-      scheduleRunner,
-    },
-    ref,
-  ) => {
-    const [isRunnerInputOpen, setIsRunnerInputOpen] = useState(false);
+  ({ graph, nodes, saveAndRun, createRunSchedule }, ref) => {
+    const [isRunInputDialogOpen, setIsRunInputDialogOpen] = useState(false);
     const [isRunnerOutputOpen, setIsRunnerOutputOpen] = useState(false);
-    const [scheduledInput, setScheduledInput] = useState(false);
-    const [cronExpression, setCronExpression] = useState("");
-    const [scheduleName, setScheduleName] = useState("");
 
-    const graphInputs = useMemo((): InputNodeInfo[] => {
-      const inputNodes = nodes.filter(
-        (node) => node.data.uiType === BlockUIType.INPUT,
-      );
-
-      return inputNodes.map(
-        (node) =>
-          ({
-            id: node.id,
-            inputSchema: node.data.inputSchema.properties
-              .value as BlockIORootSchema,
-            inputConfig: {
-              name: node.data.hardcodedValues.name || "",
-              description: node.data.hardcodedValues.description || "",
-              defaultValue: node.data.hardcodedValues.value,
-              placeholderValues:
-                node.data.hardcodedValues.placeholder_values || [],
-            },
-          }) satisfies InputNodeInfo,
-      );
-    }, [nodes]);
+    const graphInputs = graph.input_schema.properties;
 
     const graphOutputs = useMemo((): OutputNodeInfo[] => {
       const outputNodes = nodes.filter(
@@ -100,66 +66,38 @@ const RunnerUIWrapper = forwardRef<RunnerUIWrapperRef, RunnerUIWrapperProps>(
       );
     }, [nodes]);
 
-    const openRunnerInput = () => setIsRunnerInputOpen(true);
+    const openRunInputDialog = () => setIsRunInputDialogOpen(true);
     const openRunnerOutput = () => setIsRunnerOutputOpen(true);
 
     const runOrOpenInput = () => {
-      if (graphInputs.length > 0) {
-        openRunnerInput();
+      if (
+        Object.keys(graphInputs).length > 0 ||
+        Object.keys(graph.credentials_input_schema.properties).length > 0
+      ) {
+        openRunInputDialog();
       } else {
-        requestSaveAndRun({});
+        saveAndRun({}, {});
       }
     };
 
-    const collectInputsForScheduling = (
-      cronExpression: string,
-      scheduleName: string,
-    ) => {
-      setCronExpression(cronExpression);
-      setScheduleName(scheduleName);
-
-      if (graphOutputs.length > 0) {
-        setScheduledInput(true);
-        setIsRunnerInputOpen(true);
-      } else {
-        scheduleRunner(cronExpression, scheduleName, {});
-      }
-    };
-
-    useImperativeHandle(ref, () => ({
-      openRunnerInput,
-      openRunnerOutput,
-      runOrOpenInput,
-      collectInputsForScheduling,
-    }));
+    useImperativeHandle(
+      ref,
+      () =>
+        ({
+          openRunInputDialog,
+          openRunnerOutput,
+          runOrOpenInput,
+        }) satisfies RunnerUIWrapperRef,
+    );
 
     return (
       <>
         <RunnerInputDialog
-          isOpen={isRunnerInputOpen}
-          doClose={() => setIsRunnerInputOpen(false)}
-          inputs={graphInputs}
-          doRun={requestSaveAndRun}
-          scheduledInput={scheduledInput}
-          isScheduling={isScheduling}
-          doCreateSchedule={() => {
-            setIsScheduling(true);
-            scheduleRunner(
-              cronExpression,
-              scheduleName,
-              graphInputs.reduce(
-                (acc, input) => ({
-                  ...acc,
-                  [input.inputConfig.name]: input.inputConfig.defaultValue,
-                }),
-                {},
-              ),
-            ).then(() => {
-              setIsScheduling(false);
-              setScheduledInput(false);
-            });
-          }}
-          isRunning={isRunning}
+          isOpen={isRunInputDialogOpen}
+          doClose={() => setIsRunInputDialogOpen(false)}
+          graph={graph}
+          doRun={saveAndRun}
+          doCreateSchedule={createRunSchedule}
         />
         <RunnerOutputUI
           isOpen={isRunnerOutputOpen}

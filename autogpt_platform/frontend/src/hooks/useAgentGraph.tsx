@@ -1036,6 +1036,7 @@ export default function useAgentGraph(
         description: errorMessage,
       });
       setSaveRunRequest({ request: "save", state: "error" });
+      setIsScheduling(false);
     }
   }, [_saveAgent, toast]);
 
@@ -1080,13 +1081,13 @@ export default function useAgentGraph(
   }, [saveRunRequest]);
 
   // runs after saving cron expression and inputs (if exists)
-  const scheduleRunner = useCallback(
+  const createRunSchedule = useCallback(
     async (
       cronExpression: string,
       scheduleName: string,
       inputs: Record<string, any>,
     ) => {
-      await saveAgent();
+      setIsScheduling(true);
       try {
         if (flowID) {
           await api.createGraphExecutionSchedule({
@@ -1103,7 +1104,7 @@ export default function useAgentGraph(
 
           // if scheduling is done from the monitor page, then redirect to monitor page after successful scheduling
           if (searchParams.get("open_scheduling") === "true") {
-            router.push("/");
+            router.push("/monitoring");
           }
         } else {
           return;
@@ -1115,6 +1116,8 @@ export default function useAgentGraph(
           title: "Error scheduling agent",
           description: "Please retry",
         });
+      } finally {
+        setIsScheduling(false);
       }
     },
     [api, flowID, saveAgent, toast, router, searchParams],
@@ -1132,12 +1135,11 @@ export default function useAgentGraph(
     requestSave,
     requestSaveAndRun,
     requestStopRun,
-    scheduleRunner,
+    createRunSchedule,
     isSaving: saveRunRequest.state == "saving",
     isRunning: saveRunRequest.state == "running",
     isStopping: saveRunRequest.state == "stopping",
     isScheduling,
-    setIsScheduling,
     nodes,
     setNodes,
     edges,

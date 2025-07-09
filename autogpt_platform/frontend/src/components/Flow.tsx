@@ -53,7 +53,6 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import RunnerUIWrapper, {
   RunnerUIWrapperRef,
 } from "@/components/RunnerUIWrapper";
-import { CronSchedulerDialog } from "@/components/cron-scheduler-dialog";
 import PrimaryActionBar from "@/components/PrimaryActionButton";
 import OttoChatWidget from "@/components/OttoChatWidget";
 import { useToast } from "@/components/ui/use-toast";
@@ -111,12 +110,11 @@ const FlowEditor: React.FC<{
     requestSave,
     requestSaveAndRun,
     requestStopRun,
-    scheduleRunner,
+    createRunSchedule,
     isSaving,
     isRunning,
     isStopping,
     isScheduling,
-    setIsScheduling,
     nodes,
     setNodes,
     edges,
@@ -156,8 +154,6 @@ const FlowEditor: React.FC<{
   const [pinSavePopover, setPinSavePopover] = useState(false);
 
   const runnerUIRef = useRef<RunnerUIWrapperRef>(null);
-
-  const [openCron, setOpenCron] = useState(false);
 
   const { toast } = useToast();
 
@@ -205,7 +201,7 @@ const FlowEditor: React.FC<{
 
   useEffect(() => {
     if (params.get("open_scheduling") === "true") {
-      setOpenCron(true);
+      runnerUIRef.current?.openRunInputDialog();
     }
     setFlowExecutionID(
       (params.get("flowExecutionID") as GraphExecutionID) || undefined,
@@ -666,27 +662,6 @@ const FlowEditor: React.FC<{
     },
   ];
 
-  // This function is called after cron expression is created
-  // So you can collect inputs for scheduling
-  const afterCronCreation = (cronExpression: string, scheduleName: string) => {
-    runnerUIRef.current?.collectInputsForScheduling(
-      cronExpression,
-      scheduleName,
-    );
-  };
-
-  // This function Opens up form for creating cron expression
-  const handleScheduleButton = () => {
-    if (!savedAgent) {
-      toast({
-        title: `Please save the agent using the button in the left sidebar before running it.`,
-        duration: 2000,
-      });
-      return;
-    }
-    setOpenCron(true);
-  };
-
   return (
     <FlowContext.Provider
       value={{ visualizeBeads, setIsAnyModalOpen, getNextNodeId }}
@@ -747,24 +722,29 @@ const FlowEditor: React.FC<{
                   if (isRunning) return;
                   if (!savedAgent) {
                     toast({
-                      title: `Please save the agent using the button in the left sidebar before running it.`,
-                      duration: 2000,
+                      title: `Please save the agent first, using the button in the left sidebar.`,
                     });
                     return;
                   }
+                  // await saveAgent();
+                  requestSave(); // FIXME: wait for this to finish
                   runnerUIRef.current?.runOrOpenInput();
                 }}
                 onClickStopRun={requestStopRun}
-                onClickScheduleButton={handleScheduleButton}
-                isScheduling={isScheduling}
+                onClickScheduleButton={() => {
+                  if (isScheduling) return;
+                  if (!savedAgent) {
+                    toast({
+                      title: `Please save the agent first, using the button in the left sidebar.`,
+                    });
+                    return;
+                  }
+                  // await saveAgent();
+                  requestSave(); // FIXME: wait for this to finish
+                  runnerUIRef.current?.openRunInputDialog();
+                }}
                 isDisabled={!savedAgent}
                 isRunning={isRunning}
-              />
-              <CronSchedulerDialog
-                afterCronCreation={afterCronCreation}
-                open={openCron}
-                setOpen={setOpenCron}
-                defaultScheduleName={agentName}
               />
             </>
           ) : (
@@ -794,15 +774,15 @@ const FlowEditor: React.FC<{
           )}
         </ReactFlow>
       </div>
-      <RunnerUIWrapper
-        ref={runnerUIRef}
-        nodes={nodes}
-        setIsScheduling={setIsScheduling}
-        isScheduling={isScheduling}
-        isRunning={isRunning}
-        scheduleRunner={scheduleRunner}
-        requestSaveAndRun={requestSaveAndRun}
-      />
+      {savedAgent && (
+        <RunnerUIWrapper
+          ref={runnerUIRef}
+          graph={savedAgent}
+          nodes={nodes}
+          createRunSchedule={createRunSchedule}
+          saveAndRun={requestSaveAndRun}
+        />
+      )}
       <Suspense fallback={null}>
         <OttoChatWidget
           graphID={flowID}

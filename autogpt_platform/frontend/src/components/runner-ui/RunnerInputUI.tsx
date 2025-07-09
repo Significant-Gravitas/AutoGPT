@@ -1,18 +1,18 @@
-import React from "react";
+import React, { useCallback } from "react";
 
-import { type BlockIORootSchema } from "@/lib/autogpt-server-api/types";
+import type {
+  BlockIORootSchema,
+  CredentialsMetaInput,
+  GraphMeta,
+} from "@/lib/autogpt-server-api/types";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogFooter,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { isEmpty } from "@/lib/utils";
-import { useToast } from "@/components/ui/use-toast";
-import { InputList } from "./RunnerInputList";
+import AgentRunDraftView from "@/components/agents/agent-run-draft-view";
 
 export interface InputNodeInfo {
   id: string;
@@ -28,103 +28,73 @@ export interface InputNodeInfo {
 interface RunInputDialogProps {
   isOpen: boolean;
   doClose: () => void;
-  inputs: InputNodeInfo[];
-  doRun: (inputs: Record<string, any>) => void;
-  doCreateSchedule: () => void;
-  scheduledInput: boolean;
-  isScheduling: boolean;
-  isRunning: boolean;
+  graph: GraphMeta;
+  doRun?: (
+    inputs: Record<string, any>,
+    credentialsInputs: Record<string, CredentialsMetaInput>,
+  ) => Promise<void> | void;
+  doCreateSchedule?: (
+    cronExpression: string,
+    scheduleName: string,
+    inputs: Record<string, any>,
+    credentialsInputs: Record<string, CredentialsMetaInput>,
+  ) => Promise<void> | void;
 }
 
 export function RunnerInputDialog({
   isOpen,
   doClose,
-  inputs,
-  isScheduling,
+  graph,
   doRun,
   doCreateSchedule,
-  scheduledInput,
-  isRunning,
 }: RunInputDialogProps) {
-  const { toast } = useToast();
-  const [inputValues, setInputValues] = React.useState<Record<string, any>>({});
-
-  const handleInputChange = (inputName: string, value: any) => {
-    setInputValues((prev) => ({
-      ...prev,
-      [inputName]: value,
-    }));
-  };
-  const requiredInputs = new Set(
-    inputs
-      .filter((input) => !input.inputConfig.defaultValue)
-      .map((input) => input.inputConfig.name),
+  const handleRun = useCallback(
+    doRun
+      ? async (
+          inputs: Record<string, any>,
+          credentials_inputs: Record<string, CredentialsMetaInput>,
+        ) => {
+          await doRun(inputs, credentials_inputs);
+          doClose();
+        }
+      : async () => {},
+    [doRun, doClose],
   );
-  const missingInputs = requiredInputs.difference(
-    new Set(Object.keys(inputValues).filter((k) => !isEmpty(inputValues[k]))),
+
+  const handleSchedule = useCallback(
+    doCreateSchedule
+      ? async (
+          cronExpression: string,
+          scheduleName: string,
+          inputs: Record<string, any>,
+          credentialsInputs: Record<string, CredentialsMetaInput>,
+        ) => {
+          await doCreateSchedule(
+            cronExpression,
+            scheduleName,
+            inputs,
+            credentialsInputs,
+          );
+          doClose();
+        }
+      : async () => {},
+    [doCreateSchedule, doClose],
   );
-  const notifyMissingInputs = () => {
-    toast({
-      title: "⚠️ Not all required inputs are set",
-      description: `Please set ${Array.from(missingInputs)
-        .map((k) => `\`${k}\``)
-        .join(", ")}`,
-    });
-  };
-
-  const handleRun = () => {
-    if (missingInputs.size > 0) {
-      notifyMissingInputs();
-      return;
-    }
-    doRun(inputValues);
-    doClose();
-  };
-
-  const handleSchedule = async () => {
-    if (missingInputs.size > 0) {
-      notifyMissingInputs();
-      return;
-    }
-    doClose();
-    doCreateSchedule();
-  };
 
   return (
     <Dialog open={isOpen} onOpenChange={doClose}>
       <DialogContent className="flex flex-col px-10 py-8">
         <DialogHeader>
-          <DialogTitle className="text-2xl">
-            {scheduledInput ? "Schedule Settings" : "Run Settings"}
-          </DialogTitle>
-          <DialogDescription className="mt-2 text-sm">
-            Configure settings for running your agent.
-          </DialogDescription>
+          <DialogTitle className="text-2xl">Run your agent</DialogTitle>
+          <DialogDescription className="mt-2">{graph.name}</DialogDescription>
         </DialogHeader>
-        <div className="flex-grow overflow-y-auto">
-          <InputList inputNodes={inputs} onInputChange={handleInputChange} />
-        </div>
-        <DialogFooter>
-          {scheduledInput ? (
-            <Button
-              data-testid="run-dialog-schedule-button"
-              onClick={handleSchedule}
-              className="text-lg"
-              disabled={isScheduling}
-            >
-              Schedule
-            </Button>
-          ) : (
-            <Button
-              data-testid="run-dialog-run-button"
-              onClick={handleRun}
-              className="text-lg"
-              disabled={isRunning}
-            >
-              {isRunning ? "Running..." : "Run"}
-            </Button>
-          )}
-        </DialogFooter>
+        <AgentRunDraftView
+          graph={graph}
+          doRun={doRun ? handleRun : undefined}
+          onRun={doRun ? undefined : doClose}
+          doCreateSchedule={doCreateSchedule ? handleSchedule : undefined}
+          onCreateSchedule={doCreateSchedule ? undefined : doClose}
+        />
       </DialogContent>
     </Dialog>
   );
