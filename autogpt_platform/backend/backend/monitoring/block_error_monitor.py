@@ -4,6 +4,8 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 
+from pydantic import BaseModel
+
 from backend.data.block import get_block
 from backend.data.execution import ExecutionStatus
 from backend.executor import utils as execution_utils
@@ -14,6 +16,23 @@ from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
 config = Config()
+
+
+class BlockStatsWithSamples(BaseModel):
+    """Enhanced block stats with error samples."""
+
+    block_id: str
+    block_name: str
+    total_executions: int
+    failed_executions: int
+    error_samples: list[str] = []
+
+    @property
+    def error_rate(self) -> float:
+        """Calculate error rate as a percentage."""
+        if self.total_executions == 0:
+            return 0.0
+        return (self.failed_executions / self.total_executions) * 100
 
 
 class BlockErrorMonitor:
@@ -38,35 +57,26 @@ class BlockErrorMonitor:
             # For blocks with high error rates, fetch error samples
             threshold = self.config.block_error_rate_threshold
             for block_name, stats in block_stats.items():
-                if (
-                    stats["total"] >= 10
-                    and stats["failed"] / stats["total"] >= threshold
-                ):
+                if stats.total_executions >= 10 and stats.error_rate >= threshold * 100:
                     # Only fetch error samples for blocks that exceed threshold
                     error_samples = self._get_error_samples_for_block(
-                        stats["block_id"], start_time, end_time, limit=3
+                        stats.block_id, start_time, end_time, limit=3
                     )
-                    stats["error_samples"] = error_samples
+                    stats.error_samples = error_samples
 
             # Check thresholds and send alerts
             alerts = []
+            high_error_blocks = []
 
             for block_name, stats in block_stats.items():
-                if (
-                    stats["total"] >= 10
-                ):  # Only check blocks with at least 10 executions
-                    error_rate = stats["failed"] / stats["total"]
-                    if error_rate >= threshold:
-                        error_percentage = error_rate * 100
-
+                if stats.total_executions >= 10:
+                    if stats.error_rate >= threshold * 100:
                         # Group similar errors
-                        error_groups = self._group_similar_errors(
-                            stats.get("error_samples", [])
-                        )
+                        error_groups = self._group_similar_errors(stats.error_samples)
 
                         alert_msg = (
-                            f"🚨 Block '{block_name}' has {error_percentage:.1f}% error rate "
-                            f"({stats['failed']}/{stats['total']}) in the last 24 hours"
+                            f"🚨 Block '{block_name}' has {stats.error_rate:.1f}% error rate "
+                            f"({stats.failed_executions}/{stats.total_executions}) in the last 24 hours"
                         )
 
                         if error_groups:
@@ -75,6 +85,26 @@ class BlockErrorMonitor:
                                 alert_msg += f"\n• {error_pattern} ({count}x)"
 
                         alerts.append(alert_msg)
+                        high_error_blocks.append((block_name, stats))
+
+            # If no high error rate blocks, show top 3 blocks with most errors
+            if not alerts:
+                top_error_blocks = sorted(
+                    [
+                        (name, stats)
+                        for name, stats in block_stats.items()
+                        if stats.total_executions >= 10 and stats.failed_executions > 0
+                    ],
+                    key=lambda x: x[1].failed_executions,
+                    reverse=True,
+                )[:3]
+
+                if top_error_blocks:
+                    alert_msg = "📊 Top 3 blocks with most errors in the last 24 hours:"
+                    for block_name, stats in top_error_blocks:
+                        alert_msg += f"\n• {block_name}: {stats.failed_executions} errors ({stats.error_rate:.1f}% of {stats.total_executions})"
+
+                    alerts.append(alert_msg)
 
             if alerts:
                 msg = "Block Error Rate Alert:\n\n" + "\n\n".join(alerts)
@@ -96,25 +126,24 @@ class BlockErrorMonitor:
 
     def _get_block_stats_from_db(
         self, start_time: datetime, end_time: datetime
-    ) -> dict:
+    ) -> dict[str, BlockStatsWithSamples]:
         """Get block execution stats using efficient SQL aggregation."""
 
-        # Use the database manager method for SQL aggregation
         result = execution_utils.get_db_client().get_block_error_stats(
             start_time, end_time
         )
 
-        # Convert to block stats dictionary
         block_stats = {}
         for stats in result:
             block_name = b.name if (b := get_block(stats.block_id)) else "Unknown"
 
-            block_stats[block_name] = {
-                "block_id": stats.block_id,
-                "total": stats.total_executions,
-                "failed": stats.failed_executions,
-                "error_samples": [],
-            }
+            block_stats[block_name] = BlockStatsWithSamples(
+                block_id=stats.block_id,
+                block_name=block_name,
+                total_executions=stats.total_executions,
+                failed_executions=stats.failed_executions,
+                error_samples=[],
+            )
 
         return block_stats
 
