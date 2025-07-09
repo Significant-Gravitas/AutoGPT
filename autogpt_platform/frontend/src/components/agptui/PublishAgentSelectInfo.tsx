@@ -5,7 +5,7 @@ import Image from "next/image";
 import { Button } from "../agptui/Button";
 import { IconCross, IconPlus } from "../ui/icons";
 import BackendAPI from "@/lib/autogpt-server-api";
-import { toast } from "../ui/use-toast";
+import { toast } from "../molecules/Toast/use-toast";
 
 export interface PublishAgentInfoInitialData {
   agent_id: string;
@@ -133,6 +133,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
       toast({
         title: "Failed to upload image",
         description: `Error: ${error}`,
+        variant: "destructive",
       });
     }
   };

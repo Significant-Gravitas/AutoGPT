@@ -54,7 +54,7 @@ import RunnerUIWrapper, {
 } from "@/components/RunnerUIWrapper";
 import PrimaryActionBar from "@/components/PrimaryActionButton";
 import OttoChatWidget from "@/components/OttoChatWidget";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useCopyPaste } from "../hooks/useCopyPaste";
 
 // This is for the history, this is the minimum distance a block must move before it is logged

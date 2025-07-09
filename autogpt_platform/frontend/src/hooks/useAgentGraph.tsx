@@ -1,7 +1,7 @@
 import { CustomEdge } from "@/components/CustomEdge";
 import { CustomNode } from "@/components/CustomNode";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import BackendAPI, {
   Block,
   BlockIOSubSchema,

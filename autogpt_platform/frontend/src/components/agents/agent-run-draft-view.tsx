@@ -18,7 +18,6 @@ import type { ButtonAction } from "@/components/agptui/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
 import { CalendarClockIcon, Trash2Icon } from "lucide-react";
-import { useToast, useToastOnFail } from "@/components/ui/use-toast";
 import { CronSchedulerDialog } from "@/components/cron-scheduler-dialog";
 import { CredentialsInput } from "@/components/integrations/credentials-input";
 import { TypeBasedInput } from "@/components/type-based-input";
@@ -26,6 +25,10 @@ import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import { cn, isEmpty } from "@/lib/utils";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { Input } from "@/components/ui/input";
+import {
+  useToast,
+  useToastOnFail,
+} from "@/components/molecules/Toast/use-toast";
 
 export default function AgentRunDraftView({
   graph,

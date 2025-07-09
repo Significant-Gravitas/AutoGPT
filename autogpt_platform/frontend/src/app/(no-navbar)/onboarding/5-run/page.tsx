@@ -11,7 +11,7 @@ import StarRating from "@/components/onboarding/StarRating";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { TypeBasedInput } from "@/components/type-based-input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { GraphMeta, StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { cn } from "@/lib/utils";

@@ -5,7 +5,7 @@ import { Separator } from "@/components/ui/separator";
 import BackendAPI, { LibraryAgent } from "@/lib/autogpt-server-api";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 
 import { useOnboarding } from "../onboarding/onboarding-provider";
 import { User } from "@supabase/supabase-js";
