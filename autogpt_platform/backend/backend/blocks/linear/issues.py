@@ -1,4 +1,5 @@
 from backend.sdk import (
+    APIKeyCredentials,
     Block,
     BlockCategory,
     BlockOutput,
@@ -9,7 +10,13 @@ from backend.sdk import (
 )
 
 from ._api import LinearAPIException, LinearClient
-from ._config import linear
+from ._config import (
+    LINEAR_OAUTH_IS_CONFIGURED,
+    TEST_CREDENTIALS_INPUT_OAUTH,
+    TEST_CREDENTIALS_OAUTH,
+    LinearScope,
+    linear,
+)
 from .models import CreateIssueResponse, Issue
 
 
@@ -19,50 +26,62 @@ class LinearCreateIssueBlock(Block):
     class Input(BlockSchema):
         credentials: CredentialsMetaInput = linear.credentials_field(
             description="Linear credentials with issue creation permissions",
-            required_scopes={"read", "issues:create"},
+            required_scopes={LinearScope.ISSUES_CREATE},
         )
         title: str = SchemaField(description="Title of the issue")
-        description: str = SchemaField(
-            description="Description of the issue", default=""
-        )
+        description: str | None = SchemaField(description="Description of the issue")
         team_name: str = SchemaField(
             description="Name of the team to create the issue on"
         )
-        priority: int = SchemaField(
-            description="Priority of the issue (0-4, where 0 is no priority, 1 is urgent, 2 is high, 3 is normal, 4 is low)",
-            default=3,
+        priority: int | None = SchemaField(
+            description="Priority of the issue",
+            default=None,
             ge=0,
             le=4,
         )
-        project_name: str = SchemaField(
+        project_name: str | None = SchemaField(
             description="Name of the project to create the issue on",
-            default="",
+            default=None,
         )
 
     class Output(BlockSchema):
         issue_id: str = SchemaField(description="ID of the created issue")
         issue_title: str = SchemaField(description="Title of the created issue")
-        error: str = SchemaField(
-            description="Error message if issue creation failed", default=""
-        )
+        error: str = SchemaField(description="Error message if issue creation failed")
 
     def __init__(self):
         super().__init__(
             id="f9c68f55-dcca-40a8-8771-abf9601680aa",
             description="Creates a new issue on Linear",
+            disabled=not LINEAR_OAUTH_IS_CONFIGURED,
             input_schema=self.Input,
             output_schema=self.Output,
-            categories={BlockCategory.PRODUCTIVITY},
+            categories={BlockCategory.PRODUCTIVITY, BlockCategory.ISSUE_TRACKING},
+            test_input={
+                "title": "Test issue",
+                "description": "Test description",
+                "team_name": "Test team",
+                "project_name": "Test project",
+                "credentials": TEST_CREDENTIALS_INPUT_OAUTH,
+            },
+            test_credentials=TEST_CREDENTIALS_OAUTH,
+            test_output=[("issue_id", "abc123"), ("issue_title", "Test issue")],
+            test_mock={
+                "create_issue": lambda *args, **kwargs: (
+                    "abc123",
+                    "Test issue",
+                )
+            },
         )
 
     @staticmethod
     async def create_issue(
-        credentials: OAuth2Credentials,
+        credentials: OAuth2Credentials | APIKeyCredentials,
         team_name: str,
         title: str,
-        description: str = "",
-        priority: int = 3,
-        project_name: str = "",
+        description: str | None = None,
+        priority: int | None = None,
+        project_name: str | None = None,
     ) -> tuple[str, str]:
         client = LinearClient(credentials=credentials)
         team_id = await client.try_get_team_by_name(team_name=team_name)
@@ -76,8 +95,8 @@ class LinearCreateIssueBlock(Block):
         response: CreateIssueResponse = await client.try_create_issue(
             team_id=team_id,
             title=title,
-            description=description if description else None,
-            priority=priority if priority != 3 else None,
+            description=description,
+            priority=priority,
             project_id=project_id,
         )
         return response.issue.identifier, response.issue.title
@@ -113,17 +132,14 @@ class LinearSearchIssuesBlock(Block):
     """Block for searching issues on Linear"""
 
     class Input(BlockSchema):
+        term: str = SchemaField(description="Term to search for issues")
         credentials: CredentialsMetaInput = linear.credentials_field(
             description="Linear credentials with read permissions",
-            required_scopes={"read"},
+            required_scopes={LinearScope.READ},
         )
-        term: str = SchemaField(description="Term to search for issues")
 
     class Output(BlockSchema):
         issues: list[Issue] = SchemaField(description="List of issues")
-        error: str = SchemaField(
-            description="Error message if search failed", default=""
-        )
 
     def __init__(self):
         super().__init__(
@@ -131,12 +147,42 @@ class LinearSearchIssuesBlock(Block):
             description="Searches for issues on Linear",
             input_schema=self.Input,
             output_schema=self.Output,
-            categories={BlockCategory.PRODUCTIVITY},
+            disabled=not LINEAR_OAUTH_IS_CONFIGURED,
+            test_input={
+                "term": "Test issue",
+                "credentials": TEST_CREDENTIALS_INPUT_OAUTH,
+            },
+            test_credentials=TEST_CREDENTIALS_OAUTH,
+            test_output=[
+                (
+                    "issues",
+                    [
+                        Issue(
+                            id="abc123",
+                            identifier="abc123",
+                            title="Test issue",
+                            description="Test description",
+                            priority=1,
+                        )
+                    ],
+                )
+            ],
+            test_mock={
+                "search_issues": lambda *args, **kwargs: [
+                    Issue(
+                        id="abc123",
+                        identifier="abc123",
+                        title="Test issue",
+                        description="Test description",
+                        priority=1,
+                    )
+                ]
+            },
         )
 
     @staticmethod
     async def search_issues(
-        credentials: OAuth2Credentials,
+        credentials: OAuth2Credentials | APIKeyCredentials,
         term: str,
     ) -> list[Issue]:
         client = LinearClient(credentials=credentials)
@@ -147,7 +193,7 @@ class LinearSearchIssuesBlock(Block):
         self,
         input_data: Input,
         *,
-        credentials: OAuth2Credentials,
+        credentials: OAuth2Credentials | APIKeyCredentials,
         **kwargs,
     ) -> BlockOutput:
         """Execute the issue search"""

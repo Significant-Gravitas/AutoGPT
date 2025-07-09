@@ -7,9 +7,9 @@ from typing import Optional
 from urllib.parse import urlencode
 
 from backend.sdk import (
+    APIKeyCredentials,
     BaseOAuthHandler,
     OAuth2Credentials,
-    APIKeyCredentials,
     ProviderName,
     Requests,
     SecretStr,
