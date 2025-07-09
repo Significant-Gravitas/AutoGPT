@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 
 from backend.data.block import get_block
-from backend.data.execution import ExecutionStatus
+from backend.data.execution import ExecutionStatus, NodeExecutionResult
 from backend.executor import utils as execution_utils
 from backend.notifications.notifications import NotificationManagerClient
 from backend.util.metrics import sentry_capture_error
@@ -208,31 +208,22 @@ class BlockErrorMonitor:
 
         error_samples = []
         for execution in executions:
-            error_message = self._extract_error_message(execution)
-            if error_message:
+            if error_message := self._extract_error_message(execution):
                 masked_error = self._mask_sensitive_data(error_message)
                 error_samples.append(masked_error)
-                if len(error_samples) >= limit:  # Stop once we have enough samples
-                    break
+
+            if len(error_samples) >= limit:  # Stop once we have enough samples
+                break
 
         return error_samples
 
-    def _extract_error_message(self, execution):
-        """Extract error message from execution stats."""
+    def _extract_error_message(self, execution: NodeExecutionResult) -> str | None:
+        """Extract error message from execution output."""
         try:
-            if hasattr(execution, "stats") and execution.stats:
-                stats = execution.stats
-                if isinstance(stats, dict):
-                    # Look for error message in various common locations
-                    error_msg = (
-                        stats.get("error_message")
-                        or stats.get("error")
-                        or stats.get("exception")
-                        or str(stats.get("output", ""))
-                    )
-                    return error_msg if error_msg else None
-                elif isinstance(stats, str):
-                    return stats
+            if execution.output_data and (
+                error_msg := execution.output_data.get("error")
+            ):
+                return str(error_msg[0])
             return None
         except Exception:
             return None
