@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import debounce from "lodash/debounce";
 import {
   Block,
   BlockUIType,
@@ -7,7 +8,6 @@ import {
 } from "@/lib/autogpt-server-api";
 import { CustomNode } from "@/components/CustomNode";
 import {
-  useDebounce,
   getBlockSearchData,
   matchesSearch,
   getBlockAvailability,
@@ -31,8 +31,6 @@ interface Args {
 export function useBlocksControl({ blocks, flows, nodes, addBlock }: Args) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-
-  const debouncedSearchQuery = useDebounce(searchQuery, 200);
 
   // Memoize graph state checks to avoid recalculating on every render
   const graphState = useMemo(
@@ -92,7 +90,7 @@ export function useBlocksControl({ blocks, flows, nodes, addBlock }: Args) {
     return allBlocks
       .map((block) => ({
         block,
-        score: matchesSearch(block, debouncedSearchQuery),
+        score: matchesSearch(block, searchQuery),
       }))
       .filter(
         ({ block, score }) =>
@@ -108,12 +106,18 @@ export function useBlocksControl({ blocks, flows, nodes, addBlock }: Args) {
   }, [
     blocksWithSearchData,
     agentBlocksWithSearchData,
-    debouncedSearchQuery,
+    searchQuery,
     selectedCategory,
     graphState,
   ]);
 
   const categories = useMemo(() => extractCategories(blocks), [blocks]);
+
+  // Create debounced version of setSearchQuery
+  const debouncedSetSearchQuery = useMemo(
+    () => debounce(setSearchQuery, 200),
+    [],
+  );
 
   function resetFilters() {
     setSearchQuery("");
@@ -132,7 +136,7 @@ export function useBlocksControl({ blocks, flows, nodes, addBlock }: Args) {
 
   return {
     searchQuery,
-    setSearchQuery,
+    setSearchQuery: debouncedSetSearchQuery,
     selectedCategory,
     filteredAvailableBlocks,
     categories,

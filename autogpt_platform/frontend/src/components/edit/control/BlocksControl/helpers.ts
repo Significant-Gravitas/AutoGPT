@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { beautifyString } from "@/lib/utils";
 import { Block, BlockUIType } from "@/lib/autogpt-server-api";
 import jaro from "jaro-winkler";
@@ -20,17 +19,6 @@ export interface BlockWithAvailability extends Block {
 export interface GraphState {
   hasWebhookNodes: boolean;
   hasInputNodes: boolean;
-}
-
-export function useDebounce<T>(value: T, delay: number): T {
-  const [debouncedValue, setDebouncedValue] = useState<T>(value);
-
-  useEffect(() => {
-    const handler = setTimeout(() => setDebouncedValue(value), delay);
-    return () => clearTimeout(handler);
-  }, [value, delay]);
-
-  return debouncedValue;
 }
 
 export function getBlockSearchData(
