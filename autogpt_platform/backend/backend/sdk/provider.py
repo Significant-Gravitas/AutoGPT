@@ -22,7 +22,19 @@ class OAuthConfig(BaseModel):
 
 
 class Provider:
-    """A configured provider that blocks can use."""
+    """A configured provider that blocks can use.
+    
+    A Provider represents a service or platform that blocks can integrate with, like Linear, OpenAI, etc.
+    It contains configuration for:
+    - Authentication (OAuth, API keys)
+    - Default credentials
+    - Base costs for using the provider
+    - Webhook handling
+    - Error handling
+    - API client factory
+    
+    Blocks use Provider instances to handle authentication, make API calls, and manage service-specific logic.
+    """
 
     def __init__(
         self,
