@@ -7,7 +7,6 @@ import { Text } from "@/components/atoms/Text/Text";
 import { AuthCard } from "@/components/auth/AuthCard";
 import AuthFeedback from "@/components/auth/AuthFeedback";
 import { EmailNotAllowedModal } from "@/components/auth/EmailNotAllowedModal";
-import { GoogleLoadingModal } from "@/components/auth/GoogleLoadingModal";
 import { GoogleOAuthButton } from "@/components/auth/GoogleOAuthButton";
 import Turnstile from "@/components/auth/Turnstile";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -214,7 +213,6 @@ export default function SignupPage() {
           link={{ text: "Log in", href: "/login" }}
         />
       </AuthCard>
-      <GoogleLoadingModal isOpen={isGoogleLoading} />
       <EmailNotAllowedModal
         isOpen={showNotAllowedModal}
         onClose={handleCloseNotAllowedModal}
