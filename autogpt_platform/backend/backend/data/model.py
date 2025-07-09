@@ -345,19 +345,11 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
 
     @classmethod
     def allowed_providers(cls) -> tuple[ProviderName, ...] | None:
-        args = get_args(cls.model_fields["provider"].annotation)
-        # If no type parameters are provided, allow any provider
-        if not args:
-            return None  # None means no specific providers, allow any
-        return args
+        return get_args(cls.model_fields["provider"].annotation)
 
     @classmethod
     def allowed_cred_types(cls) -> tuple[CredentialsType, ...]:
-        args = get_args(cls.model_fields["type"].annotation)
-        # If no type parameters are provided, allow any credential type
-        if not args:
-            return ("api_key", "oauth2", "user_password")  # All credential types
-        return args
+        return get_args(cls.model_fields["type"].annotation)
 
     @classmethod
     def validate_credentials_field_schema(cls, model: type["BlockSchema"]):
