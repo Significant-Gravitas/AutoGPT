@@ -59,9 +59,11 @@ class TestAutoRegistry:
         class TestOAuthHandler(BaseOAuthHandler):
             PROVIDER_NAME = ProviderName.GITHUB
 
+        from backend.sdk.provider import OAuthConfig
+
         provider = Provider(
             name="oauth_provider",
-            oauth_handler=TestOAuthHandler,
+            oauth_config=OAuthConfig(oauth_handler=TestOAuthHandler),
             webhook_manager=None,
             default_credentials=[],
             base_costs=[],
@@ -166,9 +168,11 @@ class TestAutoRegistry:
         class TestOAuth2(BaseOAuthHandler):
             PROVIDER_NAME = ProviderName.GOOGLE
 
+        from backend.sdk.provider import OAuthConfig
+
         provider1 = Provider(
             name="provider1",
-            oauth_handler=TestOAuth1,
+            oauth_config=OAuthConfig(oauth_handler=TestOAuth1),
             webhook_manager=None,
             default_credentials=[],
             base_costs=[],
@@ -177,7 +181,7 @@ class TestAutoRegistry:
 
         provider2 = Provider(
             name="provider2",
-            oauth_handler=TestOAuth2,
+            oauth_config=OAuthConfig(oauth_handler=TestOAuth2),
             webhook_manager=None,
             default_credentials=[],
             base_costs=[],
@@ -318,7 +322,8 @@ class TestProviderBuilder:
             .build()
         )
 
-        assert provider.oauth_handler == TestOAuth
+        assert provider.oauth_config is not None
+        assert provider.oauth_config.oauth_handler == TestOAuth
         assert "oauth2" in provider.supported_auth_types
 
     def test_provider_builder_with_webhook(self):
@@ -406,7 +411,8 @@ class TestProviderBuilder:
         assert provider.name == "complete_test"
         assert "api_key" in provider.supported_auth_types
         assert "oauth2" in provider.supported_auth_types
-        assert provider.oauth_handler == TestOAuth
+        assert provider.oauth_config is not None
+        assert provider.oauth_config.oauth_handler == TestOAuth
         assert provider.webhook_manager == TestWebhook
         assert len(provider.base_costs) == 1
         assert provider._api_client_factory == client_factory

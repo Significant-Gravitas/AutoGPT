@@ -6,7 +6,7 @@ import logging
 import threading
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type
 
-from pydantic import SecretStr
+from pydantic import BaseModel, SecretStr
 
 from backend.blocks.basic import Block
 from backend.data.model import APIKeyCredentials, Credentials
@@ -15,6 +15,14 @@ from backend.integrations.webhooks._base import BaseWebhooksManager
 
 if TYPE_CHECKING:
     from backend.sdk.provider import Provider
+
+
+class SDKOAuthCredentials(BaseModel):
+    """OAuth credentials configuration for SDK providers."""
+
+    use_secrets: bool = False
+    client_id_env_var: Optional[str] = None
+    client_secret_env_var: Optional[str] = None
 
 
 class BlockConfiguration:
@@ -42,6 +50,7 @@ class AutoRegistry:
     _providers: Dict[str, "Provider"] = {}
     _default_credentials: List[Credentials] = []
     _oauth_handlers: Dict[str, Type[BaseOAuthHandler]] = {}
+    _oauth_credentials: Dict[str, SDKOAuthCredentials] = {}
     _webhook_managers: Dict[str, Type[BaseWebhooksManager]] = {}
     _block_configurations: Dict[Type[Block], BlockConfiguration] = {}
     _api_key_mappings: Dict[str, str] = {}  # provider -> env_var_name
@@ -53,18 +62,28 @@ class AutoRegistry:
             cls._providers[provider.name] = provider
 
             # Register OAuth handler if provided
-            if provider.oauth_handler:
+            if provider.oauth_config:
                 # Dynamically set PROVIDER_NAME if not already set
                 if (
-                    not hasattr(provider.oauth_handler, "PROVIDER_NAME")
-                    or provider.oauth_handler.PROVIDER_NAME is None
+                    not hasattr(provider.oauth_config.oauth_handler, "PROVIDER_NAME")
+                    or provider.oauth_config.oauth_handler.PROVIDER_NAME is None
                 ):
                     # Import ProviderName to create dynamic enum value
                     from backend.integrations.providers import ProviderName
 
                     # This works because ProviderName has _missing_ method
-                    provider.oauth_handler.PROVIDER_NAME = ProviderName(provider.name)
-                cls._oauth_handlers[provider.name] = provider.oauth_handler
+                    provider.oauth_config.oauth_handler.PROVIDER_NAME = ProviderName(
+                        provider.name
+                    )
+                cls._oauth_handlers[provider.name] = provider.oauth_config.oauth_handler
+
+                # Register OAuth credentials configuration
+                oauth_creds = SDKOAuthCredentials(
+                    use_secrets=False,  # SDK providers use custom env vars
+                    client_id_env_var=provider.oauth_config.client_id_env_var,
+                    client_secret_env_var=provider.oauth_config.client_secret_env_var,
+                )
+                cls._oauth_credentials[provider.name] = oauth_creds
 
             # Register webhook manager if provided
             if provider.webhook_manager:
@@ -115,6 +134,12 @@ class AutoRegistry:
         """Replace HANDLERS_BY_NAME in oauth/__init__.py."""
         with cls._lock:
             return cls._oauth_handlers.copy()
+
+    @classmethod
+    def get_oauth_credentials(cls) -> Dict[str, SDKOAuthCredentials]:
+        """Get OAuth credentials configuration for SDK providers."""
+        with cls._lock:
+            return cls._oauth_credentials.copy()
 
     @classmethod
     def get_webhook_managers(cls) -> Dict[str, Type[BaseWebhooksManager]]:
