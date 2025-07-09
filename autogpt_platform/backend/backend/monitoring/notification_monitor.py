@@ -2,10 +2,11 @@
 
 import logging
 
-from backend.notifications.notifications import NotificationManagerClient
-from backend.util.service import get_service_client
 from prisma.enums import NotificationType
 from pydantic import BaseModel
+
+from backend.notifications.notifications import NotificationManagerClient
+from backend.util.service import get_service_client
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +20,12 @@ def process_existing_batches(**kwargs):
     """Process existing notification batches."""
     args = NotificationJobArgs(**kwargs)
     try:
-        logging.info(f"Processing existing batches for notification type {args.notification_types}")
-        get_service_client(NotificationManagerClient).process_existing_batches(args.notification_types)
+        logging.info(
+            f"Processing existing batches for notification type {args.notification_types}"
+        )
+        get_service_client(NotificationManagerClient).process_existing_batches(
+            args.notification_types
+        )
     except Exception as e:
         logger.exception(f"Error processing existing batches: {e}")
 

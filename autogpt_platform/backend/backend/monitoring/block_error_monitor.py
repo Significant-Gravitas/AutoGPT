@@ -4,8 +4,11 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 
+from backend.data.block import get_block
+from backend.data.execution import ExecutionStatus
 from backend.executor import utils as execution_utils
 from backend.notifications.notifications import NotificationManagerClient
+from backend.util.metrics import sentry_capture_error
 from backend.util.service import get_service_client
 from backend.util.settings import Config
 
@@ -15,11 +18,11 @@ config = Config()
 
 class BlockErrorMonitor:
     """Monitor block error rates and send alerts when thresholds are exceeded."""
-    
+
     def __init__(self):
         self.config = config
         self.notification_client = get_service_client(NotificationManagerClient)
-    
+
     def check_block_error_rates(self) -> str:
         """Check block error rates and send Discord alerts if thresholds are exceeded."""
         try:
@@ -30,23 +33,27 @@ class BlockErrorMonitor:
             start_time = end_time - timedelta(hours=24)
 
             executions = execution_utils.get_db_client().get_node_executions(
-                created_time_gte=start_time, created_time_lte=end_time
+                created_time_gte=start_time,
+                created_time_lte=end_time,
+                include_exec_data=False,
             )
 
             # Calculate error rates by block and collect error samples
             block_stats = {}
             for execution in executions:
                 block_name = (
-                    execution.agentNode.agentBlock.name
-                    if execution.agentNode and execution.agentNode.agentBlock
-                    else "Unknown"
+                    b.name if (b := get_block(execution.block_id)) else "Unknown"
                 )
 
                 if block_name not in block_stats:
-                    block_stats[block_name] = {"total": 0, "failed": 0, "error_samples": []}
+                    block_stats[block_name] = {
+                        "total": 0,
+                        "failed": 0,
+                        "error_samples": [],
+                    }
 
                 block_stats[block_name]["total"] += 1
-                if execution.executionStatus == "FAILED":
+                if execution.status == ExecutionStatus.FAILED:
                     block_stats[block_name]["failed"] += 1
 
                     # Collect error samples (limit to 5 per block)
@@ -54,20 +61,26 @@ class BlockErrorMonitor:
                         error_message = self._extract_error_message(execution)
                         if error_message:
                             masked_error = self._mask_sensitive_data(error_message)
-                            block_stats[block_name]["error_samples"].append(masked_error)
+                            block_stats[block_name]["error_samples"].append(
+                                masked_error
+                            )
 
             # Check thresholds and send alerts
             threshold = self.config.block_error_rate_threshold
             alerts = []
 
             for block_name, stats in block_stats.items():
-                if stats["total"] >= 10:  # Only check blocks with at least 10 executions
+                if (
+                    stats["total"] >= 10
+                ):  # Only check blocks with at least 10 executions
                     error_rate = stats["failed"] / stats["total"]
                     if error_rate >= threshold:
                         error_percentage = error_rate * 100
 
                         # Group similar errors
-                        error_groups = self._group_similar_errors(stats["error_samples"])
+                        error_groups = self._group_similar_errors(
+                            stats["error_samples"]
+                        )
 
                         alert_msg = (
                             f"🚨 Block '{block_name}' has {error_percentage:.1f}% error rate "
@@ -92,10 +105,8 @@ class BlockErrorMonitor:
 
         except Exception as e:
             logger.exception(f"Error checking block error rates: {e}")
-            from backend.util.metrics import sentry_capture_error
-            from backend.executor.scheduler import LateExecutionException
-            
-            error = LateExecutionException(f"Error checking block error rates: {e}")
+
+            error = Exception(f"Error checking block error rates: {e}")
             msg = str(error)
             sentry_capture_error(error)
             self.notification_client.discord_system_alert(msg)

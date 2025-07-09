@@ -726,15 +726,18 @@ async def get_node_execution(node_exec_id: str) -> NodeExecutionResult | None:
 
 
 async def get_node_executions(
-    graph_exec_id: str,
+    graph_exec_id: str | None = None,
     node_id: str | None = None,
     block_ids: list[str] | None = None,
     statuses: list[ExecutionStatus] | None = None,
     limit: int | None = None,
+    created_time_gte: datetime | None = None,
+    created_time_lte: datetime | None = None,
+    include_exec_data: bool = False,
 ) -> list[NodeExecutionResult]:
-    where_clause: AgentNodeExecutionWhereInput = {
-        "agentGraphExecutionId": graph_exec_id,
-    }
+    where_clause: AgentNodeExecutionWhereInput = {}
+    if graph_exec_id:
+        where_clause["agentGraphExecutionId"] = graph_exec_id
     if node_id:
         where_clause["agentNodeId"] = node_id
     if block_ids:
@@ -742,9 +745,15 @@ async def get_node_executions(
     if statuses:
         where_clause["OR"] = [{"executionStatus": status} for status in statuses]
 
+    if created_time_gte or created_time_lte:
+        where_clause["addedTime"] = {
+            "gte": created_time_gte or datetime.min.replace(tzinfo=timezone.utc),
+            "lte": created_time_lte or datetime.max.replace(tzinfo=timezone.utc),
+        }
+
     executions = await AgentNodeExecution.prisma().find_many(
         where=where_clause,
-        include=EXECUTION_RESULT_INCLUDE,
+        include=EXECUTION_RESULT_INCLUDE if include_exec_data else {"Node": True},
         order=EXECUTION_RESULT_ORDER,
         take=limit,
     )

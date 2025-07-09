@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-from datetime import datetime, timedelta, timezone
 from enum import Enum
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
@@ -25,12 +24,7 @@ from backend.monitoring import (
     report_block_error_rates,
     report_late_executions,
 )
-from backend.util.service import (
-    AppService,
-    AppServiceClient,
-    endpoint_to_async,
-    expose,
-)
+from backend.util.service import AppService, AppServiceClient, endpoint_to_async, expose
 from backend.util.settings import Config
 
 

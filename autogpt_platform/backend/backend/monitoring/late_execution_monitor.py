@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from backend.data.execution import ExecutionStatus
 from backend.executor import utils as execution_utils
 from backend.notifications.notifications import NotificationManagerClient
+from backend.util.metrics import sentry_capture_error
 from backend.util.service import get_service_client
 from backend.util.settings import Config
 
@@ -15,22 +16,25 @@ config = Config()
 
 class LateExecutionException(Exception):
     """Exception raised when late executions are detected."""
+
     pass
 
 
 class LateExecutionMonitor:
     """Monitor late executions and send alerts when thresholds are exceeded."""
-    
+
     def __init__(self):
         self.config = config
         self.notification_client = get_service_client(NotificationManagerClient)
-    
+
     def check_late_executions(self) -> str:
         """Check for late executions and send alerts if found."""
         late_executions = execution_utils.get_db_client().get_graph_executions(
             statuses=[ExecutionStatus.QUEUED],
             created_time_gte=datetime.now(timezone.utc)
-            - timedelta(seconds=self.config.execution_late_notification_checkrange_secs),
+            - timedelta(
+                seconds=self.config.execution_late_notification_checkrange_secs
+            ),
             created_time_lte=datetime.now(timezone.utc)
             - timedelta(seconds=self.config.execution_late_notification_threshold_secs),
             limit=1000,
@@ -55,8 +59,7 @@ class LateExecutionMonitor:
             + "\n".join(late_execution_details)
         )
         msg = str(error)
-        
-        from backend.util.metrics import sentry_capture_error
+
         sentry_capture_error(error)
         self.notification_client.discord_system_alert(msg)
         return msg

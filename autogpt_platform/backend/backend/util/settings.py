@@ -123,7 +123,7 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=60 * 60,
         description="Time in seconds for how far back to check for the late executions.",
     )
-    
+
     block_error_rate_threshold: float = Field(
         default=0.5,
         description="Error rate threshold (0.0-1.0) for triggering block error alerts.",
