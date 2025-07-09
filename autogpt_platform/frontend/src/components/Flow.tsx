@@ -211,12 +211,12 @@ const FlowEditor: React.FC<{
 
       if (isUndo) {
         event.preventDefault();
-        handleUndo();
+        history.undo();
       }
 
       if (isRedo) {
         event.preventDefault();
-        handleRedo();
+        history.redo();
       }
     };
 
@@ -605,14 +605,6 @@ const FlowEditor: React.FC<{
     findNodeDimensions();
   }, [nodes, findNodeDimensions]);
 
-  const handleUndo = () => {
-    history.undo();
-  };
-
-  const handleRedo = () => {
-    history.redo();
-  };
-
   const handleCopyPaste = useCopyPaste(getNextNodeId);
 
   const handleKeyDown = useCallback(
@@ -642,18 +634,21 @@ const FlowEditor: React.FC<{
     clearNodesStatusAndOutput();
   }, [clearNodesStatusAndOutput]);
 
-  const editorControls: Control[] = [
-    {
-      label: "Undo",
-      icon: <IconUndo2 />,
-      onClick: handleUndo,
-    },
-    {
-      label: "Redo",
-      icon: <IconRedo2 />,
-      onClick: handleRedo,
-    },
-  ];
+  const editorControls: Control[] = useMemo(
+    () => [
+      {
+        label: "Undo",
+        icon: <IconUndo2 />,
+        onClick: history.undo,
+      },
+      {
+        label: "Redo",
+        icon: <IconRedo2 />,
+        onClick: history.redo,
+      },
+    ],
+    [],
+  );
 
   const handleRunButton = useCallback(async () => {
     if (isRunning) return;
@@ -727,7 +722,7 @@ const FlowEditor: React.FC<{
                 pinSavePopover={pinSavePopover}
               />
             }
-          ></ControlPanel>
+          />
           {!graphHasWebhookNodes ? (
             <PrimaryActionBar
               className="absolute bottom-0 left-1/2 z-20 -translate-x-1/2"
