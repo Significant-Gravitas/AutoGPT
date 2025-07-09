@@ -11,7 +11,7 @@ import {
   UserPasswordCredentials,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useToastOnFail } from "@/components/ui/use-toast";
+import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 
 // Get keys from CredentialsProviderName type
 const CREDENTIALS_PROVIDER_NAMES = Object.values(

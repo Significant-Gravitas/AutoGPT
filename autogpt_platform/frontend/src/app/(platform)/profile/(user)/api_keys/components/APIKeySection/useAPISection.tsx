@@ -5,7 +5,7 @@ import {
   useGetV1ListUserApiKeys,
 } from "@/app/api/__generated__/endpoints/api-keys/api-keys";
 import { APIKeyWithoutHash } from "@/app/api/__generated__/models/aPIKeyWithoutHash";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 
 export const useAPISection = () => {

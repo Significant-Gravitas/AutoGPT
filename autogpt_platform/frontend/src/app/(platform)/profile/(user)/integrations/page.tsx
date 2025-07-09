@@ -2,7 +2,7 @@
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { IconKey, IconUser } from "@/components/ui/icons";
 import { Trash2Icon } from "lucide-react";
 import { KeyIcon } from "@phosphor-icons/react/dist/ssr";

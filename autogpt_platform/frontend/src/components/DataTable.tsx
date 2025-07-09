@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "./ui/table";
-import { useToast } from "./ui/use-toast";
+import { useToast } from "./molecules/Toast/use-toast";
 
 type DataTableProps = {
   title?: string;
