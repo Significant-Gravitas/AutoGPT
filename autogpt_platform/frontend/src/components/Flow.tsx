@@ -104,12 +104,12 @@ const FlowEditor: React.FC<{
     agentDescription,
     setAgentDescription,
     savedAgent,
-    availableNodes,
+    availableBlocks,
     availableFlows,
     getOutputType,
-    requestSave,
-    requestSaveAndRun,
-    requestStopRun,
+    saveAgent,
+    saveAndRun,
+    stopRun,
     createRunSchedule,
     isSaving,
     isRunning,
@@ -189,15 +189,7 @@ const FlowEditor: React.FC<{
       startTutorial(emptyNodes, setPinBlocksPopover, setPinSavePopover);
       localStorage.setItem(TUTORIAL_STORAGE_KEY, "yes");
     }
-  }, [
-    availableNodes,
-    router,
-    pathname,
-    params,
-    setEdges,
-    setNodes,
-    nodes.length,
-  ]);
+  }, [router, pathname, params, setEdges, setNodes, nodes.length]);
 
   useEffect(() => {
     if (params.get("open_scheduling") === "true") {
@@ -348,6 +340,8 @@ const FlowEditor: React.FC<{
           edgeColor,
           sourcePos: sourceNode!.position,
           isStatic: sourceNode!.data.isOutputStatic,
+          beadUp: 0,
+          beadDown: 0,
         },
         ...connection,
         source: connection.source!,
@@ -492,7 +486,7 @@ const FlowEditor: React.FC<{
 
   const addNode = useCallback(
     (blockId: string, nodeType: string, hardcodedValues: any = {}) => {
-      const nodeSchema = availableNodes.find((node) => node.id === blockId);
+      const nodeSchema = availableBlocks.find((node) => node.id === blockId);
       if (!nodeSchema) {
         console.error(`Schema not found for block ID: ${blockId}`);
         return;
@@ -570,7 +564,7 @@ const FlowEditor: React.FC<{
     [
       nodeId,
       setViewport,
-      availableNodes,
+      availableBlocks,
       addNodes,
       nodeDimensions,
       deleteElements,
@@ -692,7 +686,7 @@ const FlowEditor: React.FC<{
             topChildren={
               <BlocksControl
                 pinBlocksPopover={pinBlocksPopover} // Pass the state to BlocksControl
-                blocks={availableNodes}
+                blocks={availableBlocks}
                 addBlock={addNode}
                 flows={availableFlows}
                 nodes={nodes}
@@ -702,7 +696,7 @@ const FlowEditor: React.FC<{
               <SaveControl
                 agentMeta={savedAgent}
                 canSave={!isSaving && !isRunning && !isStopping}
-                onSave={() => requestSave()}
+                onSave={saveAgent}
                 agentDescription={agentDescription}
                 onDescriptionChange={setAgentDescription}
                 agentName={agentName}
@@ -718,7 +712,7 @@ const FlowEditor: React.FC<{
                 onClickAgentOutputs={() =>
                   runnerUIRef.current?.openRunnerOutput()
                 }
-                onClickRunAgent={() => {
+                onClickRunAgent={async () => {
                   if (isRunning) return;
                   if (!savedAgent) {
                     toast({
@@ -726,12 +720,11 @@ const FlowEditor: React.FC<{
                     });
                     return;
                   }
-                  // await saveAgent();
-                  requestSave(); // FIXME: wait for this to finish
+                  await saveAgent();
                   runnerUIRef.current?.runOrOpenInput();
                 }}
-                onClickStopRun={requestStopRun}
-                onClickScheduleButton={() => {
+                onClickStopRun={stopRun}
+                onClickScheduleButton={async () => {
                   if (isScheduling) return;
                   if (!savedAgent) {
                     toast({
@@ -739,8 +732,7 @@ const FlowEditor: React.FC<{
                     });
                     return;
                   }
-                  // await saveAgent();
-                  requestSave(); // FIXME: wait for this to finish
+                  await saveAgent();
                   runnerUIRef.current?.openRunInputDialog();
                 }}
                 isDisabled={!savedAgent}
@@ -780,7 +772,7 @@ const FlowEditor: React.FC<{
           graph={savedAgent}
           nodes={nodes}
           createRunSchedule={createRunSchedule}
-          saveAndRun={requestSaveAndRun}
+          saveAndRun={saveAndRun}
         />
       )}
       <Suspense fallback={null}>

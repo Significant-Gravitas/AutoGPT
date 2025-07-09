@@ -83,12 +83,13 @@ export function RunnerInputDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={doClose}>
-      <DialogContent className="flex flex-col px-10 py-8">
+      <DialogContent className="flex w-[90vw] max-w-4xl flex-col p-10">
         <DialogHeader>
           <DialogTitle className="text-2xl">Run your agent</DialogTitle>
           <DialogDescription className="mt-2">{graph.name}</DialogDescription>
         </DialogHeader>
         <AgentRunDraftView
+          className="p-0"
           graph={graph}
           doRun={doRun ? handleRun : undefined}
           onRun={doRun ? undefined : doClose}

@@ -18,8 +18,8 @@ export type CustomEdgeData = {
   edgeColor: string;
   sourcePos?: XYPosition;
   isStatic?: boolean;
-  beadUp?: number;
-  beadDown?: number;
+  beadUp: number;
+  beadDown: number;
   beadData?: Map<string, NodeExecutionResult["status"]>;
 };
 

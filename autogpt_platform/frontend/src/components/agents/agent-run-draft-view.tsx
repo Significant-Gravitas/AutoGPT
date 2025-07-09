@@ -23,8 +23,8 @@ import { CronSchedulerDialog } from "@/components/cron-scheduler-dialog";
 import { CredentialsInput } from "@/components/integrations/credentials-input";
 import { TypeBasedInput } from "@/components/type-based-input";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { cn, isEmpty } from "@/lib/utils";
 import SchemaTooltip from "@/components/SchemaTooltip";
-import { isEmpty } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 
 export default function AgentRunDraftView({
@@ -39,6 +39,7 @@ export default function AgentRunDraftView({
   doCreateSchedule: _doCreateSchedule,
   onCreateSchedule,
   agentActions,
+  className,
 }: {
   graph: GraphMeta;
   triggerSetupInfo?: LibraryAgentTriggerInfo;
@@ -55,6 +56,7 @@ export default function AgentRunDraftView({
     credentialsInputs: Record<string, CredentialsMetaInput>,
   ) => Promise<void>;
   onCreateSchedule?: (schedule: Schedule) => void;
+  className?: string;
 } & (
   | {
       onCreatePreset?: (preset: LibraryAgentPreset) => void;
@@ -502,7 +504,7 @@ export default function AgentRunDraftView({
   );
 
   return (
-    <div className="agpt-div flex gap-6">
+    <div className={cn("agpt-div flex gap-6", className)}>
       <div className="flex flex-1 flex-col gap-4">
         <Card className="agpt-box">
           <CardHeader>

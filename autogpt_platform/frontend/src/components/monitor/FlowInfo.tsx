@@ -35,12 +35,9 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  RunnerInputDialog,
-  InputNodeInfo,
-} from "@/components/runner-ui/RunnerInputUI";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { RunnerInputDialog } from "@/components/runner-ui/RunnerInputUI";
 
 export const FlowInfo: React.FC<
   React.HTMLAttributes<HTMLDivElement> & {
@@ -50,7 +47,7 @@ export const FlowInfo: React.FC<
     refresh: () => void;
   }
 > = ({ flow, executions, flowVersion, refresh, ...props }) => {
-  const { requestSaveAndRun, requestStopRun, isRunning, nodes } = useAgentGraph(
+  const { savedAgent, saveAndRun, stopRun, isRunning } = useAgentGraph(
     flow.graph_id,
     flow.graph_version,
     undefined,
@@ -69,32 +66,13 @@ export const FlowInfo: React.FC<
       (selectedVersion == "all" ? flow.graph_version : selectedVersion),
   );
 
+  const hasInputs = Object.keys(flow.input_schema.properties).length > 0;
+  const hasCredentialsInputs =
+    Object.keys(flow.credentials_input_schema.properties).length > 0;
+
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isRunDialogOpen, setIsRunDialogOpen] = useState(false);
   const isDisabled = !selectedFlowVersion;
-
-  const graphInputs = useMemo(() => {
-    const inputNodes = nodes.filter(
-      (node) => node.data.uiType === BlockUIType.INPUT,
-    );
-
-    const inputs = inputNodes.map(
-      (node) =>
-        ({
-          id: node.id,
-          inputSchema: node.data.inputSchema as BlockIORootSchema,
-          inputConfig: {
-            name: node.data.hardcodedValues.name || "",
-            description: node.data.hardcodedValues.description || "",
-            defaultValue: node.data.hardcodedValues.value,
-            placeholderValues:
-              node.data.hardcodedValues.placeholder_values || [],
-          },
-        }) satisfies InputNodeInfo,
-    );
-
-    return inputs;
-  }, [nodes]);
 
   useEffect(() => {
     api
@@ -105,10 +83,10 @@ export const FlowInfo: React.FC<
   const openRunDialog = () => setIsRunDialogOpen(true);
 
   const runOrOpenInput = () => {
-    if (graphInputs.length > 0) {
+    if (hasInputs || hasCredentialsInputs) {
       openRunDialog();
     } else {
-      requestSaveAndRun();
+      saveAndRun({}, {});
     }
   };
 
@@ -188,7 +166,7 @@ export const FlowInfo: React.FC<
           <Button
             variant="secondary"
             className="bg-purple-500 text-white hover:bg-purple-700"
-            onClick={isRunning ? requestStopRun : runOrOpenInput}
+            onClick={!isRunning ? runOrOpenInput : stopRun}
             disabled={isDisabled}
             title={!isRunning ? "Run Agent" : "Stop Agent"}
           >
@@ -248,12 +226,14 @@ export const FlowInfo: React.FC<
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <RunnerInputDialog
-        isOpen={isRunDialogOpen}
-        doClose={() => setIsRunDialogOpen(false)}
-        graph={selectedFlowVersion!}
-        doRun={requestSaveAndRun}
-      />
+      {savedAgent && (
+        <RunnerInputDialog
+          isOpen={isRunDialogOpen}
+          doClose={() => setIsRunDialogOpen(false)}
+          graph={savedAgent}
+          doRun={saveAndRun}
+        />
+      )}
     </Card>
   );
 };

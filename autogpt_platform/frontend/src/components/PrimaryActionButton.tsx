@@ -6,7 +6,7 @@ import { ClockIcon } from "@phosphor-icons/react";
 import { IconPlay, IconSquare } from "@/components/ui/icons";
 
 interface PrimaryActionBarProps {
-  onClickAgentOutputs: () => void;
+  onClickAgentOutputs?: () => void;
   onClickRunAgent?: () => void;
   onClickStopRun: () => void;
   onClickScheduleButton?: () => void;
@@ -34,15 +34,17 @@ const PrimaryActionBar: React.FC<PrimaryActionBarProps> = ({
       )}
     >
       <div className="flex gap-1 md:gap-4">
-        <Button
-          className={buttonClasses}
-          variant="outline"
-          size="primary"
-          onClick={onClickAgentOutputs}
-          title="View agent outputs"
-        >
-          <LogOut className="hidden size-5 md:flex" /> Agent Outputs
-        </Button>
+        {onClickAgentOutputs && (
+          <Button
+            className={buttonClasses}
+            variant="outline"
+            size="primary"
+            onClick={onClickAgentOutputs}
+            title="View agent outputs"
+          >
+            <LogOut className="hidden size-5 md:flex" /> Agent Outputs
+          </Button>
+        )}
 
         {!isRunning ? (
           <Button

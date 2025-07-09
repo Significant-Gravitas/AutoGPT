@@ -25,7 +25,7 @@ import { GraphMeta } from "@/lib/autogpt-server-api";
 import jaro from "jaro-winkler";
 
 interface BlocksControlProps {
-  blocks: Block[];
+  blocks: _Block[];
   addBlock: (
     id: string,
     name: string,
@@ -35,6 +35,11 @@ interface BlocksControlProps {
   flows: GraphMeta[];
   nodes: CustomNode[];
 }
+
+type _Block = Block & {
+  uiKey?: string;
+  hardcodedValues?: Record<string, any>;
+};
 
 /**
  * A React functional component that displays a control for managing blocks.
@@ -79,15 +84,15 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
           outputSchema: flow.output_schema,
           staticOutput: false,
           uiType: BlockUIType.AGENT,
-          uiKey: flow.id,
           costs: [],
+          uiKey: flow.id,
           hardcodedValues: {
             graph_id: flow.id,
             graph_version: flow.version,
             input_schema: flow.input_schema,
             output_schema: flow.output_schema,
           },
-        }) satisfies Block,
+        }) satisfies _Block,
     );
 
     /**

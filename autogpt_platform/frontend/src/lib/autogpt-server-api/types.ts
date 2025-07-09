@@ -24,7 +24,7 @@ export enum BlockCostType {
 export type BlockCost = {
   cost_amount: number;
   cost_type: BlockCostType;
-  cost_filter: { [key: string]: any };
+  cost_filter: Record<string, any>;
 };
 
 /* Mirror of backend/data/block.py:Block */
@@ -37,14 +37,12 @@ export type Block = {
   outputSchema: BlockIORootSchema;
   staticOutput: boolean;
   uiType: BlockUIType;
-  uiKey?: string;
   costs: BlockCost[];
-  hardcodedValues: { [key: string]: any } | null;
 };
 
 export type BlockIORootSchema = {
   type: "object";
-  properties: { [key: string]: BlockIOSubSchema };
+  properties: Record<string, BlockIOSubSchema>;
   required?: (keyof BlockIORootSchema["properties"])[];
   additionalProperties?: { type: string };
 };
@@ -93,9 +91,9 @@ export type BlockIOSubSchemaMeta = {
 
 export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
   type: "object";
-  properties: { [key: string]: BlockIOSubSchema };
-  const?: { [key: keyof BlockIOObjectSubSchema["properties"]]: any };
-  default?: { [key: keyof BlockIOObjectSubSchema["properties"]]: any };
+  properties: Record<string, BlockIOSubSchema>;
+  const?: Record<keyof BlockIOObjectSubSchema["properties"], any>;
+  default?: Record<keyof BlockIOObjectSubSchema["properties"], any>;
   required?: (keyof BlockIOObjectSubSchema["properties"])[];
   secret?: boolean;
 };
@@ -103,8 +101,8 @@ export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
 export type BlockIOKVSubSchema = BlockIOSubSchemaMeta & {
   type: "object";
   additionalProperties?: { type: "string" | "number" | "integer" };
-  const?: { [key: string]: string | number };
-  default?: { [key: string]: string | number };
+  const?: Record<string, string | number>;
+  default?: Record<string, string | number>;
   secret?: boolean;
 };
 
@@ -204,7 +202,7 @@ export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   credentials_scopes?: string[];
   credentials_types: Array<CredentialsType>;
   discriminator?: string;
-  discriminator_mapping?: { [key: string]: CredentialsProviderName };
+  discriminator_mapping?: Record<string, CredentialsProviderName>;
   discriminator_values?: any[];
   secret?: boolean;
 };
@@ -250,17 +248,20 @@ export type BlockIODiscriminatedOneOfSubSchema = {
   secret?: boolean;
 };
 
-/* Mirror of backend/data/graph.py:Node */
-export type Node = {
+export type NodeCreatable = {
   id: string;
   block_id: string;
-  input_default: { [key: string]: any };
-  input_nodes: Array<{ name: string; node_id: string }>;
-  output_nodes: Array<{ name: string; node_id: string }>;
+  input_default: Record<string, any>;
   metadata: {
     position: { x: number; y: number };
     [key: string]: any;
   };
+};
+
+/* Mirror of backend/data/graph.py:Node */
+export type Node = NodeCreatable & {
+  input_links: Link[];
+  output_links: Link[];
   webhook?: Webhook;
 };
 
@@ -335,7 +336,7 @@ export type GraphID = Brand<string, "GraphID">;
 /* Derived from backend/data/graph.py:Graph._generate_schema() */
 export type GraphIOSchema = {
   type: "object";
-  properties: { [key: string]: GraphIOSubSchema };
+  properties: Record<string, GraphIOSubSchema>;
   required: (keyof BlockIORootSchema["properties"])[];
 };
 export type GraphIOSubSchema = Omit<
@@ -365,6 +366,7 @@ export type GraphUpdateable = Omit<
   | "user_id"
   | "version"
   | "is_active"
+  | "nodes"
   | "links"
   | "input_schema"
   | "output_schema"
@@ -373,6 +375,7 @@ export type GraphUpdateable = Omit<
 > & {
   version?: number;
   is_active?: boolean;
+  nodes: Array<NodeCreatable>;
   links: Array<LinkCreatable>;
   input_schema?: GraphIOSchema;
   output_schema?: GraphIOSchema;
@@ -395,8 +398,8 @@ export type NodeExecutionResult = {
     | "COMPLETED"
     | "TERMINATED"
     | "FAILED";
-  input_data: { [key: string]: any };
-  output_data: { [key: string]: Array<any> };
+  input_data: Record<string, any>;
+  output_data: Record<string, Array<any>>;
   add_time: Date;
   queue_time?: Date;
   start_time?: Date;
@@ -463,7 +466,7 @@ export type LibraryAgentPreset = {
   updated_at: Date;
   graph_id: GraphID;
   graph_version: number;
-  inputs: { [key: string]: any };
+  inputs: Record<string, any>;
   credentials: Record<string, CredentialsMetaInput>;
   name: string;
   description: string;
@@ -652,7 +655,7 @@ export type AnalyticsMetrics = {
 
 export type AnalyticsDetails = {
   type: string;
-  data: { [key: string]: any };
+  data: Record<string, any>;
   index: string;
 };
 
@@ -923,7 +926,7 @@ export interface UserOnboarding {
   integrations: string[];
   otherIntegrations: string | null;
   selectedStoreListingVersionId: string | null;
-  agentInput: { [key: string]: string | number } | null;
+  agentInput: Record<string, string | number> | null;
   onboardingAgentExecutionId: GraphExecutionID | null;
   agentRuns: number;
 }
