@@ -1,10 +1,10 @@
-import React from "react";
+import React, { useRef } from "react";
+import { useVirtualizer, VirtualItem } from "@tanstack/react-virtual";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TextRenderer } from "@/components/ui/render";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Popover,
   PopoverContent,
@@ -34,10 +34,6 @@ interface Props {
   nodes: CustomNode[];
 }
 
-/**
- * A React functional component that displays a control for managing blocks.
- * Optimized for performance with debounced search, memoized data, and separated concerns.
- */
 function BlocksControlComponent({
   blocks,
   addBlock,
@@ -59,6 +55,15 @@ function BlocksControlComponent({
     flows,
     nodes,
     addBlock,
+  });
+
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  const virtualizer = useVirtualizer({
+    count: filteredAvailableBlocks.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 96, // 80px height + 16px margin (my-4)
+    overscan: 5,
   });
 
   return (
@@ -133,64 +138,90 @@ function BlocksControlComponent({
               })}
             </div>
           </CardHeader>
-          <CardContent className="overflow-scroll border-t border-t-gray-200 p-0 dark:border-t-slate-700">
-            <ScrollArea
-              className="h-[60vh] w-full"
+          <CardContent className="border-t border-t-gray-200 p-0 dark:border-t-slate-700">
+            <div
+              ref={parentRef}
+              className="h-[60vh] w-full overflow-auto"
               data-id="blocks-control-scroll-area"
             >
-              {filteredAvailableBlocks.map((block) => (
-                <Card
-                  key={block.uiKey || block.id}
-                  className={`m-2 my-4 flex h-20 shadow-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 ${
-                    block.notAvailable
-                      ? "cursor-not-allowed opacity-50"
-                      : "cursor-pointer hover:shadow-lg"
-                  }`}
-                  data-id={`block-card-${block.id}`}
-                  onClick={() => handleAddBlock(block)}
-                  title={block.notAvailable ?? undefined}
-                >
-                  <div
-                    className={`-ml-px h-full w-3 rounded-l-xl ${getPrimaryCategoryColor(block.categories)}`}
-                  ></div>
+              <div
+                style={{
+                  height: `${virtualizer.getTotalSize()}px`,
+                  width: "100%",
+                  position: "relative",
+                }}
+              >
+                {virtualizer
+                  .getVirtualItems()
+                  .map((virtualItem: VirtualItem) => {
+                    const block = filteredAvailableBlocks[virtualItem.index];
 
-                  <div className="mx-3 flex flex-1 items-center justify-between">
-                    <div className="mr-2 min-w-0">
-                      <span
-                        className="block truncate pb-1 text-sm font-semibold dark:text-white"
-                        data-id={`block-name-${block.id}`}
-                        data-type={block.uiType}
-                        data-testid={`block-name-${block.id}`}
+                    return (
+                      <div
+                        key={virtualItem.key}
+                        style={{
+                          position: "absolute",
+                          top: 0,
+                          left: 0,
+                          width: "100%",
+                          height: `${virtualItem.size}px`,
+                          transform: `translateY(${virtualItem.start}px)`,
+                        }}
                       >
-                        <TextRenderer
-                          value={beautifyString(block.name).replace(
-                            / Block$/,
-                            "",
-                          )}
-                          truncateLengthLimit={45}
-                        />
-                      </span>
-                      <span
-                        className="block break-all text-xs font-normal text-gray-500 dark:text-gray-400"
-                        data-testid={`block-description-${block.id}`}
-                      >
-                        <TextRenderer
-                          value={block.description}
-                          truncateLengthLimit={165}
-                        />
-                      </span>
-                    </div>
-                    <div
-                      className="flex flex-shrink-0 items-center gap-1"
-                      data-id={`block-tooltip-${block.id}`}
-                      data-testid={`block-add`}
-                    >
-                      <PlusIcon className="h-6 w-6 rounded-lg bg-gray-200 stroke-black stroke-[0.5px] p-1 dark:bg-gray-700 dark:stroke-white" />
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </ScrollArea>
+                        <Card
+                          className={`m-2 my-4 flex h-20 shadow-none dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700 ${
+                            block.notAvailable
+                              ? "cursor-not-allowed opacity-50"
+                              : "cursor-pointer hover:shadow-lg"
+                          }`}
+                          data-id={`block-card-${block.id}`}
+                          onClick={() => handleAddBlock(block)}
+                          title={block.notAvailable ?? undefined}
+                        >
+                          <div
+                            className={`-ml-px h-full w-3 rounded-l-xl ${getPrimaryCategoryColor(block.categories)}`}
+                          ></div>
+
+                          <div className="mx-3 flex flex-1 items-center justify-between">
+                            <div className="mr-2 min-w-0">
+                              <span
+                                className="block truncate pb-1 text-sm font-semibold dark:text-white"
+                                data-id={`block-name-${block.id}`}
+                                data-type={block.uiType}
+                                data-testid={`block-name-${block.id}`}
+                              >
+                                <TextRenderer
+                                  value={beautifyString(block.name).replace(
+                                    / Block$/,
+                                    "",
+                                  )}
+                                  truncateLengthLimit={45}
+                                />
+                              </span>
+                              <span
+                                className="block break-all text-xs font-normal text-gray-500 dark:text-gray-400"
+                                data-testid={`block-description-${block.id}`}
+                              >
+                                <TextRenderer
+                                  value={block.description}
+                                  truncateLengthLimit={165}
+                                />
+                              </span>
+                            </div>
+                            <div
+                              className="flex flex-shrink-0 items-center gap-1"
+                              data-id={`block-tooltip-${block.id}`}
+                              data-testid={`block-add`}
+                            >
+                              <PlusIcon className="h-6 w-6 rounded-lg bg-gray-200 stroke-black stroke-[0.5px] p-1 dark:bg-gray-700 dark:stroke-white" />
+                            </div>
+                          </div>
+                        </Card>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
           </CardContent>
         </Card>
       </PopoverContent>

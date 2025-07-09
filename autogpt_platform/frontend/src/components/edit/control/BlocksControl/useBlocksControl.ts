@@ -1,5 +1,4 @@
-import { useState, useMemo } from "react";
-import debounce from "lodash/debounce";
+import { useState, useMemo, useRef, useCallback } from "react";
 import {
   Block,
   BlockUIType,
@@ -31,6 +30,7 @@ interface Args {
 export function useBlocksControl({ blocks, flows, nodes, addBlock }: Args) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
 
   // Memoize graph state checks to avoid recalculating on every render
   const graphState = useMemo(
@@ -113,11 +113,15 @@ export function useBlocksControl({ blocks, flows, nodes, addBlock }: Args) {
 
   const categories = useMemo(() => extractCategories(blocks), [blocks]);
 
-  // Create debounced version of setSearchQuery
-  const debouncedSetSearchQuery = useMemo(
-    () => debounce(setSearchQuery, 200),
-    [],
-  );
+  // Create requestAnimationFrame-based search query setter
+  const debouncedSetSearchQuery = useCallback((value: string) => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+    animationFrameRef.current = requestAnimationFrame(() => {
+      setSearchQuery(value);
+    });
+  }, []);
 
   function resetFilters() {
     setSearchQuery("");

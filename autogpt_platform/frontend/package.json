@@ -54,6 +54,7 @@
     "@supabase/supabase-js": "2.50.3",
     "@tanstack/react-query": "5.81.5",
     "@tanstack/react-table": "8.21.3",
+    "@tanstack/react-virtual": "3.13.12",
     "@types/jaro-winkler": "0.2.4",
     "@xyflow/react": "12.8.1",
     "ajv": "8.17.1",
