@@ -153,6 +153,67 @@ def process_weekly_summary(**kwargs):
         logger.exception(f"Error processing weekly summary: {e}")
 
 
+def report_block_error_rates(**kwargs):
+    """Check block error rates and send Discord alerts if thresholds are exceeded."""
+    try:
+        log("Checking block error rates")
+
+        # Get executions from the last 24 hours
+        end_time = datetime.now(timezone.utc)
+        start_time = end_time - timedelta(hours=24)
+
+        executions = execution_utils.get_db_client().get_node_executions(
+            created_time_gte=start_time, created_time_lte=end_time
+        )
+
+        # Calculate error rates by block
+        block_stats = {}
+        for execution in executions:
+            block_name = (
+                execution.agentNode.agentBlock.name
+                if execution.agentNode and execution.agentNode.agentBlock
+                else "Unknown"
+            )
+
+            if block_name not in block_stats:
+                block_stats[block_name] = {"total": 0, "failed": 0}
+
+            block_stats[block_name]["total"] += 1
+            if execution.executionStatus == "FAILED":
+                block_stats[block_name]["failed"] += 1
+
+        # Check thresholds and send alerts
+        threshold = config.block_error_rate_threshold
+        alerts = []
+
+        for block_name, stats in block_stats.items():
+            if stats["total"] >= 10:  # Only check blocks with at least 10 executions
+                error_rate = stats["failed"] / stats["total"]
+                if error_rate >= threshold:
+                    error_percentage = error_rate * 100
+                    alerts.append(
+                        f"🚨 Block '{block_name}' has {error_percentage:.1f}% error rate "
+                        f"({stats['failed']}/{stats['total']}) in the last 24 hours"
+                    )
+
+        if alerts:
+            msg = "Block Error Rate Alert:\n" + "\n".join(alerts)
+            get_notification_client().discord_system_alert(msg)
+            log(f"Sent block error rate alert for {len(alerts)} blocks")
+            return f"Alert sent for {len(alerts)} blocks with high error rates"
+        else:
+            log("No blocks exceeded error rate threshold")
+            return "No blocks exceeded error rate threshold"
+
+    except Exception as e:
+        logger.exception(f"Error checking block error rates: {e}")
+        error = LateExecutionException(f"Error checking block error rates: {e}")
+        msg = str(error)
+        sentry_capture_error(error)
+        get_notification_client().discord_system_alert(msg)
+        return msg
+
+
 class Jobstores(Enum):
     EXECUTION = "execution"
     BATCHED_NOTIFICATIONS = "batched_notifications"
@@ -280,6 +341,16 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
+            # Block Error Rate Monitoring
+            self.scheduler.add_job(
+                report_block_error_rates,
+                id="report_block_error_rates",
+                trigger="interval",
+                replace_existing=True,
+                seconds=config.block_error_rate_check_interval_secs,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.start()
 
@@ -366,6 +437,10 @@ class Scheduler(AppService):
     @expose
     def execute_report_late_executions(self):
         return report_late_executions()
+
+    @expose
+    def execute_report_block_error_rates(self):
+        return report_block_error_rates()
 
 
 class SchedulerClient(AppServiceClient):
