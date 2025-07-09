@@ -32,41 +32,23 @@ class BlockErrorMonitor:
             end_time = datetime.now(timezone.utc)
             start_time = end_time - timedelta(hours=24)
 
-            executions = execution_utils.get_db_client().get_node_executions(
-                created_time_gte=start_time,
-                created_time_lte=end_time,
-                include_exec_data=False,
-            )
+            # Use SQL aggregation to efficiently count totals and failures by block
+            block_stats = self._get_block_stats_from_db(start_time, end_time)
 
-            # Calculate error rates by block and collect error samples
-            block_stats = {}
-            for execution in executions:
-                block_name = (
-                    b.name if (b := get_block(execution.block_id)) else "Unknown"
-                )
-
-                if block_name not in block_stats:
-                    block_stats[block_name] = {
-                        "total": 0,
-                        "failed": 0,
-                        "error_samples": [],
-                    }
-
-                block_stats[block_name]["total"] += 1
-                if execution.status == ExecutionStatus.FAILED:
-                    block_stats[block_name]["failed"] += 1
-
-                    # Collect error samples (limit to 5 per block)
-                    if len(block_stats[block_name]["error_samples"]) < 5:
-                        error_message = self._extract_error_message(execution)
-                        if error_message:
-                            masked_error = self._mask_sensitive_data(error_message)
-                            block_stats[block_name]["error_samples"].append(
-                                masked_error
-                            )
+            # For blocks with high error rates, fetch error samples
+            threshold = self.config.block_error_rate_threshold
+            for block_name, stats in block_stats.items():
+                if (
+                    stats["total"] >= 10
+                    and stats["failed"] / stats["total"] >= threshold
+                ):
+                    # Only fetch error samples for blocks that exceed threshold
+                    error_samples = self._get_error_samples_for_block(
+                        stats["block_id"], start_time, end_time, limit=3
+                    )
+                    stats["error_samples"] = error_samples
 
             # Check thresholds and send alerts
-            threshold = self.config.block_error_rate_threshold
             alerts = []
 
             for block_name, stats in block_stats.items():
@@ -79,7 +61,7 @@ class BlockErrorMonitor:
 
                         # Group similar errors
                         error_groups = self._group_similar_errors(
-                            stats["error_samples"]
+                            stats.get("error_samples", [])
                         )
 
                         alert_msg = (
@@ -111,6 +93,55 @@ class BlockErrorMonitor:
             sentry_capture_error(error)
             self.notification_client.discord_system_alert(msg)
             return msg
+
+    def _get_block_stats_from_db(
+        self, start_time: datetime, end_time: datetime
+    ) -> dict:
+        """Get block execution stats using efficient SQL aggregation."""
+
+        # Use the database manager method for SQL aggregation
+        result = execution_utils.get_db_client().get_block_error_stats(
+            start_time, end_time
+        )
+
+        # Convert to block stats dictionary
+        block_stats = {}
+        for stats in result:
+            block_name = b.name if (b := get_block(stats.block_id)) else "Unknown"
+
+            block_stats[block_name] = {
+                "block_id": stats.block_id,
+                "total": stats.total_executions,
+                "failed": stats.failed_executions,
+                "error_samples": [],
+            }
+
+        return block_stats
+
+    def _get_error_samples_for_block(
+        self, block_id: str, start_time: datetime, end_time: datetime, limit: int = 3
+    ) -> list[str]:
+        """Get error samples for a specific block - just a few recent ones."""
+        # Only fetch a small number of recent failed executions for this specific block
+        executions = execution_utils.get_db_client().get_node_executions(
+            block_ids=[block_id],
+            statuses=[ExecutionStatus.FAILED],
+            created_time_gte=start_time,
+            created_time_lte=end_time,
+            limit=limit,  # Just get the limit we need
+            include_exec_data=True,
+        )
+
+        error_samples = []
+        for execution in executions:
+            error_message = self._extract_error_message(execution)
+            if error_message:
+                masked_error = self._mask_sensitive_data(error_message)
+                error_samples.append(masked_error)
+                if len(error_samples) >= limit:  # Stop once we have enough samples
+                    break
+
+        return error_samples
 
     def _extract_error_message(self, execution):
         """Extract error message from execution stats."""
@@ -190,7 +221,7 @@ class BlockErrorMonitor:
         return dict(sorted(error_groups.items(), key=lambda x: x[1], reverse=True))
 
 
-def report_block_error_rates(**kwargs):
+def report_block_error_rates():
     """Check block error rates and send Discord alerts if thresholds are exceeded."""
     monitor = BlockErrorMonitor()
     return monitor.check_block_error_rates()

@@ -3,7 +3,6 @@ import uuid
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Literal, Optional, cast
 
-import prisma
 from prisma import Json
 from prisma.enums import SubmissionStatus
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink, StoreListingVersion
@@ -31,7 +30,7 @@ from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
 
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
-from .db import BaseDbModel, transaction
+from .db import BaseDbModel, query_raw_with_schema, transaction
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 
 if TYPE_CHECKING:
@@ -1040,13 +1039,13 @@ async def fix_llm_provider_credentials():
 
     broken_nodes = []
     try:
-        broken_nodes = await prisma.get_client().query_raw(
+        broken_nodes = await query_raw_with_schema(
             """
             SELECT    graph."userId"       user_id,
                   node.id              node_id,
                   node."constantInput" node_preset_input
-            FROM      platform."AgentNode"  node
-            LEFT JOIN platform."AgentGraph" graph
+            FROM      {schema_prefix}"AgentNode"  node
+            LEFT JOIN {schema_prefix}"AgentGraph" graph
             ON        node."agentGraphId" = graph.id
             WHERE     node."constantInput"::jsonb->'credentials'->>'provider' = 'llm'
             ORDER BY  graph."userId";

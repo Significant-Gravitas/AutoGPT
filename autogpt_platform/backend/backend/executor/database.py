@@ -5,6 +5,7 @@ from backend.data import db
 from backend.data.credit import UsageTransactionMetadata, get_user_credit_model
 from backend.data.execution import (
     create_graph_execution,
+    get_block_error_stats,
     get_execution_kv_data,
     get_graph_execution,
     get_graph_execution_meta,
@@ -105,6 +106,7 @@ class DatabaseManager(AppService):
     upsert_execution_output = _(upsert_execution_output)
     get_execution_kv_data = _(get_execution_kv_data)
     set_execution_kv_data = _(set_execution_kv_data)
+    get_block_error_stats = _(get_block_error_stats)
 
     # Graphs
     get_node = _(get_node)
@@ -199,6 +201,9 @@ class DatabaseManagerClient(AppServiceClient):
         d.get_user_notification_oldest_message_in_batch
     )
 
+    # Block error monitoring
+    get_block_error_stats = _(d.get_block_error_stats)
+
 
 class DatabaseManagerAsyncClient(AppServiceClient):
     d = DatabaseManager
@@ -226,3 +231,4 @@ class DatabaseManagerAsyncClient(AppServiceClient):
     update_user_integrations = d.update_user_integrations
     get_execution_kv_data = d.get_execution_kv_data
     set_execution_kv_data = d.set_execution_kv_data
+    get_block_error_stats = d.get_block_error_stats

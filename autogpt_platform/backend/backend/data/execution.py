@@ -49,7 +49,7 @@ from .block import (
     get_io_block_ids,
     get_webhook_block_ids,
 )
-from .db import BaseDbModel
+from .db import BaseDbModel, query_raw_with_schema
 from .event_bus import AsyncRedisEventBus, RedisEventBus
 from .includes import (
     EXECUTION_RESULT_INCLUDE,
@@ -66,6 +66,21 @@ config = Config()
 
 
 # -------------------------- Models -------------------------- #
+
+
+class BlockErrorStats(BaseModel):
+    """Typed data structure for block error statistics."""
+
+    block_id: str
+    total_executions: int
+    failed_executions: int
+
+    @property
+    def error_rate(self) -> float:
+        """Calculate error rate as a percentage."""
+        if self.total_executions == 0:
+            return 0.0
+        return (self.failed_executions / self.total_executions) * 100
 
 
 ExecutionStatus = AgentExecutionStatus
@@ -976,3 +991,33 @@ async def set_execution_kv_data(
         },
     )
     return type_utils.convert(resp.data, type[Any]) if resp and resp.data else None
+
+
+async def get_block_error_stats(
+    start_time: datetime, end_time: datetime
+) -> list[BlockErrorStats]:
+    """Get block execution stats using efficient SQL aggregation."""
+
+    query_template = """
+    SELECT 
+        n."agentBlockId" as block_id,
+        COUNT(*) as total_executions,
+        SUM(CASE WHEN ne."executionStatus" = 'FAILED' THEN 1 ELSE 0 END) as failed_executions
+    FROM {schema_prefix}"AgentNodeExecution" ne
+    JOIN {schema_prefix}"AgentNode" n ON ne."agentNodeId" = n.id
+    WHERE ne."addedTime" >= $1::timestamp AND ne."addedTime" <= $2::timestamp
+    GROUP BY n."agentBlockId"
+    HAVING COUNT(*) >= 10
+    """
+
+    result = await query_raw_with_schema(query_template, start_time, end_time)
+
+    # Convert to typed data structures
+    return [
+        BlockErrorStats(
+            block_id=row["block_id"],
+            total_executions=int(row["total_executions"]),
+            failed_executions=int(row["failed_executions"]),
+        )
+        for row in result
+    ]
