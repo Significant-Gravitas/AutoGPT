@@ -669,17 +669,14 @@ async def execute_graph(
 )
 async def stop_graph_run(
     graph_id: str, graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
-) -> execution_db.GraphExecutionMeta:
+) -> execution_db.GraphExecutionMeta | None:
     res = await _stop_graph_run(
         user_id=user_id,
         graph_id=graph_id,
         graph_exec_id=graph_exec_id,
     )
     if not res:
-        raise HTTPException(
-            status_code=HTTP_404_NOT_FOUND,
-            detail=f"Graph execution #{graph_exec_id} not found.",
-        )
+        return None
     return res[0]
 
 
