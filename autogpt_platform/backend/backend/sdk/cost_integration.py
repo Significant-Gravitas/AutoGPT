@@ -43,6 +43,9 @@ def register_provider_costs_for_block(block_class: Type[Block]) -> None:
         return
 
     # Look for credentials fields
+    # The cost system works of filtering on credentials fields,
+    # without credentials fields, we can not apply costs
+    # TODO: Improve cost system to allow for costs witout a provider
     credentials_fields = input_schema.get_credentials_fields()
     if not credentials_fields:
         logger.debug(f"Block {block_class.__name__} has no credentials fields")
