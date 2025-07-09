@@ -321,21 +321,19 @@ class TestBlockInitialization:
 class TestMockMethods:
     """Test mock methods for testing"""
 
-    @pytest.mark.asyncio
-    async def test_mock_run_model(self):
+    def test_mock_run_model(self):
         """Test the mock run_model method"""
-        result, prediction_id = await ReplicateModelBlock.mock_run_model(
+        result, prediction_id = ReplicateModelBlock.mock_run_model(
             "test/model", {"prompt": "test"}, "test_key"
         )
 
         assert result == "Mock response from Replicate model"
         assert prediction_id == "mock_prediction_id"
 
-    @pytest.mark.asyncio
-    async def test_mock_run_async_model(self):
+    def test_mock_run_async_model(self):
         """Test the mock run_async_model method"""
         result, prediction_id, execution_time = (
-            await ReplicateAsyncModelBlock.mock_run_async_model(
+            ReplicateAsyncModelBlock.mock_run_async_model(
                 "test/model", {"prompt": "test"}, "test_key", 60
             )
         )

@@ -89,7 +89,7 @@ class ReplicateModelBlock(Block):
         error: str = SchemaField(description="Error message if any", default="")
 
     @staticmethod
-    async def mock_run_model(model_ref, model_inputs, api_key):
+    def mock_run_model(model_ref, model_inputs, api_key):
         return "Mock response from Replicate model", "mock_prediction_id"
 
     def __init__(self):
@@ -231,7 +231,7 @@ class ReplicateAsyncModelBlock(Block):
         error: str = SchemaField(description="Error message if any", default="")
 
     @staticmethod
-    async def mock_run_async_model(model_ref, model_inputs, api_key, max_wait_time):
+    def mock_run_async_model(model_ref, model_inputs, api_key, max_wait_time):
         return "Mock response from Replicate model", "mock_prediction_id", 1.5
 
     def __init__(self):
