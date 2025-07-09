@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Optional, Union
 
-from backend.sdk import OAuth2Credentials, Requests
+from backend.sdk import APIKeyCredentials, OAuth2Credentials, Requests
 
 from .models import CreateCommentResponse, CreateIssueResponse, Issue, Project
 
@@ -24,7 +24,7 @@ class LinearClient:
 
     def __init__(
         self,
-        credentials: Union[OAuth2Credentials, None] = None,
+        credentials: Union[OAuth2Credentials, APIKeyCredentials, None] = None,
         custom_requests: Optional[Requests] = None,
     ):
         if custom_requests:
@@ -33,10 +33,8 @@ class LinearClient:
             headers: Dict[str, str] = {
                 "Content-Type": "application/json",
             }
-            if credentials and isinstance(credentials, OAuth2Credentials):
-                headers["Authorization"] = (
-                    f"Bearer {credentials.access_token.get_secret_value()}"
-                )
+            if credentials:
+                headers["Authorization"] = credentials.auth_header()
 
             self._requests = Requests(
                 extra_headers=headers,

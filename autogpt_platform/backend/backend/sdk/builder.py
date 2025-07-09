@@ -11,7 +11,7 @@ from backend.data.cost import BlockCost, BlockCostType
 from backend.data.model import APIKeyCredentials, Credentials, UserPasswordCredentials
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.webhooks._base import BaseWebhooksManager
-from backend.sdk.provider import Provider
+from backend.sdk.provider import OAuthConfig, Provider
 from backend.sdk.registry import AutoRegistry
 from backend.util.settings import Settings
 
@@ -21,7 +21,7 @@ class ProviderBuilder:
 
     def __init__(self, name: str):
         self.name = name
-        self._oauth_handler: Optional[Type[BaseOAuthHandler]] = None
+        self._oauth_config: Optional[OAuthConfig] = None
         self._webhook_manager: Optional[Type[BaseWebhooksManager]] = None
         self._default_credentials: List[Credentials] = []
         self._base_costs: List[BlockCost] = []
@@ -29,16 +29,25 @@ class ProviderBuilder:
         self._api_client_factory: Optional[Callable] = None
         self._error_handler: Optional[Callable[[Exception], str]] = None
         self._default_scopes: Optional[List[str]] = None
+        self._client_id_env_var: Optional[str] = None
+        self._client_secret_env_var: Optional[str] = None
         self._extra_config: dict = {}
 
     def with_oauth(
-        self, handler_class: Type[BaseOAuthHandler], scopes: Optional[List[str]] = None
+        self,
+        handler_class: Type[BaseOAuthHandler],
+        scopes: Optional[List[str]] = None,
+        client_id_env_var: Optional[str] = None,
+        client_secret_env_var: Optional[str] = None,
     ) -> "ProviderBuilder":
         """Add OAuth support."""
-        self._oauth_handler = handler_class
+        self._oauth_config = OAuthConfig(
+            oauth_handler=handler_class,
+            scopes=scopes,
+            client_id_env_var=client_id_env_var,
+            client_secret_env_var=client_secret_env_var,
+        )
         self._supported_auth_types.add("oauth2")
-        if scopes:
-            self._default_scopes = scopes
         return self
 
     def with_api_key(self, env_var_name: str, title: str) -> "ProviderBuilder":
@@ -137,7 +146,7 @@ class ProviderBuilder:
         """Build and register the provider configuration."""
         provider = Provider(
             name=self.name,
-            oauth_handler=self._oauth_handler,
+            oauth_config=self._oauth_config,
             webhook_manager=self._webhook_manager,
             default_credentials=self._default_credentials,
             base_costs=self._base_costs,

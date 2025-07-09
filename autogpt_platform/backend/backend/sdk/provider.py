@@ -4,19 +4,42 @@ Provider configuration class that holds all provider-related settings.
 
 from typing import Any, Callable, List, Optional, Set, Type
 
+from pydantic import BaseModel
+
 from backend.data.cost import BlockCost
 from backend.data.model import Credentials, CredentialsField, CredentialsMetaInput
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.webhooks._base import BaseWebhooksManager
 
 
+class OAuthConfig(BaseModel):
+    """Configuration for OAuth authentication."""
+
+    oauth_handler: Type[BaseOAuthHandler]
+    scopes: Optional[List[str]] = None
+    client_id_env_var: Optional[str] = None
+    client_secret_env_var: Optional[str] = None
+
+
 class Provider:
-    """A configured provider that blocks can use."""
+    """A configured provider that blocks can use.
+
+    A Provider represents a service or platform that blocks can integrate with, like Linear, OpenAI, etc.
+    It contains configuration for:
+    - Authentication (OAuth, API keys)
+    - Default credentials
+    - Base costs for using the provider
+    - Webhook handling
+    - Error handling
+    - API client factory
+
+    Blocks use Provider instances to handle authentication, make API calls, and manage service-specific logic.
+    """
 
     def __init__(
         self,
         name: str,
-        oauth_handler: Optional[Type[BaseOAuthHandler]] = None,
+        oauth_config: Optional[OAuthConfig] = None,
         webhook_manager: Optional[Type[BaseWebhooksManager]] = None,
         default_credentials: Optional[List[Credentials]] = None,
         base_costs: Optional[List[BlockCost]] = None,
@@ -26,7 +49,7 @@ class Provider:
         **kwargs,
     ):
         self.name = name
-        self.oauth_handler = oauth_handler
+        self.oauth_config = oauth_config
         self.webhook_manager = webhook_manager
         self.default_credentials = default_credentials or []
         self.base_costs = base_costs or []

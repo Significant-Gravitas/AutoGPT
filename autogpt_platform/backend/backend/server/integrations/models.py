@@ -5,15 +5,13 @@ This module provides models that will be included in the OpenAPI schema generati
 allowing frontend code generators like Orval to create corresponding TypeScript types.
 """
 
-from typing import List, Literal
-
-from pydantic import BaseModel, Field, create_model
+from pydantic import BaseModel, Field
 
 from backend.integrations.providers import ProviderName
 from backend.sdk.registry import AutoRegistry
 
 
-def get_all_provider_names() -> List[str]:
+def get_all_provider_names() -> list[str]:
     """
     Collect all provider names from both ProviderName enum and AutoRegistry.
 
@@ -43,38 +41,10 @@ def get_all_provider_names() -> List[str]:
 class ProviderNamesResponse(BaseModel):
     """Response containing list of all provider names."""
 
-    providers: List[str] = Field(
+    providers: list[str] = Field(
         description="List of all available provider names",
         default_factory=get_all_provider_names,
     )
-
-
-def create_provider_enum_model():
-    """
-    Dynamically create a model with all provider names as a Literal type.
-    This ensures the OpenAPI schema includes all provider names.
-    """
-    all_providers = get_all_provider_names()
-
-    if not all_providers:
-        # Fallback if no providers are registered yet
-        all_providers = ["unknown"]
-
-    # Create a Literal type with all provider names
-    # This will be included in the OpenAPI schema
-    ProviderNameLiteral = Literal[tuple(all_providers)]  # type: ignore
-
-    # Create a dynamic model that uses this Literal
-    DynamicProviderModel = create_model(
-        "AllProviderNames",
-        provider=(
-            ProviderNameLiteral,
-            Field(description="A provider name from the complete list"),
-        ),
-        __module__=__name__,
-    )
-
-    return DynamicProviderModel
 
 
 class ProviderConstants(BaseModel):

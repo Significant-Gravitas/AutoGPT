@@ -30,7 +30,7 @@ from backend.data.model import (
 )
 from backend.executor.utils import add_graph_execution
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.integrations.oauth import HANDLERS_BY_NAME
+from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
 from backend.server.integrations.models import (
@@ -496,8 +496,30 @@ def _get_provider_oauth_handler(
             detail=f"Provider '{provider_key}' does not support OAuth",
         )
 
-    client_id = getattr(settings.secrets, f"{provider_name.value}_client_id")
-    client_secret = getattr(settings.secrets, f"{provider_name.value}_client_secret")
+    # Check if this provider has custom OAuth credentials
+    oauth_credentials = CREDENTIALS_BY_PROVIDER.get(provider_key)
+
+    if oauth_credentials and not oauth_credentials.use_secrets:
+        # SDK provider with custom env vars
+        import os
+
+        client_id = (
+            os.getenv(oauth_credentials.client_id_env_var)
+            if oauth_credentials.client_id_env_var
+            else None
+        )
+        client_secret = (
+            os.getenv(oauth_credentials.client_secret_env_var)
+            if oauth_credentials.client_secret_env_var
+            else None
+        )
+    else:
+        # Original provider using settings.secrets
+        client_id = getattr(settings.secrets, f"{provider_name.value}_client_id", None)
+        client_secret = getattr(
+            settings.secrets, f"{provider_name.value}_client_secret", None
+        )
+
     if not (client_id and client_secret):
         logger.error(
             f"Attempt to use unconfigured {provider_name.value} OAuth integration"
