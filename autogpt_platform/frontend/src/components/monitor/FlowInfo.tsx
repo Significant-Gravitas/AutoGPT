@@ -1,9 +1,7 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  GraphExecutionMeta,
   Graph,
-  BlockUIType,
-  BlockIORootSchema,
+  GraphExecutionMeta,
   LibraryAgent,
 } from "@/lib/autogpt-server-api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
