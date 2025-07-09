@@ -445,6 +445,9 @@ export default function AgentRunsPage(): React.ReactElement {
     [agent, downloadGraph],
   );
 
+  const runGraph =
+    graphVersions.current[selectedRun?.graph_version ?? 0] ?? graph;
+
   const onCreateSchedule = useCallback(
     (schedule: Schedule) => {
       setSchedules((prev) => [...prev, schedule]);
@@ -507,16 +510,16 @@ export default function AgentRunsPage(): React.ReactElement {
 
         {/* Run / Schedule views */}
         {(selectedView.type == "run" && selectedView.id ? (
-          selectedRun && (
+          selectedRun && runGraph ? (
             <AgentRunDetailsView
               agent={agent}
-              graph={graphVersions.current[selectedRun.graph_version] ?? graph}
+              graph={runGraph}
               run={selectedRun}
               agentActions={agentActions}
               onRun={selectRun}
               deleteRun={() => setConfirmingDeleteAgentRun(selectedRun)}
             />
-          )
+          ) : null
         ) : selectedView.type == "run" ? (
           /* Draft new runs / Create new presets */
           <AgentRunDraftView
@@ -540,7 +543,8 @@ export default function AgentRunsPage(): React.ReactElement {
             agentActions={agentActions}
           />
         ) : selectedView.type == "schedule" ? (
-          selectedSchedule && (
+          selectedSchedule &&
+          graph && (
             <AgentScheduleDetailsView
               graph={graph}
               schedule={selectedSchedule}
