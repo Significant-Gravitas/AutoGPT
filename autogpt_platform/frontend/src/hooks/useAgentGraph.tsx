@@ -132,7 +132,7 @@ export default function useAgentGraph(
       deregisterMessageHandler();
       deregisterConnectHandler();
     };
-  }, [api, flowID, flowVersion, flowExecutionID]);
+  }, [api, flowID, flowExecutionID]);
 
   const getOutputType = useCallback(
     (nodes: CustomNode[], nodeId: string, handleId: string) => {
@@ -415,6 +415,7 @@ export default function useAgentGraph(
   // Load graph
   useEffect(() => {
     if (!flowID || availableBlocks.length == 0) return;
+    if (savedAgent?.id === flowID && savedAgent.version === flowVersion) return;
 
     api.getGraph(flowID, flowVersion).then((graph) => {
       console.debug("Loading graph");
@@ -745,13 +746,12 @@ export default function useAgentGraph(
       console.debug("Response from the API:", newSavedAgent);
     }
 
-    // Route the URL to the new flow ID if it's a new agent.
-    if (!savedAgent) {
+    // Update the URL
+    if (newSavedAgent.version !== savedAgent?.version) {
       const path = new URLSearchParams(searchParams);
       path.set("flowID", newSavedAgent.id);
       path.set("flowVersion", newSavedAgent.version.toString());
       router.push(`${pathname}?${path.toString()}`);
-      return newSavedAgent;
     }
 
     // Update the node IDs on the frontend
@@ -948,28 +948,25 @@ export default function useAgentGraph(
       inputs: Record<string, any>,
       credentialsInputs: Record<string, CredentialsMetaInput>,
     ) => {
+      if (!savedAgent || isScheduling) return;
+
       setIsScheduling(true);
       try {
-        if (flowID) {
-          await api.createGraphExecutionSchedule({
-            graph_id: flowID,
-            // flowVersion is always defined here because scheduling is opened for a specific version
-            graph_version: flowVersion!,
-            name: scheduleName,
-            cron: cronExpression,
-            inputs: inputs,
-            credentials: credentialsInputs,
-          });
-          toast({
-            title: "Agent scheduling successful",
-          });
+        await api.createGraphExecutionSchedule({
+          graph_id: savedAgent.id,
+          graph_version: savedAgent.version,
+          name: scheduleName,
+          cron: cronExpression,
+          inputs: inputs,
+          credentials: credentialsInputs,
+        });
+        toast({
+          title: "Agent scheduling successful",
+        });
 
-          // if scheduling is done from the monitor page, then redirect to monitor page after successful scheduling
-          if (searchParams.get("open_scheduling") === "true") {
-            router.push("/monitoring");
-          }
-        } else {
-          return;
+        // if scheduling is done from the monitor page, then redirect to monitor page after successful scheduling
+        if (searchParams.get("open_scheduling") === "true") {
+          router.push("/monitoring");
         }
       } catch (error) {
         console.error(error);
@@ -982,7 +979,7 @@ export default function useAgentGraph(
         setIsScheduling(false);
       }
     },
-    [api, flowID, saveAgent, toast, router, searchParams],
+    [api, savedAgent, isScheduling, toast, searchParams, router],
   );
 
   return {
