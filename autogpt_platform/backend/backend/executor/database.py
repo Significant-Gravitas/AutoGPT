@@ -34,6 +34,14 @@ from backend.data.notifications import (
     get_user_notification_batch,
     get_user_notification_oldest_message_in_batch,
 )
+from backend.data.summary import (
+    get_cost_breakdown_by_agent,
+    get_execution_time_stats,
+    get_most_used_agent,
+    get_user_credits_summary,
+    get_user_execution_summary,
+    get_user_summary_data,
+)
 from backend.data.user import (
     get_active_user_ids_in_timerange,
     get_user_email_by_id,
@@ -139,6 +147,14 @@ class DatabaseManager(AppService):
         get_user_notification_oldest_message_in_batch
     )
 
+    # Summary data - async
+    get_user_credits_summary = _(get_user_credits_summary)
+    get_user_execution_summary = _(get_user_execution_summary)
+    get_most_used_agent = _(get_most_used_agent)
+    get_execution_time_stats = _(get_execution_time_stats)
+    get_cost_breakdown_by_agent = _(get_cost_breakdown_by_agent)
+    get_user_summary_data = _(get_user_summary_data)
+
 
 class DatabaseManagerClient(AppServiceClient):
     d = DatabaseManager
@@ -198,6 +214,14 @@ class DatabaseManagerClient(AppServiceClient):
     get_user_notification_oldest_message_in_batch = _(
         d.get_user_notification_oldest_message_in_batch
     )
+
+    # Summary data - async
+    get_user_credits_summary = _(d.get_user_credits_summary)
+    get_user_execution_summary = _(d.get_user_execution_summary)
+    get_most_used_agent = _(d.get_most_used_agent)
+    get_execution_time_stats = _(d.get_execution_time_stats)
+    get_cost_breakdown_by_agent = _(d.get_cost_breakdown_by_agent)
+    get_user_summary_data = _(d.get_user_summary_data)
 
 
 class DatabaseManagerAsyncClient(AppServiceClient):

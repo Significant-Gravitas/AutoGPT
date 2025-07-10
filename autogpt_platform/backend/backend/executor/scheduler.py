@@ -261,7 +261,7 @@ class Scheduler(AppService):
             # Notification PROCESS WEEKLY SUMMARY
             self.scheduler.add_job(
                 process_weekly_summary,
-                CronTrigger.from_crontab("0 * * * *"),
+                CronTrigger.from_crontab("* * * * *"),
                 id="process_weekly_summary",
                 kwargs={},
                 replace_existing=True,
