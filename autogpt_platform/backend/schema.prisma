@@ -599,7 +599,23 @@ view Creator {
   agent_runs   Int
   is_featured  Boolean
 
-  // Index or unique are not applied to views
+  // Note: Prisma doesn't support indexes on views, but the following indexes exist in the database:
+  // 
+  // Optimized indexes (partial indexes to reduce size and improve performance):
+  // - idx_profile_user on Profile(userId)
+  // - idx_store_listing_approved on StoreListing(owningUserId) WHERE isDeleted = false AND hasApprovedVersion = true
+  // - idx_store_listing_version_status on StoreListingVersion(storeListingId) WHERE submissionStatus = 'APPROVED'
+  // - idx_slv_categories_gin - GIN index on StoreListingVersion(categories) WHERE submissionStatus = 'APPROVED'
+  // - idx_slv_agent on StoreListingVersion(agentGraphId, agentGraphVersion) WHERE submissionStatus = 'APPROVED'
+  // - idx_store_listing_review_version on StoreListingReview(storeListingVersionId)
+  // - idx_store_listing_version_approved_listing on StoreListingVersion(storeListingId, version) WHERE submissionStatus = 'APPROVED'
+  // - idx_agent_graph_execution_agent on AgentGraphExecution(agentGraphId)
+  //
+  // Materialized views used (refreshed every 15 minutes via pg_cron):
+  // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
+  // - mv_review_stats - Pre-aggregated review statistics (count, avg rating) by storeListingId
+  //
+  // Query strategy: Uses CTEs to efficiently aggregate creator statistics leveraging materialized views
 }
 
 view StoreAgent {
@@ -622,7 +638,30 @@ view StoreAgent {
   rating           Float
   versions         String[]
 
-  // Index or unique are not applied to views
+  // Note: Prisma doesn't support indexes on views, but the following indexes exist in the database:
+  // 
+  // Optimized indexes (partial indexes to reduce size and improve performance):
+  // - idx_store_listing_approved on StoreListing(owningUserId) WHERE isDeleted = false AND hasApprovedVersion = true
+  // - idx_store_listing_version_status on StoreListingVersion(storeListingId) WHERE submissionStatus = 'APPROVED'
+  // - idx_slv_categories_gin - GIN index on StoreListingVersion(categories) WHERE submissionStatus = 'APPROVED' for array searches
+  // - idx_slv_agent on StoreListingVersion(agentGraphId, agentGraphVersion) WHERE submissionStatus = 'APPROVED'
+  // - idx_store_listing_review_version on StoreListingReview(storeListingVersionId)
+  // - idx_store_listing_version_approved_listing on StoreListingVersion(storeListingId, version) WHERE submissionStatus = 'APPROVED'
+  // - idx_agent_graph_execution_agent on AgentGraphExecution(agentGraphId)
+  // - idx_profile_user on Profile(userId)
+  //
+  // Additional indexes from earlier migrations:
+  // - StoreListing_agentId_owningUserId_idx
+  // - StoreListing_isDeleted_isApproved_idx (replaced by idx_store_listing_approved)
+  // - StoreListing_isDeleted_idx
+  // - StoreListing_agentId_key (unique on agentGraphId)
+  // - StoreListingVersion_agentId_agentVersion_isDeleted_idx
+  //
+  // Materialized views used (refreshed every 15 minutes via pg_cron):
+  // - mv_agent_run_counts - Pre-aggregated agent execution counts by agentGraphId
+  // - mv_review_stats - Pre-aggregated review statistics (count, avg rating) by storeListingId
+  //
+  // Query strategy: Uses CTE for version aggregation and joins with materialized views for performance
 }
 
 view StoreSubmission {
@@ -647,6 +686,33 @@ view StoreSubmission {
   changes_summary          String?
 
   // Index or unique are not applied to views
+}
+
+// Note: This is actually a MATERIALIZED VIEW in the database
+// Refreshed automatically every 15 minutes via pg_cron (with fallback to manual refresh)
+view mv_agent_run_counts {
+  agentGraphId String @unique
+  run_count    Int
+
+  // Pre-aggregated count of AgentGraphExecution records by agentGraphId
+  // Used by StoreAgent and Creator views for performance optimization
+  // Unique index created automatically on agentGraphId for fast lookups
+  // Refresh uses CONCURRENTLY to avoid blocking reads
+}
+
+// Note: This is actually a MATERIALIZED VIEW in the database
+// Refreshed automatically every 15 minutes via pg_cron (with fallback to manual refresh)
+view mv_review_stats {
+  storeListingId String @unique
+  review_count   Int
+  avg_rating     Float
+
+  // Pre-aggregated review statistics from StoreListingReview
+  // Includes count of reviews and average rating per StoreListing
+  // Only includes approved versions (submissionStatus = 'APPROVED') and non-deleted listings
+  // Used by StoreAgent view for performance optimization
+  // Unique index created automatically on storeListingId for fast lookups
+  // Refresh uses CONCURRENTLY to avoid blocking reads
 }
 
 model StoreListing {
