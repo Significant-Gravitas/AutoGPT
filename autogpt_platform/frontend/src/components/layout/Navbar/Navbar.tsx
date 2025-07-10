@@ -9,18 +9,14 @@ import { MobileNavBar } from "./components/MobileNavbar/MobileNavBar";
 import { NavbarLink } from "./components/NavbarLink";
 import { NavbarLoading } from "./components/NavbarLoading";
 import { accountMenuItems, loggedInLinks, loggedOutLinks } from "./helpers";
-import { useNavbar } from "./useNavbar";
+import { getNavbarAccountData } from "./data";
 
-export function Navbar() {
-  const { isLoggedIn, profile, isLoading } = useNavbar();
-
-  if (isLoading) {
-    return <NavbarLoading />;
-  }
+export async function Navbar() {
+  const { profile, isLoggedIn } = await getNavbarAccountData();
 
   return (
     <>
-      <nav className="sticky top-0 z-40 hidden h-16 items-center rounded-bl-2xl rounded-br-2xl border border-white/50 bg-white/5 p-3 backdrop-blur-[26px] md:inline-flex">
+      <nav className="sticky top-0 z-40 hidden h-16 items-center rounded-bl-2xl rounded-br-2xl border border-white/50 bg-[#f3f4f6]/20 p-3 backdrop-blur-[26px] md:inline-flex">
         {/* Left section */}
         <div className="flex flex-1 items-center gap-6">
           {isLoggedIn

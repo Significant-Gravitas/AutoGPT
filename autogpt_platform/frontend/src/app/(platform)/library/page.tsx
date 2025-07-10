@@ -17,7 +17,7 @@ import { LibraryPageStateProvider } from "./components/state-provider";
  */
 export default function LibraryPage() {
   return (
-    <main className="pt-160sm:px-8 container min-h-screen space-y-4 pb-20 pt-16 md:px-12">
+    <main className="pt-160 container min-h-screen space-y-4 pb-20 pt-16 sm:px-8 md:px-12">
       <LibraryPageStateProvider>
         <LibraryActionHeader />
         <LibraryAgentList />

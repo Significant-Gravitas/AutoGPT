@@ -18,9 +18,8 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
-              "title": "The provider to initiate an OAuth flow for",
-              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+              "$ref": "#/components/schemas/ProviderName",
+              "title": "The provider to initiate an OAuth flow for"
             }
           },
           {
@@ -65,9 +64,8 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
-              "title": "The target provider for this OAuth exchange",
-              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+              "$ref": "#/components/schemas/ProviderName",
+              "title": "The target provider for this OAuth exchange"
             }
           }
         ],
@@ -135,9 +133,8 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
-              "title": "The provider to list credentials for",
-              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+              "$ref": "#/components/schemas/ProviderName",
+              "title": "The provider to list credentials for"
             }
           }
         ],
@@ -176,9 +173,8 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
-              "title": "The provider to create credentials for",
-              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+              "$ref": "#/components/schemas/ProviderName",
+              "title": "The provider to create credentials for"
             }
           }
         ],
@@ -257,9 +253,8 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
-              "title": "The provider to retrieve credentials for",
-              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+              "$ref": "#/components/schemas/ProviderName",
+              "title": "The provider to retrieve credentials for"
             }
           },
           {
@@ -320,9 +315,8 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
-              "title": "The provider to delete credentials for",
-              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+              "$ref": "#/components/schemas/ProviderName",
+              "title": "The provider to delete credentials for"
             }
           },
           {
@@ -386,9 +380,8 @@
             "in": "path",
             "required": true,
             "schema": {
-              "type": "string",
-              "title": "Provider where the webhook was registered",
-              "description": "Provider name for integrations. Can be any string value, including custom provider names."
+              "$ref": "#/components/schemas/ProviderName",
+              "title": "Provider where the webhook was registered"
             }
           },
           {
@@ -437,86 +430,6 @@
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/integrations/providers": {
-      "get": {
-        "tags": ["v1", "integrations"],
-        "summary": "List Providers",
-        "description": "Get a list of all available provider names.\n\nReturns both statically defined providers (from ProviderName enum)\nand dynamically registered providers (from SDK decorators).\n\nNote: The complete list of provider names is also available as a constant\nin the generated TypeScript client via PROVIDER_NAMES.",
-        "operationId": "getV1ListProviders",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": { "type": "string" },
-                  "type": "array",
-                  "title": "Response Getv1Listproviders"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/integrations/providers/names": {
-      "get": {
-        "tags": ["v1", "integrations"],
-        "summary": "Get Provider Names",
-        "description": "Get all provider names in a structured format.\n\nThis endpoint is specifically designed to expose the provider names\nin the OpenAPI schema so that code generators like Orval can create\nappropriate TypeScript constants.",
-        "operationId": "getV1GetProviderNames",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProviderNamesResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/integrations/providers/constants": {
-      "get": {
-        "tags": ["v1", "integrations"],
-        "summary": "Get Provider Constants",
-        "description": "Get provider names as constants.\n\nThis endpoint returns a model with provider names as constants,\nspecifically designed for OpenAPI code generation tools to create\nTypeScript constants.",
-        "operationId": "getV1GetProviderConstants",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/ProviderConstants" }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/integrations/providers/enum-example": {
-      "get": {
-        "tags": ["v1", "integrations"],
-        "summary": "Get Provider Enum Example",
-        "description": "Example endpoint that uses the CompleteProviderNames enum.\n\nThis endpoint exists to ensure that the CompleteProviderNames enum is included\nin the OpenAPI schema, which will cause Orval to generate it as a\nTypeScript enum/constant.",
-        "operationId": "getV1GetProviderEnumExample",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProviderEnumResponse"
-                }
               }
             }
           }
@@ -3373,6 +3286,48 @@
         }
       }
     },
+    "/api/library/agents/by-graph/{graph_id}": {
+      "get": {
+        "tags": ["v2", "library", "private"],
+        "summary": "Get Library Agent By Graph Id",
+        "operationId": "getV2GetLibraryAgentByGraphId",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Id" }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "integer" }, { "type": "null" }],
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryAgent" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/library/agents/marketplace/{store_listing_version_id}": {
       "get": {
         "tags": ["v2", "library", "private", "store, library"],
@@ -4146,11 +4101,7 @@
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Title"
           },
-          "provider": {
-            "type": "string",
-            "title": "Provider",
-            "description": "Provider name for integrations. Can be any string value, including custom provider names."
-          },
+          "provider": { "$ref": "#/components/schemas/ProviderName" },
           "type": {
             "type": "string",
             "enum": ["api_key", "oauth2", "user_password", "host_scoped"],
@@ -4160,8 +4111,8 @@
         "type": "object",
         "required": ["id", "provider", "type"],
         "title": "CredentialsMetaInput",
-        "credentials_provider": ["string"],
-        "credentials_types": ["api_key", "oauth2", "user_password"]
+        "credentials_provider": [],
+        "credentials_types": []
       },
       "CredentialsMetaResponse": {
         "properties": {
@@ -4869,11 +4820,7 @@
       },
       "LibraryAgentTriggerInfo": {
         "properties": {
-          "provider": {
-            "type": "string",
-            "title": "Provider",
-            "description": "Provider name for integrations. Can be any string value, including custom provider names."
-          },
+          "provider": { "$ref": "#/components/schemas/ProviderName" },
           "config_schema": {
             "additionalProperties": true,
             "type": "object",
@@ -5288,6 +5235,7 @@
           "AGENT_INPUT",
           "CONGRATS",
           "GET_RESULTS",
+          "RUN_AGENTS",
           "MARKETPLACE_VISIT",
           "MARKETPLACE_ADD_AGENT",
           "MARKETPLACE_RUN_AGENT",
@@ -5675,44 +5623,51 @@
         "required": ["name", "username", "description", "links"],
         "title": "ProfileDetails"
       },
-      "ProviderConstants": {
-        "properties": {
-          "PROVIDER_NAMES": {
-            "additionalProperties": { "type": "string" },
-            "type": "object",
-            "title": "Provider Names",
-            "description": "All available provider names as a constant mapping"
-          }
-        },
-        "type": "object",
-        "title": "ProviderConstants",
-        "description": "Model that exposes all provider names as a constant in the OpenAPI schema.\nThis is designed to be converted by Orval into a TypeScript constant."
-      },
-      "ProviderEnumResponse": {
-        "properties": {
-          "provider": {
-            "type": "string",
-            "title": "Provider",
-            "description": "A provider name from the complete list of providers"
-          }
-        },
-        "type": "object",
-        "required": ["provider"],
-        "title": "ProviderEnumResponse",
-        "description": "Response containing a provider from the enum."
-      },
-      "ProviderNamesResponse": {
-        "properties": {
-          "providers": {
-            "items": { "type": "string" },
-            "type": "array",
-            "title": "Providers",
-            "description": "List of all available provider names"
-          }
-        },
-        "type": "object",
-        "title": "ProviderNamesResponse",
-        "description": "Response containing list of all provider names."
+      "ProviderName": {
+        "type": "string",
+        "enum": [
+          "aiml_api",
+          "anthropic",
+          "apollo",
+          "compass",
+          "discord",
+          "d_id",
+          "e2b",
+          "exa",
+          "fal",
+          "generic_webhook",
+          "github",
+          "google",
+          "google_maps",
+          "groq",
+          "http",
+          "hubspot",
+          "ideogram",
+          "jina",
+          "linear",
+          "llama_api",
+          "medium",
+          "mem0",
+          "notion",
+          "nvidia",
+          "ollama",
+          "openai",
+          "openweathermap",
+          "open_router",
+          "pinecone",
+          "reddit",
+          "replicate",
+          "revid",
+          "screenshotone",
+          "slant3d",
+          "smartlead",
+          "smtp",
+          "twitter",
+          "todoist",
+          "unreal_speech",
+          "zerobounce"
+        ],
+        "title": "ProviderName"
       },
       "RefundRequest": {
         "properties": {
@@ -6486,11 +6441,7 @@
         "properties": {
           "id": { "type": "string", "title": "Id" },
           "user_id": { "type": "string", "title": "User Id" },
-          "provider": {
-            "type": "string",
-            "title": "Provider",
-            "description": "Provider name for integrations. Can be any string value, including custom provider names."
-          },
+          "provider": { "$ref": "#/components/schemas/ProviderName" },
           "credentials_id": { "type": "string", "title": "Credentials Id" },
           "webhook_type": { "type": "string", "title": "Webhook Type" },
           "resource": { "type": "string", "title": "Resource" },
