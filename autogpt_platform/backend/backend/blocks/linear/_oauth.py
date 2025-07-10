@@ -1,15 +1,27 @@
+"""
+Linear OAuth handler implementation.
+"""
+
 import json
 from typing import Optional
 from urllib.parse import urlencode
 
-from pydantic import SecretStr
+from backend.sdk import (
+    APIKeyCredentials,
+    BaseOAuthHandler,
+    OAuth2Credentials,
+    ProviderName,
+    Requests,
+    SecretStr,
+)
 
-from backend.blocks.linear._api import LinearAPIException
-from backend.data.model import APIKeyCredentials, OAuth2Credentials
-from backend.integrations.providers import ProviderName
-from backend.util.request import Requests
 
-from .base import BaseOAuthHandler
+class LinearAPIException(Exception):
+    """Exception for Linear API errors."""
+
+    def __init__(self, message: str, status_code: int):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class LinearOAuthHandler(BaseOAuthHandler):
@@ -17,7 +29,9 @@ class LinearOAuthHandler(BaseOAuthHandler):
     OAuth2 handler for Linear.
     """
 
-    PROVIDER_NAME = ProviderName.LINEAR
+    # Provider name will be set dynamically by the SDK when registered
+    # We use a placeholder that will be replaced by AutoRegistry.register_provider()
+    PROVIDER_NAME = ProviderName("linear")
 
     def __init__(self, client_id: str, client_secret: str, redirect_uri: str):
         self.client_id = client_id
@@ -30,7 +44,6 @@ class LinearOAuthHandler(BaseOAuthHandler):
     def get_login_url(
         self, scopes: list[str], state: str, code_challenge: Optional[str]
     ) -> str:
-
         params = {
             "client_id": self.client_id,
             "redirect_uri": self.redirect_uri,
@@ -139,9 +152,10 @@ class LinearOAuthHandler(BaseOAuthHandler):
 
     async def _request_username(self, access_token: str) -> Optional[str]:
         # Use the LinearClient to fetch user details using GraphQL
-        from backend.blocks.linear._api import LinearClient
+        from ._api import LinearClient
 
         try:
+            # Create a temporary OAuth2Credentials object for the LinearClient
             linear_client = LinearClient(
                 APIKeyCredentials(
                     api_key=SecretStr(access_token),
