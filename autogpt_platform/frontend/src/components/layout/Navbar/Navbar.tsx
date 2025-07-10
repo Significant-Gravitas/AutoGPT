@@ -1,21 +1,14 @@
-"use client";
-
 import { IconAutoGPTLogo, IconType } from "@/components/ui/icons";
 import Wallet from "../../agptui/Wallet";
 import { AccountMenu } from "./components/AccountMenu/AccountMenu";
 import { LoginButton } from "./components/LoginButton";
 import { MobileNavBar } from "./components/MobileNavbar/MobileNavBar";
 import { NavbarLink } from "./components/NavbarLink";
-import { NavbarLoading } from "./components/NavbarLoading";
 import { accountMenuItems, loggedInLinks, loggedOutLinks } from "./helpers";
-import { useNavbar } from "./useNavbar";
+import { getNavbarAccountData } from "./data";
 
-export function Navbar() {
-  const { isLoggedIn, profile, isLoading } = useNavbar();
-
-  if (isLoading) {
-    return <NavbarLoading />;
-  }
+export async function Navbar() {
+  const { profile, isLoggedIn } = await getNavbarAccountData();
 
   return (
     <>
