@@ -6,7 +6,7 @@ from backend.blocks.exa._auth import (
     ExaCredentialsField,
     ExaCredentialsInput,
 )
-from backend.blocks.exa.helpers import ContentSettings
+from backend.blocks.exa.helpers import ContentSettings, to_camel_case_dict
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
 from backend.util.request import Requests
@@ -104,7 +104,7 @@ class ExaSearchBlock(Block):
             "query": input_data.query,
             "useAutoprompt": input_data.use_auto_prompt,
             "numResults": input_data.number_of_results,
-            "contents": input_data.contents.dict(),
+            "contents": to_camel_case_dict(input_data.contents.dict()),
         }
 
         date_field_mapping = {
