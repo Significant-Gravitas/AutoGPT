@@ -7,7 +7,8 @@ from prisma.models import User
 
 import backend.server.v2.library.model
 import backend.server.v2.store.model
-from backend.blocks.basic import FindInDictionaryBlock, StoreValueBlock
+from backend.blocks.basic import StoreValueBlock
+from backend.blocks.data_manipulation import FindInDictionaryBlock
 from backend.blocks.io import AgentInputBlock
 from backend.blocks.maths import CalculatorBlock, Operation
 from backend.data import execution, graph

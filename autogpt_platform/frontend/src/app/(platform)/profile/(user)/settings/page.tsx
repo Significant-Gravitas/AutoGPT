@@ -1,5 +1,5 @@
 "use client";
-import { useGetV1GetNotificationPreferences } from "@/api/__generated__/endpoints/auth/auth";
+import { useGetV1GetNotificationPreferences } from "@/app/api/__generated__/endpoints/auth/auth";
 import { SettingsForm } from "@/app/(platform)/profile/(user)/settings/components/SettingsForm/SettingsForm";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import * as React from "react";

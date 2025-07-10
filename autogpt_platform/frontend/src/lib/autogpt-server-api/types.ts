@@ -153,50 +153,15 @@ export type Credentials =
   | HostScopedCredentials;
 
 // --8<-- [start:BlockIOCredentialsSubSchema]
-export const PROVIDER_NAMES = {
-  AIML_API: "aiml_api",
-  ANTHROPIC: "anthropic",
-  APOLLO: "apollo",
-  D_ID: "d_id",
-  DISCORD: "discord",
-  E2B: "e2b",
-  EXA: "exa",
-  FAL: "fal",
-  GITHUB: "github",
-  GOOGLE: "google",
-  GOOGLE_MAPS: "google_maps",
-  GROQ: "groq",
-  HTTP: "http",
-  HUBSPOT: "hubspot",
-  IDEOGRAM: "ideogram",
-  JINA: "jina",
-  LINEAR: "linear",
-  MEDIUM: "medium",
-  MEM0: "mem0",
-  NOTION: "notion",
-  NVIDIA: "nvidia",
-  OLLAMA: "ollama",
-  OPENAI: "openai",
-  OPENWEATHERMAP: "openweathermap",
-  OPEN_ROUTER: "open_router",
-  LLAMA_API: "llama_api",
-  PINECONE: "pinecone",
-  SCREENSHOTONE: "screenshotone",
-  SLANT3D: "slant3d",
-  SMARTLEAD: "smartlead",
-  SMTP: "smtp",
-  TWITTER: "twitter",
-  REPLICATE: "replicate",
-  REDDIT: "reddit",
-  REVID: "revid",
-  UNREAL_SPEECH: "unreal_speech",
-  TODOIST: "todoist",
-  ZEROBOUNCE: "zerobounce",
-} as const;
-// --8<-- [end:BlockIOCredentialsSubSchema]
+// Provider names are now dynamic and fetched from the API
+// This allows for SDK-registered providers without hardcoding
+export type CredentialsProviderName = string;
 
-export type CredentialsProviderName =
-  (typeof PROVIDER_NAMES)[keyof typeof PROVIDER_NAMES];
+// For backward compatibility, we'll keep PROVIDER_NAMES but it should be
+// populated dynamically from the API. This is a placeholder that will be
+// replaced with actual values from the /api/integrations/providers endpoint
+export const PROVIDER_NAMES = {} as Record<string, string>;
+// --8<-- [end:BlockIOCredentialsSubSchema]
 
 export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   /* Mirror of backend/data/model.py:CredentialsFieldSchemaExtra */
@@ -285,7 +250,13 @@ export type GraphExecutionMeta = {
   graph_id: GraphID;
   graph_version: number;
   preset_id?: LibraryAgentPresetID;
-  status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
+  status:
+    | "QUEUED"
+    | "RUNNING"
+    | "COMPLETED"
+    | "TERMINATED"
+    | "FAILED"
+    | "INCOMPLETE";
   started_at: Date;
   ended_at: Date;
   stats?: {
@@ -771,6 +742,7 @@ export type ProfileDetails = {
   avatar_url: string;
 };
 
+/* Mirror of backend/executor/scheduler.py:GraphExecutionJobInfo */
 export type Schedule = {
   id: ScheduleID;
   name: string;
@@ -778,17 +750,21 @@ export type Schedule = {
   user_id: UserID;
   graph_id: GraphID;
   graph_version: number;
-  input_data: { [key: string]: any };
+  input_data: Record<string, any>;
+  input_credentials: Record<string, CredentialsMetaInput>;
   next_run_time: Date;
 };
 
 export type ScheduleID = Brand<string, "ScheduleID">;
 
+/* Mirror of backend/server/routers/v1.py:ScheduleCreationRequest */
 export type ScheduleCreatable = {
-  cron: string;
   graph_id: GraphID;
   graph_version: number;
-  input_data: { [key: string]: any };
+  name: string;
+  cron: string;
+  inputs: Record<string, any>;
+  credentials?: Record<string, CredentialsMetaInput>;
 };
 
 export type MyAgent = {

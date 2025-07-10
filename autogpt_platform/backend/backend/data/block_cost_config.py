@@ -2,9 +2,9 @@ from typing import Type
 
 from backend.blocks.ai_music_generator import AIMusicGeneratorBlock
 from backend.blocks.ai_shortform_video_block import AIShortformVideoCreatorBlock
-from backend.blocks.apollo.get_people_detail import GetPersonDetailBlock
 from backend.blocks.apollo.organization import SearchOrganizationsBlock
 from backend.blocks.apollo.people import SearchPeopleBlock
+from backend.blocks.apollo.person import GetPersonDetailBlock
 from backend.blocks.flux_kontext import AIImageEditorBlock, FluxKontextModelName
 from backend.blocks.ideogram import IdeogramModelBlock
 from backend.blocks.jina.embeddings import JinaEmbeddingBlock
@@ -85,6 +85,9 @@ MODEL_COST: dict[LlmModel, int] = {
     LlmModel.EVA_QWEN_2_5_32B: 1,
     LlmModel.DEEPSEEK_CHAT: 2,
     LlmModel.PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE: 1,
+    LlmModel.PERPLEXITY_SONAR: 1,
+    LlmModel.PERPLEXITY_SONAR_PRO: 5,
+    LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: 10,
     LlmModel.QWEN_QWQ_32B_PREVIEW: 2,
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: 1,
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B: 1,

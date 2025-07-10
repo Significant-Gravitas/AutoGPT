@@ -1,5 +1,17 @@
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 
+export class ApiError extends Error {
+  public status: number;
+  public response?: any;
+
+  constructor(message: string, status: number, response?: any) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.response = response;
+  }
+}
+
 export function buildRequestUrl(
   baseUrl: string,
   path: string,
@@ -17,6 +29,42 @@ export function buildRequestUrl(
   return url;
 }
 
+export function buildClientUrl(path: string): string {
+  return `/api/proxy/api${path}`;
+}
+
+export function buildServerUrl(path: string): string {
+  const baseUrl =
+    process.env.NEXT_PUBLIC_AGPT_SERVER_URL || "http://localhost:8006/api";
+  return `${baseUrl}${path}`;
+}
+
+export function buildUrlWithQuery(
+  url: string,
+  payload?: Record<string, any>,
+): string {
+  if (!payload) return url;
+
+  const queryParams = new URLSearchParams(payload);
+  return `${url}?${queryParams.toString()}`;
+}
+
+export function handleFetchError(response: Response, errorData: any): ApiError {
+  return new ApiError(
+    errorData?.error || "Request failed",
+    response.status,
+    errorData,
+  );
+}
+
+export async function parseErrorResponse(response: Response): Promise<any> {
+  try {
+    return await response.json();
+  } catch {
+    return { error: response.statusText };
+  }
+}
+
 export async function getServerAuthToken(): Promise<string> {
   const supabase = await getServerSupabase();
 
@@ -30,7 +78,7 @@ export async function getServerAuthToken(): Promise<string> {
       error,
     } = await supabase.auth.getSession();
 
-    if (error || !session?.access_token) {
+    if (error || !session || !session.access_token) {
       return "no-token-found";
     }
 
@@ -172,6 +220,17 @@ export async function makeAuthenticatedRequest(
   if (!response.ok) {
     const errorDetail = await parseApiError(response);
 
+    // Try to parse the full response body for better error context
+    let responseData = null;
+    try {
+      const responseText = await response.clone().text();
+      if (responseText) {
+        responseData = JSON.parse(responseText);
+      }
+    } catch {
+      // Ignore parsing errors
+    }
+
     // Handle authentication errors gracefully during logout
     if (isAuthenticationError(response, errorDetail)) {
       if (isLogoutInProgress()) {
@@ -189,8 +248,8 @@ export async function makeAuthenticatedRequest(
       return null;
     }
 
-    // For other errors, throw as normal
-    throw new Error(errorDetail);
+    // For other errors, throw ApiError with proper status code
+    throw new ApiError(errorDetail, response.status, responseData);
   }
 
   return parseApiResponse(response);
@@ -218,6 +277,17 @@ export async function makeAuthenticatedFileUpload(
     // Handle authentication errors gracefully for file uploads too
     const errorMessage = `Error uploading file: ${response.statusText}`;
 
+    // Try to parse error response
+    let responseData = null;
+    try {
+      const responseText = await response.clone().text();
+      if (responseText) {
+        responseData = JSON.parse(responseText);
+      }
+    } catch {
+      // Ignore parsing errors
+    }
+
     if (response.status === 401 || response.status === 403) {
       if (isLogoutInProgress()) {
         console.debug(
@@ -229,7 +299,7 @@ export async function makeAuthenticatedFileUpload(
       return "";
     }
 
-    throw new Error(errorMessage);
+    throw new ApiError(errorMessage, response.status, responseData);
   }
 
   return await response.text();

@@ -15,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 
 import { useAPIkeysModals } from "./useAPIkeysModals";
-import { APIKeyPermission } from "@/api/__generated__/models/aPIKeyPermission";
+import { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
 
 export const APIKeysModals = () => {
   const {

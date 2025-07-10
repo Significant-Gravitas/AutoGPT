@@ -2,10 +2,10 @@
 import {
   getGetV1ListUserApiKeysQueryKey,
   usePostV1CreateNewApiKey,
-} from "@/api/__generated__/endpoints/api-keys/api-keys";
-import { APIKeyPermission } from "@/api/__generated__/models/aPIKeyPermission";
-import { CreateAPIKeyResponse } from "@/api/__generated__/models/createAPIKeyResponse";
-import { useToast } from "@/components/ui/use-toast";
+} from "@/app/api/__generated__/endpoints/api-keys/api-keys";
+import { APIKeyPermission } from "@/app/api/__generated__/models/aPIKeyPermission";
+import { CreateAPIKeyResponse } from "@/app/api/__generated__/models/createAPIKeyResponse";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { getQueryClient } from "@/lib/react-query/queryClient";
 import { useState } from "react";
 

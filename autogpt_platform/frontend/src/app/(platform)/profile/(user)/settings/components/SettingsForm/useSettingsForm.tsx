@@ -4,8 +4,8 @@ import { createDefaultValues, formSchema } from "./helper";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { updateSettings } from "../../actions";
-import { useToast } from "@/components/ui/use-toast";
-import { NotificationPreference } from "@/api/__generated__/models/notificationPreference";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import { NotificationPreference } from "@/app/api/__generated__/models/notificationPreference";
 import { User } from "@supabase/supabase-js";
 
 export const useSettingsForm = ({

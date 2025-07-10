@@ -2,7 +2,6 @@ import { getWebSocketToken } from "@/lib/supabase/actions";
 import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { proxyApiRequest, proxyFileUpload } from "./proxy-action";
 import type {
   AddUserCreditsResponse,
   AnalyticsDetails,
@@ -27,6 +26,7 @@ import type {
   GraphID,
   GraphMeta,
   GraphUpdateable,
+  HostScopedCredentials,
   LibraryAgent,
   LibraryAgentID,
   LibraryAgentPreset,
@@ -62,7 +62,6 @@ import type {
   User,
   UserOnboarding,
   UserPasswordCredentials,
-  HostScopedCredentials,
   UsersBalanceHistoryResponse,
 } from "./types";
 
@@ -358,6 +357,10 @@ export default class BackendAPI {
     );
   }
 
+  listProviders(): Promise<string[]> {
+    return this._get("/integrations/providers");
+  }
+
   listCredentials(provider?: string): Promise<CredentialsMetaResponse[]> {
     return this._get(
       provider
@@ -521,8 +524,6 @@ export default class BackendAPI {
   }
 
   uploadStoreSubmissionMedia(file: File): Promise<string> {
-    const formData = new FormData();
-    formData.append("file", file);
     return this._uploadFile("/store/submissions/media", file);
   }
 
@@ -635,6 +636,15 @@ export default class BackendAPI {
     return this._get(`/library/agents/marketplace/${storeListingVersionId}`);
   }
 
+  getLibraryAgentByGraphID(
+    graphID: GraphID,
+    graphVersion?: number,
+  ): Promise<LibraryAgent> {
+    return this._get(`/library/agents/by-graph/${graphID}`, {
+      version: graphVersion,
+    });
+  }
+
   addMarketplaceAgentToLibrary(
     storeListingVersionID: string,
   ): Promise<LibraryAgent> {
@@ -742,20 +752,33 @@ export default class BackendAPI {
   /////////// SCHEDULES ////////////
   //////////////////////////////////
 
-  async createSchedule(schedule: ScheduleCreatable): Promise<Schedule> {
-    return this._request("POST", `/schedules`, schedule).then(
-      parseScheduleTimestamp,
+  async createGraphExecutionSchedule(
+    params: ScheduleCreatable,
+  ): Promise<Schedule> {
+    return this._request(
+      "POST",
+      `/graphs/${params.graph_id}/schedules`,
+      params,
+    ).then(parseScheduleTimestamp);
+  }
+
+  async listGraphExecutionSchedules(graphID: GraphID): Promise<Schedule[]> {
+    return this._get(`/graphs/${graphID}/schedules`).then((schedules) =>
+      schedules.map(parseScheduleTimestamp),
     );
   }
 
-  async deleteSchedule(scheduleId: ScheduleID): Promise<{ id: string }> {
-    return this._request("DELETE", `/schedules/${scheduleId}`);
-  }
-
-  async listSchedules(): Promise<Schedule[]> {
+  /** @deprecated only used in legacy `Monitor` */
+  async listAllGraphsExecutionSchedules(): Promise<Schedule[]> {
     return this._get(`/schedules`).then((schedules) =>
       schedules.map(parseScheduleTimestamp),
     );
+  }
+
+  async deleteGraphExecutionSchedule(
+    scheduleID: ScheduleID,
+  ): Promise<{ id: ScheduleID }> {
+    return this._request("DELETE", `/schedules/${scheduleID}`);
   }
 
   //////////////////////////////////
@@ -791,8 +814,48 @@ export default class BackendAPI {
     const formData = new FormData();
     formData.append("file", file);
 
-    // Use proxy server action for secure file upload
-    return await proxyFileUpload(path, formData, this.baseUrl);
+    if (isClient) {
+      return this._makeClientFileUpload(path, formData);
+    } else {
+      return this._makeServerFileUpload(path, formData);
+    }
+  }
+
+  private async _makeClientFileUpload(
+    path: string,
+    formData: FormData,
+  ): Promise<string> {
+    // Dynamic import is required even for client-only functions because helpers.ts
+    // has server-only imports (like getServerSupabase) at the top level. Static imports
+    // would bundle server-only code into the client bundle, causing runtime errors.
+    const { buildClientUrl, parseErrorResponse, handleFetchError } =
+      await import("./helpers");
+
+    const uploadUrl = buildClientUrl(path);
+
+    const response = await fetch(uploadUrl, {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      const errorData = await parseErrorResponse(response);
+      throw handleFetchError(response, errorData);
+    }
+
+    return await response.text();
+  }
+
+  private async _makeServerFileUpload(
+    path: string,
+    formData: FormData,
+  ): Promise<string> {
+    const { makeAuthenticatedFileUpload, buildServerUrl } = await import(
+      "./helpers"
+    );
+    const url = buildServerUrl(path);
+    return await makeAuthenticatedFileUpload(url, formData);
   }
 
   private async _request(
@@ -804,13 +867,62 @@ export default class BackendAPI {
       console.debug(`${method} ${path} payload:`, payload);
     }
 
-    // Always use proxy server action to not expose any auth tokens to the browser
-    return await proxyApiRequest({
+    if (isClient) {
+      return this._makeClientRequest(method, path, payload);
+    } else {
+      return this._makeServerRequest(method, path, payload);
+    }
+  }
+
+  private async _makeClientRequest(
+    method: string,
+    path: string,
+    payload?: Record<string, any>,
+  ) {
+    // Dynamic import is required even for client-only functions because helpers.ts
+    // has server-only imports (like getServerSupabase) at the top level. Static imports
+    // would bundle server-only code into the client bundle, causing runtime errors.
+    const {
+      buildClientUrl,
+      buildUrlWithQuery,
+      parseErrorResponse,
+      handleFetchError,
+    } = await import("./helpers");
+
+    const payloadAsQuery = ["GET", "DELETE"].includes(method);
+    let url = buildClientUrl(path);
+
+    if (payloadAsQuery && payload) {
+      url = buildUrlWithQuery(url, payload);
+    }
+
+    const response = await fetch(url, {
       method,
-      path,
-      payload,
-      baseUrl: this.baseUrl,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: !payloadAsQuery && payload ? JSON.stringify(payload) : undefined,
+      credentials: "include",
     });
+
+    if (!response.ok) {
+      const errorData = await parseErrorResponse(response);
+      throw handleFetchError(response, errorData);
+    }
+
+    return await response.json();
+  }
+
+  private async _makeServerRequest(
+    method: string,
+    path: string,
+    payload?: Record<string, any>,
+  ) {
+    const { makeAuthenticatedRequest, buildServerUrl } = await import(
+      "./helpers"
+    );
+    const url = buildServerUrl(path);
+    return await makeAuthenticatedRequest(method, url, payload);
   }
 
   ////////////////////////////////////////
