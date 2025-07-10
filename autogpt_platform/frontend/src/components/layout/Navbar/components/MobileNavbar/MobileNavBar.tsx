@@ -1,45 +1,26 @@
 "use client";
 
-import * as React from "react";
-import Link from "next/link";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import {
   Popover,
-  PopoverTrigger,
   PopoverContent,
   PopoverPortal,
+  PopoverTrigger,
 } from "@/components/ui/popover";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-import {
-  IconType,
-  IconMenu,
-  IconChevronUp,
-  IconEdit,
-  IconLayoutDashboard,
-  IconUploadCloud,
-  IconSettings,
-  IconLogOut,
-  IconMarketplace,
-  IconLibrary,
-  IconBuilder,
-} from "../ui/icons";
 import { AnimatePresence, motion } from "framer-motion";
-import { Button } from "@/components/ui/button";
 import { usePathname } from "next/navigation";
+import * as React from "react";
+import { IconChevronUp, IconMenu } from "../../../../ui/icons";
+import { MenuItemGroup } from "../../helpers";
+import { MobileNavbarMenuItem } from "./components/MobileNavbarMenuItem";
 
 interface MobileNavBarProps {
   userName?: string;
   userEmail?: string;
   avatarSrc?: string;
-  menuItemGroups: {
-    groupName?: string;
-    items: {
-      icon: IconType;
-      text: string;
-      href?: string;
-      onClick?: () => void;
-    }[];
-  }[];
+  menuItemGroups: MenuItemGroup[];
 }
 
 const Overlay = React.forwardRef<HTMLDivElement, { children: React.ReactNode }>(
@@ -49,76 +30,15 @@ const Overlay = React.forwardRef<HTMLDivElement, { children: React.ReactNode }>(
     </div>
   ),
 );
+
 Overlay.displayName = "Overlay";
 
-const PopoutMenuItem: React.FC<{
-  icon: IconType;
-  isActive: boolean;
-  text: React.ReactNode;
-  href?: string;
-  onClick?: () => void;
-}> = ({ icon, isActive, text, href, onClick }) => {
-  const getIcon = (iconType: IconType) => {
-    const iconClass = "w-6 h-6 relative";
-    switch (iconType) {
-      case IconType.Marketplace:
-        return <IconMarketplace className={iconClass} />;
-      case IconType.Library:
-        return <IconLibrary className={iconClass} />;
-      case IconType.Builder:
-        return <IconBuilder className={iconClass} />;
-      case IconType.Edit:
-        return <IconEdit className={iconClass} />;
-      case IconType.LayoutDashboard:
-        return <IconLayoutDashboard className={iconClass} />;
-      case IconType.UploadCloud:
-        return <IconUploadCloud className={iconClass} />;
-      case IconType.Settings:
-        return <IconSettings className={iconClass} />;
-      case IconType.LogOut:
-        return <IconLogOut className={iconClass} />;
-      default:
-        return null;
-    }
-  };
-
-  const content = (
-    <div className="inline-flex w-full items-center justify-start gap-4 hover:rounded hover:bg-[#e0e0e0] dark:hover:bg-[#3a3a3a]">
-      {getIcon(icon)}
-      <div className="relative">
-        <div
-          className={`font-sans text-base font-normal leading-7 text-[#474747] dark:text-[#cfcfcf] ${isActive ? "font-semibold text-[#272727] dark:text-[#ffffff]" : "text-[#474747] dark:text-[#cfcfcf]"}`}
-        >
-          {text}
-        </div>
-        {isActive && (
-          <div className="absolute bottom-[-4px] left-0 h-[2px] w-full bg-[#272727] dark:bg-[#ffffff]"></div>
-        )}
-      </div>
-    </div>
-  );
-
-  if (onClick)
-    return (
-      <div className="w-full" onClick={onClick}>
-        {content}
-      </div>
-    );
-  if (href)
-    return (
-      <Link href={href} className="w-full">
-        {content}
-      </Link>
-    );
-  return content;
-};
-
-export const MobileNavBar: React.FC<MobileNavBarProps> = ({
+export function MobileNavBar({
   userName,
   userEmail,
   avatarSrc,
   menuItemGroups,
-}) => {
+}: MobileNavBarProps) {
   const [isOpen, setIsOpen] = React.useState(false);
   const pathname = usePathname();
   const parts = pathname.split("/");
@@ -173,7 +93,7 @@ export const MobileNavBar: React.FC<MobileNavBarProps> = ({
                 {menuItemGroups.map((group, groupIndex) => (
                   <React.Fragment key={groupIndex}>
                     {group.items.map((item, itemIndex) => (
-                      <PopoutMenuItem
+                      <MobileNavbarMenuItem
                         key={itemIndex}
                         icon={item.icon}
                         isActive={item.href === activeLink}
@@ -194,4 +114,4 @@ export const MobileNavBar: React.FC<MobileNavBarProps> = ({
       </AnimatePresence>
     </Popover>
   );
-};
+}
