@@ -1,5 +1,3 @@
-"use client";
-
 import { IconAutoGPTLogo, IconType } from "@/components/ui/icons";
 import Wallet from "../../agptui/Wallet";
 import { AccountMenu } from "./components/AccountMenu/AccountMenu";
@@ -7,7 +5,6 @@ import { AgentNotifications } from "./components/AgentNotifications/AgentNotific
 import { LoginButton } from "./components/LoginButton";
 import { MobileNavBar } from "./components/MobileNavbar/MobileNavBar";
 import { NavbarLink } from "./components/NavbarLink";
-import { NavbarLoading } from "./components/NavbarLoading";
 import { accountMenuItems, loggedInLinks, loggedOutLinks } from "./helpers";
 import { getNavbarAccountData } from "./data";
 
