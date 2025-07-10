@@ -1,73 +1,30 @@
-import * as React from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Popover,
-  PopoverTrigger,
   PopoverContent,
+  PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  IconType,
-  IconEdit,
-  IconLayoutDashboard,
-  IconUploadCloud,
-  IconSettings,
-  IconLogOut,
-  IconRefresh,
-  IconMarketplace,
-  IconLibrary,
-  IconBuilder,
-} from "../ui/icons";
 import Link from "next/link";
-import { ProfilePopoutMenuLogoutButton } from "./ProfilePopoutMenuLogoutButton";
-import { PublishAgentPopout } from "./composite/PublishAgentPopout";
+import * as React from "react";
+import { PublishAgentPopout } from "../../../../agptui/composite/PublishAgentPopout";
+import { getAccountMenuOptionIcon, MenuItemGroup } from "../../helpers";
+import { AccountLogoutOption } from "./components/AccountLogoutOption";
 
-interface ProfilePopoutMenuProps {
+interface Props {
   userName?: string;
   userEmail?: string;
   avatarSrc?: string;
   hideNavBarUsername?: boolean;
-  menuItemGroups: {
-    groupName?: string;
-    items: {
-      icon: IconType;
-      text: string;
-      href?: string;
-      onClick?: () => void;
-    }[];
-  }[];
+  menuItemGroups: MenuItemGroup[];
 }
 
-export function ProfilePopoutMenu({
+export function AccountMenu({
   userName,
   userEmail,
   avatarSrc,
   menuItemGroups,
-}: ProfilePopoutMenuProps) {
+}: Props) {
   const popupId = React.useId();
-
-  const getIcon = (icon: IconType) => {
-    const iconClass = "w-6 h-6";
-    switch (icon) {
-      case IconType.LayoutDashboard:
-        return <IconLayoutDashboard className={iconClass} />;
-      case IconType.UploadCloud:
-        return <IconUploadCloud className={iconClass} />;
-      case IconType.Edit:
-        return <IconEdit className={iconClass} />;
-      case IconType.Settings:
-        return <IconSettings className={iconClass} />;
-      case IconType.LogOut:
-        return <IconLogOut className={iconClass} />;
-      case IconType.Marketplace:
-        return <IconMarketplace className={iconClass} />;
-      case IconType.Library:
-        return <IconLibrary className={iconClass} />;
-      case IconType.Builder:
-        return <IconBuilder className={iconClass} />;
-      default:
-        return <IconRefresh className={iconClass} />;
-    }
-  };
 
   return (
     <Popover>
@@ -127,7 +84,7 @@ export function ProfilePopoutMenu({
                       className="inline-flex w-full items-center justify-start gap-2.5"
                     >
                       <div className="relative h-6 w-6">
-                        {getIcon(item.icon)}
+                        {getAccountMenuOptionIcon(item.icon)}
                       </div>
                       <div className="font-sans text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
                         {item.text}
@@ -135,7 +92,7 @@ export function ProfilePopoutMenu({
                     </Link>
                   );
                 } else if (item.text === "Log out") {
-                  return <ProfilePopoutMenuLogoutButton key={itemIndex} />;
+                  return <AccountLogoutOption key={itemIndex} />;
                 } else if (item.text === "Publish an agent") {
                   return (
                     <PublishAgentPopout
@@ -143,7 +100,7 @@ export function ProfilePopoutMenu({
                       trigger={
                         <div className="inline-flex w-full items-center justify-start gap-2.5">
                           <div className="relative h-6 w-6">
-                            {getIcon(item.icon)}
+                            {getAccountMenuOptionIcon(item.icon)}
                           </div>
                           <div className="font-sans text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
                             {item.text}
@@ -165,7 +122,7 @@ export function ProfilePopoutMenu({
                       tabIndex={0}
                     >
                       <div className="relative h-6 w-6">
-                        {getIcon(item.icon)}
+                        {getAccountMenuOptionIcon(item.icon)}
                       </div>
                       <div className="font-sans text-base font-medium leading-normal text-neutral-800 dark:text-neutral-200">
                         {item.text}
