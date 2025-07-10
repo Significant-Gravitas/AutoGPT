@@ -19,6 +19,10 @@ x-supabase-services:
     - app-network
     - shared-network
 
+
+volumes:
+  clamav-data:
+
 services:
    
   db:
@@ -63,3 +67,24 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+  clamav:
+    image: clamav/clamav-debian:latest
+    ports:
+      - "3310:3310"
+    volumes:
+      - clamav-data:/var/lib/clamav
+    environment:
+      - CLAMAV_NO_FRESHCLAMD=false
+      - CLAMD_CONF_StreamMaxLength=50M
+      - CLAMD_CONF_MaxFileSize=100M
+      - CLAMD_CONF_MaxScanSize=100M
+      - CLAMD_CONF_MaxThreads=12
+      - CLAMD_CONF_ReadTimeout=300
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --version || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+networks:
+     app-network-test:
+       driver: bridge
