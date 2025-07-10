@@ -602,6 +602,7 @@ export default function useAgentGraph(
         const inputSchema = block.inputSchema;
         const validate = ajv.compile(inputSchema);
         const errors: Record<string, string> = {};
+        const errorPrefix = `${block.name} [${node.id.split("-")[0]}]`;
 
         // Validate values against schema using AJV
         const inputData = node.input_default;
@@ -612,7 +613,7 @@ export default function useAgentGraph(
             const path =
               "dataPath" in error
                 ? (error.dataPath as string)
-                : error.instancePath;
+                : error.instancePath || error.params.missingProperty;
             const handle = path.split(/[\/.]/)[0];
             // Skip error if there's an edge connected
             if (
@@ -626,7 +627,8 @@ export default function useAgentGraph(
               data: inputData,
               schema: inputSchema,
             });
-            errorMessage = error.message || "Invalid input";
+            errorMessage =
+              `${errorPrefix}: ` + (error.message || "Invalid input");
             if (path && error.message) {
               const key = path.slice(1);
               setNestedProperty(
@@ -665,7 +667,7 @@ export default function useAgentGraph(
                 key,
                 `Requires ${missingDependencies.join(", ")} to be set`,
               );
-              errorMessage = `Field ${key} requires ${missingDependencies.join(", ")} to be set`;
+              errorMessage = `${errorPrefix}: field ${key} requires ${missingDependencies.join(", ")} to be set`;
             }
 
             // Check if field is required when dependencies are present
@@ -681,7 +683,7 @@ export default function useAgentGraph(
                 key,
                 `${key} is required when ${dependencies.join(", ")} are set`,
               );
-              errorMessage = `${key} is required when ${dependencies.join(", ")} are set`;
+              errorMessage = `${errorPrefix}: ${key} is required when ${dependencies.join(", ")} are set`;
             }
           }
         });
@@ -858,7 +860,7 @@ export default function useAgentGraph(
       const validationError = validateGraph(savedAgent);
       if (validationError) {
         toast({
-          title: `Validation failed: ${validationError}`,
+          title: `Graph validation failed: ${validationError}`,
           variant: "destructive",
         });
         return;
