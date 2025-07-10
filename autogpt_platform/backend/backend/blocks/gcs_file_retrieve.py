@@ -24,8 +24,8 @@ class GCSFileRetrieveInput(BlockSchema):
     access_duration_minutes: int = Field(
         default=60,
         ge=1,
-        le=10080,  # Max 7 days
-        description="Duration in minutes for which the presigned URL will be valid (1-10080 minutes, default 60)"
+        le=2880,  # Max 2 days (48 hours)
+        description="Duration in minutes for which the presigned URL will be valid (1-2880 minutes, default 60)"
     )
     action: str = Field(
         default="GET",

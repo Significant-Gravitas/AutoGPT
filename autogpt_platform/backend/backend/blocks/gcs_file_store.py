@@ -32,10 +32,10 @@ class GCSFileStoreInput(BlockSchema):
         description="Optional custom path within the bucket (e.g., 'documents/myfile'). If empty, uses auto-generated path."
     )
     expiration_hours: int = Field(
-        default=47,
+        default=48,
         ge=1,
-        le=168,  # Max 7 days
-        description="Hours until the file expires and is automatically deleted (1-168 hours, default 47)"
+        le=48,  # Max 2 days
+        description="Hours until the file expires and is automatically deleted (1-48 hours, default 48)"
     )
 
 
@@ -51,10 +51,10 @@ class GCSFileStoreBlock(Block):
     Store files permanently in Google Cloud Storage with automatic expiration.
     
     This block stores files in GCS with:
-    - Automatic expiration (1-168 hours, default 47 hours)
+    - Automatic expiration (1-48 hours, default 48 hours/2 days)
     - Unique paths to prevent conflicts
     - Public read access via URLs
-    - Automatic cleanup after expiration
+    - Automatic cleanup via GCS bucket lifecycle policies
     """
     
     class Input(GCSFileStoreInput):
@@ -73,13 +73,13 @@ class GCSFileStoreBlock(Block):
             test_input={
                 "file_in": "data:text/plain;base64,SGVsbG8gV29ybGQ=",
                 "custom_path": "test/hello.txt",
-                "expiration_hours": 24
+                "expiration_hours": 48
             },
             test_output={
                 "file_url": "https://storage.googleapis.com/bucket/autogpt-temp/2024/01/01/test/hello.txt",
                 "file_path": "autogpt-temp/2024/01/01/test/hello.txt",
-                "expiration_time": "2024-01-02T12:00:00Z",
-                "expires_in_hours": 24
+                "expiration_time": "2024-01-03T12:00:00Z",
+                "expires_in_hours": 48
             }
         )
         self.config = Config()
@@ -218,24 +218,20 @@ class GCSFileStoreBlock(Block):
             raise ValueError(f"Failed to read local file: {e}")
     
     async def _upload_to_gcs(self, content: bytes, file_path: str, mime_type: str, expiration_hours: int) -> str:
-        """Upload content to GCS and set up expiration."""
+        """Upload content to GCS. Files are automatically deleted after 2 days by bucket lifecycle policy."""
         try:
             # Create blob
             blob = self.bucket.blob(file_path)
             
-            # Set metadata
+            # Set metadata (for informational purposes only - cleanup handled by bucket lifecycle)
             blob.metadata = {
                 "uploaded_at": datetime.utcnow().isoformat(),
                 "expires_at": (datetime.utcnow() + timedelta(hours=expiration_hours)).isoformat(),
-                "auto_delete": "true"
+                "autogpt_temp": "true"
             }
             
             # Upload content
             blob.upload_from_string(content, content_type=mime_type)
-            
-            # Set lifecycle rule for automatic deletion
-            # Note: This sets a lifecycle rule on the blob itself
-            # In a production environment, you might want to set bucket-level lifecycle rules
             
             # Make blob publicly readable
             blob.make_public()

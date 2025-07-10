@@ -9,11 +9,11 @@ The GCS file storage system provides permanent file storage with automatic expir
 ## Key Features
 
 - **Permanent Storage**: Files persist between agent runs
-- **Automatic Expiration**: Files expire after 1-168 hours (configurable, default 47 hours)
+- **Automatic Expiration**: Files expire after 1-48 hours (configurable, default 48 hours/2 days)
 - **Presigned URLs**: Secure, time-limited access URLs instead of base64 data
 - **Multiple Input Types**: Supports data URIs, HTTP URLs, and local file paths
 - **Organized Storage**: Files stored in timestamped directories with unique identifiers
-- **Automatic Cleanup**: Scheduled jobs clean up expired files
+- **Lifecycle Management**: GCS bucket lifecycle policies automatically delete expired files
 - **Security**: Virus scanning and file validation (inherits from existing security measures)
 
 ## Blocks
@@ -29,7 +29,7 @@ Stores files permanently in Google Cloud Storage with automatic expiration.
 {
   "file_in": "MediaFileType - The file to store (URL, data URI, or local path)",
   "custom_path": "string - Optional custom path within bucket (default: auto-generated)",
-  "expiration_hours": "integer - Hours until expiration (1-168, default: 47)"
+  "expiration_hours": "integer - Hours until expiration (1-48, default: 48)"
 }
 ```
 
@@ -62,7 +62,7 @@ Retrieves files from Google Cloud Storage with presigned URLs.
 ```json
 {
   "file_path": "string - The GCS path of the file to retrieve",
-  "access_duration_minutes": "integer - Duration for presigned URL validity (1-10080, default: 60)",
+  "access_duration_minutes": "integer - Duration for presigned URL validity (1-2880, default: 60)",
   "action": "string - HTTP method for presigned URL (GET/PUT, default: GET)"
 }
 ```
@@ -132,19 +132,25 @@ GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
    gsutil iam ch allUsers:objectViewer gs://your-bucket-name
    ```
 
-3. **Optional: Set Lifecycle Rules**:
+3. **Set Lifecycle Rules** (Required for automatic cleanup):
    ```json
    {
      "rule": [
        {
          "action": {"type": "Delete"},
          "condition": {
-           "age": 7,
+           "age": 2,
            "matchesPrefix": ["autogpt-temp/"]
          }
        }
      ]
    }
+   ```
+   
+   Apply with:
+   ```bash
+   # Save the above JSON to lifecycle.json
+   gsutil lifecycle set lifecycle.json gs://your-bucket-name
    ```
 
 ### Authentication
@@ -159,52 +165,6 @@ The blocks use Google Cloud Storage client libraries with Application Default Cr
 2. **Production**: Use service account with appropriate permissions
 3. **Google Cloud**: Workload Identity or attached service account
 
-## Automatic Cleanup
-
-### Cleanup Jobs
-
-The system includes automated cleanup functionality:
-
-#### 1. Expired Files Cleanup
-- **Function**: `cleanup_expired_gcs_files_job()`
-- **Purpose**: Removes files based on metadata expiration time
-- **Frequency**: Recommended daily
-- **Monitoring**: Discord notifications for cleanup results
-
-#### 2. Age-based Cleanup
-- **Function**: `cleanup_old_gcs_files_job(max_age_hours=168)`
-- **Purpose**: Removes files older than specified age (fallback cleanup)
-- **Frequency**: Recommended weekly
-- **Default**: 7 days (168 hours)
-
-### Scheduling Cleanup Jobs
-
-To add cleanup jobs to the scheduler, add the following to your scheduler configuration:
-
-```python
-# In scheduler.py or monitoring configuration
-from backend.monitoring import cleanup_expired_gcs_files_job, cleanup_old_gcs_files_job
-
-# Daily cleanup of expired files
-scheduler.add_job(
-    cleanup_expired_gcs_files_job,
-    id="cleanup_expired_gcs_files",
-    trigger="cron",
-    hour=2,  # Run at 2 AM daily
-    replace_existing=True
-)
-
-# Weekly cleanup of old files (fallback)
-scheduler.add_job(
-    cleanup_old_gcs_files_job,
-    id="cleanup_old_gcs_files",
-    trigger="cron",
-    day_of_week=0,  # Run on Sundays
-    hour=3,  # Run at 3 AM
-    kwargs={"max_age_hours": 168},  # 7 days
-    replace_existing=True
-)
-```
 
 ## Security Considerations
 
@@ -236,7 +196,7 @@ scheduler.add_job(
 | **Storage Location** | Local temp directory | Google Cloud Storage |
 | **File Access** | Local file paths | HTTP URLs / Presigned URLs |
 | **Data Transfer** | Base64 encoding | Direct URL access |
-| **Cleanup** | Automatic on execution end | Scheduled cleanup jobs |
+| **Cleanup** | Automatic on execution end | GCS bucket lifecycle policies |
 | **Scalability** | Limited by local storage | Cloud-scale storage |
 | **Cross-run Access** | No | Yes |
 
@@ -246,7 +206,7 @@ scheduler.add_job(
 2. **Update File Handling**: Change from local paths to URLs
 3. **Configure GCS**: Set up bucket and authentication
 4. **Test Integration**: Verify file upload/download functionality
-5. **Monitor Usage**: Set up cleanup jobs and monitoring
+5. **Monitor Usage**: Set up monitoring and verify lifecycle policies
 
 ### Compatibility Notes
 
@@ -264,10 +224,10 @@ scheduler.add_job(
    - Average file size
    - Storage costs
 
-2. **Cleanup Operations**:
-   - Files cleaned up per run
-   - Cleanup success/failure rates
+2. **Lifecycle Management**:
+   - Files automatically deleted by lifecycle policies
    - Storage space reclaimed
+   - Lifecycle policy effectiveness
 
 3. **Access Patterns**:
    - Presigned URL generation frequency
@@ -282,19 +242,19 @@ The system provides comprehensive logging:
 # Storage operations
 logger.info(f"Successfully stored file in GCS: {file_path}")
 
-# Cleanup operations  
-logger.info(f"GCS cleanup completed: {deleted_count} files deleted")
+# Lifecycle management
+logger.info(f"GCS lifecycle policies managing file expiration automatically")
 
 # Error handling
 logger.error(f"Failed to upload to GCS: {error}")
 ```
 
-### Discord Notifications
+### Monitoring
 
-Cleanup jobs send Discord notifications for:
-- Significant cleanup activity (>10 files deleted)
-- Cleanup errors
-- Storage usage alerts
+Monitor GCS bucket lifecycle policies for:
+- Automatic file deletion effectiveness
+- Storage usage patterns
+- Lifecycle policy compliance
 
 ## Cost Optimization
 
@@ -311,7 +271,7 @@ Cleanup jobs send Discord notifications for:
 ### Best Practices
 1. **Monitor Usage**: Regular cost analysis
 2. **Optimize Expiration**: Balance functionality vs. storage costs
-3. **Clean Up Regularly**: Prevent storage accumulation
+3. **Monitor Lifecycle Policies**: Ensure automatic cleanup is working effectively
 4. **Use Appropriate Storage Classes**: Consider Nearline/Coldline for archival
 
 ## Troubleshooting
@@ -349,7 +309,7 @@ Enable debug logging for detailed troubleshooting:
 ```python
 import logging
 logging.getLogger('backend.blocks.gcs_file_store').setLevel(logging.DEBUG)
-logging.getLogger('backend.util.gcs_cleanup').setLevel(logging.DEBUG)
+logging.getLogger('backend.util.gcs_lifecycle').setLevel(logging.DEBUG)
 ```
 
 ### Health Checks

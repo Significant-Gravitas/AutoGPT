@@ -102,7 +102,7 @@ class TestGCSFileStoreBlock:
             input_data = block.Input(
                 file_in="data:text/plain;base64,SGVsbG8gV29ybGQ=",
                 custom_path="test",
-                expiration_hours=24
+                expiration_hours=48
             )
             
             result = await block.run(input_data)
@@ -110,7 +110,7 @@ class TestGCSFileStoreBlock:
             assert "file_url" in result.data
             assert "file_path" in result.data
             assert "expiration_time" in result.data
-            assert result.data["expires_in_hours"] == 24
+            assert result.data["expires_in_hours"] == 48
             
             # Verify GCS calls
             mock_gcs_client['blob'].upload_from_string.assert_called_once()

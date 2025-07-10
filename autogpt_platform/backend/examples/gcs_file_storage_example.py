@@ -20,7 +20,7 @@ from datetime import datetime
 
 from backend.blocks.gcs_file_store import GCSFileStoreBlock
 from backend.blocks.gcs_file_retrieve import GCSFileRetrieveBlock
-from backend.util.gcs_cleanup import cleanup_expired_gcs_files
+# No manual cleanup needed - GCS bucket lifecycle policies handle automatic deletion
 
 
 async def demonstrate_gcs_file_storage():
@@ -141,28 +141,21 @@ async def demonstrate_gcs_file_storage():
             print(f"⚠️  URL storage failed (network may be unavailable): {e}")
             print()
         
-        # Example 5: Demonstrate cleanup functionality
-        print("🧹 Example 5: Cleanup functionality")
-        print("-" * 33)
+        # Example 5: File lifecycle information
+        print("♻️  Example 5: File lifecycle management")
+        print("-" * 37)
         
-        try:
-            cleanup_result = cleanup_expired_gcs_files()
-            print(f"✅ Cleanup completed!")
-            print(f"   📊 Files checked: {cleanup_result['total_checked']}")
-            print(f"   🗑️  Files deleted: {cleanup_result['deleted_count']}")
-            if cleanup_result['errors']:
-                print(f"   ⚠️  Errors: {len(cleanup_result['errors'])}")
-            print()
-            
-        except Exception as e:
-            print(f"⚠️  Cleanup failed: {e}")
-            print()
+        print("✅ Files are automatically deleted after 2 days by GCS lifecycle policies!")
+        print("   📊 No manual cleanup required")
+        print("   ♻️  Bucket lifecycle rules handle automatic deletion")
+        print("   🕐 Files in 'autogpt-temp/' prefix expire after 2 days")
+        print()
         
         print("🎉 GCS File Storage Demo completed successfully!")
         print()
         print("💡 Next steps:")
         print("   1. Use the file URLs in your agents instead of base64 data")
-        print("   2. Set up scheduled cleanup jobs for automatic maintenance") 
+        print("   2. Set up GCS bucket lifecycle policies for automatic cleanup") 
         print("   3. Monitor storage usage and costs")
         print("   4. Configure appropriate expiration times for your use case")
         
@@ -171,34 +164,24 @@ async def demonstrate_gcs_file_storage():
         print("   Please check your GCS configuration and authentication")
 
 
-def demonstrate_cleanup_utilities():
-    """Demonstrate the cleanup utilities."""
+def demonstrate_lifecycle_policies():
+    """Demonstrate GCS lifecycle policy information."""
     
-    print("\n🧹 GCS Cleanup Utilities Demo")
+    print("\n♻️  GCS Lifecycle Management Info")
     print("=" * 40)
     
-    try:
-        from backend.util.gcs_cleanup import GCSCleanupManager
-        
-        cleanup_manager = GCSCleanupManager()
-        
-        # Get info about expired files without deleting them
-        print("📋 Getting expired files info...")
-        expired_files = cleanup_manager.get_expired_files_info()
-        
-        if expired_files:
-            print(f"   Found {len(expired_files)} expired files:")
-            for file_info in expired_files[:3]:  # Show first 3
-                print(f"   • {file_info['path']} ({file_info['size']} bytes)")
-            if len(expired_files) > 3:
-                print(f"   • ... and {len(expired_files) - 3} more files")
-        else:
-            print("   No expired files found")
-        
-        print("\n✅ Cleanup utilities demo completed!")
-        
-    except Exception as e:
-        print(f"❌ Cleanup demo failed: {e}")
+    print("🔧 GCS Bucket Lifecycle Policies:")
+    print("   • Files in 'autogpt-temp/' are automatically deleted after 2 days")
+    print("   • No manual intervention required")
+    print("   • Lifecycle rules are configured at the bucket level")
+    print("   • Cost-effective storage management")
+    print()
+    print("📋 To set up lifecycle policies on your bucket:")
+    print('   1. Create lifecycle.json with deletion rule')
+    print('   2. Run: gsutil lifecycle set lifecycle.json gs://your-bucket')
+    print('   3. Verify: gsutil lifecycle get gs://your-bucket')
+    print()
+    print("✅ Lifecycle policy demo completed!")
 
 
 if __name__ == "__main__":
@@ -212,5 +195,5 @@ if __name__ == "__main__":
     # Run the main demo
     asyncio.run(demonstrate_gcs_file_storage())
     
-    # Run the cleanup demo
-    demonstrate_cleanup_utilities()
+    # Show lifecycle policy information
+    demonstrate_lifecycle_policies()
