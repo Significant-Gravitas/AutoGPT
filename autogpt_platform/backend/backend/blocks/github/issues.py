@@ -498,6 +498,9 @@ class GithubListIssuesBlock(Block):
         issue: IssueItem = SchemaField(
             title="Issue", description="Issues with their title and URL"
         )
+        issues: list[IssueItem] = SchemaField(
+            description="List of issues with their title and URL"
+        )
         error: str = SchemaField(description="Error message if listing issues failed")
 
     def __init__(self):
@@ -514,12 +517,21 @@ class GithubListIssuesBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_output=[
                 (
+                    "issues",
+                    [
+                        {
+                            "title": "Issue 1",
+                            "url": "https://github.com/owner/repo/issues/1",
+                        }
+                    ],
+                ),
+                (
                     "issue",
                     {
                         "title": "Issue 1",
                         "url": "https://github.com/owner/repo/issues/1",
                     },
-                )
+                ),
             ],
             test_mock={
                 "list_issues": lambda *args, **kwargs: [
@@ -551,10 +563,12 @@ class GithubListIssuesBlock(Block):
         credentials: GithubCredentials,
         **kwargs,
     ) -> BlockOutput:
-        for issue in await self.list_issues(
+        issues = await self.list_issues(
             credentials,
             input_data.repo_url,
-        ):
+        )
+        yield "issues", issues
+        for issue in issues:
             yield "issue", issue
 
 

@@ -3,6 +3,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 from enum import Enum
+from typing import Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
@@ -14,13 +15,16 @@ from apscheduler.triggers.cron import CronTrigger
 from autogpt_libs.utils.cache import thread_cached
 from dotenv import load_dotenv
 from prisma.enums import NotificationType
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
 from backend.data.block import BlockInput
 from backend.data.execution import ExecutionStatus
+from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
 from backend.notifications.notifications import NotificationManagerClient
+from backend.util.exceptions import NotAuthorizedError, NotFoundError
+from backend.util.logging import PrefixFilter
 from backend.util.metrics import sentry_capture_error
 from backend.util.service import (
     AppService,
@@ -52,19 +56,19 @@ def _extract_schema_from_url(database_url) -> tuple[str, str]:
 
 
 logger = logging.getLogger(__name__)
+logger.addFilter(PrefixFilter("[Scheduler]"))
+apscheduler_logger = logger.getChild("apscheduler")
+apscheduler_logger.addFilter(PrefixFilter("[Scheduler] [APScheduler]"))
+
 config = Config()
-
-
-def log(msg, **kwargs):
-    logger.info("[Scheduler] " + msg, **kwargs)
 
 
 def job_listener(event):
     """Logs job execution outcomes for better monitoring."""
     if event.exception:
-        log(f"Job {event.job_id} failed.")
+        logger.error(f"Job {event.job_id} failed.")
     else:
-        log(f"Job {event.job_id} completed successfully.")
+        logger.info(f"Job {event.job_id} completed successfully.")
 
 
 @thread_cached
@@ -84,16 +88,17 @@ def execute_graph(**kwargs):
 async def _execute_graph(**kwargs):
     args = GraphExecutionJobArgs(**kwargs)
     try:
-        log(f"Executing recurring job for graph #{args.graph_id}")
+        logger.info(f"Executing recurring job for graph #{args.graph_id}")
         await execution_utils.add_graph_execution(
-            graph_id=args.graph_id,
-            inputs=args.input_data,
             user_id=args.user_id,
+            graph_id=args.graph_id,
             graph_version=args.graph_version,
+            inputs=args.input_data,
+            graph_credentials_inputs=args.input_credentials,
             use_db_query=False,
         )
     except Exception as e:
-        logger.exception(f"Error executing graph {args.graph_id}: {e}")
+        logger.error(f"Error executing graph {args.graph_id}: {e}")
 
 
 class LateExecutionException(Exception):
@@ -137,20 +142,20 @@ def report_late_executions() -> str:
 def process_existing_batches(**kwargs):
     args = NotificationJobArgs(**kwargs)
     try:
-        log(
+        logger.info(
             f"Processing existing batches for notification type {args.notification_types}"
         )
         get_notification_client().process_existing_batches(args.notification_types)
     except Exception as e:
-        logger.exception(f"Error processing existing batches: {e}")
+        logger.error(f"Error processing existing batches: {e}")
 
 
 def process_weekly_summary(**kwargs):
     try:
-        log("Processing weekly summary")
+        logger.info("Processing weekly summary")
         get_notification_client().queue_weekly_summary()
     except Exception as e:
-        logger.exception(f"Error processing weekly summary: {e}")
+        logger.error(f"Error processing weekly summary: {e}")
 
 
 class Jobstores(Enum):
@@ -160,11 +165,12 @@ class Jobstores(Enum):
 
 
 class GraphExecutionJobArgs(BaseModel):
-    graph_id: str
-    input_data: BlockInput
     user_id: str
+    graph_id: str
     graph_version: int
     cron: str
+    input_data: BlockInput
+    input_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
 
 
 class GraphExecutionJobInfo(GraphExecutionJobArgs):
@@ -247,7 +253,8 @@ class Scheduler(AppService):
                 ),
                 # These don't really need persistence
                 Jobstores.WEEKLY_NOTIFICATIONS.value: MemoryJobStore(),
-            }
+            },
+            logger=apscheduler_logger,
         )
 
         if self.register_system_tasks:
@@ -285,34 +292,40 @@ class Scheduler(AppService):
 
     def cleanup(self):
         super().cleanup()
-        logger.info(f"[{self.service_name}] ⏳ Shutting down scheduler...")
+        logger.info("⏳ Shutting down scheduler...")
         if self.scheduler:
             self.scheduler.shutdown(wait=False)
 
     @expose
     def add_graph_execution_schedule(
         self,
+        user_id: str,
         graph_id: str,
         graph_version: int,
         cron: str,
         input_data: BlockInput,
-        user_id: str,
+        input_credentials: dict[str, CredentialsMetaInput],
+        name: Optional[str] = None,
     ) -> GraphExecutionJobInfo:
         job_args = GraphExecutionJobArgs(
-            graph_id=graph_id,
-            input_data=input_data,
             user_id=user_id,
+            graph_id=graph_id,
             graph_version=graph_version,
             cron=cron,
+            input_data=input_data,
+            input_credentials=input_credentials,
         )
         job = self.scheduler.add_job(
             execute_graph,
-            CronTrigger.from_crontab(cron),
             kwargs=job_args.model_dump(),
-            replace_existing=True,
+            name=name,
+            trigger=CronTrigger.from_crontab(cron),
             jobstore=Jobstores.EXECUTION.value,
+            replace_existing=True,
         )
-        log(f"Added job {job.id} with cron schedule '{cron}' input data: {input_data}")
+        logger.info(
+            f"Added job {job.id} with cron schedule '{cron}' input data: {input_data}"
+        )
         return GraphExecutionJobInfo.from_db(job_args, job)
 
     @expose
@@ -321,14 +334,13 @@ class Scheduler(AppService):
     ) -> GraphExecutionJobInfo:
         job = self.scheduler.get_job(schedule_id, jobstore=Jobstores.EXECUTION.value)
         if not job:
-            log(f"Job {schedule_id} not found.")
-            raise ValueError(f"Job #{schedule_id} not found.")
+            raise NotFoundError(f"Job #{schedule_id} not found.")
 
         job_args = GraphExecutionJobArgs(**job.kwargs)
         if job_args.user_id != user_id:
-            raise ValueError("User ID does not match the job's user ID.")
+            raise NotAuthorizedError("User ID does not match the job's user ID")
 
-        log(f"Deleting job {schedule_id}")
+        logger.info(f"Deleting job {schedule_id}")
         job.remove()
 
         return GraphExecutionJobInfo.from_db(job_args, job)

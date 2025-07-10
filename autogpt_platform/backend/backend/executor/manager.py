@@ -12,14 +12,11 @@ from typing import TYPE_CHECKING, Any, Optional, TypeVar, cast
 
 from pika.adapters.blocking_connection import BlockingChannel
 from pika.spec import Basic, BasicProperties
+from pydantic import JsonValue
 from redis.asyncio.lock import Lock as RedisLock
 
 from backend.blocks.io import AgentOutputBlock
-from backend.data.model import (
-    CredentialsMetaInput,
-    GraphExecutionStats,
-    NodeExecutionStats,
-)
+from backend.data.model import GraphExecutionStats, NodeExecutionStats
 from backend.data.notifications import (
     AgentRunData,
     LowBalanceData,
@@ -27,7 +24,7 @@ from backend.data.notifications import (
     NotificationType,
 )
 from backend.data.rabbitmq import SyncRabbitMQ
-from backend.executor.utils import create_execution_queue_config
+from backend.executor.utils import LogMetadata, create_execution_queue_config
 from backend.notifications.notifications import queue_notification
 from backend.util.exceptions import InsufficientBalanceError
 
@@ -38,7 +35,7 @@ from autogpt_libs.utils.cache import thread_cached
 from prometheus_client import Gauge, start_http_server
 
 from backend.blocks.agent import AgentExecutorBlock
-from backend.data import redis
+from backend.data import redis_client as redis
 from backend.data.block import (
     BlockData,
     BlockInput,
@@ -101,35 +98,6 @@ utilization_gauge = Gauge(
 )
 
 
-class LogMetadata(TruncatedLogger):
-    def __init__(
-        self,
-        user_id: str,
-        graph_eid: str,
-        graph_id: str,
-        node_eid: str,
-        node_id: str,
-        block_name: str,
-        max_length: int = 1000,
-    ):
-        metadata = {
-            "component": "ExecutionManager",
-            "user_id": user_id,
-            "graph_eid": graph_eid,
-            "graph_id": graph_id,
-            "node_eid": node_eid,
-            "node_id": node_id,
-            "block_name": block_name,
-        }
-        prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"
-        super().__init__(
-            _logger,
-            max_length=max_length,
-            prefix=prefix,
-            metadata=metadata,
-        )
-
-
 T = TypeVar("T")
 
 
@@ -138,9 +106,7 @@ async def execute_node(
     creds_manager: IntegrationCredentialsManager,
     data: NodeExecutionEntry,
     execution_stats: NodeExecutionStats | None = None,
-    node_credentials_input_map: Optional[
-        dict[str, dict[str, CredentialsMetaInput]]
-    ] = None,
+    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
 ) -> BlockOutput:
     """
     Execute a node in the graph. This will trigger a block execution on a node,
@@ -163,6 +129,7 @@ async def execute_node(
     node_block = node.block
 
     log_metadata = LogMetadata(
+        logger=_logger,
         user_id=user_id,
         graph_eid=graph_exec_id,
         graph_id=graph_id,
@@ -183,8 +150,8 @@ async def execute_node(
     if isinstance(node_block, AgentExecutorBlock):
         _input_data = AgentExecutorBlock.Input(**node.input_default)
         _input_data.inputs = input_data
-        if node_credentials_input_map:
-            _input_data.node_credentials_input_map = node_credentials_input_map
+        if nodes_input_masks:
+            _input_data.nodes_input_masks = nodes_input_masks
         input_data = _input_data.model_dump()
     data.inputs = input_data
 
@@ -255,7 +222,7 @@ async def _enqueue_next_nodes(
     graph_exec_id: str,
     graph_id: str,
     log_metadata: LogMetadata,
-    node_credentials_input_map: Optional[dict[str, dict[str, CredentialsMetaInput]]],
+    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]],
 ) -> list[NodeExecutionEntry]:
     async def add_enqueued_execution(
         node_exec_id: str, node_id: str, block_id: str, data: BlockInput
@@ -289,8 +256,9 @@ async def _enqueue_next_nodes(
         next_input_name = node_link.sink_name
         next_node_id = node_link.sink_id
 
+        output_name, _ = output
         next_data = parse_execution_output(output, next_output_name)
-        if next_data is None:
+        if next_data is None and output_name != next_output_name:
             return enqueued_executions
         next_node = await db_client.get_node(next_node_id)
 
@@ -325,14 +293,12 @@ async def _enqueue_next_nodes(
                 for name in static_link_names:
                     next_node_input[name] = latest_execution.input_data.get(name)
 
-            # Apply node credentials overrides
-            node_credentials = None
-            if node_credentials_input_map and (
-                node_credentials := node_credentials_input_map.get(next_node.id)
+            # Apply node input overrides
+            node_input_mask = None
+            if nodes_input_masks and (
+                node_input_mask := nodes_input_masks.get(next_node.id)
             ):
-                next_node_input.update(
-                    {k: v.model_dump() for k, v in node_credentials.items()}
-                )
+                next_node_input.update(node_input_mask)
 
             # Validate the input data for the next node.
             next_node_input, validation_msg = validate_exec(next_node, next_node_input)
@@ -376,11 +342,9 @@ async def _enqueue_next_nodes(
                 for input_name in static_link_names:
                     idata[input_name] = next_node_input[input_name]
 
-                # Apply node credentials overrides
-                if node_credentials:
-                    idata.update(
-                        {k: v.model_dump() for k, v in node_credentials.items()}
-                    )
+                # Apply node input overrides
+                if node_input_mask:
+                    idata.update(node_input_mask)
 
                 idata, msg = validate_exec(next_node, idata)
                 suffix = f"{next_output_name}>{next_input_name}~{ineid}:{msg}"
@@ -429,16 +393,15 @@ class Executor:
     """
 
     @classmethod
-    @async_error_logged
+    @async_error_logged(swallow=True)
     async def on_node_execution(
         cls,
         node_exec: NodeExecutionEntry,
         node_exec_progress: NodeExecutionProgress,
-        node_credentials_input_map: Optional[
-            dict[str, dict[str, CredentialsMetaInput]]
-        ] = None,
+        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
     ) -> NodeExecutionStats:
         log_metadata = LogMetadata(
+            logger=_logger,
             user_id=node_exec.user_id,
             graph_eid=node_exec.graph_exec_id,
             graph_id=node_exec.graph_id,
@@ -457,7 +420,7 @@ class Executor:
             db_client=db_client,
             log_metadata=log_metadata,
             stats=execution_stats,
-            node_credentials_input_map=node_credentials_input_map,
+            nodes_input_masks=nodes_input_masks,
         )
         execution_stats.walltime = timing_info.wall_time
         execution_stats.cputime = timing_info.cpu_time
@@ -480,9 +443,7 @@ class Executor:
         db_client: "DatabaseManagerAsyncClient",
         log_metadata: LogMetadata,
         stats: NodeExecutionStats | None = None,
-        node_credentials_input_map: Optional[
-            dict[str, dict[str, CredentialsMetaInput]]
-        ] = None,
+        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
     ):
         try:
             log_metadata.info(f"Start node execution {node_exec.node_exec_id}")
@@ -497,7 +458,7 @@ class Executor:
                 creds_manager=cls.creds_manager,
                 data=node_exec,
                 execution_stats=stats,
-                node_credentials_input_map=node_credentials_input_map,
+                nodes_input_masks=nodes_input_masks,
             ):
                 node_exec_progress.add_output(
                     ExecutionOutputEntry(
@@ -541,11 +502,12 @@ class Executor:
         logger.info(f"[GraphExecutor] {cls.pid} started")
 
     @classmethod
-    @error_logged
+    @error_logged(swallow=False)
     def on_graph_execution(
         cls, graph_exec: GraphExecutionEntry, cancel: threading.Event
     ):
         log_metadata = LogMetadata(
+            logger=_logger,
             user_id=graph_exec.user_id,
             graph_eid=graph_exec.graph_exec_id,
             graph_id=graph_exec.graph_id,
@@ -592,6 +554,15 @@ class Executor:
         exec_stats.walltime += timing_info.wall_time
         exec_stats.cputime += timing_info.cpu_time
         exec_stats.error = str(error) if error else exec_stats.error
+
+        if status not in {
+            ExecutionStatus.COMPLETED,
+            ExecutionStatus.TERMINATED,
+            ExecutionStatus.FAILED,
+        }:
+            raise RuntimeError(
+                f"Graph Execution #{graph_exec.graph_exec_id} ended with unexpected status {status}"
+            )
 
         if graph_exec_result := db_client.update_graph_execution_stats(
             graph_exec_id=graph_exec.graph_exec_id,
@@ -696,7 +667,6 @@ class Executor:
 
             if _graph_exec := db_client.update_graph_execution_stats(
                 graph_exec_id=graph_exec.graph_exec_id,
-                status=execution_status,
                 stats=execution_stats,
             ):
                 send_execution_update(_graph_exec)
@@ -778,24 +748,19 @@ class Executor:
                     )
                     raise
 
-                # Add credential overrides -----------------------------
+                # Add input overrides -----------------------------
                 node_id = queued_node_exec.node_id
-                if (node_creds_map := graph_exec.node_credentials_input_map) and (
-                    node_field_creds_map := node_creds_map.get(node_id)
+                if (nodes_input_masks := graph_exec.nodes_input_masks) and (
+                    node_input_mask := nodes_input_masks.get(node_id)
                 ):
-                    queued_node_exec.inputs.update(
-                        {
-                            field_name: creds_meta.model_dump()
-                            for field_name, creds_meta in node_field_creds_map.items()
-                        }
-                    )
+                    queued_node_exec.inputs.update(node_input_mask)
 
                 # Kick off async node execution -------------------------
                 node_execution_task = asyncio.run_coroutine_threadsafe(
                     cls.on_node_execution(
                         node_exec=queued_node_exec,
                         node_exec_progress=running_node_execution[node_id],
-                        node_credentials_input_map=node_creds_map,
+                        nodes_input_masks=nodes_input_masks,
                     ),
                     cls.node_execution_loop,
                 )
@@ -839,7 +804,7 @@ class Executor:
                                         node_id=node_id,
                                         graph_exec=graph_exec,
                                         log_metadata=log_metadata,
-                                        node_creds_map=node_creds_map,
+                                        nodes_input_masks=nodes_input_masks,
                                         execution_queue=execution_queue,
                                     ),
                                     cls.node_evaluation_loop,
@@ -870,6 +835,7 @@ class Executor:
                 f"Failed graph execution {graph_exec.graph_exec_id}: {error}"
             )
         finally:
+            # Cancel and wait for all node executions to complete
             for node_id, inflight_exec in running_node_execution.items():
                 if inflight_exec.is_done():
                     continue
@@ -881,6 +847,28 @@ class Executor:
                     continue
                 log_metadata.info(f"Stopping node evaluation {node_id}")
                 inflight_eval.cancel()
+
+            for node_id, inflight_exec in running_node_execution.items():
+                if inflight_exec.is_done():
+                    continue
+                try:
+                    inflight_exec.wait_for_cancellation(timeout=60.0)
+                except TimeoutError:
+                    log_metadata.exception(
+                        f"Node execution #{node_id} did not stop in time, "
+                        "it may be stuck or taking too long."
+                    )
+
+            for node_id, inflight_eval in running_node_evaluation.items():
+                if inflight_eval.done():
+                    continue
+                try:
+                    inflight_eval.result(timeout=60.0)
+                except TimeoutError:
+                    log_metadata.exception(
+                        f"Node evaluation #{node_id} did not stop in time, "
+                        "it may be stuck or taking too long."
+                    )
 
             if execution_status in [ExecutionStatus.TERMINATED, ExecutionStatus.FAILED]:
                 inflight_executions = db_client.get_node_executions(
@@ -909,7 +897,7 @@ class Executor:
         node_id: str,
         graph_exec: GraphExecutionEntry,
         log_metadata: LogMetadata,
-        node_creds_map: Optional[dict[str, dict[str, CredentialsMetaInput]]],
+        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]],
         execution_queue: ExecutionQueue[NodeExecutionEntry],
     ) -> None:
         """Process a node's output, update its status, and enqueue next nodes.
@@ -919,7 +907,7 @@ class Executor:
             node_id: The ID of the node that produced the output
             graph_exec: The graph execution entry
             log_metadata: Logger metadata for consistent logging
-            node_creds_map: Optional map of node credentials
+            nodes_input_masks: Optional map of node input overrides
             execution_queue: Queue to add next executions to
         """
         db_client = get_db_async_client()
@@ -943,7 +931,7 @@ class Executor:
                 graph_exec_id=graph_exec.graph_exec_id,
                 graph_id=graph_exec.graph_id,
                 log_metadata=log_metadata,
-                node_credentials_input_map=node_creds_map,
+                nodes_input_masks=nodes_input_masks,
             ):
                 execution_queue.add(next_execution)
         except Exception as e:

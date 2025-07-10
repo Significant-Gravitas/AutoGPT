@@ -1,12 +1,15 @@
 import asyncio
 import logging
+import time
 from collections import defaultdict
 from concurrent.futures import Future
 from typing import TYPE_CHECKING, Any, Callable, Optional, cast
 
 from autogpt_libs.utils.cache import thread_cached
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue
 
+from backend.data import execution as execution_db
+from backend.data import graph as graph_db
 from backend.data.block import (
     Block,
     BlockData,
@@ -23,12 +26,8 @@ from backend.data.execution import (
     GraphExecutionStats,
     GraphExecutionWithNodes,
     RedisExecutionEventBus,
-    create_graph_execution,
-    get_node_executions,
-    update_graph_execution_stats,
-    update_node_execution_status_batch,
 )
-from backend.data.graph import GraphModel, Node, get_graph
+from backend.data.graph import GraphModel, Node
 from backend.data.model import CredentialsMetaInput
 from backend.data.rabbitmq import (
     AsyncRabbitMQ,
@@ -53,6 +52,36 @@ config = Config()
 logger = TruncatedLogger(logging.getLogger(__name__), prefix="[GraphExecutorUtil]")
 
 # ============ Resource Helpers ============ #
+
+
+class LogMetadata(TruncatedLogger):
+    def __init__(
+        self,
+        logger: logging.Logger,
+        user_id: str,
+        graph_eid: str,
+        graph_id: str,
+        node_eid: str,
+        node_id: str,
+        block_name: str,
+        max_length: int = 1000,
+    ):
+        metadata = {
+            "component": "ExecutionManager",
+            "user_id": user_id,
+            "graph_eid": graph_eid,
+            "graph_id": graph_id,
+            "node_eid": node_eid,
+            "node_id": node_id,
+            "block_name": block_name,
+        }
+        prefix = f"[ExecutionManager|uid:{user_id}|gid:{graph_id}|nid:{node_id}]|geid:{graph_eid}|neid:{node_eid}|{block_name}]"
+        super().__init__(
+            logger,
+            max_length=max_length,
+            prefix=prefix,
+            metadata=metadata,
+        )
 
 
 @thread_cached
@@ -402,12 +431,6 @@ def validate_exec(
         return None, f"Block for {node.block_id} not found."
     schema = node_block.input_schema
 
-    # Convert non-matching data types to the expected input schema.
-    for name, data_type in schema.__annotations__.items():
-        value = data.get(name)
-        if (value is not None) and (type(value) is not data_type):
-            data[name] = convert(value, data_type)
-
     # Input data (without default values) should contain all required fields.
     error_prefix = f"Input data missing or mismatch for `{node_block.name}`:"
     if missing_links := schema.get_missing_links(data, node.input_links):
@@ -418,6 +441,12 @@ def validate_exec(
     data = {**input_default, **data}
     if resolve_input:
         data = merge_execution_input(data)
+
+    # Convert non-matching data types to the expected input schema.
+    for name, data_type in schema.__annotations__.items():
+        value = data.get(name)
+        if (value is not None) and (type(value) is not data_type):
+            data[name] = convert(value, data_type)
 
     # Input data post-merge should contain all required fields from the schema.
     if missing_input := schema.get_missing_input(data):
@@ -435,9 +464,7 @@ def validate_exec(
 async def _validate_node_input_credentials(
     graph: GraphModel,
     user_id: str,
-    node_credentials_input_map: Optional[
-        dict[str, dict[str, CredentialsMetaInput]]
-    ] = None,
+    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
 ):
     """Checks all credentials for all nodes of the graph"""
 
@@ -453,11 +480,13 @@ async def _validate_node_input_credentials(
 
         for field_name, credentials_meta_type in credentials_fields.items():
             if (
-                node_credentials_input_map
-                and (node_credentials_inputs := node_credentials_input_map.get(node.id))
-                and field_name in node_credentials_inputs
+                nodes_input_masks
+                and (node_input_mask := nodes_input_masks.get(node.id))
+                and field_name in node_input_mask
             ):
-                credentials_meta = node_credentials_input_map[node.id][field_name]
+                credentials_meta = credentials_meta_type.model_validate(
+                    node_input_mask[field_name]
+                )
             elif field_name in node.input_default:
                 credentials_meta = credentials_meta_type.model_validate(
                     node.input_default[field_name]
@@ -496,7 +525,7 @@ async def _validate_node_input_credentials(
 def make_node_credentials_input_map(
     graph: GraphModel,
     graph_credentials_input: dict[str, CredentialsMetaInput],
-) -> dict[str, dict[str, CredentialsMetaInput]]:
+) -> dict[str, dict[str, JsonValue]]:
     """
     Maps credentials for an execution to the correct nodes.
 
@@ -505,9 +534,9 @@ def make_node_credentials_input_map(
         graph_credentials_input: A (graph_input_name, credentials_meta) map.
 
     Returns:
-        dict[node_id, dict[field_name, CredentialsMetaInput]]: Node credentials input map.
+        dict[node_id, dict[field_name, CredentialsMetaRaw]]: Node credentials input map.
     """
-    result: dict[str, dict[str, CredentialsMetaInput]] = {}
+    result: dict[str, dict[str, JsonValue]] = {}
 
     # Get aggregated credentials fields for the graph
     graph_cred_inputs = graph.aggregate_credentials_inputs()
@@ -521,7 +550,9 @@ def make_node_credentials_input_map(
         for node_id, node_field_name in compatible_node_fields:
             if node_id not in result:
                 result[node_id] = {}
-            result[node_id][node_field_name] = graph_credentials_input[graph_input_name]
+            result[node_id][node_field_name] = graph_credentials_input[
+                graph_input_name
+            ].model_dump(exclude_none=True)
 
     return result
 
@@ -530,9 +561,7 @@ async def construct_node_execution_input(
     graph: GraphModel,
     user_id: str,
     graph_inputs: BlockInput,
-    node_credentials_input_map: Optional[
-        dict[str, dict[str, CredentialsMetaInput]]
-    ] = None,
+    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
 ) -> list[tuple[str, BlockInput]]:
     """
     Validates and prepares the input data for executing a graph.
@@ -550,8 +579,8 @@ async def construct_node_execution_input(
         list[tuple[str, BlockInput]]: A list of tuples, each containing the node ID and
             the corresponding input data for that node.
     """
-    graph.validate_graph(for_run=True)
-    await _validate_node_input_credentials(graph, user_id, node_credentials_input_map)
+    graph.validate_graph(for_run=True, nodes_input_masks=nodes_input_masks)
+    await _validate_node_input_credentials(graph, user_id, nodes_input_masks)
 
     nodes_input = []
     for node in graph.starting_nodes:
@@ -568,23 +597,9 @@ async def construct_node_execution_input(
             if input_name and input_name in graph_inputs:
                 input_data = {"value": graph_inputs[input_name]}
 
-        # Extract webhook payload, and assign it to the input pin
-        webhook_payload_key = f"webhook_{node.webhook_id}_payload"
-        if (
-            block.block_type in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
-            and node.webhook_id
-        ):
-            if webhook_payload_key not in graph_inputs:
-                raise ValueError(
-                    f"Node {block.name} #{node.id} webhook payload is missing"
-                )
-            input_data = {"payload": graph_inputs[webhook_payload_key]}
-
-        # Apply node credentials overrides
-        if node_credentials_input_map and (
-            node_credentials := node_credentials_input_map.get(node.id)
-        ):
-            input_data.update({k: v.model_dump() for k, v in node_credentials.items()})
+        # Apply node input overrides
+        if nodes_input_masks and (node_input_mask := nodes_input_masks.get(node.id)):
+            input_data.update(node_input_mask)
 
         input_data, error = validate_exec(node, input_data)
         if input_data is None:
@@ -598,6 +613,20 @@ async def construct_node_execution_input(
         )
 
     return nodes_input
+
+
+def _merge_nodes_input_masks(
+    overrides_map_1: dict[str, dict[str, JsonValue]],
+    overrides_map_2: dict[str, dict[str, JsonValue]],
+) -> dict[str, dict[str, JsonValue]]:
+    """Perform a per-node merge of input overrides"""
+    result = overrides_map_1.copy()
+    for node_id, overrides2 in overrides_map_2.items():
+        if node_id in result:
+            result[node_id] = {**result[node_id], **overrides2}
+        else:
+            result[node_id] = overrides2
+    return result
 
 
 # ============ Execution Queue Helpers ============ #
@@ -653,8 +682,10 @@ def create_execution_queue_config() -> RabbitMQConfig:
 
 
 async def stop_graph_execution(
+    user_id: str,
     graph_exec_id: str,
     use_db_query: bool = True,
+    wait_timeout: float = 60.0,
 ):
     """
     Mechanism:
@@ -664,79 +695,67 @@ async def stop_graph_execution(
     3. Update execution statuses in DB and set `error` outputs to `"TERMINATED"`.
     """
     queue_client = await get_async_execution_queue()
+    db = execution_db if use_db_query else get_db_async_client()
     await queue_client.publish_message(
         routing_key="",
         message=CancelExecutionEvent(graph_exec_id=graph_exec_id).model_dump_json(),
         exchange=GRAPH_EXECUTION_CANCEL_EXCHANGE,
     )
 
-    # Update the status of the graph execution
-    if use_db_query:
-        graph_execution = await update_graph_execution_stats(
-            graph_exec_id,
-            ExecutionStatus.TERMINATED,
-        )
-    else:
-        graph_execution = await get_db_async_client().update_graph_execution_stats(
-            graph_exec_id,
-            ExecutionStatus.TERMINATED,
+    if not wait_timeout:
+        return
+
+    start_time = time.time()
+    while time.time() - start_time < wait_timeout:
+        graph_exec = await db.get_graph_execution_meta(
+            execution_id=graph_exec_id, user_id=user_id
         )
 
-    if graph_execution:
-        await get_async_execution_event_bus().publish(graph_execution)
-    else:
-        raise NotFoundError(
-            f"Graph execution #{graph_exec_id} not found for termination."
-        )
+        if not graph_exec:
+            raise NotFoundError(f"Graph execution #{graph_exec_id} not found.")
 
-    # Update the status of the node executions
-    if use_db_query:
-        node_executions = await get_node_executions(
-            graph_exec_id=graph_exec_id,
-            statuses=[
-                ExecutionStatus.QUEUED,
-                ExecutionStatus.RUNNING,
-                ExecutionStatus.INCOMPLETE,
-            ],
-        )
-        await update_node_execution_status_batch(
-            [v.node_exec_id for v in node_executions],
+        if graph_exec.status in [
             ExecutionStatus.TERMINATED,
-        )
-    else:
-        node_executions = await get_db_async_client().get_node_executions(
-            graph_exec_id=graph_exec_id,
-            statuses=[
-                ExecutionStatus.QUEUED,
-                ExecutionStatus.RUNNING,
-                ExecutionStatus.INCOMPLETE,
-            ],
-        )
-        await get_db_async_client().update_node_execution_status_batch(
-            [v.node_exec_id for v in node_executions],
-            ExecutionStatus.TERMINATED,
-        )
+            ExecutionStatus.COMPLETED,
+            ExecutionStatus.FAILED,
+        ]:
+            # If graph execution is terminated/completed/failed, cancellation is complete
+            return
 
-    await asyncio.gather(
-        *[
-            get_async_execution_event_bus().publish(
-                v.model_copy(update={"status": ExecutionStatus.TERMINATED})
+        elif graph_exec.status in [
+            ExecutionStatus.QUEUED,
+            ExecutionStatus.INCOMPLETE,
+        ]:
+            # If the graph is still on the queue, we can prevent them from being executed
+            # by setting the status to TERMINATED.
+            node_execs = await db.get_node_executions(
+                graph_exec_id=graph_exec_id,
+                statuses=[ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE],
             )
-            for v in node_executions
-        ]
+            await db.update_node_execution_status_batch(
+                [node_exec.node_exec_id for node_exec in node_execs],
+                ExecutionStatus.TERMINATED,
+            )
+            await db.update_graph_execution_stats(
+                graph_exec_id=graph_exec_id,
+                status=ExecutionStatus.TERMINATED,
+            )
+
+        await asyncio.sleep(1.0)
+
+    raise TimeoutError(
+        f"Timed out waiting for graph execution #{graph_exec_id} to terminate."
     )
 
 
 async def add_graph_execution(
     graph_id: str,
     user_id: str,
-    inputs: BlockInput,
+    inputs: Optional[BlockInput] = None,
     preset_id: Optional[str] = None,
     graph_version: Optional[int] = None,
     graph_credentials_inputs: Optional[dict[str, CredentialsMetaInput]] = None,
-    node_credentials_input_map: Optional[
-        dict[str, dict[str, CredentialsMetaInput]]
-    ] = None,
+    nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = None,
     use_db_query: bool = True,
 ) -> GraphExecutionWithNodes:
     """
@@ -750,68 +769,52 @@ async def add_graph_execution(
         graph_version: The version of the graph to execute.
         graph_credentials_inputs: Credentials inputs to use in the execution.
             Keys should map to the keys generated by `GraphModel.aggregate_credentials_inputs`.
-        node_credentials_input_map: Credentials inputs to use in the execution, mapped to specific nodes.
+        nodes_input_masks: Node inputs to use in the execution.
     Returns:
         GraphExecutionEntry: The entry for the graph execution.
     Raises:
         ValueError: If the graph is not found or if there are validation errors.
-    """  # noqa
-    if use_db_query:
-        graph: GraphModel | None = await get_graph(
-            graph_id=graph_id,
-            user_id=user_id,
-            version=graph_version,
-            include_subgraphs=True,
-        )
-    else:
-        graph: GraphModel | None = await get_db_async_client().get_graph(
-            graph_id=graph_id,
-            user_id=user_id,
-            version=graph_version,
-            include_subgraphs=True,
-        )
+    """
+    gdb = graph_db if use_db_query else get_db_async_client()
+    edb = execution_db if use_db_query else get_db_async_client()
 
+    graph: GraphModel | None = await gdb.get_graph(
+        graph_id=graph_id,
+        user_id=user_id,
+        version=graph_version,
+        include_subgraphs=True,
+    )
     if not graph:
         raise NotFoundError(f"Graph #{graph_id} not found.")
 
-    node_credentials_input_map = node_credentials_input_map or (
-        make_node_credentials_input_map(graph, graph_credentials_inputs)
-        if graph_credentials_inputs
-        else None
+    nodes_input_masks = _merge_nodes_input_masks(
+        (
+            make_node_credentials_input_map(graph, graph_credentials_inputs)
+            if graph_credentials_inputs
+            else {}
+        ),
+        nodes_input_masks or {},
+    )
+    starting_nodes_input = await construct_node_execution_input(
+        graph=graph,
+        user_id=user_id,
+        graph_inputs=inputs or {},
+        nodes_input_masks=nodes_input_masks,
     )
 
-    if use_db_query:
-        graph_exec = await create_graph_execution(
-            user_id=user_id,
-            graph_id=graph_id,
-            graph_version=graph.version,
-            starting_nodes_input=await construct_node_execution_input(
-                graph=graph,
-                user_id=user_id,
-                graph_inputs=inputs,
-                node_credentials_input_map=node_credentials_input_map,
-            ),
-            preset_id=preset_id,
-        )
-    else:
-        graph_exec = await get_db_async_client().create_graph_execution(
-            user_id=user_id,
-            graph_id=graph_id,
-            graph_version=graph.version,
-            starting_nodes_input=await construct_node_execution_input(
-                graph=graph,
-                user_id=user_id,
-                graph_inputs=inputs,
-                node_credentials_input_map=node_credentials_input_map,
-            ),
-            preset_id=preset_id,
-        )
+    graph_exec = await edb.create_graph_execution(
+        user_id=user_id,
+        graph_id=graph_id,
+        graph_version=graph.version,
+        starting_nodes_input=starting_nodes_input,
+        preset_id=preset_id,
+    )
 
     try:
         queue = await get_async_execution_queue()
         graph_exec_entry = graph_exec.to_graph_execution_entry()
-        if node_credentials_input_map:
-            graph_exec_entry.node_credentials_input_map = node_credentials_input_map
+        if nodes_input_masks:
+            graph_exec_entry.nodes_input_masks = nodes_input_masks
         await queue.publish_message(
             routing_key=GRAPH_EXECUTION_ROUTING_KEY,
             message=graph_exec_entry.model_dump_json(),
@@ -824,28 +827,15 @@ async def add_graph_execution(
         return graph_exec
     except Exception as e:
         logger.error(f"Unable to publish graph #{graph_id} exec #{graph_exec.id}: {e}")
-
-        if use_db_query:
-            await update_node_execution_status_batch(
-                [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
-                ExecutionStatus.FAILED,
-            )
-            await update_graph_execution_stats(
-                graph_exec_id=graph_exec.id,
-                status=ExecutionStatus.FAILED,
-                stats=GraphExecutionStats(error=str(e)),
-            )
-        else:
-            await get_db_async_client().update_node_execution_status_batch(
-                [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
-                ExecutionStatus.FAILED,
-            )
-            await get_db_async_client().update_graph_execution_stats(
-                graph_exec_id=graph_exec.id,
-                status=ExecutionStatus.FAILED,
-                stats=GraphExecutionStats(error=str(e)),
-            )
-
+        await edb.update_node_execution_status_batch(
+            [node_exec.node_exec_id for node_exec in graph_exec.node_executions],
+            ExecutionStatus.FAILED,
+        )
+        await edb.update_graph_execution_stats(
+            graph_exec_id=graph_exec.id,
+            status=ExecutionStatus.FAILED,
+            stats=GraphExecutionStats(error=str(e)),
+        )
         raise
 
 
@@ -900,14 +890,10 @@ class NodeExecutionProgress:
         try:
             self.tasks[exec_id].result(wait_time)
         except TimeoutError:
-            print(
-                ">>>>>>>  -- Timeout, after waiting for",
-                wait_time,
-                "seconds for node_id",
-                exec_id,
-            )
             pass
-
+        except Exception as e:
+            logger.error(f"Task for exec ID {exec_id} failed with error: {str(e)}")
+            pass
         return self.is_done(0)
 
     def stop(self) -> list[str]:
@@ -924,6 +910,25 @@ class NodeExecutionProgress:
             cancelled_ids.append(task_id)
         return cancelled_ids
 
+    def wait_for_cancellation(self, timeout: float = 5.0):
+        """
+        Wait for all cancelled tasks to complete cancellation.
+
+        Args:
+            timeout: Maximum time to wait for cancellation in seconds
+        """
+        start_time = time.time()
+
+        while time.time() - start_time < timeout:
+            # Check if all tasks are done (either completed or cancelled)
+            if all(task.done() for task in self.tasks.values()):
+                return True
+            time.sleep(0.1)  # Small delay to avoid busy waiting
+
+        raise TimeoutError(
+            f"Timeout waiting for cancellation of tasks: {list(self.tasks.keys())}"
+        )
+
     def _pop_done_task(self, exec_id: str) -> bool:
         task = self.tasks.get(exec_id)
         if not task:
@@ -936,8 +941,10 @@ class NodeExecutionProgress:
             return False
 
         if task := self.tasks.pop(exec_id):
-            self.on_done_task(exec_id, task.result())
-
+            try:
+                self.on_done_task(exec_id, task.result())
+            except Exception as e:
+                logger.error(f"Task for exec ID {exec_id} failed with error: {str(e)}")
         return True
 
     def _next_exec(self) -> str | None:

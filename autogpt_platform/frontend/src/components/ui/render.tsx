@@ -9,16 +9,24 @@ const getYouTubeVideoId = (url: string) => {
   return match && match[7].length === 11 ? match[7] : null;
 };
 
+const isValidMediaUri = (url: string): boolean => {
+  if (url.startsWith("data:")) {
+    return true;
+  }
+  const validUrl = /^(https?:\/\/)(www\.)?/i;
+  const cleanedUrl = url.split("?")[0];
+  return validUrl.test(cleanedUrl);
+};
+
 const isValidVideoUrl = (url: string): boolean => {
   if (url.startsWith("data:video")) {
     return true;
   }
-  const validUrl = /^(https?:\/\/)(www\.)?/i;
   const videoExtensions = /\.(mp4|webm|ogg)$/i;
   const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+$/;
   const cleanedUrl = url.split("?")[0];
   return (
-    (validUrl.test(cleanedUrl) && videoExtensions.test(cleanedUrl)) ||
+    (isValidMediaUri(url) && videoExtensions.test(cleanedUrl)) ||
     youtubeRegex.test(cleanedUrl)
   );
 };
@@ -29,17 +37,16 @@ const isValidImageUrl = (url: string): boolean => {
   }
   const imageExtensions = /\.(jpeg|jpg|gif|png|svg|webp)$/i;
   const cleanedUrl = url.split("?")[0];
-  return imageExtensions.test(cleanedUrl);
+  return isValidMediaUri(url) && imageExtensions.test(cleanedUrl);
 };
 
 const isValidAudioUrl = (url: string): boolean => {
   if (url.startsWith("data:audio")) {
     return true;
   }
-  const validUrl = /^(https?:\/\/)(www\.)?/i;
   const audioExtensions = /\.(mp3|wav)$/i;
   const cleanedUrl = url.split("?")[0];
-  return validUrl.test(cleanedUrl) && audioExtensions.test(cleanedUrl);
+  return isValidMediaUri(url) && audioExtensions.test(cleanedUrl);
 };
 
 const VideoRenderer: React.FC<{ videoUrl: string }> = ({ videoUrl }) => {

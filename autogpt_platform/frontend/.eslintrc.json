@@ -2,7 +2,8 @@
   "extends": [
     "next/core-web-vitals",
     "next/typescript",
-    "plugin:storybook/recommended"
+    "plugin:storybook/recommended",
+    "plugin:@tanstack/query/recommended"
   ],
   "rules": {
     // Disabling exhaustive-deps to avoid forcing unnecessary dependencies and useCallback proliferation.

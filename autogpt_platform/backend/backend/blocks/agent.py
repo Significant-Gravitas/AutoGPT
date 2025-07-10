@@ -2,6 +2,8 @@ import asyncio
 import logging
 from typing import Any, Optional
 
+from pydantic import JsonValue
+
 from backend.data.block import (
     Block,
     BlockCategory,
@@ -12,10 +14,10 @@ from backend.data.block import (
     get_block,
 )
 from backend.data.execution import ExecutionStatus
-from backend.data.model import CredentialsMetaInput, SchemaField
-from backend.util import json
+from backend.data.model import SchemaField
+from backend.util import json, retry
 
-logger = logging.getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 class AgentExecutorBlock(Block):
@@ -28,9 +30,9 @@ class AgentExecutorBlock(Block):
         input_schema: dict = SchemaField(description="Input schema for the graph")
         output_schema: dict = SchemaField(description="Output schema for the graph")
 
-        node_credentials_input_map: Optional[
-            dict[str, dict[str, CredentialsMetaInput]]
-        ] = SchemaField(default=None, hidden=True)
+        nodes_input_masks: Optional[dict[str, dict[str, JsonValue]]] = SchemaField(
+            default=None, hidden=True
+        )
 
         @classmethod
         def get_input_schema(cls, data: BlockInput) -> dict[str, Any]:
@@ -71,8 +73,18 @@ class AgentExecutorBlock(Block):
             graph_version=input_data.graph_version,
             user_id=input_data.user_id,
             inputs=input_data.inputs,
-            node_credentials_input_map=input_data.node_credentials_input_map,
+            nodes_input_masks=input_data.nodes_input_masks,
             use_db_query=False,
+        )
+
+        logger = execution_utils.LogMetadata(
+            logger=_logger,
+            user_id=input_data.user_id,
+            graph_eid=graph_exec.id,
+            graph_id=input_data.graph_id,
+            node_eid="*",
+            node_id="*",
+            block_name=self.name,
         )
 
         try:
@@ -81,21 +93,26 @@ class AgentExecutorBlock(Block):
                 graph_version=input_data.graph_version,
                 graph_exec_id=graph_exec.id,
                 user_id=input_data.user_id,
+                logger=logger,
             ):
                 yield name, data
         except asyncio.CancelledError:
-            logger.warning(
-                f"Execution of graph {input_data.graph_id} version {input_data.graph_version} was cancelled."
+            await self._stop(
+                graph_exec_id=graph_exec.id,
+                user_id=input_data.user_id,
+                logger=logger,
             )
-            await execution_utils.stop_graph_execution(
-                graph_exec.id, use_db_query=False
+            logger.warning(
+                f"Execution of graph {input_data.graph_id}v{input_data.graph_version} was cancelled."
             )
         except Exception as e:
-            logger.error(
-                f"Execution of graph {input_data.graph_id} version {input_data.graph_version} failed: {e}, stopping execution."
+            await self._stop(
+                graph_exec_id=graph_exec.id,
+                user_id=input_data.user_id,
+                logger=logger,
             )
-            await execution_utils.stop_graph_execution(
-                graph_exec.id, use_db_query=False
+            logger.error(
+                f"Execution of graph {input_data.graph_id}v{input_data.graph_version} failed: {e}, execution is stopped."
             )
             raise
 
@@ -105,6 +122,7 @@ class AgentExecutorBlock(Block):
         graph_version: int,
         graph_exec_id: str,
         user_id: str,
+        logger,
     ) -> BlockOutput:
 
         from backend.data.execution import ExecutionEventType
@@ -157,3 +175,25 @@ class AgentExecutorBlock(Block):
                     f"Execution {log_id} produced {output_name}: {output_data}"
                 )
                 yield output_name, output_data
+
+    @retry.func_retry
+    async def _stop(
+        self,
+        graph_exec_id: str,
+        user_id: str,
+        logger,
+    ) -> None:
+        from backend.executor import utils as execution_utils
+
+        log_id = f"Graph exec-id: {graph_exec_id}"
+        logger.info(f"Stopping execution of {log_id}")
+
+        try:
+            await execution_utils.stop_graph_execution(
+                graph_exec_id=graph_exec_id,
+                user_id=user_id,
+                use_db_query=False,
+            )
+            logger.info(f"Execution {log_id} stopped successfully.")
+        except Exception as e:
+            logger.error(f"Failed to stop execution {log_id}: {e}")

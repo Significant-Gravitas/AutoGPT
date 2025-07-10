@@ -238,6 +238,31 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="The Discord channel for the platform",
     )
 
+    clamav_service_host: str = Field(
+        default="localhost",
+        description="The host for the ClamAV daemon",
+    )
+    clamav_service_port: int = Field(
+        default=3310,
+        description="The port for the ClamAV daemon",
+    )
+    clamav_service_timeout: int = Field(
+        default=60,
+        description="The timeout in seconds for the ClamAV daemon",
+    )
+    clamav_service_enabled: bool = Field(
+        default=True,
+        description="Whether virus scanning is enabled or not",
+    )
+    clamav_max_concurrency: int = Field(
+        default=10,
+        description="The maximum number of concurrent scans to perform",
+    )
+    clamav_mark_failed_scans_as_clean: bool = Field(
+        default=False,
+        description="Whether to mark failed scans as clean or not",
+    )
+
     @field_validator("platform_base_url", "frontend_base_url")
     @classmethod
     def validate_platform_base_url(cls, v: str, info: ValidationInfo) -> str:
