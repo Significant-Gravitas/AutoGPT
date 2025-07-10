@@ -14,7 +14,6 @@ import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import {
   BlockIOCredentialsSubSchema,
   CredentialsMetaInput,
-  CredentialsProviderName,
 } from "@/lib/autogpt-server-api/types";
 import { cn } from "@/lib/utils";
 import { getHostFromUrl } from "@/lib/utils/url";
@@ -37,9 +36,9 @@ import { UserPasswordCredentialsModal } from "./user-password-credentials-modal"
 const fallbackIcon = FaKey;
 
 // --8<-- [start:ProviderIconsEmbed]
-export const providerIcons: Record<
-  CredentialsProviderName,
-  React.FC<{ className?: string }>
+// Provider icons mapping - uses fallback for unknown providers
+export const providerIcons: Partial<
+  Record<string, React.FC<{ className?: string }>>
 > = {
   aiml_api: fallbackIcon,
   anthropic: fallbackIcon,

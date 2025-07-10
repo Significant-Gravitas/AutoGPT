@@ -22,7 +22,10 @@ import { TypeBasedInput } from "@/components/type-based-input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
 import { Input } from "@/components/ui/input";
-import { useToast, useToastOnFail } from "@/components/ui/use-toast";
+import {
+  useToast,
+  useToastOnFail,
+} from "@/components/molecules/Toast/use-toast";
 import { isEmpty } from "lodash";
 import { CalendarClockIcon, Trash2Icon } from "lucide-react";
 

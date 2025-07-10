@@ -37,8 +37,6 @@ import type { GetV1GetSpecificGraphParams } from "../../models/getV1GetSpecificG
 
 import type { Graph } from "../../models/graph";
 
-import type { GraphExecution } from "../../models/graphExecution";
-
 import type { GraphExecutionMeta } from "../../models/graphExecutionMeta";
 
 import type { GraphModel } from "../../models/graphModel";
@@ -46,6 +44,10 @@ import type { GraphModel } from "../../models/graphModel";
 import type { HTTPValidationError } from "../../models/hTTPValidationError";
 
 import type { PostV1ExecuteGraphAgentParams } from "../../models/postV1ExecuteGraphAgentParams";
+
+import type { PostV1StopGraphExecution200 } from "../../models/postV1StopGraphExecution200";
+
+import type { PostV1StopGraphExecutionsParams } from "../../models/postV1StopGraphExecutionsParams";
 
 import type { SetGraphActiveVersion } from "../../models/setGraphActiveVersion";
 
@@ -1498,7 +1500,7 @@ export const usePostV1ExecuteGraphAgent = <
  * @summary Stop graph execution
  */
 export type postV1StopGraphExecutionResponse200 = {
-  data: GraphExecution;
+  data: PostV1StopGraphExecution200;
   status: 200;
 };
 
@@ -1605,6 +1607,130 @@ export const usePostV1StopGraphExecution = <
   TContext
 > => {
   const mutationOptions = getPostV1StopGraphExecutionMutationOptions(options);
+
+  return useMutation(mutationOptions, queryClient);
+};
+/**
+ * @summary Stop graph executions
+ */
+export type postV1StopGraphExecutionsResponse200 = {
+  data: GraphExecutionMeta[];
+  status: 200;
+};
+
+export type postV1StopGraphExecutionsResponse422 = {
+  data: HTTPValidationError;
+  status: 422;
+};
+
+export type postV1StopGraphExecutionsResponseComposite =
+  | postV1StopGraphExecutionsResponse200
+  | postV1StopGraphExecutionsResponse422;
+
+export type postV1StopGraphExecutionsResponse =
+  postV1StopGraphExecutionsResponseComposite & {
+    headers: Headers;
+  };
+
+export const getPostV1StopGraphExecutionsUrl = (
+  params: PostV1StopGraphExecutionsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/executions?${stringifiedParams}`
+    : `/api/executions`;
+};
+
+export const postV1StopGraphExecutions = async (
+  params: PostV1StopGraphExecutionsParams,
+  options?: RequestInit,
+): Promise<postV1StopGraphExecutionsResponse> => {
+  return customMutator<postV1StopGraphExecutionsResponse>(
+    getPostV1StopGraphExecutionsUrl(params),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getPostV1StopGraphExecutionsMutationOptions = <
+  TError = HTTPValidationError,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postV1StopGraphExecutions>>,
+    TError,
+    { params: PostV1StopGraphExecutionsParams },
+    TContext
+  >;
+  request?: SecondParameter<typeof customMutator>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof postV1StopGraphExecutions>>,
+  TError,
+  { params: PostV1StopGraphExecutionsParams },
+  TContext
+> => {
+  const mutationKey = ["postV1StopGraphExecutions"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof postV1StopGraphExecutions>>,
+    { params: PostV1StopGraphExecutionsParams }
+  > = (props) => {
+    const { params } = props ?? {};
+
+    return postV1StopGraphExecutions(params, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PostV1StopGraphExecutionsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof postV1StopGraphExecutions>>
+>;
+
+export type PostV1StopGraphExecutionsMutationError = HTTPValidationError;
+
+/**
+ * @summary Stop graph executions
+ */
+export const usePostV1StopGraphExecutions = <
+  TError = HTTPValidationError,
+  TContext = unknown,
+>(
+  options?: {
+    mutation?: UseMutationOptions<
+      Awaited<ReturnType<typeof postV1StopGraphExecutions>>,
+      TError,
+      { params: PostV1StopGraphExecutionsParams },
+      TContext
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+  queryClient?: QueryClient,
+): UseMutationResult<
+  Awaited<ReturnType<typeof postV1StopGraphExecutions>>,
+  TError,
+  { params: PostV1StopGraphExecutionsParams },
+  TContext
+> => {
+  const mutationOptions = getPostV1StopGraphExecutionsMutationOptions(options);
 
   return useMutation(mutationOptions, queryClient);
 };
