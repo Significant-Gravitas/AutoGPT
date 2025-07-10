@@ -9,7 +9,16 @@ import stripe
 from autogpt_libs.auth.middleware import auth_middleware
 from autogpt_libs.feature_flag.client import feature_flag
 from autogpt_libs.utils.cache import thread_cached
-from fastapi import APIRouter, Body, Depends, HTTPException, Request, Response
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    File,
+    HTTPException,
+    Request,
+    Response,
+    UploadFile,
+)
 from starlette.status import HTTP_204_NO_CONTENT, HTTP_404_NOT_FOUND
 from typing_extensions import Optional, TypedDict
 
@@ -72,8 +81,10 @@ from backend.server.model import (
     UpdatePermissionsRequest,
 )
 from backend.server.utils import get_user_id
+from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
+from backend.util.virus_scanner import scan_content_safe
 
 
 @thread_cached
@@ -248,6 +259,63 @@ async def execute_graph_block(block_id: str, data: BlockInput) -> CompletedBlock
     async for name, data in obj.execute(data):
         output[name].append(data)
     return output
+
+
+@v1_router.post(
+    path="/files/upload",
+    summary="Upload file to cloud storage",
+    tags=["files"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def upload_file(
+    user_id: Annotated[str, Depends(get_user_id)],
+    file: UploadFile = File(...),
+    provider: str = "gcs",
+    expiration_hours: int = 24,
+) -> dict[str, str | int]:
+    """
+    Upload a file to cloud storage and return a storage key that can be used
+    with FileStoreBlock and AgentFileInputBlock.
+
+    Args:
+        file: The file to upload
+        user_id: The user ID
+        provider: Cloud storage provider ("gcs", "s3", "azure")
+        expiration_hours: Hours until file expires (1-48)
+
+    Returns:
+        Dict containing the cloud storage path and signed URL
+    """
+    if expiration_hours < 1 or expiration_hours > 48:
+        raise HTTPException(
+            status_code=400, detail="Expiration hours must be between 1 and 48"
+        )
+
+    # Read file content
+    content = await file.read()
+
+    # Virus scan the content
+    await scan_content_safe(content, filename=file.filename or "uploaded_file")
+
+    # Store in cloud storage
+    cloud_storage = get_cloud_storage_handler()
+    storage_path = await cloud_storage.store_file(
+        content=content, filename=file.filename or "uploaded_file", provider=provider
+    )
+
+    # Generate signed URL for direct access
+    signed_url = await cloud_storage.generate_signed_url(
+        storage_path, expiration_hours=expiration_hours
+    )
+
+    return {
+        "storage_key": storage_path,
+        "signed_url": signed_url,
+        "filename": file.filename or "uploaded_file",
+        "size": len(content),
+        "content_type": file.content_type or "application/octet-stream",
+        "expires_in_hours": expiration_hours,
+    }
 
 
 ########################################################

@@ -7,6 +7,7 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
+from backend.util.cloud_storage import get_cloud_storage_handler
 from backend.util.request import Requests
 from backend.util.type import MediaFileType
 from backend.util.virus_scanner import scan_content_safe
@@ -91,8 +92,23 @@ async def store_media_file(
         """
         return str(absolute_path.relative_to(base))
 
+    # Check if this is a cloud storage path
+    cloud_storage = get_cloud_storage_handler()
+    if cloud_storage.is_cloud_path(file):
+        # Download from cloud storage and store locally
+        cloud_content = await cloud_storage.retrieve_file(file)
+
+        # Generate filename from cloud path
+        _, path_part = cloud_storage.parse_cloud_path(file)
+        filename = Path(path_part).name or f"{uuid.uuid4()}.bin"
+        target_path = _ensure_inside_base(base_path / filename, base_path)
+
+        # Virus scan the cloud content before writing locally
+        await scan_content_safe(cloud_content, filename=filename)
+        target_path.write_bytes(cloud_content)
+
     # Process file
-    if file.startswith("data:"):
+    elif file.startswith("data:"):
         # Data URI
         match = re.match(r"^data:([^;]+);base64,(.*)$", file, re.DOTALL)
         if not match:
