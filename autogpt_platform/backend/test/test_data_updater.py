@@ -300,12 +300,13 @@ async def main():
         print(f"  - Agent {row['agentGraphId'][:8]}...: {row['run_count']} runs")
 
     sample_reviews = await db.query_raw(
-        "SELECT * FROM mv_review_stats ORDER BY avg_rating DESC LIMIT 5"
+        "SELECT * FROM mv_review_stats ORDER BY avg_rating DESC NULLS LAST LIMIT 5"
     )
     print("\nTop 5 store listings by rating:")
     for row in sample_reviews:
+        avg_rating = row['avg_rating'] if row['avg_rating'] is not None else 0.0
         print(
-            f"  - Listing {row['storeListingId'][:8]}...: {row['avg_rating']:.2f} ⭐ ({row['review_count']} reviews)"
+            f"  - Listing {row['storeListingId'][:8]}...: {avg_rating:.2f} ⭐ ({row['review_count']} reviews)"
         )
 
     await db.disconnect()
