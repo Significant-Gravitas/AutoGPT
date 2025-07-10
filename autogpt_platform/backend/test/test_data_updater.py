@@ -304,7 +304,7 @@ async def main():
     )
     print("\nTop 5 store listings by rating:")
     for row in sample_reviews:
-        avg_rating = row['avg_rating'] if row['avg_rating'] is not None else 0.0
+        avg_rating = row["avg_rating"] if row["avg_rating"] is not None else 0.0
         print(
             f"  - Listing {row['storeListingId'][:8]}...: {avg_rating:.2f} ⭐ ({row['review_count']} reviews)"
         )

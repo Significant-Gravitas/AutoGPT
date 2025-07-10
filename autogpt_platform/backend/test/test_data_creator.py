@@ -33,7 +33,6 @@ from prisma.types import (
     APIKeyCreateInput,
     CreditTransactionCreateInput,
     IntegrationWebhookCreateInput,
-    LibraryAgentCreateInput,
     ProfileCreateInput,
     StoreListingReviewCreateInput,
     UserCreateInput,
@@ -213,12 +212,12 @@ async def main():
 
         for i in range(num_agents):
             graph = available_graphs[i]  # Use unique graph for each library agent
-            
+
             # Get creator profile for this graph's owner
             creator_profile = next(
                 (p for p in profiles if p.userId == graph.userId), None
             )
-            
+
             library_agent = await db.libraryagent.create(
                 data={
                     "userId": user.id,
