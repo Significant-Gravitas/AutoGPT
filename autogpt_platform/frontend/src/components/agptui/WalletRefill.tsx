@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "../ui/input";
 import Link from "next/link";
-import { useToast, useToastOnFail } from "../ui/use-toast";
+import { useToast, useToastOnFail } from "../molecules/Toast/use-toast";
 import useCredits from "@/hooks/useCredits";
 import { useCallback, useEffect, useState } from "react";
 
@@ -88,7 +88,10 @@ export default function WalletRefill() {
       setIsLoading(true);
       await updateAutoTopUpConfig(data.refillAmount * 100, data.threshold * 100)
         .then(() => {
-          toast({ title: "Auto top-up config updated! 🎉" });
+          toast({
+            title: "Auto top-up config updated! 🎉",
+            variant: "success",
+          });
         })
         .catch(toastOnFail("update auto top-up config"));
       setIsLoading(false);

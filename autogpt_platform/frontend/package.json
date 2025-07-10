@@ -87,6 +87,7 @@
     "react-shepherd": "6.1.8",
     "recharts": "2.15.3",
     "shepherd.js": "14.5.0",
+    "sonner": "2.0.6",
     "tailwind-merge": "2.6.0",
     "tailwindcss-animate": "1.0.7",
     "uuid": "11.1.0",

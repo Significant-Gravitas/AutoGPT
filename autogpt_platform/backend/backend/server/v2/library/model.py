@@ -127,7 +127,7 @@ class LibraryAgent(pydantic.BaseModel):
             description=graph.description,
             input_schema=graph.input_schema,
             credentials_input_schema=(
-                graph.credentials_input_schema if sub_graphs else None
+                graph.credentials_input_schema if sub_graphs is not None else None
             ),
             has_external_trigger=graph.has_webhook_trigger,
             trigger_setup_info=(

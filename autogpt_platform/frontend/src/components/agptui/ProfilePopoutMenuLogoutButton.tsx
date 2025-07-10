@@ -6,7 +6,7 @@ import * as Sentry from "@sentry/nextjs";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { LoadingSpinner } from "../ui/loading";
-import { toast } from "../ui/use-toast";
+import { toast } from "../molecules/Toast/use-toast";
 
 export function ProfilePopoutMenuLogoutButton() {
   const router = useRouter();
