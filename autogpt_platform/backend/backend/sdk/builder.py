@@ -8,7 +8,7 @@ from typing import Callable, List, Optional, Type
 from pydantic import SecretStr
 
 from backend.data.cost import BlockCost, BlockCostType
-from backend.data.model import APIKeyCredentials, Credentials
+from backend.data.model import APIKeyCredentials, Credentials, UserPasswordCredentials
 from backend.integrations.oauth.base import BaseOAuthHandler
 from backend.integrations.webhooks._base import BaseWebhooksManager
 from backend.sdk.provider import OAuthConfig, Provider
@@ -85,6 +85,27 @@ class ProviderBuilder:
                     id=f"{self.name}-default",
                     provider=self.name,
                     api_key=api_key,
+                    title=title,
+                )
+            )
+        return self
+
+    def with_user_password(
+        self, username_env_var: str, password_env_var: str, title: str
+    ) -> "ProviderBuilder":
+        """Add username/password support with environment variable names."""
+        self._supported_auth_types.add("user_password")
+
+        # Check if credentials exist in environment
+        username = os.getenv(username_env_var)
+        password = os.getenv(password_env_var)
+        if username and password:
+            self._default_credentials.append(
+                UserPasswordCredentials(
+                    id=f"{self.name}-default",
+                    provider=self.name,
+                    username=SecretStr(username),
+                    password=SecretStr(password),
                     title=title,
                 )
             )
