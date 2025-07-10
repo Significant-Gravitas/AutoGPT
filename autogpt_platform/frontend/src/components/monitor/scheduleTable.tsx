@@ -12,7 +12,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ClockIcon, Loader2 } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { humanizeCronExpression } from "@/lib/cron-expression-utils";
 import {
   Select,

@@ -5,7 +5,7 @@ import { AuthCard } from "@/components/auth/AuthCard";
 import Turnstile from "@/components/auth/Turnstile";
 import { Form, FormField } from "@/components/ui/form";
 import LoadingBox from "@/components/ui/loading";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { changePasswordFormSchema, sendEmailFormSchema } from "@/types/auth";
