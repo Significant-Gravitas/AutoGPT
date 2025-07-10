@@ -224,7 +224,7 @@ class DatabaseManagerClient(AppServiceClient):
     get_execution_time_stats = _(d.get_execution_time_stats)
     get_cost_breakdown_by_agent = _(d.get_cost_breakdown_by_agent)
     get_user_summary_data = _(d.get_user_summary_data)
-    
+
     # Block error monitoring
     get_block_error_stats = _(d.get_block_error_stats)
 
