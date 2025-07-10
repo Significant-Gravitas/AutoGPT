@@ -53,7 +53,7 @@ function ToastDemo() {
       title: "Toast with Action",
       description: "This toast has a custom action button.",
       action: (
-        <Button variant="secondary" size="small">
+        <Button variant="secondary" size="small" className="ml-6">
           Action
         </Button>
       ),
