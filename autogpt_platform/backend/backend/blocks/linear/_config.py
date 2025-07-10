@@ -1,31 +1,19 @@
+"""
+Shared configuration for all Linear blocks using the new SDK pattern.
+"""
+
+import os
 from enum import Enum
-from typing import Literal
 
-from pydantic import SecretStr
-
-from backend.data.model import (
+from backend.sdk import (
     APIKeyCredentials,
-    CredentialsField,
-    CredentialsMetaInput,
+    BlockCostType,
     OAuth2Credentials,
-)
-from backend.integrations.providers import ProviderName
-from backend.util.settings import Secrets
-
-secrets = Secrets()
-LINEAR_OAUTH_IS_CONFIGURED = bool(
-    secrets.linear_client_id and secrets.linear_client_secret
+    ProviderBuilder,
+    SecretStr,
 )
 
-LinearCredentials = OAuth2Credentials | APIKeyCredentials
-# LinearCredentialsInput = CredentialsMetaInput[
-#     Literal[ProviderName.LINEAR],
-#     Literal["oauth2", "api_key"] if LINEAR_OAUTH_IS_CONFIGURED else Literal["oauth2"],
-# ]
-LinearCredentialsInput = CredentialsMetaInput[
-    Literal[ProviderName.LINEAR], Literal["oauth2"]
-]
-
+from ._oauth import LinearOAuthHandler
 
 # (required) Comma separated list of scopes:
 
@@ -50,20 +38,34 @@ class LinearScope(str, Enum):
     ADMIN = "admin"
 
 
-def LinearCredentialsField(scopes: list[LinearScope]) -> LinearCredentialsInput:
-    """
-    Creates a Linear credentials input on a block.
+# Check if Linear OAuth is configured
+client_id = os.getenv("LINEAR_CLIENT_ID")
+client_secret = os.getenv("LINEAR_CLIENT_SECRET")
+LINEAR_OAUTH_IS_CONFIGURED = bool(client_id and client_secret)
 
-    Params:
-        scope: The authorization scope needed for the block to work. ([list of available scopes](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps#available-scopes))
-    """  # noqa
-    return CredentialsField(
-        required_scopes=set([LinearScope.READ.value]).union(
-            set([scope.value for scope in scopes])
-        ),
-        description="The Linear integration can be used with OAuth, "
-        "or any API key with sufficient permissions for the blocks it is used on.",
+# Build the Linear provider
+builder = (
+    ProviderBuilder("linear")
+    .with_api_key(env_var_name="LINEAR_API_KEY", title="Linear API Key")
+    .with_base_cost(1, BlockCostType.RUN)
+)
+
+# Linear only supports OAuth authentication
+if LINEAR_OAUTH_IS_CONFIGURED:
+    builder = builder.with_oauth(
+        LinearOAuthHandler,
+        scopes=[
+            LinearScope.READ,
+            LinearScope.WRITE,
+            LinearScope.ISSUES_CREATE,
+            LinearScope.COMMENTS_CREATE,
+        ],
+        client_id_env_var="LINEAR_CLIENT_ID",
+        client_secret_env_var="LINEAR_CLIENT_SECRET",
     )
+
+# Build the provider
+linear = builder.build()
 
 
 TEST_CREDENTIALS_OAUTH = OAuth2Credentials(

@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import TYPE_CHECKING, Annotated, Awaitable, Literal
+from typing import TYPE_CHECKING, Annotated, Awaitable, List, Literal
 
 from fastapi import (
     APIRouter,
@@ -30,9 +30,14 @@ from backend.data.model import (
 )
 from backend.executor.utils import add_graph_execution
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.integrations.oauth import HANDLERS_BY_NAME
+from backend.integrations.oauth import CREDENTIALS_BY_PROVIDER, HANDLERS_BY_NAME
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks import get_webhook_manager
+from backend.server.integrations.models import (
+    ProviderConstants,
+    ProviderNamesResponse,
+    get_all_provider_names,
+)
 from backend.server.v2.library.db import set_preset_webhook, update_preset
 from backend.util.exceptions import NeedConfirmation, NotFoundError
 from backend.util.settings import Settings
@@ -472,14 +477,49 @@ async def remove_all_webhooks_for_credentials(
 def _get_provider_oauth_handler(
     req: Request, provider_name: ProviderName
 ) -> "BaseOAuthHandler":
-    if provider_name not in HANDLERS_BY_NAME:
+    # Ensure blocks are loaded so SDK providers are available
+    try:
+        from backend.blocks import load_all_blocks
+
+        load_all_blocks()  # This is cached, so it only runs once
+    except Exception as e:
+        logger.warning(f"Failed to load blocks: {e}")
+
+    # Convert provider_name to string for lookup
+    provider_key = (
+        provider_name.value if hasattr(provider_name, "value") else str(provider_name)
+    )
+
+    if provider_key not in HANDLERS_BY_NAME:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Provider '{provider_name.value}' does not support OAuth",
+            detail=f"Provider '{provider_key}' does not support OAuth",
         )
 
-    client_id = getattr(settings.secrets, f"{provider_name.value}_client_id")
-    client_secret = getattr(settings.secrets, f"{provider_name.value}_client_secret")
+    # Check if this provider has custom OAuth credentials
+    oauth_credentials = CREDENTIALS_BY_PROVIDER.get(provider_key)
+
+    if oauth_credentials and not oauth_credentials.use_secrets:
+        # SDK provider with custom env vars
+        import os
+
+        client_id = (
+            os.getenv(oauth_credentials.client_id_env_var)
+            if oauth_credentials.client_id_env_var
+            else None
+        )
+        client_secret = (
+            os.getenv(oauth_credentials.client_secret_env_var)
+            if oauth_credentials.client_secret_env_var
+            else None
+        )
+    else:
+        # Original provider using settings.secrets
+        client_id = getattr(settings.secrets, f"{provider_name.value}_client_id", None)
+        client_secret = getattr(
+            settings.secrets, f"{provider_name.value}_client_secret", None
+        )
+
     if not (client_id and client_secret):
         logger.error(
             f"Attempt to use unconfigured {provider_name.value} OAuth integration"
@@ -492,14 +532,84 @@ def _get_provider_oauth_handler(
             },
         )
 
-    handler_class = HANDLERS_BY_NAME[provider_name]
-    frontend_base_url = (
-        settings.config.frontend_base_url
-        or settings.config.platform_base_url
-        or str(req.base_url)
-    )
+    handler_class = HANDLERS_BY_NAME[provider_key]
+    frontend_base_url = settings.config.frontend_base_url
+
+    if not frontend_base_url:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Frontend base URL is not configured",
+        )
+
     return handler_class(
         client_id=client_id,
         client_secret=client_secret,
         redirect_uri=f"{frontend_base_url}/auth/integrations/oauth_callback",
+    )
+
+
+# === PROVIDER DISCOVERY ENDPOINTS ===
+
+
+@router.get("/providers", response_model=List[str])
+async def list_providers() -> List[str]:
+    """
+    Get a list of all available provider names.
+
+    Returns both statically defined providers (from ProviderName enum)
+    and dynamically registered providers (from SDK decorators).
+
+    Note: The complete list of provider names is also available as a constant
+    in the generated TypeScript client via PROVIDER_NAMES.
+    """
+    # Get all providers at runtime
+    all_providers = get_all_provider_names()
+    return all_providers
+
+
+@router.get("/providers/names", response_model=ProviderNamesResponse)
+async def get_provider_names() -> ProviderNamesResponse:
+    """
+    Get all provider names in a structured format.
+
+    This endpoint is specifically designed to expose the provider names
+    in the OpenAPI schema so that code generators like Orval can create
+    appropriate TypeScript constants.
+    """
+    return ProviderNamesResponse()
+
+
+@router.get("/providers/constants", response_model=ProviderConstants)
+async def get_provider_constants() -> ProviderConstants:
+    """
+    Get provider names as constants.
+
+    This endpoint returns a model with provider names as constants,
+    specifically designed for OpenAPI code generation tools to create
+    TypeScript constants.
+    """
+    return ProviderConstants()
+
+
+class ProviderEnumResponse(BaseModel):
+    """Response containing a provider from the enum."""
+
+    provider: str = Field(
+        description="A provider name from the complete list of providers"
+    )
+
+
+@router.get("/providers/enum-example", response_model=ProviderEnumResponse)
+async def get_provider_enum_example() -> ProviderEnumResponse:
+    """
+    Example endpoint that uses the CompleteProviderNames enum.
+
+    This endpoint exists to ensure that the CompleteProviderNames enum is included
+    in the OpenAPI schema, which will cause Orval to generate it as a
+    TypeScript enum/constant.
+    """
+    # Return the first provider as an example
+    all_providers = get_all_provider_names()
+    return ProviderEnumResponse(
+        provider=all_providers[0] if all_providers else "openai"
     )
