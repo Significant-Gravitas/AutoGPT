@@ -148,6 +148,7 @@ jobs:
           onlyChanged: true
           workingDir: autogpt_platform/frontend
           token: ${{ secrets.GITHUB_TOKEN }}
+          exitOnceUploaded: true
 
   test:
     runs-on: ubuntu-latest

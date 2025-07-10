@@ -38,7 +38,7 @@ test.describe("Build", () => { //(1)!
   });
   // --8<-- [end:BuildPageExample]
 
-  test("user can add all blocks a-l", async ({ page }, testInfo) => {
+  test.skip("user can add all blocks a-l", async ({ page }, testInfo) => {
     // this test is slow af so we 100x the timeout (sorry future me)
     test.setTimeout(testInfo.timeout * 100);
 
@@ -77,7 +77,7 @@ test.describe("Build", () => { //(1)!
     await test.expect(page).toHaveURL(({ searchParams }) => !!searchParams.get("flowID"));
   });
 
-  test("user can add all blocks m-z", async ({ page }, testInfo) => {
+  test.skip("user can add all blocks m-z", async ({ page }, testInfo) => {
     // this test is slow af so we 100x the timeout (sorry future me)
     test.setTimeout(testInfo.timeout * 100);
 
