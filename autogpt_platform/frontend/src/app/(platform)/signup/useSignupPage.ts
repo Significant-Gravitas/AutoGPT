@@ -1,4 +1,3 @@
-import { useToast } from "@/components/ui/use-toast";
 import { useTurnstile } from "@/hooks/useTurnstile";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { BehaveAs, getBehaveAs } from "@/lib/utils";
@@ -10,6 +9,7 @@ import { useForm } from "react-hook-form";
 import z from "zod";
 import { providerLogin } from "../login/actions";
 import { signup } from "./actions";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 
 export function useSignupPage() {
   const { supabase, user, isUserLoading } = useSupabase();
