@@ -6,12 +6,12 @@
  * OpenAPI spec version: 0.1
  */
 import type { CredentialsMetaInputTitle } from "./credentialsMetaInputTitle";
+import type { ProviderName } from "./providerName";
 import type { CredentialsMetaInputType } from "./credentialsMetaInputType";
 
 export interface CredentialsMetaInput {
   id: string;
   title?: CredentialsMetaInputTitle;
-  /** Provider name for integrations. Can be any string value, including custom provider names. */
-  provider: string;
+  provider: ProviderName;
   type: CredentialsMetaInputType;
 }
