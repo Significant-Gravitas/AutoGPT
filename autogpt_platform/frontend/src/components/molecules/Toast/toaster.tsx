@@ -21,10 +21,10 @@ export function Toaster() {
         },
       }}
       icons={{
-        success: <CheckCircle className="h-5 w-5" color="#fff" />,
-        error: <XCircle className="h-5 w-5" color="#fff" />,
-        warning: <Warning className="h-5 w-5" color="#fff" />,
-        info: <Info className="h-5 w-5" color="#fff" />,
+        success: <CheckCircle className="h-4 w-4" color="#fff" weight="fill" />,
+        error: <XCircle className="h-4 w-4" color="#fff" weight="fill" />,
+        warning: <Warning className="h-4 w-4" color="#fff" weight="fill" />,
+        info: <Info className="h-4 w-4" color="#fff" weight="fill" />,
       }}
     />
   );
