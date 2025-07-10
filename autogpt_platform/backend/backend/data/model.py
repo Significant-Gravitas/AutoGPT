@@ -42,6 +42,9 @@ from pydantic_core import (
 from backend.integrations.providers import ProviderName
 from backend.util.settings import Secrets
 
+# Type alias for any provider name (including custom ones)
+AnyProviderName = str  # Will be validated as ProviderName at runtime
+
 if TYPE_CHECKING:
     from backend.data.block import BlockSchema
 
@@ -341,7 +344,7 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
     type: CT
 
     @classmethod
-    def allowed_providers(cls) -> tuple[ProviderName, ...]:
+    def allowed_providers(cls) -> tuple[ProviderName, ...] | None:
         return get_args(cls.model_fields["provider"].annotation)
 
     @classmethod
@@ -366,7 +369,12 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
                 f"{field_schema}"
             ) from e
 
-        if len(cls.allowed_providers()) > 1 and not schema_extra.discriminator:
+        providers = cls.allowed_providers()
+        if (
+            providers is not None
+            and len(providers) > 1
+            and not schema_extra.discriminator
+        ):
             raise TypeError(
                 f"Multi-provider CredentialsField '{field_name}' "
                 "requires discriminator!"
@@ -378,7 +386,12 @@ class CredentialsMetaInput(BaseModel, Generic[CP, CT]):
         if hasattr(model_class, "allowed_providers") and hasattr(
             model_class, "allowed_cred_types"
         ):
-            schema["credentials_provider"] = model_class.allowed_providers()
+            allowed_providers = model_class.allowed_providers()
+            # If no specific providers (None), allow any string
+            if allowed_providers is None:
+                schema["credentials_provider"] = ["string"]  # Allow any string provider
+            else:
+                schema["credentials_provider"] = allowed_providers
             schema["credentials_types"] = model_class.allowed_cred_types()
         # Do not return anything, just mutate schema in place
 
@@ -539,6 +552,11 @@ def CredentialsField(
         }.items()
         if v is not None
     }
+
+    # Merge any json_schema_extra passed in kwargs
+    if "json_schema_extra" in kwargs:
+        extra_schema = kwargs.pop("json_schema_extra")
+        field_schema_extra.update(extra_schema)
 
     return Field(
         title=title,

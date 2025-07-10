@@ -1,12 +1,12 @@
 "use client";
 import { IconLogOut } from "@/components/ui/icons";
 import { LoadingSpinner } from "@/components/ui/loading";
-import { toast } from "@/components/ui/use-toast";
 import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
 import { cn } from "@/lib/utils";
 import * as Sentry from "@sentry/nextjs";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
+import { toast } from "@/components/molecules/Toast/use-toast";
 
 export function AccountLogoutOption() {
   const router = useRouter();

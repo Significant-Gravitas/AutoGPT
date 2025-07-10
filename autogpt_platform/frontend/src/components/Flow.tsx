@@ -10,7 +10,7 @@ import RunnerUIWrapper, {
 } from "@/components/RunnerUIWrapper";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { IconRedo2, IconUndo2 } from "@/components/ui/icons";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import useAgentGraph from "@/hooks/useAgentGraph";
 import {
   BlockUIType,

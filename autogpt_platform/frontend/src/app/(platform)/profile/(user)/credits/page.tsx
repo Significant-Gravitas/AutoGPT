@@ -1,11 +1,14 @@
 "use client";
 import { Button } from "@/components/ui/button";
 import LoadingBox from "@/components/ui/loading";
-import { useToast, useToastOnFail } from "@/components/ui/use-toast";
 import useCredits from "@/hooks/useCredits";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import {
+  useToast,
+  useToastOnFail,
+} from "@/components/molecules/Toast/use-toast";
 
 import { CreditTransaction } from "@/lib/autogpt-server-api";
 import { RefundModal } from "./RefundModal";
