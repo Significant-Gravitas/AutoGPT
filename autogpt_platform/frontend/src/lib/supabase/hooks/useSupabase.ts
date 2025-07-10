@@ -165,6 +165,7 @@ export function useSupabase() {
   }, []);
 
   return {
+    user,
     supabase, // Available for non-auth operations like real-time subscriptions
     isLoggedIn,
     isUserLoading,
