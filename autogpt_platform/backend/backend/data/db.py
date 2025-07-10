@@ -93,6 +93,28 @@ async def locked_transaction(key: str):
         yield tx
 
 
+def get_database_schema() -> str:
+    """Extract database schema from DATABASE_URL."""
+    parsed_url = urlparse(DATABASE_URL)
+    query_params = dict(parse_qsl(parsed_url.query))
+    return query_params.get("schema", "public")
+
+
+async def query_raw_with_schema(query_template: str, *args) -> list[dict]:
+    """Execute raw SQL query with proper schema handling."""
+    schema = get_database_schema()
+    schema_prefix = f"{schema}." if schema != "public" else ""
+    formatted_query = query_template.format(schema_prefix=schema_prefix)
+
+    import prisma as prisma_module
+
+    result = await prisma_module.get_client().query_raw(
+        formatted_query, *args  # type: ignore
+    )
+
+    return result
+
+
 class BaseDbModel(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid4()))
 
