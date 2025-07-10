@@ -10,7 +10,7 @@ import {
   UserPasswordCredentials,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useToastOnFail } from "@/components/ui/use-toast";
+import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
 import { toDisplayName } from "@/components/integrations/helper";
 
 type APIKeyCredentialsCreatable = Omit<
