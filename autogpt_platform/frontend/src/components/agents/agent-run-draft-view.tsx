@@ -394,6 +394,7 @@ export default function AgentRunDraftView({
               ),
               variant: "accent",
               callback: doRun,
+              extraProps: { "data-testid": "agent-run-button" },
             },
             {
               label: (
@@ -606,6 +607,7 @@ export default function AgentRunDraftView({
                     }));
                     setChangedPresetAttributes((prev) => prev.add("inputs"));
                   }}
+                  data-testid={`agent-input-${key}`}
                 />
               </div>
             ))}

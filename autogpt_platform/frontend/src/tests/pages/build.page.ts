@@ -303,12 +303,12 @@ export class BuildPage extends BasePage {
   async fillRunDialog(inputs: Record<string, string>): Promise<void> {
     console.log(`filling run dialog`);
     for (const [key, value] of Object.entries(inputs)) {
-      await this.page.getByTestId(`run-dialog-input-${key}`).fill(value);
+      await this.page.getByTestId(`agent-input-${key}`).fill(value);
     }
   }
   async clickRunDialogRunButton(): Promise<void> {
     console.log(`clicking run button`);
-    await this.page.getByTestId("run-dialog-run-button").click();
+    await this.page.getByTestId("agent-run-button").click();
   }
 
   async waitForCompletionBadge(): Promise<void> {
