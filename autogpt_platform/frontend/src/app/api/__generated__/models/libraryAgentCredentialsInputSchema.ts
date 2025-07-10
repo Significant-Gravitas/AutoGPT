@@ -5,8 +5,10 @@
  * This server is used to execute agents that are created by the AutoGPT system.
  * OpenAPI spec version: 0.1
  */
+import type { LibraryAgentCredentialsInputSchemaAnyOf } from "./libraryAgentCredentialsInputSchemaAnyOf";
 
 /**
  * Input schema for credentials required by the agent
  */
-export type LibraryAgentCredentialsInputSchema = { [key: string]: unknown };
+export type LibraryAgentCredentialsInputSchema =
+  LibraryAgentCredentialsInputSchemaAnyOf | null;
