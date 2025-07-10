@@ -458,9 +458,9 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     apollo_api_key: str = Field(default="", description="Apollo API Key")
     smartlead_api_key: str = Field(default="", description="SmartLead API Key")
     zerobounce_api_key: str = Field(default="", description="ZeroBounce API Key")
+    proxycurl_api_key: str = Field(default="", description="Proxycurl API Key")
 
     # Add more secret fields as needed
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
