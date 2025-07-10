@@ -78,7 +78,11 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
   const fetchMyAgents = React.useCallback(
     async (page: number, append = false) => {
       try {
-        append ? setLoadingMore(true) : setLoading(true);
+        if (append) {
+          setLoadingMore(true);
+        } else {
+          setLoading(true);
+        }
         const response = await api.getMyAgents({
           page,
           page_size: 20,
@@ -99,7 +103,11 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
         console.error("Failed to load my agents:", error);
         setError("Failed to load agents. Please try again.");
       } finally {
-        append ? setLoadingMore(false) : setLoading(false);
+        if (append) {
+          setLoadingMore(false);
+        } else {
+          setLoading(false);
+        }
       }
     },
     [api],
