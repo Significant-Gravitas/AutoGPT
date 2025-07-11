@@ -47,6 +47,24 @@ We've moved to a fully maintained and regularly updated documentation site.
 
 👉 [Follow the official self-hosting guide here](https://docs.agpt.co/platform/getting-started/)
 
+---
+
+⚡ Quick Setup with One-Line Script (Recommended for Local Hosting)
+Skip the manual steps and get started in minutes using our automatic setup script.
+
+For macOS/Linux:
+```
+curl -fsSL https://setup.agpt.co/install.sh -o install.sh && bash install.sh
+```
+
+For Windows (PowerShell):
+```
+powershell -c "iwr https://setup.agpt.co/install.bat -o install.bat; ./install.bat"
+```
+
+This will install dependencies, configure Docker, and launch your local instance — all in one go.
+---
+
 
 This tutorial assumes you have Docker, VSCode, git and npm installed.
 
