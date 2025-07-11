@@ -204,11 +204,9 @@ export default function AgentRunsPage(): React.ReactElement {
     selectPreset,
   ]);
 
-  // Check for execution ID in URL search params and select that run
   useEffect(() => {
     if (executionId) {
       selectRun(executionId as GraphExecutionID);
-      // Clean up the URL parameter after selecting the run
       setExecutionId(null);
     }
   }, [executionId, selectRun, setExecutionId]);

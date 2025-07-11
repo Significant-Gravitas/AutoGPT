@@ -1,17 +1,16 @@
 "use client";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import LoadingBox from "@/components/ui/loading";
 import useCredits from "@/hooks/useCredits";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   useToast,
   useToastOnFail,
 } from "@/components/molecules/Toast/use-toast";
 
-import { CreditTransaction } from "@/lib/autogpt-server-api";
 import { RefundModal } from "./RefundModal";
+import { CreditTransaction } from "@/lib/autogpt-server-api";
 
 import {
   Table,
@@ -22,7 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-function CreditsContent() {
+export default function CreditsPage() {
   const api = useBackendAPI();
   const {
     requestTopUp,
@@ -373,13 +372,5 @@ function CreditsContent() {
         </div>
       </div>
     </div>
-  );
-}
-
-export default function CreditsPage() {
-  return (
-    <Suspense fallback={<LoadingBox className="h-[80vh]" />}>
-      <CreditsContent />
-    </Suspense>
   );
 }

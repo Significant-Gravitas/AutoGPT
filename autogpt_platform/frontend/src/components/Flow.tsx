@@ -1,17 +1,34 @@
 "use client";
-import { CronSchedulerDialog } from "@/components/cron-scheduler-dialog";
-import { BlocksControl } from "@/components/edit/control/BlocksControl";
-import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
-import { SaveControl } from "@/components/edit/control/SaveControl";
-import OttoChatWidget from "@/components/OttoChatWidget";
-import PrimaryActionBar from "@/components/PrimaryActionButton";
-import RunnerUIWrapper, {
-  RunnerUIWrapperRef,
-} from "@/components/RunnerUIWrapper";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { IconRedo2, IconUndo2 } from "@/components/ui/icons";
-import { useToast } from "@/components/molecules/Toast/use-toast";
-import useAgentGraph from "@/hooks/useAgentGraph";
+import React, {
+  createContext,
+  useState,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  MouseEvent,
+  Suspense,
+} from "react";
+import Link from "next/link";
+import {
+  ReactFlow,
+  ReactFlowProvider,
+  Controls,
+  Background,
+  Node,
+  OnConnect,
+  Connection,
+  MarkerType,
+  NodeChange,
+  EdgeChange,
+  useReactFlow,
+  applyEdgeChanges,
+  applyNodeChanges,
+  useViewport,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { CustomNode } from "./CustomNode";
+import "./flow.css";
 import {
   BlockUIType,
   formatEdgeID,
@@ -20,44 +37,27 @@ import {
   LibraryAgent,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { findNewlyAddedBlockCoordinates, getTypeColor } from "@/lib/utils";
-import {
-  applyEdgeChanges,
-  applyNodeChanges,
-  Background,
-  Connection,
-  Controls,
-  EdgeChange,
-  MarkerType,
-  Node,
-  NodeChange,
-  OnConnect,
-  ReactFlow,
-  ReactFlowProvider,
-  useReactFlow,
-  useViewport,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import React, {
-  createContext,
-  MouseEvent,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { v4 as uuidv4 } from "uuid";
-import { useCopyPaste } from "../hooks/useCopyPaste";
-import ConnectionLine from "./ConnectionLine";
-import { CustomEdge } from "./CustomEdge";
-import { CustomNode } from "./CustomNode";
-import "./flow.css";
+import { getTypeColor, findNewlyAddedBlockCoordinates } from "@/lib/utils";
 import { history } from "./history";
+import { CustomEdge } from "./CustomEdge";
+import ConnectionLine from "./ConnectionLine";
+import { Control, ControlPanel } from "@/components/edit/control/ControlPanel";
+import { SaveControl } from "@/components/edit/control/SaveControl";
+import { BlocksControl } from "@/components/edit/control/BlocksControl";
+import { IconUndo2, IconRedo2 } from "@/components/ui/icons";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { startTutorial } from "./tutorial";
+import useAgentGraph from "@/hooks/useAgentGraph";
+import { v4 as uuidv4 } from "uuid";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import RunnerUIWrapper, {
+  RunnerUIWrapperRef,
+} from "@/components/RunnerUIWrapper";
+import { CronSchedulerDialog } from "@/components/cron-scheduler-dialog";
+import PrimaryActionBar from "@/components/PrimaryActionButton";
+import OttoChatWidget from "@/components/OttoChatWidget";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import { useCopyPaste } from "../hooks/useCopyPaste";
 
 // This is for the history, this is the minimum distance a block must move before it is logged
 // It helps to prevent spamming the history with small movements especially when pressing on a input in a block
@@ -84,8 +84,7 @@ const FlowEditor: React.FC<{
   flowID?: GraphID;
   flowVersion?: number;
   className?: string;
-  searchParams?: URLSearchParams;
-}> = ({ flowID, flowVersion, className, searchParams }) => {
+}> = ({ flowID, flowVersion, className }) => {
   const {
     addNodes,
     addEdges,
@@ -145,7 +144,7 @@ const FlowEditor: React.FC<{
 
   const router = useRouter();
   const pathname = usePathname();
-  const params = searchParams || new URLSearchParams();
+  const params = useSearchParams();
   const initialPositionRef = useRef<{
     [key: string]: { x: number; y: number };
   }>({});
@@ -815,26 +814,9 @@ const FlowEditor: React.FC<{
   );
 };
 
-const FlowEditorWithSearchParams: React.FC<{
-  flowID?: GraphID;
-  flowVersion?: number;
-  className?: string;
-}> = (props) => {
-  const searchParams = useSearchParams();
-  return <FlowEditor {...props} searchParams={searchParams} />;
-};
-
 const WrappedFlowEditor: typeof FlowEditor = (props) => (
   <ReactFlowProvider>
-    <Suspense
-      fallback={
-        <div className="flex h-screen items-center justify-center">
-          Loading...
-        </div>
-      }
-    >
-      <FlowEditorWithSearchParams {...props} />
-    </Suspense>
+    <FlowEditor {...props} />
   </ReactFlowProvider>
 );
 

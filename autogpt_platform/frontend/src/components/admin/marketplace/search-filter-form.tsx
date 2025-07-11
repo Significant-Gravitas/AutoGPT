@@ -1,7 +1,10 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { useState, useEffect } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Search } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -10,11 +13,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SubmissionStatus } from "@/lib/autogpt-server-api/types";
-import { Search } from "lucide-react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
 
-function SearchAndFilterAdminMarketplaceContent({
+export function SearchAndFilterAdminMarketplace({
   initialSearch,
 }: {
   initialStatus?: SubmissionStatus;
@@ -96,22 +96,5 @@ function SearchAndFilterAdminMarketplaceContent({
         </SelectContent>
       </Select>
     </div>
-  );
-}
-
-export function SearchAndFilterAdminMarketplace({
-  initialSearch,
-}: {
-  initialStatus?: SubmissionStatus;
-  initialSearch?: string;
-}) {
-  return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center">Loading...</div>
-      }
-    >
-      <SearchAndFilterAdminMarketplaceContent initialSearch={initialSearch} />
-    </Suspense>
   );
 }

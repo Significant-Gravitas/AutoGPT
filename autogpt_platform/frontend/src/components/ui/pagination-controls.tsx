@@ -1,10 +1,9 @@
 "use client";
 
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense } from "react";
 
-function PaginationControlsContent({
+export function PaginationControls({
   currentPage,
   totalPages,
   pathParam = "page",
@@ -47,29 +46,5 @@ function PaginationControlsContent({
         Next
       </Button>
     </div>
-  );
-}
-
-export function PaginationControls({
-  currentPage,
-  totalPages,
-  pathParam = "page",
-}: {
-  currentPage: number;
-  totalPages: number;
-  pathParam?: string;
-}) {
-  return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center">Loading...</div>
-      }
-    >
-      <PaginationControlsContent
-        currentPage={currentPage}
-        totalPages={totalPages}
-        pathParam={pathParam}
-      />
-    </Suspense>
   );
 }
