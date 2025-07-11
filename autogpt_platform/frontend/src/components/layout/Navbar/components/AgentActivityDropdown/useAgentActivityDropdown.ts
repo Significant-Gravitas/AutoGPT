@@ -17,7 +17,7 @@ type AgentInfoMap = Map<
   { name: string; description: string; library_agent_id?: string }
 >;
 
-export function useAgentNotifications() {
+export function useAgentActivityDropdown() {
   const [api] = useState(() => new BackendAPI());
   const [notifications, setNotifications] = useState<NotificationState>({
     activeExecutions: [],

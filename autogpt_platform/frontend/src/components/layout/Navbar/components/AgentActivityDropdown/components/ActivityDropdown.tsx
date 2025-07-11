@@ -5,19 +5,19 @@ import { Text } from "@/components/atoms/Text/Text";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Bell } from "@phosphor-icons/react";
 import { AgentExecutionWithInfo, EXECUTION_DISPLAY_LIMIT } from "../helpers";
-import { NotificationItem } from "./NotificationItem";
+import { ActivityItem } from "./ActivityItem";
 
-interface NotificationDropdownProps {
+interface Props {
   activeExecutions: AgentExecutionWithInfo[];
   recentCompletions: AgentExecutionWithInfo[];
   recentFailures: AgentExecutionWithInfo[];
 }
 
-export function NotificationDropdown({
+export function ActivityDropdown({
   activeExecutions,
   recentCompletions,
   recentFailures,
-}: NotificationDropdownProps) {
+}: Props) {
   // Combine and sort all executions - running/queued at top, then by most recent
   function getSortedExecutions() {
     const allExecutions = [
@@ -65,7 +65,7 @@ export function NotificationDropdown({
         {sortedExecutions.length > 0 ? (
           <div className="p-2">
             {sortedExecutions.map((execution) => (
-              <NotificationItem key={execution.id} execution={execution} />
+              <ActivityItem key={execution.id} execution={execution} />
             ))}
           </div>
         ) : (

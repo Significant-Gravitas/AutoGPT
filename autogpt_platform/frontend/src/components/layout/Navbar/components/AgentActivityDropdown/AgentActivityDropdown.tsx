@@ -8,14 +8,14 @@ import {
 } from "@/components/ui/popover";
 import { Bell } from "@phosphor-icons/react";
 import { useState } from "react";
-import { NotificationDropdown } from "./components/NotificationDropdown";
+import { ActivityDropdown } from "./components/ActivityDropdown";
 import { formatNotificationCount } from "./helpers";
-import { useAgentNotifications } from "./useAgentNotifications";
+import { useAgentActivityDropdown } from "./useAgentActivityDropdown";
 
-export function AgentNotifications() {
+export function AgentActivityDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const { activeExecutions, recentCompletions, recentFailures } =
-    useAgentNotifications();
+    useAgentActivityDropdown();
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -46,7 +46,7 @@ export function AgentNotifications() {
       </PopoverTrigger>
 
       <PopoverContent className="w-80 p-0" align="center" sideOffset={8}>
-        <NotificationDropdown
+        <ActivityDropdown
           activeExecutions={activeExecutions}
           recentCompletions={recentCompletions}
           recentFailures={recentFailures}

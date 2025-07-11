@@ -14,11 +14,11 @@ import { useRouter } from "next/navigation";
 import type { AgentExecutionWithInfo } from "../helpers";
 import { formatTimeAgo, getExecutionDuration } from "../helpers";
 
-interface NotificationItemProps {
+interface Props {
   execution: AgentExecutionWithInfo;
 }
 
-export function NotificationItem({ execution }: NotificationItemProps) {
+export function ActivityItem({ execution }: Props) {
   const router = useRouter();
 
   function getStatusIcon() {
