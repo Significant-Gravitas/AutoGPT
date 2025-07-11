@@ -410,7 +410,7 @@ class WebArenaChallenge(BaseChallenge):
                 config, timeout, mock=bool(request.config.getoption("--mock"))
             ):
                 if not step.output:
-                    logger.warn(f"Step has no output: {step}")
+                    logger.warning(f"Step has no output: {step}")
                     continue
 
                 n_steps += 1

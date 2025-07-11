@@ -1,4 +1,4 @@
-# Todo : Add new Type support
+# Todo : Add new Type support, and disable block if it's Oauth is not configured
 
 # from typing import cast
 
@@ -122,7 +122,7 @@
 #             print(f"Unexpected error: {str(e)}")
 #             raise
 
-#     def run(
+#     async def run(
 #         self,
 #         input_data: Input,
 #         *,
@@ -239,7 +239,7 @@
 #             print(f"Unexpected error: {str(e)}")
 #             raise
 
-#     def run(
+#     async def run(
 #         self,
 #         input_data: Input,
 #         *,

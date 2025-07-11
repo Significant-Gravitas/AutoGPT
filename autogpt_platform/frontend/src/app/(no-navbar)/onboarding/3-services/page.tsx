@@ -9,7 +9,6 @@ import { OnboardingText } from "@/components/onboarding/OnboardingText";
 import { OnboardingGrid } from "@/components/onboarding/OnboardingGrid";
 import { useCallback } from "react";
 import OnboardingInput from "@/components/onboarding/OnboardingInput";
-import { isEmptyOrWhitespace } from "@/lib/utils";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 
 const services = [
@@ -163,14 +162,7 @@ export default function Page() {
       </div>
 
       <OnboardingFooter>
-        <OnboardingButton
-          className="mb-2"
-          href="/onboarding/4-agent"
-          disabled={
-            state?.integrations.length === 0 &&
-            isEmptyOrWhitespace(state.otherIntegrations)
-          }
-        >
+        <OnboardingButton className="mb-2" href="/onboarding/4-agent">
           Next
         </OnboardingButton>
       </OnboardingFooter>

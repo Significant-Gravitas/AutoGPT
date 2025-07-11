@@ -6,6 +6,7 @@ from tweepy.client import Response
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TWITTER_OAUTH_IS_CONFIGURED,
     TwitterCredentials,
     TwitterCredentialsField,
     TwitterCredentialsInput,
@@ -55,6 +56,7 @@ class TwitterUnfollowUserBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterUnfollowUserBlock.Input,
             output_schema=TwitterUnfollowUserBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "target_user_id": "12345",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -80,7 +82,7 @@ class TwitterUnfollowUserBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -126,6 +128,7 @@ class TwitterFollowUserBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterFollowUserBlock.Input,
             output_schema=TwitterFollowUserBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "target_user_id": "12345",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -149,7 +152,7 @@ class TwitterFollowUserBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -213,6 +216,7 @@ class TwitterGetFollowersBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetFollowersBlock.Input,
             output_schema=TwitterGetFollowersBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "target_user_id": "12345",
                 "max_results": 1,
@@ -304,7 +308,7 @@ class TwitterGetFollowersBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -386,6 +390,7 @@ class TwitterGetFollowingBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetFollowingBlock.Input,
             output_schema=TwitterGetFollowingBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "target_user_id": "12345",
                 "max_results": 1,
@@ -477,7 +482,7 @@ class TwitterGetFollowingBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,

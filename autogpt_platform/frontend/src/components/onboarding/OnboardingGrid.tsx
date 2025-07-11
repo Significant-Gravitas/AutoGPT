@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import Image from "next/image";
+import SmartImage from "../agptui/SmartImage";
 
 type OnboardingGridElementProps = {
   name: string;
@@ -25,12 +25,11 @@ function OnboardingGridElement({
       )}
       onClick={onClick}
     >
-      <Image
+      <SmartImage
         src={icon}
         alt={`Logo of ${name}`}
-        className="h-12 w-12 rounded-lg object-contain object-center"
-        width={48}
-        height={48}
+        imageContain
+        className="h-12 w-12 rounded-lg"
       />
       <span className="text-md mt-4 w-full text-left font-medium leading-normal text-[#121212]">
         {name}

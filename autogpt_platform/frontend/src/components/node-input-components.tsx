@@ -14,6 +14,7 @@ import {
   BlockIOArraySubSchema,
   BlockIOBooleanSubSchema,
   BlockIOCredentialsSubSchema,
+  BlockIODiscriminatedOneOfSubSchema,
   BlockIOKVSubSchema,
   BlockIONumberSubSchema,
   BlockIOObjectSubSchema,
@@ -76,7 +77,6 @@ const NodeObjectInputTree: FC<NodeObjectInputTreeProps> = ({
   handleInputChange,
   errors,
   className,
-  displayName,
 }) => {
   object ||= ("default" in schema ? schema.default : null) ?? {};
   return (
@@ -125,12 +125,10 @@ const NodeDateTimeInput: FC<{
   hideTime?: boolean;
 }> = ({
   selfKey,
-  schema,
   value = "",
   error,
   handleInputChange,
   className,
-  displayName,
   hideDate = false,
   hideTime = false,
 }) => {
@@ -218,7 +216,6 @@ const NodeFileInput: FC<{
   displayName: string;
 }> = ({
   selfKey,
-  schema,
   value = "",
   error,
   handleInputChange,
@@ -228,7 +225,6 @@ const NodeFileInput: FC<{
   const handleFileChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
-      console.log(">>> file", file);
       if (!file) return;
 
       const reader = new FileReader();
@@ -279,7 +275,7 @@ const NodeFileInput: FC<{
               variant="ghost"
               className="text-red-500 hover:text-red-700"
               onClick={() => {
-                inputRef.current && (inputRef.current!.value = "");
+                if (inputRef.current) inputRef.current.value = "";
                 handleInputChange(selfKey, "");
               }}
             >
@@ -429,9 +425,9 @@ export const NodeGenericInputField: FC<{
             // If you want to build an object of booleans from `selection`
             // (like your old code), do it here. Otherwise adapt to your actual UI.
             // Example:
-            const allKeys = schema.properties
-              ? Object.keys(schema.properties)
-              : [];
+            const subSchema =
+              schema.properties || (schema as any).anyOf[0].properties;
+            const allKeys = subSchema ? Object.keys(subSchema) : [];
             handleInputChange(
               key,
               Object.fromEntries(
@@ -492,10 +488,11 @@ export const NodeGenericInputField: FC<{
           schema={propSchema as BlockIOKVSubSchema}
           entries={currentValue}
           errors={errors}
-          className={className}
-          displayName={displayName}
           connections={connections}
           handleInputChange={handleInputChange}
+          handleInputClick={handleInputClick}
+          className={className}
+          displayName={displayName}
         />
       );
 
@@ -536,7 +533,7 @@ export const NodeGenericInputField: FC<{
 const NodeOneOfDiscriminatorField: FC<{
   nodeId: string;
   propKey: string;
-  propSchema: any;
+  propSchema: BlockIODiscriminatedOneOfSubSchema;
   currentValue?: any;
   defaultValue?: any;
   errors: { [key: string]: string | undefined };
@@ -564,25 +561,25 @@ const NodeOneOfDiscriminatorField: FC<{
     const oneOfVariants = propSchema.oneOf || [];
 
     return oneOfVariants
-      .map((variant: any) => {
-        const variantDiscValue =
-          variant.properties?.[discriminatorProperty]?.const;
+      .map((variant) => {
+        const variantDiscValue = variant.properties?.[discriminatorProperty]
+          ?.const as string; // NOTE: can discriminators only be strings?
 
         return {
           value: variantDiscValue,
-          schema: variant as BlockIOSubSchema,
+          schema: variant,
         };
       })
-      .filter((v: any) => v.value != null);
+      .filter((v) => v.value != null);
   }, [discriminatorProperty, propSchema.oneOf]);
 
   const initialVariant = defaultValue
     ? variantOptions.find(
-        (opt: any) => defaultValue[discriminatorProperty] === opt.value,
+        (opt) => defaultValue[discriminatorProperty] === opt.value,
       )
     : currentValue
       ? variantOptions.find(
-          (opt: any) => currentValue[discriminatorProperty] === opt.value,
+          (opt) => currentValue[discriminatorProperty] === opt.value,
         )
       : null;
 
@@ -603,9 +600,7 @@ const NodeOneOfDiscriminatorField: FC<{
 
   const handleVariantChange = (newType: string) => {
     setChosenType(newType);
-    const chosenVariant = variantOptions.find(
-      (opt: any) => opt.value === newType,
-    );
+    const chosenVariant = variantOptions.find((opt) => opt.value === newType);
     if (chosenVariant) {
       const initialValue = {
         [discriminatorProperty]: newType,
@@ -615,7 +610,7 @@ const NodeOneOfDiscriminatorField: FC<{
   };
 
   const chosenVariantSchema = variantOptions.find(
-    (opt: any) => opt.value === chosenType,
+    (opt) => opt.value === chosenType,
   )?.schema;
 
   function getEntryKey(key: string): string {
@@ -664,7 +659,7 @@ const NodeOneOfDiscriminatorField: FC<{
                 >
                   <NodeHandle
                     keyName={getEntryKey(someKey)}
-                    schema={childSchema as BlockIOSubSchema}
+                    schema={childSchema}
                     isConnected={isConnected(getEntryKey(someKey))}
                     isRequired={false}
                     side="left"
@@ -675,7 +670,7 @@ const NodeOneOfDiscriminatorField: FC<{
                       nodeId={nodeId}
                       key={propKey}
                       propKey={childKey}
-                      propSchema={childSchema as BlockIOSubSchema}
+                      propSchema={childSchema}
                       currentValue={
                         currentValue
                           ? currentValue[someKey]
@@ -733,6 +728,7 @@ const NodeKeyValueInput: FC<{
   errors: { [key: string]: string | undefined };
   connections: NodeObjectInputTreeProps["connections"];
   handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
+  handleInputClick: NodeObjectInputTreeProps["handleInputClick"];
   className?: string;
   displayName?: string;
 }> = ({
@@ -742,6 +738,7 @@ const NodeKeyValueInput: FC<{
   schema,
   connections,
   handleInputChange,
+  handleInputClick,
   errors,
   className,
   displayName,
@@ -762,7 +759,7 @@ const NodeKeyValueInput: FC<{
   }, [entries, schema.default, connections, nodeId, selfKey]);
 
   const [keyValuePairs, setKeyValuePairs] = useState<
-    { key: string; value: string | number | null }[]
+    { key: string; value: any }[]
   >([]);
 
   useEffect(
@@ -779,18 +776,6 @@ const NodeKeyValueInput: FC<{
     );
   }
 
-  const isNumberType =
-    schema.additionalProperties &&
-    ["number", "integer"].includes(schema.additionalProperties.type);
-
-  function convertValueType(value: string): string | number | null {
-    if (isNumberType) {
-      const numValue = Number(value);
-      return !isNaN(numValue) ? numValue : null;
-    }
-    return value;
-  }
-
   function getEntryKey(key: string): string {
     return `${selfKey}_#_${key}`;
   }
@@ -799,6 +784,11 @@ const NodeKeyValueInput: FC<{
       (c) => c.targetHandle === getEntryKey(key) && c.target === nodeId,
     );
   }
+
+  const propSchema =
+    schema.additionalProperties && schema.additionalProperties.type
+      ? schema.additionalProperties
+      : ({ type: "string" } as BlockIOSimpleTypeSubSchema);
 
   return (
     <div
@@ -833,18 +823,24 @@ const NodeKeyValueInput: FC<{
                     )
                   }
                 />
-                <LocalValuedInput
-                  type={isNumberType ? "number" : "text"}
-                  placeholder="Value"
-                  value={value ?? ""}
-                  onChange={(e) =>
+                <NodeGenericInputField
+                  className="w-full"
+                  nodeId={nodeId}
+                  propKey={`${selfKey}_#_${key}`}
+                  propSchema={propSchema}
+                  currentValue={value}
+                  errors={errors}
+                  connections={connections}
+                  displayName={displayName || beautifyString(key)}
+                  handleInputChange={(_, newValue) =>
                     updateKeyValuePairs(
                       keyValuePairs.toSpliced(index, 1, {
                         key: key,
-                        value: convertValueType(e.target.value),
+                        value: newValue,
                       }),
                     )
                   }
+                  handleInputClick={handleInputClick}
                 />
                 <Button
                   variant="ghost"
@@ -883,13 +879,6 @@ const NodeKeyValueInput: FC<{
     </div>
   );
 };
-
-// Checking if schema is type of string
-function isStringSubSchema(
-  schema: BlockIOSimpleTypeSubSchema,
-): schema is BlockIOStringSubSchema {
-  return "type" in schema && schema.type === "string";
-}
 
 const NodeArrayInput: FC<{
   nodeId: string;
@@ -1025,7 +1014,12 @@ const NodeMultiSelectInput: FC<{
   displayName,
   handleInputChange,
 }) => {
-  const options = Object.keys(schema.properties);
+  const optionSchema =
+    schema.properties ||
+    ((schema as any).anyOf?.length > 0
+      ? (schema as any).anyOf[0].properties
+      : {});
+  const options = Object.keys(optionSchema);
 
   return (
     <div className={cn("flex flex-col", className)}>
@@ -1044,7 +1038,7 @@ const NodeMultiSelectInput: FC<{
         <MultiSelectorContent className="nowheel">
           <MultiSelectorList>
             {options
-              .map((key) => ({ ...schema.properties[key], key }))
+              .map((key) => ({ ...optionSchema[key], key }))
               .map(({ key, title, description }) => (
                 <MultiSelectorItem key={key} value={key} title={description}>
                   {title ?? key}
@@ -1224,16 +1218,10 @@ const NodeBooleanInput: FC<{
   handleInputChange: NodeObjectInputTreeProps["handleInputChange"];
   className?: string;
   displayName: string;
-}> = ({
-  selfKey,
-  schema,
-  value,
-  error,
-  handleInputChange,
-  className,
-  displayName,
-}) => {
-  value ||= schema.default ?? false;
+}> = ({ selfKey, schema, value, error, handleInputChange, className }) => {
+  if (value == null) {
+    value = schema.default ?? false;
+  }
   return (
     <div className={className}>
       <Switch

@@ -13,6 +13,8 @@ dotenv.config({ path: path.resolve(__dirname, "../backend/.env") });
  */
 export default defineConfig({
   testDir: "./src/tests",
+  /* Global setup file that runs before all tests */
+  globalSetup: "./src/tests/global-setup.ts",
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
@@ -22,7 +24,7 @@ export default defineConfig({
   /* Opt out of parallel tests on CI. */
   workers: process.env.CI ? 1 : undefined,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
-  reporter: "html",
+  reporter: [["html"], ["line"]],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
@@ -34,7 +36,15 @@ export default defineConfig({
     bypassCSP: true,
   },
   /* Maximum time one test can run for */
-  timeout: 60000,
+  timeout: 30000,
+
+  /* Configure web server to start automatically */
+  webServer: {
+    command: "NEXT_PUBLIC_PW_TEST=true pnpm start",
+    url: "http://localhost:3000",
+    reuseExistingServer: !process.env.CI,
+    timeout: 120 * 1000,
+  },
 
   /* Configure projects for major browsers */
   projects: [
@@ -73,12 +83,4 @@ export default defineConfig({
     //   use: { ...devices['Desktop Chrome'], channel: 'chrome' },
     // },
   ],
-
-  /* Run your local dev server before starting the tests */
-  webServer: {
-    command: "npm run build && npm run start",
-    url: "http://localhost:3000/",
-    reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
-  },
 });

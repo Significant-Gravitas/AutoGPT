@@ -18,46 +18,141 @@ defaults:
     working-directory: autogpt_platform/frontend
 
 jobs:
-  lint:
+  setup:
     runs-on: ubuntu-latest
+    outputs:
+      cache-key: ${{ steps.cache-key.outputs.key }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "21"
 
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Generate cache key
+        id: cache-key
+        run: echo "key=${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}" >> $GITHUB_OUTPUT
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ steps.cache-key.outputs.key }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
       - name: Install dependencies
-        run: |
-          yarn install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
+
+  lint:
+    runs-on: ubuntu-latest
+    needs: setup
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ needs.setup.outputs.cache-key }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Run lint
-        run: |
-          yarn lint
+        run: pnpm lint
 
   type-check:
     runs-on: ubuntu-latest
+    needs: setup
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "21"
 
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ needs.setup.outputs.cache-key }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
       - name: Install dependencies
-        run: |
-          yarn install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Run tsc check
-        run: |
-          yarn type-check
+        run: pnpm type-check
+
+  chromatic:
+    runs-on: ubuntu-latest
+    needs: setup
+    # Only run on dev branch pushes or PRs targeting dev
+    if: github.ref == 'refs/heads/dev' || github.base_ref == 'dev'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "21"
+
+      - name: Enable corepack
+        run: corepack enable
+
+      - name: Restore dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ needs.setup.outputs.cache-key }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Chromatic
+        uses: chromaui/action@latest
+        with:
+          projectToken: chpt_9e7c1a76478c9c8
+          onlyChanged: true
+          workingDir: autogpt_platform/frontend
+          token: ${{ secrets.GITHUB_TOKEN }}
+          exitOnceUploaded: true
 
   test:
     runs-on: ubuntu-latest
+    needs: setup
     strategy:
       fail-fast: false
       matrix:
@@ -73,6 +168,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "21"
+
+      - name: Enable corepack
+        run: corepack enable
 
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
@@ -92,26 +190,35 @@ jobs:
         run: |
           docker compose -f ../docker-compose.yml up -d
 
-      - name: Install dependencies
-        run: |
-          yarn install --frozen-lockfile
+      - name: Restore dependencies cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: ${{ needs.setup.outputs.cache-key }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
 
-      - name: Setup Builder .env
-        run: |
-          cp .env.example .env
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup .env
+        run: cp .env.example .env
+
+      - name: Build frontend
+        run: pnpm build --turbo
+        # uses Turbopack, much faster and safe enough for a test pipeline
 
       - name: Install Browser '${{ matrix.browser }}'
-        run: yarn playwright install --with-deps ${{ matrix.browser }}
+        run: pnpm playwright install --with-deps ${{ matrix.browser }}
 
-      - name: Run tests
-        timeout-minutes: 20
-        run: |
-          yarn test --project=${{ matrix.browser }}
+      - name: Run Playwright tests
+        run: pnpm test:no-build --project=${{ matrix.browser }}
+        env:
+          BROWSER_TYPE: ${{ matrix.browser }}
 
       - name: Print Final Docker Compose logs
         if: always()
-        run: |
-          docker compose -f ../docker-compose.yml logs
+        run: docker compose -f ../docker-compose.yml logs
 
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}

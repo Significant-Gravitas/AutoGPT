@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import threading
+import time
 from functools import wraps
 from uuid import uuid4
 
@@ -80,3 +81,24 @@ func_retry = retry(
     stop=stop_after_attempt(5),
     wait=wait_exponential(multiplier=1, min=1, max=30),
 )
+
+
+def continuous_retry(*, retry_delay: float = 1.0):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            while True:
+                try:
+                    return func(*args, **kwargs)
+                except Exception as exc:
+                    logger.exception(
+                        "%s failed with %s — retrying in %.2f s",
+                        func.__name__,
+                        exc,
+                        retry_delay,
+                    )
+                    time.sleep(retry_delay)
+
+        return wrapper
+
+    return decorator

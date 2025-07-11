@@ -14,13 +14,11 @@ import {
 } from "../PublishAgentSelectInfo";
 import { PublishAgentAwaitingReview } from "../PublishAgentAwaitingReview";
 import { Button } from "../Button";
-import {
-  StoreSubmissionRequest,
-  MyAgentsResponse,
-} from "@/lib/autogpt-server-api";
+import { MyAgentsResponse } from "@/lib/autogpt-server-api";
 import { useRouter } from "next/navigation";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import { StoreSubmissionRequest } from "@/app/api/__generated__/models/storeSubmissionRequest";
 interface PublishAgentPopoutProps {
   trigger?: React.ReactNode;
   openPopout?: boolean;
@@ -47,7 +45,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     inputStep,
   );
   const [myAgents, setMyAgents] = React.useState<MyAgentsResponse | null>(null);
-  const [selectedAgent, setSelectedAgent] = React.useState<string | null>(null);
+  const [_, setSelectedAgent] = React.useState<string | null>(null);
   const [initialData, setInitialData] =
     React.useState<PublishAgentInfoInitialData>({
       agent_id: "",
@@ -155,7 +153,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
     if (!subHeading) missingFields.push("Sub-heading");
     if (!description) missingFields.push("Description");
     if (!imageUrls.length) missingFields.push("Image");
-    if (!categories.length) missingFields.push("Categories");
+    if (!categories.filter(Boolean).length) missingFields.push("Categories");
 
     if (missingFields.length > 0) {
       toast({
@@ -166,6 +164,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
       return;
     }
 
+    const filteredCategories = categories.filter(Boolean);
     setPublishData({
       name,
       sub_heading: subHeading,
@@ -175,12 +174,12 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
       agent_id: selectedAgentId || "",
       agent_version: selectedAgentVersion || 0,
       slug,
-      categories,
+      categories: filteredCategories,
     });
 
     // Create store submission
     try {
-      const submission = await api.createStoreSubmission({
+      await api.createStoreSubmission({
         name: name,
         sub_heading: subHeading,
         description: description,
@@ -189,7 +188,7 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
         agent_id: selectedAgentId || "",
         agent_version: selectedAgentVersion || 0,
         slug: slug.replace(/\s+/g, "-"),
-        categories: categories,
+        categories: filteredCategories,
       });
     } catch (error) {
       console.error("Error creating store submission:", error);
@@ -262,8 +261,8 @@ export const PublishAgentPopout: React.FC<PublishAgentPopoutProps> = ({
                 <PublishAgentAwaitingReview
                   agentName={publishData.name}
                   subheader={publishData.sub_heading}
-                  description={publishData.description}
-                  thumbnailSrc={publishData.image_urls[0]}
+                  description={publishData.description || ""}
+                  thumbnailSrc={publishData.image_urls?.[0]}
                   onClose={handleClose}
                   onDone={handleClose}
                   onViewProgress={() => {

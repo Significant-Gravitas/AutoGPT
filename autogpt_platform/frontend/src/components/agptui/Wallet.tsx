@@ -11,7 +11,7 @@ import { PopoverClose } from "@radix-ui/react-popover";
 import { TaskGroups } from "../onboarding/WalletTaskGroups";
 import { ScrollArea } from "../ui/scroll-area";
 import { useOnboarding } from "../onboarding/onboarding-provider";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import * as party from "party-js";
 import WalletRefill from "./WalletRefill";
@@ -21,6 +21,11 @@ export default function Wallet() {
     fetchInitialCredits: true,
   });
   const { state, updateState } = useOnboarding();
+  const [prevCredits, setPrevCredits] = useState<number | null>(credits);
+  const [flash, setFlash] = useState(false);
+  const [stepsLength, setStepsLength] = useState<number | null>(
+    state?.completedSteps?.length || null,
+  );
   const walletRef = useRef<HTMLButtonElement | null>(null);
 
   const onWalletOpen = useCallback(async () => {
@@ -31,55 +36,98 @@ export default function Wallet() {
     fetchCredits();
   }, [state?.notificationDot, updateState, fetchCredits]);
 
-  const fadeOut = new party.ModuleBuilder()
-    .drive("opacity")
-    .by((t) => 1 - t)
-    .through("lifetime")
-    .build();
+  const fadeOut = useMemo(
+    () =>
+      new party.ModuleBuilder()
+        .drive("opacity")
+        .by((t) => 1 - t)
+        .through("lifetime")
+        .build(),
+    [],
+  );
 
+  // Confetti effect on the wallet button
   useEffect(() => {
-    // Check if there are any completed tasks (state?.completedTasks) that
-    // are not in the state?.notified array and play confetti if so
-    const pending = state?.completedSteps
-      .filter((step) => !state?.notified.includes(step))
-      // Ignore steps that are not relevant for notifications
-      .filter(
-        (step) =>
-          step !== "WELCOME" &&
-          step !== "USAGE_REASON" &&
-          step !== "INTEGRATIONS" &&
-          step !== "AGENT_CHOICE" &&
-          step !== "AGENT_NEW_RUN" &&
-          step !== "AGENT_INPUT",
-      );
-    if ((pending?.length || 0) > 0 && walletRef.current) {
-      party.confetti(walletRef.current, {
-        count: 30,
-        spread: 120,
-        shapes: ["square", "circle"],
-        size: party.variation.range(1, 2),
-        speed: party.variation.range(200, 300),
-        modules: [fadeOut],
-      });
+    if (!state?.completedSteps) {
+      return;
     }
-  }, [state?.completedSteps, state?.notified]);
+    // If we haven't set the length yet, just set it and return
+    if (stepsLength === null) {
+      setStepsLength(state?.completedSteps?.length);
+      return;
+    }
+    // It's enough to compare array lengths,
+    // because the order of completed steps is not important
+    // If the length is the same, we don't need to do anything
+    if (state?.completedSteps?.length === stepsLength) {
+      return;
+    }
+    // Otherwise, we need to set the new length
+    setStepsLength(state?.completedSteps?.length);
+    // And make confetti
+    if (walletRef.current) {
+      setTimeout(() => {
+        fetchCredits();
+        party.confetti(walletRef.current!, {
+          count: 30,
+          spread: 120,
+          shapes: ["square", "circle"],
+          size: party.variation.range(1, 2),
+          speed: party.variation.range(200, 300),
+          modules: [fadeOut],
+        });
+      }, 800);
+    }
+  }, [
+    state?.completedSteps,
+    state?.notified,
+    fadeOut,
+    fetchCredits,
+    stepsLength,
+    walletRef,
+  ]);
+
+  // Wallet flash on credits change
+  useEffect(() => {
+    if (credits === prevCredits) {
+      return;
+    }
+    setPrevCredits(credits);
+    if (prevCredits === null) {
+      return;
+    }
+    setFlash(true);
+    setTimeout(() => {
+      setFlash(false);
+    }, 300);
+  }, [credits, prevCredits]);
 
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
-          ref={walletRef}
-          className="relative flex items-center gap-1 rounded-md bg-zinc-200 px-3 py-2 text-sm transition-colors duration-200 hover:bg-zinc-300"
-          onClick={onWalletOpen}
-        >
-          Wallet{" "}
-          <span className="text-sm font-semibold">
-            {formatCredits(credits)}
-          </span>
-          {state?.notificationDot && (
-            <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
-          )}
-        </button>
+        <div className="relative inline-block">
+          <button
+            ref={walletRef}
+            className={cn(
+              "relative flex items-center gap-1 rounded-md bg-zinc-50 px-3 py-2 text-sm",
+            )}
+            onClick={onWalletOpen}
+          >
+            Wallet{" "}
+            <span className="text-sm font-semibold">
+              {formatCredits(credits)}
+            </span>
+            {state?.notificationDot && (
+              <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-violet-600"></span>
+            )}
+          </button>
+          <div
+            className={cn(
+              "pointer-events-none absolute inset-0 rounded-md bg-violet-400 duration-2000 ease-in-out",
+              flash ? "opacity-50 duration-0" : "opacity-0",
+            )}
+          />
+        </div>
       </PopoverTrigger>
       <PopoverContent
         className={cn(
@@ -92,7 +140,7 @@ export default function Wallet() {
           <span className="font-poppins font-medium text-zinc-900">
             Your wallet
           </span>
-          <div className="flex items-center font-inter text-sm font-semibold text-violet-700">
+          <div className="flex items-center text-sm font-semibold text-violet-700">
             <div className="rounded-lg bg-violet-100 px-3 py-2">
               Wallet{" "}
               <span className="font-semibold">{formatCredits(credits)}</span>
@@ -104,7 +152,9 @@ export default function Wallet() {
         </div>
         <ScrollArea className="max-h-[85vh] overflow-y-auto">
           {/* Top ups */}
-          <WalletRefill />
+          {process.env.NEXT_PUBLIC_SHOW_BILLING_PAGE === "true" && (
+            <WalletRefill />
+          )}
           {/* Tasks */}
           <p className="mx-1 mt-4 font-sans text-xs font-medium text-violet-700">
             Onboarding tasks

@@ -1,11 +1,10 @@
-import asyncio
 import io
 import logging
 from enum import Enum
 
-import replicate
-import replicate.exceptions
 from prisma.models import AgentGraph
+from replicate.client import Client as ReplicateClient
+from replicate.exceptions import ReplicateError
 from replicate.helpers import FileOutput
 
 from backend.blocks.ideogram import (
@@ -20,7 +19,7 @@ from backend.blocks.ideogram import (
 from backend.data.graph import Graph
 from backend.data.model import CredentialsMetaInput, ProviderName
 from backend.integrations.credentials_store import ideogram_credentials
-from backend.util.request import requests
+from backend.util.request import Requests
 from backend.util.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -37,12 +36,12 @@ class ImageStyle(str, Enum):
 
 async def generate_agent_image(agent: Graph | AgentGraph) -> io.BytesIO:
     if settings.config.use_agent_image_generation_v2:
-        return await asyncio.to_thread(generate_agent_image_v2, graph=agent)
+        return await generate_agent_image_v2(graph=agent)
     else:
         return await generate_agent_image_v1(agent=agent)
 
 
-def generate_agent_image_v2(graph: Graph | AgentGraph) -> io.BytesIO:
+async def generate_agent_image_v2(graph: Graph | AgentGraph) -> io.BytesIO:
     """
     Generate an image for an agent using Ideogram model.
     Returns:
@@ -74,7 +73,7 @@ def generate_agent_image_v2(graph: Graph | AgentGraph) -> io.BytesIO:
     ]
 
     # Run the Ideogram model block with the specified parameters
-    url = IdeogramModelBlock().run_once(
+    url = await IdeogramModelBlock().run_once(
         IdeogramModelBlock.Input(
             credentials=CredentialsMetaInput(
                 id=ideogram_credentials.id,
@@ -96,7 +95,8 @@ def generate_agent_image_v2(graph: Graph | AgentGraph) -> io.BytesIO:
         "result",
         credentials=ideogram_credentials,
     )
-    return io.BytesIO(requests.get(url).content)
+    response = await Requests().get(url)
+    return io.BytesIO(response.content)
 
 
 async def generate_agent_image_v1(agent: Graph | AgentGraph) -> io.BytesIO:
@@ -117,7 +117,7 @@ async def generate_agent_image_v1(agent: Graph | AgentGraph) -> io.BytesIO:
         prompt = f"Create a visually engaging app store thumbnail for the AI agent that highlights what it does in a clear and captivating way:\n- **Name**: {agent.name}\n- **Description**: {agent.description}\nFocus on showcasing its core functionality with an appealing design."
 
         # Set up Replicate client
-        client = replicate.Client(api_token=settings.secrets.replicate_api_key)
+        client = ReplicateClient(api_token=settings.secrets.replicate_api_key)
 
         # Model parameters
         input_data = {
@@ -145,20 +145,20 @@ async def generate_agent_image_v1(agent: Graph | AgentGraph) -> io.BytesIO:
                 else:
                     # If it's a URL string, fetch the image bytes
                     result_url = output[0]
-                    response = requests.get(result_url)
+                    response = await Requests().get(result_url)
                     image_bytes = response.content
             elif isinstance(output, FileOutput):
                 image_bytes = output.read()
             elif isinstance(output, str):
                 # Output is a URL
-                response = requests.get(output)
+                response = await Requests().get(output)
                 image_bytes = response.content
             else:
                 raise RuntimeError("Unexpected output format from the model.")
 
             return io.BytesIO(image_bytes)
 
-        except replicate.exceptions.ReplicateError as e:
+        except ReplicateError as e:
             if e.status == 401:
                 raise RuntimeError("Invalid Replicate API token") from e
             raise RuntimeError(f"Replicate API error: {str(e)}") from e

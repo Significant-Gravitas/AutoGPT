@@ -1,4 +1,4 @@
-import * as React from "react";
+import React from "react";
 import { HeroSection } from "@/components/agptui/composite/HeroSection";
 import { FeaturedSection } from "@/components/agptui/composite/FeaturedSection";
 import {
@@ -12,99 +12,17 @@ import {
 } from "@/components/agptui/composite/FeaturedCreators";
 import { Separator } from "@/components/ui/separator";
 import { Metadata } from "next";
-import {
-  StoreAgentsResponse,
-  CreatorsResponse,
-} from "@/lib/autogpt-server-api/types";
-import BackendAPI from "@/lib/autogpt-server-api";
 
-async function getStoreData() {
-  try {
-    const api = new BackendAPI();
+import { getMarketplaceData } from "./actions";
 
-    // Add error handling and default values
-    let featuredAgents: StoreAgentsResponse = {
-      agents: [],
-      pagination: {
-        total_items: 0,
-        total_pages: 0,
-        current_page: 0,
-        page_size: 0,
-      },
-    };
-    let topAgents: StoreAgentsResponse = {
-      agents: [],
-      pagination: {
-        total_items: 0,
-        total_pages: 0,
-        current_page: 0,
-        page_size: 0,
-      },
-    };
-    let featuredCreators: CreatorsResponse = {
-      creators: [],
-      pagination: {
-        total_items: 0,
-        total_pages: 0,
-        current_page: 0,
-        page_size: 0,
-      },
-    };
-
-    try {
-      [featuredAgents, topAgents, featuredCreators] = await Promise.all([
-        api.getStoreAgents({ featured: true }),
-        api.getStoreAgents({ sorted_by: "runs" }),
-        api.getStoreCreators({ featured: true, sorted_by: "num_agents" }),
-      ]);
-    } catch (error) {
-      console.error("Error fetching store data:", error);
-    }
-
-    return {
-      featuredAgents,
-      topAgents,
-      featuredCreators,
-    };
-  } catch (error) {
-    console.error("Error in getStoreData:", error);
-    return {
-      featuredAgents: {
-        agents: [],
-        pagination: {
-          total_items: 0,
-          total_pages: 0,
-          current_page: 0,
-          page_size: 0,
-        },
-      },
-      topAgents: {
-        agents: [],
-        pagination: {
-          total_items: 0,
-          total_pages: 0,
-          current_page: 0,
-          page_size: 0,
-        },
-      },
-      featuredCreators: {
-        creators: [],
-        pagination: {
-          total_items: 0,
-          total_pages: 0,
-          current_page: 0,
-          page_size: 0,
-        },
-      },
-    };
-  }
-}
+// Force dynamic rendering to avoid static generation issues with cookies
+export const dynamic = "force-dynamic";
 
 // FIX: Correct metadata
 export const metadata: Metadata = {
-  title: "Marketplace - NextGen AutoGPT",
+  title: "Marketplace - AutoGPT Platform",
   description: "Find and use AI Agents created by our community",
-  applicationName: "NextGen AutoGPT Store",
+  applicationName: "AutoGPT Marketplace",
   authors: [{ name: "AutoGPT Team" }],
   keywords: [
     "AI agents",
@@ -118,22 +36,22 @@ export const metadata: Metadata = {
     follow: true,
   },
   openGraph: {
-    title: "Marketplace - NextGen AutoGPT",
+    title: "Marketplace - AutoGPT Platform",
     description: "Find and use AI Agents created by our community",
     type: "website",
-    siteName: "NextGen AutoGPT Store",
+    siteName: "AutoGPT Marketplace",
     images: [
       {
         url: "/images/store-og.png",
         width: 1200,
         height: 630,
-        alt: "NextGen AutoGPT Store",
+        alt: "AutoGPT Marketplace",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Marketplace - NextGen AutoGPT",
+    title: "Marketplace - AutoGPT Platform",
     description: "Find and use AI Agents created by our community",
     images: ["/images/store-twitter.png"],
   },
@@ -144,9 +62,9 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function Page({}: {}) {
-  // Get data server-side
-  const { featuredAgents, topAgents, featuredCreators } = await getStoreData();
+export default async function MarketplacePage(): Promise<React.ReactElement> {
+  const { featuredAgents, topAgents, featuredCreators } =
+    await getMarketplaceData();
 
   return (
     <div className="mx-auto w-screen max-w-[1360px]">

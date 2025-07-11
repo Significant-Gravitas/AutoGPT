@@ -1,6 +1,7 @@
 import logging
 
 import sentry_sdk
+from pydantic import SecretStr
 from sentry_sdk.integrations.anthropic import AnthropicIntegration
 from sentry_sdk.integrations.logging import LoggingIntegration
 
@@ -21,4 +22,38 @@ def sentry_init():
                 include_prompts=False,
             ),
         ],
+    )
+
+
+def sentry_capture_error(error: Exception):
+    sentry_sdk.capture_exception(error)
+    sentry_sdk.flush()
+
+
+async def discord_send_alert(content: str):
+    from backend.blocks.discord import SendDiscordMessageBlock
+    from backend.data.model import APIKeyCredentials, CredentialsMetaInput, ProviderName
+    from backend.util.settings import Settings
+
+    settings = Settings()
+    creds = APIKeyCredentials(
+        provider="discord",
+        api_key=SecretStr(settings.secrets.discord_bot_token),
+        title="Provide Discord Bot Token for the platform alert",
+        expires_at=None,
+    )
+
+    return await SendDiscordMessageBlock().run_once(
+        SendDiscordMessageBlock.Input(
+            credentials=CredentialsMetaInput(
+                id=creds.id,
+                title=creds.title,
+                type=creds.type,
+                provider=ProviderName.DISCORD,
+            ),
+            message_content=content,
+            channel_name=settings.config.platform_alert_discord_channel,
+        ),
+        "status",
+        credentials=creds,
     )

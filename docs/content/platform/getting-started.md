@@ -6,7 +6,7 @@ This guide will help you setup the server and builder for the project.
 
 <!-- The video is listed in the root Readme.md of the repo -->
 
-We also offer this in video format. You can check it out [here](https://github.com/Significant-Gravitas/AutoGPT?tab=readme-ov-file#how-to-setup-for-self-hosting).
+<!--We also offer this in video format. You can check it out [here](https://github.com/Significant-Gravitas/AutoGPT?tab=readme-ov-file#how-to-setup-for-self-hosting). -->
 
 !!! warning
     **DO NOT FOLLOW ANY OUTSIDE TUTORIALS AS THEY WILL LIKELY BE OUT OF DATE**
@@ -57,6 +57,28 @@ docker compose -v
 
 Once you have Docker and Docker Compose installed, you can proceed to the next step.
 
+<details>
+ <summary>
+ Raspberry Pi 5 Specific Notes
+ </summary>
+    On Raspberry Pi 5 with Raspberry Pi OS, the default 16K page size will cause issues with the <code>supabase-vector</code> container (expected: 4K).
+    </br>
+    To fix this, edit <code>/boot/firmware/config.txt</code> and add:
+    </br>
+    ```ini
+    kernel=kernel8.img
+    ```
+    Then reboot. You can check your page size with:
+    </br>
+    ```bash
+    getconf PAGESIZE
+    ```
+    <code>16384</code> means 16K (incorrect), and <code>4096</code> means 4K (correct).
+    After adjusting, <code>docker compose up -d --build</code> should work normally.
+    </br>
+    See <a href="https://github.com/supabase/supabase/issues/33816">supabase/supabase #33816</a> for additional context.
+</details>
+
 ## Setup
 
 ### Cloning the Repository
@@ -95,23 +117,27 @@ To run the backend services, follow these steps:
 
 To run the frontend application open a new terminal and follow these steps:
 
-* Navigate to `frontend` folder within the `autogpt_platform` directory:
+- Navigate to `frontend` folder within the `autogpt_platform` directory:
+
   ```
    cd frontend
   ```
 
-* Copy the `.env.example` file available in the `frontend` directory to `.env` in the same directory:
+- Copy the `.env.example` file available in the `frontend` directory to `.env` in the same directory:
+
   ```
    cp .env.example .env
   ```
+
   You can modify the `.env` within this folder to add your own environment variables for the frontend application.
 
-* Run the following command:
+- Run the following command:
   ```
-   npm install
-   npm run dev
+   corepack enable
+   pnpm install
+   pnpm dev
   ```
-  This command will install the necessary dependencies and start the frontend application in development mode.
+  This command will enable corepack, install the necessary dependencies with pnpm, and start the frontend application in development mode.
 
 ### Checking if the application is running
 
@@ -316,6 +342,12 @@ To run the tests:
 poetry run test
 ```
 
+To update stored snapshots after intentional API changes:
+
+```sh
+pytest --snapshot-update
+```
+
 ## Project Outline
 
 The current project has the following main modules:
@@ -360,7 +392,7 @@ Currently, there are only 3 active services:
 
 - AgentServer (the API, defined in `server.py`)
 - ExecutionManager (the executor, defined in `manager.py`)
-- ExecutionScheduler (the scheduler, defined in `scheduler.py`)
+- Scheduler (the scheduler, defined in `scheduler.py`)
 
 The services run in independent Python processes and communicate through an IPC.
 A communication layer (`service.py`) is created to decouple the communication library from the implementation.

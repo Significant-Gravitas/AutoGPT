@@ -24,8 +24,9 @@ platform/frontend:
 
 platform/backend:
 - changed-files:
-  - any-glob-to-any-file: autogpt_platform/backend/**
-  - all-globs-to-all-files: '!autogpt_platform/backend/backend/blocks/**'
+  - all-globs-to-any-file:
+    - autogpt_platform/backend/**
+    - '!autogpt_platform/backend/backend/blocks/**'
 
 platform/blocks:
 - changed-files:

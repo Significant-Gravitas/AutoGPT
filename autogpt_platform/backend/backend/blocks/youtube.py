@@ -79,7 +79,7 @@ class TranscribeYoutubeVideoBlock(Block):
         except Exception:
             raise ValueError(f"No transcripts found for the video: {video_id}")
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         video_id = self.extract_video_id(input_data.youtube_url)
         yield "video_id", video_id
 

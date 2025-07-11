@@ -27,7 +27,7 @@
 !autogpt_platform/frontend/src/
 !autogpt_platform/frontend/public/
 !autogpt_platform/frontend/package.json
-!autogpt_platform/frontend/yarn.lock
+!autogpt_platform/frontend/pnpm-lock.yaml
 !autogpt_platform/frontend/tsconfig.json
 !autogpt_platform/frontend/README.md
 ## config

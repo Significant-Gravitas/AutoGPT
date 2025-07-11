@@ -1,24 +1,41 @@
 import { cn } from "@/lib/utils";
-import Image from "next/image";
 import StarRating from "./StarRating";
 import { StoreAgentDetails } from "@/lib/autogpt-server-api";
+import SmartImage from "../agptui/SmartImage";
 
-type OnboardingAgentCardProps = StoreAgentDetails & {
+type OnboardingAgentCardProps = {
+  agent?: StoreAgentDetails;
   selected?: boolean;
   onClick: () => void;
 };
 
 export default function OnboardingAgentCard({
-  agent_image,
-  creator_avatar,
-  agent_name,
-  description,
-  creator,
-  runs,
-  rating,
+  agent,
   selected,
   onClick,
 }: OnboardingAgentCardProps) {
+  if (!agent) {
+    return (
+      <div
+        className={cn(
+          "relative animate-pulse",
+          "h-[394px] w-[368px] rounded-[20px] border border-transparent bg-zinc-200",
+        )}
+        onClick={onClick}
+      />
+    );
+  }
+
+  const {
+    agent_image,
+    creator_avatar,
+    agent_name,
+    description,
+    creator,
+    runs,
+    rating,
+  } = agent;
+
   return (
     <div
       className={cn(
@@ -30,21 +47,17 @@ export default function OnboardingAgentCard({
     >
       {/* Image container */}
       <div className="relative">
-        <Image
-          src={agent_image?.[0] || ""}
+        <SmartImage
+          src={agent_image?.[0]}
           alt="Agent cover"
-          className="m-2 h-[196px] w-[350px] rounded-[16px] object-cover"
-          width={350}
-          height={196}
+          className="m-2 h-[196px] w-[350px] rounded-[16px]"
         />
         {/* Profile picture overlay */}
         <div className="absolute bottom-2 left-4">
-          <Image
+          <SmartImage
             src={creator_avatar}
             alt="Profile picture"
-            className="h-[50px] w-[50px] rounded-full border border-white object-cover object-center"
-            width={50}
-            height={50}
+            className="h-[50px] w-[50px] rounded-full border border-white"
           />
         </div>
       </div>

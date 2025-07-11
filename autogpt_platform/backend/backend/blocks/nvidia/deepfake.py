@@ -5,7 +5,7 @@ from backend.blocks.nvidia._auth import (
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import SchemaField
-from backend.util.request import requests
+from backend.util.request import Requests
 from backend.util.type import MediaFileType
 
 
@@ -40,7 +40,7 @@ class NvidiaDeepfakeDetectBlock(Block):
             output_schema=NvidiaDeepfakeDetectBlock.Output,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: NvidiaCredentials, **kwargs
     ) -> BlockOutput:
         url = "https://ai.api.nvidia.com/v1/cv/hive/deepfake-image-detection"
@@ -59,8 +59,7 @@ class NvidiaDeepfakeDetectBlock(Block):
         }
 
         try:
-            response = requests.post(url, headers=headers, json=payload)
-            response.raise_for_status()
+            response = await Requests().post(url, headers=headers, json=payload)
             data = response.json()
 
             result = data.get("data", [{}])[0]

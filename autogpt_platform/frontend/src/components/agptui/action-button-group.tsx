@@ -22,6 +22,7 @@ export default function ActionButtonGroup({
           <Button
             key={i}
             variant={action.variant ?? "outline"}
+            disabled={action.disabled}
             onClick={action.callback}
           >
             {action.label}
@@ -29,7 +30,11 @@ export default function ActionButtonGroup({
         ) : (
           <Link
             key={i}
-            className={buttonVariants({ variant: action.variant })}
+            className={cn(
+              buttonVariants({ variant: action.variant }),
+              action.disabled &&
+                "pointer-events-none border-zinc-400 text-zinc-400",
+            )}
             href={action.href}
           >
             {action.label}

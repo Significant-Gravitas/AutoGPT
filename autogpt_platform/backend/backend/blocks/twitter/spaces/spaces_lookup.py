@@ -7,6 +7,7 @@ from tweepy.client import Response
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TWITTER_OAUTH_IS_CONFIGURED,
     TwitterCredentials,
     TwitterCredentialsField,
     TwitterCredentialsInput,
@@ -94,6 +95,7 @@ class TwitterGetSpacesBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetSpacesBlock.Input,
             output_schema=TwitterGetSpacesBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "identifier": {
                     "discriminator": "space_list",
@@ -184,7 +186,7 @@ class TwitterGetSpacesBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -249,6 +251,7 @@ class TwitterGetSpaceByIdBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetSpaceByIdBlock.Input,
             output_schema=TwitterGetSpaceByIdBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "space_id": "1DXxyRYNejbKM",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -338,7 +341,7 @@ class TwitterGetSpaceByIdBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -409,6 +412,7 @@ class TwitterGetSpaceBuyersBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetSpaceBuyersBlock.Input,
             output_schema=TwitterGetSpaceBuyersBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "space_id": "1DXxyRYNejbKM",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -473,7 +477,7 @@ class TwitterGetSpaceBuyersBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -537,6 +541,7 @@ class TwitterGetSpaceTweetsBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetSpaceTweetsBlock.Input,
             output_schema=TwitterGetSpaceTweetsBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "space_id": "1DXxyRYNejbKM",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -613,7 +618,7 @@ class TwitterGetSpaceTweetsBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,

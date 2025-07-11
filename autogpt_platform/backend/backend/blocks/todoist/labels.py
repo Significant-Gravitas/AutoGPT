@@ -4,6 +4,7 @@ from typing_extensions import Optional
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TODOIST_OAUTH_IS_CONFIGURED,
     TodoistCredentials,
     TodoistCredentialsField,
     TodoistCredentialsInput,
@@ -42,6 +43,7 @@ class TodoistCreateLabelBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistCreateLabelBlock.Input,
             output_schema=TodoistCreateLabelBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "name": "Test Label",
@@ -78,7 +80,7 @@ class TodoistCreateLabelBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -130,6 +132,7 @@ class TodoistListLabelsBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistListLabelsBlock.Input,
             output_schema=TodoistListLabelsBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={"credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[
@@ -171,7 +174,7 @@ class TodoistListLabelsBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -211,6 +214,7 @@ class TodoistGetLabelBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetLabelBlock.Input,
             output_schema=TodoistGetLabelBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "label_id": "2156154810",
@@ -244,7 +248,7 @@ class TodoistGetLabelBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -293,6 +297,7 @@ class TodoistUpdateLabelBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistUpdateLabelBlock.Input,
             output_schema=TodoistUpdateLabelBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "label_id": "2156154810",
@@ -316,7 +321,7 @@ class TodoistUpdateLabelBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -364,6 +369,7 @@ class TodoistDeleteLabelBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistDeleteLabelBlock.Input,
             output_schema=TodoistDeleteLabelBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "label_id": "2156154810",
@@ -383,7 +389,7 @@ class TodoistDeleteLabelBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -415,6 +421,7 @@ class TodoistGetSharedLabelsBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetSharedLabelsBlock.Input,
             output_schema=TodoistGetSharedLabelsBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={"credentials": TEST_CREDENTIALS_INPUT},
             test_credentials=TEST_CREDENTIALS,
             test_output=[("labels", ["Label1", "Label2", "Label3"])],
@@ -437,7 +444,7 @@ class TodoistGetSharedLabelsBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -471,6 +478,7 @@ class TodoistRenameSharedLabelsBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistRenameSharedLabelsBlock.Input,
             output_schema=TodoistRenameSharedLabelsBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "name": "OldLabel",
@@ -491,7 +499,7 @@ class TodoistRenameSharedLabelsBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -526,6 +534,7 @@ class TodoistRemoveSharedLabelsBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistRemoveSharedLabelsBlock.Input,
             output_schema=TodoistRemoveSharedLabelsBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={"credentials": TEST_CREDENTIALS_INPUT, "name": "LabelToRemove"},
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
@@ -542,7 +551,7 @@ class TodoistRemoveSharedLabelsBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,

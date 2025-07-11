@@ -6,6 +6,7 @@ from tweepy.client import Response
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TWITTER_OAUTH_IS_CONFIGURED,
     TwitterCredentials,
     TwitterCredentialsField,
     TwitterCredentialsInput,
@@ -65,6 +66,7 @@ class TwitterRemoveListMemberBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterRemoveListMemberBlock.Input,
             output_schema=TwitterRemoveListMemberBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "list_id": "123456789",
                 "user_id": "987654321",
@@ -88,7 +90,7 @@ class TwitterRemoveListMemberBlock(Block):
         except Exception:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -138,6 +140,7 @@ class TwitterAddListMemberBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterAddListMemberBlock.Input,
             output_schema=TwitterAddListMemberBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "list_id": "123456789",
                 "user_id": "987654321",
@@ -161,7 +164,7 @@ class TwitterAddListMemberBlock(Block):
         except Exception:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -229,6 +232,7 @@ class TwitterGetListMembersBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetListMembersBlock.Input,
             output_schema=TwitterGetListMembersBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "list_id": "123456789",
                 "max_results": 2,
@@ -323,7 +327,7 @@ class TwitterGetListMembersBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -405,6 +409,7 @@ class TwitterGetListMembershipsBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetListMembershipsBlock.Input,
             output_schema=TwitterGetListMembershipsBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "user_id": "123456789",
                 "max_results": 1,
@@ -488,7 +493,7 @@ class TwitterGetListMembershipsBlock(Block):
         except Exception:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,

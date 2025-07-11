@@ -22,28 +22,26 @@ interface TaskGroup {
 export function TaskGroups() {
   const [groups, setGroups] = useState<TaskGroup[]>([
     {
-      name: "Run your first agent",
-      isOpen: false,
+      name: "Run your first agents",
+      isOpen: true,
       tasks: [
         {
-          id: "CONGRATS",
-          name: "Finish onboarding",
+          id: "GET_RESULTS",
+          name: "Complete onboarding and see your first agent's results",
           amount: 3,
-          details: "Go through our step by step tutorial",
+          details: "",
         },
         {
-          id: "GET_RESULTS",
-          name: "Get results from first agent",
+          id: "RUN_AGENTS",
+          name: "Run 10 agents",
           amount: 3,
-          details:
-            "Sit back and relax - your agent is running and will finish soon! See the results in the Library once it's done",
-          video: "/onboarding/get-results.mp4",
+          details: "Run agents from Library or Builder 10 times",
         },
       ],
     },
     {
       name: "Explore the Marketplace",
-      isOpen: false,
+      isOpen: true,
       tasks: [
         {
           id: "MARKETPLACE_VISIT",
@@ -72,7 +70,7 @@ export function TaskGroups() {
     },
     {
       name: "Build your own agent",
-      isOpen: false,
+      isOpen: true,
       tasks: [
         {
           id: "BUILDER_OPEN",
@@ -137,6 +135,25 @@ export function TaskGroups() {
     }
   };
 
+  const delayConfetti = useCallback((el: HTMLDivElement, count: number) => {
+    setTimeout(() => {
+      party.confetti(el, {
+        count,
+        spread: 90,
+        shapes: ["square", "circle"],
+        size: party.variation.range(1, 1.5),
+        speed: party.variation.range(250, 350),
+        modules: [
+          new party.ModuleBuilder()
+            .drive("opacity")
+            .by((t) => 1.4 - t)
+            .through("lifetime")
+            .build(),
+        ],
+      });
+    }, 300);
+  }, []);
+
   useEffect(() => {
     groups.forEach((group) => {
       const groupCompleted = isGroupCompleted(group);
@@ -148,13 +165,7 @@ export function TaskGroups() {
       if (groupCompleted) {
         const el = refs.current[group.name];
         if (el && !alreadyCelebrated) {
-          party.confetti(el, {
-            count: 50,
-            spread: 120,
-            shapes: ["square", "circle"],
-            size: party.variation.range(1, 2),
-            speed: party.variation.range(200, 300),
-          });
+          delayConfetti(el, 50);
           // Update the state to include all group tasks as notified
           // This ensures that the confetti effect isn't perpetually triggered on Wallet
           const notifiedTasks = group.tasks.map((task) => task.id);
@@ -168,19 +179,21 @@ export function TaskGroups() {
       group.tasks.forEach((task) => {
         const el = refs.current[task.id];
         if (el && isTaskCompleted(task) && !state?.notified.includes(task.id)) {
-          party.confetti(el, {
-            count: 40,
-            spread: 120,
-            shapes: ["square", "circle"],
-            size: party.variation.range(1, 1.5),
-            speed: party.variation.range(200, 300),
-          });
+          delayConfetti(el, 40);
           // Update the state to include the task as notified
           updateState({ notified: [...(state?.notified || []), task.id] });
         }
       });
     });
-  }, [state?.completedSteps]);
+  }, [
+    state?.completedSteps,
+    delayConfetti,
+    groups,
+    updateState,
+    state?.notified,
+    isGroupCompleted,
+    isTaskCompleted,
+  ]);
 
   return (
     <div className="space-y-2">
@@ -293,7 +306,7 @@ export function TaskGroups() {
                     >
                       {task.details}
                     </div>
-                    {task.video && (
+                    {task.video ? (
                       <div
                         className={cn(
                           "relative mx-6 aspect-video overflow-hidden rounded-lg transition-all duration-300 ease-in-out",
@@ -310,9 +323,12 @@ export function TaskGroups() {
                           playsInline
                           className={cn(
                             "h-full w-full object-cover object-center",
+                            isTaskCompleted(task) && "grayscale",
                           )}
                         ></video>
                       </div>
+                    ) : (
+                      <div className="mb-1" />
                     )}
                   </>
                 )}

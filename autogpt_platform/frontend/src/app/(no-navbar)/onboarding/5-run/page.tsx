@@ -1,22 +1,23 @@
 "use client";
+import SmartImage from "@/components/agptui/SmartImage";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
 import OnboardingButton from "@/components/onboarding/OnboardingButton";
 import {
-  OnboardingStep,
   OnboardingHeader,
+  OnboardingStep,
 } from "@/components/onboarding/OnboardingStep";
 import { OnboardingText } from "@/components/onboarding/OnboardingText";
 import StarRating from "@/components/onboarding/StarRating";
-import { Play } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useCallback, useEffect, useState } from "react";
-import Image from "next/image";
-import { GraphMeta, StoreAgentDetails } from "@/lib/autogpt-server-api";
-import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useRouter } from "next/navigation";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { TypeBasedInput } from "@/components/type-based-input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/components/molecules/Toast/use-toast";
+import { GraphMeta, StoreAgentDetails } from "@/lib/autogpt-server-api";
+import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { cn } from "@/lib/utils";
+import { Play } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 
 export default function Page() {
   const { state, updateState, setStep } = useOnboarding(
@@ -26,6 +27,8 @@ export default function Page() {
   const [showInput, setShowInput] = useState(false);
   const [agent, setAgent] = useState<GraphMeta | null>(null);
   const [storeAgent, setStoreAgent] = useState<StoreAgentDetails | null>(null);
+  const [runningAgent, setRunningAgent] = useState(false);
+  const { toast } = useToast();
   const router = useRouter();
   const api = useBackendAPI();
 
@@ -46,9 +49,10 @@ export default function Page() {
       .getAgentMetaByStoreListingVersionId(state?.selectedStoreListingVersionId)
       .then((agent) => {
         setAgent(agent);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const update: { [key: string]: any } = {};
         // Set default values from schema
-        Object.entries(agent.input_schema.properties).forEach(
+        Object.entries(agent.input_schema?.properties || {}).forEach(
           ([key, value]) => {
             // Skip if already set
             if (state.agentInput && state.agentInput[key]) {
@@ -76,30 +80,39 @@ export default function Page() {
     [state?.agentInput, updateState],
   );
 
-  const runAgent = useCallback(() => {
+  const runAgent = useCallback(async () => {
     if (!agent) {
       return;
     }
-    api
-      .addMarketplaceAgentToLibrary(storeAgent?.store_listing_version_id || "")
-      .then((libraryAgent) => {
-        api
-          .executeGraph(
-            libraryAgent.graph_id,
-            libraryAgent.graph_version,
-            state?.agentInput || {},
-          )
-          .then(({ graph_exec_id }) => {
-            updateState({
-              onboardingAgentExecutionId: graph_exec_id,
-            });
-            router.push("/onboarding/6-congrats");
-          });
+    setRunningAgent(true);
+    try {
+      const libraryAgent = await api.addMarketplaceAgentToLibrary(
+        storeAgent?.store_listing_version_id || "",
+      );
+      const { graph_exec_id } = await api.executeGraph(
+        libraryAgent.graph_id,
+        libraryAgent.graph_version,
+        state?.agentInput || {},
+      );
+      updateState({
+        onboardingAgentExecutionId: graph_exec_id,
+        agentRuns: (state?.agentRuns || 0) + 1,
       });
-  }, [api, agent, router, state?.agentInput, storeAgent, updateState]);
+      router.push("/onboarding/6-congrats");
+    } catch (error) {
+      console.error("Error running agent:", error);
+      toast({
+        title: "Error running agent",
+        description:
+          "There was an error running your agent. Please try again or try choosing a different agent if it still fails.",
+        variant: "destructive",
+      });
+      setRunningAgent(false);
+    }
+  }, [api, agent, router, state?.agentInput, storeAgent, updateState, toast]);
 
   const runYourAgent = (
-    <div className="ml-[54px] w-[481px] pl-5">
+    <div className="ml-[104px] w-[481px] pl-5">
       <div className="flex flex-col">
         <OnboardingText variant="header">Run your first agent</OnboardingText>
         <span className="mt-9 text-base font-normal leading-normal text-zinc-600">
@@ -147,32 +160,25 @@ export default function Page() {
   return (
     <OnboardingStep dotted>
       <OnboardingHeader backHref={"/onboarding/4-agent"} transparent />
-      <div
-        className={cn(
-          "flex w-full items-center justify-center",
-          showInput ? "mt-[32px]" : "mt-[192px]",
-        )}
-      >
-        {/* Left side */}
-        <div className="mr-[52px] w-[481px]">
-          <div className="h-[156px] w-[481px] rounded-xl bg-white px-6 pb-5 pt-4">
-            <span className="font-sans text-xs font-medium tracking-wide text-zinc-500">
-              SELECTED AGENT
-            </span>
+      {/* Agent card */}
+      <div className="fixed left-1/4 top-1/2 w-[481px] -translate-x-1/2 -translate-y-1/2">
+        <div className="h-[156px] w-[481px] rounded-xl bg-white px-6 pb-5 pt-4">
+          <span className="font-sans text-xs font-medium tracking-wide text-zinc-500">
+            SELECTED AGENT
+          </span>
+          {storeAgent ? (
             <div className="mt-4 flex h-20 rounded-lg bg-violet-50 p-2">
               {/* Left image */}
-              <Image
-                src={storeAgent?.agent_image[0] || ""}
-                alt="Description"
-                width={350}
-                height={196}
-                className="h-full w-auto rounded-lg object-contain"
+              <SmartImage
+                src={storeAgent?.agent_image[0]}
+                alt="Agent cover"
+                imageContain
+                className="w-[350px] rounded-lg"
               />
-
               {/* Right content */}
               <div className="ml-2 flex flex-1 flex-col">
                 <span className="w-[292px] truncate font-sans text-[14px] font-medium leading-normal text-zinc-800">
-                  {agent?.name}
+                  {storeAgent?.agent_name}
                 </span>
                 <span className="mt-[5px] w-[292px] truncate font-sans text-xs font-normal leading-tight text-zinc-600">
                   by {storeAgent?.creator}
@@ -189,13 +195,19 @@ export default function Page() {
                 </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="mt-4 flex h-20 animate-pulse rounded-lg bg-gray-300 p-2" />
+          )}
         </div>
+      </div>
+      <div className="flex min-h-[80vh] items-center justify-center">
+        {/* Left side */}
+        <div className="w-[481px]" />
         {/* Right side */}
         {!showInput ? (
           runYourAgent
         ) : (
-          <div className="ml-[54px] w-[481px] pl-5">
+          <div className="ml-[104px] w-[481px] pl-5">
             <div className="flex flex-col">
               <OnboardingText variant="header">
                 Provide details for your agent
@@ -212,7 +224,7 @@ export default function Page() {
                   <CardTitle className="font-poppins text-lg">Input</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4">
-                  {Object.entries(agent?.input_schema.properties || {}).map(
+                  {Object.entries(agent?.input_schema?.properties || {}).map(
                     ([key, inputSubSchema]) => (
                       <div key={key} className="flex flex-col space-y-2">
                         <label className="flex items-center gap-1 text-sm font-medium">
@@ -235,14 +247,17 @@ export default function Page() {
               <OnboardingButton
                 variant="violet"
                 className="mt-8 w-[136px]"
+                loading={runningAgent}
                 disabled={
                   Object.values(state?.agentInput || {}).some(
                     (value) => String(value).trim() === "",
-                  ) || !agent
+                  ) ||
+                  !agent ||
+                  runningAgent
                 }
                 onClick={runAgent}
+                icon={<Play className="mr-2" size={18} />}
               >
-                <Play className="" size={18} />
                 Run agent
               </OnboardingButton>
             </div>

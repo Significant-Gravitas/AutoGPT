@@ -6,6 +6,7 @@ from tweepy.client import Response
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TWITTER_OAUTH_IS_CONFIGURED,
     TwitterCredentials,
     TwitterCredentialsField,
     TwitterCredentialsInput,
@@ -55,6 +56,7 @@ class TwitterBookmarkTweetBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterBookmarkTweetBlock.Input,
             output_schema=TwitterBookmarkTweetBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "tweet_id": "1234567890",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -83,7 +85,7 @@ class TwitterBookmarkTweetBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -147,6 +149,7 @@ class TwitterGetBookmarkedTweetsBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetBookmarkedTweetsBlock.Input,
             output_schema=TwitterGetBookmarkedTweetsBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "max_results": 2,
                 "pagination_token": None,
@@ -259,7 +262,7 @@ class TwitterGetBookmarkedTweetsBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -330,6 +333,7 @@ class TwitterRemoveBookmarkTweetBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterRemoveBookmarkTweetBlock.Input,
             output_schema=TwitterRemoveBookmarkTweetBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "tweet_id": "1234567890",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -358,7 +362,7 @@ class TwitterRemoveBookmarkTweetBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,

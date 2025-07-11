@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Literal, Optional, cast
 
 import fastapi
 import prisma.errors
@@ -7,18 +7,20 @@ import prisma.fields
 import prisma.models
 import prisma.types
 
-import backend.data.graph
+import backend.data.graph as graph_db
 import backend.server.model
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
 import backend.server.v2.store.image_gen as store_image_gen
 import backend.server.v2.store.media as store_media
-from backend.data import db
-from backend.data import graph as graph_db
-from backend.data.db import locked_transaction
+from backend.data.block import BlockInput
+from backend.data.db import locked_transaction, transaction
+from backend.data.execution import get_graph_execution
 from backend.data.includes import library_agent_include
+from backend.data.model import CredentialsMetaInput
 from backend.integrations.creds_manager import IntegrationCredentialsManager
 from backend.integrations.webhooks.graph_lifecycle_hooks import on_graph_activate
+from backend.util.exceptions import NotFoundError
 from backend.util.settings import Config
 
 logger = logging.getLogger(__name__)
@@ -29,7 +31,7 @@ integration_creds_manager = IntegrationCredentialsManager()
 async def list_library_agents(
     user_id: str,
     search_term: Optional[str] = None,
-    sort_by: library_model.LibraryAgentSort = library_model.LibraryAgentSort.UPDATED_AT,
+    sort_by: Optional[library_model.LibraryAgentSort] = None,
     page: int = 1,
     page_size: int = 50,
 ) -> library_model.LibraryAgentResponse:
@@ -39,7 +41,7 @@ async def list_library_agents(
     Args:
         user_id: The ID of the user whose LibraryAgents we want to retrieve.
         search_term: Optional string to filter agents by name/description.
-        sort_by: Sorting field (createdAt, updatedAt, lastExecution).
+        sort_by: Sorting field (createdAt, updatedAt, lastExecuted).
         page: Current page (1-indexed).
         page_size: Number of items per page.
 
@@ -87,18 +89,25 @@ async def list_library_agents(
         ]
 
     # Determine sorting
-    order_by: prisma.types.LibraryAgentOrderByInput = {}
+    order_by: (
+        prisma.types.LibraryAgentOrderByInput
+        | list[prisma.types.LibraryAgentOrderByInput]
+        | None
+    ) = None
 
     if sort_by == library_model.LibraryAgentSort.CREATED_AT:
         order_by = {"createdAt": "asc"}
     elif sort_by == library_model.LibraryAgentSort.UPDATED_AT:
         order_by = {"updatedAt": "desc"}
-    elif sort_by == library_model.LibraryAgentSort.LAST_EXECUTION:
+    elif sort_by == library_model.LibraryAgentSort.LAST_EXECUTED:
         # Sort by the most recent AgentGraph.Execution (startedAt) first.
         # If no executions exist, fall back to sorting by updatedAt.
         order_by = [
-            {"AgentGraph": {"Executions": {"startedAt": "desc"}}},
-            {"updatedAt": "desc"}
+            cast(
+                prisma.types.LibraryAgentOrderByInput,
+                {"AgentGraph": {"Executions": {"startedAt": "desc"}}},
+            ),
+            {"updatedAt": "desc"},
         ]
 
     try:
@@ -127,7 +136,7 @@ async def list_library_agents(
             except Exception as e:
                 # Skip this agent if there was an error
                 logger.error(
-                    f"Error parsing LibraryAgent when getting library agents from db: {e}"
+                    f"Error parsing LibraryAgent #{agent.id} from DB item: {e}"
                 )
                 continue
 
@@ -152,7 +161,7 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
     Get a specific agent from the user's library.
 
     Args:
-        library_agent_id: ID of the library agent to retrieve.
+        id: ID of the library agent to retrieve.
         user_id: ID of the authenticated user.
 
     Returns:
@@ -173,17 +182,88 @@ async def get_library_agent(id: str, user_id: str) -> library_model.LibraryAgent
         )
 
         if not library_agent:
-            raise store_exceptions.AgentNotFoundError(f"Library agent #{id} not found")
+            raise NotFoundError(f"Library agent #{id} not found")
 
-        return library_model.LibraryAgent.from_db(library_agent)
+        return library_model.LibraryAgent.from_db(
+            library_agent,
+            sub_graphs=(
+                await graph_db.get_sub_graphs(library_agent.AgentGraph)
+                if library_agent.AgentGraph
+                else None
+            ),
+        )
 
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error fetching library agent: {e}")
         raise store_exceptions.DatabaseError("Failed to fetch library agent") from e
 
 
+async def get_library_agent_by_store_version_id(
+    store_listing_version_id: str,
+    user_id: str,
+):
+    """
+    Get the library agent metadata for a given store listing version ID and user ID.
+    """
+    logger.debug(
+        f"Getting library agent for store listing ID: {store_listing_version_id}"
+    )
+
+    store_listing_version = (
+        await prisma.models.StoreListingVersion.prisma().find_unique(
+            where={"id": store_listing_version_id},
+        )
+    )
+    if not store_listing_version:
+        logger.warning(f"Store listing version not found: {store_listing_version_id}")
+        raise store_exceptions.AgentNotFoundError(
+            f"Store listing version {store_listing_version_id} not found or invalid"
+        )
+
+    # Check if user already has this agent
+    agent = await prisma.models.LibraryAgent.prisma().find_first(
+        where={
+            "userId": user_id,
+            "agentGraphId": store_listing_version.agentGraphId,
+            "agentGraphVersion": store_listing_version.agentGraphVersion,
+            "isDeleted": False,
+        },
+        include={"AgentGraph": True},
+    )
+    if agent:
+        return library_model.LibraryAgent.from_db(agent)
+    else:
+        return None
+
+
+async def get_library_agent_by_graph_id(
+    user_id: str,
+    graph_id: str,
+    graph_version: Optional[int] = None,
+) -> library_model.LibraryAgent | None:
+    try:
+        filter: prisma.types.LibraryAgentWhereInput = {
+            "agentGraphId": graph_id,
+            "userId": user_id,
+            "isDeleted": False,
+        }
+        if graph_version is not None:
+            filter["agentGraphVersion"] = graph_version
+
+        agent = await prisma.models.LibraryAgent.prisma().find_first(
+            where=filter,
+            include=library_agent_include(user_id),
+        )
+        if not agent:
+            return None
+        return library_model.LibraryAgent.from_db(agent)
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error fetching library agent by graph ID: {e}")
+        raise store_exceptions.DatabaseError("Failed to fetch library agent") from e
+
+
 async def add_generated_agent_image(
-    graph: backend.data.graph.GraphModel,
+    graph: graph_db.GraphModel,
     library_agent_id: str,
 ) -> Optional[prisma.models.LibraryAgent]:
     """
@@ -216,7 +296,7 @@ async def add_generated_agent_image(
 
 
 async def create_library_agent(
-    graph: backend.data.graph.GraphModel,
+    graph: graph_db.GraphModel,
     user_id: str,
 ) -> library_model.LibraryAgent:
     """
@@ -244,7 +324,7 @@ async def create_library_agent(
                 isCreatedByUser=(user_id == graph.user_id),
                 useGraphIsActiveVersion=True,
                 User={"connect": {"id": user_id}},
-                # Creator={"connect": {"id": agent.userId}},
+                # Creator={"connect": {"id": graph.user_id}},
                 AgentGraph={
                     "connect": {
                         "graphVersionId": {"id": graph.id, "version": graph.version}
@@ -313,8 +393,8 @@ async def update_library_agent(
     auto_update_version: Optional[bool] = None,
     is_favorite: Optional[bool] = None,
     is_archived: Optional[bool] = None,
-    is_deleted: Optional[bool] = None,
-) -> None:
+    is_deleted: Optional[Literal[False]] = None,
+) -> library_model.LibraryAgent:
     """
     Updates the specified LibraryAgent record.
 
@@ -324,15 +404,18 @@ async def update_library_agent(
         auto_update_version: Whether the agent should auto-update to active version.
         is_favorite: Whether this agent is marked as a favorite.
         is_archived: Whether this agent is archived.
-        is_deleted: Whether this agent is deleted.
+
+    Returns:
+        The updated LibraryAgent.
 
     Raises:
+        NotFoundError: If the specified LibraryAgent does not exist.
         DatabaseError: If there's an error in the update operation.
     """
     logger.debug(
         f"Updating library agent {library_agent_id} for user {user_id} with "
         f"auto_update_version={auto_update_version}, is_favorite={is_favorite}, "
-        f"is_archived={is_archived}, is_deleted={is_deleted}"
+        f"is_archived={is_archived}"
     )
     update_fields: prisma.types.LibraryAgentUpdateManyMutationInput = {}
     if auto_update_version is not None:
@@ -342,15 +425,44 @@ async def update_library_agent(
     if is_archived is not None:
         update_fields["isArchived"] = is_archived
     if is_deleted is not None:
+        if is_deleted is True:
+            raise RuntimeError(
+                "Use delete_library_agent() to (soft-)delete library agents"
+            )
         update_fields["isDeleted"] = is_deleted
+    if not update_fields:
+        raise ValueError("No values were passed to update")
 
     try:
-        await prisma.models.LibraryAgent.prisma().update_many(
-            where={"id": library_agent_id, "userId": user_id}, data=update_fields
+        n_updated = await prisma.models.LibraryAgent.prisma().update_many(
+            where={"id": library_agent_id, "userId": user_id},
+            data=update_fields,
+        )
+        if n_updated < 1:
+            raise NotFoundError(f"Library agent {library_agent_id} not found")
+
+        return await get_library_agent(
+            id=library_agent_id,
+            user_id=user_id,
         )
     except prisma.errors.PrismaError as e:
         logger.error(f"Database error updating library agent: {str(e)}")
         raise store_exceptions.DatabaseError("Failed to update library agent") from e
+
+
+async def delete_library_agent(
+    library_agent_id: str, user_id: str, soft_delete: bool = True
+) -> None:
+    if soft_delete:
+        deleted_count = await prisma.models.LibraryAgent.prisma().update_many(
+            where={"id": library_agent_id, "userId": user_id}, data={"isDeleted": True}
+        )
+    else:
+        deleted_count = await prisma.models.LibraryAgent.prisma().delete_many(
+            where={"id": library_agent_id, "userId": user_id}
+        )
+    if deleted_count < 1:
+        raise NotFoundError(f"Library agent #{library_agent_id} not found")
 
 
 async def delete_library_agent_by_graph_id(graph_id: str, user_id: str) -> None:
@@ -404,44 +516,44 @@ async def add_store_agent_to_library(
                 )
 
             graph = store_listing_version.AgentGraph
-            if graph.userId == user_id:
-                logger.warning(
-                    f"User #{user_id} attempted to add their own agent to their library"
-                )
-                raise store_exceptions.DatabaseError("Cannot add own agent to library")
 
             # Check if user already has this agent
             existing_library_agent = (
-                await prisma.models.LibraryAgent.prisma().find_first(
+                await prisma.models.LibraryAgent.prisma().find_unique(
                     where={
-                        "userId": user_id,
-                        "agentGraphId": graph.id,
-                        "agentGraphVersion": graph.version,
+                        "userId_agentGraphId_agentGraphVersion": {
+                            "userId": user_id,
+                            "agentGraphId": graph.id,
+                            "agentGraphVersion": graph.version,
+                        }
                     },
-                    include=library_agent_include(user_id),
+                    include={"AgentGraph": True},
                 )
             )
             if existing_library_agent:
                 if existing_library_agent.isDeleted:
                     # Even if agent exists it needs to be marked as not deleted
-                    await set_is_deleted_for_library_agent(
-                        user_id, graph.id, graph.version, False
+                    await update_library_agent(
+                        existing_library_agent.id, user_id, is_deleted=False
                     )
                 else:
                     logger.debug(
                         f"User #{user_id} already has graph #{graph.id} "
-                        "in their library"
+                        f"v{graph.version} in their library"
                     )
                 return library_model.LibraryAgent.from_db(existing_library_agent)
 
             # Create LibraryAgent entry
             added_agent = await prisma.models.LibraryAgent.prisma().create(
-                data=prisma.types.LibraryAgentCreateInput(
-                    userId=user_id,
-                    agentGraphId=graph.id,
-                    agentGraphVersion=graph.version,
-                    isCreatedByUser=False,
-                ),
+                data={
+                    "User": {"connect": {"id": user_id}},
+                    "AgentGraph": {
+                        "connect": {
+                            "graphVersionId": {"id": graph.id, "version": graph.version}
+                        }
+                    },
+                    "isCreatedByUser": False,
+                },
                 include=library_agent_include(user_id),
             )
             logger.debug(
@@ -459,60 +571,22 @@ async def add_store_agent_to_library(
         raise store_exceptions.DatabaseError("Failed to add agent to library") from e
 
 
-async def set_is_deleted_for_library_agent(
-    user_id: str, agent_id: str, agent_version: int, is_deleted: bool
-) -> None:
-    """
-    Changes the isDeleted flag for a library agent.
-
-    Args:
-        user_id: The user's library from which the agent is being removed.
-        agent_id: The ID of the agent to remove.
-        agent_version: The version of the agent to remove.
-        is_deleted: Whether the agent is being marked as deleted.
-
-    Raises:
-        DatabaseError: If there's an issue updating the Library
-    """
-    logger.debug(
-        f"Setting isDeleted={is_deleted} for agent {agent_id} v{agent_version} "
-        f"in library for user {user_id}"
-    )
-    try:
-        logger.warning(
-            f"Setting isDeleted={is_deleted} for agent {agent_id} v{agent_version} in library for user {user_id}"
-        )
-        count = await prisma.models.LibraryAgent.prisma().update_many(
-            where={
-                "userId": user_id,
-                "agentGraphId": agent_id,
-                "agentGraphVersion": agent_version,
-            },
-            data={"isDeleted": is_deleted},
-        )
-        logger.warning(f"Updated {count} isDeleted library agents")
-    except prisma.errors.PrismaError as e:
-        logger.error(f"Database error setting agent isDeleted: {e}")
-        raise store_exceptions.DatabaseError(
-            "Failed to set agent isDeleted in library"
-        ) from e
-
-
 ##############################################
 ########### Presets DB Functions #############
 ##############################################
 
 
-async def get_presets(
-    user_id: str, page: int, page_size: int
+async def list_presets(
+    user_id: str, page: int, page_size: int, graph_id: Optional[str] = None
 ) -> library_model.LibraryAgentPresetResponse:
     """
     Retrieves a paginated list of AgentPresets for the specified user.
 
     Args:
         user_id: The user ID whose presets are being retrieved.
-        page: The current page index (0-based or 1-based, clarify in your domain).
+        page: The current page index (1-based).
         page_size: Number of items to retrieve per page.
+        graph_id: Agent Graph ID to filter by.
 
     Returns:
         A LibraryAgentPresetResponse containing a list of presets and pagination info.
@@ -524,21 +598,27 @@ async def get_presets(
         f"Fetching presets for user #{user_id}, page={page}, page_size={page_size}"
     )
 
-    if page < 0 or page_size < 1:
+    if page < 1 or page_size < 1:
         logger.warning(
             "Invalid pagination input: page=%d, page_size=%d", page, page_size
         )
         raise store_exceptions.DatabaseError("Invalid pagination parameters")
 
+    query_filter: prisma.types.AgentPresetWhereInput = {
+        "userId": user_id,
+        "isDeleted": False,
+    }
+    if graph_id:
+        query_filter["agentGraphId"] = graph_id
+
     try:
         presets_records = await prisma.models.AgentPreset.prisma().find_many(
-            where={"userId": user_id},
-            skip=page * page_size,
+            where=query_filter,
+            skip=(page - 1) * page_size,
             take=page_size,
+            include={"InputPresets": True},
         )
-        total_items = await prisma.models.AgentPreset.prisma().count(
-            where={"userId": user_id}
-        )
+        total_items = await prisma.models.AgentPreset.prisma().count(where=query_filter)
         total_pages = (total_items + page_size - 1) // page_size
 
         presets = [
@@ -583,7 +663,7 @@ async def get_preset(
             where={"id": preset_id},
             include={"InputPresets": True},
         )
-        if not preset or preset.userId != user_id:
+        if not preset or preset.userId != user_id or preset.isDeleted:
             return None
         return library_model.LibraryAgentPreset.from_db(preset)
     except prisma.errors.PrismaError as e:
@@ -591,69 +671,200 @@ async def get_preset(
         raise store_exceptions.DatabaseError("Failed to fetch preset") from e
 
 
-async def upsert_preset(
+async def create_preset(
     user_id: str,
-    preset: library_model.CreateLibraryAgentPresetRequest,
-    preset_id: Optional[str] = None,
+    preset: library_model.LibraryAgentPresetCreatable,
 ) -> library_model.LibraryAgentPreset:
     """
-    Creates or updates an AgentPreset for a user.
+    Creates a new AgentPreset for a user.
 
     Args:
-        user_id: The ID of the user creating/updating the preset.
-        preset: The preset data used for creation or update.
-        preset_id: An optional preset ID to update; if None, a new preset is created.
+        user_id: The ID of the user creating the preset.
+        preset: The preset data used for creation.
 
     Returns:
-        The newly created or updated LibraryAgentPreset.
+        The newly created LibraryAgentPreset.
 
     Raises:
-        DatabaseError: If there's a database error in creating or updating the preset.
-        ValueError: If attempting to update a non-existent preset.
+        DatabaseError: If there's a database error in creating the preset.
     """
     logger.debug(
-        f"Upserting preset #{preset_id} ({repr(preset.name)}) for user #{user_id}",
+        f"Creating preset ({repr(preset.name)}) for user #{user_id}",
     )
     try:
-        inputs = [
-            prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(
-                name=name, data=prisma.fields.Json(data)
-            )
-            for name, data in preset.inputs.items()
-        ]
-        if preset_id:
-            # Update existing preset
-            updated = await prisma.models.AgentPreset.prisma().update(
-                where={"id": preset_id},
-                data={
-                    "name": preset.name,
-                    "description": preset.description,
-                    "isActive": preset.is_active,
-                    "InputPresets": {"create": inputs},
+        new_preset = await prisma.models.AgentPreset.prisma().create(
+            data=prisma.types.AgentPresetCreateInput(
+                userId=user_id,
+                name=preset.name,
+                description=preset.description,
+                agentGraphId=preset.graph_id,
+                agentGraphVersion=preset.graph_version,
+                isActive=preset.is_active,
+                webhookId=preset.webhook_id,
+                InputPresets={
+                    "create": [
+                        prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
+                            name=name, data=prisma.fields.Json(data)
+                        )
+                        for name, data in {
+                            **preset.inputs,
+                            **{
+                                key: creds_meta.model_dump(exclude_none=True)
+                                for key, creds_meta in preset.credentials.items()
+                            },
+                        }.items()
+                    ]
                 },
-                include={"InputPresets": True},
-            )
-            if not updated:
-                raise ValueError(f"AgentPreset #{preset_id} not found")
-            return library_model.LibraryAgentPreset.from_db(updated)
-        else:
-            # Create new preset
-            new_preset = await prisma.models.AgentPreset.prisma().create(
-                data=prisma.types.AgentPresetCreateInput(
-                    userId=user_id,
-                    name=preset.name,
-                    description=preset.description,
-                    agentGraphId=preset.graph_id,
-                    agentGraphVersion=preset.graph_version,
-                    isActive=preset.is_active,
-                    InputPresets={"create": inputs},
-                ),
-                include={"InputPresets": True},
-            )
+            ),
+            include={"InputPresets": True},
+        )
         return library_model.LibraryAgentPreset.from_db(new_preset)
     except prisma.errors.PrismaError as e:
-        logger.error(f"Database error upserting preset: {e}")
+        logger.error(f"Database error creating preset: {e}")
         raise store_exceptions.DatabaseError("Failed to create preset") from e
+
+
+async def create_preset_from_graph_execution(
+    user_id: str,
+    create_request: library_model.LibraryAgentPresetCreatableFromGraphExecution,
+) -> library_model.LibraryAgentPreset:
+    """
+    Creates a new AgentPreset from an AgentGraphExecution.
+
+    Params:
+        user_id: The ID of the user creating the preset.
+        create_request: The data used for creation.
+
+    Returns:
+        The newly created LibraryAgentPreset.
+
+    Raises:
+        DatabaseError: If there's a database error in creating the preset.
+    """
+    graph_exec_id = create_request.graph_execution_id
+    graph_execution = await get_graph_execution(user_id, graph_exec_id)
+    if not graph_execution:
+        raise NotFoundError(f"Graph execution #{graph_exec_id} not found")
+
+    logger.debug(
+        f"Creating preset for user #{user_id} from graph execution #{graph_exec_id}",
+    )
+    return await create_preset(
+        user_id=user_id,
+        preset=library_model.LibraryAgentPresetCreatable(
+            inputs=graph_execution.inputs,
+            credentials={},  # FIXME
+            graph_id=graph_execution.graph_id,
+            graph_version=graph_execution.graph_version,
+            name=create_request.name,
+            description=create_request.description,
+            is_active=create_request.is_active,
+        ),
+    )
+
+
+async def update_preset(
+    user_id: str,
+    preset_id: str,
+    inputs: Optional[BlockInput] = None,
+    credentials: Optional[dict[str, CredentialsMetaInput]] = None,
+    name: Optional[str] = None,
+    description: Optional[str] = None,
+    is_active: Optional[bool] = None,
+) -> library_model.LibraryAgentPreset:
+    """
+    Updates an existing AgentPreset for a user.
+
+    Args:
+        user_id: The ID of the user updating the preset.
+        preset_id: The ID of the preset to update.
+        inputs: New inputs object to set on the preset.
+        credentials: New credentials to set on the preset.
+        name: New name for the preset.
+        description: New description for the preset.
+        is_active: New active status for the preset.
+
+    Returns:
+        The updated LibraryAgentPreset.
+
+    Raises:
+        DatabaseError: If there's a database error in updating the preset.
+        NotFoundError: If attempting to update a non-existent preset.
+    """
+    current = await get_preset(user_id, preset_id)  # assert ownership
+    if not current:
+        raise NotFoundError(f"Preset #{preset_id} not found for user #{user_id}")
+    logger.debug(
+        f"Updating preset #{preset_id} ({repr(current.name)}) for user #{user_id}",
+    )
+    try:
+        async with transaction() as tx:
+            update_data: prisma.types.AgentPresetUpdateInput = {}
+            if name:
+                update_data["name"] = name
+            if description:
+                update_data["description"] = description
+            if is_active is not None:
+                update_data["isActive"] = is_active
+            if inputs or credentials:
+                if not (inputs and credentials):
+                    raise ValueError(
+                        "Preset inputs and credentials must be provided together"
+                    )
+                update_data["InputPresets"] = {
+                    "create": [
+                        prisma.types.AgentNodeExecutionInputOutputCreateWithoutRelationsInput(  # noqa
+                            name=name, data=prisma.fields.Json(data)
+                        )
+                        for name, data in {
+                            **inputs,
+                            **{
+                                key: creds_meta.model_dump(exclude_none=True)
+                                for key, creds_meta in credentials.items()
+                            },
+                        }.items()
+                    ],
+                }
+                # Existing InputPresets must be deleted, in a separate query
+                await prisma.models.AgentNodeExecutionInputOutput.prisma(
+                    tx
+                ).delete_many(where={"agentPresetId": preset_id})
+
+            updated = await prisma.models.AgentPreset.prisma(tx).update(
+                where={"id": preset_id},
+                data=update_data,
+                include={"InputPresets": True},
+            )
+        if not updated:
+            raise RuntimeError(f"AgentPreset #{preset_id} vanished while updating")
+        return library_model.LibraryAgentPreset.from_db(updated)
+    except prisma.errors.PrismaError as e:
+        logger.error(f"Database error updating preset: {e}")
+        raise store_exceptions.DatabaseError("Failed to update preset") from e
+
+
+async def set_preset_webhook(
+    user_id: str, preset_id: str, webhook_id: str | None
+) -> library_model.LibraryAgentPreset:
+    current = await prisma.models.AgentPreset.prisma().find_unique(
+        where={"id": preset_id},
+        include={"InputPresets": True},
+    )
+    if not current or current.userId != user_id:
+        raise NotFoundError(f"Preset #{preset_id} not found")
+
+    updated = await prisma.models.AgentPreset.prisma().update(
+        where={"id": preset_id},
+        data=(
+            {"Webhook": {"connect": {"id": webhook_id}}}
+            if webhook_id
+            else {"Webhook": {"disconnect": True}}
+        ),
+        include={"InputPresets": True},
+    )
+    if not updated:
+        raise RuntimeError(f"AgentPreset #{preset_id} vanished while updating")
+    return library_model.LibraryAgentPreset.from_db(updated)
 
 
 async def delete_preset(user_id: str, preset_id: str) -> None:
@@ -667,7 +878,7 @@ async def delete_preset(user_id: str, preset_id: str) -> None:
     Raises:
         DatabaseError: If there's a database error during deletion.
     """
-    logger.info(f"Deleting preset {preset_id} for user {user_id}")
+    logger.debug(f"Setting preset #{preset_id} for user #{user_id} to deleted")
     try:
         await prisma.models.AgentPreset.prisma().update_many(
             where={"id": preset_id, "userId": user_id},
@@ -694,7 +905,7 @@ async def fork_library_agent(library_agent_id: str, user_id: str):
     """
     logger.debug(f"Forking library agent {library_agent_id} for user {user_id}")
     try:
-        async with db.locked_transaction(f"usr_trx_{user_id}-fork_agent"):
+        async with locked_transaction(f"usr_trx_{user_id}-fork_agent"):
             # Fetch the original agent
             original_agent = await get_library_agent(library_agent_id, user_id)
 
@@ -710,10 +921,7 @@ async def fork_library_agent(library_agent_id: str, user_id: str):
             new_graph = await graph_db.fork_graph(
                 original_agent.graph_id, original_agent.graph_version, user_id
             )
-            new_graph = await on_graph_activate(
-                new_graph,
-                get_credentials=lambda id: integration_creds_manager.get(user_id, id),
-            )
+            new_graph = await on_graph_activate(new_graph, user_id=user_id)
 
             # Create a library agent for the new graph
             return await create_library_agent(new_graph, user_id)

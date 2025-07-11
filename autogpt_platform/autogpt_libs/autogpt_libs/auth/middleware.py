@@ -1,5 +1,6 @@
 import inspect
 import logging
+import secrets
 from typing import Any, Callable, Optional
 
 from fastapi import HTTPException, Request, Security
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 async def auth_middleware(request: Request):
     if not settings.ENABLE_AUTH:
         # If authentication is disabled, allow the request to proceed
-        logger.warn("Auth disabled")
+        logger.warning("Auth disabled")
         return {}
 
     security = HTTPBearer()
@@ -93,7 +94,11 @@ class APIKeyValidator:
         self.error_message = error_message
 
     async def default_validator(self, api_key: str) -> bool:
-        return api_key == self.expected_token
+        if not self.expected_token:
+            raise ValueError(
+                "Expected Token Required to be set when uisng API Key Validator default validation"
+            )
+        return secrets.compare_digest(api_key, self.expected_token)
 
     async def __call__(
         self, request: Request, api_key: str = Security(APIKeyHeader)

@@ -1,71 +1,54 @@
 "use server";
+import BackendAPI from "@/lib/autogpt-server-api";
+import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { verifyTurnstileToken } from "@/lib/turnstile";
+import { loginFormSchema, LoginProvider } from "@/types/auth";
+import * as Sentry from "@sentry/nextjs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import * as Sentry from "@sentry/nextjs";
-import getServerSupabase from "@/lib/supabase/getServerSupabase";
-import BackendAPI from "@/lib/autogpt-server-api";
-import { loginFormSchema, LoginProvider } from "@/types/auth";
-
-export async function logout() {
-  return await Sentry.withServerActionInstrumentation(
-    "logout",
-    {},
-    async () => {
-      const supabase = getServerSupabase();
-
-      if (!supabase) {
-        redirect("/error");
-      }
-
-      const { error } = await supabase.auth.signOut();
-
-      if (error) {
-        console.error("Error logging out", error);
-        return error.message;
-      }
-
-      revalidatePath("/", "layout");
-      redirect("/login");
-    },
-  );
-}
 
 async function shouldShowOnboarding() {
   const api = new BackendAPI();
   return (
-    !(await api.isOnboardingEnabled()) ||
-    (await api.getUserOnboarding()).completedSteps.includes("CONGRATS")
+    (await api.isOnboardingEnabled()) &&
+    !(await api.getUserOnboarding()).completedSteps.includes("CONGRATS")
   );
 }
 
-export async function login(values: z.infer<typeof loginFormSchema>) {
+export async function login(
+  values: z.infer<typeof loginFormSchema>,
+  turnstileToken: string,
+) {
   return await Sentry.withServerActionInstrumentation("login", {}, async () => {
-    const supabase = getServerSupabase();
+    const supabase = await getServerSupabase();
     const api = new BackendAPI();
 
     if (!supabase) {
       redirect("/error");
     }
 
+    // Verify Turnstile token if provided
+    const success = await verifyTurnstileToken(turnstileToken, "login");
+    if (!success) {
+      return "CAPTCHA verification failed. Please try again.";
+    }
+
     // We are sure that the values are of the correct type because zod validates the form
-    const { data, error } = await supabase.auth.signInWithPassword(values);
+    const { error } = await supabase.auth.signInWithPassword(values);
 
     if (error) {
-      console.error("Error logging in", error);
       return error.message;
     }
 
     await api.createUser();
+
     // Don't onboard if disabled or already onboarded
     if (await shouldShowOnboarding()) {
       revalidatePath("/onboarding", "layout");
       redirect("/onboarding");
     }
 
-    if (data.session) {
-      await supabase.auth.setSession(data.session);
-    }
     revalidatePath("/", "layout");
     redirect("/");
   });
@@ -76,14 +59,13 @@ export async function providerLogin(provider: LoginProvider) {
     "providerLogin",
     {},
     async () => {
-      const supabase = getServerSupabase();
-      const api = new BackendAPI();
+      const supabase = await getServerSupabase();
 
       if (!supabase) {
         redirect("/error");
       }
 
-      const { error } = await supabase!.auth.signInWithOAuth({
+      const { data, error } = await supabase!.auth.signInWithOAuth({
         provider: provider,
         options: {
           redirectTo:
@@ -93,16 +75,22 @@ export async function providerLogin(provider: LoginProvider) {
       });
 
       if (error) {
+        // FIXME: supabase doesn't return the correct error message for this case
+        if (error.message.includes("P0001")) {
+          return "not_allowed";
+        }
+
         console.error("Error logging in", error);
         return error.message;
       }
 
-      await api.createUser();
-      // Don't onboard if disabled or already onboarded
-      if (await shouldShowOnboarding()) {
-        revalidatePath("/onboarding", "layout");
-        redirect("/onboarding");
+      // Redirect to the OAuth provider's URL
+      if (data?.url) {
+        redirect(data.url);
       }
+
+      // Note: api.createUser() and onboarding check happen in the callback handler
+      // after the session is established. See `auth/callback/route.ts`.
     },
   );
 }

@@ -59,7 +59,7 @@ export default function Page() {
 
       <div className="my-12 flex items-center justify-between gap-5">
         <OnboardingAgentCard
-          {...(agents[0] || {})}
+          agent={agents[0]}
           selected={
             agents[0] !== undefined
               ? state?.selectedStoreListingVersionId ==
@@ -74,7 +74,7 @@ export default function Page() {
           }
         />
         <OnboardingAgentCard
-          {...(agents[1] || {})}
+          agent={agents[1]}
           selected={
             agents[1] !== undefined
               ? state?.selectedStoreListingVersionId ==

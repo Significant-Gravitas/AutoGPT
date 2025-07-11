@@ -3,9 +3,7 @@
 import { revalidatePath } from "next/cache";
 import BackendApi from "@/lib/autogpt-server-api";
 import {
-  NotificationPreferenceDTO,
   StoreListingsWithVersionsResponse,
-  StoreSubmissionsResponse,
   SubmissionStatus,
 } from "@/lib/autogpt-server-api/types";
 
@@ -55,4 +53,10 @@ export async function getAdminListingsWithVersions(
   const api = new BackendApi();
   const response = await api.getAdminListingsWithVersions(data);
   return response;
+}
+
+export async function downloadAsAdmin(storeListingVersion: string) {
+  const api = new BackendApi();
+  const file = await api.downloadStoreAgentAdmin(storeListingVersion);
+  return file;
 }

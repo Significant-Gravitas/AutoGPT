@@ -59,12 +59,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         le=1000,
         description="Maximum number of workers to use for graph execution.",
     )
-    num_node_workers: int = Field(
-        default=5,
-        ge=1,
-        le=1000,
-        description="Maximum number of workers to use for node execution within a single graph.",
-    )
     pyro_host: str = Field(
         default="localhost",
         description="The default hostname of the Pyro server.",
@@ -117,6 +111,31 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         default=1,
         description="Cost per execution in cents after each threshold.",
     )
+    execution_counter_expiration_time: int = Field(
+        default=60 * 60 * 24,
+        description="Time in seconds after which the execution counter is reset.",
+    )
+    execution_late_notification_threshold_secs: int = Field(
+        default=5 * 60,
+        description="Time in seconds after which the execution stuck on QUEUED status is considered late.",
+    )
+    execution_late_notification_checkrange_secs: int = Field(
+        default=60 * 60,
+        description="Time in seconds for how far back to check for the late executions.",
+    )
+
+    block_error_rate_threshold: float = Field(
+        default=0.5,
+        description="Error rate threshold (0.0-1.0) for triggering block error alerts.",
+    )
+    block_error_rate_check_interval_secs: int = Field(
+        default=24 * 60 * 60,  # 24 hours
+        description="Interval in seconds between block error rate checks.",
+    )
+    block_error_include_top_blocks: int = Field(
+        default=3,
+        description="Number of top blocks with most errors to show when no blocks exceed threshold (0 to disable).",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -136,10 +155,6 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     execution_manager_port: int = Field(
         default=8002,
         description="The port for execution manager daemon to run on",
-    )
-    execution_manager_loop_max_retry: int = Field(
-        default=5,
-        description="The maximum number of retries for the execution manager loop",
     )
 
     execution_scheduler_port: int = Field(
@@ -230,6 +245,40 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     enable_agent_input_subtype_blocks: bool = Field(
         default=True,
         description="Whether to enable the agent input subtype blocks",
+    )
+    platform_alert_discord_channel: str = Field(
+        default="local-alerts",
+        description="The Discord channel for the platform",
+    )
+
+    clamav_service_host: str = Field(
+        default="localhost",
+        description="The host for the ClamAV daemon",
+    )
+    clamav_service_port: int = Field(
+        default=3310,
+        description="The port for the ClamAV daemon",
+    )
+    clamav_service_timeout: int = Field(
+        default=60,
+        description="The timeout in seconds for the ClamAV daemon",
+    )
+    clamav_service_enabled: bool = Field(
+        default=True,
+        description="Whether virus scanning is enabled or not",
+    )
+    clamav_max_concurrency: int = Field(
+        default=10,
+        description="The maximum number of concurrent scans to perform",
+    )
+    clamav_mark_failed_scans_as_clean: bool = Field(
+        default=False,
+        description="Whether to mark failed scans as clean or not",
+    )
+
+    enable_example_blocks: bool = Field(
+        default=False,
+        description="Whether to enable example blocks in production",
     )
 
     @field_validator("platform_base_url", "frontend_base_url")
@@ -342,6 +391,16 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
         description="The secret key to use for the unsubscribe user by token",
     )
 
+    # Cloudflare Turnstile credentials
+    turnstile_secret_key: str = Field(
+        default="",
+        description="Cloudflare Turnstile backend secret key",
+    )
+    turnstile_verify_url: str = Field(
+        default="https://challenges.cloudflare.com/turnstile/v0/siteverify",
+        description="Cloudflare Turnstile verify URL",
+    )
+
     # OAuth server credentials for integrations
     # --8<-- [start:OAuthServerCredentialsExample]
     github_client_id: str = Field(default="", description="GitHub OAuth client ID")
@@ -363,9 +422,11 @@ class Secrets(UpdateTrackingModel["Secrets"], BaseSettings):
     )
 
     openai_api_key: str = Field(default="", description="OpenAI API key")
+    aiml_api_key: str = Field(default="", description="'AI/ML API' key")
     anthropic_api_key: str = Field(default="", description="Anthropic API key")
     groq_api_key: str = Field(default="", description="Groq API key")
     open_router_api_key: str = Field(default="", description="Open Router API Key")
+    llama_api_key: str = Field(default="", description="Llama API Key")
 
     reddit_client_id: str = Field(default="", description="Reddit client ID")
     reddit_client_secret: str = Field(default="", description="Reddit client secret")

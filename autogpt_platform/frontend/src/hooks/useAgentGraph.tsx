@@ -1,5 +1,8 @@
 import { CustomEdge } from "@/components/CustomEdge";
 import { CustomNode } from "@/components/CustomNode";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { InputItem } from "@/components/RunnerUIWrapper";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import BackendAPI, {
   Block,
   BlockIOSubSchema,
@@ -8,7 +11,9 @@ import BackendAPI, {
   Graph,
   GraphExecutionID,
   GraphID,
+  GraphMeta,
   NodeExecutionResult,
+  SpecialBlockID,
 } from "@/lib/autogpt-server-api";
 import {
   deepEquals,
@@ -18,13 +23,9 @@ import {
 } from "@/lib/utils";
 import { MarkerType } from "@xyflow/react";
 import Ajv from "ajv";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { useToast } from "@/components/ui/use-toast";
-import { InputItem } from "@/components/RunnerUIWrapper";
-import { GraphMeta } from "@/lib/autogpt-server-api";
 import { default as NextLink } from "next/link";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const ajv = new Ajv({ strict: false, allErrors: true });
 
@@ -78,7 +79,7 @@ export default function useAgentGraph(
     useState(false);
   const [nodes, setNodes] = useState<CustomNode[]>([]);
   const [edges, setEdges] = useState<CustomEdge[]>([]);
-  const { state, completeStep } = useOnboarding();
+  const { state, completeStep, incrementRuns } = useOnboarding();
 
   const api = useMemo(
     () => new BackendAPI(process.env.NEXT_PUBLIC_AGPT_SERVER_URL!),
@@ -108,28 +109,50 @@ export default function useAgentGraph(
 
   // Subscribe to execution events
   useEffect(() => {
-    api.onWebSocketMessage("node_execution_event", (data) => {
-      if (data.graph_exec_id != flowExecutionID) {
-        return;
-      }
-      setUpdateQueue((prev) => [...prev, data]);
-    });
+    const deregisterMessageHandler = api.onWebSocketMessage(
+      "node_execution_event",
+      (data) => {
+        if (data.graph_exec_id != flowExecutionID) {
+          return;
+        }
+        setUpdateQueue((prev) => [...prev, data]);
+      },
+    );
 
-    if (flowExecutionID) {
-      api
-        .subscribeToGraphExecution(flowExecutionID)
-        .then(() =>
-          console.debug(
-            `Subscribed to updates for execution #${flowExecutionID}`,
-          ),
-        )
-        .catch((error) =>
-          console.error(
-            `Failed to subscribe to updates for execution #${flowExecutionID}:`,
-            error,
-          ),
-        );
-    }
+    const deregisterConnectHandler =
+      flowID && flowExecutionID
+        ? api.onWebSocketConnect(() => {
+            // Subscribe to execution updates
+            api
+              .subscribeToGraphExecution(flowExecutionID)
+              .then(() =>
+                console.debug(
+                  `Subscribed to updates for execution #${flowExecutionID}`,
+                ),
+              )
+              .catch((error) =>
+                console.error(
+                  `Failed to subscribe to updates for execution #${flowExecutionID}:`,
+                  error,
+                ),
+              );
+
+            // Sync execution info to ensure it's up-to-date after (re)connect
+            api
+              .getGraphExecutionInfo(flowID, flowExecutionID)
+              .then((execution) =>
+                setUpdateQueue((prev) => {
+                  if (!execution.node_executions) return prev;
+                  return [...prev, ...execution.node_executions];
+                }),
+              );
+          })
+        : () => {};
+
+    return () => {
+      deregisterMessageHandler();
+      deregisterConnectHandler();
+    };
   }, [api, flowID, flowVersion, flowExecutionID]);
 
   const getOutputType = useCallback(
@@ -205,9 +228,7 @@ export default function useAgentGraph(
         const newNodes = _newNodes.filter((n) => n !== null);
         setEdges(() =>
           graph.links.map((link) => {
-            const adjustedSourceName = link.source_name?.startsWith("tools_^_")
-              ? "tools"
-              : link.source_name;
+            const adjustedSourceName = cleanupSourceName(link.source_name);
             return {
               id: formatEdgeID(link),
               type: "custom",
@@ -220,7 +241,7 @@ export default function useAgentGraph(
                 isStatic: link.is_static,
                 beadUp: 0,
                 beadDown: 0,
-                beadData: [],
+                beadData: new Map<string, NodeExecutionResult["status"]>(),
               },
               markerEnd: {
                 type: MarkerType.ArrowClosed,
@@ -250,61 +271,133 @@ export default function useAgentGraph(
     [],
   );
 
+  /** --- Smart Decision Maker Block helper functions --- */
+
+  const isToolSourceName = (sourceName: string) =>
+    sourceName.startsWith("tools_^_");
+
+  const cleanupSourceName = (sourceName: string) =>
+    isToolSourceName(sourceName) ? "tools" : sourceName;
+
+  const getToolFuncName = (nodeId: string) => {
+    const sinkNode = nodes.find((node) => node.id === nodeId);
+    const sinkNodeName = sinkNode
+      ? sinkNode.data.block_id === SpecialBlockID.AGENT
+        ? sinkNode.data.hardcodedValues?.graph_id
+          ? availableFlows.find(
+              (flow) => flow.id === sinkNode.data.hardcodedValues.graph_id,
+            )?.name || "agentexecutorblock"
+          : "agentexecutorblock"
+        : sinkNode.data.title.split(" ")[0]
+      : "";
+
+    return sinkNodeName;
+  };
+
+  const normalizeToolName = (str: string) =>
+    str.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase(); // This normalization rule has to match with the one on smart_decision_maker.py
+
+  /** ------------------------------ */
+
   const updateEdgeBeads = useCallback(
     (executionData: NodeExecutionResult) => {
       setEdges((edges) => {
         return edges.map((e) => {
           const edge = { ...e, data: { ...e.data } } as CustomEdge;
+          const execStatus =
+            edge.data!.beadData ||
+            new Map<string, NodeExecutionResult["status"]>();
 
-          if (executionData.status === "COMPLETED") {
-            // Produce output beads
-            for (let key in executionData.output_data) {
-              if (
-                edge.source !== getFrontendId(executionData.node_id, nodes) ||
-                edge.sourceHandle !== key
-              ) {
-                continue;
-              }
-              const count = executionData.output_data[key].length;
-              edge.data!.beadUp = (edge.data!.beadUp ?? 0) + count;
-              // For static edges beadDown is always one less than beadUp
-              // Because there's no queueing and one bead is always at the connection point
-              if (edge.data?.isStatic) {
-                edge.data!.beadDown = (edge.data!.beadUp ?? 0) - 1;
-                edge.data!.beadData = edge.data!.beadData!.slice(0, -1);
-                continue;
-              }
-              edge.data!.beadData = [
-                ...executionData.output_data[key].toReversed(),
-                ...edge.data!.beadData!,
-              ];
+          // Update execution status for input edges
+          for (const key in executionData.input_data) {
+            if (
+              edge.target !== getFrontendId(executionData.node_id, nodes) ||
+              edge.targetHandle !== key
+            ) {
+              continue;
             }
-          } else if (executionData.status === "RUNNING") {
-            // Consume input beads
-            for (let key in executionData.input_data) {
-              if (
-                edge.target !== getFrontendId(executionData.node_id, nodes) ||
-                edge.targetHandle !== key
-              ) {
-                continue;
-              }
-              // Skip decreasing bead count if edge doesn't match or if it's static
-              if (
-                edge.data!.beadData![edge.data!.beadData!.length - 1] !==
-                  executionData.input_data[key] ||
-                edge.data?.isStatic
-              ) {
-                continue;
-              }
-              edge.data!.beadDown = (edge.data!.beadDown ?? 0) + 1;
-              edge.data!.beadData = edge.data!.beadData!.slice(0, -1);
-            }
+
+            // Store only the execution status
+            execStatus.set(executionData.node_exec_id, executionData.status);
           }
+
+          // Calculate bead counts based on execution status
+          let beadUp = 0;
+          let beadDown = 0;
+
+          execStatus.forEach((status: NodeExecutionResult["status"]) => {
+            beadUp++;
+            if (status !== "INCOMPLETE") {
+              // Count any non-incomplete execution as consumed
+              beadDown++;
+            }
+          });
+
+          // For static edges, ensure beadUp is always beadDown + 1
+          // This is because static edges represent reusable inputs that are never fully consumed
+          // The +1 represents the input that's still available for reuse
+          if (edge.data?.isStatic && beadUp > 0) {
+            beadUp = beadDown + 1;
+          }
+
+          // Update edge data
+          edge.data!.beadUp = beadUp;
+          edge.data!.beadDown = beadDown;
+
           return edge;
         });
       });
     },
     [getFrontendId, nodes],
+  );
+
+  const addExecutionDataToNode = useCallback(
+    (node: CustomNode, executionData: NodeExecutionResult) => {
+      if (!executionData.output_data) {
+        console.warn(
+          `Execution data for node ${executionData.node_id} is empty, skipping update`,
+        );
+        return node;
+      }
+
+      const executionResults = [
+        // Execution updates are not cumulative, so we need to filter out the old ones.
+        ...(node.data.executionResults?.filter(
+          (result) => result.execId !== executionData.node_exec_id,
+        ) || []),
+        {
+          execId: executionData.node_exec_id,
+          data: {
+            "[Input]": [executionData.input_data],
+            ...executionData.output_data,
+          },
+          status: executionData.status,
+        },
+      ];
+
+      const statusRank = {
+        RUNNING: 0,
+        QUEUED: 1,
+        INCOMPLETE: 2,
+        TERMINATED: 3,
+        COMPLETED: 4,
+        FAILED: 5,
+      };
+      const status = executionResults
+        .map((v) => v.status)
+        .reduce((a, b) => (statusRank[a] < statusRank[b] ? a : b));
+
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          status,
+          executionResults,
+          isOutputOpen: true,
+        },
+      };
+    },
+    [],
   );
 
   const updateNodesWithExecutionData = useCallback(
@@ -327,27 +420,7 @@ export default function useAgentGraph(
         }
         return nodes.map((node) =>
           node.id === nodeId
-            ? {
-                ...node,
-                data: {
-                  ...node.data,
-                  status: executionData.status,
-                  executionResults:
-                    Object.keys(executionData.output_data).length > 0
-                      ? [
-                          ...(node.data.executionResults || []),
-                          {
-                            execId: executionData.node_exec_id,
-                            data: {
-                              "[Input]": [executionData.input_data],
-                              ...executionData.output_data,
-                            },
-                          },
-                        ]
-                      : node.data.executionResults,
-                  isOutputOpen: true,
-                },
-              }
+            ? addExecutionDataToNode(node, executionData)
             : node,
         );
       });
@@ -372,14 +445,11 @@ export default function useAgentGraph(
     }
     setUpdateQueue((prev) => {
       prev.forEach((data) => {
-        // Skip already processed updates by checking
-        // if the data is in the processedUpdates array by reference
-        // This is not to process twice in react dev mode
-        // because it'll add double the beads
-        if (processedUpdates.current.includes(data)) {
-          return;
-        }
         updateNodesWithExecutionData(data);
+        // Execution updates are not cumulative, so we need to filter out the old ones.
+        processedUpdates.current = processedUpdates.current.filter(
+          (update) => update.node_exec_id !== data.node_exec_id,
+        );
         processedUpdates.current.push(data);
       });
       return [];
@@ -593,7 +663,7 @@ export default function useAgentGraph(
             setSaveRunRequest({ request: "run", state: "error" });
           });
 
-        processedUpdates.current = processedUpdates.current = [];
+        processedUpdates.current = [];
       }
     }
     // Handle stop request
@@ -603,14 +673,7 @@ export default function useAgentGraph(
       savedAgent &&
       saveRunRequest.activeExecutionID
     ) {
-      setSaveRunRequest({
-        request: "stop",
-        state: "stopping",
-        activeExecutionID: saveRunRequest.activeExecutionID,
-      });
-      api
-        .stopGraphExecution(savedAgent.id, saveRunRequest.activeExecutionID)
-        .then(() => setSaveRunRequest({ request: "none", state: "none" }));
+      api.stopGraphExecution(savedAgent.id, saveRunRequest.activeExecutionID);
     }
   }, [
     api,
@@ -646,20 +709,17 @@ export default function useAgentGraph(
         return [...prev, ...execution.node_executions];
       });
 
-      // Track execution until completed
-      const pendingNodeExecutions: Set<string> = new Set();
-      const cancelExecListener = api.onWebSocketMessage(
-        "node_execution_event",
-        (nodeResult) => {
-          // We are racing the server here, since we need the ID to filter events
-          if (nodeResult.graph_exec_id != flowExecutionID) {
+      const cancelGraphExecListener = api.onWebSocketMessage(
+        "graph_execution_event",
+        (graphExec) => {
+          if (graphExec.id != flowExecutionID) {
             return;
           }
           if (
-            nodeResult.status === "FAILED" &&
-            nodeResult.output_data?.error?.[0]
-              .toLowerCase()
-              .includes("insufficient balance")
+            graphExec.status === "FAILED" &&
+            graphExec?.stats?.error
+              ?.toLowerCase()
+              ?.includes("insufficient balance")
           ) {
             // Show no credits toast if user has low credits
             toast({
@@ -683,25 +743,20 @@ export default function useAgentGraph(
             });
           }
           if (
-            !["COMPLETED", "TERMINATED", "FAILED"].includes(nodeResult.status)
+            graphExec.status === "COMPLETED" ||
+            graphExec.status === "TERMINATED" ||
+            graphExec.status === "FAILED"
           ) {
-            pendingNodeExecutions.add(nodeResult.node_exec_id);
-          } else {
-            pendingNodeExecutions.delete(nodeResult.node_exec_id);
-          }
-          if (pendingNodeExecutions.size == 0) {
-            // Assuming the first event is always a QUEUED node, and
-            // following nodes are QUEUED before all preceding nodes are COMPLETED,
-            // an empty set means the graph has finished running.
-            cancelExecListener();
+            cancelGraphExecListener();
             setSaveRunRequest({ request: "none", state: "none" });
+            incrementRuns();
           }
         },
       );
     };
 
     fetchExecutions();
-  }, [flowID, flowExecutionID]);
+  }, [flowID, flowExecutionID, incrementRuns]);
 
   // Check if node ids are synced with saved agent
   useEffect(() => {
@@ -766,7 +821,7 @@ export default function useAgentGraph(
         return inputData;
       };
 
-      let inputData = getNestedData(blockSchema, node.data.hardcodedValues);
+      const inputData = getNestedData(blockSchema, node.data.hardcodedValues);
 
       console.debug(
         `Final prepared input for ${node.data.blockType} (${node.id}):`,
@@ -825,27 +880,10 @@ export default function useAgentGraph(
 
       // Special case for SmartDecisionMakerBlock
       if (
-        sourceNode?.data.block_id === "3b191d9f-356f-482d-8238-ba04b6d18381" &&
+        sourceNode?.data.block_id === SpecialBlockID.SMART_DECISION &&
         sourceName.toLowerCase() === "tools"
       ) {
-        const sinkNode = nodes.find((node) => node.id === edge.target);
-
-        const sinkNodeName = sinkNode
-          ? sinkNode.data.block_id === "e189baac-8c20-45a1-94a7-55177ea42565" // AgentExecutorBlock ID
-            ? sinkNode.data.hardcodedValues?.graph_id
-              ? availableFlows
-                  .find(
-                    (flow) =>
-                      flow.id === sinkNode.data.hardcodedValues.graph_id,
-                  )
-                  ?.name?.toLowerCase()
-                  .replace(/ /g, "_") || "agentexecutorblock"
-              : "agentexecutorblock"
-            : sinkNode.data.title.toLowerCase().replace(/ /g, "_").split("_")[0]
-          : "";
-
-        sourceName =
-          `tools_^_${sinkNodeName}_${edge.targetHandle || ""}`.toLowerCase();
+        sourceName = `tools_^_${normalizeToolName(getToolFuncName(edge.target))}_~_${normalizeToolName(edge.targetHandle || "")}`;
       }
       return {
         source_id: edge.source,
@@ -856,7 +894,6 @@ export default function useAgentGraph(
     });
 
     const payload = {
-      id: savedAgent?.id!,
       name: agentName || `New Agent ${new Date().toISOString()}`,
       description: agentDescription || "",
       nodes: formattedNodes,
@@ -866,11 +903,15 @@ export default function useAgentGraph(
     // To avoid saving the same graph, we compare the payload with the saved agent.
     // Differences in IDs are ignored.
     const comparedPayload = {
-      ...(({ id, ...rest }) => rest)(payload),
+      name: payload.name,
+      description: payload.description,
       nodes: payload.nodes.map(
-        ({ id, data, input_nodes, output_nodes, ...rest }) => rest,
+        ({ id: _, data: __, input_nodes: ___, output_nodes: ____, ...rest }) =>
+          rest,
       ),
-      links: payload.links.map(({ source_id, sink_id, ...rest }) => rest),
+      links: payload.links.map(
+        ({ source_id: _, sink_id: __, ...rest }) => rest,
+      ),
     };
     const comparedSavedAgent = {
       name: savedAgent?.name,
@@ -894,12 +935,15 @@ export default function useAgentGraph(
       console.debug(
         "Saving new Graph version; old vs new:",
         comparedPayload,
-        payload,
+        comparedSavedAgent,
       );
       setNodesSyncedWithSavedAgent(false);
 
       newSavedAgent = savedAgent
-        ? await api.updateGraph(savedAgent.id, payload)
+        ? await api.updateGraph(savedAgent.id, {
+            ...payload,
+            id: savedAgent.id,
+          })
         : await api.createGraph(payload);
 
       console.debug("Response from the API:", newSavedAgent);
@@ -948,10 +992,9 @@ export default function useAgentGraph(
         ...edge,
         data: {
           ...edge.data,
-          edgeColor: edge.data?.edgeColor!,
+          edgeColor: edge.data?.edgeColor ?? "grey",
           beadUp: 0,
           beadDown: 0,
-          beadData: [],
         },
       }));
     });
@@ -1023,16 +1066,21 @@ export default function useAgentGraph(
 
   // runs after saving cron expression and inputs (if exists)
   const scheduleRunner = useCallback(
-    async (cronExpression: string, inputs: InputItem[]) => {
+    async (
+      cronExpression: string,
+      inputs: InputItem[],
+      scheduleName: string,
+    ) => {
       await saveAgent();
       try {
         if (flowID) {
-          await api.createSchedule({
+          await api.createGraphExecutionSchedule({
             graph_id: flowID,
             // flowVersion is always defined here because scheduling is opened for a specific version
             graph_version: flowVersion!,
+            name: scheduleName,
             cron: cronExpression,
-            input_data: inputs.reduce(
+            inputs: inputs.reduce(
               (acc, input) => ({
                 ...acc,
                 [input.hardcodedValues.name]: input.hardcodedValues.value,

@@ -6,6 +6,7 @@ from tweepy.client import Response
 from backend.blocks.twitter._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TWITTER_OAUTH_IS_CONFIGURED,
     TwitterCredentials,
     TwitterCredentialsField,
     TwitterCredentialsInput,
@@ -55,6 +56,7 @@ class TwitterUnmuteUserBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterUnmuteUserBlock.Input,
             output_schema=TwitterUnmuteUserBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "target_user_id": "12345",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -80,7 +82,7 @@ class TwitterUnmuteUserBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -139,6 +141,7 @@ class TwitterGetMutedUsersBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterGetMutedUsersBlock.Input,
             output_schema=TwitterGetMutedUsersBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "max_results": 2,
                 "pagination_token": "",
@@ -229,7 +232,7 @@ class TwitterGetMutedUsersBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -289,6 +292,7 @@ class TwitterMuteUserBlock(Block):
             categories={BlockCategory.SOCIAL},
             input_schema=TwitterMuteUserBlock.Input,
             output_schema=TwitterMuteUserBlock.Output,
+            disabled=not TWITTER_OAUTH_IS_CONFIGURED,
             test_input={
                 "target_user_id": "12345",
                 "credentials": TEST_CREDENTIALS_INPUT,
@@ -314,7 +318,7 @@ class TwitterMuteUserBlock(Block):
         except tweepy.TweepyException:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,

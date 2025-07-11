@@ -94,6 +94,7 @@ export type BlockIOSubSchemaMeta = {
 export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
   type: "object";
   properties: { [key: string]: BlockIOSubSchema };
+  const?: { [key: keyof BlockIOObjectSubSchema["properties"]]: any };
   default?: { [key: keyof BlockIOObjectSubSchema["properties"]]: any };
   required?: (keyof BlockIOObjectSubSchema["properties"])[];
   secret?: boolean;
@@ -102,6 +103,7 @@ export type BlockIOObjectSubSchema = BlockIOSubSchemaMeta & {
 export type BlockIOKVSubSchema = BlockIOSubSchemaMeta & {
   type: "object";
   additionalProperties?: { type: "string" | "number" | "integer" };
+  const?: { [key: string]: string | number };
   default?: { [key: string]: string | number };
   secret?: boolean;
 };
@@ -109,6 +111,7 @@ export type BlockIOKVSubSchema = BlockIOSubSchemaMeta & {
 export type BlockIOArraySubSchema = BlockIOSubSchemaMeta & {
   type: "array";
   items?: BlockIOSimpleTypeSubSchema;
+  const?: Array<string>;
   default?: Array<string>;
   secret?: boolean;
 };
@@ -117,6 +120,7 @@ export type BlockIOStringSubSchema = BlockIOSubSchemaMeta & {
   type: "string";
   enum?: string[];
   secret?: true;
+  const?: string;
   default?: string;
   format?: string;
   maxLength?: number;
@@ -124,65 +128,40 @@ export type BlockIOStringSubSchema = BlockIOSubSchemaMeta & {
 
 export type BlockIONumberSubSchema = BlockIOSubSchemaMeta & {
   type: "integer" | "number";
+  const?: number;
   default?: number;
   secret?: boolean;
 };
 
 export type BlockIOBooleanSubSchema = BlockIOSubSchemaMeta & {
   type: "boolean";
+  const?: boolean;
   default?: boolean;
   secret?: boolean;
 };
 
-export type CredentialsType = "api_key" | "oauth2" | "user_password";
+export type CredentialsType =
+  | "api_key"
+  | "oauth2"
+  | "user_password"
+  | "host_scoped";
 
 export type Credentials =
   | APIKeyCredentials
   | OAuth2Credentials
-  | UserPasswordCredentials;
+  | UserPasswordCredentials
+  | HostScopedCredentials;
 
 // --8<-- [start:BlockIOCredentialsSubSchema]
-export const PROVIDER_NAMES = {
-  ANTHROPIC: "anthropic",
-  APOLLO: "apollo",
-  D_ID: "d_id",
-  DISCORD: "discord",
-  E2B: "e2b",
-  EXA: "exa",
-  FAL: "fal",
-  GITHUB: "github",
-  GOOGLE: "google",
-  GOOGLE_MAPS: "google_maps",
-  GROQ: "groq",
-  HUBSPOT: "hubspot",
-  IDEOGRAM: "ideogram",
-  JINA: "jina",
-  LINEAR: "linear",
-  MEDIUM: "medium",
-  MEM0: "mem0",
-  NOTION: "notion",
-  NVIDIA: "nvidia",
-  OLLAMA: "ollama",
-  OPENAI: "openai",
-  OPENWEATHERMAP: "openweathermap",
-  OPEN_ROUTER: "open_router",
-  PINECONE: "pinecone",
-  SCREENSHOTONE: "screenshotone",
-  SLANT3D: "slant3d",
-  SMARTLEAD: "smartlead",
-  SMTP: "smtp",
-  TWITTER: "twitter",
-  REPLICATE: "replicate",
-  REDDIT: "reddit",
-  REVID: "revid",
-  UNREAL_SPEECH: "unreal_speech",
-  TODOIST: "todoist",
-  ZEROBOUNCE: "zerobounce",
-} as const;
-// --8<-- [end:BlockIOCredentialsSubSchema]
+// Provider names are now dynamic and fetched from the API
+// This allows for SDK-registered providers without hardcoding
+export type CredentialsProviderName = string;
 
-export type CredentialsProviderName =
-  (typeof PROVIDER_NAMES)[keyof typeof PROVIDER_NAMES];
+// For backward compatibility, we'll keep PROVIDER_NAMES but it should be
+// populated dynamically from the API. This is a placeholder that will be
+// replaced with actual values from the /api/integrations/providers endpoint
+export const PROVIDER_NAMES = {} as Record<string, string>;
+// --8<-- [end:BlockIOCredentialsSubSchema]
 
 export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   /* Mirror of backend/data/model.py:CredentialsFieldSchemaExtra */
@@ -191,17 +170,22 @@ export type BlockIOCredentialsSubSchema = BlockIOObjectSubSchema & {
   credentials_types: Array<CredentialsType>;
   discriminator?: string;
   discriminator_mapping?: { [key: string]: CredentialsProviderName };
+  discriminator_values?: any[];
   secret?: boolean;
 };
 
 export type BlockIONullSubSchema = BlockIOSubSchemaMeta & {
   type: "null";
+  const?: null;
   secret?: boolean;
 };
 
 // At the time of writing, combined schemas only occur on the first nested level in a
 // block schema. It is typed this way to make the use of these objects less tedious.
-type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta & { type: never } & (
+type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta & {
+  type: never;
+  const: never;
+} & (
     | {
         allOf: [BlockIOSimpleTypeSubSchema];
         secret?: boolean;
@@ -211,12 +195,25 @@ type BlockIOCombinedTypeSubSchema = BlockIOSubSchemaMeta & { type: never } & (
         default?: string | number | boolean | null;
         secret?: boolean;
       }
-    | {
-        oneOf: BlockIOSimpleTypeSubSchema[];
-        default?: string | number | boolean | null;
-        secret?: boolean;
-      }
+    | BlockIOOneOfSubSchema
+    | BlockIODiscriminatedOneOfSubSchema
   );
+
+export type BlockIOOneOfSubSchema = {
+  oneOf: BlockIOSimpleTypeSubSchema[];
+  default?: string | number | boolean | null;
+  secret?: boolean;
+};
+
+export type BlockIODiscriminatedOneOfSubSchema = {
+  oneOf: BlockIOObjectSubSchema[];
+  discriminator: {
+    propertyName: string;
+    mapping: Record<string, BlockIOObjectSubSchema>;
+  };
+  default?: Record<string, any>;
+  secret?: boolean;
+};
 
 /* Mirror of backend/data/graph.py:Node */
 export type Node = {
@@ -252,14 +249,23 @@ export type GraphExecutionMeta = {
   user_id: UserID;
   graph_id: GraphID;
   graph_version: number;
-  preset_id?: string;
-  status: "QUEUED" | "RUNNING" | "COMPLETED" | "TERMINATED" | "FAILED";
+  preset_id?: LibraryAgentPresetID;
+  status:
+    | "QUEUED"
+    | "RUNNING"
+    | "COMPLETED"
+    | "TERMINATED"
+    | "FAILED"
+    | "INCOMPLETE";
   started_at: Date;
   ended_at: Date;
   stats?: {
+    error?: string;
     cost: number;
     duration: number;
+    duration_cpu_only: number;
     node_exec_time: number;
+    node_exec_time_cpu_only: number;
     node_exec_count: number;
   };
 };
@@ -373,11 +379,29 @@ export type LibraryAgent = {
   updated_at: Date;
   name: string;
   description: string;
-  input_schema: BlockIOObjectSubSchema;
+  input_schema: GraphIOSchema;
+  credentials_input_schema: {
+    type: "object";
+    properties: { [key: string]: BlockIOCredentialsSubSchema };
+    required: (keyof LibraryAgent["credentials_input_schema"]["properties"])[];
+  };
   new_output: boolean;
   can_access_graph: boolean;
   is_latest_version: boolean;
-};
+} & (
+  | {
+      has_external_trigger: true;
+      trigger_setup_info: {
+        provider: CredentialsProviderName;
+        config_schema: BlockIORootSchema;
+        credentials_input_name?: string;
+      };
+    }
+  | {
+      has_external_trigger: false;
+      trigger_setup_info?: null;
+    }
+);
 
 export type LibraryAgentID = Brand<string, "LibraryAgentID">;
 
@@ -388,7 +412,7 @@ export enum AgentStatus {
   ERROR = "ERROR",
 }
 
-export interface LibraryAgentResponse {
+export type LibraryAgentResponse = {
   agents: LibraryAgent[];
   pagination: {
     current_page: number;
@@ -396,41 +420,54 @@ export interface LibraryAgentResponse {
     total_items: number;
     total_pages: number;
   };
-}
+};
 
-export interface LibraryAgentPreset {
-  id: string;
+export type LibraryAgentPreset = {
+  id: LibraryAgentPresetID;
   updated_at: Date;
   graph_id: GraphID;
   graph_version: number;
+  inputs: { [key: string]: any };
+  credentials: Record<string, CredentialsMetaInput>;
   name: string;
   description: string;
   is_active: boolean;
-  inputs: { [key: string]: any };
-}
+  webhook_id?: string;
+};
 
-export interface LibraryAgentPresetResponse {
+export type LibraryAgentPresetID = Brand<string, "LibraryAgentPresetID">;
+
+export type LibraryAgentPresetResponse = {
   presets: LibraryAgentPreset[];
   pagination: {
     total: number;
     page: number;
     size: number;
   };
-}
+};
 
-export interface CreateLibraryAgentPresetRequest {
-  name: string;
-  description: string;
-  inputs: { [key: string]: any };
-  graph_id: GraphID;
-  graph_version: number;
-  is_active: boolean;
-}
+export type LibraryAgentPresetCreatable = Omit<
+  LibraryAgentPreset,
+  "id" | "updated_at" | "is_active"
+> & {
+  is_active?: boolean;
+};
+
+export type LibraryAgentPresetCreatableFromGraphExecution = Omit<
+  LibraryAgentPresetCreatable,
+  "graph_id" | "graph_version" | "inputs"
+> & {
+  graph_execution_id: GraphExecutionID;
+};
+
+export type LibraryAgentPresetUpdatable = Partial<
+  Omit<LibraryAgentPresetCreatable, "graph_id" | "graph_version">
+>;
 
 export enum LibraryAgentSortEnum {
   CREATED_AT = "createdAt",
   UPDATED_AT = "updatedAt",
-  LAST_EXECUTION = "lastExecution",
+  LAST_EXECUTED = "lastExecuted",
 }
 
 /* *** CREDENTIALS *** */
@@ -443,6 +480,7 @@ export type CredentialsMetaResponse = {
   title?: string;
   scopes?: Array<string>;
   username?: string;
+  host?: string;
 };
 
 /* Mirror of backend/server/integrations/router.py:CredentialsDeletionResponse */
@@ -499,6 +537,14 @@ export type UserPasswordCredentials = BaseCredentials & {
   title: string;
   username: string;
   password: string;
+};
+
+/* Mirror of backend/backend/data/model.py:HostScopedCredentials */
+export type HostScopedCredentials = BaseCredentials & {
+  type: "host_scoped";
+  title: string;
+  host: string;
+  headers: Record<string, string>;
 };
 
 // Mirror of backend/backend/data/notifications.py:NotificationType
@@ -559,6 +605,7 @@ export enum BlockUIType {
 
 export enum SpecialBlockID {
   AGENT = "e189baac-8c20-45a1-94a7-55177ea42565",
+  SMART_DECISION = "3b191d9f-356f-482d-8238-ba04b6d18381",
   OUTPUT = "363ae599-353e-4804-937e-b2ee3cef3da4",
 }
 
@@ -591,6 +638,7 @@ export type StoreAgent = {
   description: string;
   runs: number;
   rating: number;
+  updated_at: string;
 };
 
 export type StoreAgentsResponse = {
@@ -695,6 +743,7 @@ export type ProfileDetails = {
   avatar_url: string;
 };
 
+/* Mirror of backend/executor/scheduler.py:GraphExecutionJobInfo */
 export type Schedule = {
   id: ScheduleID;
   name: string;
@@ -702,17 +751,21 @@ export type Schedule = {
   user_id: UserID;
   graph_id: GraphID;
   graph_version: number;
-  input_data: { [key: string]: any };
+  input_data: Record<string, any>;
+  input_credentials: Record<string, CredentialsMetaInput>;
   next_run_time: Date;
 };
 
 export type ScheduleID = Brand<string, "ScheduleID">;
 
+/* Mirror of backend/server/routers/v1.py:ScheduleCreationRequest */
 export type ScheduleCreatable = {
-  cron: string;
   graph_id: GraphID;
   graph_version: number;
-  input_data: { [key: string]: any };
+  name: string;
+  cron: string;
+  inputs: Record<string, any>;
+  credentials?: Record<string, CredentialsMetaInput>;
 };
 
 export type MyAgent = {
@@ -776,14 +829,20 @@ export interface CreateAPIKeyResponse {
 export interface CreditTransaction {
   transaction_key: string;
   transaction_time: Date;
-  transaction_type: string;
+  transaction_type: CreditTransactionType;
   amount: number;
-  balance: number;
+  running_balance: number;
+  current_balance: number;
   description: string;
   usage_graph_id: GraphID;
   usage_execution_id: GraphExecutionID;
   usage_node_count: number;
   usage_starting_time: Date;
+  user_id: string;
+  user_email: string | null;
+  reason: string | null;
+  admin_email: string | null;
+  extra_data: string | null;
 }
 
 export interface TransactionHistory {
@@ -812,6 +871,7 @@ export type OnboardingStep =
   | "AGENT_INPUT"
   | "CONGRATS"
   | "GET_RESULTS"
+  | "RUN_AGENTS"
   | "MARKETPLACE_VISIT"
   | "MARKETPLACE_ADD_AGENT"
   | "MARKETPLACE_RUN_AGENT"
@@ -830,6 +890,7 @@ export interface UserOnboarding {
   selectedStoreListingVersionId: string | null;
   agentInput: { [key: string]: string | number } | null;
   onboardingAgentExecutionId: GraphExecutionID | null;
+  agentRuns: number;
 }
 
 /* *** UTILITIES *** */
@@ -899,6 +960,23 @@ export type AdminPendingSubmissionsRequest = {
   page_size: number;
 };
 
+export enum CreditTransactionType {
+  TOP_UP = "TOP_UP",
+  USAGE = "USAGE",
+  GRANT = "GRANT",
+  REFUND = "REFUND",
+  CARD_CHECK = "CARD_CHECK",
+}
+
+export type UsersBalanceHistoryResponse = {
+  history: CreditTransaction[];
+  pagination: Pagination;
+};
+
+export type AddUserCreditsResponse = {
+  new_balance: number;
+  transaction_key: string;
+};
 const _stringFormatToDataTypeMap: Partial<Record<string, DataType>> = {
   date: DataType.DATE,
   time: DataType.TIME,

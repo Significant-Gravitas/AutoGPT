@@ -22,11 +22,13 @@ async def test_agent_preset_from_db():
         userId="test-user-123",
         isDeleted=False,
         InputPresets=[
-            prisma.models.AgentNodeExecutionInputOutput(
-                id="input-123",
-                time=datetime.datetime.now(),
-                name="input1",
-                data=prisma.Json({"type": "string", "value": "test value"}),
+            prisma.models.AgentNodeExecutionInputOutput.model_validate(
+                {
+                    "id": "input-123",
+                    "time": datetime.datetime.now(),
+                    "name": "input1",
+                    "data": '{"type": "string", "value": "test value"}',
+                }
             )
         ],
     )

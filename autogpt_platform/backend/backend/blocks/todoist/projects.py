@@ -4,6 +4,7 @@ from typing_extensions import Optional
 from backend.blocks.todoist._auth import (
     TEST_CREDENTIALS,
     TEST_CREDENTIALS_INPUT,
+    TODOIST_OAUTH_IS_CONFIGURED,
     TodoistCredentials,
     TodoistCredentialsField,
     TodoistCredentialsInput,
@@ -35,6 +36,7 @@ class TodoistListProjectsBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistListProjectsBlock.Input,
             output_schema=TodoistListProjectsBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
             },
@@ -93,7 +95,7 @@ class TodoistListProjectsBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -150,6 +152,7 @@ class TodoistCreateProjectBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistCreateProjectBlock.Input,
             output_schema=TodoistCreateProjectBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={"credentials": TEST_CREDENTIALS_INPUT, "name": "Test Project"},
             test_credentials=TEST_CREDENTIALS,
             test_output=[("success", True)],
@@ -182,7 +185,7 @@ class TodoistCreateProjectBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -230,6 +233,7 @@ class TodoistGetProjectBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistGetProjectBlock.Input,
             output_schema=TodoistGetProjectBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "project_id": "2203306141",
@@ -273,7 +277,7 @@ class TodoistGetProjectBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -332,6 +336,7 @@ class TodoistUpdateProjectBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistUpdateProjectBlock.Input,
             output_schema=TodoistUpdateProjectBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "project_id": "2203306141",
@@ -370,7 +375,7 @@ class TodoistUpdateProjectBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -413,6 +418,7 @@ class TodoistDeleteProjectBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistDeleteProjectBlock.Input,
             output_schema=TodoistDeleteProjectBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "project_id": "2203306141",
@@ -432,7 +438,7 @@ class TodoistDeleteProjectBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -481,6 +487,7 @@ class TodoistListCollaboratorsBlock(Block):
             categories={BlockCategory.PRODUCTIVITY},
             input_schema=TodoistListCollaboratorsBlock.Input,
             output_schema=TodoistListCollaboratorsBlock.Output,
+            disabled=not TODOIST_OAUTH_IS_CONFIGURED,
             test_input={
                 "credentials": TEST_CREDENTIALS_INPUT,
                 "project_id": "2203306141",
@@ -541,7 +548,7 @@ class TodoistListCollaboratorsBlock(Block):
         except Exception as e:
             raise e
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
