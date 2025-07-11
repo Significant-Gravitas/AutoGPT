@@ -680,22 +680,6 @@ async def stop_graph_run(
     return res[0]
 
 
-@v1_router.post(
-    path="/executions",
-    summary="Stop graph executions",
-    tags=["graphs"],
-    dependencies=[Depends(auth_middleware)],
-)
-async def stop_graph_runs(
-    graph_id: str, graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
-) -> list[execution_db.GraphExecutionMeta]:
-    return await _stop_graph_run(
-        user_id=user_id,
-        graph_id=graph_id,
-        graph_exec_id=graph_exec_id,
-    )
-
-
 async def _stop_graph_run(
     user_id: str,
     graph_id: Optional[str] = None,

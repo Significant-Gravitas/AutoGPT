@@ -731,6 +731,7 @@ async def stop_graph_execution(
             node_execs = await db.get_node_executions(
                 graph_exec_id=graph_exec_id,
                 statuses=[ExecutionStatus.QUEUED, ExecutionStatus.INCOMPLETE],
+                include_exec_data=False,
             )
             await db.update_node_execution_status_batch(
                 [node_exec.node_exec_id for node_exec in node_execs],
