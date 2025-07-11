@@ -1,5 +1,5 @@
 import logging
-from typing import Literal, Optional, cast
+from typing import Literal, Optional
 
 import fastapi
 import prisma.errors
@@ -103,10 +103,7 @@ async def list_library_agents(
         # Sort by the most recent AgentGraph.Execution (startedAt) first.
         # If no executions exist, fall back to sorting by updatedAt.
         order_by = [
-            cast(
-                prisma.types.LibraryAgentOrderByInput,
-                {"AgentGraph": {"Executions": {"startedAt": "desc"}}},
-            ),
+            {"AgentGraph": {"Executions": {"startedAt": "desc"}}},  # FIXME: not supprted
             {"updatedAt": "desc"},
         ]
 
