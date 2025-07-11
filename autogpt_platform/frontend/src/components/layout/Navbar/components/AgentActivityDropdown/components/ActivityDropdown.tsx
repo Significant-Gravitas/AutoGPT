@@ -55,7 +55,7 @@ export function ActivityDropdown({
     <div>
       {/* Header */}
       <div className="sticky top-0 z-10 px-4 pb-1 pt-4">
-        <Text variant="large-medium" className="font-semibold text-black">
+        <Text variant="large-semibold" className="!text-black">
           Agent Activity
         </Text>
       </div>
@@ -69,9 +69,18 @@ export function ActivityDropdown({
             ))}
           </div>
         ) : (
-          <div className="p-8 text-center text-gray-500">
-            <Bell size={32} className="mx-auto mb-2 opacity-50" />
-            <p>No recent activity</p>
+          <div className="flex h-full flex-col items-center justify-center gap-5 pb-8 pt-6">
+            <div className="mx-auto inline-flex flex-col items-center justify-center rounded-full bg-lightGrey p-6">
+              <Bell className="h-6 w-6 text-zinc-300" />
+            </div>
+            <div className="flex flex-col items-center justify-center">
+              <Text variant="body-medium" className="!text-black">
+                Nothing to show yet
+              </Text>
+              <Text variant="body" className="!text-zinc-500">
+                Start an agent to get updates
+              </Text>
+            </div>
           </div>
         )}
       </ScrollArea>

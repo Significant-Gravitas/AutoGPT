@@ -22,7 +22,7 @@ export function formatTimeAgo(dateStr: string): string {
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / MILLISECONDS_PER_MINUTE);
 
-  if (diffMins < 1) return "Just now";
+  if (diffMins < 1) return "just now";
   if (diffMins < SECONDS_PER_MINUTE) return `${diffMins}m ago`;
   const diffHours = Math.floor(diffMins / MINUTES_PER_HOUR);
   if (diffHours < HOURS_PER_DAY) return `${diffHours}h ago`;
