@@ -1,9 +1,9 @@
-import { test, expect } from "./fixtures";
+import { expect, test } from "./fixtures";
 import {
-  signupTestUser,
-  validateSignupForm,
   generateTestEmail,
   generateTestPassword,
+  signupTestUser,
+  validateSignupForm,
 } from "./utils/signup";
 
 test.describe("Signup Flow", () => {
@@ -45,10 +45,13 @@ test.describe("Signup Flow", () => {
 
     // Test with mismatched passwords
     console.log("❌ Testing mismatched passwords...");
-    await page.getByPlaceholder("m@example.com").fill(generateTestEmail());
-    const passwordInputs = page.getByTitle("Password");
-    await passwordInputs.nth(0).fill("password1");
-    await passwordInputs.nth(1).fill("password2");
+    await page.getByLabel("Email").fill(generateTestEmail());
+    const passwordInput = page.getByLabel("Password", { exact: true });
+    const confirmPasswordInput = page.getByLabel("Confirm Password", {
+      exact: true,
+    });
+    await passwordInput.fill("password1");
+    await confirmPasswordInput.fill("password2");
     await page.getByRole("checkbox").click();
     await page.getByRole("button", { name: "Sign up" }).click();
 
@@ -82,7 +85,10 @@ test.describe("Signup Flow", () => {
     }
   });
 
-  test("user can signup with existing email handling", async ({ page }) => {
+  test("user can signup with existing email handling", async ({
+    page,
+    browser,
+  }) => {
     console.log("🧪 Testing duplicate email handling...");
 
     try {
@@ -96,13 +102,27 @@ test.describe("Signup Flow", () => {
       expect(firstUser.email).toBe(testEmail);
       console.log("✅ First signup successful");
 
-      // Second signup attempt with same email should handle gracefully
-      console.log(`👤 Second signup attempt: ${testEmail}`);
+      // Create new browser context for second signup (simulates new browser window)
+      console.log("🔄 Creating new browser context...");
+      const newContext = await browser.newContext();
+      const newPage = await newContext.newPage();
+
       try {
-        await signupTestUser(page, testEmail, testPassword);
+        // Second signup attempt with same email in new browser context
+        console.log(
+          `👤 Second signup attempt in new browser context: ${testEmail}`,
+        );
+        await signupTestUser(newPage, testEmail, testPassword);
+        expect(
+          newPage.getByText("User with this email already exists"),
+        ).toBeVisible();
         console.log("ℹ️ Second signup handled gracefully");
       } catch (_error) {
         console.log("ℹ️ Second signup rejected as expected");
+      } finally {
+        // Clean up new browser context
+        await newContext.close();
+        console.log("🧹 New browser context closed");
       }
 
       console.log("✅ Duplicate email handling test completed");

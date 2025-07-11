@@ -357,6 +357,10 @@ export default class BackendAPI {
     );
   }
 
+  listProviders(): Promise<string[]> {
+    return this._get("/integrations/providers");
+  }
+
   listCredentials(provider?: string): Promise<CredentialsMetaResponse[]> {
     return this._get(
       provider
@@ -467,7 +471,7 @@ export default class BackendAPI {
     );
   }
 
-  getAgentMetaByStoreListingVersionId(
+  getGraphMetaByStoreListingVersionID(
     storeListingVersionID: string,
   ): Promise<GraphMeta> {
     return this._get(`/store/graph/${storeListingVersionID}`);
@@ -668,21 +672,16 @@ export default class BackendAPI {
     return this._request("POST", `/library/agents/${libraryAgentId}/fork`);
   }
 
-  async setupAgentTrigger(
-    libraryAgentID: LibraryAgentID,
-    params: {
-      name: string;
-      description?: string;
-      trigger_config: Record<string, any>;
-      agent_credentials: Record<string, CredentialsMetaInput>;
-    },
-  ): Promise<LibraryAgentPreset> {
+  async setupAgentTrigger(params: {
+    name: string;
+    description?: string;
+    graph_id: GraphID;
+    graph_version: number;
+    trigger_config: Record<string, any>;
+    agent_credentials: Record<string, CredentialsMetaInput>;
+  }): Promise<LibraryAgentPreset> {
     return parseLibraryAgentPresetTimestamp(
-      await this._request(
-        "POST",
-        `/library/agents/${libraryAgentID}/setup-trigger`,
-        params,
-      ),
+      await this._request("POST", `/library/presets/setup-trigger`, params),
     );
   }
 

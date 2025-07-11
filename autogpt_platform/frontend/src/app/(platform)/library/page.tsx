@@ -1,15 +1,15 @@
 "use client";
 import Link from "next/link";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   ArrowBottomRightIcon,
   QuestionMarkCircledIcon,
 } from "@radix-ui/react-icons";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 
-import { LibraryPageStateProvider } from "./components/state-provider";
 import LibraryActionHeader from "./components/LibraryActionHeader/LibraryActionHeader";
 import LibraryAgentList from "./components/LibraryAgentList/LibraryAgentList";
+import { LibraryPageStateProvider } from "./components/state-provider";
 
 /**
  * LibraryPage Component
@@ -17,7 +17,7 @@ import LibraryAgentList from "./components/LibraryAgentList/LibraryAgentList";
  */
 export default function LibraryPage() {
   return (
-    <main className="container min-h-screen space-y-4 pb-20 sm:px-8 md:px-12">
+    <main className="pt-160 container min-h-screen space-y-4 pb-20 pt-16 sm:px-8 md:px-12">
       <LibraryPageStateProvider>
         <LibraryActionHeader />
         <LibraryAgentList />

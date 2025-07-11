@@ -127,9 +127,9 @@ class LibraryAgent(pydantic.BaseModel):
             description=graph.description,
             input_schema=graph.input_schema,
             credentials_input_schema=(
-                graph.credentials_input_schema if sub_graphs else None
+                graph.credentials_input_schema if sub_graphs is not None else None
             ),
-            has_external_trigger=graph.has_webhook_trigger,
+            has_external_trigger=graph.has_external_trigger,
             trigger_setup_info=(
                 LibraryAgentTriggerInfo(
                     provider=trigger_block.webhook_config.provider,
@@ -260,6 +260,19 @@ class LibraryAgentPresetUpdatable(pydantic.BaseModel):
     description: Optional[str] = None
 
     is_active: Optional[bool] = None
+
+
+class TriggeredPresetSetupRequest(pydantic.BaseModel):
+    name: str
+    description: str = ""
+
+    graph_id: str
+    graph_version: int
+
+    trigger_config: dict[str, Any]
+    agent_credentials: dict[str, CredentialsMetaInput] = pydantic.Field(
+        default_factory=dict
+    )
 
 
 class LibraryAgentPreset(LibraryAgentPresetCreatable):

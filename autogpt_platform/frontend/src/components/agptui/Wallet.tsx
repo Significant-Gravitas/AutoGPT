@@ -109,7 +109,7 @@ export default function Wallet() {
           <button
             ref={walletRef}
             className={cn(
-              "relative flex items-center gap-1 rounded-md bg-zinc-200 px-3 py-2 text-sm transition-colors duration-200 hover:bg-zinc-300",
+              "relative flex items-center gap-1 rounded-md bg-zinc-50 px-3 py-2 text-sm",
             )}
             onClick={onWalletOpen}
           >

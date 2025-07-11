@@ -1393,7 +1393,13 @@
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/GraphExecution" }
+                "schema": {
+                  "anyOf": [
+                    { "$ref": "#/components/schemas/GraphExecutionMeta" },
+                    { "type": "null" }
+                  ],
+                  "title": "Response Postv1Stop Graph Execution"
+                }
               }
             }
           },
@@ -1409,6 +1415,49 @@
       }
     },
     "/api/executions": {
+      "post": {
+        "tags": ["v1", "graphs"],
+        "summary": "Stop graph executions",
+        "operationId": "postV1Stop graph executions",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Id" }
+          },
+          {
+            "name": "graph_exec_id",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Exec Id" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/GraphExecutionMeta"
+                  },
+                  "title": "Response Postv1Stop Graph Executions"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "tags": ["v1", "graphs"],
         "summary": "Get all executions",
@@ -1419,10 +1468,10 @@
             "content": {
               "application/json": {
                 "schema": {
+                  "type": "array",
                   "items": {
                     "$ref": "#/components/schemas/GraphExecutionMeta"
                   },
-                  "type": "array",
                   "title": "Response Getv1Get All Executions"
                 }
               }
@@ -3237,6 +3286,48 @@
         }
       }
     },
+    "/api/library/agents/by-graph/{graph_id}": {
+      "get": {
+        "tags": ["v2", "library", "private"],
+        "summary": "Get Library Agent By Graph Id",
+        "operationId": "getV2GetLibraryAgentByGraphId",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "title": "Graph Id" }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [{ "type": "integer" }, { "type": "null" }],
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/LibraryAgent" }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/library/agents/marketplace/{store_listing_version_id}": {
       "get": {
         "tags": ["v2", "library", "private", "store, library"],
@@ -4491,8 +4582,10 @@
             "title": "Input Schema"
           },
           "credentials_input_schema": {
-            "additionalProperties": true,
-            "type": "object",
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
             "title": "Credentials Input Schema",
             "description": "Input schema for credentials required by the agent"
           },
@@ -5142,6 +5235,7 @@
           "AGENT_INPUT",
           "CONGRATS",
           "GET_RESULTS",
+          "RUN_AGENTS",
           "MARKETPLACE_VISIT",
           "MARKETPLACE_ADD_AGENT",
           "MARKETPLACE_RUN_AGENT",

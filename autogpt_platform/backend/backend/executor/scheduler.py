@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -14,25 +13,23 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 from autogpt_libs.utils.cache import thread_cached
 from dotenv import load_dotenv
-from prisma.enums import NotificationType
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import MetaData, create_engine
 
 from backend.data.block import BlockInput
-from backend.data.execution import ExecutionStatus
+from backend.data.execution import GraphExecutionWithNodes
 from backend.data.model import CredentialsMetaInput
 from backend.executor import utils as execution_utils
-from backend.notifications.notifications import NotificationManagerClient
+from backend.monitoring import (
+    NotificationJobArgs,
+    process_existing_batches,
+    process_weekly_summary,
+    report_block_error_rates,
+    report_late_executions,
+)
 from backend.util.exceptions import NotAuthorizedError, NotFoundError
 from backend.util.logging import PrefixFilter
-from backend.util.metrics import sentry_capture_error
-from backend.util.service import (
-    AppService,
-    AppServiceClient,
-    endpoint_to_async,
-    expose,
-    get_service_client,
-)
+from backend.util.service import AppService, AppServiceClient, endpoint_to_async, expose
 from backend.util.settings import Config
 
 
@@ -72,11 +69,6 @@ def job_listener(event):
 
 
 @thread_cached
-def get_notification_client():
-    return get_service_client(NotificationManagerClient)
-
-
-@thread_cached
 def get_event_loop():
     return asyncio.new_event_loop()
 
@@ -89,7 +81,7 @@ async def _execute_graph(**kwargs):
     args = GraphExecutionJobArgs(**kwargs)
     try:
         logger.info(f"Executing recurring job for graph #{args.graph_id}")
-        await execution_utils.add_graph_execution(
+        graph_exec: GraphExecutionWithNodes = await execution_utils.add_graph_execution(
             user_id=args.user_id,
             graph_id=args.graph_id,
             graph_version=args.graph_version,
@@ -97,65 +89,14 @@ async def _execute_graph(**kwargs):
             graph_credentials_inputs=args.input_credentials,
             use_db_query=False,
         )
+        logger.info(
+            f"Graph execution started with ID {graph_exec.id} for graph {args.graph_id}"
+        )
     except Exception as e:
         logger.error(f"Error executing graph {args.graph_id}: {e}")
 
 
-class LateExecutionException(Exception):
-    pass
-
-
-def report_late_executions() -> str:
-    late_executions = execution_utils.get_db_client().get_graph_executions(
-        statuses=[ExecutionStatus.QUEUED],
-        created_time_gte=datetime.now(timezone.utc)
-        - timedelta(seconds=config.execution_late_notification_checkrange_secs),
-        created_time_lte=datetime.now(timezone.utc)
-        - timedelta(seconds=config.execution_late_notification_threshold_secs),
-        limit=1000,
-    )
-
-    if not late_executions:
-        return "No late executions detected."
-
-    num_late_executions = len(late_executions)
-    num_users = len(set([r.user_id for r in late_executions]))
-
-    late_execution_details = [
-        f"* `Execution ID: {exec.id}, Graph ID: {exec.graph_id}v{exec.graph_version}, User ID: {exec.user_id}, Created At: {exec.started_at.isoformat()}`"
-        for exec in late_executions
-    ]
-
-    error = LateExecutionException(
-        f"Late executions detected: {num_late_executions} late executions from {num_users} users "
-        f"in the last {config.execution_late_notification_checkrange_secs} seconds. "
-        f"Graph has been queued for more than {config.execution_late_notification_threshold_secs} seconds. "
-        "Please check the executor status. Details:\n"
-        + "\n".join(late_execution_details)
-    )
-    msg = str(error)
-    sentry_capture_error(error)
-    get_notification_client().discord_system_alert(msg)
-    return msg
-
-
-def process_existing_batches(**kwargs):
-    args = NotificationJobArgs(**kwargs)
-    try:
-        logger.info(
-            f"Processing existing batches for notification type {args.notification_types}"
-        )
-        get_notification_client().process_existing_batches(args.notification_types)
-    except Exception as e:
-        logger.error(f"Error processing existing batches: {e}")
-
-
-def process_weekly_summary(**kwargs):
-    try:
-        logger.info("Processing weekly summary")
-        get_notification_client().queue_weekly_summary()
-    except Exception as e:
-        logger.error(f"Error processing weekly summary: {e}")
+# Monitoring functions are now imported from monitoring module
 
 
 class Jobstores(Enum):
@@ -188,11 +129,6 @@ class GraphExecutionJobInfo(GraphExecutionJobArgs):
             next_run_time=job_obj.next_run_time.isoformat(),
             **job_args.model_dump(),
         )
-
-
-class NotificationJobArgs(BaseModel):
-    notification_types: list[NotificationType]
-    cron: str
 
 
 class NotificationJobInfo(NotificationJobArgs):
@@ -287,6 +223,16 @@ class Scheduler(AppService):
                 jobstore=Jobstores.EXECUTION.value,
             )
 
+            # Block Error Rate Monitoring
+            self.scheduler.add_job(
+                report_block_error_rates,
+                id="report_block_error_rates",
+                trigger="interval",
+                replace_existing=True,
+                seconds=config.block_error_rate_check_interval_secs,
+                jobstore=Jobstores.EXECUTION.value,
+            )
+
         self.scheduler.add_listener(job_listener, EVENT_JOB_EXECUTED | EVENT_JOB_ERROR)
         self.scheduler.start()
 
@@ -378,6 +324,10 @@ class Scheduler(AppService):
     @expose
     def execute_report_late_executions(self):
         return report_late_executions()
+
+    @expose
+    def execute_report_block_error_rates(self):
+        return report_block_error_rates()
 
 
 class SchedulerClient(AppServiceClient):

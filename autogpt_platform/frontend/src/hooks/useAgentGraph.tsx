@@ -1,17 +1,20 @@
 import { CustomEdge } from "@/components/CustomEdge";
 import { CustomNode } from "@/components/CustomNode";
 import { useOnboarding } from "@/components/onboarding/onboarding-provider";
-import { InputItem } from "@/components/RunnerUIWrapper";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import BackendAPI, {
   Block,
   BlockIOSubSchema,
   BlockUIType,
+  CredentialsMetaInput,
   formatEdgeID,
   Graph,
+  GraphCreatable,
   GraphExecutionID,
   GraphID,
   GraphMeta,
+  LinkCreatable,
+  NodeCreatable,
   NodeExecutionResult,
   SpecialBlockID,
 } from "@/lib/autogpt-server-api";
@@ -36,49 +39,25 @@ export default function useAgentGraph(
   passDataToBeads?: boolean,
 ) {
   const { toast } = useToast();
-  const [router, searchParams, pathname] = [
-    useRouter(),
-    useSearchParams(),
-    usePathname(),
-  ];
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [isScheduling, setIsScheduling] = useState(false);
   const [savedAgent, setSavedAgent] = useState<Graph | null>(null);
   const [agentDescription, setAgentDescription] = useState<string>("");
   const [agentName, setAgentName] = useState<string>("");
-  const [availableNodes, setAvailableNodes] = useState<Block[]>([]);
+  const [availableBlocks, setAvailableBlocks] = useState<Block[]>([]);
   const [availableFlows, setAvailableFlows] = useState<GraphMeta[]>([]);
   const [updateQueue, setUpdateQueue] = useState<NodeExecutionResult[]>([]);
   const processedUpdates = useRef<NodeExecutionResult[]>([]);
-  /**
-   * User `request` to save or save&run the agent, or to stop the active run.
-   * `state` is used to track the request status:
-   * - none: no request
-   * - saving: request was sent to save the agent
-   *   and nodes are pending sync to update their backend ids
-   * - running: request was sent to run the agent
-   *   and frontend is enqueueing execution results
-   * - stopping: a request to stop the active run has been sent; response is pending
-   * - error: request failed
-   */
-  const [saveRunRequest, setSaveRunRequest] = useState<
-    | {
-        request: "none" | "save" | "run";
-        state: "none" | "saving" | "error";
-      }
-    | {
-        request: "run" | "stop";
-        state: "running" | "stopping" | "error";
-        activeExecutionID?: GraphExecutionID;
-      }
-  >({
-    request: "none",
-    state: "none",
-  });
-  // Determines if nodes backend ids are synced with saved agent (actual ids on the backend)
-  const [nodesSyncedWithSavedAgent, setNodesSyncedWithSavedAgent] =
-    useState(false);
-  const [nodes, setNodes] = useState<CustomNode[]>([]);
-  const [edges, setEdges] = useState<CustomEdge[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isRunning, setIsRunning] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
+  const [activeExecutionID, setActiveExecutionID] =
+    useState<GraphExecutionID | null>(null);
+  const [xyNodes, setXYNodes] = useState<CustomNode[]>([]);
+  const [xyEdges, setXYEdges] = useState<CustomEdge[]>([]);
   const { state, completeStep, incrementRuns } = useOnboarding();
 
   const api = useMemo(
@@ -90,7 +69,7 @@ export default function useAgentGraph(
   useEffect(() => {
     api
       .getBlocks()
-      .then((blocks) => setAvailableNodes(blocks))
+      .then((blocks) => setAvailableBlocks(blocks))
       .catch();
 
     api
@@ -153,7 +132,7 @@ export default function useAgentGraph(
       deregisterMessageHandler();
       deregisterConnectHandler();
     };
-  }, [api, flowID, flowVersion, flowExecutionID]);
+  }, [api, flowID, flowExecutionID]);
 
   const getOutputType = useCallback(
     (nodes: CustomNode[], nodeId: string, handleId: string) => {
@@ -177,9 +156,9 @@ export default function useAgentGraph(
       setAgentName(graph.name);
       setAgentDescription(graph.description);
 
-      setNodes((prevNodes) => {
+      setXYNodes((prevNodes) => {
         const _newNodes = graph.nodes.map((node) => {
-          const block = availableNodes.find(
+          const block = availableBlocks.find(
             (block) => block.id === node.block_id,
           )!;
           if (!block) return null;
@@ -226,7 +205,7 @@ export default function useAgentGraph(
           return newNode;
         });
         const newNodes = _newNodes.filter((n) => n !== null);
-        setEdges(() =>
+        setXYEdges(() =>
           graph.links.map((link) => {
             const adjustedSourceName = cleanupSourceName(link.source_name);
             return {
@@ -241,7 +220,6 @@ export default function useAgentGraph(
                 isStatic: link.is_static,
                 beadUp: 0,
                 beadDown: 0,
-                beadData: new Map<string, NodeExecutionResult["status"]>(),
               },
               markerEnd: {
                 type: MarkerType.ArrowClosed,
@@ -260,7 +238,7 @@ export default function useAgentGraph(
         return newNodes;
       });
     },
-    [availableNodes, availableFlows, getOutputType],
+    [availableBlocks, availableFlows, getOutputType],
   );
 
   const getFrontendId = useCallback(
@@ -279,20 +257,23 @@ export default function useAgentGraph(
   const cleanupSourceName = (sourceName: string) =>
     isToolSourceName(sourceName) ? "tools" : sourceName;
 
-  const getToolFuncName = (nodeId: string) => {
-    const sinkNode = nodes.find((node) => node.id === nodeId);
-    const sinkNodeName = sinkNode
-      ? sinkNode.data.block_id === SpecialBlockID.AGENT
-        ? sinkNode.data.hardcodedValues?.graph_id
-          ? availableFlows.find(
-              (flow) => flow.id === sinkNode.data.hardcodedValues.graph_id,
-            )?.name || "agentexecutorblock"
-          : "agentexecutorblock"
-        : sinkNode.data.title.split(" ")[0]
-      : "";
+  const getToolFuncName = useCallback(
+    (nodeID: string) => {
+      const sinkNode = xyNodes.find((node) => node.id === nodeID);
+      const sinkNodeName = sinkNode
+        ? sinkNode.data.block_id === SpecialBlockID.AGENT
+          ? sinkNode.data.hardcodedValues?.graph_id
+            ? availableFlows.find(
+                (flow) => flow.id === sinkNode.data.hardcodedValues.graph_id,
+              )?.name || "agentexecutorblock"
+            : "agentexecutorblock"
+          : sinkNode.data.title.split(" ")[0]
+        : "";
 
-    return sinkNodeName;
-  };
+      return sinkNodeName;
+    },
+    [xyNodes, availableFlows],
+  );
 
   const normalizeToolName = (str: string) =>
     str.replace(/[^a-zA-Z0-9_-]/g, "_").toLowerCase(); // This normalization rule has to match with the one on smart_decision_maker.py
@@ -300,38 +281,36 @@ export default function useAgentGraph(
   /** ------------------------------ */
 
   const updateEdgeBeads = useCallback(
-    (executionData: NodeExecutionResult) => {
-      setEdges((edges) => {
-        return edges.map((e) => {
-          const edge = { ...e, data: { ...e.data } } as CustomEdge;
-          const execStatus =
-            edge.data!.beadData ||
+    (nodeExecUpdate: NodeExecutionResult) => {
+      setXYEdges((edges) =>
+        edges.map((edge): CustomEdge => {
+          if (edge.target !== getFrontendId(nodeExecUpdate.node_id, xyNodes)) {
+            // If the edge does not match the target node, skip it
+            return edge;
+          }
+
+          const execStatuses =
+            edge.data!.beadData ??
             new Map<string, NodeExecutionResult["status"]>();
 
-          // Update execution status for input edges
-          for (const key in executionData.input_data) {
-            if (
-              edge.target !== getFrontendId(executionData.node_id, nodes) ||
-              edge.targetHandle !== key
-            ) {
-              continue;
-            }
-
-            // Store only the execution status
-            execStatus.set(executionData.node_exec_id, executionData.status);
+          if (edge.targetHandle! in nodeExecUpdate.input_data) {
+            // If the execution event has an input from this edge, store its status
+            execStatuses.set(
+              nodeExecUpdate.node_exec_id,
+              nodeExecUpdate.status,
+            );
           }
 
           // Calculate bead counts based on execution status
-          let beadUp = 0;
-          let beadDown = 0;
-
-          execStatus.forEach((status: NodeExecutionResult["status"]) => {
-            beadUp++;
-            if (status !== "INCOMPLETE") {
+          // eslint-disable-next-line prefer-const
+          let [beadUp, beadDown] = execStatuses.values().reduce(
+            ([beadUp, beadDown], status) => [
+              beadUp + 1,
               // Count any non-incomplete execution as consumed
-              beadDown++;
-            }
-          });
+              status !== "INCOMPLETE" ? beadDown + 1 : beadDown,
+            ],
+            [0, 0],
+          );
 
           // For static edges, ensure beadUp is always beadDown + 1
           // This is because static edges represent reusable inputs that are never fully consumed
@@ -341,14 +320,19 @@ export default function useAgentGraph(
           }
 
           // Update edge data
-          edge.data!.beadUp = beadUp;
-          edge.data!.beadDown = beadDown;
-
-          return edge;
-        });
-      });
+          return {
+            ...edge,
+            data: {
+              ...edge.data!,
+              beadUp,
+              beadDown,
+              beadData: new Map(execStatuses.entries()),
+            },
+          };
+        }),
+      );
     },
-    [getFrontendId, nodes],
+    [getFrontendId, xyNodes],
   );
 
   const addExecutionDataToNode = useCallback(
@@ -406,7 +390,7 @@ export default function useAgentGraph(
       if (passDataToBeads) {
         updateEdgeBeads(executionData);
       }
-      setNodes((nodes) => {
+      setXYNodes((nodes) => {
         const nodeId = nodes.find(
           (node) => node.data.backend_id === executionData.node_id,
         )?.id;
@@ -430,13 +414,24 @@ export default function useAgentGraph(
 
   // Load graph
   useEffect(() => {
-    if (!flowID || availableNodes.length == 0) return;
+    if (!flowID || availableBlocks.length == 0) return;
+    if (savedAgent?.id === flowID && savedAgent.version === flowVersion) return;
 
     api.getGraph(flowID, flowVersion).then((graph) => {
       console.debug("Loading graph");
       loadGraph(graph);
     });
-  }, [flowID, flowVersion, availableNodes, api, loadGraph]);
+  }, [flowID, flowVersion, availableBlocks, api, loadGraph]);
+
+  // Check if local graph state is in sync with backend
+  const nodesSyncedWithSavedAgent = useMemo(() => {
+    if (!savedAgent || xyNodes.length === 0) return false;
+
+    // Check that all nodes of the saved agent are included in the current state
+    return savedAgent.nodes.every((savedNode) =>
+      xyNodes.find((node) => node.data.backend_id === savedNode.id),
+    );
+  }, [savedAgent, xyNodes]);
 
   // Update nodes with execution data
   useEffect(() => {
@@ -456,234 +451,6 @@ export default function useAgentGraph(
     });
   }, [updateQueue, nodesSyncedWithSavedAgent, updateNodesWithExecutionData]);
 
-  const validateNodes = useCallback((): string | null => {
-    let errorMessage = null;
-
-    nodes.forEach((node) => {
-      const validate = ajv.compile(node.data.inputSchema);
-      const errors = {} as { [key: string]: string };
-
-      // Validate values against schema using AJV
-      const inputData =
-        node.data.uiType === BlockUIType.AGENT
-          ? node.data.hardcodedValues?.data || {}
-          : node.data.hardcodedValues || {};
-      const valid = validate(inputData);
-      if (!valid) {
-        // Populate errors if validation fails
-        validate.errors?.forEach((error) => {
-          // Skip error if there's an edge connected
-          const path =
-            "dataPath" in error
-              ? (error.dataPath as string)
-              : error.instancePath;
-          const handle = path.split(/[\/.]/)[0];
-          if (
-            node.data.connections.some(
-              (conn) => conn.target === node.id || conn.targetHandle === handle,
-            )
-          ) {
-            return;
-          }
-          console.warn(`Error in ${node.data.blockType}: ${error}`, {
-            data: inputData,
-            schema: node.data.inputSchema,
-          });
-          errorMessage = error.message || "Invalid input";
-          if (path && error.message) {
-            const key = path.slice(1);
-            setNestedProperty(
-              errors,
-              key,
-              error.message[0].toUpperCase() + error.message.slice(1),
-            );
-          } else if (error.keyword === "required") {
-            const key = error.params.missingProperty;
-            setNestedProperty(errors, key, "This field is required");
-          }
-        });
-      }
-
-      Object.entries(node.data.inputSchema.properties || {}).forEach(
-        ([key, schema]) => {
-          if (schema.depends_on) {
-            const dependencies = schema.depends_on;
-
-            // Check if dependent field has value
-            const hasValue =
-              inputData[key] != null ||
-              ("default" in schema && schema.default != null);
-
-            const mustHaveValue = node.data.inputSchema.required?.includes(key);
-
-            // Check for missing dependencies when dependent field is present
-            const missingDependencies = dependencies.filter(
-              (dep) =>
-                !inputData[dep as keyof typeof inputData] ||
-                String(inputData[dep as keyof typeof inputData]).trim() === "",
-            );
-
-            if ((hasValue || mustHaveValue) && missingDependencies.length > 0) {
-              setNestedProperty(
-                errors,
-                key,
-                `Requires ${missingDependencies.join(", ")} to be set`,
-              );
-              errorMessage = `Field ${key} requires ${missingDependencies.join(", ")} to be set`;
-            }
-
-            // Check if field is required when dependencies are present
-            const hasAllDependencies = dependencies.every(
-              (dep) =>
-                inputData[dep as keyof typeof inputData] &&
-                String(inputData[dep as keyof typeof inputData]).trim() !== "",
-            );
-
-            if (hasAllDependencies && !hasValue) {
-              setNestedProperty(
-                errors,
-                key,
-                `${key} is required when ${dependencies.join(", ")} are set`,
-              );
-              errorMessage = `${key} is required when ${dependencies.join(", ")} are set`;
-            }
-          }
-        },
-      );
-
-      // Set errors
-      setNodes((nodes) => {
-        return nodes.map((n) => {
-          if (n.id === node.id) {
-            return {
-              ...n,
-              data: {
-                ...n.data,
-                errors,
-              },
-            };
-          }
-          return n;
-        });
-      });
-    });
-
-    return errorMessage;
-  }, [nodes]);
-
-  // Handle user requests
-  useEffect(() => {
-    // Ignore none request
-    if (saveRunRequest.request === "none") {
-      return;
-    }
-    // Display error message
-    if (saveRunRequest.state === "error") {
-      if (saveRunRequest.request === "save") {
-        toast({
-          variant: "destructive",
-          title: `Error saving agent`,
-          duration: 2000,
-        });
-      } else if (saveRunRequest.request === "run") {
-        toast({
-          variant: "destructive",
-          title: `Error saving&running agent`,
-          duration: 2000,
-        });
-      } else if (saveRunRequest.request === "stop") {
-        toast({
-          variant: "destructive",
-          title: `Error stopping agent`,
-          duration: 2000,
-        });
-      }
-      // Reset request
-      setSaveRunRequest({
-        request: "none",
-        state: "none",
-      });
-      return;
-    }
-    // When saving request is done
-    if (
-      saveRunRequest.state === "saving" &&
-      savedAgent &&
-      nodesSyncedWithSavedAgent
-    ) {
-      // Reset request if only save was requested
-      if (saveRunRequest.request === "save") {
-        setSaveRunRequest({
-          request: "none",
-          state: "none",
-        });
-        // If run was requested, run the agent
-      } else if (saveRunRequest.request === "run") {
-        const validationError = validateNodes();
-        if (validationError) {
-          toast({
-            title: `Validation failed: ${validationError}`,
-            variant: "destructive",
-            duration: 2000,
-          });
-          setSaveRunRequest({
-            request: "none",
-            state: "none",
-          });
-          return;
-        }
-        setSaveRunRequest({ request: "run", state: "running" });
-        api
-          .executeGraph(savedAgent.id, savedAgent.version)
-          .then((graphExecution) => {
-            setSaveRunRequest({
-              request: "run",
-              state: "running",
-              activeExecutionID: graphExecution.graph_exec_id,
-            });
-
-            // Update URL params
-            const path = new URLSearchParams(searchParams);
-            path.set("flowID", savedAgent.id);
-            path.set("flowVersion", savedAgent.version.toString());
-            path.set("flowExecutionID", graphExecution.graph_exec_id);
-            router.push(`${pathname}?${path.toString()}`);
-            if (state?.completedSteps.includes("BUILDER_SAVE_AGENT")) {
-              completeStep("BUILDER_RUN_AGENT");
-            }
-          })
-          .catch((error) => {
-            const errorMessage =
-              error instanceof Error ? error.message : String(error);
-            toast({
-              variant: "destructive",
-              title: "Error saving agent",
-              description: errorMessage,
-            });
-            setSaveRunRequest({ request: "run", state: "error" });
-          });
-
-        processedUpdates.current = [];
-      }
-    }
-    // Handle stop request
-    if (
-      saveRunRequest.request === "stop" &&
-      saveRunRequest.state != "stopping" &&
-      savedAgent &&
-      saveRunRequest.activeExecutionID
-    ) {
-      api.stopGraphExecution(savedAgent.id, saveRunRequest.activeExecutionID);
-    }
-  }, [
-    api,
-    toast,
-    saveRunRequest,
-    savedAgent,
-    nodesSyncedWithSavedAgent,
-    validateNodes,
-  ]);
-
   useEffect(() => {
     if (!flowID || !flowExecutionID) {
       return;
@@ -696,13 +463,10 @@ export default function useAgentGraph(
       );
       if (
         (execution.status === "QUEUED" || execution.status === "RUNNING") &&
-        saveRunRequest.request === "none"
+        !isRunning
       ) {
-        setSaveRunRequest({
-          request: "run",
-          state: "running",
-          activeExecutionID: flowExecutionID,
-        });
+        setIsRunning(true);
+        setActiveExecutionID(flowExecutionID);
       }
       setUpdateQueue((prev) => {
         if (!execution.node_executions) return prev;
@@ -748,7 +512,9 @@ export default function useAgentGraph(
             graphExec.status === "FAILED"
           ) {
             cancelGraphExecListener();
-            setSaveRunRequest({ request: "none", state: "none" });
+            setIsRunning(false);
+            setIsStopping(false);
+            setActiveExecutionID(null);
             incrementRuns();
           }
         },
@@ -758,30 +524,9 @@ export default function useAgentGraph(
     fetchExecutions();
   }, [flowID, flowExecutionID, incrementRuns]);
 
-  // Check if node ids are synced with saved agent
-  useEffect(() => {
-    // Check if all node ids are synced with saved agent (frontend and backend)
-    if (!savedAgent || nodes?.length === 0) {
-      setNodesSyncedWithSavedAgent(false);
-      return;
-    }
-    // Find at least one node that has backend id existing on any saved agent node
-    // This will works as long as ALL ids are replaced each time the graph is run
-    const oneNodeSynced = savedAgent.nodes.some(
-      (backendNode) => backendNode.id === nodes[0].data.backend_id,
-    );
-    setNodesSyncedWithSavedAgent(oneNodeSynced);
-  }, [savedAgent, nodes]);
-
   const prepareNodeInputData = useCallback(
     (node: CustomNode) => {
-      console.debug(
-        "Preparing input data for node:",
-        node.id,
-        node.data.blockType,
-      );
-
-      const blockSchema = availableNodes.find(
+      const blockSchema = availableBlocks.find(
         (n) => n.id === node.data.block_id,
       )?.inputSchema;
 
@@ -790,93 +535,15 @@ export default function useAgentGraph(
         return {};
       }
 
-      const getNestedData = (
-        schema: BlockIOSubSchema,
-        values: { [key: string]: any },
-      ): { [key: string]: any } => {
-        let inputData: { [key: string]: any } = {};
-
-        if ("properties" in schema) {
-          Object.keys(schema.properties).forEach((key) => {
-            if (values[key] !== undefined) {
-              if (
-                "properties" in schema.properties[key] ||
-                "additionalProperties" in schema.properties[key]
-              ) {
-                inputData[key] = getNestedData(
-                  schema.properties[key],
-                  values[key],
-                );
-              } else {
-                inputData[key] = values[key];
-              }
-            }
-          });
-        }
-
-        if ("additionalProperties" in schema) {
-          inputData = { ...inputData, ...values };
-        }
-
-        return inputData;
-      };
-
-      const inputData = getNestedData(blockSchema, node.data.hardcodedValues);
-
-      console.debug(
-        `Final prepared input for ${node.data.blockType} (${node.id}):`,
-        inputData,
-      );
-      return inputData;
+      return rebuildObjectUsingSchema(blockSchema, node.data.hardcodedValues);
     },
-    [availableNodes],
+    [availableBlocks],
   );
 
-  const _saveAgent = useCallback(async () => {
-    //FIXME frontend ids should be resolved better (e.g. returned from the server)
-    // currently this relays on block_id and position
-    const blockIdToNodeIdMap: Record<string, string> = {};
-
-    nodes.forEach((node) => {
-      const key = `${node.data.block_id}_${node.position.x}_${node.position.y}`;
-      blockIdToNodeIdMap[key] = node.id;
-    });
-
-    const formattedNodes = nodes.map((node) => {
-      const inputDefault = prepareNodeInputData(node);
-      const inputNodes = edges
-        .filter((edge) => edge.target === node.id)
-        .map((edge) => ({
-          name: edge.targetHandle || "",
-          node_id: edge.source,
-        }));
-
-      const outputNodes = edges
-        .filter((edge) => edge.source === node.id)
-        .map((edge) => ({
-          name: edge.sourceHandle || "",
-          node_id: edge.target,
-        }));
-
-      return {
-        id: node.id,
-        block_id: node.data.block_id,
-        input_default: inputDefault,
-        input_nodes: inputNodes,
-        output_nodes: outputNodes,
-        data: {
-          ...node.data,
-          hardcodedValues: removeEmptyStringsAndNulls(
-            node.data.hardcodedValues,
-          ),
-        },
-        metadata: { position: node.position },
-      };
-    });
-
-    const links = edges.map((edge) => {
+  const prepareSaveableGraph = useCallback((): GraphCreatable => {
+    const links = xyEdges.map((edge): LinkCreatable => {
       let sourceName = edge.sourceHandle || "";
-      const sourceNode = nodes.find((node) => node.id === edge.source);
+      const sourceNode = xyNodes.find((node) => node.id === edge.source);
 
       // Special case for SmartDecisionMakerBlock
       if (
@@ -893,51 +560,181 @@ export default function useAgentGraph(
       };
     });
 
-    const payload = {
+    return {
       name: agentName || `New Agent ${new Date().toISOString()}`,
       description: agentDescription || "",
-      nodes: formattedNodes,
+      nodes: xyNodes.map(
+        (node): NodeCreatable => ({
+          id: node.id,
+          block_id: node.data.block_id,
+          input_default: prepareNodeInputData(node),
+          metadata: { position: node.position },
+        }),
+      ),
       links: links,
     };
+  }, [
+    xyNodes,
+    xyEdges,
+    agentName,
+    agentDescription,
+    prepareNodeInputData,
+    getToolFuncName,
+  ]);
+
+  const validateGraph = useCallback(
+    (graph?: GraphCreatable): string | null => {
+      let errorMessage = null;
+
+      if (!graph) {
+        graph = prepareSaveableGraph();
+      }
+
+      graph.nodes.forEach((node) => {
+        const block = availableBlocks.find(
+          (block) => block.id === node.block_id,
+        );
+        if (!block) {
+          console.error(
+            `Node ${node.id} is invalid: unknown block ID ${node.block_id}`,
+          );
+          return;
+        }
+        const inputSchema = block.inputSchema;
+        const validate = ajv.compile(inputSchema);
+        const errors: Record<string, string> = {};
+        const errorPrefix = `${block.name} [${node.id.split("-")[0]}]`;
+
+        // Validate values against schema using AJV
+        const inputData = node.input_default;
+        const valid = validate(inputData);
+        if (!valid) {
+          // Populate errors if validation fails
+          validate.errors?.forEach((error) => {
+            const path =
+              "dataPath" in error
+                ? (error.dataPath as string)
+                : error.instancePath || error.params.missingProperty;
+            const handle = path.split(/[\/.]/)[0];
+            // Skip error if there's an edge connected
+            if (
+              graph.links.some(
+                (link) => link.sink_id == node.id && link.sink_name == handle,
+              )
+            ) {
+              return;
+            }
+            console.warn(`Error in ${block.name} input: ${error}`, {
+              data: inputData,
+              schema: inputSchema,
+            });
+            errorMessage =
+              `${errorPrefix}: ` + (error.message || "Invalid input");
+            if (path && error.message) {
+              const key = path.slice(1);
+              setNestedProperty(
+                errors,
+                key,
+                error.message[0].toUpperCase() + error.message.slice(1),
+              );
+            } else if (error.keyword === "required") {
+              const key = error.params.missingProperty;
+              setNestedProperty(errors, key, "This field is required");
+            }
+          });
+        }
+
+        Object.entries(inputSchema.properties).forEach(([key, schema]) => {
+          if (schema.depends_on) {
+            const dependencies = schema.depends_on;
+
+            // Check if dependent field has value
+            const hasValue =
+              inputData[key] != null ||
+              ("default" in schema && schema.default != null);
+
+            const mustHaveValue = inputSchema.required?.includes(key);
+
+            // Check for missing dependencies when dependent field is present
+            const missingDependencies = dependencies.filter(
+              (dep) =>
+                !inputData[dep as keyof typeof inputData] ||
+                String(inputData[dep as keyof typeof inputData]).trim() === "",
+            );
+
+            if ((hasValue || mustHaveValue) && missingDependencies.length > 0) {
+              setNestedProperty(
+                errors,
+                key,
+                `Requires ${missingDependencies.join(", ")} to be set`,
+              );
+              errorMessage = `${errorPrefix}: field ${key} requires ${missingDependencies.join(", ")} to be set`;
+            }
+
+            // Check if field is required when dependencies are present
+            const hasAllDependencies = dependencies.every(
+              (dep) =>
+                inputData[dep as keyof typeof inputData] &&
+                String(inputData[dep as keyof typeof inputData]).trim() !== "",
+            );
+
+            if (hasAllDependencies && !hasValue) {
+              setNestedProperty(
+                errors,
+                key,
+                `${key} is required when ${dependencies.join(", ")} are set`,
+              );
+              errorMessage = `${errorPrefix}: ${key} is required when ${dependencies.join(", ")} are set`;
+            }
+          }
+        });
+
+        // Set errors
+        setXYNodes((nodes) => {
+          return nodes.map((n) => {
+            if (n.id === node.id) {
+              return {
+                ...n,
+                data: {
+                  ...n.data,
+                  errors,
+                },
+              };
+            }
+            return n;
+          });
+        });
+      });
+
+      return errorMessage;
+    },
+    [prepareSaveableGraph, availableBlocks],
+  );
+
+  const _saveAgent = useCallback(async () => {
+    // FIXME: frontend IDs should be resolved better (e.g. returned from the server)
+    // currently this relays on block_id and position
+    const blockIDToNodeIDMap = Object.fromEntries(
+      xyNodes.map((node) => [
+        `${node.data.block_id}_${node.position.x}_${node.position.y}`,
+        node.id,
+      ]),
+    );
+
+    const payload = prepareSaveableGraph();
 
     // To avoid saving the same graph, we compare the payload with the saved agent.
     // Differences in IDs are ignored.
-    const comparedPayload = {
-      name: payload.name,
-      description: payload.description,
-      nodes: payload.nodes.map(
-        ({ id: _, data: __, input_nodes: ___, output_nodes: ____, ...rest }) =>
-          rest,
-      ),
-      links: payload.links.map(
-        ({ source_id: _, sink_id: __, ...rest }) => rest,
-      ),
-    };
-    const comparedSavedAgent = {
-      name: savedAgent?.name,
-      description: savedAgent?.description,
-      nodes: savedAgent?.nodes.map((v) => ({
-        block_id: v.block_id,
-        input_default: v.input_default,
-        metadata: v.metadata,
-      })),
-      links: savedAgent?.links.map((v) => ({
-        sink_name: v.sink_name,
-        source_name: v.source_name,
-      })),
-    };
-
-    let newSavedAgent = null;
-    if (savedAgent && deepEquals(comparedPayload, comparedSavedAgent)) {
+    let newSavedAgent: Graph;
+    if (savedAgent && graphsEquivalent(savedAgent, payload)) {
       console.warn("No need to save: Graph is the same as version on server");
       newSavedAgent = savedAgent;
     } else {
       console.debug(
         "Saving new Graph version; old vs new:",
-        comparedPayload,
-        comparedSavedAgent,
+        savedAgent,
+        payload,
       );
-      setNodesSyncedWithSavedAgent(false);
 
       newSavedAgent = savedAgent
         ? await api.updateGraph(savedAgent.id, {
@@ -949,23 +746,22 @@ export default function useAgentGraph(
       console.debug("Response from the API:", newSavedAgent);
     }
 
-    // Route the URL to the new flow ID if it's a new agent.
-    if (!savedAgent) {
+    // Update the URL
+    if (newSavedAgent.version !== savedAgent?.version) {
       const path = new URLSearchParams(searchParams);
       path.set("flowID", newSavedAgent.id);
       path.set("flowVersion", newSavedAgent.version.toString());
       router.push(`${pathname}?${path.toString()}`);
-      return;
     }
 
     // Update the node IDs on the frontend
     setSavedAgent(newSavedAgent);
-    setNodes((prev) => {
+    setXYNodes((prev) => {
       return newSavedAgent.nodes
         .map((backendNode) => {
           const key = `${backendNode.block_id}_${backendNode.metadata.position.x}_${backendNode.metadata.position.y}`;
-          const frontendNodeId = blockIdToNodeIdMap[key];
-          const frontendNode = prev.find((node) => node.id === frontendNodeId);
+          const frontendNodeID = blockIDToNodeIDMap[key];
+          const frontendNode = prev.find((node) => node.id === frontendNodeID);
 
           return frontendNode
             ? {
@@ -987,31 +783,36 @@ export default function useAgentGraph(
         .filter((node) => node !== null);
     });
     // Reset bead count
-    setEdges((edges) => {
-      return edges.map((edge) => ({
-        ...edge,
-        data: {
-          ...edge.data,
-          edgeColor: edge.data?.edgeColor ?? "grey",
-          beadUp: 0,
-          beadDown: 0,
-        },
-      }));
+    setXYEdges((edges) => {
+      return edges.map(
+        (edge): CustomEdge => ({
+          ...edge,
+          data: {
+            ...edge.data,
+            edgeColor: edge.data?.edgeColor ?? "grey",
+            beadUp: 0,
+            beadDown: 0,
+            beadData: new Map(),
+          },
+        }),
+      );
     });
+    return newSavedAgent;
   }, [
     api,
-    nodes,
-    edges,
-    pathname,
-    router,
-    searchParams,
-    savedAgent,
+    xyNodes,
     agentName,
     agentDescription,
     prepareNodeInputData,
+    prepareSaveableGraph,
+    savedAgent,
+    pathname,
+    router,
+    searchParams,
   ]);
 
   const saveAgent = useCallback(async () => {
+    setIsSaving(true);
     try {
       await _saveAgent();
       completeStep("BUILDER_SAVE_AGENT");
@@ -1024,80 +825,148 @@ export default function useAgentGraph(
         title: "Error saving agent",
         description: errorMessage,
       });
-      setSaveRunRequest({ request: "save", state: "error" });
+    } finally {
+      setIsSaving(false);
     }
-  }, [_saveAgent, toast]);
+  }, [_saveAgent, toast, completeStep]);
 
-  const requestSave = useCallback(() => {
-    if (saveRunRequest.state !== "none") {
+  const saveAndRun = useCallback(
+    async (
+      inputs: Record<string, any>,
+      credentialsInputs: Record<string, CredentialsMetaInput>,
+    ) => {
+      if (isSaving || isRunning) {
+        return;
+      }
+
+      setIsSaving(true);
+      let savedAgent: Graph;
+      try {
+        savedAgent = await _saveAgent();
+        completeStep("BUILDER_SAVE_AGENT");
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        toast({
+          variant: "destructive",
+          title: "Error saving agent",
+          description: errorMessage,
+        });
+        return;
+      } finally {
+        setIsSaving(false);
+      }
+
+      const validationError = validateGraph(savedAgent);
+      if (validationError) {
+        toast({
+          title: `Graph validation failed: ${validationError}`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setIsRunning(true);
+      processedUpdates.current = [];
+
+      try {
+        const graphExecution = await api.executeGraph(
+          savedAgent.id,
+          savedAgent.version,
+          inputs,
+          credentialsInputs,
+        );
+
+        setActiveExecutionID(graphExecution.graph_exec_id);
+
+        // Update URL params
+        const path = new URLSearchParams(searchParams);
+        path.set("flowID", savedAgent.id);
+        path.set("flowVersion", savedAgent.version.toString());
+        path.set("flowExecutionID", graphExecution.graph_exec_id);
+        router.push(`${pathname}?${path.toString()}`);
+
+        if (state?.completedSteps.includes("BUILDER_SAVE_AGENT")) {
+          completeStep("BUILDER_RUN_AGENT");
+        }
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        toast({
+          variant: "destructive",
+          title: "Error running agent",
+          description: errorMessage,
+        });
+        setIsRunning(false);
+        setActiveExecutionID(null);
+      }
+    },
+    [
+      _saveAgent,
+      toast,
+      completeStep,
+      savedAgent,
+      prepareSaveableGraph,
+      nodesSyncedWithSavedAgent,
+      validateGraph,
+      api,
+      searchParams,
+      pathname,
+      router,
+      state,
+      isSaving,
+      isRunning,
+      processedUpdates,
+    ],
+  );
+
+  const stopRun = useCallback(async () => {
+    if (!isRunning || !activeExecutionID || isStopping || !savedAgent) {
       return;
     }
-    saveAgent();
-    setSaveRunRequest({
-      request: "save",
-      state: "saving",
-    });
-  }, [saveAgent, saveRunRequest.state]);
 
-  const requestSaveAndRun = useCallback(() => {
-    saveAgent();
-    setSaveRunRequest({
-      request: "run",
-      state: "saving",
-    });
-  }, [saveAgent]);
-
-  const requestStopRun = useCallback(() => {
-    if (saveRunRequest.state != "running") {
-      return;
-    }
-    if (!saveRunRequest.activeExecutionID) {
-      console.warn(
-        "Stop requested but execution ID is unknown; state:",
-        saveRunRequest,
-      );
-    }
-    setSaveRunRequest((prev) => ({
-      ...prev,
-      request: "stop",
-      state: "running",
-    }));
-  }, [saveRunRequest]);
+    setIsStopping(true);
+    await api
+      .stopGraphExecution(savedAgent.id, activeExecutionID)
+      .catch((error) => {
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        toast({
+          variant: "destructive",
+          title: "Error stopping agent",
+          description: errorMessage,
+        });
+      });
+    setIsStopping(false);
+  }, [api, savedAgent, activeExecutionID, isRunning, isStopping, toast]);
 
   // runs after saving cron expression and inputs (if exists)
-  const scheduleRunner = useCallback(
+  const createRunSchedule = useCallback(
     async (
       cronExpression: string,
-      inputs: InputItem[],
       scheduleName: string,
+      inputs: Record<string, any>,
+      credentialsInputs: Record<string, CredentialsMetaInput>,
     ) => {
-      await saveAgent();
-      try {
-        if (flowID) {
-          await api.createGraphExecutionSchedule({
-            graph_id: flowID,
-            // flowVersion is always defined here because scheduling is opened for a specific version
-            graph_version: flowVersion!,
-            name: scheduleName,
-            cron: cronExpression,
-            inputs: inputs.reduce(
-              (acc, input) => ({
-                ...acc,
-                [input.hardcodedValues.name]: input.hardcodedValues.value,
-              }),
-              {},
-            ),
-          });
-          toast({
-            title: "Agent scheduling successful",
-          });
+      if (!savedAgent || isScheduling) return;
 
-          // if scheduling is done from the monitor page, then redirect to monitor page after successful scheduling
-          if (searchParams.get("open_scheduling") === "true") {
-            router.push("/");
-          }
-        } else {
-          return;
+      setIsScheduling(true);
+      try {
+        await api.createGraphExecutionSchedule({
+          graph_id: savedAgent.id,
+          graph_version: savedAgent.version,
+          name: scheduleName,
+          cron: cronExpression,
+          inputs: inputs,
+          credentials: credentialsInputs,
+        });
+        toast({
+          title: "Agent scheduling successful",
+        });
+
+        // if scheduling is done from the monitor page, then redirect to monitor page after successful scheduling
+        if (searchParams.get("open_scheduling") === "true") {
+          router.push("/monitoring");
         }
       } catch (error) {
         console.error(error);
@@ -1106,9 +975,11 @@ export default function useAgentGraph(
           title: "Error scheduling agent",
           description: "Please retry",
         });
+      } finally {
+        setIsScheduling(false);
       }
     },
-    [api, flowID, saveAgent, toast, router, searchParams],
+    [api, savedAgent, isScheduling, toast, searchParams, router],
   );
 
   return {
@@ -1117,21 +988,74 @@ export default function useAgentGraph(
     agentDescription,
     setAgentDescription,
     savedAgent,
-    availableNodes,
+    availableBlocks,
     availableFlows,
     getOutputType,
-    requestSave,
-    requestSaveAndRun,
-    requestStopRun,
-    scheduleRunner,
-    isSaving: saveRunRequest.state == "saving",
-    isRunning: saveRunRequest.state == "running",
-    isStopping: saveRunRequest.state == "stopping",
+    saveAgent,
+    saveAndRun,
+    stopRun,
+    createRunSchedule,
+    isSaving,
+    isRunning,
+    isStopping,
     isScheduling,
-    setIsScheduling,
-    nodes,
-    setNodes,
-    edges,
-    setEdges,
+    nodes: xyNodes,
+    setNodes: setXYNodes,
+    edges: xyEdges,
+    setEdges: setXYEdges,
   };
+}
+
+function graphsEquivalent(saved: Graph, current: GraphCreatable): boolean {
+  const _saved = {
+    name: saved.name,
+    description: saved.description,
+    nodes: saved.nodes.map((v) => ({
+      block_id: v.block_id,
+      input_default: v.input_default,
+      metadata: v.metadata,
+    })),
+    links: saved.links.map((v) => ({
+      sink_name: v.sink_name,
+      source_name: v.source_name,
+    })),
+  };
+  const _current = {
+    name: current.name,
+    description: current.description,
+    nodes: current.nodes.map(({ id: _, ...rest }) => rest),
+    links: current.links.map(({ source_id: _, sink_id: __, ...rest }) => rest),
+  };
+  return deepEquals(_saved, _current);
+}
+
+function rebuildObjectUsingSchema(
+  schema: BlockIOSubSchema,
+  object: { [key: string]: any },
+): Record<string, any> {
+  let inputData: Record<string, any> = {};
+
+  if ("properties" in schema) {
+    Object.keys(schema.properties).forEach((key) => {
+      if (object[key] !== undefined) {
+        if (
+          "properties" in schema.properties[key] ||
+          "additionalProperties" in schema.properties[key]
+        ) {
+          inputData[key] = rebuildObjectUsingSchema(
+            schema.properties[key],
+            object[key],
+          );
+        } else {
+          inputData[key] = object[key];
+        }
+      }
+    });
+  }
+
+  if ("additionalProperties" in schema) {
+    inputData = { ...inputData, ...object };
+  }
+
+  return inputData;
 }

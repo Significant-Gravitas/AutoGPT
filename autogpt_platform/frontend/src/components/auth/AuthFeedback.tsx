@@ -1,7 +1,7 @@
-import { AlertCircle, CheckCircle } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { HelpItem } from "@/components/auth/help-item";
+import { Card, CardContent } from "@/components/ui/card";
 import { BehaveAs } from "@/lib/utils";
+import { AlertCircle, CheckCircle } from "lucide-react";
 
 interface Props {
   type: "login" | "signup";
@@ -16,12 +16,24 @@ export default function AuthFeedback({
   isError = false,
   behaveAs = BehaveAs.CLOUD,
 }: Props) {
-  // If there's no message but isError is true, show a default error message
   const displayMessage =
     message || (isError ? "Something went wrong. Please try again." : "");
 
+  const isCloudMode = behaveAs === BehaveAs.CLOUD;
+  const isLocalMode = behaveAs === BehaveAs.LOCAL;
+  const showCloudHelp = isError && isCloudMode;
+  const showLocalHelp = isError && isLocalMode;
+  const isSignupFlow = type === "signup";
+  const hasAnyHelpContent = showCloudHelp || showLocalHelp;
+
+  const hasContent = displayMessage || hasAnyHelpContent;
+
+  if (!hasContent) {
+    return null;
+  }
+
   return (
-    <div className="mt-4 space-y-4">
+    <div className="mt-4 w-full space-y-4">
       {/* Message feedback */}
       {displayMessage && (
         <div className="text-center text-sm font-medium leading-normal">
@@ -40,9 +52,8 @@ export default function AuthFeedback({
       )}
 
       {/* Cloud-specific help */}
-      {isError &&
-        behaveAs === BehaveAs.CLOUD &&
-        (type === "signup" ? (
+      {showCloudHelp &&
+        (isSignupFlow ? (
           <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <CardContent className="p-0">
               <div className="divide-y divide-slate-100">
@@ -81,32 +92,30 @@ export default function AuthFeedback({
         ))}
 
       {/* Local-specific help */}
-      {isError && behaveAs === BehaveAs.LOCAL && (
-        <Card className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-          <CardContent className="p-0">
-            <div className="space-y-4 divide-y divide-slate-100">
-              <HelpItem
-                title="Having trouble getting AutoGPT running locally?"
-                description="Ask for help on our"
-                linkText="Discord"
-                href="https://discord.gg/autogpt"
-              />
+      {showLocalHelp && (
+        <Card className="w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+          <div className="w-full divide-y divide-slate-100">
+            <HelpItem
+              title="Having trouble getting AutoGPT running locally?"
+              description="Ask for help on our"
+              linkText="Discord"
+              href="https://discord.gg/autogpt"
+            />
 
-              <HelpItem
-                title="Think you've found a bug?"
-                description="Open an issue on our"
-                linkText="GitHub"
-                href="https://github.com/Significant-Gravitas/AutoGPT"
-              />
+            <HelpItem
+              title="Think you've found a bug?"
+              description="Open an issue on our"
+              linkText="GitHub"
+              href="https://github.com/Significant-Gravitas/AutoGPT"
+            />
 
-              <HelpItem
-                title="Interested in the cloud-hosted version?"
-                description="Join our"
-                linkText="waitlist here"
-                href="https://agpt.co/waitlist"
-              />
-            </div>
-          </CardContent>
+            <HelpItem
+              title="Interested in the cloud-hosted version?"
+              description="Join our"
+              linkText="waitlist here"
+              href="https://agpt.co/waitlist"
+            />
+          </div>
         </Card>
       )}
     </div>

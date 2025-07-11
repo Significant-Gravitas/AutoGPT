@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { Node, Edge, useReactFlow, useViewport } from "@xyflow/react";
+import { Node, Edge, useReactFlow } from "@xyflow/react";
 
 interface CopyableData {
   nodes: Node[];
@@ -7,8 +7,9 @@ interface CopyableData {
 }
 
 export function useCopyPaste(getNextNodeId: () => string) {
-  const { setNodes, addEdges, getNodes, getEdges } = useReactFlow();
-  const { x, y, zoom } = useViewport();
+  const { setNodes, addEdges, getNodes, getEdges, getViewport } =
+    useReactFlow();
+  const { x, y, zoom } = getViewport();
 
   const handleCopyPaste = useCallback(
     (event: KeyboardEvent) => {
