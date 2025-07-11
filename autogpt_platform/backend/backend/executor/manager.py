@@ -207,11 +207,7 @@ async def execute_node(
 
         # Update execution stats
         if execution_stats is not None:
-            # The iteration set instead of using the model_copy is intentional,
-            # as we want to update the stats in place.
-            for key, value in node_block.execution_stats.model_dump().items():
-                if hasattr(execution_stats, key):
-                    setattr(execution_stats, key, value)
+            execution_stats += node_block.execution_stats
             execution_stats.input_size = input_size
             execution_stats.output_size = output_size
 
