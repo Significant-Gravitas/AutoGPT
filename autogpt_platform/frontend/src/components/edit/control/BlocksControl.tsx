@@ -84,7 +84,6 @@ export function BlocksControl({
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
-  // Preprocess blocks with cached string operations
   const blocks = useSearchableBlocks(_blocks);
 
   const graphHasWebhookNodes = nodes.some((n) =>
