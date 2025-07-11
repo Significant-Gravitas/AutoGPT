@@ -3,17 +3,30 @@ import { GraphExecutionMeta as GeneratedGraphExecutionMeta } from "@/app/api/__g
 import { MyAgent } from "@/app/api/__generated__/models/myAgent";
 import type { GraphExecution } from "@/lib/autogpt-server-api/types";
 
+// Time constants
+const MILLISECONDS_PER_SECOND = 1000;
+const SECONDS_PER_MINUTE = 60;
+const MINUTES_PER_HOUR = 60;
+const HOURS_PER_DAY = 24;
+const MILLISECONDS_PER_MINUTE = SECONDS_PER_MINUTE * MILLISECONDS_PER_SECOND;
+const MILLISECONDS_PER_HOUR = MINUTES_PER_HOUR * MILLISECONDS_PER_MINUTE;
+const MILLISECONDS_PER_DAY = HOURS_PER_DAY * MILLISECONDS_PER_HOUR;
+
+// Display constants
+export const EXECUTION_DISPLAY_LIMIT = 6;
+const SHORT_DURATION_THRESHOLD_SECONDS = 5;
+
 export function formatTimeAgo(dateStr: string): string {
   const date = new Date(dateStr);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
-  const diffMins = Math.floor(diffMs / 60000);
+  const diffMins = Math.floor(diffMs / MILLISECONDS_PER_MINUTE);
 
   if (diffMins < 1) return "Just now";
-  if (diffMins < 60) return `${diffMins}m ago`;
-  const diffHours = Math.floor(diffMins / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  const diffDays = Math.floor(diffHours / 24);
+  if (diffMins < SECONDS_PER_MINUTE) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / MINUTES_PER_HOUR);
+  if (diffHours < HOURS_PER_DAY) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / HOURS_PER_DAY);
   return `${diffDays}d ago`;
 }
 
@@ -69,14 +82,30 @@ export function getExecutionDuration(
 
   const start = new Date(execution.started_at);
   const end = execution.ended_at ? new Date(execution.ended_at) : new Date();
-  const durationMs = end.getTime() - start.getTime();
-  const durationSec = Math.floor(durationMs / 1000);
 
-  if (durationSec < 60) return `${durationSec}s`;
-  const durationMin = Math.floor(durationSec / 60);
-  if (durationMin < 60) return `${durationMin}m ${durationSec % 60}s`;
-  const durationHr = Math.floor(durationMin / 60);
-  return `${durationHr}h ${durationMin % 60}m`;
+  // Check if dates are valid
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    return "Unknown";
+  }
+
+  const durationMs = end.getTime() - start.getTime();
+
+  // Handle negative durations (shouldn't happen but just in case)
+  if (durationMs < 0) return "Unknown";
+
+  const durationSec = Math.floor(durationMs / MILLISECONDS_PER_SECOND);
+
+  // For short durations (< 5 seconds), show "a few seconds"
+  if (durationSec < SHORT_DURATION_THRESHOLD_SECONDS) {
+    return "a few seconds";
+  }
+
+  if (durationSec < SECONDS_PER_MINUTE) return `${durationSec}s`;
+  const durationMin = Math.floor(durationSec / SECONDS_PER_MINUTE);
+  if (durationMin < MINUTES_PER_HOUR)
+    return `${durationMin}m ${durationSec % SECONDS_PER_MINUTE}s`;
+  const durationHr = Math.floor(durationMin / MINUTES_PER_HOUR);
+  return `${durationHr}h ${durationMin % MINUTES_PER_HOUR}m`;
 }
 
 export function shouldShowNotificationBadge(totalCount: number): boolean {
@@ -84,7 +113,7 @@ export function shouldShowNotificationBadge(totalCount: number): boolean {
 }
 
 export function formatNotificationCount(count: number): string {
-  if (count > 99) return "99+";
+  if (count > 99) return "+99";
   return count.toString();
 }
 
@@ -213,7 +242,7 @@ export function categorizeExecutions(
     { name: string; description: string; library_agent_id?: string }
   >,
 ): NotificationState {
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const twentyFourHoursAgo = new Date(Date.now() - MILLISECONDS_PER_DAY);
 
   const enrichedExecutions = executions.map((execution) =>
     enrichExecutionWithAgentInfo(execution, agentInfoMap),
@@ -221,15 +250,15 @@ export function categorizeExecutions(
 
   const activeExecutions = enrichedExecutions
     .filter(isActiveExecution)
-    .slice(0, 10);
+    .slice(0, EXECUTION_DISPLAY_LIMIT);
 
   const recentCompletions = enrichedExecutions
     .filter((execution) => isRecentCompletion(execution, twentyFourHoursAgo))
-    .slice(0, 10);
+    .slice(0, EXECUTION_DISPLAY_LIMIT);
 
   const recentFailures = enrichedExecutions
     .filter((execution) => isRecentFailure(execution, twentyFourHoursAgo))
-    .slice(0, 10);
+    .slice(0, EXECUTION_DISPLAY_LIMIT);
 
   return {
     activeExecutions,
@@ -262,23 +291,23 @@ export function addExecutionToCategory(
   state: NotificationState,
   execution: AgentExecutionWithInfo,
 ): NotificationState {
-  const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const twentyFourHoursAgo = new Date(Date.now() - MILLISECONDS_PER_DAY);
   const newState = { ...state };
 
   if (isActiveExecution(execution)) {
     newState.activeExecutions = [execution, ...newState.activeExecutions].slice(
       0,
-      10,
+      EXECUTION_DISPLAY_LIMIT,
     );
   } else if (isRecentCompletion(execution, twentyFourHoursAgo)) {
     newState.recentCompletions = [
       execution,
       ...newState.recentCompletions,
-    ].slice(0, 10);
+    ].slice(0, EXECUTION_DISPLAY_LIMIT);
   } else if (isRecentFailure(execution, twentyFourHoursAgo)) {
     newState.recentFailures = [execution, ...newState.recentFailures].slice(
       0,
-      10,
+      EXECUTION_DISPLAY_LIMIT,
     );
   }
 

@@ -4,7 +4,7 @@ import { AgentExecutionStatus } from "@/app/api/__generated__/models/agentExecut
 import { Text } from "@/components/atoms/Text/Text";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Bell } from "@phosphor-icons/react";
-import { AgentExecutionWithInfo } from "../helpers";
+import { AgentExecutionWithInfo, EXECUTION_DISPLAY_LIMIT } from "../helpers";
 import { NotificationItem } from "./NotificationItem";
 
 interface NotificationDropdownProps {
@@ -26,25 +26,27 @@ export function NotificationDropdown({
       ...recentFailures.map((e) => ({ ...e, type: "failed" as const })),
     ];
 
-    return allExecutions.sort((a, b) => {
-      // Running/queued always at top
-      const aIsActive =
-        a.status === AgentExecutionStatus.RUNNING ||
-        a.status === AgentExecutionStatus.QUEUED;
-      const bIsActive =
-        b.status === AgentExecutionStatus.RUNNING ||
-        b.status === AgentExecutionStatus.QUEUED;
+    return allExecutions
+      .sort((a, b) => {
+        // Running/queued always at top
+        const aIsActive =
+          a.status === AgentExecutionStatus.RUNNING ||
+          a.status === AgentExecutionStatus.QUEUED;
+        const bIsActive =
+          b.status === AgentExecutionStatus.RUNNING ||
+          b.status === AgentExecutionStatus.QUEUED;
 
-      if (aIsActive && !bIsActive) return -1;
-      if (!aIsActive && bIsActive) return 1;
+        if (aIsActive && !bIsActive) return -1;
+        if (!aIsActive && bIsActive) return 1;
 
-      // Within same category, sort by most recent
-      const aTime = aIsActive ? a.started_at : a.ended_at;
-      const bTime = bIsActive ? b.started_at : b.ended_at;
+        // Within same category, sort by most recent
+        const aTime = aIsActive ? a.started_at : a.ended_at;
+        const bTime = bIsActive ? b.started_at : b.ended_at;
 
-      if (!aTime || !bTime) return 0;
-      return new Date(bTime).getTime() - new Date(aTime).getTime();
-    });
+        if (!aTime || !bTime) return 0;
+        return new Date(bTime).getTime() - new Date(aTime).getTime();
+      })
+      .slice(0, EXECUTION_DISPLAY_LIMIT);
   }
 
   const sortedExecutions = getSortedExecutions();
@@ -53,7 +55,7 @@ export function NotificationDropdown({
     <div>
       {/* Header */}
       <div className="sticky top-0 z-10 px-4 pb-1 pt-4">
-        <Text variant="body-medium" className="font-semibold text-gray-900">
+        <Text variant="large-medium" className="font-semibold text-black">
           Agent Activity
         </Text>
       </div>
@@ -63,11 +65,7 @@ export function NotificationDropdown({
         {sortedExecutions.length > 0 ? (
           <div className="p-2">
             {sortedExecutions.map((execution) => (
-              <NotificationItem
-                key={execution.id}
-                execution={execution}
-                type={execution.type}
-              />
+              <NotificationItem key={execution.id} execution={execution} />
             ))}
           </div>
         ) : (

@@ -7,57 +7,75 @@ import {
   CircleNotchIcon,
   Clock,
   WarningOctagonIcon,
+  StopCircle,
+  CircleDashed,
 } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import type { AgentExecutionWithInfo } from "../helpers";
-import {
-  formatTimeAgo,
-  getExecutionDuration,
-  getStatusColorClass,
-} from "../helpers";
+import { formatTimeAgo, getExecutionDuration } from "../helpers";
 
 interface NotificationItemProps {
   execution: AgentExecutionWithInfo;
-  type: "running" | "completed" | "failed";
 }
 
-export function NotificationItem({ execution, type }: NotificationItemProps) {
+export function NotificationItem({ execution }: NotificationItemProps) {
   const router = useRouter();
 
   function getStatusIcon() {
-    switch (type) {
-      case "running":
-        return execution.status === AgentExecutionStatus.QUEUED ? (
-          <Clock size={16} className="text-purple-500" />
-        ) : (
+    switch (execution.status) {
+      case AgentExecutionStatus.QUEUED:
+        return <Clock size={18} className="text-purple-500" />;
+      case AgentExecutionStatus.RUNNING:
+        return (
           <CircleNotchIcon
-            size={16}
+            size={18}
             className="animate-spin text-purple-500"
             weight="bold"
           />
         );
-      case "completed":
+      case AgentExecutionStatus.COMPLETED:
         return (
-          <CheckCircle size={16} weight="fill" className="text-purple-500" />
+          <CheckCircle size={18} weight="fill" className="text-purple-500" />
         );
-      case "failed":
-        return <WarningOctagonIcon size={16} className="text-purple-500" />;
+      case AgentExecutionStatus.FAILED:
+        return <WarningOctagonIcon size={18} className="text-purple-500" />;
+      case AgentExecutionStatus.TERMINATED:
+        return (
+          <StopCircle size={18} className="text-purple-500" weight="fill" />
+        );
+      case AgentExecutionStatus.INCOMPLETE:
+        return <CircleDashed size={18} className="text-purple-500" />;
       default:
         return null;
     }
   }
 
   function getTimeDisplay() {
-    if (type === "running") {
+    const isActiveStatus =
+      execution.status === AgentExecutionStatus.RUNNING ||
+      execution.status === AgentExecutionStatus.QUEUED;
+
+    if (isActiveStatus) {
       const timeAgo = formatTimeAgo(execution.started_at.toString());
-      return `Started ${timeAgo}, ${getExecutionDuration(execution)} running`;
+      const statusText =
+        execution.status === AgentExecutionStatus.QUEUED ? "queued" : "running";
+      return `Started ${timeAgo}, ${getExecutionDuration(execution)} ${statusText}`;
     }
 
     if (execution.ended_at) {
       const timeAgo = formatTimeAgo(execution.ended_at.toString());
-      return type === "completed"
-        ? `Completed ${timeAgo}`
-        : `Failed ${timeAgo}`;
+      switch (execution.status) {
+        case AgentExecutionStatus.COMPLETED:
+          return `Completed ${timeAgo}`;
+        case AgentExecutionStatus.FAILED:
+          return `Failed ${timeAgo}`;
+        case AgentExecutionStatus.TERMINATED:
+          return `Stopped ${timeAgo}`;
+        case AgentExecutionStatus.INCOMPLETE:
+          return `Incomplete ${timeAgo}`;
+        default:
+          return `Ended ${timeAgo}`;
+      }
     }
 
     return "Unknown";
@@ -81,15 +99,9 @@ export function NotificationItem({ execution, type }: NotificationItemProps) {
       </div>
 
       {/* Agent Message - Indented */}
-      <div className="ml-7">
-        {execution.agent_description ? (
-          <Text variant="body" className={`${getStatusColorClass(execution)}`}>
-            {execution.agent_description}
-          </Text>
-        ) : null}
-
+      <div className="ml-7 pt-1">
         {/* Time - Indented */}
-        <Text variant="small" className="pt-2 !text-zinc-500">
+        <Text variant="small" className="!text-zinc-500">
           {getTimeDisplay()}
         </Text>
       </div>
