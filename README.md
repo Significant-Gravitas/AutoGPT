@@ -63,7 +63,7 @@ powershell -c "iwr https://setup.agpt.co/install.bat -o install.bat; ./install.b
 ```
 
 This will install dependencies, configure Docker, and launch your local instance — all in one go.
----
+
 
 
 This tutorial assumes you have Docker, VSCode, git and npm installed.
