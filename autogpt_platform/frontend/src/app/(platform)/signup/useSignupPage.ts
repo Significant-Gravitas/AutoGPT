@@ -22,7 +22,7 @@ export function useSignupPage() {
   const [showNotAllowedModal, setShowNotAllowedModal] = useState(false);
 
   const isCloudEnv = getBehaveAs() === BehaveAs.CLOUD;
-  const isVercelPreview = process.env.VERCEL_ENV === "preview";
+  const isVercelPreview = process.env.NEXT_PUBLIC_VERCEL_ENV === "preview";
 
   const turnstile = useTurnstile({
     action: "signup",
