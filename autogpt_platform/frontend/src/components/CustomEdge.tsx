@@ -1,4 +1,10 @@
-import React, { useCallback, useContext, useEffect, useState } from "react";
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  useRef,
+} from "react";
 import {
   BaseEdge,
   EdgeLabelRenderer,
@@ -18,8 +24,8 @@ export type CustomEdgeData = {
   edgeColor: string;
   sourcePos?: XYPosition;
   isStatic?: boolean;
-  beadUp?: number;
-  beadDown?: number;
+  beadUp: number;
+  beadDown: number;
   beadData?: Map<string, NodeExecutionResult["status"]>;
 };
 
@@ -46,6 +52,7 @@ export function CustomEdge({
     created: number;
     destroyed: number;
   }>({ beads: [], created: 0, destroyed: 0 });
+  const beadsRef = useRef(beads);
   const { svgPath, length, getPointForT, getTForDistance } = useBezierPath(
     sourceX - 5,
     sourceY - 5,
@@ -87,89 +94,80 @@ export function CustomEdge({
     [getTForDistance, length, visualizeBeads],
   );
 
+  beadsRef.current = beads;
   useEffect(() => {
-    if (data?.beadUp === 0 && data?.beadDown === 0) {
+    const beadUp: number = data?.beadUp ?? 0;
+    const beadDown: number = data?.beadDown ?? 0;
+
+    if (
+      beadUp === 0 &&
+      beadDown === 0 &&
+      (beads.created > 0 || beads.destroyed > 0)
+    ) {
       setBeads({ beads: [], created: 0, destroyed: 0 });
       return;
     }
 
-    const beadUp: number = data?.beadUp ?? 0;
-
     // Add beads
-    setBeads(({ beads, created, destroyed }) => {
-      const newBeads = [];
-      for (let i = 0; i < beadUp - created; i++) {
-        newBeads.push({ t: 0, targetT: 0, startTime: Date.now() });
-      }
-
-      const b = setTargetPositions([...beads, ...newBeads]);
-      return { beads: b, created: beadUp, destroyed };
-    });
-
-    // Remove beads if not animating
-    if (visualizeBeads !== "animate") {
+    if (beadUp > beads.created) {
       setBeads(({ beads, created, destroyed }) => {
-        let destroyedCount = 0;
+        const newBeads = [];
+        for (let i = 0; i < beadUp - created; i++) {
+          newBeads.push({ t: 0, targetT: 0, startTime: Date.now() });
+        }
 
-        const newBeads = beads
-          .map((bead) => ({ ...bead }))
-          .filter((bead, index) => {
-            const beadDown: number = data?.beadDown ?? 0;
-            const removeCount = beadDown - destroyed;
-            if (bead.t >= bead.targetT && index < removeCount) {
-              destroyedCount++;
-              return false;
-            }
-            return true;
-          });
-
-        return {
-          beads: setTargetPositions(newBeads),
-          created,
-          destroyed: destroyed + destroyedCount,
-        };
+        const b = setTargetPositions([...beads, ...newBeads]);
+        return { beads: b, created: beadUp, destroyed };
       });
-      return;
     }
 
     // Animate and remove beads
-    const interval = setInterval(() => {
-      setBeads(({ beads, created, destroyed }) => {
-        let destroyedCount = 0;
+    const interval = setInterval(
+      ({ current: beads }) => {
+        // If there are no beads visible or moving, stop re-rendering
+        if (
+          (beadUp === beads.created && beads.created === beads.destroyed) ||
+          beads.beads.every((bead) => bead.t >= bead.targetT)
+        ) {
+          clearInterval(interval);
+          return;
+        }
 
-        const newBeads = beads
-          .map((bead) => {
-            const progressIncrement = deltaTime / animationDuration;
-            const t = Math.min(
-              bead.t + bead.targetT * progressIncrement,
-              bead.targetT,
-            );
+        setBeads(({ beads, created, destroyed }) => {
+          let destroyedCount = 0;
 
-            return {
-              ...bead,
-              t,
-            };
-          })
-          .filter((bead, index) => {
-            const beadDown: number = data?.beadDown ?? 0;
-            const removeCount = beadDown - destroyed;
-            if (bead.t >= bead.targetT && index < removeCount) {
-              destroyedCount++;
-              return false;
-            }
-            return true;
-          });
+          const newBeads = beads
+            .map((bead) => {
+              const progressIncrement = deltaTime / animationDuration;
+              const t = Math.min(
+                bead.t + bead.targetT * progressIncrement,
+                bead.targetT,
+              );
 
-        return {
-          beads: setTargetPositions(newBeads),
-          created,
-          destroyed: destroyed + destroyedCount,
-        };
-      });
-    }, deltaTime);
+              return { ...bead, t };
+            })
+            .filter((bead, index) => {
+              const removeCount = beadDown - destroyed;
+              if (bead.t >= bead.targetT && index < removeCount) {
+                destroyedCount++;
+                return false;
+              }
+              return true;
+            });
+
+          return {
+            beads: setTargetPositions(newBeads),
+            created,
+            destroyed: destroyed + destroyedCount,
+          };
+        });
+      },
+      deltaTime,
+      beadsRef,
+    );
 
     return () => clearInterval(interval);
-  }, [data, setTargetPositions, visualizeBeads]);
+  }, [data?.beadUp, data?.beadDown, setTargetPositions, visualizeBeads]);
 
   const middle = getPointForT(0.5);
 
