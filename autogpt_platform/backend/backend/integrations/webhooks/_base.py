@@ -7,12 +7,13 @@ from uuid import uuid4
 from fastapi import Request
 from strenum import StrEnum
 
-from backend.data import integrations
+import backend.data.integrations as integrations
 from backend.data.model import Credentials
 from backend.integrations.providers import ProviderName
-from backend.integrations.webhooks.utils import webhook_ingress_url
 from backend.util.exceptions import MissingConfigError
 from backend.util.settings import Config
+
+from .utils import webhook_ingress_url
 
 logger = logging.getLogger(__name__)
 app_config = Config()
@@ -41,44 +42,74 @@ class BaseWebhooksManager(ABC, Generic[WT]):
             )
 
         if webhook := await integrations.find_webhook_by_credentials_and_props(
-            credentials.id, webhook_type, resource, events
+            user_id=user_id,
+            credentials_id=credentials.id,
+            webhook_type=webhook_type,
+            resource=resource,
+            events=events,
         ):
             return webhook
+
         return await self._create_webhook(
-            user_id, webhook_type, events, resource, credentials
+            user_id=user_id,
+            webhook_type=webhook_type,
+            events=events,
+            resource=resource,
+            credentials=credentials,
         )
 
     async def get_manual_webhook(
         self,
         user_id: str,
-        graph_id: str,
         webhook_type: WT,
         events: list[str],
-    ):
-        if current_webhook := await integrations.find_webhook_by_graph_and_props(
-            graph_id, self.PROVIDER_NAME, webhook_type, events
+        graph_id: Optional[str] = None,
+        preset_id: Optional[str] = None,
+    ) -> integrations.Webhook:
+        """
+        Tries to find an existing webhook tied to `graph_id`/`preset_id`,
+        or creates a new webhook if none exists.
+
+        Existing webhooks are matched by `user_id`, `webhook_type`,
+        and `graph_id`/`preset_id`.
+
+        If an existing webhook is found, we check if the events match and update them
+        if necessary. We do this rather than creating a new webhook
+        to avoid changing the webhook URL for existing manual webhooks.
+        """
+        if (graph_id or preset_id) and (
+            current_webhook := await integrations.find_webhook_by_graph_and_props(
+                user_id=user_id,
+                provider=self.PROVIDER_NAME.value,
+                webhook_type=webhook_type,
+                graph_id=graph_id,
+                preset_id=preset_id,
+            )
         ):
+            if set(current_webhook.events) != set(events):
+                current_webhook = await integrations.update_webhook(
+                    current_webhook.id, events=events
+                )
             return current_webhook
+
         return await self._create_webhook(
-            user_id,
-            webhook_type,
-            events,
+            user_id=user_id,
+            webhook_type=webhook_type,
+            events=events,
             register=False,
         )
 
     async def prune_webhook_if_dangling(
-        self, webhook_id: str, credentials: Optional[Credentials]
+        self, user_id: str, webhook_id: str, credentials: Optional[Credentials]
     ) -> bool:
-        webhook = await integrations.get_webhook(webhook_id)
-        if webhook.attached_nodes is None:
-            raise ValueError("Error retrieving webhook including attached nodes")
-        if webhook.attached_nodes:
+        webhook = await integrations.get_webhook(webhook_id, include_relations=True)
+        if webhook.triggered_nodes or webhook.triggered_presets:
             # Don't prune webhook if in use
             return False
 
         if credentials:
             await self._deregister_webhook(webhook, credentials)
-        await integrations.delete_webhook(webhook.id)
+        await integrations.delete_webhook(user_id, webhook.id)
         return True
 
     # --8<-- [start:BaseWebhooksManager3]

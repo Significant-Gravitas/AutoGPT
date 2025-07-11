@@ -1,3 +1,4 @@
+import asyncio
 import time
 from datetime import datetime, timedelta
 from typing import Any, Union
@@ -37,7 +38,7 @@ class GetCurrentTimeBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         current_time = time.strftime(input_data.format)
         yield "time", current_time
 
@@ -87,7 +88,7 @@ class GetCurrentDateBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         try:
             offset = int(input_data.offset)
         except ValueError:
@@ -132,7 +133,7 @@ class GetCurrentDateAndTimeBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         current_date_time = time.strftime(input_data.format)
         yield "date_time", current_date_time
 
@@ -183,7 +184,7 @@ class CountdownTimerBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         seconds = int(input_data.seconds)
         minutes = int(input_data.minutes)
         hours = int(input_data.hours)
@@ -192,5 +193,6 @@ class CountdownTimerBlock(Block):
         total_seconds = seconds + minutes * 60 + hours * 3600 + days * 86400
 
         for _ in range(input_data.repeat):
-            time.sleep(total_seconds)
+            if total_seconds > 0:
+                await asyncio.sleep(total_seconds)
             yield "output_message", input_data.input_message

@@ -1,12 +1,12 @@
 import functools
 import inspect
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator as AsyncGen
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
     ClassVar,
-    Generator,
     Generic,
     Optional,
     Sequence,
@@ -42,7 +42,7 @@ app_config = Config()
 
 BlockData = tuple[str, Any]  # Input & Output data should be a tuple of (name, data).
 BlockInput = dict[str, Any]  # Input: 1 input pin consumes 1 data.
-BlockOutput = Generator[BlockData, None, None]  # Output: 1 output pin produces n data.
+BlockOutput = AsyncGen[BlockData, None]  # Output: 1 output pin produces n data.
 CompletedBlockOutput = dict[str, list[Any]]  # Completed stream, collected as a dict.
 
 
@@ -79,6 +79,7 @@ class BlockCategory(Enum):
     PRODUCTIVITY = "Block that helps with productivity"
     ISSUE_TRACKING = "Block that helps with issue tracking"
     MULTIMEDIA = "Block that interacts with multimedia content"
+    MARKETING = "Block that helps with marketing"
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
@@ -119,7 +120,10 @@ class BlockSchema(BaseModel):
 
     @classmethod
     def validate_data(cls, data: BlockInput) -> str | None:
-        return json.validate_with_jsonschema(schema=cls.jsonschema(), data=data)
+        return json.validate_with_jsonschema(
+            schema=cls.jsonschema(),
+            data={k: v for k, v in data.items() if v is not None},
+        )
 
     @classmethod
     def get_mismatch_error(cls, data: BlockInput) -> str | None:
@@ -389,7 +393,7 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
         return cls()
 
     @abstractmethod
-    def run(self, input_data: BlockSchemaInputType, **kwargs) -> BlockOutput:
+    async def run(self, input_data: BlockSchemaInputType, **kwargs) -> BlockOutput:
         """
         Run the block with the given input data.
         Args:
@@ -407,10 +411,16 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             output_name: One of the output name defined in Block's output_schema.
             output_data: The data for the output_name, matching the defined schema.
         """
-        pass
+        # --- satisfy the type checker, never executed -------------
+        if False:  # noqa: SIM115
+            yield "name", "value"  # pyright: ignore[reportMissingYield]
+        raise NotImplementedError(f"{self.name} does not implement the run method.")
 
-    def run_once(self, input_data: BlockSchemaInputType, output: str, **kwargs) -> Any:
-        for name, data in self.run(input_data, **kwargs):
+    async def run_once(
+        self, input_data: BlockSchemaInputType, output: str, **kwargs
+    ) -> Any:
+        async for item in self.run(input_data, **kwargs):
+            name, data = item
             if name == output:
                 return data
         raise ValueError(f"{self.name} did not produce any output for {output}")
@@ -459,14 +469,15 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             "uiType": self.block_type.value,
         }
 
-    def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
+    async def execute(self, input_data: BlockInput, **kwargs) -> BlockOutput:
         if error := self.input_schema.validate_data(input_data):
             raise ValueError(
                 f"Unable to execute block with invalid input data: {error}"
             )
 
-        for output_name, output_data in self.run(
-            self.input_schema(**input_data), **kwargs
+        async for output_name, output_data in self.run(
+            self.input_schema(**{k: v for k, v in input_data.items() if v is not None}),
+            **kwargs,
         ):
             if output_name == "error":
                 raise RuntimeError(output_data)
@@ -475,6 +486,22 @@ class Block(ABC, Generic[BlockSchemaInputType, BlockSchemaOutputType]):
             ):
                 raise ValueError(f"Block produced an invalid output data: {error}")
             yield output_name, output_data
+
+    def is_triggered_by_event_type(
+        self, trigger_config: dict[str, Any], event_type: str
+    ) -> bool:
+        if not self.webhook_config:
+            raise TypeError("This method can't be used on non-trigger blocks")
+        if not self.webhook_config.event_filter_input:
+            return True
+        event_filter = trigger_config.get(self.webhook_config.event_filter_input)
+        if not event_filter:
+            raise ValueError("Event filter is not configured on trigger")
+        return event_type in [
+            self.webhook_config.event_format.format(event=k)
+            for k in event_filter
+            if event_filter[k] is True
+        ]
 
 
 # ======================= Block Helper Functions ======================= #
@@ -487,6 +514,12 @@ def get_blocks() -> dict[str, Type[Block]]:
 
 
 async def initialize_blocks() -> None:
+    # First, sync all provider costs to blocks
+    # Imported here to avoid circular import
+    from backend.sdk.cost_integration import sync_all_provider_costs
+
+    sync_all_provider_costs()
+
     for cls in get_blocks().values():
         block = cls()
         existing_block = await AgentBlock.prisma().find_first(

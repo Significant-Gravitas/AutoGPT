@@ -19,6 +19,7 @@ router = fastapi.APIRouter(prefix="/admin", tags=["store", "admin"])
 
 @router.get(
     "/listings",
+    summary="Get Admin Listings History",
     response_model=backend.server.v2.store.model.StoreListingsWithVersionsResponse,
     dependencies=[fastapi.Depends(autogpt_libs.auth.depends.requires_admin_user)],
 )
@@ -63,6 +64,7 @@ async def get_admin_listings_with_versions(
 
 @router.post(
     "/submissions/{store_listing_version_id}/review",
+    summary="Review Store Submission",
     response_model=backend.server.v2.store.model.StoreSubmission,
     dependencies=[fastapi.Depends(autogpt_libs.auth.depends.requires_admin_user)],
 )
@@ -104,6 +106,7 @@ async def review_submission(
 
 @router.get(
     "/submissions/download/{store_listing_version_id}",
+    summary="Admin Download Agent File",
     tags=["store", "admin"],
     dependencies=[fastapi.Depends(autogpt_libs.auth.depends.requires_admin_user)],
 )

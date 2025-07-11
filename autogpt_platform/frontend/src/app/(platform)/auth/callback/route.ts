@@ -11,13 +11,25 @@ async function shouldShowOnboarding() {
   );
 }
 
+// Validate redirect URL to prevent open redirect attacks
+function validateRedirectUrl(url: string): string {
+  // Only allow relative URLs that start with /
+  if (url.startsWith("/") && !url.startsWith("//")) {
+    return url;
+  }
+  // Default to home page for any invalid URLs
+  return "/";
+}
+
 // Handle the callback to complete the user session login
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
 
   // if "next" is in param, use it as the redirect URL
-  let next = searchParams.get("next") ?? "/";
+  const nextParam = searchParams.get("next") ?? "/";
+  // Validate redirect URL to prevent open redirect attacks
+  let next = validateRedirectUrl(nextParam);
 
   if (code) {
     const supabase = await getServerSupabase();
@@ -26,7 +38,7 @@ export async function GET(request: Request) {
       return NextResponse.redirect(`${origin}/error`);
     }
 
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
     // data.session?.refresh_token is available if you need to store it for later use
     if (!error) {
       try {

@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 // controlled by the CredentialsInput component. The CredentialsInput opens the login
 // page in a pop-up window, which then redirects to this route to close the loop.
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const state = searchParams.get("state");
 

@@ -135,7 +135,7 @@ class AyrshareClient:
                 raise_for_status=False,
             )
 
-    def generate_jwt(
+    async def generate_jwt(
         self,
         private_key: str,
         profile_key: str,
@@ -191,30 +191,32 @@ class AyrshareClient:
         if email is not None:
             payload["email"] = email.__dict__
 
-        response = self._requests.post(self.JWT_ENDPOINT, json=payload, headers=headers)
+        response = await self._requests.post(
+            self.JWT_ENDPOINT, json=payload, headers=headers
+        )
 
         if not response.ok:
             try:
                 error_data = response.json()
-                error_message = error_data.get("message", response.text)
+                error_message = error_data.get("message", "Unknown error")
             except json.JSONDecodeError:
-                error_message = response.text
+                error_message = response.text()
 
             raise AyrshareAPIException(
-                f"Ayrshare API request failed ({response.status_code}): {error_message}",
-                response.status_code,
+                f"Ayrshare API request failed ({response.status}): {error_message}",
+                response.status,
             )
 
         response_data = response.json()
         if response_data.get("status") != "success":
             raise AyrshareAPIException(
                 f"Ayrshare API returned error: {response_data.get('message', 'Unknown error')}",
-                response.status_code,
+                response.status,
             )
 
         return JWTResponse(**response_data)
 
-    def create_profile(
+    async def create_profile(
         self,
         title: str,
         messaging_active: Optional[bool] = None,
@@ -267,30 +269,30 @@ class AyrshareClient:
         if tags is not None:
             payload["tags"] = tags
 
-        response = self._requests.post(self.PROFILES_ENDPOINT, json=payload)
+        response = await self._requests.post(self.PROFILES_ENDPOINT, json=payload)
 
         if not response.ok:
             try:
                 error_data = response.json()
-                error_message = error_data.get("message", response.text)
+                error_message = error_data.get("message", "Unknown error")
             except json.JSONDecodeError:
-                error_message = response.text
+                error_message = response.text()
 
             raise AyrshareAPIException(
-                f"Ayrshare API request failed ({response.status_code}): {error_message}",
-                response.status_code,
+                f"Ayrshare API request failed ({response.status}): {error_message}",
+                response.status,
             )
 
         response_data = response.json()
         if response_data.get("status") != "success":
             raise AyrshareAPIException(
                 f"Ayrshare API returned error: {response_data.get('message', 'Unknown error')}",
-                response.status_code,
+                response.status,
             )
 
         return ProfileResponse(**response_data)
 
-    def create_post(
+    async def create_post(
         self,
         post: str,
         platforms: list[SocialPlatform],
@@ -451,27 +453,27 @@ class AyrshareClient:
         if profile_key:
             headers["Profile-Key"] = profile_key
 
-        response = self._requests.post(
+        response = await self._requests.post(
             self.POST_ENDPOINT, json=payload, headers=headers
         )
 
         if not response.ok:
             try:
                 error_data = response.json()
-                error_message = error_data.get("message", response.text)
+                error_message = error_data.get("message", "Unknown error")
             except json.JSONDecodeError:
-                error_message = response.text
+                error_message = response.text()
 
             raise AyrshareAPIException(
-                f"Ayrshare API request failed ({response.status_code}): {error_message}",
-                response.status_code,
+                f"Ayrshare API request failed ({response.status}): {error_message}",
+                response.status,
             )
 
         response_data = response.json()
         if response_data.get("status") != "success":
             raise AyrshareAPIException(
                 f"Ayrshare API returned error: {response_data.get('message', 'Unknown error')}",
-                response.status_code,
+                response.status,
             )
 
         # Return the first post from the response

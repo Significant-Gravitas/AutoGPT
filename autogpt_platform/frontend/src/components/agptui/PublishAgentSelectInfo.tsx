@@ -3,9 +3,9 @@
 import * as React from "react";
 import Image from "next/image";
 import { Button } from "../agptui/Button";
-import { IconClose, IconPlus } from "../ui/icons";
+import { IconCross, IconPlus } from "../ui/icons";
 import BackendAPI from "@/lib/autogpt-server-api";
-import { toast } from "../ui/use-toast";
+import { toast } from "../molecules/Toast/use-toast";
 
 export interface PublishAgentInfoInitialData {
   agent_id: string;
@@ -133,6 +133,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
       toast({
         title: "Failed to upload image",
         description: `Error: ${error}`,
+        variant: "destructive",
       });
     }
   };
@@ -180,7 +181,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
             className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-gray-100 transition-colors hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600"
             aria-label="Close"
           >
-            <IconClose
+            <IconCross
               size="default"
               className="text-neutral-600 dark:text-neutral-300"
             />
@@ -313,7 +314,7 @@ export const PublishAgentInfo: React.FC<PublishAgentInfoProps> = ({
                       className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-white bg-opacity-70 transition-opacity hover:bg-opacity-100 dark:bg-gray-800 dark:bg-opacity-70 dark:hover:bg-opacity-100"
                       aria-label="Remove image"
                     >
-                      <IconClose
+                      <IconCross
                         size="sm"
                         className="text-neutral-600 dark:text-neutral-300"
                       />

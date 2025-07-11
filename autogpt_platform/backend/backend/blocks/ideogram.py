@@ -12,7 +12,7 @@ from backend.data.model import (
     SchemaField,
 )
 from backend.integrations.providers import ProviderName
-from backend.util.request import requests
+from backend.util.request import Requests
 
 TEST_CREDENTIALS = APIKeyCredentials(
     id="01234567-89ab-cdef-0123-456789abcdef",
@@ -196,13 +196,13 @@ class IdeogramModelBlock(Block):
             test_credentials=TEST_CREDENTIALS,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         seed = input_data.seed
 
         # Step 1: Generate the image
-        result = self.run_model(
+        result = await self.run_model(
             api_key=credentials.api_key,
             model_name=input_data.ideogram_model_name.value,
             prompt=input_data.prompt,
@@ -217,14 +217,14 @@ class IdeogramModelBlock(Block):
 
         # Step 2: Upscale the image if requested
         if input_data.upscale == UpscaleOption.AI_UPSCALE:
-            result = self.upscale_image(
+            result = await self.upscale_image(
                 api_key=credentials.api_key,
                 image_url=result,
             )
 
         yield "result", result
 
-    def run_model(
+    async def run_model(
         self,
         api_key: SecretStr,
         model_name: str,
@@ -267,12 +267,12 @@ class IdeogramModelBlock(Block):
             }
 
         try:
-            response = requests.post(url, json=data, headers=headers)
+            response = await Requests().post(url, headers=headers, json=data)
             return response.json()["data"][0]["url"]
         except RequestException as e:
             raise Exception(f"Failed to fetch image: {str(e)}")
 
-    def upscale_image(self, api_key: SecretStr, image_url: str):
+    async def upscale_image(self, api_key: SecretStr, image_url: str):
         url = "https://api.ideogram.ai/upscale"
         headers = {
             "Api-Key": api_key.get_secret_value(),
@@ -280,21 +280,22 @@ class IdeogramModelBlock(Block):
 
         try:
             # Step 1: Download the image from the provided URL
-            image_response = requests.get(image_url)
+            response = await Requests().get(image_url)
+            image_content = response.content
 
             # Step 2: Send the downloaded image to the upscale API
             files = {
-                "image_file": ("image.png", image_response.content, "image/png"),
+                "image_file": ("image.png", image_content, "image/png"),
             }
 
-            response = requests.post(
+            response = await Requests().post(
                 url,
                 headers=headers,
                 data={"image_request": "{}"},
                 files=files,
             )
 
-            return response.json()["data"][0]["url"]
+            return (response.json())["data"][0]["url"]
 
         except RequestException as e:
             raise Exception(f"Failed to upscale image: {str(e)}")

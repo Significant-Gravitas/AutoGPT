@@ -1,13 +1,21 @@
-from backend.data.block import (
+from backend.sdk import (
     Block,
     BlockCategory,
     BlockManualWebhookConfig,
     BlockOutput,
     BlockSchema,
+    ProviderBuilder,
+    ProviderName,
+    SchemaField,
 )
-from backend.data.model import SchemaField
-from backend.integrations.providers import ProviderName
-from backend.integrations.webhooks.generic import GenericWebhookType
+
+from ._webhook import GenericWebhooksManager, GenericWebhookType
+
+generic_webhook = (
+    ProviderBuilder("generic_webhook")
+    .with_webhook_manager(GenericWebhooksManager)
+    .build()
+)
 
 
 class GenericWebhookTriggerBlock(Block):
@@ -36,7 +44,7 @@ class GenericWebhookTriggerBlock(Block):
             input_schema=GenericWebhookTriggerBlock.Input,
             output_schema=GenericWebhookTriggerBlock.Output,
             webhook_config=BlockManualWebhookConfig(
-                provider=ProviderName.GENERIC_WEBHOOK,
+                provider=ProviderName(generic_webhook.name),
                 webhook_type=GenericWebhookType.PLAIN,
             ),
             test_input={"constants": {"key": "value"}, "payload": self.example_payload},
@@ -46,6 +54,6 @@ class GenericWebhookTriggerBlock(Block):
             ],
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         yield "constants", input_data.constants
         yield "payload", input_data.payload

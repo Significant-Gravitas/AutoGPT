@@ -93,10 +93,18 @@ def test_log_raw_metric_values_parametrized(
     ],
 )
 def test_log_raw_metric_invalid_requests_parametrized(
+    mocker: pytest_mock.MockFixture,
     invalid_data: dict,
     expected_error: str,
 ) -> None:
     """Test invalid metric requests with parametrize."""
+    # Mock the analytics function to avoid event loop issues
+    mocker.patch(
+        "backend.data.analytics.log_raw_metric",
+        new_callable=AsyncMock,
+        return_value=Mock(id="test-id"),
+    )
+
     response = client.post("/log_raw_metric", json=invalid_data)
 
     assert response.status_code == 422

@@ -12,6 +12,7 @@ from autogpt_libs.auth.depends import auth_middleware, get_user_id
 import backend.data.block
 import backend.data.graph
 import backend.server.v2.store.db
+import backend.server.v2.store.exceptions
 import backend.server.v2.store.image_gen
 import backend.server.v2.store.media
 import backend.server.v2.store.model
@@ -29,6 +30,7 @@ router = fastapi.APIRouter()
 
 @router.get(
     "/profile",
+    summary="Get user profile",
     tags=["store", "private"],
     response_model=backend.server.v2.store.model.ProfileDetails,
 )
@@ -61,6 +63,7 @@ async def get_profile(
 
 @router.post(
     "/profile",
+    summary="Update user profile",
     tags=["store", "private"],
     dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
     response_model=backend.server.v2.store.model.CreatorDetails,
@@ -107,6 +110,7 @@ async def update_or_create_profile(
 
 @router.get(
     "/agents",
+    summary="List store agents",
     tags=["store", "public"],
     response_model=backend.server.v2.store.model.StoreAgentsResponse,
 )
@@ -179,6 +183,7 @@ async def get_agents(
 
 @router.get(
     "/agents/{username}/{agent_name}",
+    summary="Get specific agent",
     tags=["store", "public"],
     response_model=backend.server.v2.store.model.StoreAgentDetails,
 )
@@ -208,6 +213,7 @@ async def get_agent(username: str, agent_name: str):
 
 @router.get(
     "/graph/{store_listing_version_id}",
+    summary="Get agent graph",
     tags=["store"],
 )
 async def get_graph_meta_by_store_listing_version_id(
@@ -232,6 +238,7 @@ async def get_graph_meta_by_store_listing_version_id(
 
 @router.get(
     "/agents/{store_listing_version_id}",
+    summary="Get agent by version",
     tags=["store"],
     response_model=backend.server.v2.store.model.StoreAgentDetails,
 )
@@ -257,6 +264,7 @@ async def get_store_agent(
 
 @router.post(
     "/agents/{username}/{agent_name}/review",
+    summary="Create agent review",
     tags=["store"],
     dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
     response_model=backend.server.v2.store.model.StoreReview,
@@ -308,6 +316,7 @@ async def create_review(
 
 @router.get(
     "/creators",
+    summary="List store creators",
     tags=["store", "public"],
     response_model=backend.server.v2.store.model.CreatorsResponse,
 )
@@ -359,6 +368,7 @@ async def get_creators(
 
 @router.get(
     "/creator/{username}",
+    summary="Get creator details",
     tags=["store", "public"],
     response_model=backend.server.v2.store.model.CreatorDetails,
 )
@@ -390,6 +400,7 @@ async def get_creator(
 ############################################
 @router.get(
     "/myagents",
+    summary="Get my agents",
     tags=["store", "private"],
     dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
     response_model=backend.server.v2.store.model.MyAgentsResponse,
@@ -412,6 +423,7 @@ async def get_my_agents(
 
 @router.delete(
     "/submissions/{submission_id}",
+    summary="Delete store submission",
     tags=["store", "private"],
     dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
     response_model=bool,
@@ -448,6 +460,7 @@ async def delete_submission(
 
 @router.get(
     "/submissions",
+    summary="List my submissions",
     tags=["store", "private"],
     dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
     response_model=backend.server.v2.store.model.StoreSubmissionsResponse,
@@ -501,6 +514,7 @@ async def get_submissions(
 
 @router.post(
     "/submissions",
+    summary="Create store submission",
     tags=["store", "private"],
     dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
     response_model=backend.server.v2.store.model.StoreSubmission,
@@ -548,6 +562,7 @@ async def create_submission(
 
 @router.post(
     "/submissions/media",
+    summary="Upload submission media",
     tags=["store", "private"],
     dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
 )
@@ -575,6 +590,25 @@ async def upload_submission_media(
             user_id=user_id, file=file
         )
         return media_url
+    except backend.server.v2.store.exceptions.VirusDetectedError as e:
+        logger.warning(f"Virus detected in uploaded file: {e.threat_name}")
+        return fastapi.responses.JSONResponse(
+            status_code=400,
+            content={
+                "detail": f"File rejected due to virus detection: {e.threat_name}",
+                "error_type": "virus_detected",
+                "threat_name": e.threat_name,
+            },
+        )
+    except backend.server.v2.store.exceptions.VirusScanError as e:
+        logger.error(f"Virus scanning failed: {str(e)}")
+        return fastapi.responses.JSONResponse(
+            status_code=503,
+            content={
+                "detail": "Virus scanning service unavailable. Please try again later.",
+                "error_type": "virus_scan_failed",
+            },
+        )
     except Exception:
         logger.exception("Exception occurred whilst uploading submission media")
         return fastapi.responses.JSONResponse(
@@ -585,6 +619,7 @@ async def upload_submission_media(
 
 @router.post(
     "/submissions/generate_image",
+    summary="Generate submission image",
     tags=["store", "private"],
     dependencies=[fastapi.Depends(autogpt_libs.auth.middleware.auth_middleware)],
 )
@@ -646,6 +681,7 @@ async def generate_image(
 
 @router.get(
     "/download/agents/{store_listing_version_id}",
+    summary="Download agent file",
     tags=["store", "public"],
 )
 async def download_agent_file(

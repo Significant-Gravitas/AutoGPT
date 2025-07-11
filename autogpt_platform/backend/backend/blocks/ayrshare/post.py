@@ -257,7 +257,7 @@ class PostToFacebookBlock(Block):
             output_schema=PostToFacebookBlock.Output,
         )
 
-    def run(
+    async def run(
         self,
         input_data: "PostToFacebookBlock.Input",
         *,
@@ -450,7 +450,7 @@ class PostToXBlock(Block):
             output_schema=PostToXBlock.Output,
         )
 
-    def run(
+    async def run(
         self,
         input_data: "PostToXBlock.Input",
         *,
@@ -675,7 +675,7 @@ class PostToLinkedInBlock(Block):
             output_schema=PostToLinkedInBlock.Output,
         )
 
-    def run(
+    async def run(
         self,
         input_data: "PostToLinkedInBlock.Input",
         *,
@@ -871,7 +871,7 @@ class PostToInstagramBlock(Block):
             output_schema=PostToInstagramBlock.Output,
         )
 
-    def run(
+    async def run(
         self,
         input_data: "PostToInstagramBlock.Input",
         *,
@@ -1109,7 +1109,7 @@ class PostToYouTubeBlock(Block):
             output_schema=PostToYouTubeBlock.Output,
         )
 
-    def run(
+    async def run(
         self,
         input_data: "PostToYouTubeBlock.Input",
         *,
@@ -1305,7 +1305,7 @@ class PostToRedditBlock(Block):
             output_schema=PostToRedditBlock.Output,
         )
 
-    def run(
+    async def run(
         self, input_data: "PostToRedditBlock.Input", *, profile_key: SecretStr, **kwargs
     ) -> BlockOutput:
         if not profile_key:
@@ -1379,7 +1379,7 @@ class PostToTelegramBlock(Block):
             output_schema=PostToTelegramBlock.Output,
         )
 
-    def run(
+    async def run(
         self,
         input_data: "PostToTelegramBlock.Input",
         *,
@@ -1537,7 +1537,7 @@ class PostToGMBBlock(Block):
             output_schema=PostToGMBBlock.Output,
         )
 
-    def run(
+    async def run(
         self, input_data: "PostToGMBBlock.Input", *, profile_key: SecretStr, **kwargs
     ) -> BlockOutput:
         """Post to Google My Business with GMB-specific options."""
@@ -1707,7 +1707,7 @@ class PostToPinterestBlock(Block):
             output_schema=PostToPinterestBlock.Output,
         )
 
-    def run(
+    async def run(
         self,
         input_data: "PostToPinterestBlock.Input",
         *,
@@ -1925,7 +1925,7 @@ class PostToTikTokBlock(Block):
             output_schema=PostToTikTokBlock.Output,
         )
 
-    def run(
+    async def run(
         self, input_data: "PostToTikTokBlock.Input", *, profile_key: SecretStr, **kwargs
     ) -> BlockOutput:
         """Post to TikTok with TikTok-specific validation and options."""
@@ -2094,7 +2094,7 @@ class PostToThreadsBlock(Block):
             output_schema=PostToThreadsBlock.Output,
         )
 
-    def run(
+    async def run(
         self,
         input_data: "PostToThreadsBlock.Input",
         *,
@@ -2198,7 +2198,7 @@ class PostToBlueskyBlock(Block):
             output_schema=PostToBlueskyBlock.Output,
         )
 
-    def run(
+    async def run(
         self,
         input_data: "PostToBlueskyBlock.Input",
         *,
@@ -2302,7 +2302,7 @@ class PostToSnapchatBlock(Block):
             output_schema=PostToSnapchatBlock.Output,
         )
 
-    def run(
+    async def run(
         self,
         input_data: "PostToSnapchatBlock.Input",
         *,

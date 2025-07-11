@@ -2,7 +2,17 @@ import functools
 import logging
 import os
 import time
-from typing import Callable, ParamSpec, Tuple, TypeVar
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Coroutine,
+    Literal,
+    ParamSpec,
+    Tuple,
+    TypeVar,
+    overload,
+)
 
 from pydantic import BaseModel
 
@@ -32,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 def time_measured(func: Callable[P, T]) -> Callable[P, Tuple[TimingInfo, T]]:
     """
-    Decorator to measure the time taken by a function to execute.
+    Decorator to measure the time taken by a synchronous function to execute.
     """
 
     @functools.wraps(func)
@@ -50,18 +60,137 @@ def time_measured(func: Callable[P, T]) -> Callable[P, Tuple[TimingInfo, T]]:
     return wrapper
 
 
-def error_logged(func: Callable[P, T]) -> Callable[P, T | None]:
+def async_time_measured(
+    func: Callable[P, Awaitable[T]],
+) -> Callable[P, Awaitable[Tuple[TimingInfo, T]]]:
     """
-    Decorator to suppress and log any exceptions raised by a function.
+    Decorator to measure the time taken by an async function to execute.
     """
 
     @functools.wraps(func)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> T | None:
+    async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> Tuple[TimingInfo, T]:
+        start_wall_time, start_cpu_time = _start_measurement()
         try:
-            return func(*args, **kwargs)
-        except Exception as e:
-            logger.exception(
-                f"Error when calling function {func.__name__} with arguments {args} {kwargs}: {e}"
+            result = await func(*args, **kwargs)
+        finally:
+            wall_duration, cpu_duration = _end_measurement(
+                start_wall_time, start_cpu_time
             )
+            timing_info = TimingInfo(cpu_time=cpu_duration, wall_time=wall_duration)
+        return timing_info, result
 
-    return wrapper
+    return async_wrapper
+
+
+@overload
+def error_logged(
+    *, swallow: Literal[True]
+) -> Callable[[Callable[P, T]], Callable[P, T | None]]: ...
+
+
+@overload
+def error_logged(
+    *, swallow: Literal[False]
+) -> Callable[[Callable[P, T]], Callable[P, T]]: ...
+
+
+@overload
+def error_logged() -> Callable[[Callable[P, T]], Callable[P, T | None]]: ...
+
+
+def error_logged(
+    *, swallow: bool = True
+) -> (
+    Callable[[Callable[P, T]], Callable[P, T | None]]
+    | Callable[[Callable[P, T]], Callable[P, T]]
+):
+    """
+    Decorator to log any exceptions raised by a function, with optional suppression.
+
+    Args:
+        swallow: Whether to suppress the exception (True) or re-raise it (False). Default is True.
+
+    Usage:
+        @error_logged()  # Default behavior (swallow errors)
+        @error_logged(swallow=False)  # Log and re-raise errors
+    """
+
+    def decorator(f: Callable[P, T]) -> Callable[P, T | None]:
+        @functools.wraps(f)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> T | None:
+            try:
+                return f(*args, **kwargs)
+            except Exception as e:
+                logger.exception(
+                    f"Error when calling function {f.__name__} with arguments {args} {kwargs}: {e}"
+                )
+                if not swallow:
+                    raise
+                return None
+
+        return wrapper
+
+    return decorator
+
+
+@overload
+def async_error_logged(
+    *, swallow: Literal[True]
+) -> Callable[
+    [Callable[P, Coroutine[Any, Any, T]]], Callable[P, Coroutine[Any, Any, T | None]]
+]: ...
+
+
+@overload
+def async_error_logged(
+    *, swallow: Literal[False]
+) -> Callable[
+    [Callable[P, Coroutine[Any, Any, T]]], Callable[P, Coroutine[Any, Any, T]]
+]: ...
+
+
+@overload
+def async_error_logged() -> Callable[
+    [Callable[P, Coroutine[Any, Any, T]]],
+    Callable[P, Coroutine[Any, Any, T | None]],
+]: ...
+
+
+def async_error_logged(*, swallow: bool = True) -> (
+    Callable[
+        [Callable[P, Coroutine[Any, Any, T]]],
+        Callable[P, Coroutine[Any, Any, T | None]],
+    ]
+    | Callable[
+        [Callable[P, Coroutine[Any, Any, T]]], Callable[P, Coroutine[Any, Any, T]]
+    ]
+):
+    """
+    Decorator to log any exceptions raised by an async function, with optional suppression.
+
+    Args:
+        swallow: Whether to suppress the exception (True) or re-raise it (False). Default is True.
+
+    Usage:
+        @async_error_logged()  # Default behavior (swallow errors)
+        @async_error_logged(swallow=False)  # Log and re-raise errors
+    """
+
+    def decorator(
+        f: Callable[P, Coroutine[Any, Any, T]]
+    ) -> Callable[P, Coroutine[Any, Any, T | None]]:
+        @functools.wraps(f)
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T | None:
+            try:
+                return await f(*args, **kwargs)
+            except Exception as e:
+                logger.exception(
+                    f"Error when calling async function {f.__name__} with arguments {args} {kwargs}: {e}"
+                )
+                if not swallow:
+                    raise
+                return None
+
+        return wrapper
+
+    return decorator

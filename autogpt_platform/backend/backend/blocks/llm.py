@@ -3,14 +3,13 @@ import logging
 from abc import ABC
 from enum import Enum, EnumMeta
 from json import JSONDecodeError
-from types import MappingProxyType
 from typing import Any, Iterable, List, Literal, NamedTuple, Optional
 
 import anthropic
 import ollama
 import openai
 from anthropic.types import ToolParam
-from groq import Groq
+from groq import AsyncGroq
 from pydantic import BaseModel, SecretStr
 
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
@@ -24,7 +23,7 @@ from backend.data.model import (
 from backend.integrations.providers import ProviderName
 from backend.util import json
 from backend.util.logging import TruncatedLogger
-from backend.util.settings import BehaveAs, Settings
+from backend.util.prompt import compress_prompt, estimate_token_count
 from backend.util.text import TextFormatter
 
 logger = TruncatedLogger(logging.getLogger(__name__), "[LLM-Block]")
@@ -42,7 +41,7 @@ LLMProviderName = Literal[
 AICredentials = CredentialsMetaInput[LLMProviderName, Literal["api_key"]]
 
 TEST_CREDENTIALS = APIKeyCredentials(
-    id="ed55ac19-356e-4243-a6cb-bc599e9b716f",
+    id="769f6af7-820b-4d5d-9b7a-ab82bbc165f",
     provider="openai",
     api_key=SecretStr("mock-openai-api-key"),
     title="Mock OpenAI API key",
@@ -73,20 +72,7 @@ class ModelMetadata(NamedTuple):
 
 
 class LlmModelMeta(EnumMeta):
-    @property
-    def __members__(self) -> MappingProxyType:
-        if Settings().config.behave_as == BehaveAs.LOCAL:
-            members = super().__members__
-            return MappingProxyType(members)
-        else:
-            removed_providers = ["ollama"]
-            existing_members = super().__members__
-            members = {
-                name: member
-                for name, member in existing_members.items()
-                if LlmModel[name].provider not in removed_providers
-            }
-            return MappingProxyType(members)
+    pass
 
 
 class LlmModel(str, Enum, metaclass=LlmModelMeta):
@@ -141,6 +127,9 @@ class LlmModel(str, Enum, metaclass=LlmModelMeta):
     PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE = (
         "perplexity/llama-3.1-sonar-large-128k-online"
     )
+    PERPLEXITY_SONAR = "perplexity/sonar"
+    PERPLEXITY_SONAR_PRO = "perplexity/sonar-pro"
+    PERPLEXITY_SONAR_DEEP_RESEARCH = "perplexity/sonar-deep-research"
     QWEN_QWQ_32B_PREVIEW = "qwen/qwq-32b-preview"
     NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B = "nousresearch/hermes-3-llama-3.1-405b"
     NOUSRESEARCH_HERMES_3_LLAMA_3_1_70B = "nousresearch/hermes-3-llama-3.1-70b"
@@ -243,6 +232,13 @@ MODEL_METADATA = {
     LlmModel.PERPLEXITY_LLAMA_3_1_SONAR_LARGE_128K_ONLINE: ModelMetadata(
         "open_router", 127072, 127072
     ),
+    LlmModel.PERPLEXITY_SONAR: ModelMetadata("open_router", 127000, 127000),
+    LlmModel.PERPLEXITY_SONAR_PRO: ModelMetadata("open_router", 200000, 8000),
+    LlmModel.PERPLEXITY_SONAR_DEEP_RESEARCH: ModelMetadata(
+        "open_router",
+        128000,
+        128000,
+    ),
     LlmModel.QWEN_QWQ_32B_PREVIEW: ModelMetadata("open_router", 32768, 32768),
     LlmModel.NOUSRESEARCH_HERMES_3_LLAMA_3_1_405B: ModelMetadata(
         "open_router", 131000, 4096
@@ -287,6 +283,7 @@ class LLMResponse(BaseModel):
     tool_calls: Optional[List[ToolContentBlock]] | None
     prompt_tokens: int
     completion_tokens: int
+    reasoning: Optional[str] = None
 
 
 def convert_openai_tool_fmt_to_anthropic(
@@ -321,14 +318,47 @@ def convert_openai_tool_fmt_to_anthropic(
     return anthropic_tools
 
 
-def estimate_token_count(prompt_messages: list[dict]) -> int:
-    char_count = sum(len(str(msg.get("content", ""))) for msg in prompt_messages)
-    message_overhead = len(prompt_messages) * 4
-    estimated_tokens = (char_count // 4) + message_overhead
-    return int(estimated_tokens * 1.2)
+def extract_openai_reasoning(response) -> str | None:
+    """Extract reasoning from OpenAI-compatible response if available."""
+    """Note: This will likely not working since the reasoning is not present in another Response API"""
+    reasoning = None
+    choice = response.choices[0]
+    if hasattr(choice, "reasoning") and getattr(choice, "reasoning", None):
+        reasoning = str(getattr(choice, "reasoning"))
+    elif hasattr(response, "reasoning") and getattr(response, "reasoning", None):
+        reasoning = str(getattr(response, "reasoning"))
+    elif hasattr(choice.message, "reasoning") and getattr(
+        choice.message, "reasoning", None
+    ):
+        reasoning = str(getattr(choice.message, "reasoning"))
+    return reasoning
 
 
-def llm_call(
+def extract_openai_tool_calls(response) -> list[ToolContentBlock] | None:
+    """Extract tool calls from OpenAI-compatible response."""
+    if response.choices[0].message.tool_calls:
+        return [
+            ToolContentBlock(
+                id=tool.id,
+                type=tool.type,
+                function=ToolCall(
+                    name=tool.function.name,
+                    arguments=tool.function.arguments,
+                ),
+            )
+            for tool in response.choices[0].message.tool_calls
+        ]
+    return None
+
+
+def get_parallel_tool_calls_param(llm_model: LlmModel, parallel_tool_calls):
+    """Get the appropriate parallel_tool_calls parameter for OpenAI-compatible APIs."""
+    if llm_model.startswith("o") or parallel_tool_calls is None:
+        return openai.NOT_GIVEN
+    return parallel_tool_calls
+
+
+async def llm_call(
     credentials: APIKeyCredentials,
     llm_model: LlmModel,
     prompt: list[dict],
@@ -336,7 +366,8 @@ def llm_call(
     max_tokens: int | None,
     tools: list[dict] | None = None,
     ollama_host: str = "localhost:11434",
-    parallel_tool_calls: bool | None = None,
+    parallel_tool_calls=None,
+    compress_prompt_to_fit: bool = True,
 ) -> LLMResponse:
     """
     Make a call to a language model.
@@ -359,55 +390,45 @@ def llm_call(
             - completion_tokens: The number of tokens used in the completion.
     """
     provider = llm_model.metadata.provider
+    context_window = llm_model.context_window
+
+    if compress_prompt_to_fit:
+        prompt = compress_prompt(
+            messages=prompt,
+            target_tokens=llm_model.context_window // 2,
+            lossy_ok=True,
+        )
 
     # Calculate available tokens based on context window and input length
     estimated_input_tokens = estimate_token_count(prompt)
-    context_window = llm_model.context_window
-    model_max_output = llm_model.max_output_tokens or 4096
+    model_max_output = llm_model.max_output_tokens or int(2**15)
     user_max = max_tokens or model_max_output
     available_tokens = max(context_window - estimated_input_tokens, 0)
-    max_tokens = max(min(available_tokens, model_max_output, user_max), 0)
+    max_tokens = max(min(available_tokens, model_max_output, user_max), 1)
 
     if provider == "openai":
         tools_param = tools if tools else openai.NOT_GIVEN
-        oai_client = openai.OpenAI(api_key=credentials.api_key.get_secret_value())
+        oai_client = openai.AsyncOpenAI(api_key=credentials.api_key.get_secret_value())
         response_format = None
 
-        if llm_model in [LlmModel.O1_MINI, LlmModel.O1_PREVIEW]:
-            sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
-            usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
-            prompt = [
-                {"role": "user", "content": "\n".join(sys_messages)},
-                {"role": "user", "content": "\n".join(usr_messages)},
-            ]
-        elif json_format:
+        parallel_tool_calls = get_parallel_tool_calls_param(
+            llm_model, parallel_tool_calls
+        )
+
+        if json_format:
             response_format = {"type": "json_object"}
 
-        response = oai_client.chat.completions.create(
+        response = await oai_client.chat.completions.create(
             model=llm_model.value,
             messages=prompt,  # type: ignore
             response_format=response_format,  # type: ignore
             max_completion_tokens=max_tokens,
             tools=tools_param,  # type: ignore
-            parallel_tool_calls=(
-                openai.NOT_GIVEN if parallel_tool_calls is None else parallel_tool_calls
-            ),
+            parallel_tool_calls=parallel_tool_calls,
         )
 
-        if response.choices[0].message.tool_calls:
-            tool_calls = [
-                ToolContentBlock(
-                    id=tool.id,
-                    type=tool.type,
-                    function=ToolCall(
-                        name=tool.function.name,
-                        arguments=tool.function.arguments,
-                    ),
-                )
-                for tool in response.choices[0].message.tool_calls
-            ]
-        else:
-            tool_calls = None
+        tool_calls = extract_openai_tool_calls(response)
+        reasoning = extract_openai_reasoning(response)
 
         return LLMResponse(
             raw_response=response.choices[0].message,
@@ -416,6 +437,7 @@ def llm_call(
             tool_calls=tool_calls,
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
+            reasoning=reasoning,
         )
     elif provider == "anthropic":
 
@@ -439,9 +461,11 @@ def llm_call(
                     messages.append({"role": p["role"], "content": p["content"]})
                     last_role = p["role"]
 
-        client = anthropic.Anthropic(api_key=credentials.api_key.get_secret_value())
+        client = anthropic.AsyncAnthropic(
+            api_key=credentials.api_key.get_secret_value()
+        )
         try:
-            resp = client.messages.create(
+            resp = await client.messages.create(
                 model=llm_model.value,
                 system=sysprompt,
                 messages=messages,
@@ -475,6 +499,12 @@ def llm_call(
                     f"Tool use stop reason but no tool calls found in content. {resp}"
                 )
 
+            reasoning = None
+            for content_block in resp.content:
+                if hasattr(content_block, "type") and content_block.type == "thinking":
+                    reasoning = content_block.thinking
+                    break
+
             return LLMResponse(
                 raw_response=resp,
                 prompt=prompt,
@@ -486,6 +516,7 @@ def llm_call(
                 tool_calls=tool_calls,
                 prompt_tokens=resp.usage.input_tokens,
                 completion_tokens=resp.usage.output_tokens,
+                reasoning=reasoning,
             )
         except anthropic.APIError as e:
             error_message = f"Anthropic API error: {str(e)}"
@@ -495,9 +526,9 @@ def llm_call(
         if tools:
             raise ValueError("Groq does not support tools.")
 
-        client = Groq(api_key=credentials.api_key.get_secret_value())
+        client = AsyncGroq(api_key=credentials.api_key.get_secret_value())
         response_format = {"type": "json_object"} if json_format else None
-        response = client.chat.completions.create(
+        response = await client.chat.completions.create(
             model=llm_model.value,
             messages=prompt,  # type: ignore
             response_format=response_format,  # type: ignore
@@ -510,15 +541,16 @@ def llm_call(
             tool_calls=None,
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
+            reasoning=None,
         )
     elif provider == "ollama":
         if tools:
             raise ValueError("Ollama does not support tools.")
 
-        client = ollama.Client(host=ollama_host)
+        client = ollama.AsyncClient(host=ollama_host)
         sys_messages = [p["content"] for p in prompt if p["role"] == "system"]
         usr_messages = [p["content"] for p in prompt if p["role"] != "system"]
-        response = client.generate(
+        response = await client.generate(
             model=llm_model.value,
             prompt=f"{sys_messages}\n\n{usr_messages}",
             stream=False,
@@ -531,15 +563,20 @@ def llm_call(
             tool_calls=None,
             prompt_tokens=response.get("prompt_eval_count") or 0,
             completion_tokens=response.get("eval_count") or 0,
+            reasoning=None,
         )
     elif provider == "open_router":
         tools_param = tools if tools else openai.NOT_GIVEN
-        client = openai.OpenAI(
+        client = openai.AsyncOpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=credentials.api_key.get_secret_value(),
         )
 
-        response = client.chat.completions.create(
+        parallel_tool_calls_param = get_parallel_tool_calls_param(
+            llm_model, parallel_tool_calls
+        )
+
+        response = await client.chat.completions.create(
             extra_headers={
                 "HTTP-Referer": "https://agpt.co",
                 "X-Title": "AutoGPT",
@@ -548,6 +585,7 @@ def llm_call(
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
+            parallel_tool_calls=parallel_tool_calls_param,
         )
 
         # If there's no response, raise an error
@@ -557,19 +595,8 @@ def llm_call(
             else:
                 raise ValueError("No response from OpenRouter.")
 
-        if response.choices[0].message.tool_calls:
-            tool_calls = [
-                ToolContentBlock(
-                    id=tool.id,
-                    type=tool.type,
-                    function=ToolCall(
-                        name=tool.function.name, arguments=tool.function.arguments
-                    ),
-                )
-                for tool in response.choices[0].message.tool_calls
-            ]
-        else:
-            tool_calls = None
+        tool_calls = extract_openai_tool_calls(response)
+        reasoning = extract_openai_reasoning(response)
 
         return LLMResponse(
             raw_response=response.choices[0].message,
@@ -578,15 +605,20 @@ def llm_call(
             tool_calls=tool_calls,
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
+            reasoning=reasoning,
         )
     elif provider == "llama_api":
         tools_param = tools if tools else openai.NOT_GIVEN
-        client = openai.OpenAI(
+        client = openai.AsyncOpenAI(
             base_url="https://api.llama.com/compat/v1/",
             api_key=credentials.api_key.get_secret_value(),
         )
 
-        response = client.chat.completions.create(
+        parallel_tool_calls_param = get_parallel_tool_calls_param(
+            llm_model, parallel_tool_calls
+        )
+
+        response = await client.chat.completions.create(
             extra_headers={
                 "HTTP-Referer": "https://agpt.co",
                 "X-Title": "AutoGPT",
@@ -595,9 +627,7 @@ def llm_call(
             messages=prompt,  # type: ignore
             max_tokens=max_tokens,
             tools=tools_param,  # type: ignore
-            parallel_tool_calls=(
-                openai.NOT_GIVEN if parallel_tool_calls is None else parallel_tool_calls
-            ),
+            parallel_tool_calls=parallel_tool_calls_param,
         )
 
         # If there's no response, raise an error
@@ -607,19 +637,8 @@ def llm_call(
             else:
                 raise ValueError("No response from Llama API.")
 
-        if response.choices[0].message.tool_calls:
-            tool_calls = [
-                ToolContentBlock(
-                    id=tool.id,
-                    type=tool.type,
-                    function=ToolCall(
-                        name=tool.function.name, arguments=tool.function.arguments
-                    ),
-                )
-                for tool in response.choices[0].message.tool_calls
-            ]
-        else:
-            tool_calls = None
+        tool_calls = extract_openai_tool_calls(response)
+        reasoning = extract_openai_reasoning(response)
 
         return LLMResponse(
             raw_response=response.choices[0].message,
@@ -628,6 +647,7 @@ def llm_call(
             tool_calls=tool_calls,
             prompt_tokens=response.usage.prompt_tokens if response.usage else 0,
             completion_tokens=response.usage.completion_tokens if response.usage else 0,
+            reasoning=reasoning,
         )
     elif provider == "aiml_api":
         client = openai.OpenAI(
@@ -651,6 +671,7 @@ def llm_call(
             completion_tokens=(
                 completion.usage.completion_tokens if completion.usage else 0
             ),
+            reasoning=None,
         )
     else:
         raise ValueError(f"Unsupported LLM provider: {provider}")
@@ -675,6 +696,11 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         expected_format: dict[str, str] = SchemaField(
             description="Expected format of the response. If provided, the response will be validated against this format. "
             "The keys should be the expected fields in the response, and the values should be the description of the field.",
+        )
+        list_result: bool = SchemaField(
+            title="List Result",
+            default=False,
+            description="Whether the response should be a list of objects in the expected format.",
         )
         model: LlmModel = SchemaField(
             title="LLM Model",
@@ -707,7 +733,11 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             default=None,
             description="The maximum number of tokens to generate in the chat completion.",
         )
-
+        compress_prompt_to_fit: bool = SchemaField(
+            advanced=True,
+            default=True,
+            description="Whether to compress the prompt to fit within the model's context window.",
+        )
         ollama_host: str = SchemaField(
             advanced=True,
             default="localhost:11434",
@@ -715,7 +745,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         )
 
     class Output(BlockSchema):
-        response: dict[str, Any] = SchemaField(
+        response: dict[str, Any] | list[dict[str, Any]] = SchemaField(
             description="The response object generated by the language model."
         )
         prompt: list = SchemaField(description="The prompt sent to the language model.")
@@ -755,16 +785,18 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                     tool_calls=None,
                     prompt_tokens=0,
                     completion_tokens=0,
+                    reasoning=None,
                 )
             },
         )
 
-    def llm_call(
+    async def llm_call(
         self,
         credentials: APIKeyCredentials,
         llm_model: LlmModel,
         prompt: list[dict],
         json_format: bool,
+        compress_prompt_to_fit: bool,
         max_tokens: int | None,
         tools: list[dict] | None = None,
         ollama_host: str = "localhost:11434",
@@ -774,7 +806,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         so that it can be mocked withing the block testing framework.
         """
         self.prompt = prompt
-        return llm_call(
+        return await llm_call(
             credentials=credentials,
             llm_model=llm_model,
             prompt=prompt,
@@ -782,9 +814,10 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             max_tokens=max_tokens,
             tools=tools,
             ollama_host=ollama_host,
+            compress_prompt_to_fit=compress_prompt_to_fit,
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         logger.debug(f"Calling LLM with input data: {input_data}")
@@ -806,13 +839,22 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
             expected_format = [
                 f'"{k}": "{v}"' for k, v in input_data.expected_format.items()
             ]
-            format_prompt = ",\n  ".join(expected_format)
+            if input_data.list_result:
+                format_prompt = (
+                    f'"results": [\n  {{\n  {", ".join(expected_format)}\n  }}\n]'
+                )
+            else:
+                format_prompt = "\n  ".join(expected_format)
+
             sys_prompt = trim_prompt(
                 f"""
                   |Reply strictly only in the following JSON format:
                   |{{
                   |  {format_prompt}
                   |}}
+                  |
+                  |Ensure the response is valid JSON. Do not include any additional text outside of the JSON.
+                  |If you cannot provide all the keys, provide an empty string for the values you cannot answer.
                 """
             )
             prompt.append({"role": "system", "content": sys_prompt})
@@ -820,28 +862,28 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
         if input_data.prompt:
             prompt.append({"role": "user", "content": input_data.prompt})
 
-        def parse_response(resp: str) -> tuple[dict[str, Any], str | None]:
+        def validate_response(parsed: object) -> str | None:
             try:
-                parsed = json.loads(resp)
                 if not isinstance(parsed, dict):
-                    return {}, f"Expected a dictionary, but got {type(parsed)}"
+                    return f"Expected a dictionary, but got {type(parsed)}"
                 miss_keys = set(input_data.expected_format.keys()) - set(parsed.keys())
                 if miss_keys:
-                    return parsed, f"Missing keys: {miss_keys}"
-                return parsed, None
+                    return f"Missing keys: {miss_keys}"
+                return None
             except JSONDecodeError as e:
-                return {}, f"JSON decode error: {e}"
+                return f"JSON decode error: {e}"
 
-        logger.info(f"LLM request: {prompt}")
+        logger.debug(f"LLM request: {prompt}")
         retry_prompt = ""
         llm_model = input_data.model
 
         for retry_count in range(input_data.retry):
             try:
-                llm_response = self.llm_call(
+                llm_response = await self.llm_call(
                     credentials=credentials,
                     llm_model=llm_model,
                     prompt=prompt,
+                    compress_prompt_to_fit=input_data.compress_prompt_to_fit,
                     json_format=bool(input_data.expected_format),
                     ollama_host=input_data.ollama_host,
                     max_tokens=input_data.max_tokens,
@@ -853,21 +895,32 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                         output_token_count=llm_response.completion_tokens,
                     )
                 )
-                logger.info(f"LLM attempt-{retry_count} response: {response_text}")
+                logger.debug(f"LLM attempt-{retry_count} response: {response_text}")
 
                 if input_data.expected_format:
-                    parsed_dict, parsed_error = parse_response(response_text)
-                    if not parsed_error:
-                        yield "response", {
-                            k: (
-                                json.loads(v)
-                                if isinstance(v, str)
-                                and v.startswith("[")
-                                and v.endswith("]")
-                                else (", ".join(v) if isinstance(v, list) else v)
+
+                    response_obj = json.loads(response_text)
+
+                    if input_data.list_result and isinstance(response_obj, dict):
+                        if "results" in response_obj:
+                            response_obj = response_obj.get("results", [])
+                        elif len(response_obj) == 1:
+                            response_obj = list(response_obj.values())
+
+                    response_error = "\n".join(
+                        [
+                            validation_error
+                            for response_item in (
+                                response_obj
+                                if isinstance(response_obj, list)
+                                else [response_obj]
                             )
-                            for k, v in parsed_dict.items()
-                        }
+                            if (validation_error := validate_response(response_item))
+                        ]
+                    )
+
+                    if not response_error:
+                        yield "response", response_obj
                         yield "prompt", self.prompt
                         return
                 else:
@@ -884,7 +937,7 @@ class AIStructuredResponseGeneratorBlock(AIBlockBase):
                   |
                   |And this is the error:
                   |--
-                  |{parsed_error}
+                  |{response_error}
                   |--
                 """
                 )
@@ -978,17 +1031,17 @@ class AITextGeneratorBlock(AIBlockBase):
             test_mock={"llm_call": lambda *args, **kwargs: "Response text"},
         )
 
-    def llm_call(
+    async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
         credentials: APIKeyCredentials,
-    ) -> str:
+    ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
-        response = block.run_once(input_data, "response", credentials=credentials)
+        response = await block.run_once(input_data, "response", credentials=credentials)
         self.merge_llm_stats(block)
         return response["response"]
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         object_input_data = AIStructuredResponseGeneratorBlock.Input(
@@ -998,7 +1051,8 @@ class AITextGeneratorBlock(AIBlockBase):
             },
             expected_format={},
         )
-        yield "response", self.llm_call(object_input_data, credentials)
+        response = await self.llm_call(object_input_data, credentials)
+        yield "response", response
         yield "prompt", self.prompt
 
 
@@ -1080,23 +1134,27 @@ class AITextSummarizerBlock(AIBlockBase):
             },
         )
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        for output_name, output_data in self._run(input_data, credentials):
+        async for output_name, output_data in self._run(input_data, credentials):
             yield output_name, output_data
 
-    def _run(self, input_data: Input, credentials: APIKeyCredentials) -> BlockOutput:
+    async def _run(
+        self, input_data: Input, credentials: APIKeyCredentials
+    ) -> BlockOutput:
         chunks = self._split_text(
             input_data.text, input_data.max_tokens, input_data.chunk_overlap
         )
         summaries = []
 
         for chunk in chunks:
-            chunk_summary = self._summarize_chunk(chunk, input_data, credentials)
+            chunk_summary = await self._summarize_chunk(chunk, input_data, credentials)
             summaries.append(chunk_summary)
 
-        final_summary = self._combine_summaries(summaries, input_data, credentials)
+        final_summary = await self._combine_summaries(
+            summaries, input_data, credentials
+        )
         yield "summary", final_summary
         yield "prompt", self.prompt
 
@@ -1112,22 +1170,22 @@ class AITextSummarizerBlock(AIBlockBase):
 
         return chunks
 
-    def llm_call(
+    async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
         credentials: APIKeyCredentials,
     ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
-        response = block.run_once(input_data, "response", credentials=credentials)
+        response = await block.run_once(input_data, "response", credentials=credentials)
         self.merge_llm_stats(block)
         return response
 
-    def _summarize_chunk(
+    async def _summarize_chunk(
         self, chunk: str, input_data: Input, credentials: APIKeyCredentials
     ) -> str:
         prompt = f"Summarize the following text in a {input_data.style} form. Focus your summary on the topic of `{input_data.focus}` if present, otherwise just provide a general summary:\n\n```{chunk}```"
 
-        llm_response = self.llm_call(
+        llm_response = await self.llm_call(
             AIStructuredResponseGeneratorBlock.Input(
                 prompt=prompt,
                 credentials=input_data.credentials,
@@ -1139,7 +1197,7 @@ class AITextSummarizerBlock(AIBlockBase):
 
         return llm_response["summary"]
 
-    def _combine_summaries(
+    async def _combine_summaries(
         self, summaries: list[str], input_data: Input, credentials: APIKeyCredentials
     ) -> str:
         combined_text = "\n\n".join(summaries)
@@ -1147,7 +1205,7 @@ class AITextSummarizerBlock(AIBlockBase):
         if len(combined_text.split()) <= input_data.max_tokens:
             prompt = f"Provide a final summary of the following section summaries in a {input_data.style} form, focus your summary on the topic of `{input_data.focus}` if present:\n\n ```{combined_text}```\n\n Just respond with the final_summary in the format specified."
 
-            llm_response = self.llm_call(
+            llm_response = await self.llm_call(
                 AIStructuredResponseGeneratorBlock.Input(
                     prompt=prompt,
                     credentials=input_data.credentials,
@@ -1162,7 +1220,8 @@ class AITextSummarizerBlock(AIBlockBase):
             return llm_response["final_summary"]
         else:
             # If combined summaries are still too long, recursively summarize
-            return self._run(
+            block = AITextSummarizerBlock()
+            return await block.run_once(
                 AITextSummarizerBlock.Input(
                     text=combined_text,
                     credentials=input_data.credentials,
@@ -1170,10 +1229,9 @@ class AITextSummarizerBlock(AIBlockBase):
                     max_tokens=input_data.max_tokens,
                     chunk_overlap=input_data.chunk_overlap,
                 ),
+                "summary",
                 credentials=credentials,
-            ).send(None)[
-                1
-            ]  # Get the first yielded value
+            )
 
 
 class AIConversationBlock(AIBlockBase):
@@ -1244,20 +1302,20 @@ class AIConversationBlock(AIBlockBase):
             },
         )
 
-    def llm_call(
+    async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
         credentials: APIKeyCredentials,
-    ) -> str:
+    ) -> dict:
         block = AIStructuredResponseGeneratorBlock()
-        response = block.run_once(input_data, "response", credentials=credentials)
+        response = await block.run_once(input_data, "response", credentials=credentials)
         self.merge_llm_stats(block)
-        return response["response"]
+        return response
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        response = self.llm_call(
+        response = await self.llm_call(
             AIStructuredResponseGeneratorBlock.Input(
                 prompt=input_data.prompt,
                 credentials=input_data.credentials,
@@ -1269,7 +1327,6 @@ class AIConversationBlock(AIBlockBase):
             ),
             credentials=credentials,
         )
-
         yield "response", response
         yield "prompt", self.prompt
 
@@ -1363,13 +1420,15 @@ class AIListGeneratorBlock(AIBlockBase):
             },
         )
 
-    def llm_call(
+    async def llm_call(
         self,
         input_data: AIStructuredResponseGeneratorBlock.Input,
         credentials: APIKeyCredentials,
     ) -> dict[str, str]:
         llm_block = AIStructuredResponseGeneratorBlock()
-        response = llm_block.run_once(input_data, "response", credentials=credentials)
+        response = await llm_block.run_once(
+            input_data, "response", credentials=credentials
+        )
         self.merge_llm_stats(llm_block)
         return response
 
@@ -1392,7 +1451,7 @@ class AIListGeneratorBlock(AIBlockBase):
             logger.error(f"Failed to convert string to list: {e}")
             raise ValueError("Invalid list format. Could not convert to list.")
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
         logger.debug(f"Starting AIListGeneratorBlock.run with input data: {input_data}")
@@ -1458,7 +1517,7 @@ class AIListGeneratorBlock(AIBlockBase):
         for attempt in range(input_data.max_retries):
             try:
                 logger.debug("Calling LLM")
-                llm_response = self.llm_call(
+                llm_response = await self.llm_call(
                     AIStructuredResponseGeneratorBlock.Input(
                         sys_prompt=sys_prompt,
                         prompt=prompt,

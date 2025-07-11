@@ -38,7 +38,7 @@ class BlockInstallationBlock(Block):
             disabled=True,
         )
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         code = input_data.code
 
         if search := re.search(r"class (\w+)\(Block\):", code):
@@ -64,7 +64,7 @@ class BlockInstallationBlock(Block):
 
             from backend.util.test import execute_block_test
 
-            execute_block_test(block)
+            await execute_block_test(block)
             yield "success", "Block installed successfully."
         except Exception as e:
             os.remove(file_path)
