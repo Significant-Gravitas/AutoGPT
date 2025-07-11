@@ -90,11 +90,12 @@ class ReplicateModelBlock(Block):
 
     @staticmethod
     def mock_run_model(model_ref, model_inputs, api_key):
+        # api_key is now a SecretStr, but we don't need to extract it for mocking
         return "Mock response from Replicate model", "mock_prediction_id"
 
     def __init__(self):
         super().__init__(
-            id="a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+            id="c40d75a2-d0ea-44c9-a4f6-634bb3bdab1a",
             description="Run Replicate models synchronously",
             categories={BlockCategory.AI},
             input_schema=ReplicateModelBlock.Input,
@@ -117,8 +118,6 @@ class ReplicateModelBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        if isinstance(input_data, dict):
-            input_data = self.input_schema(**input_data)
         """
         Execute the Replicate model with the provided inputs.
 
@@ -136,11 +135,8 @@ class ReplicateModelBlock(Block):
                 model_ref = input_data.model_name
             logger.info(f"Running Replicate model: {model_ref}")
             logger.info(f"Model inputs: {input_data.model_inputs}")
-            api_key = credentials.api_key
-            if isinstance(api_key, SecretStr):
-                api_key = api_key.get_secret_value()
             result, prediction_id = await self.run_model(
-                model_ref, input_data.model_inputs, api_key
+                model_ref, input_data.model_inputs, credentials.api_key
             )
             yield "result", result
             yield "prediction_id", prediction_id
@@ -154,7 +150,7 @@ class ReplicateModelBlock(Block):
             raise RuntimeError(error_msg)
 
     async def run_model(
-        self, model_ref: str, model_inputs: Dict[str, Any], api_key: str
+        self, model_ref: str, model_inputs: Dict[str, Any], api_key: SecretStr
     ) -> tuple[Any, str]:
         """
         Run the Replicate model. This method can be mocked for testing.
@@ -162,12 +158,13 @@ class ReplicateModelBlock(Block):
         Args:
             model_ref: The model reference (e.g., "owner/model-name:version")
             model_inputs: The inputs to pass to the model
-            api_key: The Replicate API key
+            api_key: The Replicate API key as SecretStr
 
         Returns:
             Tuple of (result, prediction_id)
         """
-        client = ReplicateClient(api_token=api_key)
+        api_key_str = api_key.get_secret_value()
+        client = ReplicateClient(api_token=api_key_str)
         prediction = client.run(model_ref, input=model_inputs)
         result = prediction
         if hasattr(prediction, "__iter__") and not isinstance(
@@ -232,11 +229,12 @@ class ReplicateAsyncModelBlock(Block):
 
     @staticmethod
     def mock_run_async_model(model_ref, model_inputs, api_key, max_wait_time):
+        # api_key is now a SecretStr, but we don't need to extract it for mocking
         return "Mock response from Replicate model", "mock_prediction_id", 1.5
 
     def __init__(self):
         super().__init__(
-            id="b2c3d4e5-f6g7-8901-bcde-f23456789012",
+            id="04e6de42-99ee-4fec-972a-b56bf871608c",
             description="Run Replicate models asynchronously with polling",
             categories={BlockCategory.AI},
             input_schema=ReplicateAsyncModelBlock.Input,
@@ -261,8 +259,6 @@ class ReplicateAsyncModelBlock(Block):
     async def run(
         self, input_data: Input, *, credentials: APIKeyCredentials, **kwargs
     ) -> BlockOutput:
-        if isinstance(input_data, dict):
-            input_data = self.input_schema(**input_data)
         """
         Execute the Replicate model asynchronously with the provided inputs.
 
@@ -280,11 +276,11 @@ class ReplicateAsyncModelBlock(Block):
                 model_ref = input_data.model_name
             logger.info(f"Running Replicate model asynchronously: {model_ref}")
             logger.info(f"Model inputs: {input_data.model_inputs}")
-            api_key = credentials.api_key
-            if isinstance(api_key, SecretStr):
-                api_key = api_key.get_secret_value()
             result, prediction_id, execution_time = await self.run_async_model(
-                model_ref, input_data.model_inputs, api_key, input_data.max_wait_time
+                model_ref,
+                input_data.model_inputs,
+                credentials.api_key,
+                input_data.max_wait_time,
             )
             yield "result", result
             yield "prediction_id", prediction_id
@@ -298,91 +294,129 @@ class ReplicateAsyncModelBlock(Block):
             logger.error(error_msg)
             raise RuntimeError(error_msg)
 
+    def process_replicate_result(self, result):
+        """
+        Process Replicate model results, handling various output types safely.
+
+        Args:
+            result: The result from Replicate model (could be various types)
+
+        Returns:
+            Processed result with URLs extracted as strings
+        """
+        # Handle AsyncIterator or Generator
+        if hasattr(result, "__aiter__") or hasattr(result, "__iter__"):
+            # Check if it's an async iterator
+            if hasattr(result, "__aiter__"):
+                # For async iterators, we need to consume them in an async context
+                # This should be handled by the caller in an async function
+                raise RuntimeError(
+                    "AsyncIterator results need to be consumed in async context"
+                )
+
+            # Handle regular iterators/lists
+            try:
+                result_list = (
+                    list(result) if not isinstance(result, (list, tuple)) else result
+                )
+                processed_items = []
+
+                for item in result_list:
+                    processed_items.append(self.extract_url_or_convert(item))
+
+                return processed_items
+            except Exception:
+                # If we can't iterate, treat as single item
+                return self.extract_url_or_convert(result)
+
+        # Handle single item
+        return self.extract_url_or_convert(result)
+
+    def extract_url_or_convert(self, item):
+        """
+        Extract URL from Replicate output objects or convert to string.
+
+        Args:
+            item: Individual result item from Replicate
+
+        Returns:
+            URL string if available, otherwise string representation
+        """
+        # Check for URL attribute (common in FileOutput objects)
+        if hasattr(item, "url") and item.url is not None:
+            return str(item.url)
+
+        # Check for other common attributes
+        if hasattr(item, "read"):
+            # File-like object, might need special handling
+            return str(item)
+
+        # For primitive types or unknown objects
+        return str(item)
+
+    async def consume_async_iterator(self, async_result):
+        """
+        Safely consume an async iterator from Replicate.
+
+        Args:
+            async_result: AsyncIterator from Replicate model
+
+        Returns:
+            List of processed results
+        """
+        results = []
+        try:
+            async for item in async_result:
+                results.append(self.extract_url_or_convert(item))
+        except Exception:
+            # If async iteration fails, try to convert directly
+            results.append(self.extract_url_or_convert(async_result))
+
+        return results
+
     async def run_async_model(
         self,
         model_ref: str,
         model_inputs: Dict[str, Any],
-        api_key: str,
+        api_key: SecretStr,
         max_wait_time: int,
     ) -> tuple[Any, str, float]:
         """
-        Run the Replicate model asynchronously with polling. This method can be mocked for testing.
-
-        Args:
-            model_ref: The model reference (e.g., "owner/model-name:version")
-            model_inputs: The inputs to pass to the model
-            api_key: The Replicate API key
-            max_wait_time: Maximum time to wait for completion (seconds)
-
-        Returns:
-            Tuple of (result, prediction_id, execution_time)
+        Run the Replicate model asynchronously with proper result handling.
         """
         import asyncio
         import time
 
         start_time = time.time()
-        client = ReplicateClient(api_token=api_key)
+        api_key_str = api_key.get_secret_value()
+        client = ReplicateClient(api_token=api_key_str)
 
-        # Start the prediction
-        prediction = client.run(model_ref, input=model_inputs)
-        prediction_id = getattr(prediction, "id", "unknown")
+        try:
+            # Use asyncio.wait_for to implement timeout
+            raw_result = await asyncio.wait_for(
+                client.async_run(model_ref, input=model_inputs), timeout=max_wait_time
+            )
 
-        logger.info(f"Started prediction {prediction_id} for model {model_ref}")
+            # Process the result based on its type
+            if hasattr(raw_result, "__aiter__"):
+                # Handle async iterator
+                result = await self.consume_async_iterator(raw_result)
+            else:
+                # Handle regular result
+                result = self.process_replicate_result(raw_result)
 
-        # Poll for completion
-        poll_interval = 2  # Poll every 2 seconds
-        elapsed_time = 0
+            execution_time = time.time() - start_time
 
-        while elapsed_time < max_wait_time:
-            # Check prediction status
-            try:
-                # Get the current status of the prediction
-                status = getattr(prediction, "status", "unknown")
+            logger.info(f"Model completed in {execution_time:.2f} seconds")
+            return result, "async_result", execution_time
 
-                if status == "succeeded":
-                    logger.info(f"Prediction {prediction_id} completed successfully")
-                    break
-                elif status == "failed":
-                    error_msg = getattr(prediction, "error", "Unknown error")
-                    raise RuntimeError(f"Prediction failed: {error_msg}")
-                elif status == "canceled":
-                    raise RuntimeError("Prediction was canceled")
-                elif status in ["starting", "processing"]:
-                    logger.info(f"Prediction {prediction_id} status: {status}")
-                    # Wait before next poll
-                    await asyncio.sleep(poll_interval)
-                    elapsed_time += poll_interval
-                else:
-                    # Unknown status, wait and continue
-                    logger.warning(f"Unknown prediction status: {status}")
-                    await asyncio.sleep(poll_interval)
-                    elapsed_time += poll_interval
-
-            except Exception as e:
-                logger.error(f"Error polling prediction {prediction_id}: {e}")
-                raise RuntimeError(f"Error during prediction polling: {e}")
-
-        # Check if we timed out
-        if elapsed_time >= max_wait_time:
-            raise RuntimeError(f"Prediction timed out after {max_wait_time} seconds")
-
-        # Get the final result
-        result = prediction
-        if hasattr(prediction, "__iter__") and not isinstance(
-            prediction, (str, bytes, dict)
-        ):
-            try:
-                result = list(prediction)
-            except Exception as e:
-                logger.warning(f"Could not convert generator to list: {e}")
-                result = prediction
-
-        execution_time = time.time() - start_time
-        logger.info(
-            f"Prediction {prediction_id} completed in {execution_time:.2f} seconds"
-        )
-
-        return result, prediction_id, execution_time
+        except asyncio.TimeoutError:
+            raise RuntimeError(
+                f"Model execution timed out after {max_wait_time} seconds"
+            )
+        except Exception as e:
+            logger.error(f"Error running async model: {e}")
+            raise RuntimeError(f"Error during model execution: {e}")
 
 
 # Mock classes for testing
