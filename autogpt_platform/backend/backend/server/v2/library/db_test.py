@@ -83,7 +83,6 @@ async def test_get_library_agents(mocker):
 
 
 @pytest.mark.asyncio(loop_scope="session")
-@pytest.mark.skip(reason="Test not implemented yet")
 async def test_add_agent_to_library(mocker):
     await connect()
 
