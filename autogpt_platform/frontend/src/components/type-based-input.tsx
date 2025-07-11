@@ -74,7 +74,7 @@ export const TypeBasedInput: FC<
       innerInputElement = (
         <Input
           type="number"
-          value={value}
+          value={value ?? ""}
           placeholder={placeholder || "Enter number"}
           onChange={(e) => onChange(Number(e.target.value))}
           {...props}
@@ -86,7 +86,7 @@ export const TypeBasedInput: FC<
       innerInputElement = (
         <Textarea
           className="rounded-xl px-3 py-2"
-          value={value}
+          value={value ?? ""}
           placeholder={placeholder || "Enter text"}
           onChange={(e) => onChange(e.target.value)}
           {...props}
@@ -131,7 +131,7 @@ export const TypeBasedInput: FC<
       innerInputElement = (
         <Input
           type="datetime-local"
-          value={value}
+          value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder || "Enter date and time"}
           {...props}
@@ -157,7 +157,10 @@ export const TypeBasedInput: FC<
         schema.enum.length > 0
       ) {
         innerInputElement = (
-          <Select value={value} onValueChange={(val: string) => onChange(val)}>
+          <Select
+            value={value ?? ""}
+            onValueChange={(val: string) => onChange(val)}
+          >
             <SelectTrigger
               className={cn(
                 inputClasses,
@@ -225,7 +228,7 @@ export const TypeBasedInput: FC<
       innerInputElement = (
         <Input
           type="text"
-          value={value}
+          value={value ?? ""}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder || "Enter text"}
           {...props}
