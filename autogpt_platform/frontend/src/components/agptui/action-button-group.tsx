@@ -24,6 +24,7 @@ export default function ActionButtonGroup({
             variant={action.variant ?? "outline"}
             disabled={action.disabled}
             onClick={action.callback}
+            {...action.extraProps}
           >
             {action.label}
           </Button>
@@ -36,6 +37,7 @@ export default function ActionButtonGroup({
                 "pointer-events-none border-zinc-400 text-zinc-400",
             )}
             href={action.href}
+            {...action.extraProps}
           >
             {action.label}
           </Link>

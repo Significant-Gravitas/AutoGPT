@@ -8,7 +8,7 @@
     "description": "A test graph",
     "forked_from_id": null,
     "forked_from_version": null,
-    "has_webhook_trigger": false,
+    "has_external_trigger": false,
     "id": "graph-123",
     "input_schema": {
       "properties": {},
@@ -16,9 +16,7 @@
       "type": "object"
     },
     "is_active": true,
-    "links": [],
     "name": "Test Graph",
-    "nodes": [],
     "output_schema": {
       "properties": {},
       "required": [],

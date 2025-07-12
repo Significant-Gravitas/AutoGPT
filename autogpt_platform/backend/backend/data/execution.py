@@ -372,6 +372,7 @@ async def get_graph_executions(
     created_time_lte: datetime | None = None,
     limit: int | None = None,
 ) -> list[GraphExecutionMeta]:
+    """⚠️ **Optional `user_id` check**: MUST USE check in user-facing endpoints."""
     where_filter: AgentGraphExecutionWhereInput = {
         "isDeleted": False,
     }
@@ -737,6 +738,7 @@ async def delete_graph_execution(
 
 
 async def get_node_execution(node_exec_id: str) -> NodeExecutionResult | None:
+    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     execution = await AgentNodeExecution.prisma().find_first(
         where={"id": node_exec_id},
         include=EXECUTION_RESULT_INCLUDE,
@@ -756,6 +758,7 @@ async def get_node_executions(
     created_time_lte: datetime | None = None,
     include_exec_data: bool = True,
 ) -> list[NodeExecutionResult]:
+    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     where_clause: AgentNodeExecutionWhereInput = {}
     if graph_exec_id:
         where_clause["agentGraphExecutionId"] = graph_exec_id
@@ -789,6 +792,7 @@ async def get_node_executions(
 async def get_latest_node_execution(
     node_id: str, graph_eid: str
 ) -> NodeExecutionResult | None:
+    """⚠️ No `user_id` check: DO NOT USE without check in user-facing endpoints."""
     execution = await AgentNodeExecution.prisma().find_first(
         where={
             "agentGraphExecutionId": graph_eid,
