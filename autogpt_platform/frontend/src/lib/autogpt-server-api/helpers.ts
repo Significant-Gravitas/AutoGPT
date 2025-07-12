@@ -302,5 +302,5 @@ export async function makeAuthenticatedFileUpload(
     throw new ApiError(errorMessage, response.status, responseData);
   }
 
-  return await response.json();
+  return await response.text();
 }

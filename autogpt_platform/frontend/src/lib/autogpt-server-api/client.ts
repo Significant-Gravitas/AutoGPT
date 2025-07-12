@@ -839,7 +839,7 @@ export default class BackendAPI {
       throw handleFetchError(response, errorData);
     }
 
-    return await response.json();
+    return await response.text();
   }
 
   private async _makeServerFileUpload(
