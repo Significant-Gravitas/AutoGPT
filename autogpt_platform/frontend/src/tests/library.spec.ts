@@ -420,13 +420,41 @@ test.describe("Library", () => {
       test.expect(uploadedAgent.description).toContain(testAgentDescription);
       test.expect(uploadedAgent.seeRunsUrl).toBeTruthy();
       test.expect(uploadedAgent.openInBuilderUrl).toBeTruthy();
+
+      // Click on the uploaded agent to navigate to its detail page
+      await libraryPage.clickAgent(uploadedAgent);
+      await page.waitForURL(`**/library/agents/${uploadedAgent.id}**`, {
+        timeout: 10000,
+      });
+
+      // Click the "Delete agent" button
+      await page.getByRole("button", { name: "Delete agent" }).click();
+
+      // Wait for the popover to appear and click the delete button
+      await page.waitForTimeout(500);
+      await page.getByRole("button", { name: "Delete" }).click();
+
+      // Wait for deletion to complete and navigate back to library
+      await page.waitForTimeout(1000);
+      await libraryUtils.navigateToLibrary();
+      await libraryPage.waitForAgentsToLoad();
+
+      // Verify the agent is no longer in the library
+      await libraryPage.searchAgents(testAgentName);
+      await libraryPage.waitForAgentsToLoad();
+
+      const deletedSearchResults = await libraryPage.getAgents();
+      const deletedAgent = deletedSearchResults.find((agent) =>
+        agent.name.includes(testAgentName),
+      );
+      test.expect(deletedAgent).toBeFalsy();
     }
 
     // Clear search to restore full view
     await libraryPage.clearSearch();
     await libraryPage.waitForAgentsToLoad();
 
-    console.log("Agent upload test completed successfully");
+    console.log("Agent upload and deletion test completed successfully");
   });
 
   test("Edge case : search edge cases and error handling behave correctly", async () => {
