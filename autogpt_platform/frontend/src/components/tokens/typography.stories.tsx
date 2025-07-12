@@ -169,8 +169,6 @@ export function AllVariants() {
           code={`<Text variant="small">Small</Text>
 <Text variant="small-medium">Small Medium</Text>`}
         />
-        <Text variant="subtle">Subtle</Text>
-        <StoryCode code={`<Text variant="subtle">Subtle</Text>`} />
       </div>
     </div>
   );

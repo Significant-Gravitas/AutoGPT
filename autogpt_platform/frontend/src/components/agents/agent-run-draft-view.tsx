@@ -4,45 +4,65 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CredentialsMetaInput,
   GraphExecutionID,
-  LibraryAgent,
+  GraphMeta,
   LibraryAgentPreset,
   LibraryAgentPresetID,
   LibraryAgentPresetUpdatable,
+  LibraryAgentTriggerInfo,
   Schedule,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 import ActionButtonGroup from "@/components/agptui/action-button-group";
 import type { ButtonAction } from "@/components/agptui/types";
-import { CronSchedulerDialog } from "@/components/cron-scheduler-dialog";
-import { CredentialsInput } from "@/components/integrations/credentials-input";
-import { useOnboarding } from "@/components/onboarding/onboarding-provider";
-import SchemaTooltip from "@/components/SchemaTooltip";
-import { TypeBasedInput } from "@/components/type-based-input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { IconCross, IconPlay, IconSave } from "@/components/ui/icons";
-import { Input } from "@/components/ui/input";
-import { useToast, useToastOnFail } from "@/components/ui/use-toast";
-import { isEmpty } from "lodash";
 import { CalendarClockIcon, Trash2Icon } from "lucide-react";
+import { CronSchedulerDialog } from "@/components/cron-scheduler-dialog";
+import { CredentialsInput } from "@/components/integrations/credentials-input";
+import { TypeBasedInput } from "@/components/type-based-input";
+import { useOnboarding } from "@/components/onboarding/onboarding-provider";
+import { cn, isEmpty } from "@/lib/utils";
+import SchemaTooltip from "@/components/SchemaTooltip";
+import { Input } from "@/components/ui/input";
+import {
+  useToast,
+  useToastOnFail,
+} from "@/components/molecules/Toast/use-toast";
 
 export default function AgentRunDraftView({
-  agent,
+  graph,
   agentPreset,
+  triggerSetupInfo,
+  doRun: _doRun,
   onRun,
   onCreatePreset,
   onUpdatePreset,
   doDeletePreset,
+  doCreateSchedule: _doCreateSchedule,
   onCreateSchedule,
   agentActions,
+  className,
 }: {
-  agent: LibraryAgent;
-  agentActions: ButtonAction[];
-  onRun: (runID: GraphExecutionID) => void;
-  onCreateSchedule: (schedule: Schedule) => void;
+  graph: GraphMeta;
+  triggerSetupInfo?: LibraryAgentTriggerInfo;
+  agentActions?: ButtonAction[];
+  doRun?: (
+    inputs: Record<string, any>,
+    credentialsInputs: Record<string, CredentialsMetaInput>,
+  ) => Promise<void>;
+  onRun?: (runID: GraphExecutionID) => void;
+  doCreateSchedule?: (
+    cronExpression: string,
+    scheduleName: string,
+    inputs: Record<string, any>,
+    credentialsInputs: Record<string, CredentialsMetaInput>,
+  ) => Promise<void>;
+  onCreateSchedule?: (schedule: Schedule) => void;
+  className?: string;
 } & (
   | {
-      onCreatePreset: (preset: LibraryAgentPreset) => void;
+      onCreatePreset?: (preset: LibraryAgentPreset) => void;
       agentPreset?: never;
       onUpdatePreset?: never;
       doDeletePreset?: never;
@@ -81,36 +101,26 @@ export default function AgentRunDraftView({
   }, [agentPreset]);
 
   const agentInputSchema = useMemo(
-    () =>
-      agent.has_external_trigger
-        ? agent.trigger_setup_info.config_schema
-        : agent.input_schema,
-    [agent],
+    () => triggerSetupInfo?.config_schema ?? graph.input_schema,
+    [graph, triggerSetupInfo],
   );
   const agentInputFields = useMemo(
     () =>
       Object.fromEntries(
-        Object.entries(agentInputSchema?.properties || {}).filter(
+        Object.entries(agentInputSchema.properties).filter(
           ([_, subSchema]) => !subSchema.hidden,
         ),
       ),
     [agentInputSchema],
   );
   const agentCredentialsInputFields = useMemo(
-    () => agent.credentials_input_schema?.properties || {},
-    [agent],
+    () => graph.credentials_input_schema.properties,
+    [graph],
   );
 
   const [allRequiredInputsAreSet, missingInputs] = useMemo(() => {
     const nonEmptyInputs = new Set(
-      Object.keys(inputValues).filter((k) => {
-        const value = inputValues[k];
-        return (
-          value !== undefined &&
-          value !== "" &&
-          (typeof value !== "object" || !isEmpty(value))
-        );
-      }),
+      Object.keys(inputValues).filter((k) => !isEmpty(inputValues[k])),
     );
     const requiredInputs = new Set(
       agentInputSchema.required as string[] | undefined,
@@ -132,7 +142,7 @@ export default function AgentRunDraftView({
     (needPresetName: boolean = true) => {
       const allMissingFields = (
         needPresetName && !presetName
-          ? [agent.has_external_trigger ? "trigger_name" : "preset_name"]
+          ? [graph.has_external_trigger ? "trigger_name" : "preset_name"]
           : []
       )
         .concat(missingInputs)
@@ -145,29 +155,29 @@ export default function AgentRunDraftView({
     [missingInputs, missingCredentials],
   );
 
-  const doRun = useCallback(() => {
+  const doRun = useCallback(async () => {
     // Manually running webhook-triggered agents is not supported
-    if (agent.has_external_trigger) return;
+    if (graph.has_external_trigger) return;
 
     if (!agentPreset || changedPresetAttributes.size > 0) {
       if (!allRequiredInputsAreSet || !allCredentialsAreSet) {
         notifyMissingInputs(false);
         return;
       }
+      if (_doRun) {
+        await _doRun(inputValues, inputCredentials);
+        return;
+      }
       // TODO: on executing preset with changes, ask for confirmation and offer save+run
-      api
-        .executeGraph(
-          agent.graph_id,
-          agent.graph_version,
-          inputValues,
-          inputCredentials,
-        )
-        .then((newRun) => onRun(newRun.graph_exec_id))
+      const newRun = await api
+        .executeGraph(graph.id, graph.version, inputValues, inputCredentials)
         .catch(toastOnFail("execute agent"));
+
+      if (newRun && onRun) onRun(newRun.graph_exec_id);
     } else {
-      api
+      await api
         .executeLibraryAgentPreset(agentPreset.id)
-        .then((newRun) => onRun(newRun.id))
+        .then((newRun) => onRun && onRun(newRun.id))
         .catch(toastOnFail("execute agent preset"));
     }
     // Mark run agent onboarding step as completed
@@ -176,7 +186,7 @@ export default function AgentRunDraftView({
     }
   }, [
     api,
-    agent,
+    graph,
     inputValues,
     inputCredentials,
     onRun,
@@ -185,7 +195,7 @@ export default function AgentRunDraftView({
     completeOnboardingStep,
   ]);
 
-  const doCreatePreset = useCallback(() => {
+  const doCreatePreset = useCallback(async () => {
     if (!onCreatePreset) return;
 
     if (!presetName || !allRequiredInputsAreSet || !allCredentialsAreSet) {
@@ -193,12 +203,12 @@ export default function AgentRunDraftView({
       return;
     }
 
-    api
+    await api
       .createLibraryAgentPreset({
         name: presetName,
         description: presetDescription,
-        graph_id: agent.graph_id,
-        graph_version: agent.graph_version,
+        graph_id: graph.id,
+        graph_version: graph.version,
         inputs: inputValues,
         credentials: inputCredentials,
       })
@@ -209,7 +219,7 @@ export default function AgentRunDraftView({
       .catch(toastOnFail("save agent preset"));
   }, [
     api,
-    agent,
+    graph,
     presetName,
     presetDescription,
     inputValues,
@@ -221,7 +231,7 @@ export default function AgentRunDraftView({
     completeOnboardingStep,
   ]);
 
-  const doUpdatePreset = useCallback(() => {
+  const doUpdatePreset = useCallback(async () => {
     if (!agentPreset || changedPresetAttributes.size == 0) return;
 
     if (!presetName || !allRequiredInputsAreSet || !allCredentialsAreSet) {
@@ -240,7 +250,7 @@ export default function AgentRunDraftView({
       updatePreset["inputs"] = inputValues;
       updatePreset["credentials"] = inputCredentials;
     }
-    api
+    await api
       .updateLibraryAgentPreset(agentPreset.id, updatePreset)
       .then((updatedPreset) => {
         onUpdatePreset(updatedPreset);
@@ -249,7 +259,7 @@ export default function AgentRunDraftView({
       .catch(toastOnFail("update agent preset"));
   }, [
     api,
-    agent,
+    graph,
     presetName,
     presetDescription,
     inputValues,
@@ -272,19 +282,16 @@ export default function AgentRunDraftView({
     [agentPreset, api, onUpdatePreset],
   );
 
-  const doSetupTrigger = useCallback(() => {
+  const doSetupTrigger = useCallback(async () => {
     // Setting up a trigger for non-webhook-triggered agents is not supported
-    if (!agent.has_external_trigger || !onCreatePreset) return;
+    if (!triggerSetupInfo || !onCreatePreset) return;
 
     if (!presetName || !allRequiredInputsAreSet || !allCredentialsAreSet) {
       notifyMissingInputs();
       return;
     }
 
-    const credentialsInputName =
-      agent.trigger_setup_info.credentials_input_name;
-
-    if (!credentialsInputName) {
+    if (!triggerSetupInfo.credentials_input_name) {
       // FIXME: implement support for manual-setup webhooks
       toast({
         variant: "destructive",
@@ -294,10 +301,12 @@ export default function AgentRunDraftView({
       return;
     }
 
-    api
-      .setupAgentTrigger(agent.id, {
+    await api
+      .setupAgentTrigger({
         name: presetName,
         description: presetDescription,
+        graph_id: graph.id,
+        graph_version: graph.version,
         trigger_config: inputValues,
         agent_credentials: inputCredentials,
       })
@@ -313,7 +322,7 @@ export default function AgentRunDraftView({
     }
   }, [
     api,
-    agent,
+    graph,
     presetName,
     presetDescription,
     inputValues,
@@ -327,7 +336,7 @@ export default function AgentRunDraftView({
 
   const openScheduleDialog = useCallback(() => {
     // Scheduling is not supported for webhook-triggered agents
-    if (agent.has_external_trigger) return;
+    if (graph.has_external_trigger) return;
 
     if (!allRequiredInputsAreSet || !allCredentialsAreSet) {
       notifyMissingInputs(false);
@@ -336,36 +345,46 @@ export default function AgentRunDraftView({
 
     setCronScheduleDialogOpen(true);
   }, [
-    agent,
+    graph,
     allRequiredInputsAreSet,
     allCredentialsAreSet,
     notifyMissingInputs,
   ]);
 
   const doSetupSchedule = useCallback(
-    (cronExpression: string, scheduleName: string) => {
+    async (cronExpression: string, scheduleName: string) => {
       // Scheduling is not supported for webhook-triggered agents
-      if (agent.has_external_trigger) return;
+      if (graph.has_external_trigger) return;
 
-      api
+      if (_doCreateSchedule) {
+        await _doCreateSchedule(
+          cronExpression,
+          scheduleName || graph.name,
+          inputValues,
+          inputCredentials,
+        );
+        return;
+      }
+      const schedule = await api
         .createGraphExecutionSchedule({
-          graph_id: agent.graph_id,
-          graph_version: agent.graph_version,
-          name: scheduleName || agent.name,
+          graph_id: graph.id,
+          graph_version: graph.version,
+          name: scheduleName || graph.name,
           cron: cronExpression,
           inputs: inputValues,
           credentials: inputCredentials,
         })
-        .then((schedule) => onCreateSchedule(schedule))
         .catch(toastOnFail("set up agent run schedule"));
+
+      if (schedule && onCreateSchedule) onCreateSchedule(schedule);
     },
-    [api, agent, inputValues, inputCredentials, onCreateSchedule, toastOnFail],
+    [api, graph, inputValues, inputCredentials, onCreateSchedule, toastOnFail],
   );
 
   const runActions: ButtonAction[] = useMemo(
     () => [
       // "Regular" agent: [run] + [save as preset] buttons
-      ...(!agent.has_external_trigger
+      ...(!graph.has_external_trigger
         ? ([
             {
               label: (
@@ -375,6 +394,7 @@ export default function AgentRunDraftView({
               ),
               variant: "accent",
               callback: doRun,
+              extraProps: { "data-testid": "agent-run-button" },
             },
             {
               label: (
@@ -400,7 +420,7 @@ export default function AgentRunDraftView({
           ] satisfies ButtonAction[])
         : []),
       // Triggered agent: [setup] button
-      ...(agent.has_external_trigger && !agentPreset?.webhook_id
+      ...(graph.has_external_trigger && !agentPreset?.webhook_id
         ? ([
             {
               label: (
@@ -463,7 +483,7 @@ export default function AgentRunDraftView({
               label: (
                 <>
                   <Trash2Icon className="mr-2 size-4" />
-                  Delete {agent.has_external_trigger ? "trigger" : "preset"}
+                  Delete {graph.has_external_trigger ? "trigger" : "preset"}
                 </>
               ),
               callback: () => doDeletePreset(agentPreset.id),
@@ -472,7 +492,7 @@ export default function AgentRunDraftView({
         : []),
     ],
     [
-      agent.has_external_trigger,
+      graph.has_external_trigger,
       agentPreset,
       doRun,
       doSetupTrigger,
@@ -488,26 +508,26 @@ export default function AgentRunDraftView({
   );
 
   return (
-    <div className="agpt-div flex gap-6">
+    <div className={cn("agpt-div flex gap-6", className)}>
       <div className="flex flex-1 flex-col gap-4">
         <Card className="agpt-box">
           <CardHeader>
             <CardTitle className="font-poppins text-lg">Input</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            {(agentPreset || agent.has_external_trigger) && (
+            {(agentPreset || graph.has_external_trigger) && (
               <>
                 {/* Preset name and description */}
                 <div className="flex flex-col space-y-2">
                   <label className="flex items-center gap-1 text-sm font-medium">
-                    {agent.has_external_trigger ? "Trigger" : "Preset"} Name
+                    {graph.has_external_trigger ? "Trigger" : "Preset"} Name
                     <SchemaTooltip
-                      description={`Name of the ${agent.has_external_trigger ? "trigger" : "preset"} you are setting up`}
+                      description={`Name of the ${graph.has_external_trigger ? "trigger" : "preset"} you are setting up`}
                     />
                   </label>
                   <Input
                     value={presetName}
-                    placeholder={`Enter ${agent.has_external_trigger ? "trigger" : "preset"} name`}
+                    placeholder={`Enter ${graph.has_external_trigger ? "trigger" : "preset"} name`}
                     onChange={(e) => {
                       setPresetName(e.target.value);
                       setChangedPresetAttributes((prev) => prev.add("name"));
@@ -516,15 +536,15 @@ export default function AgentRunDraftView({
                 </div>
                 <div className="flex flex-col space-y-2">
                   <label className="flex items-center gap-1 text-sm font-medium">
-                    {agent.has_external_trigger ? "Trigger" : "Preset"}{" "}
+                    {graph.has_external_trigger ? "Trigger" : "Preset"}{" "}
                     Description
                     <SchemaTooltip
-                      description={`Description of the ${agent.has_external_trigger ? "trigger" : "preset"} you are setting up`}
+                      description={`Description of the ${graph.has_external_trigger ? "trigger" : "preset"} you are setting up`}
                     />
                   </label>
                   <Input
                     value={presetDescription}
-                    placeholder={`Enter ${agent.has_external_trigger ? "trigger" : "preset"} description`}
+                    placeholder={`Enter ${graph.has_external_trigger ? "trigger" : "preset"} description`}
                     onChange={(e) => {
                       setPresetDescription(e.target.value);
                       setChangedPresetAttributes((prev) =>
@@ -562,7 +582,7 @@ export default function AgentRunDraftView({
                     );
                   }}
                   hideIfSingleCredentialAvailable={
-                    !agentPreset && !agent.has_external_trigger
+                    !agentPreset && !graph.has_external_trigger
                   }
                 />
               ),
@@ -587,6 +607,7 @@ export default function AgentRunDraftView({
                     }));
                     setChangedPresetAttributes((prev) => prev.add("inputs"));
                   }}
+                  data-testid={`agent-input-${key}`}
                 />
               </div>
             ))}
@@ -598,17 +619,19 @@ export default function AgentRunDraftView({
       <aside className="w-48 xl:w-56">
         <div className="flex flex-col gap-8">
           <ActionButtonGroup
-            title={`${agent.has_external_trigger ? "Trigger" : agentPreset ? "Preset" : "Run"} actions`}
+            title={`${graph.has_external_trigger ? "Trigger" : agentPreset ? "Preset" : "Run"} actions`}
             actions={runActions}
           />
           <CronSchedulerDialog
             open={cronScheduleDialogOpen}
             setOpen={setCronScheduleDialogOpen}
             afterCronCreation={doSetupSchedule}
-            defaultScheduleName={agent.name}
+            defaultScheduleName={graph.name}
           />
 
-          <ActionButtonGroup title="Agent actions" actions={agentActions} />
+          {agentActions && agentActions.length > 0 && (
+            <ActionButtonGroup title="Agent actions" actions={agentActions} />
+          )}
         </div>
       </aside>
     </div>

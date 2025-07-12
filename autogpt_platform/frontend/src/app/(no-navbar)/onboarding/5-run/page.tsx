@@ -11,7 +11,7 @@ import StarRating from "@/components/onboarding/StarRating";
 import SchemaTooltip from "@/components/SchemaTooltip";
 import { TypeBasedInput } from "@/components/type-based-input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { GraphMeta, StoreAgentDetails } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 import { cn } from "@/lib/utils";
@@ -46,13 +46,13 @@ export default function Page() {
         setStoreAgent(storeAgent);
       });
     api
-      .getAgentMetaByStoreListingVersionId(state?.selectedStoreListingVersionId)
+      .getGraphMetaByStoreListingVersionID(state.selectedStoreListingVersionId)
       .then((agent) => {
         setAgent(agent);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const update: { [key: string]: any } = {};
         // Set default values from schema
-        Object.entries(agent.input_schema?.properties || {}).forEach(
+        Object.entries(agent.input_schema.properties).forEach(
           ([key, value]) => {
             // Skip if already set
             if (state.agentInput && state.agentInput[key]) {
@@ -224,7 +224,7 @@ export default function Page() {
                   <CardTitle className="font-poppins text-lg">Input</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4">
-                  {Object.entries(agent?.input_schema?.properties || {}).map(
+                  {Object.entries(agent?.input_schema.properties || {}).map(
                     ([key, inputSubSchema]) => (
                       <div key={key} className="flex flex-col space-y-2">
                         <label className="flex items-center gap-1 text-sm font-medium">

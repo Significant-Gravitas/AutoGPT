@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from "react";
+import React, { useEffect } from "react";
 import {
   Popover,
   PopoverContent,
@@ -15,14 +15,14 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 
 interface SaveControlProps {
   agentMeta: GraphMeta | null;
   agentName: string;
   agentDescription: string;
   canSave: boolean;
-  onSave: () => void;
+  onSave: () => Promise<void>;
   onNameChange: (name: string) => void;
   onDescriptionChange: (description: string) => void;
   pinSavePopover: boolean;
@@ -56,17 +56,13 @@ export const SaveControl = ({
    * We should migrate this to be handled with form controls and a form library.
    */
 
-  const handleSave = useCallback(() => {
-    onSave();
-  }, [onSave]);
-
   const { toast } = useToast();
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
+    const handleKeyDown = async (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === "s") {
         event.preventDefault(); // Stop the browser default action
-        handleSave(); // Call your save function
+        await onSave(); // Call your save function
         toast({
           duration: 2000,
           title: "All changes saved successfully!",
@@ -79,7 +75,7 @@ export const SaveControl = ({
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [handleSave, toast]);
+  }, [onSave, toast]);
 
   return (
     <Popover open={pinSavePopover ? true : undefined}>
@@ -154,7 +150,7 @@ export const SaveControl = ({
           <CardFooter className="flex flex-col items-stretch gap-2">
             <Button
               className="w-full dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-800"
-              onClick={handleSave}
+              onClick={onSave}
               data-id="save-control-save-agent"
               data-testid="save-control-save-agent-button"
               disabled={!canSave}

@@ -23,14 +23,15 @@ export async function signupTestUser(
     await page.goto("http://localhost:3000/signup");
 
     // Wait for page to load
-    const emailInput = page.getByPlaceholder("m@example.com");
-    await emailInput.waitFor({ state: "visible", timeout: 10000 });
+    await page.getByText("Create a new account");
 
     // Fill form
+    const emailInput = page.getByLabel("Email");
     await emailInput.fill(userEmail);
-    const passwordInputs = page.getByTitle("Password");
-    await passwordInputs.nth(0).fill(userPassword);
-    await passwordInputs.nth(1).fill(userPassword);
+    const passwordInput = page.locator("#password");
+    await passwordInput.fill(userPassword);
+    const confirmPasswordInput = page.locator("#confirmPassword");
+    await confirmPasswordInput.fill(userPassword);
 
     // Agree to terms and submit
     await page.getByRole("checkbox").click();
@@ -135,7 +136,7 @@ export async function validateSignupForm(page: any): Promise<void> {
 
   // Test invalid email
   console.log("❌ Testing invalid email...");
-  await page.getByPlaceholder("m@example.com").fill("invalid-email");
+  await page.getByLabel("Email").fill("invalid-email");
   await signupButton.click();
 
   // Should still be on signup page

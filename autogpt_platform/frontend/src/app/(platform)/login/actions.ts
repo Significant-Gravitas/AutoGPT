@@ -1,12 +1,12 @@
 "use server";
+import BackendAPI from "@/lib/autogpt-server-api";
+import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
+import { verifyTurnstileToken } from "@/lib/turnstile";
+import { loginFormSchema, LoginProvider } from "@/types/auth";
+import * as Sentry from "@sentry/nextjs";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import * as Sentry from "@sentry/nextjs";
-import { getServerSupabase } from "@/lib/supabase/server/getServerSupabase";
-import BackendAPI from "@/lib/autogpt-server-api";
-import { loginFormSchema, LoginProvider } from "@/types/auth";
-import { verifyTurnstileToken } from "@/lib/turnstile";
 
 async function shouldShowOnboarding() {
   const api = new BackendAPI();
@@ -38,7 +38,6 @@ export async function login(
     const { error } = await supabase.auth.signInWithPassword(values);
 
     if (error) {
-      console.error("Error logging in:", error);
       return error.message;
     }
 
@@ -76,6 +75,11 @@ export async function providerLogin(provider: LoginProvider) {
       });
 
       if (error) {
+        // FIXME: supabase doesn't return the correct error message for this case
+        if (error.message.includes("P0001")) {
+          return "not_allowed";
+        }
+
         console.error("Error logging in", error);
         return error.message;
       }
