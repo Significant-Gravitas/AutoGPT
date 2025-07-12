@@ -20,7 +20,10 @@ export default function LibraryAgentCard({
   },
 }: LibraryAgentCardProps) {
   return (
-    <div className="inline-flex w-full max-w-[434px] flex-col items-start justify-start gap-2.5 rounded-[26px] bg-white transition-all duration-300 hover:shadow-lg dark:bg-transparent dark:hover:shadow-gray-700">
+    <div
+      data-testid="agent-card"
+      className="inline-flex w-full max-w-[434px] flex-col items-start justify-start gap-2.5 rounded-[26px] bg-white transition-all duration-300 hover:shadow-lg dark:bg-transparent dark:hover:shadow-gray-700"
+    >
       <Link
         href={`/library/agents/${id}`}
         className="relative h-[200px] w-full overflow-hidden rounded-[20px]"
