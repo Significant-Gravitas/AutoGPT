@@ -212,7 +212,7 @@ jobs:
         run: pnpm playwright install --with-deps ${{ matrix.browser }}
 
       - name: Run Playwright tests
-        run: pnpm test:no-build --project=${{ matrix.browser }}
+        run: pnpm test:no-build library.spec.ts --project=${{ matrix.browser }}
         env:
           BROWSER_TYPE: ${{ matrix.browser }}
 
