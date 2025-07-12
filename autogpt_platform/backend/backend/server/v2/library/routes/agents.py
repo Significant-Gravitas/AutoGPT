@@ -1,18 +1,13 @@
 import logging
-from typing import Any, Optional
+from typing import Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
-from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from fastapi.responses import Response
-from pydantic import BaseModel, Field
 
 import backend.server.v2.library.db as library_db
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
-from backend.data.graph import get_graph
-from backend.data.model import CredentialsMetaInput
-from backend.executor.utils import make_node_credentials_input_map
-from backend.integrations.webhooks.utils import setup_webhook_for_block
 from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
@@ -113,12 +108,11 @@ async def get_library_agent_by_graph_id(
     "/marketplace/{store_listing_version_id}",
     summary="Get Agent By Store ID",
     tags=["store, library"],
-    response_model=library_model.LibraryAgent | None,
 )
 async def get_library_agent_by_store_listing_version_id(
     store_listing_version_id: str,
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
-):
+) -> library_model.LibraryAgent | None:
     """
     Get Library Agent from Store Listing Version ID.
     """
@@ -295,81 +289,3 @@ async def fork_library_agent(
         library_agent_id=library_agent_id,
         user_id=user_id,
     )
-
-
-class TriggeredPresetSetupParams(BaseModel):
-    name: str
-    description: str = ""
-
-    trigger_config: dict[str, Any]
-    agent_credentials: dict[str, CredentialsMetaInput] = Field(default_factory=dict)
-
-
-@router.post("/{library_agent_id}/setup-trigger")
-async def setup_trigger(
-    library_agent_id: str = Path(..., description="ID of the library agent"),
-    params: TriggeredPresetSetupParams = Body(),
-    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
-) -> library_model.LibraryAgentPreset:
-    """
-    Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.
-    Returns the correspondingly created `LibraryAgentPreset` with `webhook_id` set.
-    """
-    library_agent = await library_db.get_library_agent(
-        id=library_agent_id, user_id=user_id
-    )
-    if not library_agent:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Library agent #{library_agent_id} not found",
-        )
-
-    graph = await get_graph(
-        library_agent.graph_id, version=library_agent.graph_version, user_id=user_id
-    )
-    if not graph:
-        raise HTTPException(
-            status.HTTP_410_GONE,
-            f"Graph #{library_agent.graph_id} not accessible (anymore)",
-        )
-    if not (trigger_node := graph.webhook_input_node):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Graph #{library_agent.graph_id} does not have a webhook node",
-        )
-
-    trigger_config_with_credentials = {
-        **params.trigger_config,
-        **(
-            make_node_credentials_input_map(graph, params.agent_credentials).get(
-                trigger_node.id
-            )
-            or {}
-        ),
-    }
-
-    new_webhook, feedback = await setup_webhook_for_block(
-        user_id=user_id,
-        trigger_block=trigger_node.block,
-        trigger_config=trigger_config_with_credentials,
-    )
-    if not new_webhook:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Could not set up webhook: {feedback}",
-        )
-
-    new_preset = await library_db.create_preset(
-        user_id=user_id,
-        preset=library_model.LibraryAgentPresetCreatable(
-            graph_id=library_agent.graph_id,
-            graph_version=library_agent.graph_version,
-            name=params.name,
-            description=params.description,
-            inputs=trigger_config_with_credentials,
-            credentials=params.agent_credentials,
-            webhook_id=new_webhook.id,
-            is_active=True,
-        ),
-    )
-    return new_preset

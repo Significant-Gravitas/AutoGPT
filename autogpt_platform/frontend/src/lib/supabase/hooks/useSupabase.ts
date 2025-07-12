@@ -24,6 +24,7 @@ export function useSupabase() {
   const [isUserLoading, setIsUserLoading] = useState(true);
   const lastValidationRef = useRef<number>(0);
   const isValidatingRef = useRef(false);
+  const isLoggedIn = Boolean(user);
 
   const supabase = useMemo(() => {
     try {
@@ -50,7 +51,9 @@ export function useSupabase() {
       await serverLogout(options);
     } catch (error) {
       console.error("Error logging out:", error);
-      router.push("/login");
+    } finally {
+      setUser(null);
+      router.refresh();
     }
   }
 
@@ -162,9 +165,9 @@ export function useSupabase() {
   }, []);
 
   return {
-    supabase, // Available for non-auth operations like real-time subscriptions
     user,
-    isLoggedIn: !isUserLoading ? !!user : null,
+    supabase, // Available for non-auth operations like real-time subscriptions
+    isLoggedIn,
     isUserLoading,
     logOut,
     validateSession: validateSessionServer,

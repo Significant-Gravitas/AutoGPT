@@ -1,24 +1,32 @@
-from backend.blocks.linear._api import LinearAPIException, LinearClient
-from backend.blocks.linear._auth import (
+from backend.sdk import (
+    APIKeyCredentials,
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    CredentialsMetaInput,
+    OAuth2Credentials,
+    SchemaField,
+)
+
+from ._api import LinearAPIException, LinearClient
+from ._config import (
     LINEAR_OAUTH_IS_CONFIGURED,
     TEST_CREDENTIALS_INPUT_OAUTH,
     TEST_CREDENTIALS_OAUTH,
-    LinearCredentials,
-    LinearCredentialsField,
-    LinearCredentialsInput,
     LinearScope,
+    linear,
 )
-from backend.blocks.linear.models import CreateIssueResponse, Issue
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
+from .models import CreateIssueResponse, Issue
 
 
 class LinearCreateIssueBlock(Block):
     """Block for creating issues on Linear"""
 
     class Input(BlockSchema):
-        credentials: LinearCredentialsInput = LinearCredentialsField(
-            scopes=[LinearScope.ISSUES_CREATE],
+        credentials: CredentialsMetaInput = linear.credentials_field(
+            description="Linear credentials with issue creation permissions",
+            required_scopes={LinearScope.ISSUES_CREATE},
         )
         title: str = SchemaField(description="Title of the issue")
         description: str | None = SchemaField(description="Description of the issue")
@@ -68,7 +76,7 @@ class LinearCreateIssueBlock(Block):
 
     @staticmethod
     async def create_issue(
-        credentials: LinearCredentials,
+        credentials: OAuth2Credentials | APIKeyCredentials,
         team_name: str,
         title: str,
         description: str | None = None,
@@ -94,7 +102,11 @@ class LinearCreateIssueBlock(Block):
         return response.issue.identifier, response.issue.title
 
     async def run(
-        self, input_data: Input, *, credentials: LinearCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: OAuth2Credentials,
+        **kwargs,
     ) -> BlockOutput:
         """Execute the issue creation"""
         try:
@@ -121,8 +133,9 @@ class LinearSearchIssuesBlock(Block):
 
     class Input(BlockSchema):
         term: str = SchemaField(description="Term to search for issues")
-        credentials: LinearCredentialsInput = LinearCredentialsField(
-            scopes=[LinearScope.READ],
+        credentials: CredentialsMetaInput = linear.credentials_field(
+            description="Linear credentials with read permissions",
+            required_scopes={LinearScope.READ},
         )
 
     class Output(BlockSchema):
@@ -169,7 +182,7 @@ class LinearSearchIssuesBlock(Block):
 
     @staticmethod
     async def search_issues(
-        credentials: LinearCredentials,
+        credentials: OAuth2Credentials | APIKeyCredentials,
         term: str,
     ) -> list[Issue]:
         client = LinearClient(credentials=credentials)
@@ -177,7 +190,11 @@ class LinearSearchIssuesBlock(Block):
         return response
 
     async def run(
-        self, input_data: Input, *, credentials: LinearCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: OAuth2Credentials | APIKeyCredentials,
+        **kwargs,
     ) -> BlockOutput:
         """Execute the issue search"""
         try:

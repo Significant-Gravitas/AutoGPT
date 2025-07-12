@@ -877,6 +877,7 @@ class Executor:
                         ExecutionStatus.QUEUED,
                         ExecutionStatus.RUNNING,
                     ],
+                    include_exec_data=False,
                 )
                 db_client.update_node_execution_status_batch(
                     [node_exec.node_exec_id for node_exec in inflight_executions],

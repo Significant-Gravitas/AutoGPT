@@ -1,82 +1,78 @@
 import { cn } from "@/lib/utils";
 import { CircleNotchIcon } from "@phosphor-icons/react/dist/ssr";
-import { cva, type VariantProps } from "class-variance-authority";
+import Link, { type LinkProps } from "next/link";
 import React from "react";
+import { ButtonProps, extendedButtonVariants } from "./helpers";
 
-// Extended button variants based on our design system
-const extendedButtonVariants = cva(
-  "inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-neutral-950 disabled:pointer-events-none disabled:opacity-50 font-['Geist'] leading-snug border",
-  {
-    variants: {
-      variant: {
-        primary:
-          "bg-zinc-800 border-zinc-800 text-white hover:bg-zinc-900 hover:border-zinc-900 rounded-full disabled:text-white disabled:bg-zinc-200 disabled:border-zinc-200 disabled:opacity-1",
-        secondary:
-          "bg-zinc-100 border-zinc-100 text-black hover:bg-zinc-300 hover:border-zinc-300 rounded-full disabled:text-zinc-300 disabled:bg-zinc-50 disabled:border-zinc-50 disabled:opacity-1",
-        destructive:
-          "bg-red-500 border-red-500 text-white hover:bg-red-600 hover:border-red-600 rounded-full disabled:text-white disabled:bg-zinc-200 disabled:border-zinc-200 disabled:opacity-1",
-        outline:
-          "bg-transparent border-zinc-700 text-black hover:bg-zinc-100 hover:border-zinc-700 rounded-full disabled:border-zinc-200 disabled:text-zinc-200 disabled:opacity-1",
-        ghost:
-          "bg-transparent border-transparent text-black hover:bg-zinc-50 hover:border-zinc-50 rounded-full disabled:text-zinc-200 disabled:opacity-1",
-        icon: "bg-white text-black border border-zinc-600 hover:bg-zinc-100 rounded-[96px] disabled:opacity-1",
-      },
-      size: {
-        small: "px-3 py-2 text-sm gap-1.5 h-[2.25rem]",
-        large: "min-w-20 px-4 py-3 text-sm gap-2",
-        icon: "p-3",
-      },
-    },
-    defaultVariants: {
-      variant: "primary",
-      size: "large",
-    },
-  },
-);
+export function Button(props: ButtonProps) {
+  const {
+    className,
+    variant,
+    size,
+    loading = false,
+    leftIcon,
+    rightIcon,
+    children,
+    as = "button",
+    ...restProps
+  } = props;
 
-export interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof extendedButtonVariants> {
-  loading?: boolean;
-  leftIcon?: React.ReactNode;
-  rightIcon?: React.ReactNode;
-  asChild?: boolean;
-}
-
-function Button({
-  className,
-  variant,
-  size,
-  loading = false,
-  leftIcon,
-  rightIcon,
-  children,
-  disabled,
-  ...props
-}: ButtonProps) {
+  const disabled = "disabled" in props ? props.disabled : false;
   const isDisabled = disabled;
 
+  const buttonContent = (
+    <>
+      {loading && (
+        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
+      )}
+      {!loading && leftIcon}
+      {children}
+      {!loading && rightIcon}
+    </>
+  );
+
   if (loading) {
-    return variant === "ghost" ? (
-      <button
+    const loadingClassName =
+      variant === "ghost"
+        ? cn(
+            extendedButtonVariants({ variant, size, className }),
+            "pointer-events-none",
+          )
+        : cn(
+            extendedButtonVariants({ variant: "primary", size, className }),
+            "pointer-events-none border-zinc-500 bg-zinc-500 text-white",
+          );
+
+    return as === "NextLink" ? (
+      <Link
+        {...(restProps as LinkProps)}
+        className={loadingClassName}
+        aria-disabled="true"
+      >
+        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
+        {children}
+      </Link>
+    ) : (
+      <button className={loadingClassName} disabled>
+        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
+        {children}
+      </button>
+    );
+  }
+
+  if (as === "NextLink") {
+    return (
+      <Link
+        {...(restProps as LinkProps)}
         className={cn(
           extendedButtonVariants({ variant, size, className }),
-          "pointer-events-none",
+          loading && "pointer-events-none",
+          isDisabled && "pointer-events-none opacity-50",
         )}
+        aria-disabled={isDisabled}
       >
-        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
-        {children}
-      </button>
-    ) : (
-      <button
-        className={cn(
-          extendedButtonVariants({ variant: "primary", size, className }),
-          "pointer-events-none border-zinc-500 bg-zinc-500 text-white",
-        )}
-      >
-        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
-        {children}
-      </button>
+        {buttonContent}
+      </Link>
     );
   }
 
@@ -87,18 +83,9 @@ function Button({
         loading && "pointer-events-none",
       )}
       disabled={isDisabled}
-      {...props}
+      {...(restProps as React.ButtonHTMLAttributes<HTMLButtonElement>)}
     >
-      {loading && (
-        <CircleNotchIcon className="h-4 w-4 animate-spin" weight="bold" />
-      )}
-      {!loading && leftIcon}
-      {children}
-      {!loading && rightIcon}
+      {buttonContent}
     </button>
   );
 }
-
-Button.displayName = "Button";
-
-export { Button, extendedButtonVariants };

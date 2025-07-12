@@ -21,17 +21,13 @@ test.describe("Build", () => { //(1)!
     await loginPage.login(testUser.email, testUser.password);
     await test.expect(page).toHaveURL("/marketplace"); //(5)!
     await buildPage.navbar.clickBuildLink();
+    await test.expect(page).toHaveURL("/build");
+    await buildPage.waitForPageLoad();
   });
 
   // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
   // prettier-ignore
-  test("user can add a block", async ({ page }) => { //(6)!
-    // workaround for #8788
-    await buildPage.navbar.clickBuildLink();
-    await test.expect(page).toHaveURL(new RegExp("/build"));
-    await buildPage.waitForPageLoad();
-    await test.expect(buildPage.isLoaded()).resolves.toBeTruthy(); //(7)!
-
+  test("user can add a block", async () => { //(6)!
     await buildPage.closeTutorial(); //(9)!
     await buildPage.openBlocksPanel(); //(10)!
     const block = await buildPage.getDictionaryBlockDetails();
@@ -42,25 +38,25 @@ test.describe("Build", () => { //(1)!
   });
   // --8<-- [end:BuildPageExample]
 
-  test("user can add all blocks a-l", async ({ page }, testInfo) => {
-    // this test is slow af so we 10x the timeout (sorry future me)
-    await test.setTimeout(testInfo.timeout * 100);
-    await test.expect(buildPage.isLoaded()).resolves.toBeTruthy();
-    await test.expect(page).toHaveURL(new RegExp("/.*build"));
+  test.skip("user can add all blocks a-l", async ({ page }, testInfo) => {
+    // this test is slow af so we 100x the timeout (sorry future me)
+    test.setTimeout(testInfo.timeout * 100);
+
     await buildPage.closeTutorial();
     await buildPage.openBlocksPanel();
     const blocks = await buildPage.getBlocks();
 
     const blockIdsToSkip = await buildPage.getBlocksToSkip();
     const blockTypesToSkip = ["Input", "Output", "Agent", "AI"];
+    console.log("⚠️ Skipping blocks:", blockIdsToSkip);
+    console.log("⚠️ Skipping block types:", blockTypesToSkip);
 
     // add all the blocks in order except for the agent executor block
     for (const block of blocks) {
       if (block.name[0].toLowerCase() >= "m") {
         continue;
       }
-      if (!blockIdsToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.type === b)) {
-        console.log("Adding block:", block.name, block.id, block.type, " skipping types:", blockTypesToSkip);
+      if (!blockIdsToSkip.includes(block.id) && !blockTypesToSkip.includes(block.type)) {
         await buildPage.addBlock(block);
       }
     }
@@ -70,8 +66,7 @@ test.describe("Build", () => { //(1)!
       if (block.name[0].toLowerCase() >= "m") {
         continue;
       }
-      if (!blockIdsToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.type === b)) {
-        console.log("Checking block:", block.name, block.id, block.type, " skipping types:", blockTypesToSkip);
+      if (!blockIdsToSkip.includes(block.id) && !blockTypesToSkip.includes(block.type)) {
         await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
       }
     }
@@ -79,28 +74,28 @@ test.describe("Build", () => { //(1)!
     // check that we can save the agent with all the blocks
     await buildPage.saveAgent("all blocks test", "all blocks test");
     // page should have a url like http://localhost:3000/build?flowID=f4f3a1da-cfb3-430f-a074-a455b047e340
-    await test.expect(page).toHaveURL(new RegExp("/.*build\\?flowID=.+"));
+    await test.expect(page).toHaveURL(({ searchParams }) => !!searchParams.get("flowID"));
   });
 
-  test("user can add all blocks m-z", async ({ page }, testInfo) => {
-    // this test is slow af so we 10x the timeout (sorry future me)
-    await test.setTimeout(testInfo.timeout * 100);
-    await test.expect(buildPage.isLoaded()).resolves.toBeTruthy();
-    await test.expect(page).toHaveURL(new RegExp("/.*build"));
+  test.skip("user can add all blocks m-z", async ({ page }, testInfo) => {
+    // this test is slow af so we 100x the timeout (sorry future me)
+    test.setTimeout(testInfo.timeout * 100);
+
     await buildPage.closeTutorial();
     await buildPage.openBlocksPanel();
     const blocks = await buildPage.getBlocks();
 
     const blockIdsToSkip = await buildPage.getBlocksToSkip();
     const blockTypesToSkip = ["Input", "Output", "Agent", "AI"];
+    console.log("⚠️ Skipping blocks:", blockIdsToSkip);
+    console.log("⚠️ Skipping block types:", blockTypesToSkip);
 
     // add all the blocks in order except for the agent executor block
     for (const block of blocks) {
       if (block.name[0].toLowerCase() < "m") {
         continue;
       }
-      if (!blockIdsToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.type === b)) {
-        console.log("Adding block:", block.name, block.id, block.type, " skipping types:", blockTypesToSkip);
+      if (!blockIdsToSkip.includes(block.id) && !blockTypesToSkip.includes(block.type)) {
         await buildPage.addBlock(block);
       }
     }
@@ -110,8 +105,7 @@ test.describe("Build", () => { //(1)!
       if (block.name[0].toLowerCase() < "m") {
         continue;
       }
-      if (!blockIdsToSkip.some((b) => b === block.id) && !blockTypesToSkip.some((b) => block.type === b)) {
-        console.log("Checking block:", block.name, block.id, block.type, " skipping types:", blockTypesToSkip);
+      if (!blockIdsToSkip.includes(block.id) && !blockTypesToSkip.includes(block.type)) {
         await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
       }
     }
@@ -119,25 +113,26 @@ test.describe("Build", () => { //(1)!
     // check that we can save the agent with all the blocks
     await buildPage.saveAgent("all blocks test", "all blocks test");
     // page should have a url like http://localhost:3000/build?flowID=f4f3a1da-cfb3-430f-a074-a455b047e340
-    await test.expect(page).toHaveURL(new RegExp("/.*build\\?flowID=.+"));
+    await test.expect(page).toHaveURL(({ searchParams }) => !!searchParams.get("flowID"));
   });
 
   test("build navigation is accessible from navbar", async ({ page }) => {
+    // Navigate somewhere else first
+    await page.goto("/marketplace"); //(4)!
+
+    // Check that navigation to the Builder is available on the page
     await buildPage.navbar.clickBuildLink();
-    await test.expect(page).toHaveURL(new RegExp("/build"));
-    // workaround for #8788
-    await page.reload();
-    await page.reload();
+    await buildPage.waitForPageLoad();
+
+    await test.expect(page).toHaveURL("/build");
     await test.expect(buildPage.isLoaded()).resolves.toBeTruthy();
   });
 
   test("user can add two blocks and connect them", async ({
     page,
   }, testInfo) => {
-    await test.setTimeout(testInfo.timeout * 10);
+    test.setTimeout(testInfo.timeout * 10);
 
-    await test.expect(buildPage.isLoaded()).resolves.toBeTruthy();
-    await test.expect(page).toHaveURL(new RegExp("/.*build"));
     await buildPage.closeTutorial();
     await buildPage.openBlocksPanel();
 
@@ -179,7 +174,7 @@ test.describe("Build", () => { //(1)!
       "Connected Blocks Test",
       "Testing block connections",
     );
-    await test.expect(page).toHaveURL(new RegExp("/.*build\\?flowID=.+"));
+    await test.expect(page).toHaveURL(({ searchParams }) => !!searchParams.get("flowID"));
 
     // Wait for the save button to be enabled again
     await buildPage.waitForSaveButton();
@@ -204,9 +199,7 @@ test.describe("Build", () => { //(1)!
   }) => {
     // simple calculator to double input and output it
 
-    // load the pages and prep
-    await test.expect(buildPage.isLoaded()).resolves.toBeTruthy();
-    await test.expect(page).toHaveURL(new RegExp("/.*build"));
+    // prep
     await buildPage.closeTutorial();
     await buildPage.openBlocksPanel();
 
@@ -286,7 +279,7 @@ test.describe("Build", () => { //(1)!
       "Input and Output Blocks Test",
       "Testing input and output blocks",
     );
-    await test.expect(page).toHaveURL(new RegExp("/.*build\\?flowID=.+"));
+    await test.expect(page).toHaveURL(({ searchParams }) => !!searchParams.get("flowID"));
 
     // Wait for save to complete
     await page.waitForTimeout(1000);

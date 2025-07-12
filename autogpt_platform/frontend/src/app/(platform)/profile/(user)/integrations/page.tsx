@@ -2,7 +2,7 @@
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/components/molecules/Toast/use-toast";
 import { IconKey, IconUser } from "@/components/ui/icons";
 import { Trash2Icon } from "lucide-react";
 import { KeyIcon } from "@phosphor-icons/react/dist/ssr";
@@ -134,22 +134,27 @@ export default function UserIntegrationsPage() {
   }
 
   const allCredentials = providers
-    ? Object.values(providers).flatMap((provider) =>
-        provider.savedCredentials
-          .filter((cred) => !hiddenCredentials.includes(cred.id))
-          .map((credentials) => ({
-            ...credentials,
-            provider: provider.provider,
-            providerName: provider.providerName,
-            ProviderIcon: providerIcons[provider.provider] || KeyIcon,
-            TypeIcon: {
-              oauth2: IconUser,
-              api_key: IconKey,
-              user_password: IconKey,
-              host_scoped: IconKey,
-            }[credentials.type],
-          })),
-      )
+    ? Object.values(providers)
+        .filter(
+          (provider): provider is NonNullable<typeof provider> =>
+            provider != null,
+        )
+        .flatMap((provider) =>
+          provider.savedCredentials
+            .filter((cred) => !hiddenCredentials.includes(cred.id))
+            .map((credentials) => ({
+              ...credentials,
+              provider: provider.provider,
+              providerName: provider.providerName,
+              ProviderIcon: providerIcons[provider.provider] || KeyIcon,
+              TypeIcon: {
+                oauth2: IconUser,
+                api_key: IconKey,
+                user_password: IconKey,
+                host_scoped: IconKey,
+              }[credentials.type],
+            })),
+        )
     : [];
 
   return (

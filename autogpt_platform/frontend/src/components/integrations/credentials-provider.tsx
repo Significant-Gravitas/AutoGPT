@@ -7,59 +7,11 @@ import {
   CredentialsMetaResponse,
   CredentialsProviderName,
   HostScopedCredentials,
-  PROVIDER_NAMES,
   UserPasswordCredentials,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-import { useToastOnFail } from "@/components/ui/use-toast";
-
-// Get keys from CredentialsProviderName type
-const CREDENTIALS_PROVIDER_NAMES = Object.values(
-  PROVIDER_NAMES,
-) as CredentialsProviderName[];
-
-// --8<-- [start:CredentialsProviderNames]
-const providerDisplayNames: Record<CredentialsProviderName, string> = {
-  aiml_api: "AI/ML",
-  anthropic: "Anthropic",
-  apollo: "Apollo",
-  discord: "Discord",
-  d_id: "D-ID",
-  e2b: "E2B",
-  exa: "Exa",
-  fal: "FAL",
-  github: "GitHub",
-  google: "Google",
-  google_maps: "Google Maps",
-  groq: "Groq",
-  http: "HTTP",
-  hubspot: "Hubspot",
-  ideogram: "Ideogram",
-  jina: "Jina",
-  linear: "Linear",
-  medium: "Medium",
-  mem0: "Mem0",
-  notion: "Notion",
-  nvidia: "Nvidia",
-  ollama: "Ollama",
-  openai: "OpenAI",
-  openweathermap: "OpenWeatherMap",
-  open_router: "Open Router",
-  llama_api: "Llama API",
-  pinecone: "Pinecone",
-  screenshotone: "ScreenshotOne",
-  slant3d: "Slant3D",
-  smartlead: "SmartLead",
-  smtp: "SMTP",
-  reddit: "Reddit",
-  replicate: "Replicate",
-  revid: "Rev.ID",
-  twitter: "Twitter",
-  todoist: "Todoist",
-  unreal_speech: "Unreal Speech",
-  zerobounce: "ZeroBounce",
-} as const;
-// --8<-- [end:CredentialsProviderNames]
+import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
+import { toDisplayName } from "@/components/integrations/helper";
 
 type APIKeyCredentialsCreatable = Omit<
   APIKeyCredentials,
@@ -115,6 +67,7 @@ export default function CredentialsProvider({
 }) {
   const [providers, setProviders] =
     useState<CredentialsProvidersContextType | null>(null);
+  const [providerNames, setProviderNames] = useState<string[]>([]);
   const { isLoggedIn } = useSupabase();
   const api = useBackendAPI();
   const onFailToast = useToastOnFail();
@@ -147,8 +100,12 @@ export default function CredentialsProvider({
       state_token: string,
     ): Promise<CredentialsMetaResponse> => {
       try {
-        const credsMeta = await api.oAuthCallback(provider, code, state_token);
-        addCredentials(provider, credsMeta);
+        const credsMeta = await api.oAuthCallback(
+          provider as string,
+          code,
+          state_token,
+        );
+        addCredentials(provider as string, credsMeta);
         return credsMeta;
       } catch (error) {
         onFailToast("complete OAuth authentication")(error);
@@ -231,7 +188,11 @@ export default function CredentialsProvider({
       CredentialsDeleteResponse | CredentialsDeleteNeedConfirmationResponse
     > => {
       try {
-        const result = await api.deleteCredentials(provider, id, force);
+        const result = await api.deleteCredentials(
+          provider as string,
+          id,
+          force,
+        );
         if (!result.deleted) {
           return result;
         }
@@ -241,8 +202,8 @@ export default function CredentialsProvider({
           return {
             ...prev,
             [provider]: {
-              ...prev[provider],
-              savedCredentials: prev[provider].savedCredentials.filter(
+              ...prev[provider]!,
+              savedCredentials: prev[provider]!.savedCredentials.filter(
                 (cred) => cred.id !== id,
               ),
             },
@@ -257,8 +218,18 @@ export default function CredentialsProvider({
     [api, onFailToast],
   );
 
+  // Fetch provider names on mount
   useEffect(() => {
-    if (!isLoggedIn) {
+    api
+      .listProviders()
+      .then((names) => {
+        setProviderNames(names);
+      })
+      .catch(onFailToast("load provider names"));
+  }, [api, onFailToast]);
+
+  useEffect(() => {
+    if (!isLoggedIn || providerNames.length === 0) {
       if (isLoggedIn == false) setProviders(null);
       return;
     }
@@ -280,11 +251,11 @@ export default function CredentialsProvider({
         setProviders((prev) => ({
           ...prev,
           ...Object.fromEntries(
-            CREDENTIALS_PROVIDER_NAMES.map((provider) => [
+            providerNames.map((provider) => [
               provider,
               {
                 provider,
-                providerName: providerDisplayNames[provider],
+                providerName: toDisplayName(provider as string),
                 savedCredentials: credentialsByProvider[provider] ?? [],
                 oAuthCallback: (code: string, state_token: string) =>
                   oAuthCallback(provider, code, state_token),
@@ -308,11 +279,13 @@ export default function CredentialsProvider({
   }, [
     api,
     isLoggedIn,
+    providerNames,
     createAPIKeyCredentials,
     createUserPasswordCredentials,
     createHostScopedCredentials,
     deleteCredentials,
     oAuthCallback,
+    onFailToast,
   ]);
 
   return (

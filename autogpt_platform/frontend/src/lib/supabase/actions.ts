@@ -166,6 +166,8 @@ export async function serverLogout(options: ServerLogoutOptions = {}) {
           scope: options.globalLogout ? "global" : "local",
         });
 
+        revalidatePath("/");
+
         if (error) {
           console.error("Error logging out:", error);
         }
