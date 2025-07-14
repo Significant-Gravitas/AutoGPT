@@ -45,7 +45,7 @@ export class BuildPage extends BasePage {
     name: string = "Test Agent",
     description: string = "",
   ): Promise<void> {
-    console.log(`saving agent ${name} with description ${description}`);
+    console.log(`💾 Saving agent '${name}' with description '${description}'`);
     await this.page.getByTestId("blocks-control-save-button").click();
     await this.page.getByTestId("save-control-name-input").fill(name);
     await this.page
@@ -55,9 +55,11 @@ export class BuildPage extends BasePage {
   }
 
   async getBlocks(): Promise<Block[]> {
-    console.log(`getting blocks in sidebar panel`);
+    console.log(`Getting available blocks from sidebar panel`);
     try {
-      const blocks = await this.page.locator('[data-id^="block-card-"]').all();
+      const blockFinder = this.page.locator('[data-id^="block-card-"]');
+      await blockFinder.first().waitFor();
+      const blocks = await blockFinder.all();
 
       console.log(`found ${blocks.length} blocks`);
 
@@ -97,7 +99,7 @@ export class BuildPage extends BasePage {
   }
 
   async addBlock(block: Block): Promise<void> {
-    console.log(`adding block ${block.id} ${block.name} to agent`);
+    console.log(`Adding block ${block.name} (${block.id}) to agent`);
     await this.page.getByTestId(`block-name-${block.id}`).click();
   }
 
@@ -108,13 +110,11 @@ export class BuildPage extends BasePage {
 
   async hasBlock(block: Block): Promise<boolean> {
     console.log(
-      `checking if block ${block.id} ${block.name} is visible on page`,
+      `Checking if block ${block.name} (${block.id}) is visible on page`,
     );
     try {
       // Use both ID and name for most precise matching
-      const node = await this.page
-        .locator(`[data-blockid="${block.id}"]`)
-        .first();
+      const node = this.page.locator(`[data-blockid="${block.id}"]`).first();
       return await node.isVisible();
     } catch (error) {
       console.error("Error checking for block:", error);
@@ -123,11 +123,9 @@ export class BuildPage extends BasePage {
   }
 
   async getBlockInputs(blockId: string): Promise<string[]> {
-    console.log(`getting block ${blockId} inputs`);
+    console.log(`Getting block ${blockId} inputs`);
     try {
-      const node = await this.page
-        .locator(`[data-blockid="${blockId}"]`)
-        .first();
+      const node = this.page.locator(`[data-blockid="${blockId}"]`).first();
       const inputsData = await node.getAttribute("data-inputs");
       return inputsData ? JSON.parse(inputsData) : [];
     } catch (error) {
@@ -159,9 +157,7 @@ export class BuildPage extends BasePage {
 
   async getBlockById(blockId: string, dataId?: string): Promise<Locator> {
     console.log(`getting block ${blockId} with dataId ${dataId}`);
-    return await this.page.locator(
-      await this._buildBlockSelector(blockId, dataId),
-    );
+    return this.page.locator(await this._buildBlockSelector(blockId, dataId));
   }
 
   // dataId is optional, if provided, it will start the search with that container, otherwise it will start with the blockId
@@ -177,7 +173,7 @@ export class BuildPage extends BasePage {
       `filling block input ${placeholder} with value ${value} of block ${blockId}`,
     );
     const block = await this.getBlockById(blockId, dataId);
-    const input = await block.getByPlaceholder(placeholder);
+    const input = block.getByPlaceholder(placeholder);
     await input.fill(value);
   }
 
@@ -222,7 +218,7 @@ export class BuildPage extends BasePage {
   ): Promise<void> {
     console.log(`filling block input ${label} with value ${value}`);
     const block = await this.getBlockById(blockId);
-    const input = await block.getByLabel(label);
+    const input = block.getByLabel(label);
     await input.fill(value);
   }
 
@@ -235,13 +231,9 @@ export class BuildPage extends BasePage {
     );
     try {
       // Locate the output element
-      const outputElement = await this.page.locator(
-        `[data-id="${blockOutputId}"]`,
-      );
+      const outputElement = this.page.locator(`[data-id="${blockOutputId}"]`);
       // Locate the input element
-      const inputElement = await this.page.locator(
-        `[data-id="${blockInputId}"]`,
-      );
+      const inputElement = this.page.locator(`[data-id="${blockInputId}"]`);
 
       await outputElement.dragTo(inputElement);
     } catch (error) {
@@ -303,12 +295,12 @@ export class BuildPage extends BasePage {
   async fillRunDialog(inputs: Record<string, string>): Promise<void> {
     console.log(`filling run dialog`);
     for (const [key, value] of Object.entries(inputs)) {
-      await this.page.getByTestId(`run-dialog-input-${key}`).fill(value);
+      await this.page.getByTestId(`agent-input-${key}`).fill(value);
     }
   }
   async clickRunDialogRunButton(): Promise<void> {
     console.log(`clicking run button`);
-    await this.page.getByTestId("run-dialog-run-button").click();
+    await this.page.getByTestId("agent-run-button").click();
   }
 
   async waitForCompletionBadge(): Promise<void> {
