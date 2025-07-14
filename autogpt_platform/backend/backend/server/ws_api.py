@@ -303,13 +303,22 @@ async def health():
 class WebsocketServer(AppProcess):
     def run(self):
         logger.info(f"CORS allow origins: {settings.config.backend_cors_allow_origins}")
-        server_app = CORSMiddleware(
-            app=app,
-            allow_origins=settings.config.backend_cors_allow_origins,
-            allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
-        )
+        cors_kwargs = {
+            "app": app,
+            "allow_origins": settings.config.backend_cors_allow_origins,
+            "allow_credentials": True,
+            "allow_methods": ["*"],
+            "allow_headers": ["*"],
+        }
+        
+        # Use regex pattern if configured (for dynamic domains like Vercel previews)  
+        # Only enable in non-production environments for security
+        if (settings.config.backend_cors_allow_origin_regex and 
+            settings.config.app_env.value != "prod"):
+            cors_kwargs["allow_origin_regex"] = settings.config.backend_cors_allow_origin_regex
+            logger.info(f"CORS regex enabled for {settings.config.app_env.value}: {settings.config.backend_cors_allow_origin_regex}")
+            
+        server_app = CORSMiddleware(**cors_kwargs)
 
         uvicorn.run(
             server_app,

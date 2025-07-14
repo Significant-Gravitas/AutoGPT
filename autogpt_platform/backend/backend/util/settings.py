@@ -316,6 +316,11 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
     )
 
     backend_cors_allow_origins: List[str] = Field(default_factory=list)
+    backend_cors_allow_origin_regex: str = Field(
+        default="",
+        description="Regex pattern for allowed CORS origins (for dynamic domains like Vercel previews). "
+                "Example: 'https://autogpt-.*\\.vercel\\.app' to restrict to your organization only."
+    )
 
     @field_validator("backend_cors_allow_origins")
     @classmethod
@@ -324,8 +329,14 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         port = None
         has_localhost = False
         has_127_0_0_1 = False
+        
         for url in v:
             url = url.strip()
+            
+            # Skip wildcard patterns - these should be handled via allow_origin_regex
+            if "*" in url:
+                continue
+                
             if url.startswith(("http://", "https://")):
                 if "localhost" in url:
                     port = url.split(":")[2]

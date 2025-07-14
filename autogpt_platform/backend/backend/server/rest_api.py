@@ -219,13 +219,22 @@ async def health():
 
 class AgentServer(backend.util.service.AppProcess):
     def run(self):
-        server_app = starlette.middleware.cors.CORSMiddleware(
-            app=app,
-            allow_origins=settings.config.backend_cors_allow_origins,
-            allow_credentials=True,
-            allow_methods=["*"],  # Allows all methods
-            allow_headers=["*"],  # Allows all headers
-        )
+        cors_kwargs = {
+            "app": app,
+            "allow_origins": settings.config.backend_cors_allow_origins,
+            "allow_credentials": True,
+            "allow_methods": ["*"],
+            "allow_headers": ["*"],
+        }
+        
+        # Use regex pattern if configured (for dynamic domains like Vercel previews)
+        # Only enable in non-production environments for security
+        if (settings.config.backend_cors_allow_origin_regex and 
+            settings.config.app_env.value != "prod"):
+            cors_kwargs["allow_origin_regex"] = settings.config.backend_cors_allow_origin_regex
+            logger.info(f"CORS regex enabled for {settings.config.app_env.value}: {settings.config.backend_cors_allow_origin_regex}")
+            
+        server_app = starlette.middleware.cors.CORSMiddleware(**cors_kwargs)
         uvicorn.run(
             server_app,
             host=backend.util.settings.Config().agent_api_host,
