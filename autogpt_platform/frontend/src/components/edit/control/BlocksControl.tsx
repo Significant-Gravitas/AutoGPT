@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useCallback, useMemo, useState, useDeferredValue } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -24,8 +24,36 @@ import {
 import { GraphMeta } from "@/lib/autogpt-server-api";
 import jaro from "jaro-winkler";
 
+type _Block = Block & {
+  uiKey?: string;
+  hardcodedValues?: Record<string, any>;
+  _cached?: {
+    blockName: string;
+    beautifiedName: string;
+    description: string;
+  };
+};
+
+// Hook to preprocess blocks with cached expensive operations
+const useSearchableBlocks = (blocks: _Block[]): _Block[] => {
+  return useMemo(
+    () =>
+      blocks.map((block) => {
+        if (!block._cached) {
+          block._cached = {
+            blockName: block.name.toLowerCase(),
+            beautifiedName: beautifyString(block.name).toLowerCase(),
+            description: block.description.toLowerCase(),
+          };
+        }
+        return block;
+      }),
+    [blocks],
+  );
+};
+
 interface BlocksControlProps {
-  blocks: Block[];
+  blocks: _Block[];
   addBlock: (
     id: string,
     name: string,
@@ -45,15 +73,18 @@ interface BlocksControlProps {
  * @param {(id: string, name: string) => void} BlocksControlProps.addBlock - A function to call when a block is added.
  * @returns The rendered BlocksControl component.
  */
-export const BlocksControl: React.FC<BlocksControlProps> = ({
-  blocks,
+export function BlocksControl({
+  blocks: _blocks,
   addBlock,
   pinBlocksPopover,
   flows,
   nodes,
-}) => {
+}: BlocksControlProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  const blocks = useSearchableBlocks(_blocks);
 
   const graphHasWebhookNodes = nodes.some((n) =>
     [BlockUIType.WEBHOOK, BlockUIType.WEBHOOK_MANUAL].includes(n.data.uiType),
@@ -66,9 +97,10 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
     const blockList = blocks
       .filter((b) => b.uiType !== BlockUIType.AGENT)
       .sort((a, b) => a.name.localeCompare(b.name));
-    const agentBlockList = flows.map(
-      (flow) =>
-        ({
+
+    const agentBlockList = flows
+      .map(
+        (flow): _Block => ({
           id: SpecialBlockID.AGENT,
           name: flow.name,
           description:
@@ -79,75 +111,32 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
           outputSchema: flow.output_schema,
           staticOutput: false,
           uiType: BlockUIType.AGENT,
-          uiKey: flow.id,
           costs: [],
+          uiKey: flow.id,
           hardcodedValues: {
             graph_id: flow.id,
             graph_version: flow.version,
             input_schema: flow.input_schema,
             output_schema: flow.output_schema,
           },
-        }) satisfies Block,
-    );
-
-    /**
-     * Evaluates how well a block matches the search query and returns a relevance score.
-     * The scoring algorithm works as follows:
-     * - Returns 1 if no query (all blocks match equally)
-     * - Normalized query for case-insensitive matching
-     * - Returns 3 for exact substring matches in block name (highest priority)
-     * - Returns 2 when all query words appear in the block name (regardless of order)
-     * - Returns 1.X for blocks with names similar to query using Jaro-Winkler distance (X is similarity score)
-     * - Returns 0.5 when all query words appear in the block description (lowest priority)
-     * - Returns 0 for no match
-     *
-     * Higher scores will appear first in search results.
-     */
-    const matchesSearch = (block: Block, query: string): number => {
-      if (!query) return 1;
-      const normalizedQuery = query.toLowerCase().trim();
-      const queryWords = normalizedQuery.split(/\s+/);
-      const blockName = block.name.toLowerCase();
-      const beautifiedName = beautifyString(block.name).toLowerCase();
-      const description = block.description.toLowerCase();
-
-      // 1. Exact match in name (highest priority)
-      if (
-        blockName.includes(normalizedQuery) ||
-        beautifiedName.includes(normalizedQuery)
-      ) {
-        return 3;
-      }
-
-      // 2. All query words in name (regardless of order)
-      const allWordsInName = queryWords.every(
-        (word) => blockName.includes(word) || beautifiedName.includes(word),
+        }),
+      )
+      .map(
+        (agentBlock): _Block => ({
+          ...agentBlock,
+          _cached: {
+            blockName: agentBlock.name.toLowerCase(),
+            beautifiedName: beautifyString(agentBlock.name).toLowerCase(),
+            description: agentBlock.description.toLowerCase(),
+          },
+        }),
       );
-      if (allWordsInName) return 2;
-
-      // 3. Similarity with name (Jaro-Winkler)
-      const similarityThreshold = 0.65;
-      const nameSimilarity = jaro(blockName, normalizedQuery);
-      const beautifiedSimilarity = jaro(beautifiedName, normalizedQuery);
-      const maxSimilarity = Math.max(nameSimilarity, beautifiedSimilarity);
-      if (maxSimilarity > similarityThreshold) {
-        return 1 + maxSimilarity; // Score between 1 and 2
-      }
-
-      // 4. All query words in description (lower priority)
-      const allWordsInDescription = queryWords.every((word) =>
-        description.includes(word),
-      );
-      if (allWordsInDescription) return 0.5;
-
-      return 0;
-    };
 
     return blockList
       .concat(agentBlockList)
       .map((block) => ({
         block,
-        score: matchesSearch(block, searchQuery),
+        score: blockScoreForQuery(block, deferredSearchQuery),
       }))
       .filter(
         ({ block, score }) =>
@@ -173,26 +162,28 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
   }, [
     blocks,
     flows,
-    searchQuery,
     selectedCategory,
+    deferredSearchQuery,
     graphHasInputNodes,
     graphHasWebhookNodes,
   ]);
 
-  const resetFilters = React.useCallback(() => {
+  const resetFilters = useCallback(() => {
     setSearchQuery("");
     setSelectedCategory(null);
   }, []);
 
   // Extract unique categories from blocks
-  const categories = Array.from(
-    new Set([
-      null,
-      ...blocks
-        .flatMap((block) => block.categories.map((cat) => cat.category))
-        .sort(),
-    ]),
-  );
+  const categories = useMemo(() => {
+    return Array.from(
+      new Set([
+        null,
+        ...blocks
+          .flatMap((block) => block.categories.map((cat) => cat.category))
+          .sort(),
+      ]),
+    );
+  }, [blocks]);
 
   return (
     <Popover
@@ -336,4 +327,57 @@ export const BlocksControl: React.FC<BlocksControlProps> = ({
       </PopoverContent>
     </Popover>
   );
-};
+}
+
+/**
+ * Evaluates how well a block matches the search query and returns a relevance score.
+ * The scoring algorithm works as follows:
+ * - Returns 1 if no query (all blocks match equally)
+ * - Normalized query for case-insensitive matching
+ * - Returns 3 for exact substring matches in block name (highest priority)
+ * - Returns 2 when all query words appear in the block name (regardless of order)
+ * - Returns 1.X for blocks with names similar to query using Jaro-Winkler distance (X is similarity score)
+ * - Returns 0.5 when all query words appear in the block description (lowest priority)
+ * - Returns 0 for no match
+ *
+ * Higher scores will appear first in search results.
+ */
+function blockScoreForQuery(block: _Block, query: string): number {
+  if (!query) return 1;
+  const normalizedQuery = query.toLowerCase().trim();
+  const queryWords = normalizedQuery.split(/\s+/);
+
+  // Use cached values for performance
+  const { blockName, beautifiedName, description } = block._cached!;
+
+  // 1. Exact match in name (highest priority)
+  if (
+    blockName.includes(normalizedQuery) ||
+    beautifiedName.includes(normalizedQuery)
+  ) {
+    return 3;
+  }
+
+  // 2. All query words in name (regardless of order)
+  const allWordsInName = queryWords.every(
+    (word) => blockName.includes(word) || beautifiedName.includes(word),
+  );
+  if (allWordsInName) return 2;
+
+  // 3. Similarity with name (Jaro-Winkler)
+  const similarityThreshold = 0.65;
+  const nameSimilarity = jaro(blockName, normalizedQuery);
+  const beautifiedSimilarity = jaro(beautifiedName, normalizedQuery);
+  const maxSimilarity = Math.max(nameSimilarity, beautifiedSimilarity);
+  if (maxSimilarity > similarityThreshold) {
+    return 1 + maxSimilarity; // Score between 1 and 2
+  }
+
+  // 4. All query words in description (lower priority)
+  const allWordsInDescription = queryWords.every((word) =>
+    description.includes(word),
+  );
+  if (allWordsInDescription) return 0.5;
+
+  return 0;
+}
