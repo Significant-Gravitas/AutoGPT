@@ -47,6 +47,8 @@ We've moved to a fully maintained and regularly updated documentation site.
 
 👉 [Follow the official self-hosting guide here](https://docs.agpt.co/platform/getting-started/)
 
+This tutorial assumes you have Docker, VSCode, git and npm installed.
+
 ---
 
 #### ⚡ Quick Setup with One-Line Script (Recommended for Local Hosting)
@@ -64,10 +66,6 @@ powershell -c "iwr https://setup.agpt.co/install.bat -o install.bat; ./install.b
 ```
 
 This will install dependencies, configure Docker, and launch your local instance — all in one go.
-
-
-
-This tutorial assumes you have Docker, VSCode, git and npm installed.
 
 ### 🧱 AutoGPT Frontend
 

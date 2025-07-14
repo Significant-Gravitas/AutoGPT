@@ -79,7 +79,7 @@ Once you have Docker and Docker Compose installed, you can proceed to the next s
     See <a href="https://github.com/supabase/supabase/issues/33816">supabase/supabase #33816</a> for additional context.
 </details>
 
-## Quick Setup with Auto Script (Recommended),
+## Quick Setup with Auto Setup Script (Recommended)  
 If you're self-hosting AutoGPT locally, we recommend using our official setup script to simplify the process. This will install dependencies (like Docker), pull the latest code, and launch the app with minimal effort.
 
 For macOS/Linux:
