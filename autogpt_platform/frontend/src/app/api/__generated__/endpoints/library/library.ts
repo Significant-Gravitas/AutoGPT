@@ -37,13 +37,9 @@ import type { HTTPValidationError } from "../../models/hTTPValidationError";
 
 import type { LibraryAgent } from "../../models/libraryAgent";
 
-import type { LibraryAgentPreset } from "../../models/libraryAgentPreset";
-
 import type { LibraryAgentResponse } from "../../models/libraryAgentResponse";
 
 import type { LibraryAgentUpdateRequest } from "../../models/libraryAgentUpdateRequest";
-
-import type { TriggeredPresetSetupParams } from "../../models/triggeredPresetSetupParams";
 
 import { customMutator } from "../../../mutators/custom-mutator";
 
@@ -1585,120 +1581,6 @@ export const usePostV2ForkLibraryAgent = <
   TContext
 > => {
   const mutationOptions = getPostV2ForkLibraryAgentMutationOptions(options);
-
-  return useMutation(mutationOptions, queryClient);
-};
-/**
- * Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.
-Returns the correspondingly created `LibraryAgentPreset` with `webhook_id` set.
- * @summary Setup Trigger
- */
-export type postV2SetupTriggerResponse200 = {
-  data: LibraryAgentPreset;
-  status: 200;
-};
-
-export type postV2SetupTriggerResponse422 = {
-  data: HTTPValidationError;
-  status: 422;
-};
-
-export type postV2SetupTriggerResponseComposite =
-  | postV2SetupTriggerResponse200
-  | postV2SetupTriggerResponse422;
-
-export type postV2SetupTriggerResponse = postV2SetupTriggerResponseComposite & {
-  headers: Headers;
-};
-
-export const getPostV2SetupTriggerUrl = (libraryAgentId: string) => {
-  return `/api/library/agents/${libraryAgentId}/setup-trigger`;
-};
-
-export const postV2SetupTrigger = async (
-  libraryAgentId: string,
-  triggeredPresetSetupParams: TriggeredPresetSetupParams,
-  options?: RequestInit,
-): Promise<postV2SetupTriggerResponse> => {
-  return customMutator<postV2SetupTriggerResponse>(
-    getPostV2SetupTriggerUrl(libraryAgentId),
-    {
-      ...options,
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...options?.headers },
-      body: JSON.stringify(triggeredPresetSetupParams),
-    },
-  );
-};
-
-export const getPostV2SetupTriggerMutationOptions = <
-  TError = HTTPValidationError,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof postV2SetupTrigger>>,
-    TError,
-    { libraryAgentId: string; data: TriggeredPresetSetupParams },
-    TContext
-  >;
-  request?: SecondParameter<typeof customMutator>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof postV2SetupTrigger>>,
-  TError,
-  { libraryAgentId: string; data: TriggeredPresetSetupParams },
-  TContext
-> => {
-  const mutationKey = ["postV2SetupTrigger"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof postV2SetupTrigger>>,
-    { libraryAgentId: string; data: TriggeredPresetSetupParams }
-  > = (props) => {
-    const { libraryAgentId, data } = props ?? {};
-
-    return postV2SetupTrigger(libraryAgentId, data, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type PostV2SetupTriggerMutationResult = NonNullable<
-  Awaited<ReturnType<typeof postV2SetupTrigger>>
->;
-export type PostV2SetupTriggerMutationBody = TriggeredPresetSetupParams;
-export type PostV2SetupTriggerMutationError = HTTPValidationError;
-
-/**
- * @summary Setup Trigger
- */
-export const usePostV2SetupTrigger = <
-  TError = HTTPValidationError,
-  TContext = unknown,
->(
-  options?: {
-    mutation?: UseMutationOptions<
-      Awaited<ReturnType<typeof postV2SetupTrigger>>,
-      TError,
-      { libraryAgentId: string; data: TriggeredPresetSetupParams },
-      TContext
-    >;
-    request?: SecondParameter<typeof customMutator>;
-  },
-  queryClient?: QueryClient,
-): UseMutationResult<
-  Awaited<ReturnType<typeof postV2SetupTrigger>>,
-  TError,
-  { libraryAgentId: string; data: TriggeredPresetSetupParams },
-  TContext
-> => {
-  const mutationOptions = getPostV2SetupTriggerMutationOptions(options);
 
   return useMutation(mutationOptions, queryClient);
 };
