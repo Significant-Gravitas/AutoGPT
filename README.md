@@ -1,6 +1,6 @@
 # AutoGPT: Build, Deploy, and Run AI Agents
 
-[![Discord Follow](https://dcbadge.vercel.app/api/server/autogpt?style=flat)](https://discord.gg/autogpt) &ensp;
+[![Discord](https://img.shields.io/discord/1092243196446249134?label=Join%20Discord&logo=discord&logoColor=white&color=7289DA)](https://discord.gg/autogpt) &ensp;
 [![Twitter Follow](https://img.shields.io/twitter/follow/Auto_GPT?style=social)](https://twitter.com/Auto_GPT) &ensp;
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
