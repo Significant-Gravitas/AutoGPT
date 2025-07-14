@@ -1,6 +1,6 @@
 import logging
 from collections import defaultdict
-from typing import Annotated, Any, Dict, List, Optional, Sequence
+from typing import Annotated, Any, Optional, Sequence
 
 from fastapi import APIRouter, Body, Depends, HTTPException
 from prisma.enums import AgentExecutionStatus, APIKeyPermission
@@ -11,7 +11,6 @@ from backend.data import execution as execution_db
 from backend.data import graph as graph_db
 from backend.data.api_key import APIKey
 from backend.data.block import BlockInput, CompletedBlockOutput
-from backend.data.execution import NodeExecutionResult
 from backend.executor.utils import add_graph_execution
 from backend.server.external.middleware import require_permission
 from backend.util.settings import Settings
@@ -30,30 +29,19 @@ class NodeOutput(TypedDict):
 class ExecutionNode(TypedDict):
     node_id: str
     input: Any
-    output: Dict[str, Any]
+    output: dict[str, Any]
 
 
 class ExecutionNodeOutput(TypedDict):
     node_id: str
-    outputs: List[NodeOutput]
+    outputs: list[NodeOutput]
 
 
 class GraphExecutionResult(TypedDict):
     execution_id: str
     status: str
-    nodes: List[ExecutionNode]
-    output: Optional[List[Dict[str, str]]]
-
-
-def get_outputs_with_names(results: list[NodeExecutionResult]) -> list[dict[str, str]]:
-    outputs = []
-    for result in results:
-        if "output" in result.output_data:
-            output_value = result.output_data["output"][0]
-            name = result.output_data.get("name", [None])[0]
-            if output_value and name:
-                outputs.append({name: output_value})
-    return outputs
+    nodes: list[ExecutionNode]
+    output: Optional[list[dict[str, str]]]
 
 
 @v1_router.get(
@@ -122,23 +110,34 @@ async def get_graph_execution_results(
     if not graph:
         raise HTTPException(status_code=404, detail=f"Graph #{graph_id} not found.")
 
-    results = await execution_db.get_node_executions(graph_exec_id)
-    last_result = results[-1] if results else None
-    execution_status = (
-        last_result.status if last_result else AgentExecutionStatus.INCOMPLETE
+    graph_exec = await execution_db.get_graph_execution(
+        user_id=api_key.user_id,
+        execution_id=graph_exec_id,
+        include_node_executions=True,
     )
-    outputs = get_outputs_with_names(results)
+    if not graph_exec:
+        raise HTTPException(
+            status_code=404, detail=f"Graph execution #{graph_exec_id} not found."
+        )
 
     return GraphExecutionResult(
         execution_id=graph_exec_id,
-        status=execution_status,
+        status=graph_exec.status.value,
         nodes=[
             ExecutionNode(
-                node_id=result.node_id,
-                input=result.input_data.get("value", result.input_data),
-                output={k: v for k, v in result.output_data.items()},
+                node_id=node_exec.node_id,
+                input=node_exec.input_data.get("value", node_exec.input_data),
+                output={k: v for k, v in node_exec.output_data.items()},
             )
-            for result in results
+            for node_exec in graph_exec.node_executions
         ],
-        output=outputs if execution_status == AgentExecutionStatus.COMPLETED else None,
+        output=(
+            [
+                {name: value}
+                for name, values in graph_exec.outputs.items()
+                for value in values
+            ]
+            if graph_exec.status == AgentExecutionStatus.COMPLETED
+            else None
+        ),
     )
