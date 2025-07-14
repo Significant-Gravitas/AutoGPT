@@ -13,7 +13,7 @@ from prisma.types import (
     AgentNodeLinkCreateInput,
     StoreListingVersionWhereInput,
 )
-from pydantic import JsonValue, create_model
+from pydantic import Field, JsonValue, create_model
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -188,6 +188,23 @@ class BaseGraph(BaseDbModel):
             )
         )
 
+    @computed_field
+    @property
+    def has_external_trigger(self) -> bool:
+        return self.webhook_input_node is not None
+
+    @property
+    def webhook_input_node(self) -> Node | None:
+        return next(
+            (
+                node
+                for node in self.nodes
+                if node.block.block_type
+                in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
+            ),
+            None,
+        )
+
     @staticmethod
     def _generate_schema(
         *props: tuple[type[AgentInputBlock.Input] | type[AgentOutputBlock.Input], dict],
@@ -325,11 +342,6 @@ class GraphModel(Graph):
     user_id: str
     nodes: list[NodeModel] = []  # type: ignore
 
-    @computed_field
-    @property
-    def has_webhook_trigger(self) -> bool:
-        return self.webhook_input_node is not None
-
     @property
     def starting_nodes(self) -> list[NodeModel]:
         outbound_nodes = {link.sink_id for link in self.links}
@@ -342,17 +354,12 @@ class GraphModel(Graph):
             if node.id not in outbound_nodes or node.id in input_nodes
         ]
 
-    @property
-    def webhook_input_node(self) -> NodeModel | None:
-        return next(
-            (
-                node
-                for node in self.nodes
-                if node.block.block_type
-                in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
-            ),
-            None,
-        )
+    def meta(self) -> "GraphMeta":
+        """
+        Returns a GraphMeta object with metadata about the graph.
+        This is used to return metadata about the graph without exposing nodes and links.
+        """
+        return GraphMeta.from_graph(self)
 
     def reassign_ids(self, user_id: str, reassign_graph_id: bool = False):
         """
@@ -611,6 +618,18 @@ class GraphModel(Graph):
         )
 
 
+class GraphMeta(Graph):
+    user_id: str
+
+    # Easy work-around to prevent exposing nodes and links in the API response
+    nodes: list[NodeModel] = Field(default=[], exclude=True)  # type: ignore
+    links: list[Link] = Field(default=[], exclude=True)
+
+    @staticmethod
+    def from_graph(graph: GraphModel) -> "GraphMeta":
+        return GraphMeta(**graph.model_dump())
+
+
 # --------------------- CRUD functions --------------------- #
 
 
@@ -639,10 +658,10 @@ async def set_node_webhook(node_id: str, webhook_id: str | None) -> NodeModel:
     return NodeModel.from_db(node)
 
 
-async def get_graphs(
+async def list_graphs(
     user_id: str,
     filter_by: Literal["active"] | None = "active",
-) -> list[GraphModel]:
+) -> list[GraphMeta]:
     """
     Retrieves graph metadata objects.
     Default behaviour is to get all currently active graphs.
@@ -652,7 +671,7 @@ async def get_graphs(
         user_id: The ID of the user that owns the graph.
 
     Returns:
-        list[GraphModel]: A list of objects representing the retrieved graphs.
+        list[GraphMeta]: A list of objects representing the retrieved graphs.
     """
     where_clause: AgentGraphWhereInput = {"userId": user_id}
 
@@ -666,13 +685,13 @@ async def get_graphs(
         include=AGENT_GRAPH_INCLUDE,
     )
 
-    graph_models = []
+    graph_models: list[GraphMeta] = []
     for graph in graphs:
         try:
-            graph_model = GraphModel.from_db(graph)
-            # Trigger serialization to validate that the graph is well formed.
-            graph_model.model_dump()
-            graph_models.append(graph_model)
+            graph_meta = GraphModel.from_db(graph).meta()
+            # Trigger serialization to validate that the graph is well formed
+            graph_meta.model_dump()
+            graph_models.append(graph_meta)
         except Exception as e:
             logger.error(f"Error processing graph {graph.id}: {e}")
             continue
