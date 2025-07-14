@@ -1,4 +1,5 @@
 import { type ClassValue, clsx } from "clsx";
+import { isEmpty as _isEmpty } from "lodash";
 import { twMerge } from "tailwind-merge";
 
 import { Category } from "@/lib/autogpt-server-api/types";
@@ -227,13 +228,6 @@ export function getPrimaryCategoryColor(categories: Category[]): string {
   );
 }
 
-export function filterBlocksByType<T>(
-  blocks: T[],
-  predicate: (block: T) => boolean,
-): T[] {
-  return blocks.filter(predicate);
-}
-
 export enum BehaveAs {
   CLOUD = "CLOUD",
   LOCAL = "LOCAL",
@@ -395,6 +389,14 @@ export function getValue(key: string, value: any) {
 /** Check if a string is empty or whitespace */
 export function isEmptyOrWhitespace(str: string | undefined | null): boolean {
   return !str || str.trim().length === 0;
+}
+
+export function isEmpty(value: any): boolean {
+  return (
+    value === undefined ||
+    value === "" ||
+    (typeof value === "object" && _isEmpty(value))
+  );
 }
 
 /** Check if a value is an object or not */
