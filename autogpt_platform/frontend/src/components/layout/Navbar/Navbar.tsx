@@ -15,7 +15,7 @@ export async function Navbar() {
     <>
       <nav className="sticky top-0 z-40 hidden h-16 items-center rounded-bl-2xl rounded-br-2xl border border-white/50 bg-[#f3f4f6]/20 p-3 backdrop-blur-[26px] md:inline-flex">
         {/* Left section */}
-        <div className="flex flex-1 items-center gap-6">
+        <div className="flex flex-1 items-center gap-5">
           {isLoggedIn
             ? loggedInLinks.map((link) => (
                 <NavbarLink key={link.name} name={link.name} href={link.href} />
