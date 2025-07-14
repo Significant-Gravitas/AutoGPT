@@ -49,7 +49,8 @@ We've moved to a fully maintained and regularly updated documentation site.
 
 ---
 
-⚡ Quick Setup with One-Line Script (Recommended for Local Hosting)
+#### ⚡ Quick Setup with One-Line Script (Recommended for Local Hosting)
+
 Skip the manual steps and get started in minutes using our automatic setup script.
 
 For macOS/Linux:
