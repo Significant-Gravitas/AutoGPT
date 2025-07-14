@@ -285,20 +285,14 @@ class TestCloudStorageHandler:
         with pytest.raises(PermissionError, match="Access denied to path"):
             handler._validate_file_access("invalid/path/file.txt", "user123")
 
-    @patch.object(CloudStorageHandler, "_get_gcs_client")
+    @patch.object(CloudStorageHandler, "_get_async_gcs_client")
     @pytest.mark.asyncio
     async def test_retrieve_file_with_authorization(self, mock_get_client, handler):
         """Test file retrieval with authorization."""
-        # Mock GCS client and operations
-        mock_client = MagicMock()
-        mock_bucket = MagicMock()
-        mock_blob = MagicMock()
-
+        # Mock async GCS client
+        mock_client = AsyncMock()
         mock_get_client.return_value = mock_client
-        mock_client.bucket.return_value = mock_bucket
-        mock_bucket.blob.return_value = mock_blob
-        mock_blob.exists.return_value = True
-        mock_blob.download_as_bytes.return_value = b"test content"
+        mock_client.download = AsyncMock(return_value=b"test content")
 
         # Test successful retrieval of user's own file
         result = await handler.retrieve_file(
@@ -306,6 +300,9 @@ class TestCloudStorageHandler:
             user_id="user123",
         )
         assert result == b"test content"
+        mock_client.download.assert_called_once_with(
+            "test-bucket", "uploads/users/user123/uuid456/file.txt"
+        )
 
         # Test authorization failure
         with pytest.raises(PermissionError):
@@ -314,18 +311,14 @@ class TestCloudStorageHandler:
                 user_id="user456",
             )
 
-    @patch.object(CloudStorageHandler, "_get_gcs_client")
+    @patch.object(CloudStorageHandler, "_get_async_gcs_client")
     @pytest.mark.asyncio
     async def test_store_file_with_user_id(self, mock_get_client, handler):
         """Test file storage with user ID."""
-        # Mock GCS client and operations
-        mock_client = MagicMock()
-        mock_bucket = MagicMock()
-        mock_blob = MagicMock()
-
+        # Mock async GCS client
+        mock_client = AsyncMock()
         mock_get_client.return_value = mock_client
-        mock_client.bucket.return_value = mock_bucket
-        mock_bucket.blob.return_value = mock_blob
+        mock_client.upload = AsyncMock()
 
         content = b"test file content"
         filename = "test.txt"
@@ -338,6 +331,7 @@ class TestCloudStorageHandler:
         # Verify the result format includes user path
         assert result.startswith("gcs://test-bucket/uploads/users/user123/")
         assert result.endswith("/test.txt")
+        mock_client.upload.assert_called()
 
         # Test without user_id (system upload)
         result = await handler.store_file(
@@ -347,6 +341,7 @@ class TestCloudStorageHandler:
         # Verify the result format includes system path
         assert result.startswith("gcs://test-bucket/uploads/system/")
         assert result.endswith("/test.txt")
+        assert mock_client.upload.call_count == 2
 
     @patch.object(CloudStorageHandler, "_get_async_gcs_client")
     @pytest.mark.asyncio

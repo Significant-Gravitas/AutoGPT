@@ -30,13 +30,13 @@ class TestFileCloudIntegration:
         ) as mock_path_class:
 
             # Mock cloud storage handler
-            mock_handler = AsyncMock()
+            mock_handler = MagicMock()
             mock_handler.is_cloud_path.return_value = True
             mock_handler.parse_cloud_path.return_value = (
                 "gcs",
                 "test-bucket/uploads/456/source.txt",
             )
-            mock_handler.retrieve_file.return_value = cloud_content
+            mock_handler.retrieve_file = AsyncMock(return_value=cloud_content)
             mock_handler_getter.return_value = mock_handler
 
             # Mock virus scanner
@@ -55,18 +55,28 @@ class TestFileCloudIntegration:
             mock_resolved_path.write_bytes = MagicMock()
             mock_resolved_path.relative_to.return_value = Path("source.txt")
 
-            # Mock Path constructor for filename extraction
-            mock_path_obj = MagicMock()
-            mock_path_obj.name = "source.txt"
-            with patch("backend.util.file.Path", return_value=mock_path_obj):
-                result = await store_media_file(
-                    graph_exec_id, MediaFileType(cloud_path), return_content=False
-                )
+            # Configure the main Path mock to handle filename extraction
+            # When Path(path_part) is called, it should return a mock with .name = "source.txt"
+            mock_path_for_filename = MagicMock()
+            mock_path_for_filename.name = "source.txt"
+
+            # The Path constructor should return different mocks for different calls
+            def path_constructor(*args, **kwargs):
+                if len(args) == 1 and "source.txt" in str(args[0]):
+                    return mock_path_for_filename
+                else:
+                    return mock_base_path
+
+            mock_path_class.side_effect = path_constructor
+
+            result = await store_media_file(
+                graph_exec_id, MediaFileType(cloud_path), return_content=False
+            )
 
             # Verify cloud storage operations
             mock_handler.is_cloud_path.assert_called_once_with(cloud_path)
             mock_handler.parse_cloud_path.assert_called_once_with(cloud_path)
-            mock_handler.retrieve_file.assert_called_once_with(cloud_path)
+            mock_handler.retrieve_file.assert_called_once_with(cloud_path, user_id=None)
 
             # Verify virus scan
             mock_scan.assert_called_once_with(cloud_content, filename="source.txt")
@@ -97,13 +107,13 @@ class TestFileCloudIntegration:
         ) as mock_path_class:
 
             # Mock cloud storage handler
-            mock_handler = AsyncMock()
+            mock_handler = MagicMock()
             mock_handler.is_cloud_path.return_value = True
             mock_handler.parse_cloud_path.return_value = (
                 "gcs",
                 "test-bucket/uploads/456/image.png",
             )
-            mock_handler.retrieve_file.return_value = cloud_content
+            mock_handler.retrieve_file = AsyncMock(return_value=cloud_content)
             mock_handler_getter.return_value = mock_handler
 
             # Mock other operations
@@ -154,8 +164,11 @@ class TestFileCloudIntegration:
         ) as mock_path_class:
 
             # Mock cloud storage handler
-            mock_handler = AsyncMock()
+            mock_handler = MagicMock()
             mock_handler.is_cloud_path.return_value = False
+            mock_handler.retrieve_file = (
+                AsyncMock()
+            )  # Add this even though it won't be called
             mock_handler_getter.return_value = mock_handler
 
             # Mock other operations
