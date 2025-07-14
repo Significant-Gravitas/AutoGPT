@@ -99,7 +99,9 @@ async def store_media_file(
     cloud_storage = get_cloud_storage_handler()
     if cloud_storage.is_cloud_path(file):
         # Download from cloud storage and store locally
-        cloud_content = await cloud_storage.retrieve_file(file, user_id=user_id)
+        cloud_content = await cloud_storage.retrieve_file(
+            file, user_id=user_id, graph_exec_id=graph_exec_id
+        )
 
         # Generate filename from cloud path
         _, path_part = cloud_storage.parse_cloud_path(file)

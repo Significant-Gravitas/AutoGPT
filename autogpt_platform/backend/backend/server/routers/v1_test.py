@@ -7,6 +7,7 @@ import fastapi
 import fastapi.testclient
 import pytest
 import pytest_mock
+import starlette.datastructures
 from fastapi import UploadFile
 from pytest_snapshot.plugin import Snapshot
 
@@ -398,13 +399,16 @@ def test_missing_required_field() -> None:
 
 
 @pytest.mark.asyncio
-async def test_upload_file_success(self):
+async def test_upload_file_success():
     """Test successful file upload."""
     # Create mock upload file
     file_content = b"test file content"
     file_obj = BytesIO(file_content)
-    upload_file_mock = UploadFile(filename="test.txt", file=file_obj)
-    upload_file_mock.content_type = "text/plain"
+    upload_file_mock = UploadFile(
+        filename="test.txt",
+        file=file_obj,
+        headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
+    )
 
     # Mock dependencies
     with patch("backend.server.routers.v1.scan_content_safe") as mock_scan, patch(
@@ -440,20 +444,31 @@ async def test_upload_file_success(self):
 
         # Verify cloud storage operations
         mock_handler.store_file.assert_called_once_with(
-            content=file_content, filename="test.txt", provider="gcs"
+            content=file_content,
+            filename="test.txt",
+            provider="gcs",
+            expiration_hours=24,
+            user_id="test-user-123",
         )
         mock_handler.generate_signed_url.assert_called_once_with(
-            "gcs://test-bucket/uploads/123/test.txt", expiration_hours=24
+            "gcs://test-bucket/uploads/123/test.txt",
+            expiration_hours=24,
+            user_id="test-user-123",
         )
 
 
 @pytest.mark.asyncio
-async def test_upload_file_no_filename(self):
+async def test_upload_file_no_filename():
     """Test file upload without filename."""
     file_content = b"test content"
     file_obj = BytesIO(file_content)
-    upload_file_mock = UploadFile(filename=None, file=file_obj)
-    upload_file_mock.content_type = "application/octet-stream"
+    upload_file_mock = UploadFile(
+        filename=None,
+        file=file_obj,
+        headers=starlette.datastructures.Headers(
+            {"content-type": "application/octet-stream"}
+        ),
+    )
 
     with patch("backend.server.routers.v1.scan_content_safe") as mock_scan, patch(
         "backend.server.routers.v1.get_cloud_storage_handler"
@@ -479,12 +494,16 @@ async def test_upload_file_no_filename(self):
 
 
 @pytest.mark.asyncio
-async def test_upload_file_invalid_expiration(self):
+async def test_upload_file_invalid_expiration():
     """Test file upload with invalid expiration hours."""
     from fastapi import HTTPException
 
     file_obj = BytesIO(b"content")
-    upload_file_mock = UploadFile(filename="test.txt", file=file_obj)
+    upload_file_mock = UploadFile(
+        filename="test.txt",
+        file=file_obj,
+        headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
+    )
 
     # Test expiration too short
     with pytest.raises(HTTPException) as exc_info:
@@ -504,11 +523,15 @@ async def test_upload_file_invalid_expiration(self):
 
 
 @pytest.mark.asyncio
-async def test_upload_file_virus_scan_failure(self):
+async def test_upload_file_virus_scan_failure():
     """Test file upload when virus scan fails."""
     file_content = b"malicious content"
     file_obj = BytesIO(file_content)
-    upload_file_mock = UploadFile(filename="virus.txt", file=file_obj)
+    upload_file_mock = UploadFile(
+        filename="virus.txt",
+        file=file_obj,
+        headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
+    )
 
     with patch("backend.server.routers.v1.scan_content_safe") as mock_scan:
         # Mock virus scan to raise exception
@@ -521,11 +544,15 @@ async def test_upload_file_virus_scan_failure(self):
 
 
 @pytest.mark.asyncio
-async def test_upload_file_cloud_storage_failure(self):
+async def test_upload_file_cloud_storage_failure():
     """Test file upload when cloud storage fails."""
     file_content = b"test content"
     file_obj = BytesIO(file_content)
-    upload_file_mock = UploadFile(filename="test.txt", file=file_obj)
+    upload_file_mock = UploadFile(
+        filename="test.txt",
+        file=file_obj,
+        headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
+    )
 
     with patch("backend.server.routers.v1.scan_content_safe") as mock_scan, patch(
         "backend.server.routers.v1.get_cloud_storage_handler"

@@ -302,12 +302,16 @@ async def upload_file(
     # Store in cloud storage
     cloud_storage = get_cloud_storage_handler()
     storage_path = await cloud_storage.store_file(
-        content=content, filename=file.filename or "uploaded_file", provider=provider
+        content=content,
+        filename=file.filename or "uploaded_file",
+        provider=provider,
+        expiration_hours=expiration_hours,
+        user_id=user_id,
     )
 
     # Generate signed URL for direct access
     signed_url = await cloud_storage.generate_signed_url(
-        storage_path, expiration_hours=expiration_hours
+        storage_path, expiration_hours=expiration_hours, user_id=user_id
     )
 
     return {
