@@ -24,4 +24,5 @@ export interface BaseGraphOutput {
   forked_from_version?: BaseGraphOutputForkedFromVersion;
   readonly input_schema: BaseGraphOutputInputSchema;
   readonly output_schema: BaseGraphOutputOutputSchema;
+  readonly has_external_trigger: boolean;
 }
