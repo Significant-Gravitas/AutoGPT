@@ -636,6 +636,35 @@ class NodeExecutionStats(BaseModel):
     llm_retry_count: int = 0
     input_token_count: int = 0
     output_token_count: int = 0
+    extra_cost: int = 0
+    extra_steps: int = 0
+
+    def __iadd__(self, other: "NodeExecutionStats") -> "NodeExecutionStats":
+        """Mutate this instance by adding another NodeExecutionStats."""
+        if not isinstance(other, NodeExecutionStats):
+            return NotImplemented
+
+        stats_dict = other.model_dump()
+        current_stats = self.model_dump()
+
+        for key, value in stats_dict.items():
+            if key not in current_stats:
+                # Field doesn't exist yet, just set it
+                setattr(self, key, value)
+            elif isinstance(value, dict) and isinstance(current_stats[key], dict):
+                current_stats[key].update(value)
+                setattr(self, key, current_stats[key])
+            elif isinstance(value, (int, float)) and isinstance(
+                current_stats[key], (int, float)
+            ):
+                setattr(self, key, current_stats[key] + value)
+            elif isinstance(value, list) and isinstance(current_stats[key], list):
+                current_stats[key].extend(value)
+                setattr(self, key, current_stats[key])
+            else:
+                setattr(self, key, value)
+
+        return self
 
 
 class GraphExecutionStats(BaseModel):
