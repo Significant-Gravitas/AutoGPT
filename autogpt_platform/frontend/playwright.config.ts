@@ -43,7 +43,6 @@ export default defineConfig({
     command: "NEXT_PUBLIC_PW_TEST=true pnpm start",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
   },
 
   /* Configure projects for major browsers */

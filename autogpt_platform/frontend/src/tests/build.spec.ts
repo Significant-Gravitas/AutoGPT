@@ -9,6 +9,7 @@ import { BuildPage } from "./pages/build.page";
 // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
 // prettier-ignore
 test.describe("Build", () => { //(1)!
+  test.setTimeout(120 * 1000);
   let buildPage: BuildPage; //(2)!
 
   // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
