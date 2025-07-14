@@ -448,10 +448,10 @@ class DeleteGraphResponse(TypedDict):
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
-async def get_graphs(
+async def list_graphs(
     user_id: Annotated[str, Depends(get_user_id)],
-) -> Sequence[graph_db.GraphModel]:
-    return await graph_db.get_graphs(filter_by="active", user_id=user_id)
+) -> Sequence[graph_db.GraphMeta]:
+    return await graph_db.list_graphs(filter_by="active", user_id=user_id)
 
 
 @v1_router.get(

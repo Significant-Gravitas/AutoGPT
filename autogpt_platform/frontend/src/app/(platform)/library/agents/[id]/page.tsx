@@ -521,7 +521,8 @@ export default function AgentRunsPage(): React.ReactElement {
         ) : selectedView.type == "run" ? (
           /* Draft new runs / Create new presets */
           <AgentRunDraftView
-            agent={agent}
+            graph={graph}
+            triggerSetupInfo={agent.trigger_setup_info}
             onRun={selectRun}
             onCreateSchedule={onCreateSchedule}
             onCreatePreset={onCreatePreset}
@@ -530,7 +531,8 @@ export default function AgentRunsPage(): React.ReactElement {
         ) : selectedView.type == "preset" ? (
           /* Edit & update presets */
           <AgentRunDraftView
-            agent={agent}
+            graph={graph}
+            triggerSetupInfo={agent.trigger_setup_info}
             agentPreset={
               agentPresets.find((preset) => preset.id == selectedView.id)!
             }
