@@ -3,7 +3,6 @@ import uuid
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Literal, Optional, cast
 
-import prisma
 from prisma import Json
 from prisma.enums import SubmissionStatus
 from prisma.models import AgentGraph, AgentNode, AgentNodeLink, StoreListingVersion
@@ -14,7 +13,7 @@ from prisma.types import (
     AgentNodeLinkCreateInput,
     StoreListingVersionWhereInput,
 )
-from pydantic import JsonValue, create_model
+from pydantic import Field, JsonValue, create_model
 from pydantic.fields import computed_field
 
 from backend.blocks.agent import AgentExecutorBlock
@@ -27,10 +26,11 @@ from backend.data.model import (
     CredentialsMetaInput,
     is_credentials_field_name,
 )
+from backend.integrations.providers import ProviderName
 from backend.util import type as type_utils
 
 from .block import Block, BlockInput, BlockSchema, BlockType, get_block, get_blocks
-from .db import BaseDbModel, transaction
+from .db import BaseDbModel, query_raw_with_schema, transaction
 from .includes import AGENT_GRAPH_INCLUDE, AGENT_NODE_INCLUDE
 
 if TYPE_CHECKING:
@@ -188,6 +188,23 @@ class BaseGraph(BaseDbModel):
             )
         )
 
+    @computed_field
+    @property
+    def has_external_trigger(self) -> bool:
+        return self.webhook_input_node is not None
+
+    @property
+    def webhook_input_node(self) -> Node | None:
+        return next(
+            (
+                node
+                for node in self.nodes
+                if node.block.block_type
+                in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
+            ),
+            None,
+        )
+
     @staticmethod
     def _generate_schema(
         *props: tuple[type[AgentInputBlock.Input] | type[AgentOutputBlock.Input], dict],
@@ -243,6 +260,8 @@ class Graph(BaseGraph):
             for other_field, other_keys in list(graph_cred_fields)[i + 1 :]:
                 if field.provider != other_field.provider:
                     continue
+                if ProviderName.HTTP in field.provider:
+                    continue
 
                 # If this happens, that means a block implementation probably needs
                 # to be updated.
@@ -264,6 +283,7 @@ class Graph(BaseGraph):
                     required_scopes=set(field_info.required_scopes or []),
                     discriminator=field_info.discriminator,
                     discriminator_mapping=field_info.discriminator_mapping,
+                    discriminator_values=field_info.discriminator_values,
                 ),
             )
             for agg_field_key, (field_info, _) in graph_credentials_inputs.items()
@@ -282,47 +302,45 @@ class Graph(BaseGraph):
         Returns:
             dict[aggregated_field_key, tuple(
                 CredentialsFieldInfo: A spec for one aggregated credentials field
+                    (now includes discriminator_values from matching nodes)
                 set[(node_id, field_name)]: Node credentials fields that are
                     compatible with this aggregated field spec
             )]
         """
-        return {
-            "_".join(sorted(agg_field_info.provider))
-            + "_"
-            + "_".join(sorted(agg_field_info.supported_types))
-            + "_credentials": (agg_field_info, node_fields)
-            for agg_field_info, node_fields in CredentialsFieldInfo.combine(
-                *(
-                    (
-                        # Apply discrimination before aggregating credentials inputs
-                        (
-                            field_info.discriminate(
-                                node.input_default[field_info.discriminator]
-                            )
-                            if (
-                                field_info.discriminator
-                                and node.input_default.get(field_info.discriminator)
-                            )
-                            else field_info
-                        ),
-                        (node.id, field_name),
+        # First collect all credential field data with input defaults
+        node_credential_data = []
+
+        for graph in [self] + self.sub_graphs:
+            for node in graph.nodes:
+                for (
+                    field_name,
+                    field_info,
+                ) in node.block.input_schema.get_credentials_fields_info().items():
+
+                    discriminator = field_info.discriminator
+                    if not discriminator:
+                        node_credential_data.append((field_info, (node.id, field_name)))
+                        continue
+
+                    discriminator_value = node.input_default.get(discriminator)
+                    if discriminator_value is None:
+                        node_credential_data.append((field_info, (node.id, field_name)))
+                        continue
+
+                    discriminated_info = field_info.discriminate(discriminator_value)
+                    discriminated_info.discriminator_values.add(discriminator_value)
+
+                    node_credential_data.append(
+                        (discriminated_info, (node.id, field_name))
                     )
-                    for graph in [self] + self.sub_graphs
-                    for node in graph.nodes
-                    for field_name, field_info in node.block.input_schema.get_credentials_fields_info().items()
-                )
-            )
-        }
+
+        # Combine credential field info (this will merge discriminator_values automatically)
+        return CredentialsFieldInfo.combine(*node_credential_data)
 
 
 class GraphModel(Graph):
     user_id: str
     nodes: list[NodeModel] = []  # type: ignore
-
-    @computed_field
-    @property
-    def has_webhook_trigger(self) -> bool:
-        return self.webhook_input_node is not None
 
     @property
     def starting_nodes(self) -> list[NodeModel]:
@@ -336,17 +354,12 @@ class GraphModel(Graph):
             if node.id not in outbound_nodes or node.id in input_nodes
         ]
 
-    @property
-    def webhook_input_node(self) -> NodeModel | None:
-        return next(
-            (
-                node
-                for node in self.nodes
-                if node.block.block_type
-                in (BlockType.WEBHOOK, BlockType.WEBHOOK_MANUAL)
-            ),
-            None,
-        )
+    def meta(self) -> "GraphMeta":
+        """
+        Returns a GraphMeta object with metadata about the graph.
+        This is used to return metadata about the graph without exposing nodes and links.
+        """
+        return GraphMeta.from_graph(self)
 
     def reassign_ids(self, user_id: str, reassign_graph_id: bool = False):
         """
@@ -382,8 +395,10 @@ class GraphModel(Graph):
 
         # Reassign Link IDs
         for link in graph.links:
-            link.source_id = id_map[link.source_id]
-            link.sink_id = id_map[link.sink_id]
+            if link.source_id in id_map:
+                link.source_id = id_map[link.source_id]
+            if link.sink_id in id_map:
+                link.sink_id = id_map[link.sink_id]
 
         # Reassign User IDs for agent blocks
         for node in graph.nodes:
@@ -391,7 +406,9 @@ class GraphModel(Graph):
                 continue
             node.input_default["user_id"] = user_id
             node.input_default.setdefault("inputs", {})
-            if (graph_id := node.input_default.get("graph_id")) in graph_id_map:
+            if (
+                graph_id := node.input_default.get("graph_id")
+            ) and graph_id in graph_id_map:
                 node.input_default["graph_id"] = graph_id_map[graph_id]
 
     def validate_graph(
@@ -601,6 +618,18 @@ class GraphModel(Graph):
         )
 
 
+class GraphMeta(Graph):
+    user_id: str
+
+    # Easy work-around to prevent exposing nodes and links in the API response
+    nodes: list[NodeModel] = Field(default=[], exclude=True)  # type: ignore
+    links: list[Link] = Field(default=[], exclude=True)
+
+    @staticmethod
+    def from_graph(graph: GraphModel) -> "GraphMeta":
+        return GraphMeta(**graph.model_dump())
+
+
 # --------------------- CRUD functions --------------------- #
 
 
@@ -629,10 +658,10 @@ async def set_node_webhook(node_id: str, webhook_id: str | None) -> NodeModel:
     return NodeModel.from_db(node)
 
 
-async def get_graphs(
+async def list_graphs(
     user_id: str,
     filter_by: Literal["active"] | None = "active",
-) -> list[GraphModel]:
+) -> list[GraphMeta]:
     """
     Retrieves graph metadata objects.
     Default behaviour is to get all currently active graphs.
@@ -642,7 +671,7 @@ async def get_graphs(
         user_id: The ID of the user that owns the graph.
 
     Returns:
-        list[GraphModel]: A list of objects representing the retrieved graphs.
+        list[GraphMeta]: A list of objects representing the retrieved graphs.
     """
     where_clause: AgentGraphWhereInput = {"userId": user_id}
 
@@ -656,13 +685,13 @@ async def get_graphs(
         include=AGENT_GRAPH_INCLUDE,
     )
 
-    graph_models = []
+    graph_models: list[GraphMeta] = []
     for graph in graphs:
         try:
-            graph_model = GraphModel.from_db(graph)
-            # Trigger serialization to validate that the graph is well formed.
-            graph_model.model_dump()
-            graph_models.append(graph_model)
+            graph_meta = GraphModel.from_db(graph).meta()
+            # Trigger serialization to validate that the graph is well formed
+            graph_meta.model_dump()
+            graph_models.append(graph_meta)
         except Exception as e:
             logger.error(f"Error processing graph {graph.id}: {e}")
             continue
@@ -1029,13 +1058,13 @@ async def fix_llm_provider_credentials():
 
     broken_nodes = []
     try:
-        broken_nodes = await prisma.get_client().query_raw(
+        broken_nodes = await query_raw_with_schema(
             """
             SELECT    graph."userId"       user_id,
                   node.id              node_id,
                   node."constantInput" node_preset_input
-            FROM      platform."AgentNode"  node
-            LEFT JOIN platform."AgentGraph" graph
+            FROM      {schema_prefix}"AgentNode"  node
+            LEFT JOIN {schema_prefix}"AgentGraph" graph
             ON        node."agentGraphId" = graph.id
             WHERE     node."constantInput"::jsonb->'credentials'->>'provider' = 'llm'
             ORDER BY  graph."userId";

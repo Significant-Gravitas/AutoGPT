@@ -9,25 +9,18 @@ export class LoginPage {
       password,
     });
 
-    // Fill email
-    const emailInput = this.page.getByPlaceholder("m@example.com");
+    // Wait for the form to be ready
+    await this.page.waitForSelector("form", { state: "visible" });
+
+    // Fill email using input selector instead of label
+    const emailInput = this.page.locator('input[type="email"]');
     await emailInput.waitFor({ state: "visible" });
     await emailInput.fill(email);
 
-    // Fill password
-    const passwordInput = this.page.getByTitle("Password");
+    // Fill password using input selector instead of label
+    const passwordInput = this.page.locator('input[type="password"]');
     await passwordInput.waitFor({ state: "visible" });
     await passwordInput.fill(password);
-
-    // TODO: This is a workaround to wait for the page to load after filling the email and password
-    const emailInput2 = this.page.getByPlaceholder("m@example.com");
-    await emailInput2.waitFor({ state: "visible" });
-    await emailInput2.fill(email);
-
-    // Fill password
-    const passwordInput2 = this.page.getByTitle("Password");
-    await passwordInput2.waitFor({ state: "visible" });
-    await passwordInput2.fill(password);
 
     // Wait for the button to be ready
     const loginButton = this.page.getByRole("button", {

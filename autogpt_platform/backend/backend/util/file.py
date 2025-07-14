@@ -32,7 +32,10 @@ def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
 
 
 async def store_media_file(
-    graph_exec_id: str, file: MediaFileType, return_content: bool = False
+    graph_exec_id: str,
+    file: MediaFileType,
+    return_content: bool = False,
+    user_id: str | None = None,
 ) -> MediaFileType:
     """
     Safely handle 'file' (a data URI, a URL, or a local path relative to {temp}/exec_file/{exec_id}),
@@ -96,7 +99,7 @@ async def store_media_file(
     cloud_storage = get_cloud_storage_handler()
     if cloud_storage.is_cloud_path(file):
         # Download from cloud storage and store locally
-        cloud_content = await cloud_storage.retrieve_file(file)
+        cloud_content = await cloud_storage.retrieve_file(file, user_id=user_id)
 
         # Generate filename from cloud path
         _, path_part = cloud_storage.parse_cloud_path(file)

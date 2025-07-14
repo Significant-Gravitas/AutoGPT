@@ -1,7 +1,6 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Repository Overview
 
 AutoGPT Platform is a monorepo containing:
@@ -121,6 +120,7 @@ Key models (defined in `/backend/schema.prisma`):
 3. Define input/output schemas
 4. Implement `run` method
 5. Register in block registry
+6. Generate the block uuid using `uuid.uuid4()`
 
 **Modifying the API:**
 1. Update route in `/backend/backend/server/routers/`

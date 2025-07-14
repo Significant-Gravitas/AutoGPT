@@ -15,6 +15,7 @@ from fastapi import (
     Depends,
     File,
     HTTPException,
+    Path,
     Request,
     Response,
     UploadFile,
@@ -82,6 +83,7 @@ from backend.server.model import (
 )
 from backend.server.utils import get_user_id
 from backend.util.cloud_storage import get_cloud_storage_handler
+from backend.util.exceptions import NotFoundError
 from backend.util.service import get_service_client
 from backend.util.settings import Settings
 from backend.util.virus_scanner import scan_content_safe
@@ -515,10 +517,10 @@ class DeleteGraphResponse(TypedDict):
     tags=["graphs"],
     dependencies=[Depends(auth_middleware)],
 )
-async def get_graphs(
+async def list_graphs(
     user_id: Annotated[str, Depends(get_user_id)],
-) -> Sequence[graph_db.GraphModel]:
-    return await graph_db.get_graphs(filter_by="active", user_id=user_id)
+) -> Sequence[graph_db.GraphMeta]:
+    return await graph_db.list_graphs(filter_by="active", user_id=user_id)
 
 
 @v1_router.get(
@@ -736,24 +738,38 @@ async def execute_graph(
 )
 async def stop_graph_run(
     graph_id: str, graph_exec_id: str, user_id: Annotated[str, Depends(get_user_id)]
-) -> execution_db.GraphExecution:
-    if not await execution_db.get_graph_execution_meta(
-        user_id=user_id, execution_id=graph_exec_id
-    ):
-        raise HTTPException(404, detail=f"Agent execution #{graph_exec_id} not found")
-
-    await execution_utils.stop_graph_execution(graph_exec_id)
-
-    # Retrieve & return canceled graph execution in its final state
-    result = await execution_db.get_graph_execution(
-        execution_id=graph_exec_id, user_id=user_id
+) -> execution_db.GraphExecutionMeta | None:
+    res = await _stop_graph_run(
+        user_id=user_id,
+        graph_id=graph_id,
+        graph_exec_id=graph_exec_id,
     )
-    if not result:
-        raise HTTPException(
-            500,
-            detail=f"Could not fetch graph execution #{graph_exec_id} after stopping",
-        )
-    return result
+    if not res:
+        return None
+    return res[0]
+
+
+async def _stop_graph_run(
+    user_id: str,
+    graph_id: Optional[str] = None,
+    graph_exec_id: Optional[str] = None,
+) -> list[execution_db.GraphExecutionMeta]:
+    graph_execs = await execution_db.get_graph_executions(
+        user_id=user_id,
+        graph_id=graph_id,
+        graph_exec_id=graph_exec_id,
+        statuses=[
+            execution_db.ExecutionStatus.INCOMPLETE,
+            execution_db.ExecutionStatus.QUEUED,
+            execution_db.ExecutionStatus.RUNNING,
+        ],
+    )
+    stopped_execs = [
+        execution_utils.stop_graph_execution(graph_exec_id=exec.id, user_id=user_id)
+        for exec in graph_execs
+    ]
+    await asyncio.gather(*stopped_execs)
+    return graph_execs
 
 
 @v1_router.get(
@@ -833,38 +849,72 @@ async def delete_graph_execution(
 
 
 class ScheduleCreationRequest(pydantic.BaseModel):
+    graph_version: Optional[int] = None
+    name: str
     cron: str
-    input_data: dict[Any, Any]
-    graph_id: str
-    graph_version: int
+    inputs: dict[str, Any]
+    credentials: dict[str, CredentialsMetaInput] = pydantic.Field(default_factory=dict)
 
 
 @v1_router.post(
-    path="/schedules",
+    path="/graphs/{graph_id}/schedules",
     summary="Create execution schedule",
     tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
-async def create_schedule(
+async def create_graph_execution_schedule(
     user_id: Annotated[str, Depends(get_user_id)],
-    schedule: ScheduleCreationRequest,
+    graph_id: str = Path(..., description="ID of the graph to schedule"),
+    schedule_params: ScheduleCreationRequest = Body(),
 ) -> scheduler.GraphExecutionJobInfo:
     graph = await graph_db.get_graph(
-        schedule.graph_id, schedule.graph_version, user_id=user_id
+        graph_id=graph_id,
+        version=schedule_params.graph_version,
+        user_id=user_id,
     )
     if not graph:
         raise HTTPException(
             status_code=404,
-            detail=f"Graph #{schedule.graph_id} v.{schedule.graph_version} not found.",
+            detail=f"Graph #{graph_id} v{schedule_params.graph_version} not found.",
         )
 
     return await execution_scheduler_client().add_execution_schedule(
-        graph_id=schedule.graph_id,
-        graph_version=graph.version,
-        cron=schedule.cron,
-        input_data=schedule.input_data,
         user_id=user_id,
+        graph_id=graph_id,
+        graph_version=graph.version,
+        name=schedule_params.name,
+        cron=schedule_params.cron,
+        input_data=schedule_params.inputs,
+        input_credentials=schedule_params.credentials,
     )
+
+
+@v1_router.get(
+    path="/graphs/{graph_id}/schedules",
+    summary="List execution schedules for a graph",
+    tags=["schedules"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def list_graph_execution_schedules(
+    user_id: Annotated[str, Depends(get_user_id)],
+    graph_id: str = Path(),
+) -> list[scheduler.GraphExecutionJobInfo]:
+    return await execution_scheduler_client().get_execution_schedules(
+        user_id=user_id,
+        graph_id=graph_id,
+    )
+
+
+@v1_router.get(
+    path="/schedules",
+    summary="List execution schedules for a user",
+    tags=["schedules"],
+    dependencies=[Depends(auth_middleware)],
+)
+async def list_all_graphs_execution_schedules(
+    user_id: Annotated[str, Depends(get_user_id)],
+) -> list[scheduler.GraphExecutionJobInfo]:
+    return await execution_scheduler_client().get_execution_schedules(user_id=user_id)
 
 
 @v1_router.delete(
@@ -873,28 +923,18 @@ async def create_schedule(
     tags=["schedules"],
     dependencies=[Depends(auth_middleware)],
 )
-async def delete_schedule(
-    schedule_id: str,
+async def delete_graph_execution_schedule(
     user_id: Annotated[str, Depends(get_user_id)],
-) -> dict[Any, Any]:
-    await execution_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
+    schedule_id: str = Path(..., description="ID of the schedule to delete"),
+) -> dict[str, Any]:
+    try:
+        await execution_scheduler_client().delete_schedule(schedule_id, user_id=user_id)
+    except NotFoundError:
+        raise HTTPException(
+            status_code=HTTP_404_NOT_FOUND,
+            detail=f"Schedule #{schedule_id} not found",
+        )
     return {"id": schedule_id}
-
-
-@v1_router.get(
-    path="/schedules",
-    summary="List execution schedules",
-    tags=["schedules"],
-    dependencies=[Depends(auth_middleware)],
-)
-async def get_execution_schedules(
-    user_id: Annotated[str, Depends(get_user_id)],
-    graph_id: str | None = None,
-) -> list[scheduler.GraphExecutionJobInfo]:
-    return await execution_scheduler_client().get_execution_schedules(
-        user_id=user_id,
-        graph_id=graph_id,
-    )
 
 
 ########################################################

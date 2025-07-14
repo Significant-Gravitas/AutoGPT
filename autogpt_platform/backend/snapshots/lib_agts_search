@@ -15,6 +15,12 @@
         "type": "object",
         "properties": {}
       },
+      "credentials_input_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "has_external_trigger": false,
+      "trigger_setup_info": null,
       "new_output": false,
       "can_access_graph": true,
       "is_latest_version": true
@@ -34,6 +40,12 @@
         "type": "object",
         "properties": {}
       },
+      "credentials_input_schema": {
+        "type": "object",
+        "properties": {}
+      },
+      "has_external_trigger": false,
+      "trigger_setup_info": null,
       "new_output": false,
       "can_access_graph": false,
       "is_latest_version": true

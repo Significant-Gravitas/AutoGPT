@@ -6,57 +6,12 @@ import {
   CredentialsDeleteResponse,
   CredentialsMetaResponse,
   CredentialsProviderName,
-  PROVIDER_NAMES,
+  HostScopedCredentials,
   UserPasswordCredentials,
 } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
-
-// Get keys from CredentialsProviderName type
-const CREDENTIALS_PROVIDER_NAMES = Object.values(
-  PROVIDER_NAMES,
-) as CredentialsProviderName[];
-
-// --8<-- [start:CredentialsProviderNames]
-const providerDisplayNames: Record<CredentialsProviderName, string> = {
-  aiml_api: "AI/ML",
-  anthropic: "Anthropic",
-  apollo: "Apollo",
-  discord: "Discord",
-  d_id: "D-ID",
-  e2b: "E2B",
-  exa: "Exa",
-  fal: "FAL",
-  github: "GitHub",
-  google: "Google",
-  google_maps: "Google Maps",
-  groq: "Groq",
-  hubspot: "Hubspot",
-  ideogram: "Ideogram",
-  jina: "Jina",
-  linear: "Linear",
-  medium: "Medium",
-  mem0: "Mem0",
-  notion: "Notion",
-  nvidia: "Nvidia",
-  ollama: "Ollama",
-  openai: "OpenAI",
-  openweathermap: "OpenWeatherMap",
-  open_router: "Open Router",
-  llama_api: "Llama API",
-  pinecone: "Pinecone",
-  screenshotone: "ScreenshotOne",
-  slant3d: "Slant3D",
-  smartlead: "SmartLead",
-  smtp: "SMTP",
-  reddit: "Reddit",
-  replicate: "Replicate",
-  revid: "Rev.ID",
-  twitter: "Twitter",
-  todoist: "Todoist",
-  unreal_speech: "Unreal Speech",
-  zerobounce: "ZeroBounce",
-} as const;
-// --8<-- [end:CredentialsProviderNames]
+import { useToastOnFail } from "@/components/molecules/Toast/use-toast";
+import { toDisplayName } from "@/components/integrations/helper";
 
 type APIKeyCredentialsCreatable = Omit<
   APIKeyCredentials,
@@ -65,6 +20,11 @@ type APIKeyCredentialsCreatable = Omit<
 
 type UserPasswordCredentialsCreatable = Omit<
   UserPasswordCredentials,
+  "id" | "provider" | "type"
+>;
+
+type HostScopedCredentialsCreatable = Omit<
+  HostScopedCredentials,
   "id" | "provider" | "type"
 >;
 
@@ -81,6 +41,9 @@ export type CredentialsProviderData = {
   ) => Promise<CredentialsMetaResponse>;
   createUserPasswordCredentials: (
     credentials: UserPasswordCredentialsCreatable,
+  ) => Promise<CredentialsMetaResponse>;
+  createHostScopedCredentials: (
+    credentials: HostScopedCredentialsCreatable,
   ) => Promise<CredentialsMetaResponse>;
   deleteCredentials: (
     id: string,
@@ -104,8 +67,10 @@ export default function CredentialsProvider({
 }) {
   const [providers, setProviders] =
     useState<CredentialsProvidersContextType | null>(null);
+  const [providerNames, setProviderNames] = useState<string[]>([]);
   const { isLoggedIn } = useSupabase();
   const api = useBackendAPI();
+  const onFailToast = useToastOnFail();
 
   const addCredentials = useCallback(
     (
@@ -134,11 +99,20 @@ export default function CredentialsProvider({
       code: string,
       state_token: string,
     ): Promise<CredentialsMetaResponse> => {
-      const credsMeta = await api.oAuthCallback(provider, code, state_token);
-      addCredentials(provider, credsMeta);
-      return credsMeta;
+      try {
+        const credsMeta = await api.oAuthCallback(
+          provider as string,
+          code,
+          state_token,
+        );
+        addCredentials(provider as string, credsMeta);
+        return credsMeta;
+      } catch (error) {
+        onFailToast("complete OAuth authentication")(error);
+        throw error;
+      }
     },
-    [api, addCredentials],
+    [api, addCredentials, onFailToast],
   );
 
   /** Wraps `BackendAPI.createAPIKeyCredentials`, and adds the result to the internal credentials store. */
@@ -147,14 +121,19 @@ export default function CredentialsProvider({
       provider: CredentialsProviderName,
       credentials: APIKeyCredentialsCreatable,
     ): Promise<CredentialsMetaResponse> => {
-      const credsMeta = await api.createAPIKeyCredentials({
-        provider,
-        ...credentials,
-      });
-      addCredentials(provider, credsMeta);
-      return credsMeta;
+      try {
+        const credsMeta = await api.createAPIKeyCredentials({
+          provider,
+          ...credentials,
+        });
+        addCredentials(provider, credsMeta);
+        return credsMeta;
+      } catch (error) {
+        onFailToast("create API key credentials")(error);
+        throw error;
+      }
     },
-    [api, addCredentials],
+    [api, addCredentials, onFailToast],
   );
 
   /** Wraps `BackendAPI.createUserPasswordCredentials`, and adds the result to the internal credentials store. */
@@ -163,14 +142,40 @@ export default function CredentialsProvider({
       provider: CredentialsProviderName,
       credentials: UserPasswordCredentialsCreatable,
     ): Promise<CredentialsMetaResponse> => {
-      const credsMeta = await api.createUserPasswordCredentials({
-        provider,
-        ...credentials,
-      });
-      addCredentials(provider, credsMeta);
-      return credsMeta;
+      try {
+        const credsMeta = await api.createUserPasswordCredentials({
+          provider,
+          ...credentials,
+        });
+        addCredentials(provider, credsMeta);
+        return credsMeta;
+      } catch (error) {
+        onFailToast("create user/password credentials")(error);
+        throw error;
+      }
     },
-    [api, addCredentials],
+    [api, addCredentials, onFailToast],
+  );
+
+  /** Wraps `BackendAPI.createHostScopedCredentials`, and adds the result to the internal credentials store. */
+  const createHostScopedCredentials = useCallback(
+    async (
+      provider: CredentialsProviderName,
+      credentials: HostScopedCredentialsCreatable,
+    ): Promise<CredentialsMetaResponse> => {
+      try {
+        const credsMeta = await api.createHostScopedCredentials({
+          provider,
+          ...credentials,
+        });
+        addCredentials(provider, credsMeta);
+        return credsMeta;
+      } catch (error) {
+        onFailToast("create host-scoped credentials")(error);
+        throw error;
+      }
+    },
+    [api, addCredentials, onFailToast],
   );
 
   /** Wraps `BackendAPI.deleteCredentials`, and removes the credentials from the internal store. */
@@ -182,77 +187,105 @@ export default function CredentialsProvider({
     ): Promise<
       CredentialsDeleteResponse | CredentialsDeleteNeedConfirmationResponse
     > => {
-      const result = await api.deleteCredentials(provider, id, force);
-      if (!result.deleted) {
-        return result;
-      }
-      setProviders((prev) => {
-        if (!prev || !prev[provider]) return prev;
+      try {
+        const result = await api.deleteCredentials(
+          provider as string,
+          id,
+          force,
+        );
+        if (!result.deleted) {
+          return result;
+        }
+        setProviders((prev) => {
+          if (!prev || !prev[provider]) return prev;
 
-        return {
-          ...prev,
-          [provider]: {
-            ...prev[provider],
-            savedCredentials: prev[provider].savedCredentials.filter(
-              (cred) => cred.id !== id,
-            ),
-          },
-        };
-      });
-      return result;
+          return {
+            ...prev,
+            [provider]: {
+              ...prev[provider]!,
+              savedCredentials: prev[provider]!.savedCredentials.filter(
+                (cred) => cred.id !== id,
+              ),
+            },
+          };
+        });
+        return result;
+      } catch (error) {
+        onFailToast("delete credentials")(error);
+        throw error;
+      }
     },
-    [api],
+    [api, onFailToast],
   );
 
+  // Fetch provider names on mount
   useEffect(() => {
-    if (!isLoggedIn) {
+    api
+      .listProviders()
+      .then((names) => {
+        setProviderNames(names);
+      })
+      .catch(onFailToast("load provider names"));
+  }, [api, onFailToast]);
+
+  useEffect(() => {
+    if (!isLoggedIn || providerNames.length === 0) {
       if (isLoggedIn == false) setProviders(null);
       return;
     }
 
-    api.listCredentials().then((response) => {
-      const credentialsByProvider = response.reduce(
-        (acc, cred) => {
-          if (!acc[cred.provider]) {
-            acc[cred.provider] = [];
-          }
-          acc[cred.provider].push(cred);
-          return acc;
-        },
-        {} as Record<CredentialsProviderName, CredentialsMetaResponse[]>,
-      );
+    api
+      .listCredentials()
+      .then((response) => {
+        const credentialsByProvider = response.reduce(
+          (acc, cred) => {
+            if (!acc[cred.provider]) {
+              acc[cred.provider] = [];
+            }
+            acc[cred.provider].push(cred);
+            return acc;
+          },
+          {} as Record<CredentialsProviderName, CredentialsMetaResponse[]>,
+        );
 
-      setProviders((prev) => ({
-        ...prev,
-        ...Object.fromEntries(
-          CREDENTIALS_PROVIDER_NAMES.map((provider) => [
-            provider,
-            {
+        setProviders((prev) => ({
+          ...prev,
+          ...Object.fromEntries(
+            providerNames.map((provider) => [
               provider,
-              providerName: providerDisplayNames[provider],
-              savedCredentials: credentialsByProvider[provider] ?? [],
-              oAuthCallback: (code: string, state_token: string) =>
-                oAuthCallback(provider, code, state_token),
-              createAPIKeyCredentials: (
-                credentials: APIKeyCredentialsCreatable,
-              ) => createAPIKeyCredentials(provider, credentials),
-              createUserPasswordCredentials: (
-                credentials: UserPasswordCredentialsCreatable,
-              ) => createUserPasswordCredentials(provider, credentials),
-              deleteCredentials: (id: string, force: boolean = false) =>
-                deleteCredentials(provider, id, force),
-            } satisfies CredentialsProviderData,
-          ]),
-        ),
-      }));
-    });
+              {
+                provider,
+                providerName: toDisplayName(provider as string),
+                savedCredentials: credentialsByProvider[provider] ?? [],
+                oAuthCallback: (code: string, state_token: string) =>
+                  oAuthCallback(provider, code, state_token),
+                createAPIKeyCredentials: (
+                  credentials: APIKeyCredentialsCreatable,
+                ) => createAPIKeyCredentials(provider, credentials),
+                createUserPasswordCredentials: (
+                  credentials: UserPasswordCredentialsCreatable,
+                ) => createUserPasswordCredentials(provider, credentials),
+                createHostScopedCredentials: (
+                  credentials: HostScopedCredentialsCreatable,
+                ) => createHostScopedCredentials(provider, credentials),
+                deleteCredentials: (id: string, force: boolean = false) =>
+                  deleteCredentials(provider, id, force),
+              } satisfies CredentialsProviderData,
+            ]),
+          ),
+        }));
+      })
+      .catch(onFailToast("load credentials"));
   }, [
     api,
     isLoggedIn,
+    providerNames,
     createAPIKeyCredentials,
     createUserPasswordCredentials,
+    createHostScopedCredentials,
     deleteCredentials,
     oAuthCallback,
+    onFailToast,
   ]);
 
   return (
