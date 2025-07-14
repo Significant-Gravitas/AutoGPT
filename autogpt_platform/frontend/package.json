@@ -112,7 +112,7 @@
     "@types/react-dom": "18.3.5",
     "@types/react-modal": "3.16.3",
     "axe-playwright": "2.1.0",
-    "chromatic": "11.25.2",
+    "chromatic": "13.1.2",
     "concurrently": "9.2.0",
     "cross-env": "7.0.3",
     "eslint": "8.57.1",
