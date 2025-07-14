@@ -1,3 +1,5 @@
+import asyncio
+
 from backend.blocks.apollo._api import ApolloClient
 from backend.blocks.apollo._auth import (
     TEST_CREDENTIALS,
@@ -8,11 +10,12 @@ from backend.blocks.apollo._auth import (
 from backend.blocks.apollo.models import (
     Contact,
     ContactEmailStatuses,
+    EnrichPersonRequest,
     SearchPeopleRequest,
     SenorityLevels,
 )
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
+from backend.data.model import CredentialsField, SchemaField
 
 
 class SearchPeopleBlock(Block):
@@ -77,7 +80,7 @@ class SearchPeopleBlock(Block):
             default_factory=list,
             advanced=False,
         )
-        organization_num_empoloyees_range: list[int] = SchemaField(
+        organization_num_employees_range: list[int] = SchemaField(
             description="""The number range of employees working for the company. This enables you to find companies based on headcount. You can add multiple ranges to expand your search results.
 
         Each range you add needs to be a string, with the upper and lower numbers of the range separated only by a comma.""",
@@ -90,14 +93,19 @@ class SearchPeopleBlock(Block):
             advanced=False,
         )
         max_results: int = SchemaField(
-            description="""The maximum number of results to return. If you don't specify this parameter, the default is 100.""",
-            default=100,
+            description="""The maximum number of results to return. If you don't specify this parameter, the default is 25. Limited to 500 to prevent overspending.""",
+            default=25,
             ge=1,
-            le=50000,
+            le=500,
+            advanced=True,
+        )
+        enrich_info: bool = SchemaField(
+            description="""Whether to enrich contacts with detailed information including real email addresses. This will double the search cost.""",
+            default=False,
             advanced=True,
         )
 
-        credentials: ApolloCredentialsInput = SchemaField(
+        credentials: ApolloCredentialsInput = CredentialsField(
             description="Apollo credentials",
         )
 
@@ -105,10 +113,6 @@ class SearchPeopleBlock(Block):
         people: list[Contact] = SchemaField(
             description="List of people found",
             default_factory=list,
-        )
-        person: Contact = SchemaField(
-            title="Person",
-            description="Each found person, one at a time",
         )
         error: str = SchemaField(
             description="Error message if the search failed",
@@ -125,87 +129,6 @@ class SearchPeopleBlock(Block):
             test_credentials=TEST_CREDENTIALS,
             test_input={"credentials": TEST_CREDENTIALS_INPUT},
             test_output=[
-                (
-                    "person",
-                    Contact(
-                        contact_roles=[],
-                        id="1",
-                        name="John Doe",
-                        first_name="John",
-                        last_name="Doe",
-                        linkedin_url="https://www.linkedin.com/in/johndoe",
-                        title="Software Engineer",
-                        organization_name="Google",
-                        organization_id="123456",
-                        contact_stage_id="1",
-                        owner_id="1",
-                        creator_id="1",
-                        person_id="1",
-                        email_needs_tickling=True,
-                        source="apollo",
-                        original_source="apollo",
-                        headline="Software Engineer",
-                        photo_url="https://www.linkedin.com/in/johndoe",
-                        present_raw_address="123 Main St, Anytown, USA",
-                        linkededin_uid="123456",
-                        extrapolated_email_confidence=0.8,
-                        salesforce_id="123456",
-                        salesforce_lead_id="123456",
-                        salesforce_contact_id="123456",
-                        saleforce_account_id="123456",
-                        crm_owner_id="123456",
-                        created_at="2021-01-01",
-                        emailer_campaign_ids=[],
-                        direct_dial_status="active",
-                        direct_dial_enrichment_failed_at="2021-01-01",
-                        email_status="active",
-                        email_source="apollo",
-                        account_id="123456",
-                        last_activity_date="2021-01-01",
-                        hubspot_vid="123456",
-                        hubspot_company_id="123456",
-                        crm_id="123456",
-                        sanitized_phone="123456",
-                        merged_crm_ids="123456",
-                        updated_at="2021-01-01",
-                        queued_for_crm_push=True,
-                        suggested_from_rule_engine_config_id="123456",
-                        email_unsubscribed=None,
-                        label_ids=[],
-                        has_pending_email_arcgate_request=True,
-                        has_email_arcgate_request=True,
-                        existence_level=None,
-                        email=None,
-                        email_from_customer=None,
-                        typed_custom_fields=[],
-                        custom_field_errors=None,
-                        salesforce_record_id=None,
-                        crm_record_url=None,
-                        email_status_unavailable_reason=None,
-                        email_true_status=None,
-                        updated_email_true_status=True,
-                        contact_rule_config_statuses=[],
-                        source_display_name=None,
-                        twitter_url=None,
-                        contact_campaign_statuses=[],
-                        state=None,
-                        city=None,
-                        country=None,
-                        account=None,
-                        contact_emails=[],
-                        organization=None,
-                        employment_history=[],
-                        time_zone=None,
-                        intent_strength=None,
-                        show_intent=True,
-                        phone_numbers=[],
-                        account_phone_note=None,
-                        free_domain=True,
-                        is_likely_to_engage=True,
-                        email_domain_catchall=True,
-                        contact_job_change_event=None,
-                    ),
-                ),
                 (
                     "people",
                     [
@@ -380,6 +303,34 @@ class SearchPeopleBlock(Block):
         client = ApolloClient(credentials)
         return await client.search_people(query)
 
+    @staticmethod
+    async def enrich_person(
+        query: EnrichPersonRequest, credentials: ApolloCredentials
+    ) -> Contact:
+        client = ApolloClient(credentials)
+        return await client.enrich_person(query)
+
+    @staticmethod
+    def merge_contact_data(original: Contact, enriched: Contact) -> Contact:
+        """
+        Merge contact data from original search with enriched data.
+        Enriched data complements original data, only filling in missing values.
+        """
+        merged_data = original.model_dump()
+        enriched_data = enriched.model_dump()
+
+        # Only update fields that are None, empty string, empty list, or default values in original
+        for key, enriched_value in enriched_data.items():
+            # Skip if enriched value is None, empty string, or empty list
+            if enriched_value is None or enriched_value == "" or enriched_value == []:
+                continue
+
+            # Update if original value is None, empty string, empty list, or zero
+            if enriched_value:
+                merged_data[key] = enriched_value
+
+        return Contact(**merged_data)
+
     async def run(
         self,
         input_data: Input,
@@ -390,6 +341,23 @@ class SearchPeopleBlock(Block):
 
         query = SearchPeopleRequest(**input_data.model_dump())
         people = await self.search_people(query, credentials)
-        for person in people:
-            yield "person", person
+
+        # Enrich with detailed info if requested
+        if input_data.enrich_info:
+
+            async def enrich_or_fallback(person: Contact):
+                try:
+                    enrich_query = EnrichPersonRequest(person_id=person.id)
+                    enriched_person = await self.enrich_person(
+                        enrich_query, credentials
+                    )
+                    # Merge enriched data with original data, complementing instead of replacing
+                    return self.merge_contact_data(person, enriched_person)
+                except Exception:
+                    return person  # If enrichment fails, use original person data
+
+            people = await asyncio.gather(
+                *(enrich_or_fallback(person) for person in people)
+            )
+
         yield "people", people

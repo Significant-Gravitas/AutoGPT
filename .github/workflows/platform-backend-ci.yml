@@ -190,9 +190,9 @@ jobs:
       - name: Run pytest with coverage
         run: |
           if [[ "${{ runner.debug }}" == "1" ]]; then
-            poetry run pytest -s -vv -o log_cli=true -o log_cli_level=DEBUG test
+            poetry run pytest -s -vv -o log_cli=true -o log_cli_level=DEBUG
           else
-            poetry run pytest -s -vv test
+            poetry run pytest -s -vv
           fi
         if: success() || (failure() && steps.lint.outcome == 'failure')
         env:
@@ -205,6 +205,7 @@ jobs:
           REDIS_HOST: "localhost"
           REDIS_PORT: "6379"
           REDIS_PASSWORD: "testpassword"
+          ENCRYPTION_KEY: "dvziYgz0KSK8FENhju0ZYi8-fRTfAdlz6YLhdB_jhNw=" # DO NOT USE IN PRODUCTION!!
 
     env:
       CI: true

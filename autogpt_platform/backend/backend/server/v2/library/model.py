@@ -51,7 +51,7 @@ class LibraryAgent(pydantic.BaseModel):
     description: str
 
     input_schema: dict[str, Any]  # Should be BlockIOObjectSubSchema in frontend
-    credentials_input_schema: dict[str, Any] = pydantic.Field(
+    credentials_input_schema: dict[str, Any] | None = pydantic.Field(
         description="Input schema for credentials required by the agent",
     )
 
@@ -70,7 +70,10 @@ class LibraryAgent(pydantic.BaseModel):
     is_latest_version: bool
 
     @staticmethod
-    def from_db(agent: prisma.models.LibraryAgent) -> "LibraryAgent":
+    def from_db(
+        agent: prisma.models.LibraryAgent,
+        sub_graphs: Optional[list[prisma.models.AgentGraph]] = None,
+    ) -> "LibraryAgent":
         """
         Factory method that constructs a LibraryAgent from a Prisma LibraryAgent
         model instance.
@@ -78,7 +81,7 @@ class LibraryAgent(pydantic.BaseModel):
         if not agent.AgentGraph:
             raise ValueError("Associated Agent record is required.")
 
-        graph = graph_model.GraphModel.from_db(agent.AgentGraph)
+        graph = graph_model.GraphModel.from_db(agent.AgentGraph, sub_graphs=sub_graphs)
 
         agent_updated_at = agent.AgentGraph.updatedAt
         lib_agent_updated_at = agent.updatedAt
@@ -123,8 +126,10 @@ class LibraryAgent(pydantic.BaseModel):
             name=graph.name,
             description=graph.description,
             input_schema=graph.input_schema,
-            credentials_input_schema=graph.credentials_input_schema,
-            has_external_trigger=graph.has_webhook_trigger,
+            credentials_input_schema=(
+                graph.credentials_input_schema if sub_graphs is not None else None
+            ),
+            has_external_trigger=graph.has_external_trigger,
             trigger_setup_info=(
                 LibraryAgentTriggerInfo(
                     provider=trigger_block.webhook_config.provider,
@@ -255,6 +260,19 @@ class LibraryAgentPresetUpdatable(pydantic.BaseModel):
     description: Optional[str] = None
 
     is_active: Optional[bool] = None
+
+
+class TriggeredPresetSetupRequest(pydantic.BaseModel):
+    name: str
+    description: str = ""
+
+    graph_id: str
+    graph_version: int
+
+    trigger_config: dict[str, Any]
+    agent_credentials: dict[str, CredentialsMetaInput] = pydantic.Field(
+        default_factory=dict
+    )
 
 
 class LibraryAgentPreset(LibraryAgentPresetCreatable):

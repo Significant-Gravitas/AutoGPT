@@ -1,13 +1,13 @@
-import React from "react";
-import type { Metadata } from "next";
 import { fonts } from "@/components/styles/fonts";
+import type { Metadata } from "next";
+import React from "react";
 
 import "./globals.css";
 
-import { Toaster } from "@/components/ui/toaster";
 import { Providers } from "@/app/providers";
 import TallyPopupSimple from "@/components/TallyPopup";
 import { GoogleAnalytics } from "@/components/analytics/google-analytics";
+import { Toaster } from "@/components/molecules/Toast/toaster";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 
 export const metadata: Metadata = {

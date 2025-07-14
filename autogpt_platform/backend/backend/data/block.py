@@ -78,6 +78,7 @@ class BlockCategory(Enum):
     PRODUCTIVITY = "Block that helps with productivity"
     ISSUE_TRACKING = "Block that helps with issue tracking"
     MULTIMEDIA = "Block that interacts with multimedia content"
+    MARKETING = "Block that helps with marketing"
 
     def dict(self) -> dict[str, str]:
         return {"category": self.name, "description": self.value}
@@ -512,6 +513,12 @@ def get_blocks() -> dict[str, Type[Block]]:
 
 
 async def initialize_blocks() -> None:
+    # First, sync all provider costs to blocks
+    # Imported here to avoid circular import
+    from backend.sdk.cost_integration import sync_all_provider_costs
+
+    sync_all_provider_costs()
+
     for cls in get_blocks().values():
         block = cls()
         existing_block = await AgentBlock.prisma().find_first(

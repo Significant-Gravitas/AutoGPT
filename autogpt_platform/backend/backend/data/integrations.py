@@ -11,8 +11,8 @@ from prisma.types import (
 )
 from pydantic import Field, computed_field
 
+from backend.data.event_bus import AsyncRedisEventBus
 from backend.data.includes import INTEGRATION_WEBHOOK_INCLUDE
-from backend.data.queue import AsyncRedisEventBus
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks.utils import webhook_ingress_url
 from backend.server.v2.library.model import LibraryAgentPreset
@@ -75,10 +75,6 @@ class WebhookWithRelations(Webhook):
                 LibraryAgentPreset.from_db(preset) for preset in webhook.AgentPresets
             ],
         )
-
-
-# Fix Webhook <- NodeModel relations
-NodeModel.model_rebuild()
 
 
 # --------------------- CRUD functions --------------------- #
