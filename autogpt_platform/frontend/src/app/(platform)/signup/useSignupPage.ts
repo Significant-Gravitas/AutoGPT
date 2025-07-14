@@ -30,6 +30,8 @@ export function useSignupPage() {
     resetOnError: true,
   });
 
+  const shouldNotRenderCaptcha = isVercelPreview || turnstile.verified;
+
   const resetCaptcha = useCallback(() => {
     setCaptchaKey((k) => k + 1);
     turnstile.reset();
@@ -132,6 +134,7 @@ export function useSignupPage() {
     isCloudEnv,
     isUserLoading,
     isGoogleLoading,
+    shouldNotRenderCaptcha,
     showNotAllowedModal,
     isSupabaseAvailable: !!supabase,
     handleSubmit: form.handleSubmit(handleSignup),

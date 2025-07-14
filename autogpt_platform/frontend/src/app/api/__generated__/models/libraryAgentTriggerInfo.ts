@@ -5,12 +5,12 @@
  * This server is used to execute agents that are created by the AutoGPT system.
  * OpenAPI spec version: 0.1
  */
-import type { ProviderName } from "./providerName";
 import type { LibraryAgentTriggerInfoConfigSchema } from "./libraryAgentTriggerInfoConfigSchema";
 import type { LibraryAgentTriggerInfoCredentialsInputName } from "./libraryAgentTriggerInfoCredentialsInputName";
 
 export interface LibraryAgentTriggerInfo {
-  provider: ProviderName;
+  /** Provider name for integrations. Can be any string value, including custom provider names. */
+  provider: string;
   /** Input schema for the trigger block */
   config_schema: LibraryAgentTriggerInfoConfigSchema;
   credentials_input_name: LibraryAgentTriggerInfoCredentialsInputName;
