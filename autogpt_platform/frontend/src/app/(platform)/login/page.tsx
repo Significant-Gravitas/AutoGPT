@@ -21,6 +21,7 @@ export default function LoginPage() {
     isLoading,
     isLoggedIn,
     isCloudEnv,
+    shouldNotRenderCaptcha,
     isUserLoading,
     isGoogleLoading,
     showNotAllowedModal,
@@ -85,16 +86,18 @@ export default function LoginPage() {
             />
 
             {/* Turnstile CAPTCHA Component */}
-            <Turnstile
-              key={captchaKey}
-              siteKey={turnstile.siteKey}
-              onVerify={turnstile.handleVerify}
-              onExpire={turnstile.handleExpire}
-              onError={turnstile.handleError}
-              setWidgetId={turnstile.setWidgetId}
-              action="login"
-              shouldRender={turnstile.shouldRender}
-            />
+            {shouldNotRenderCaptcha ? null : (
+              <Turnstile
+                key={captchaKey}
+                siteKey={turnstile.siteKey}
+                onVerify={turnstile.handleVerify}
+                onExpire={turnstile.handleExpire}
+                onError={turnstile.handleError}
+                setWidgetId={turnstile.setWidgetId}
+                action="login"
+                shouldRender={turnstile.shouldRender}
+              />
+            )}
 
             <Button
               variant="primary"
