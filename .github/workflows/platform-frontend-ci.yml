@@ -200,11 +200,6 @@ jobs:
         with:
           version: "1.6.1"
 
-      - name: Install backend dependencies
-        run: |
-          cd ../backend
-          poetry install
-
       - name: Create E2E test data
         run: |
           cd ../backend
