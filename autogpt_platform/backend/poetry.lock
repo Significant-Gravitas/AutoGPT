@@ -1905,6 +1905,17 @@ files = [
 ]
 
 [[package]]
+name = "html2text"
+version = "2024.2.26"
+description = "Turn HTML into equivalent Markdown-structured text."
+optional = false
+python-versions = ">=3.8"
+groups = ["main"]
+files = [
+    {file = "html2text-2024.2.26.tar.gz", hash = "sha256:05f8e367d15aaabc96415376776cdd11afd5127a77fce6e36afc60c563ca2c32"},
+]
+
+[[package]]
 name = "httpcore"
 version = "1.0.9"
 description = "A minimal low-level HTTP client."
@@ -6429,4 +6440,4 @@ cffi = ["cffi (>=1.11)"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<3.13"
-content-hash = "476228d2bf59b90edc5425c462c1263cbc1f2d346f79a826ac5e7efe7823aaa6"
+content-hash = "0f3dfd7fdfb50ffd9b9a046cce0be1b9f290d4e6055ff13c2fbda4faa610ba34"
