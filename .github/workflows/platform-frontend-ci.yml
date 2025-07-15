@@ -195,15 +195,10 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: "1.6.1"
-
       - name: Create E2E test data
         run: |
           cd ../backend
-          poetry run python test/e2e_test_data.py
+          python3 test/e2e_test_data.py
 
       - name: Restore dependencies cache
         uses: actions/cache@v4
