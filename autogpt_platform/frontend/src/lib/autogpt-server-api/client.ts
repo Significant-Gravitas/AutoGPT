@@ -527,6 +527,35 @@ export default class BackendAPI {
     return this._uploadFile("/store/submissions/media", file);
   }
 
+  uploadFile(
+    file: File,
+    provider: string = "gcs",
+    expiration_hours: number = 24,
+    onProgress?: (progress: number) => void,
+  ): Promise<{
+    storage_key: string;
+    file_uri: string;
+    filename: string;
+    size: number;
+    content_type: string;
+    expires_in_hours: number;
+  }> {
+    return this._uploadFileWithProgress(
+      "/files/upload",
+      file,
+      {
+        provider,
+        expiration_hours,
+      },
+      onProgress,
+    ).then((response) => {
+      if (typeof response === "string") {
+        return JSON.parse(response);
+      }
+      return response;
+    });
+  }
+
   updateStoreProfile(profile: ProfileDetails): Promise<ProfileDetails> {
     return this._request("POST", "/store/profile", profile);
   }
@@ -816,6 +845,27 @@ export default class BackendAPI {
     }
   }
 
+  private async _uploadFileWithProgress(
+    path: string,
+    file: File,
+    params?: Record<string, any>,
+    onProgress?: (progress: number) => void,
+  ): Promise<string> {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    if (isClient) {
+      return this._makeClientFileUploadWithProgress(
+        path,
+        formData,
+        params,
+        onProgress,
+      );
+    } else {
+      return this._makeServerFileUploadWithProgress(path, formData, params);
+    }
+  }
+
   private async _makeClientFileUpload(
     path: string,
     formData: FormData,
@@ -850,6 +900,70 @@ export default class BackendAPI {
       "./helpers"
     );
     const url = buildServerUrl(path);
+    return await makeAuthenticatedFileUpload(url, formData);
+  }
+
+  private async _makeClientFileUploadWithProgress(
+    path: string,
+    formData: FormData,
+    params?: Record<string, any>,
+    onProgress?: (progress: number) => void,
+  ): Promise<any> {
+    const { buildClientUrl, buildUrlWithQuery } = await import("./helpers");
+
+    let url = buildClientUrl(path);
+    if (params) {
+      url = buildUrlWithQuery(url, params);
+    }
+
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+
+      if (onProgress) {
+        xhr.upload.addEventListener("progress", (e) => {
+          if (e.lengthComputable) {
+            const progress = (e.loaded / e.total) * 100;
+            onProgress(progress);
+          }
+        });
+      }
+
+      xhr.addEventListener("load", () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const response = JSON.parse(xhr.responseText);
+            resolve(response);
+          } catch (_error) {
+            reject(new Error("Invalid JSON response"));
+          }
+        } else {
+          reject(new Error(`HTTP ${xhr.status}: ${xhr.statusText}`));
+        }
+      });
+
+      xhr.addEventListener("error", () => {
+        reject(new Error("Network error"));
+      });
+
+      xhr.open("POST", url);
+      xhr.withCredentials = true;
+      xhr.send(formData);
+    });
+  }
+
+  private async _makeServerFileUploadWithProgress(
+    path: string,
+    formData: FormData,
+    params?: Record<string, any>,
+  ): Promise<string> {
+    const { makeAuthenticatedFileUpload, buildServerUrl, buildUrlWithQuery } =
+      await import("./helpers");
+
+    let url = buildServerUrl(path);
+    if (params) {
+      url = buildUrlWithQuery(url, params);
+    }
+
     return await makeAuthenticatedFileUpload(url, formData);
   }
 

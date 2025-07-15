@@ -77,3 +77,12 @@ class Pagination(pydantic.BaseModel):
 
 class RequestTopUp(pydantic.BaseModel):
     credit_amount: int
+
+
+class UploadFileResponse(pydantic.BaseModel):
+    storage_key: str
+    file_uri: str
+    filename: str
+    size: int
+    content_type: str
+    expires_in_hours: int

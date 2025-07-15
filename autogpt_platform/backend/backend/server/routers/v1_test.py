@@ -418,7 +418,6 @@ async def test_upload_file_success():
         mock_scan.return_value = None
         mock_handler = AsyncMock()
         mock_handler.store_file.return_value = "gcs://test-bucket/uploads/123/test.txt"
-        mock_handler.generate_signed_url.return_value = "https://signed-url.example.com"
         mock_handler_getter.return_value = mock_handler
 
         # Mock file.read()
@@ -432,12 +431,12 @@ async def test_upload_file_success():
         )
 
         # Verify result
-        assert result["storage_key"] == "gcs://test-bucket/uploads/123/test.txt"
-        assert result["signed_url"] == "https://signed-url.example.com"
-        assert result["filename"] == "test.txt"
-        assert result["size"] == len(file_content)
-        assert result["content_type"] == "text/plain"
-        assert result["expires_in_hours"] == 24
+        assert result.storage_key == "gcs://test-bucket/uploads/123/test.txt"
+        assert result.file_uri == "gcs://test-bucket/uploads/123/test.txt"
+        assert result.filename == "test.txt"
+        assert result.size == len(file_content)
+        assert result.content_type == "text/plain"
+        assert result.expires_in_hours == 24
 
         # Verify virus scan was called
         mock_scan.assert_called_once_with(file_content, filename="test.txt")
@@ -447,11 +446,6 @@ async def test_upload_file_success():
             content=file_content,
             filename="test.txt",
             provider="gcs",
-            expiration_hours=24,
-            user_id="test-user-123",
-        )
-        mock_handler.generate_signed_url.assert_called_once_with(
-            "gcs://test-bucket/uploads/123/test.txt",
             expiration_hours=24,
             user_id="test-user-123",
         )
@@ -479,15 +473,14 @@ async def test_upload_file_no_filename():
         mock_handler.store_file.return_value = (
             "gcs://test-bucket/uploads/123/uploaded_file"
         )
-        mock_handler.generate_signed_url.return_value = "https://signed-url.example.com"
         mock_handler_getter.return_value = mock_handler
 
         upload_file_mock.read = AsyncMock(return_value=file_content)
 
         result = await upload_file(file=upload_file_mock, user_id="test-user-123")
 
-        assert result["filename"] == "uploaded_file"
-        assert result["content_type"] == "application/octet-stream"
+        assert result.filename == "uploaded_file"
+        assert result.content_type == "application/octet-stream"
 
         # Verify virus scan was called with default filename
         mock_scan.assert_called_once_with(file_content, filename="uploaded_file")
@@ -586,3 +579,45 @@ async def test_upload_file_size_limit_exceeded():
 
     assert exc_info.value.status_code == 400
     assert "exceeds the maximum allowed size of 256MB" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_upload_file_gcs_not_configured_fallback():
+    """Test file upload fallback to base64 when GCS is not configured."""
+    file_content = b"test file content"
+    file_obj = BytesIO(file_content)
+    upload_file_mock = UploadFile(
+        filename="test.txt",
+        file=file_obj,
+        headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
+    )
+
+    with patch("backend.server.routers.v1.scan_content_safe") as mock_scan, patch(
+        "backend.server.routers.v1.get_cloud_storage_handler"
+    ) as mock_handler_getter:
+
+        mock_scan.return_value = None
+        mock_handler = AsyncMock()
+        mock_handler.config.gcs_bucket_name = ""  # Simulate no GCS bucket configured
+        mock_handler_getter.return_value = mock_handler
+
+        upload_file_mock.read = AsyncMock(return_value=file_content)
+
+        result = await upload_file(file=upload_file_mock, user_id="test-user-123")
+
+        # Verify fallback behavior
+        assert result.filename == "test.txt"
+        assert result.size == len(file_content)
+        assert result.content_type == "text/plain"
+        assert result.expires_in_hours == 24
+
+        # Both storage_key and file_uri should be the same base64 data URI
+        expected_data_uri = "data:text/plain;base64,dGVzdCBmaWxlIGNvbnRlbnQ="
+        assert result.storage_key == "test.txt"
+        assert result.file_uri == expected_data_uri
+
+        # Verify virus scan was called
+        mock_scan.assert_called_once_with(file_content, filename="test.txt")
+
+        # Verify cloud storage methods were NOT called
+        mock_handler.store_file.assert_not_called()

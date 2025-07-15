@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import logging
 from collections import defaultdict
 from datetime import datetime
@@ -80,6 +81,7 @@ from backend.server.model import (
     RequestTopUp,
     SetGraphActiveVersion,
     UpdatePermissionsRequest,
+    UploadFileResponse,
 )
 from backend.server.utils import get_user_id
 from backend.util.cloud_storage import get_cloud_storage_handler
@@ -274,7 +276,7 @@ async def upload_file(
     file: UploadFile = File(...),
     provider: str = "gcs",
     expiration_hours: int = 24,
-) -> dict[str, str | int]:
+) -> UploadFileResponse:
     """
     Upload a file to cloud storage and return a storage key that can be used
     with FileStoreBlock and AgentFileInputBlock.
@@ -303,12 +305,29 @@ async def upload_file(
             status_code=400,
             detail=f"File size ({len(content)} bytes) exceeds the maximum allowed size of {settings.config.upload_file_size_limit_mb}MB",
         )
+    file_name = file.filename or "uploaded_file"
 
     # Virus scan the content
-    await scan_content_safe(content, filename=file.filename or "uploaded_file")
+    await scan_content_safe(content, filename=file_name)
+
+    # Check if cloud storage is configured
+    cloud_storage = get_cloud_storage_handler()
+    if not cloud_storage.config.gcs_bucket_name:
+        # Fallback to base64 data URI when GCS is not configured
+        content_type = file.content_type or "application/octet-stream"
+        base64_content = base64.b64encode(content).decode("utf-8")
+        data_uri = f"data:{content_type};base64,{base64_content}"
+
+        return UploadFileResponse(
+            storage_key=file_name,
+            file_uri=data_uri,
+            filename=file_name,
+            size=len(content),
+            content_type=content_type,
+            expires_in_hours=expiration_hours,
+        )
 
     # Store in cloud storage
-    cloud_storage = get_cloud_storage_handler()
     storage_path = await cloud_storage.store_file(
         content=content,
         filename=file.filename or "uploaded_file",
@@ -317,19 +336,14 @@ async def upload_file(
         user_id=user_id,
     )
 
-    # Generate signed URL for direct access
-    signed_url = await cloud_storage.generate_signed_url(
-        storage_path, expiration_hours=expiration_hours, user_id=user_id
+    return UploadFileResponse(
+        storage_key=storage_path,
+        file_uri=storage_path,
+        filename=file.filename or "uploaded_file",
+        size=len(content),
+        content_type=file.content_type or "application/octet-stream",
+        expires_in_hours=expiration_hours,
     )
-
-    return {
-        "storage_key": storage_path,
-        "signed_url": signed_url,
-        "filename": file.filename or "uploaded_file",
-        "size": len(content),
-        "content_type": file.content_type or "application/octet-stream",
-        "expires_in_hours": expiration_hours,
-    }
 
 
 ########################################################
