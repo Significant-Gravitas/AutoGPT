@@ -34,7 +34,7 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.post("/unsubscribe")
+@router.post("/unsubscribe", summary="One Click Email Unsubscribe")
 async def unsubscribe_via_one_click(token: Annotated[str, Query()]):
     logger.info("Received unsubscribe request from One Click Unsubscribe")
     try:
@@ -48,7 +48,11 @@ async def unsubscribe_via_one_click(token: Annotated[str, Query()]):
     return JSONResponse(status_code=200, content={"status": "ok"})
 
 
-@router.post("/", dependencies=[Depends(postmark_validator.get_dependency())])
+@router.post(
+    "/",
+    dependencies=[Depends(postmark_validator.get_dependency())],
+    summary="Handle Postmark Email Webhooks",
+)
 async def postmark_webhook_handler(
     webhook: Annotated[
         PostmarkWebhook,

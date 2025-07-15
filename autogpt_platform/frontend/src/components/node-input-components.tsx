@@ -1219,7 +1219,9 @@ const NodeBooleanInput: FC<{
   className?: string;
   displayName: string;
 }> = ({ selfKey, schema, value, error, handleInputChange, className }) => {
-  value ||= schema.default ?? false;
+  if (value == null) {
+    value = schema.default ?? false;
+  }
   return (
     <div className={className}>
       <Switch

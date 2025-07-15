@@ -1,24 +1,32 @@
-from backend.blocks.linear._api import LinearAPIException, LinearClient
-from backend.blocks.linear._auth import (
+from backend.sdk import (
+    APIKeyCredentials,
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    CredentialsMetaInput,
+    OAuth2Credentials,
+    SchemaField,
+)
+
+from ._api import LinearAPIException, LinearClient
+from ._config import (
     LINEAR_OAUTH_IS_CONFIGURED,
     TEST_CREDENTIALS_INPUT_OAUTH,
     TEST_CREDENTIALS_OAUTH,
-    LinearCredentials,
-    LinearCredentialsField,
-    LinearCredentialsInput,
     LinearScope,
+    linear,
 )
-from backend.blocks.linear.models import CreateCommentResponse
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
+from .models import CreateCommentResponse
 
 
 class LinearCreateCommentBlock(Block):
     """Block for creating comments on Linear issues"""
 
     class Input(BlockSchema):
-        credentials: LinearCredentialsInput = LinearCredentialsField(
-            scopes=[LinearScope.COMMENTS_CREATE],
+        credentials: CredentialsMetaInput = linear.credentials_field(
+            description="Linear credentials with comment creation permissions",
+            required_scopes={LinearScope.COMMENTS_CREATE},
         )
         issue_id: str = SchemaField(description="ID of the issue to comment on")
         comment: str = SchemaField(description="Comment text to add to the issue")
@@ -55,7 +63,7 @@ class LinearCreateCommentBlock(Block):
 
     @staticmethod
     async def create_comment(
-        credentials: LinearCredentials, issue_id: str, comment: str
+        credentials: OAuth2Credentials | APIKeyCredentials, issue_id: str, comment: str
     ) -> tuple[str, str]:
         client = LinearClient(credentials=credentials)
         response: CreateCommentResponse = await client.try_create_comment(
@@ -64,7 +72,11 @@ class LinearCreateCommentBlock(Block):
         return response.comment.id, response.comment.body
 
     async def run(
-        self, input_data: Input, *, credentials: LinearCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: OAuth2Credentials | APIKeyCredentials,
+        **kwargs,
     ) -> BlockOutput:
         """Execute the comment creation"""
         try:

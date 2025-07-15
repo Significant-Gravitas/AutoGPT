@@ -270,7 +270,7 @@ def test_get_graphs(
     )
 
     mocker.patch(
-        "backend.server.routers.v1.graph_db.get_graphs",
+        "backend.server.routers.v1.graph_db.list_graphs",
         return_value=[mock_graph],
     )
 

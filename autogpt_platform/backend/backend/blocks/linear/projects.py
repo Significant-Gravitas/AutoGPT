@@ -1,24 +1,32 @@
-from backend.blocks.linear._api import LinearAPIException, LinearClient
-from backend.blocks.linear._auth import (
+from backend.sdk import (
+    APIKeyCredentials,
+    Block,
+    BlockCategory,
+    BlockOutput,
+    BlockSchema,
+    CredentialsMetaInput,
+    OAuth2Credentials,
+    SchemaField,
+)
+
+from ._api import LinearAPIException, LinearClient
+from ._config import (
     LINEAR_OAUTH_IS_CONFIGURED,
     TEST_CREDENTIALS_INPUT_OAUTH,
     TEST_CREDENTIALS_OAUTH,
-    LinearCredentials,
-    LinearCredentialsField,
-    LinearCredentialsInput,
     LinearScope,
+    linear,
 )
-from backend.blocks.linear.models import Project
-from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
-from backend.data.model import SchemaField
+from .models import Project
 
 
 class LinearSearchProjectsBlock(Block):
     """Block for searching projects on Linear"""
 
     class Input(BlockSchema):
-        credentials: LinearCredentialsInput = LinearCredentialsField(
-            scopes=[LinearScope.READ],
+        credentials: CredentialsMetaInput = linear.credentials_field(
+            description="Linear credentials with read permissions",
+            required_scopes={LinearScope.READ},
         )
         term: str = SchemaField(description="Term to search for projects")
 
@@ -70,7 +78,7 @@ class LinearSearchProjectsBlock(Block):
 
     @staticmethod
     async def search_projects(
-        credentials: LinearCredentials,
+        credentials: OAuth2Credentials | APIKeyCredentials,
         term: str,
     ) -> list[Project]:
         client = LinearClient(credentials=credentials)
@@ -78,7 +86,11 @@ class LinearSearchProjectsBlock(Block):
         return response
 
     async def run(
-        self, input_data: Input, *, credentials: LinearCredentials, **kwargs
+        self,
+        input_data: Input,
+        *,
+        credentials: OAuth2Credentials | APIKeyCredentials,
+        **kwargs,
     ) -> BlockOutput:
         """Execute the project search"""
         try:

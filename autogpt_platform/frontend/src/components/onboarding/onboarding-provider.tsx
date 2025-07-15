@@ -1,7 +1,17 @@
 "use client";
-import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { OnboardingStep, UserOnboarding } from "@/lib/autogpt-server-api";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
+import { useSupabase } from "@/lib/supabase/hooks/useSupabase";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   createContext,
@@ -11,16 +21,6 @@ import {
   useEffect,
   useState,
 } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
 
 const OnboardingContext = createContext<
   | {
@@ -45,6 +45,7 @@ export function useOnboarding(step?: number, completeStep?: OnboardingStep) {
     if (
       !completeStep ||
       !context.state ||
+      !context.state.completedSteps ||
       context.state.completedSteps.includes(completeStep)
     )
       return;
@@ -79,22 +80,32 @@ export default function OnboardingProvider({
 
   useEffect(() => {
     const fetchOnboarding = async () => {
-      const enabled = await api.isOnboardingEnabled();
-      if (!enabled && pathname.startsWith("/onboarding")) {
-        router.push("/marketplace");
-        return;
-      }
-      const onboarding = await api.getUserOnboarding();
-      setState((prev) => ({ ...onboarding, ...prev }));
+      try {
+        const enabled = await api.isOnboardingEnabled();
+        if (!enabled && pathname.startsWith("/onboarding")) {
+          router.push("/marketplace");
+          return;
+        }
+        const onboarding = await api.getUserOnboarding();
 
-      // Redirect outside onboarding if completed
-      // If user did CONGRATS step, that means they completed introductory onboarding
-      if (
-        onboarding.completedSteps.includes("CONGRATS") &&
-        pathname.startsWith("/onboarding") &&
-        !pathname.startsWith("/onboarding/reset")
-      ) {
-        router.push("/marketplace");
+        // Only update state if onboarding data is valid
+        if (onboarding) {
+          setState((prev) => ({ ...onboarding, ...prev }));
+
+          // Redirect outside onboarding if completed
+          // If user did CONGRATS step, that means they completed introductory onboarding
+          if (
+            onboarding.completedSteps &&
+            onboarding.completedSteps.includes("CONGRATS") &&
+            pathname.startsWith("/onboarding") &&
+            !pathname.startsWith("/onboarding/reset")
+          ) {
+            router.push("/marketplace");
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch onboarding data:", error);
+        // Don't update state on error to prevent null access issues
       }
     };
     if (isUserLoading || !user) {
@@ -106,8 +117,6 @@ export default function OnboardingProvider({
   const updateState = useCallback(
     (newState: Omit<Partial<UserOnboarding>, "rewardedFor">) => {
       setState((prev) => {
-        api.updateUserOnboarding(newState);
-
         if (!prev) {
           // Handle initial state
           return {
@@ -127,13 +136,25 @@ export default function OnboardingProvider({
         }
         return { ...prev, ...newState };
       });
+
+      // Make the API call asynchronously to not block render
+      setTimeout(() => {
+        api.updateUserOnboarding(newState).catch((error) => {
+          console.error("Failed to update user onboarding:", error);
+        });
+      }, 0);
     },
-    [api, setState],
+    [api],
   );
 
   const completeStep = useCallback(
     (step: OnboardingStep) => {
-      if (!state || state.completedSteps.includes(step)) return;
+      if (
+        !state ||
+        !state.completedSteps ||
+        state.completedSteps.includes(step)
+      )
+        return;
 
       updateState({
         completedSteps: [...state.completedSteps, step],
@@ -143,7 +164,12 @@ export default function OnboardingProvider({
   );
 
   const incrementRuns = useCallback(() => {
-    if (!state || state.completedSteps.includes("RUN_AGENTS")) return;
+    if (
+      !state ||
+      !state.completedSteps ||
+      state.completedSteps.includes("RUN_AGENTS")
+    )
+      return;
 
     const finished = state.agentRuns + 1 >= 10;
     setNpsDialogOpen(finished);
@@ -153,7 +179,7 @@ export default function OnboardingProvider({
         completedSteps: [...state.completedSteps, "RUN_AGENTS"],
       }),
     });
-  }, [api, state]);
+  }, [state, updateState]);
 
   return (
     <OnboardingContext.Provider

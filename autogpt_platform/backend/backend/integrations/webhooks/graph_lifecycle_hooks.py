@@ -1,10 +1,12 @@
 import logging
 from typing import TYPE_CHECKING, Optional, cast
 
-from backend.data.block import BlockSchema, BlockWebhookConfig
+from backend.data.block import BlockSchema
 from backend.data.graph import set_node_webhook
 from backend.integrations.creds_manager import IntegrationCredentialsManager
-from backend.integrations.webhooks import get_webhook_manager, supports_webhooks
+
+from . import get_webhook_manager, supports_webhooks
+from .utils import setup_webhook_for_block
 
 if TYPE_CHECKING:
     from backend.data.graph import GraphModel, NodeModel
@@ -81,7 +83,9 @@ async def on_graph_deactivate(graph: "GraphModel", user_id: str):
                 f"credentials #{creds_meta['id']}"
             )
 
-        updated_node = await on_node_deactivate(node, credentials=node_credentials)
+        updated_node = await on_node_deactivate(
+            user_id, node, credentials=node_credentials
+        )
         updated_nodes.append(updated_node)
 
     graph.nodes = updated_nodes
@@ -96,105 +100,25 @@ async def on_node_activate(
 ) -> "NodeModel":
     """Hook to be called when the node is activated/created"""
 
-    block = node.block
-
-    if not block.webhook_config:
-        return node
-
-    provider = block.webhook_config.provider
-    if not supports_webhooks(provider):
-        raise ValueError(
-            f"Block #{block.id} has webhook_config for provider {provider} "
-            "which does not support webhooks"
+    if node.block.webhook_config:
+        new_webhook, feedback = await setup_webhook_for_block(
+            user_id=user_id,
+            trigger_block=node.block,
+            trigger_config=node.input_default,
+            for_graph_id=node.graph_id,
         )
-
-    logger.debug(
-        f"Activating webhook node #{node.id} with config {block.webhook_config}"
-    )
-
-    webhooks_manager = get_webhook_manager(provider)
-
-    if auto_setup_webhook := isinstance(block.webhook_config, BlockWebhookConfig):
-        try:
-            resource = block.webhook_config.resource_format.format(**node.input_default)
-        except KeyError:
-            resource = None
-        logger.debug(
-            f"Constructed resource string {resource} from input {node.input_default}"
-        )
-    else:
-        resource = ""  # not relevant for manual webhooks
-
-    block_input_schema = cast(BlockSchema, block.input_schema)
-    credentials_field_name = next(iter(block_input_schema.get_credentials_fields()), "")
-    credentials_meta = (
-        node.input_default.get(credentials_field_name)
-        if credentials_field_name
-        else None
-    )
-    event_filter_input_name = block.webhook_config.event_filter_input
-    has_everything_for_webhook = (
-        resource is not None
-        and (credentials_meta or not credentials_field_name)
-        and (
-            not event_filter_input_name
-            or (
-                event_filter_input_name in node.input_default
-                and any(
-                    is_on
-                    for is_on in node.input_default[event_filter_input_name].values()
-                )
-            )
-        )
-    )
-
-    if has_everything_for_webhook and resource is not None:
-        logger.debug(f"Node #{node} has everything for a webhook!")
-        if credentials_meta and not credentials:
-            raise ValueError(
-                f"Cannot set up webhook for node #{node.id}: "
-                f"credentials #{credentials_meta['id']} not available"
-            )
-
-        if event_filter_input_name:
-            # Shape of the event filter is enforced in Block.__init__
-            event_filter = cast(dict, node.input_default[event_filter_input_name])
-            events = [
-                block.webhook_config.event_format.format(event=event)
-                for event, enabled in event_filter.items()
-                if enabled is True
-            ]
-            logger.debug(f"Webhook events to subscribe to: {', '.join(events)}")
+        if new_webhook:
+            node = await set_node_webhook(node.id, new_webhook.id)
         else:
-            events = []
-
-        # Find/make and attach a suitable webhook to the node
-        if auto_setup_webhook:
-            assert credentials is not None
-            new_webhook = await webhooks_manager.get_suitable_auto_webhook(
-                user_id,
-                credentials,
-                block.webhook_config.webhook_type,
-                resource,
-                events,
+            logger.debug(
+                f"Node #{node.id} does not have everything for a webhook: {feedback}"
             )
-        else:
-            # Manual webhook -> no credentials -> don't register but do create
-            new_webhook = await webhooks_manager.get_manual_webhook(
-                user_id,
-                node.graph_id,
-                block.webhook_config.webhook_type,
-                events,
-            )
-        logger.debug(f"Acquired webhook: {new_webhook}")
-        return await set_node_webhook(node.id, new_webhook.id)
-    else:
-        logger.debug(f"Node #{node.id} does not have everything for a webhook")
 
     return node
 
 
 async def on_node_deactivate(
+    user_id: str,
     node: "NodeModel",
     *,
     credentials: Optional["Credentials"] = None,
@@ -233,7 +157,9 @@ async def on_node_deactivate(
             f"Pruning{' and deregistering' if credentials else ''} "
             f"webhook #{webhook.id}"
         )
-        await webhooks_manager.prune_webhook_if_dangling(webhook.id, credentials)
+        await webhooks_manager.prune_webhook_if_dangling(
+            user_id, webhook.id, credentials
+        )
         if (
             cast(BlockSchema, block.input_schema).get_credentials_fields()
             and not credentials

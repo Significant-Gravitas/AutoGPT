@@ -3,11 +3,12 @@ from typing import Optional
 
 import autogpt_libs.auth as autogpt_auth_lib
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import Response
 
 import backend.server.v2.library.db as library_db
 import backend.server.v2.library.model as library_model
 import backend.server.v2.store.exceptions as store_exceptions
+from backend.util.exceptions import NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,7 @@ router = APIRouter(
 
 @router.get(
     "",
+    summary="List Library Agents",
     responses={
         500: {"description": "Server error", "content": {"application/json": {}}},
     },
@@ -70,14 +72,14 @@ async def list_library_agents(
             page_size=page_size,
         )
     except Exception as e:
-        logger.exception("Listing library agents failed for user %s: %s", user_id, e)
+        logger.error(f"Could not list library agents for user #{user_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={"message": str(e), "hint": "Inspect database connectivity."},
+            detail=str(e),
         ) from e
 
 
-@router.get("/{library_agent_id}")
+@router.get("/{library_agent_id}", summary="Get Library Agent")
 async def get_library_agent(
     library_agent_id: str,
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
@@ -85,15 +87,32 @@ async def get_library_agent(
     return await library_db.get_library_agent(id=library_agent_id, user_id=user_id)
 
 
+@router.get("/by-graph/{graph_id}")
+async def get_library_agent_by_graph_id(
+    graph_id: str,
+    version: Optional[int] = Query(default=None),
+    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+) -> library_model.LibraryAgent:
+    library_agent = await library_db.get_library_agent_by_graph_id(
+        user_id, graph_id, version
+    )
+    if not library_agent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Library agent for graph #{graph_id} and user #{user_id} not found",
+        )
+    return library_agent
+
+
 @router.get(
     "/marketplace/{store_listing_version_id}",
+    summary="Get Agent By Store ID",
     tags=["store, library"],
-    response_model=library_model.LibraryAgent | None,
 )
 async def get_library_agent_by_store_listing_version_id(
     store_listing_version_id: str,
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
-):
+) -> library_model.LibraryAgent | None:
     """
     Get Library Agent from Store Listing Version ID.
     """
@@ -101,23 +120,22 @@ async def get_library_agent_by_store_listing_version_id(
         return await library_db.get_library_agent_by_store_version_id(
             store_listing_version_id, user_id
         )
-    except Exception as e:
-        logger.exception(
-            "Retrieving library agent by store version failed for user %s: %s",
-            user_id,
-            e,
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
         )
+    except Exception as e:
+        logger.error(f"Could not fetch library agent from store version ID: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "message": str(e),
-                "hint": "Check if the store listing ID is valid.",
-            },
+            detail=str(e),
         ) from e
 
 
 @router.post(
     "",
+    summary="Add Marketplace Agent",
     status_code=status.HTTP_201_CREATED,
     responses={
         201: {"description": "Agent added successfully"},
@@ -149,26 +167,20 @@ async def add_marketplace_agent_to_library(
             user_id=user_id,
         )
 
-    except store_exceptions.AgentNotFoundError:
+    except store_exceptions.AgentNotFoundError as e:
         logger.warning(
-            "Store listing version %s not found when adding to library",
-            store_listing_version_id,
+            f"Could not find store listing version {store_listing_version_id} "
+            "to add to library"
         )
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "message": f"Store listing version {store_listing_version_id} not found",
-                "hint": "Confirm the ID provided.",
-            },
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except store_exceptions.DatabaseError as e:
-        logger.exception("Database error whilst adding agent to library: %s", e)
+        logger.error(f"Database error while adding agent to library: {e}", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": str(e), "hint": "Inspect DB logs for details."},
         ) from e
     except Exception as e:
-        logger.exception("Unexpected error while adding agent to library: %s", e)
+        logger.error(f"Unexpected error while adding agent to library: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
@@ -178,11 +190,11 @@ async def add_marketplace_agent_to_library(
         ) from e
 
 
-@router.put(
+@router.patch(
     "/{library_agent_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Update Library Agent",
     responses={
-        204: {"description": "Agent updated successfully"},
+        200: {"description": "Agent updated successfully"},
         500: {"description": "Server error"},
     },
 )
@@ -190,7 +202,7 @@ async def update_library_agent(
     library_agent_id: str,
     payload: library_model.LibraryAgentUpdateRequest,
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
-) -> JSONResponse:
+) -> library_model.LibraryAgent:
     """
     Update the library agent with the given fields.
 
@@ -199,40 +211,76 @@ async def update_library_agent(
         payload: Fields to update (auto_update_version, is_favorite, etc.).
         user_id: ID of the authenticated user.
 
-    Returns:
-        204 (No Content) on success.
-
     Raises:
         HTTPException(500): If a server/database error occurs.
     """
     try:
-        await library_db.update_library_agent(
+        return await library_db.update_library_agent(
             library_agent_id=library_agent_id,
             user_id=user_id,
             auto_update_version=payload.auto_update_version,
             is_favorite=payload.is_favorite,
             is_archived=payload.is_archived,
-            is_deleted=payload.is_deleted,
         )
-        return JSONResponse(
-            status_code=status.HTTP_204_NO_CONTENT,
-            content={"message": "Agent updated successfully"},
-        )
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
     except store_exceptions.DatabaseError as e:
-        logger.exception("Database error while updating library agent: %s", e)
+        logger.error(f"Database error while updating library agent: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": str(e), "hint": "Verify DB connection."},
         ) from e
     except Exception as e:
-        logger.exception("Unexpected error while updating library agent: %s", e)
+        logger.error(f"Unexpected error while updating library agent: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"message": str(e), "hint": "Check server logs."},
         ) from e
 
 
-@router.post("/{library_agent_id}/fork")
+@router.delete(
+    "/{library_agent_id}",
+    summary="Delete Library Agent",
+    responses={
+        204: {"description": "Agent deleted successfully"},
+        404: {"description": "Agent not found"},
+        500: {"description": "Server error"},
+    },
+)
+async def delete_library_agent(
+    library_agent_id: str,
+    user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),
+) -> Response:
+    """
+    Soft-delete the specified library agent.
+
+    Args:
+        library_agent_id: ID of the library agent to delete.
+        user_id: ID of the authenticated user.
+
+    Returns:
+        204 No Content if successful.
+
+    Raises:
+        HTTPException(404): If the agent does not exist.
+        HTTPException(500): If a server/database error occurs.
+    """
+    try:
+        await library_db.delete_library_agent(
+            library_agent_id=library_agent_id, user_id=user_id
+        )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        ) from e
+
+
+@router.post("/{library_agent_id}/fork", summary="Fork Library Agent")
 async def fork_library_agent(
     library_agent_id: str,
     user_id: str = Depends(autogpt_auth_lib.depends.get_user_id),

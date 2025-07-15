@@ -1,4 +1,5 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
+import { getCookieSettings } from "../helpers";
 
 type Cookies = { name: string; value: string; options?: CookieOptions }[];
 
@@ -19,9 +20,12 @@ export async function getServerSupabase() {
           },
           setAll(cookiesToSet: Cookies) {
             try {
-              cookiesToSet.forEach(({ name, value, options }) =>
-                cookieStore.set(name, value, options),
-              );
+              cookiesToSet.forEach(({ name, value, options }) => {
+                cookieStore.set(name, value, {
+                  ...options,
+                  ...getCookieSettings(),
+                });
+              });
             } catch {
               // The `setAll` method was called from a Server Component.
               // This can be ignored if you have middleware refreshing
