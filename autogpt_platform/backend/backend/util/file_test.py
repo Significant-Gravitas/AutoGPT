@@ -70,13 +70,18 @@ class TestFileCloudIntegration:
             mock_path_class.side_effect = path_constructor
 
             result = await store_media_file(
-                graph_exec_id, MediaFileType(cloud_path), return_content=False
+                graph_exec_id,
+                MediaFileType(cloud_path),
+                "test-user-123",
+                return_content=False,
             )
 
             # Verify cloud storage operations
             mock_handler.is_cloud_path.assert_called_once_with(cloud_path)
             mock_handler.parse_cloud_path.assert_called_once_with(cloud_path)
-            mock_handler.retrieve_file.assert_called_once_with(cloud_path, user_id=None)
+            mock_handler.retrieve_file.assert_called_once_with(
+                cloud_path, user_id="test-user-123", graph_exec_id=graph_exec_id
+            )
 
             # Verify virus scan
             mock_scan.assert_called_once_with(cloud_content, filename="source.txt")
@@ -139,7 +144,10 @@ class TestFileCloudIntegration:
             mock_path_obj.name = "image.png"
             with patch("backend.util.file.Path", return_value=mock_path_obj):
                 result = await store_media_file(
-                    graph_exec_id, MediaFileType(cloud_path), return_content=True
+                    graph_exec_id,
+                    MediaFileType(cloud_path),
+                    "test-user-123",
+                    return_content=True,
                 )
 
             # Verify result is a data URI
@@ -190,7 +198,10 @@ class TestFileCloudIntegration:
             mock_resolved_path.relative_to.return_value = Path("test-uuid-789.txt")
 
             await store_media_file(
-                graph_exec_id, MediaFileType(data_uri), return_content=False
+                graph_exec_id,
+                MediaFileType(data_uri),
+                "test-user-123",
+                return_content=False,
             )
 
             # Verify cloud handler was checked but not used for retrieval
@@ -222,4 +233,6 @@ class TestFileCloudIntegration:
             with pytest.raises(
                 FileNotFoundError, match="File not found in cloud storage"
             ):
-                await store_media_file(graph_exec_id, MediaFileType(cloud_path))
+                await store_media_file(
+                    graph_exec_id, MediaFileType(cloud_path), "test-user-123"
+                )

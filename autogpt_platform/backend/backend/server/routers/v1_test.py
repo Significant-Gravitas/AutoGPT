@@ -8,7 +8,7 @@ import fastapi.testclient
 import pytest
 import pytest_mock
 import starlette.datastructures
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile
 from pytest_snapshot.plugin import Snapshot
 
 import backend.server.routers.v1 as v1_routes
@@ -496,8 +496,6 @@ async def test_upload_file_no_filename():
 @pytest.mark.asyncio
 async def test_upload_file_invalid_expiration():
     """Test file upload with invalid expiration hours."""
-    from fastapi import HTTPException
-
     file_obj = BytesIO(b"content")
     upload_file_mock = UploadFile(
         filename="test.txt",
@@ -567,3 +565,24 @@ async def test_upload_file_cloud_storage_failure():
 
         with pytest.raises(RuntimeError, match="Storage error!"):
             await upload_file(file=upload_file_mock, user_id="test-user-123")
+
+
+@pytest.mark.asyncio
+async def test_upload_file_size_limit_exceeded():
+    """Test file upload when file size exceeds the limit."""
+    # Create a file that exceeds the default 256MB limit
+    large_file_content = b"x" * (257 * 1024 * 1024)  # 257MB
+    file_obj = BytesIO(large_file_content)
+    upload_file_mock = UploadFile(
+        filename="large_file.txt",
+        file=file_obj,
+        headers=starlette.datastructures.Headers({"content-type": "text/plain"}),
+    )
+
+    upload_file_mock.read = AsyncMock(return_value=large_file_content)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await upload_file(file=upload_file_mock, user_id="test-user-123")
+
+    assert exc_info.value.status_code == 400
+    assert "exceeds the maximum allowed size of 256MB" in exc_info.value.detail

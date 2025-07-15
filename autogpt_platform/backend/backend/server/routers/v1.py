@@ -296,6 +296,15 @@ async def upload_file(
     # Read file content
     content = await file.read()
 
+    # Check file size limit
+    config = Settings()
+    max_size_bytes = config.config.upload_file_size_limit_mb * 1024 * 1024
+    if len(content) > max_size_bytes:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File size ({len(content)} bytes) exceeds the maximum allowed size of {config.config.upload_file_size_limit_mb}MB",
+        )
+
     # Virus scan the content
     await scan_content_safe(content, filename=file.filename or "uploaded_file")
 

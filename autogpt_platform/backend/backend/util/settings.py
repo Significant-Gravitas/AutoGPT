@@ -288,6 +288,13 @@ class Config(UpdateTrackingModel["Config"], BaseSettings):
         description="Hours between cloud storage cleanup runs (1-24 hours)",
     )
 
+    upload_file_size_limit_mb: int = Field(
+        default=256,
+        ge=1,
+        le=1024,
+        description="Maximum file size in MB for file uploads (1-1024 MB)",
+    )
+
     @field_validator("platform_base_url", "frontend_base_url")
     @classmethod
     def validate_platform_base_url(cls, v: str, info: ValidationInfo) -> str:

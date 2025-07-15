@@ -34,8 +34,8 @@ def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
 async def store_media_file(
     graph_exec_id: str,
     file: MediaFileType,
+    user_id: str,
     return_content: bool = False,
-    user_id: str | None = None,
 ) -> MediaFileType:
     """
     Safely handle 'file' (a data URI, a URL, or a local path relative to {temp}/exec_file/{exec_id}),
