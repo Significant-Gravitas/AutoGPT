@@ -1,4 +1,5 @@
 import { Locator, Page } from "@playwright/test";
+import { getSelectors } from "../utils/selectors";
 
 // Locator functions
 export function getLibraryTab(page: Page): Locator {
@@ -7,14 +8,6 @@ export function getLibraryTab(page: Page): Locator {
 
 export function getAgentCards(page: Page): Locator {
   return page.getByTestId("library-agent-card");
-}
-
-export function getRunButton(page: Page): Locator {
-  return page.getByTestId("agent-run-button");
-}
-
-export function getRunAgainButton(page: Page): Locator {
-  return page.getByRole("button", { name: "Run again" });
 }
 
 export function getNewRunButton(page: Page): Locator {
@@ -45,8 +38,9 @@ export async function navigateToAgentByName(
 }
 
 export async function clickRunButton(page: Page): Promise<void> {
-  const runButton = getRunButton(page);
-  const runAgainButton = getRunAgainButton(page);
+  const { getId, getButton } = getSelectors(page);
+  const runButton = getId("agent-run-button");
+  const runAgainButton = getButton("Run again");
 
   if (await runButton.isVisible()) {
     await runButton.click();

@@ -22,14 +22,18 @@ export function AgentActivityDropdown() {
       <PopoverTrigger asChild>
         <button
           className={`group relative h-[2.5rem] w-[2.5rem] rounded-full p-2 transition-colors hover:bg-white ${isOpen ? "bg-white" : ""}`}
-          title="Agent Activity"
+          data-testid="agent-activity-button"
+          aria-label="View Agent Activity"
         >
           <Bell size={22} className="text-black" />
 
           {activeExecutions.length > 0 && (
             <>
               {/* Running Agents Rotating Badge */}
-              <div className="absolute right-[1px] top-[0.5px] flex h-5 w-5 items-center justify-center rounded-full bg-purple-600 text-[10px] font-medium text-white">
+              <div
+                data-testid="agent-activity-badge"
+                className="absolute right-[1px] top-[0.5px] flex h-5 w-5 items-center justify-center rounded-full bg-purple-600 text-[10px] font-medium text-white"
+              >
                 {formatNotificationCount(activeExecutions.length)}
                 <div className="absolute -inset-0.5 animate-spin rounded-full border-[3px] border-transparent border-r-purple-200 border-t-purple-200" />
               </div>

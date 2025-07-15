@@ -3,8 +3,11 @@
 //make sure to update the docs! Your autoformmater will break this page,
 // so don't run it on this file.
 // --8<-- [start:BuildPageExample]
-import { test } from "./fixtures";
+
+import test from "@playwright/test";
 import { BuildPage } from "./pages/build.page";
+import { LoginPage } from "./pages/login.page";
+import { getTestUser } from "./utils/auth";
 
 // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
 // prettier-ignore
@@ -14,7 +17,10 @@ test.describe("Build", () => { //(1)!
 
   // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
   // prettier-ignore
-  test.beforeEach(async ({ page, loginPage, testUser }) => { //(3)! ts-ignore
+  test.beforeEach(async ({ page }) => { //(3)! ts-ignore
+    const loginPage = new LoginPage(page);
+    const testUser = await getTestUser();
+
     buildPage = new BuildPage(page);
 
     // Start each test with login using worker auth

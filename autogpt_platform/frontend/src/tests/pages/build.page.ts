@@ -1,4 +1,4 @@
-import { Locator, Page } from "@playwright/test";
+import { expect, Locator, Page } from "@playwright/test";
 import { BasePage } from "./base.page";
 
 export interface Block {
@@ -464,16 +464,16 @@ export class BuildPage extends BasePage {
     await this.page.waitForSelector('[id="press-run-label"]');
   }
 
-  async getBlocksInAgent(): Promise<string[]> {
-    throw new Error("Not Tested to be correct");
-    console.log(`getting blocks in agent`);
+  async createDummyAgent() {
+    await this.closeTutorial();
+    await this.openBlocksPanel();
+    const block = await this.getDictionaryBlockDetails();
 
-    const ids = await Promise.all(
-      (await this.page.locator(".react-flow__node").all()).map(
-        async (node) => await node.getAttribute("data-id"),
-      ),
-    );
+    await this.addBlock(block);
+    await this.closeBlocksPanel();
+    await expect(this.hasBlock(block)).resolves.toBeTruthy();
 
-    return ids.filter((id): id is string => id !== null);
+    await this.saveAgent("Test Agent", "Test Description");
+    await expect(this.isRunButtonEnabled()).resolves.toBeTruthy();
   }
 }
