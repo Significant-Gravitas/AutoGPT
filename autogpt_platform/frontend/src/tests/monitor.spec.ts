@@ -38,15 +38,12 @@ test.beforeEach(async ({ page }, testInfo: TestInfo) => {
   testInfo.attach("agent-id", { body: id });
 });
 
-test.afterAll(async ({ page }) => {
-  const monitorPage = new MonitorPage(page);
-
+test.afterAll(async () => {
   // clear out the downloads folder
-  console.log(
-    `clearing out the downloads folder ${monitorPage.downloadsFolder}`,
-  );
+  const downloadsFolder = process.cwd() + "/downloads";
+  console.log(`clearing out the downloads folder ${downloadsFolder}/monitor`);
 
-  await fs.rm(`${monitorPage.downloadsFolder}/monitor`, {
+  await fs.rm(`${downloadsFolder}/monitor`, {
     recursive: true,
     force: true,
   });

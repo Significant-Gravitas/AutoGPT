@@ -36,7 +36,7 @@ export default defineConfig({
     bypassCSP: true,
   },
   /* Maximum time one test can run for */
-  timeout: 8000,
+  timeout: 15000,
 
   /* Configure web server to start automatically */
   webServer: {

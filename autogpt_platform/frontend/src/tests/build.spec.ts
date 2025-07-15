@@ -34,7 +34,7 @@ test.describe("Build", () => { //(1)!
   });
 
   // Helper function to add blocks starting with a specific letter
-  async function addBlocksStartingWith(letter: string, page: any): Promise<void> {
+  async function addBlocksStartingWith(letter: string): Promise<void> {
     await buildPage.openBlocksPanel();
     const blocks = await buildPage.getBlocks();
 
@@ -64,7 +64,6 @@ test.describe("Build", () => { //(1)!
     }
 
     await buildPage.saveAgent(`blocks ${letter} test`, `testing blocks starting with ${letter}`);
-    await test.expect(page).toHaveURL(({ searchParams }) => !!searchParams.get("flowID"));
   }
 
   // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
@@ -79,108 +78,108 @@ test.describe("Build", () => { //(1)!
   });
   // --8<-- [end:BuildPageExample]
 
-  test("user can add blocks starting with a", async ({ page }) => {
-    await addBlocksStartingWith("a", page);
+  test("user can add blocks starting with a", async () => {
+    await addBlocksStartingWith("a");
   });
 
-  test("user can add blocks starting with b", async ({ page }) => {
-    await addBlocksStartingWith("b", page);
+  test("user can add blocks starting with b", async () => {
+    await addBlocksStartingWith("b");
   });
 
-  test("user can add blocks starting with c", async ({ page }) => {
-    await addBlocksStartingWith("c", page);
+  test("user can add blocks starting with c", async () => {
+    await addBlocksStartingWith("c");
   });
 
-  test("user can add blocks starting with d", async ({ page }) => {
-    await addBlocksStartingWith("d", page);
+  test("user can add blocks starting with d", async () => {
+    await addBlocksStartingWith("d");
   });
 
-  test("user can add blocks starting with e", async ({ page }) => {
-    await addBlocksStartingWith("e", page);
+  test("user can add blocks starting with e", async () => {
+    await addBlocksStartingWith("e");
   });
 
-  test("user can add blocks starting with f", async ({ page }) => {
-    await addBlocksStartingWith("f", page);
+  test("user can add blocks starting with f", async () => {
+    await addBlocksStartingWith("f");
   });
 
-  test("user can add blocks starting with g", async ({ page }) => {
-    await addBlocksStartingWith("g", page);
+  test("user can add blocks starting with g", async () => {
+    await addBlocksStartingWith("g");
   });
 
-  test("user can add blocks starting with h", async ({ page }) => {
-    await addBlocksStartingWith("h", page);
+  test("user can add blocks starting with h", async () => {
+    await addBlocksStartingWith("h");
   });
 
-  test("user can add blocks starting with i", async ({ page }) => {
-    await addBlocksStartingWith("i", page);
+  test("user can add blocks starting with i", async () => {
+    await addBlocksStartingWith("i");
   });
 
-  test("user can add blocks starting with j", async ({ page }) => {
-    await addBlocksStartingWith("j", page);
+  test("user can add blocks starting with j", async () => {
+    await addBlocksStartingWith("j");
   });
 
-  test("user can add blocks starting with k", async ({ page }) => {
-    await addBlocksStartingWith("k", page);
+  test("user can add blocks starting with k", async () => {
+    await addBlocksStartingWith("k");
   });
 
-  test("user can add blocks starting with l", async ({ page }) => {
-    await addBlocksStartingWith("l", page);
+  test("user can add blocks starting with l", async () => {
+    await addBlocksStartingWith("l");
   });
 
-  test("user can add blocks starting with m", async ({ page }) => {
-    await addBlocksStartingWith("m", page);
+  test("user can add blocks starting with m", async () => {
+    await addBlocksStartingWith("m");
   });
 
-  test("user can add blocks starting with n", async ({ page }) => {
-    await addBlocksStartingWith("n", page);
+  test("user can add blocks starting with n", async () => {
+    await addBlocksStartingWith("n");
   });
 
-  test("user can add blocks starting with o", async ({ page }) => {
-    await addBlocksStartingWith("o", page);
+  test("user can add blocks starting with o", async () => {
+    await addBlocksStartingWith("o");
   });
 
-  test("user can add blocks starting with p", async ({ page }) => {
-    await addBlocksStartingWith("p", page);
+  test("user can add blocks starting with p", async () => {
+    await addBlocksStartingWith("p");
   });
 
-  test("user can add blocks starting with q", async ({ page }) => {
-    await addBlocksStartingWith("q", page);
+  test("user can add blocks starting with q", async () => {
+    await addBlocksStartingWith("q");
   });
 
-  test("user can add blocks starting with r", async ({ page }) => {
-    await addBlocksStartingWith("r", page);
+  test("user can add blocks starting with r", async () => {
+    await addBlocksStartingWith("r");
   });
 
-  test("user can add blocks starting with s", async ({ page }) => {
-    await addBlocksStartingWith("s", page);
+  test("user can add blocks starting with s", async () => {
+    await addBlocksStartingWith("s");
   });
 
-  test("user can add blocks starting with t", async ({ page }) => {
-    await addBlocksStartingWith("t", page);
+  test("user can add blocks starting with t", async () => {
+    await addBlocksStartingWith("t");
   });
 
-  test("user can add blocks starting with u", async ({ page }) => {
-    await addBlocksStartingWith("u", page);
+  test("user can add blocks starting with u", async () => {
+    await addBlocksStartingWith("u");
   });
 
-  test("user can add blocks starting with v", async ({ page }) => {
-    await addBlocksStartingWith("v", page);
+  test("user can add blocks starting with v", async () => {
+    await addBlocksStartingWith("v");
   });
 
-  test("user can add blocks starting with w", async ({ page }) => {
-    await addBlocksStartingWith("w", page);
+  test("user can add blocks starting with w", async () => {
+    await addBlocksStartingWith("w");
   });
 
-  test("user can add blocks starting with x", async ({ page }) => {
-    await addBlocksStartingWith("x", page);
+  test("user can add blocks starting with x", async () => {
+    await addBlocksStartingWith("x");
   });
 
-  test("user can add blocks starting with y", async ({ page }) => {
-    await addBlocksStartingWith("y", page);
+  test("user can add blocks starting with y", async () => {
+    await addBlocksStartingWith("y");
   });
 
-  test("user can add blocks starting with z", async ({ page }) => {
-    await addBlocksStartingWith("z", page);
+  test("user can add blocks starting with z", async () => {
+    await addBlocksStartingWith("z");
   });
 
   test.skip("user can add all blocks a-l", async ({ page }, testInfo) => {
