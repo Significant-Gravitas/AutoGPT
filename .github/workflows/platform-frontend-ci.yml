@@ -189,17 +189,7 @@ jobs:
       - name: Run docker compose
         run: |
           docker compose -f ../docker-compose.yml up -d
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.11"
-
-      - name: Create E2E test data
-        run: |
-          cd ../backend
-          python3 test/e2e_test_data.py
-
+          
       - name: Restore dependencies cache
         uses: actions/cache@v4
         with:
