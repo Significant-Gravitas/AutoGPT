@@ -43,7 +43,7 @@ If you prefer, you can manually download and run the installer scripts:
 - **Linux/macOS:** `setup-autogpt.sh`
 - **Windows:** `setup-autogpt.bat`
 
-Follow the instructions in the [installer README](../../../../autogpt_platform/installer/README.md) for more details.
+These scripts are located in the `autogpt_platform/installer/` directory.
 
 ## After Installation
 
