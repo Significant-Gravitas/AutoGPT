@@ -282,7 +282,9 @@ class TestCloudStorageHandler:
 
     def test_validate_file_access_invalid_path(self, handler):
         """Test access validation failure for invalid paths."""
-        with pytest.raises(PermissionError, match="Access denied to path"):
+        with pytest.raises(
+            PermissionError, match="Invalid file path: must be under uploads/"
+        ):
             handler._validate_file_access("invalid/path/file.txt", "user123")
 
     @patch.object(CloudStorageHandler, "_get_async_gcs_client")
