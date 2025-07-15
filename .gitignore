@@ -173,6 +173,7 @@ LICENSE.rtf
 autogpt_platform/backend/settings.py
 /.auth
 /autogpt_platform/frontend/.auth
+/autogpt_platform/frontend/.test-data
 
 *.ign.*
 .test-contents

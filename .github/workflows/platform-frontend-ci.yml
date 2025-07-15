@@ -190,6 +190,26 @@ jobs:
         run: |
           docker compose -f ../docker-compose.yml up -d
 
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: "1.6.1"
+
+      - name: Install backend dependencies
+        run: |
+          cd ../backend
+          poetry install
+
+      - name: Create E2E test data
+        run: |
+          cd ../backend
+          poetry run python test/e2e_test_data.py
+
       - name: Restore dependencies cache
         uses: actions/cache@v4
         with:
