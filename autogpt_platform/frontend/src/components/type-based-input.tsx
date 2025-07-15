@@ -410,7 +410,7 @@ const FileInput: FC<FileInputProps> = ({ value, onChange, className }) => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [fileInfo, setFileInfo] = useState<{
-    filename: string;
+    name: string;
     size: number;
     content_type: string;
   } | null>(null);
@@ -431,7 +431,7 @@ const FileInput: FC<FileInputProps> = ({ value, onChange, className }) => {
       );
 
       setFileInfo({
-        filename: result.filename,
+        name: result.file_name,
         size: result.size,
         content_type: result.content_type,
       });
@@ -490,7 +490,7 @@ const FileInput: FC<FileInputProps> = ({ value, onChange, className }) => {
                 <div className="flex flex-col gap-0.5">
                   <span className="font-normal text-black">
                     {fileInfo
-                      ? getFileLabel(fileInfo.filename, fileInfo.content_type)
+                      ? getFileLabel(fileInfo.name, fileInfo.content_type)
                       : "File"}
                   </span>
                   <span>{fileInfo ? formatFileSize(fileInfo.size) : ""}</span>

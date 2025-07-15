@@ -80,9 +80,8 @@ class RequestTopUp(pydantic.BaseModel):
 
 
 class UploadFileResponse(pydantic.BaseModel):
-    storage_key: str
     file_uri: str
-    filename: str
+    file_name: str
     size: int
     content_type: str
     expires_in_hours: int

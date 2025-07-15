@@ -533,9 +533,8 @@ export default class BackendAPI {
     expiration_hours: number = 24,
     onProgress?: (progress: number) => void,
   ): Promise<{
-    storage_key: string;
     file_uri: string;
-    filename: string;
+    file_name: string;
     size: number;
     content_type: string;
     expires_in_hours: number;

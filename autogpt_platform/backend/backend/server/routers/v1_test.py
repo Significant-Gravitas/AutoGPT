@@ -431,9 +431,8 @@ async def test_upload_file_success():
         )
 
         # Verify result
-        assert result.storage_key == "gcs://test-bucket/uploads/123/test.txt"
         assert result.file_uri == "gcs://test-bucket/uploads/123/test.txt"
-        assert result.filename == "test.txt"
+        assert result.file_name == "test.txt"
         assert result.size == len(file_content)
         assert result.content_type == "text/plain"
         assert result.expires_in_hours == 24
@@ -479,7 +478,7 @@ async def test_upload_file_no_filename():
 
         result = await upload_file(file=upload_file_mock, user_id="test-user-123")
 
-        assert result.filename == "uploaded_file"
+        assert result.file_name == "uploaded_file"
         assert result.content_type == "application/octet-stream"
 
         # Verify virus scan was called with default filename
@@ -606,14 +605,13 @@ async def test_upload_file_gcs_not_configured_fallback():
         result = await upload_file(file=upload_file_mock, user_id="test-user-123")
 
         # Verify fallback behavior
-        assert result.filename == "test.txt"
+        assert result.file_name == "test.txt"
         assert result.size == len(file_content)
         assert result.content_type == "text/plain"
         assert result.expires_in_hours == 24
 
-        # Both storage_key and file_uri should be the same base64 data URI
+        # Verify file_uri is base64 data URI
         expected_data_uri = "data:text/plain;base64,dGVzdCBmaWxlIGNvbnRlbnQ="
-        assert result.storage_key == "test.txt"
         assert result.file_uri == expected_data_uri
 
         # Verify virus scan was called

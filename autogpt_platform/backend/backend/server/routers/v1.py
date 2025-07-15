@@ -319,9 +319,8 @@ async def upload_file(
         data_uri = f"data:{content_type};base64,{base64_content}"
 
         return UploadFileResponse(
-            storage_key=file_name,
             file_uri=data_uri,
-            filename=file_name,
+            file_name=file_name,
             size=len(content),
             content_type=content_type,
             expires_in_hours=expiration_hours,
@@ -337,9 +336,8 @@ async def upload_file(
     )
 
     return UploadFileResponse(
-        storage_key=storage_path,
         file_uri=storage_path,
-        filename=file.filename or "uploaded_file",
+        file_name=file_name,
         size=len(content),
         content_type=file.content_type or "application/octet-stream",
         expires_in_hours=expiration_hours,
