@@ -19,39 +19,40 @@ images: {
 
 import asyncio
 import random
+import json
 from typing import List, Dict, Any
+from pathlib import Path
 
 from faker import Faker
 
 # Import API functions from the backend
 from backend.data.user import get_or_create_user
 from backend.data.graph import create_graph, Graph, Node, Link
-from backend.data.block import get_blocks
 from backend.server.v2.library.db import create_library_agent
-from backend.server.v2.store.db import create_store_submission, update_profile, review_store_submission
+from backend.server.v2.store.db import create_store_submission, review_store_submission
 from backend.server.v2.library.db import create_preset
 from backend.data.api_key import generate_api_key
-from backend.data.execution import create_graph_execution
 from backend.data.db import prisma
 from backend.data.credit import get_user_credit_model
-from backend.server.model import CreateAPIKeyRequest
-from backend.server.v2.store.model import StoreSubmissionRequest, Profile
 from backend.server.v2.library.model import LibraryAgentPresetCreatable
 from backend.server.integrations.utils import get_supabase
 
 faker = Faker()
 
+# Path to save test data files
+TEST_DATA_DIR = Path(__file__).parent.parent.parent / "frontend" / ".test-data"
+
 # Constants for data generation limits (reduced for E2E tests)
 NUM_USERS = 10
 NUM_AGENT_BLOCKS = 20
-MIN_GRAPHS_PER_USER = 1
-MAX_GRAPHS_PER_USER = 3
+MIN_GRAPHS_PER_USER = 10
+MAX_GRAPHS_PER_USER = 10
 MIN_NODES_PER_GRAPH = 2
 MAX_NODES_PER_GRAPH = 4
 MIN_PRESETS_PER_USER = 1
 MAX_PRESETS_PER_USER = 2
-MIN_AGENTS_PER_USER = 1
-MAX_AGENTS_PER_USER = 3
+MIN_AGENTS_PER_USER = 10
+MAX_AGENTS_PER_USER = 10
 MIN_EXECUTIONS_PER_GRAPH = 1
 MAX_EXECUTIONS_PER_GRAPH = 5
 MIN_REVIEWS_PER_VERSION = 1
@@ -88,6 +89,49 @@ class TestDataCreator:
         self.agent_graphs: List[Dict[str, Any]] = []
         self.profiles: List[Dict[str, Any]] = []
         self.library_agents: List[Dict[str, Any]] = []
+        self.store_submissions: List[Dict[str, Any]] = []
+        self.api_keys: List[Dict[str, Any]] = []
+        self.presets: List[Dict[str, Any]] = []
+        
+    def save_data_to_files(self):
+        """Save all generated data to JSON files in the frontend .test-data folder."""
+        print("Saving test data to JSON files...")
+        
+        # Ensure the test data directory exists
+        TEST_DATA_DIR.mkdir(parents=True, exist_ok=True)
+        
+        # Prepare data structures for saving - only users for now
+        data_to_save = {
+            "users.json": {
+                "users": self.users
+            }
+        }
+        
+        # Save each data structure to its respective file
+        for filename, data in data_to_save.items():
+            file_path = TEST_DATA_DIR / filename
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, indent=2, ensure_ascii=False, default=str)
+                print(f"✅ Saved {filename}")
+            except Exception as e:
+                print(f"❌ Error saving {filename}: {e}")
+        
+        print(f"Test data saved to: {TEST_DATA_DIR}")
+        
+        # Create a summary file
+        summary = {
+            "generated_at": faker.iso8601(),
+            "summary": {
+                "users": len(self.users)
+            },
+            "test_data_location": str(TEST_DATA_DIR)
+        }
+        
+        summary_path = TEST_DATA_DIR / "summary.json"
+        with open(summary_path, 'w', encoding='utf-8') as f:
+            json.dump(summary, f, indent=2, ensure_ascii=False, default=str)
+        print(f"✅ Saved summary.json")
         
     async def create_test_users(self) -> List[Dict[str, Any]]:
         """Create test users using Supabase client."""
@@ -249,7 +293,6 @@ class TestDataCreator:
         self.agent_graphs = graphs
         return graphs
     
-    async def create_test_profiles(self) -> List[Dict[str, Any]]:
         """Create test profiles directly in the database."""
         print("Creating test profiles...")
         
@@ -298,7 +341,7 @@ class TestDataCreator:
         
         library_agents = []
         for user in self.users:
-            num_agents = random.randint(MIN_AGENTS_PER_USER, MAX_AGENTS_PER_USER)
+            num_agents = 10  # Create exactly 10 agents per user
             
             # Get available graphs for this user
             user_graphs = [g for g in self.agent_graphs if g.get("userId") == user["id"]]
@@ -359,6 +402,7 @@ class TestDataCreator:
                     print(f"Error creating preset: {e}")
                     continue
                     
+        self.presets = presets
         return presets
     
     async def create_test_api_keys(self) -> List[Dict[str, Any]]:
@@ -371,7 +415,7 @@ class TestDataCreator:
             
             try:
                 # Use the API function to create API key
-                api_key, plain_key = await generate_api_key(
+                api_key, _ = await generate_api_key(
                     name=faker.word(),
                     user_id=user["id"],
                     permissions=[APIKeyPermission.EXECUTE_GRAPH, APIKeyPermission.READ_GRAPH],
@@ -382,6 +426,7 @@ class TestDataCreator:
                 print(f"Error creating API key for user {user['id']}: {e}")
                 continue
                 
+        self.api_keys = api_keys
         return api_keys
     
     async def create_test_store_submissions(self) -> List[Dict[str, Any]]:
@@ -399,8 +444,8 @@ class TestDataCreator:
                 print(f"No graphs found for user {user['id']}, skipping store submissions")
                 continue
                 
-            # Create 1-2 store submissions per user
-            for _ in range(random.randint(1, 2)):
+            # Create exactly 4 store submissions per user
+            for _ in range(4):
                 graph = random.choice(user_graphs)
                 
                 try:
@@ -448,6 +493,7 @@ class TestDataCreator:
                     continue
         
         print(f"Created {len(submissions)} store submissions, approved {len(approved_submissions)}")
+        self.store_submissions = submissions
         return submissions
     
     async def add_user_credits(self):
@@ -474,7 +520,7 @@ class TestDataCreator:
                 print(f"Added {credit_amount} credits to user {user['id']}")
             except Exception as e:
                 print(f"Skipping credits for user {user['id']}: credits may be disabled")
-                continue
+                continue    
     
     async def create_all_test_data(self):
         """Create all test data."""
@@ -488,9 +534,6 @@ class TestDataCreator:
         
         # Create graphs
         await self.create_test_graphs()
-        
-        # Create profiles (skip for now due to Prisma issues)
-        # await self.create_test_profiles()
         
         # Create library agents
         await self.create_test_library_agents()
@@ -507,12 +550,16 @@ class TestDataCreator:
         # Add user credits
         await self.add_user_credits()
         
+        
         # Refresh materialized views
         print("Refreshing materialized views...")
         try:
             await prisma.execute_raw("SELECT refresh_store_materialized_views();")
         except Exception as e:
             print(f"Error refreshing materialized views: {e}")
+        
+        # Save all data to JSON files
+        self.save_data_to_files()
         
         print("E2E test data creation completed successfully!")
         
@@ -523,6 +570,10 @@ class TestDataCreator:
         print(f"✅ Agent graphs created: {len(self.agent_graphs)}")
         print(f"✅ Profiles created: {len(self.profiles)}")
         print(f"✅ Library agents created: {len(self.library_agents)}")
+        print(f"✅ Store submissions created: {len(self.store_submissions)}")
+        print(f"✅ API keys created: {len(self.api_keys)}")
+        print(f"✅ Presets created: {len(self.presets)}")
+        print(f"✅ Data saved to: {TEST_DATA_DIR}")
         print(f"\n🚀 Your E2E test database is ready to use!")
 
 
