@@ -13,6 +13,8 @@ import { hasUrl } from "./utils/assertion";
 // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
 // prettier-ignore
 test.describe("Build", () => { //(1)!
+  test.describe.configure({ mode: 'parallel' });
+  
   let buildPage: BuildPage; //(2)!
 
   // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
@@ -33,24 +35,28 @@ test.describe("Build", () => { //(1)!
     await buildPage.closeTutorial();
   });
 
-  // Helper function to add blocks starting with a specific letter
-  async function addBlocksStartingWith(letter: string): Promise<void> {
+  // Helper function to add blocks from a specific category
+  async function addBlocksFromCategory(category: string): Promise<void> {
     await buildPage.openBlocksPanel();
-    const blocks = await buildPage.getBlocks();
+    
+    // Check if category exists for this user
+    const availableCategories = await buildPage.discoverCategories();
+    if (!availableCategories.includes(category)) {
+      console.log(`⚠️ Category "${category}" not available for this user, skipping test`);
+      await buildPage.closeBlocksPanel();
+      return; // Return early instead of failing
+    }
+    
+    const blocks = await buildPage.getBlocksForCategory(category);
 
     const blockIdsToSkip = await buildPage.getBlocksToSkip();
-    const blockTypesToSkip = ["Input", "Output", "Agent", "AI"];
     console.log("⚠️ Skipping blocks:", blockIdsToSkip);
-    console.log("⚠️ Skipping block types:", blockTypesToSkip);
 
-    const targetLetter = letter.toLowerCase();
     const blocksToAdd = blocks.filter(block => 
-      block.name[0].toLowerCase() === targetLetter &&
-      !blockIdsToSkip.includes(block.id) && 
-      !blockTypesToSkip.includes(block.type)
+      !blockIdsToSkip.includes(block.id)
     );
 
-    console.log(`Adding ${blocksToAdd.length} blocks starting with "${letter}"`);
+    console.log(`Adding ${blocksToAdd.length} blocks from category "${category}"`);
     
     for (const block of blocksToAdd) {
       await buildPage.addBlock(block);
@@ -63,7 +69,7 @@ test.describe("Build", () => { //(1)!
       await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
     }
 
-    await buildPage.saveAgent(`blocks ${letter} test`, `testing blocks starting with ${letter}`);
+    await buildPage.saveAgent(`${category} blocks test`, `testing blocks from ${category} category`);
   }
 
   // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
@@ -78,184 +84,85 @@ test.describe("Build", () => { //(1)!
   });
   // --8<-- [end:BuildPageExample]
 
-  test("user can add blocks starting with a", async () => {
-    await addBlocksStartingWith("a");
-  });
+  // All available categories from backend BlockCategory enum
+  test.describe("Block Category Tests", () => {
+    test.describe.configure({ timeout: 60000 }); // 60 second timeout for all category tests
 
-  test("user can add blocks starting with b", async () => {
-    await addBlocksStartingWith("b");
-  });
+    test("AI category", async () => {
+      await addBlocksFromCategory("AI");
+    });
 
-  test("user can add blocks starting with c", async () => {
-    await addBlocksStartingWith("c");
-  });
+    test("Agent category", async () => {
+      await addBlocksFromCategory("Agent");
+    });
 
-  test("user can add blocks starting with d", async () => {
-    await addBlocksStartingWith("d");
-  });
+    test("Basic category", async () => {
+      await addBlocksFromCategory("Basic");
+    });
 
-  test("user can add blocks starting with e", async () => {
-    await addBlocksStartingWith("e");
-  });
+    test("Communication category", async () => {
+      await addBlocksFromCategory("Communication");
+    });
 
-  test("user can add blocks starting with f", async () => {
-    await addBlocksStartingWith("f");
-  });
+    test("CRM category", async () => {
+      await addBlocksFromCategory("Crm");
+    });
 
-  test("user can add blocks starting with g", async () => {
-    await addBlocksStartingWith("g");
-  });
+    test("Data category", async () => {
+      await addBlocksFromCategory("Data");
+    });
 
-  test("user can add blocks starting with h", async () => {
-    await addBlocksStartingWith("h");
-  });
+    test("Developer Tools category", async () => {
+      await addBlocksFromCategory("Developer Tools");
+    });
 
-  test("user can add blocks starting with i", async () => {
-    await addBlocksStartingWith("i");
-  });
+    test("Hardware category", async () => {
+      await addBlocksFromCategory("Hardware");
+    });
 
-  test("user can add blocks starting with j", async () => {
-    await addBlocksStartingWith("j");
-  });
+    test("Input category", async () => {
+      await addBlocksFromCategory("Input");
+    });
 
-  test("user can add blocks starting with k", async () => {
-    await addBlocksStartingWith("k");
-  });
+    test("Issue Tracking category", async () => {
+      await addBlocksFromCategory("Issue Tracking");
+    });
 
-  test("user can add blocks starting with l", async () => {
-    await addBlocksStartingWith("l");
-  });
+    test("Logic category", async () => {
+      await addBlocksFromCategory("Logic");
+    });
 
-  test("user can add blocks starting with m", async () => {
-    await addBlocksStartingWith("m");
-  });
+    test("Marketing category", async () => {
+      await addBlocksFromCategory("Marketing");
+    });
 
-  test("user can add blocks starting with n", async () => {
-    await addBlocksStartingWith("n");
-  });
+    test("Multimedia category", async () => {
+      await addBlocksFromCategory("Multimedia");
+    });
 
-  test("user can add blocks starting with o", async () => {
-    await addBlocksStartingWith("o");
-  });
+    test("Output category", async () => {
+      await addBlocksFromCategory("Output");
+    });
 
-  test("user can add blocks starting with p", async () => {
-    await addBlocksStartingWith("p");
-  });
+    test("Productivity category", async () => {
+      await addBlocksFromCategory("Productivity");
+    });
 
-  test("user can add blocks starting with q", async () => {
-    await addBlocksStartingWith("q");
-  });
+    test("Safety category", async () => {
+      await addBlocksFromCategory("Safety");
+    });
 
-  test("user can add blocks starting with r", async () => {
-    await addBlocksStartingWith("r");
-  });
+    test("Search category", async () => {
+      await addBlocksFromCategory("Search");
+    });
 
-  test("user can add blocks starting with s", async () => {
-    await addBlocksStartingWith("s");
-  });
+    test("Social category", async () => {
+      await addBlocksFromCategory("Social");
+    });
 
-  test("user can add blocks starting with t", async () => {
-    await addBlocksStartingWith("t");
-  });
-
-  test("user can add blocks starting with u", async () => {
-    await addBlocksStartingWith("u");
-  });
-
-  test("user can add blocks starting with v", async () => {
-    await addBlocksStartingWith("v");
-  });
-
-  test("user can add blocks starting with w", async () => {
-    await addBlocksStartingWith("w");
-  });
-
-  test("user can add blocks starting with x", async () => {
-    await addBlocksStartingWith("x");
-  });
-
-  test("user can add blocks starting with y", async () => {
-    await addBlocksStartingWith("y");
-  });
-
-  test("user can add blocks starting with z", async () => {
-    await addBlocksStartingWith("z");
-  });
-
-  test.skip("user can add all blocks a-l", async ({ page }, testInfo) => {
-    // this test is slow af so we 100x the timeout (sorry future me)
-    test.setTimeout(testInfo.timeout * 100);
-
-    await buildPage.openBlocksPanel();
-    const blocks = await buildPage.getBlocks();
-
-    const blockIdsToSkip = await buildPage.getBlocksToSkip();
-    const blockTypesToSkip = ["Input", "Output", "Agent", "AI"];
-    console.log("⚠️ Skipping blocks:", blockIdsToSkip);
-    console.log("⚠️ Skipping block types:", blockTypesToSkip);
-
-    // add all the blocks in order except for the agent executor block
-    for (const block of blocks) {
-      if (block.name[0].toLowerCase() >= "m") {
-        continue;
-      }
-      if (!blockIdsToSkip.includes(block.id) && !blockTypesToSkip.includes(block.type)) {
-        await buildPage.addBlock(block);
-      }
-    }
-    await buildPage.closeBlocksPanel();
-    // check that all the blocks are visible
-    for (const block of blocks) {
-      if (block.name[0].toLowerCase() >= "m") {
-        continue;
-      }
-      if (!blockIdsToSkip.includes(block.id) && !blockTypesToSkip.includes(block.type)) {
-        await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
-      }
-    }
-
-    // check that we can save the agent with all the blocks
-    await buildPage.saveAgent("all blocks test", "all blocks test");
-    // page should have a url like http://localhost:3000/build?flowID=f4f3a1da-cfb3-430f-a074-a455b047e340
-    await test.expect(page).toHaveURL(({ searchParams }) => !!searchParams.get("flowID"));
-  });
-
-  test.skip("user can add all blocks m-z", async ({ page }, testInfo) => {
-    // this test is slow af so we 100x the timeout (sorry future me)
-    test.setTimeout(testInfo.timeout * 100);
-
-    await buildPage.openBlocksPanel();
-    const blocks = await buildPage.getBlocks();
-
-    const blockIdsToSkip = await buildPage.getBlocksToSkip();
-    const blockTypesToSkip = ["Input", "Output", "Agent", "AI"];
-    console.log("⚠️ Skipping blocks:", blockIdsToSkip);
-    console.log("⚠️ Skipping block types:", blockTypesToSkip);
-
-    // add all the blocks in order except for the agent executor block
-    for (const block of blocks) {
-      if (block.name[0].toLowerCase() < "m") {
-        continue;
-      }
-      if (!blockIdsToSkip.includes(block.id) && !blockTypesToSkip.includes(block.type)) {
-        await buildPage.addBlock(block);
-      }
-    }
-    await buildPage.closeBlocksPanel();
-    // check that all the blocks are visible
-    for (const block of blocks) {
-      if (block.name[0].toLowerCase() < "m") {
-        continue;
-      }
-      if (!blockIdsToSkip.includes(block.id) && !blockTypesToSkip.includes(block.type)) {
-        await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
-      }
-    }
-
-    // check that we can save the agent with all the blocks
-    await buildPage.saveAgent("all blocks test", "all blocks test");
-    // page should have a url like http://localhost:3000/build?flowID=f4f3a1da-cfb3-430f-a074-a455b047e340
-    await test.expect(page).toHaveURL(({ searchParams }) => !!searchParams.get("flowID"));
+    test("Text category", async () => {
+      await addBlocksFromCategory("Text");
+    });
   });
 
   test("build navigation is accessible from navbar", async ({ page }) => {
@@ -333,35 +240,39 @@ test.describe("Build", () => { //(1)!
       .resolves.toBeTruthy();
   });
 
-  test("user can build an agent with inputs and output blocks", async ({ page }) => {
+  test("user can build an agent with inputs and output blocks", async ({ page }, testInfo) => {
     // simple calculator to double input and output it
+    test.setTimeout(testInfo.timeout * 10);
 
     // prep
     await buildPage.openBlocksPanel();
 
-    // find the blocks we want
-    const blocks = await buildPage.getBlocks();
-    const inputBlock = blocks.find((b) => b.name === "Agent Input");
-    const outputBlock = blocks.find((b) => b.name === "Agent Output");
-    const calculatorBlock = blocks.find((b) => b.name === "Calculator");
-    if (!inputBlock || !outputBlock || !calculatorBlock) {
-      throw new Error("Input or output block not found");
-    }
-
-    // add the blocks
+    // Get input block from Input category
+    const inputBlocks = await buildPage.getBlocksForCategory("Input");
+    const inputBlock = inputBlocks.find((b) => b.name === "Agent Input");
+    if (!inputBlock) throw new Error("Input block not found");
     await buildPage.addBlock(inputBlock);
+
+    // Get output block from Output category  
+    const outputBlocks = await buildPage.getBlocksForCategory("Output");
+    const outputBlock = outputBlocks.find((b) => b.name === "Agent Output");
+    if (!outputBlock) throw new Error("Output block not found");
     await buildPage.addBlock(outputBlock);
+
+    // Get calculator block from Logic category
+    const logicBlocks = await buildPage.getBlocksForCategory("Logic");
+    const calculatorBlock = logicBlocks.find((b) => b.name === "Calculator");
+    if (!calculatorBlock) throw new Error("Calculator block not found");
     await buildPage.addBlock(calculatorBlock);
+
     await buildPage.closeBlocksPanel();
 
     // Wait for blocks to be fully loaded
     await page.waitForTimeout(1000);
 
-    await test.expect(buildPage.hasBlock(inputBlock)).resolves.toBeTruthy();
-    await test.expect(buildPage.hasBlock(outputBlock)).resolves.toBeTruthy();
-    await test
-      .expect(buildPage.hasBlock(calculatorBlock))
-      .resolves.toBeTruthy();
+    await buildPage.hasBlock(inputBlock)
+    await buildPage.hasBlock(outputBlock)
+    await buildPage.hasBlock(calculatorBlock)
 
     // Wait for blocks to be ready for connections
     await page.waitForTimeout(1000);

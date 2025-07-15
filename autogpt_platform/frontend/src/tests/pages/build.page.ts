@@ -98,6 +98,83 @@ export class BuildPage extends BasePage {
     }
   }
 
+  async selectBlockCategory(category: string): Promise<void> {
+    console.log(`Selecting block category: ${category}`);
+    await this.page.getByText(category, { exact: true }).click();
+    // Wait for the blocks to load after category selection
+    await this.page.waitForTimeout(500);
+  }
+
+  async discoverCategories(): Promise<string[]> {
+    console.log("Discovering available block categories");
+
+    this.page.waitForTimeout(2000);
+
+    // Get all category buttons
+    const categoryButtons = await this.page
+      .getByTestId("blocks-category")
+      .all();
+
+    const categories: string[] = [];
+    for (const button of categoryButtons) {
+      const categoryName = await button.textContent();
+      if (categoryName && categoryName.trim() !== "All") {
+        categories.push(categoryName.trim());
+      }
+    }
+
+    console.log(`Found ${categories.length} categories:`, categories);
+    return categories;
+  }
+
+  async getBlocksForCategory(category: string): Promise<Block[]> {
+    console.log(`Getting blocks for category: ${category}`);
+
+    // Select the category first
+    await this.selectBlockCategory(category);
+
+    try {
+      const blockFinder = this.page.locator('[data-id^="block-card-"]');
+      await blockFinder.first().waitFor();
+      const blocks = await blockFinder.all();
+
+      console.log(`found ${blocks.length} blocks in category ${category}`);
+
+      const results = await Promise.all(
+        blocks.map(async (block) => {
+          try {
+            const fullId = (await block.getAttribute("data-id")) || "";
+            const id = fullId.replace("block-card-", "");
+            const nameElement = block.locator('[data-testid^="block-name-"]');
+            const descriptionElement = block.locator(
+              '[data-testid^="block-description-"]',
+            );
+
+            const name = (await nameElement.textContent()) || "";
+            const description = (await descriptionElement.textContent()) || "";
+            const type = (await nameElement.getAttribute("data-type")) || "";
+
+            return {
+              id,
+              name: name.trim(),
+              type: type.trim(),
+              description: description.trim(),
+            };
+          } catch (elementError) {
+            console.error("Error processing block:", elementError);
+            return null;
+          }
+        }),
+      );
+
+      // Filter out any null results from errors
+      return results.filter((block): block is Block => block !== null);
+    } catch (error) {
+      console.error(`Error getting blocks for category ${category}:`, error);
+      return [];
+    }
+  }
+
   async addBlock(block: Block): Promise<void> {
     console.log(`Adding block ${block.name} (${block.id}) to agent`);
     await this.page.getByTestId(`block-name-${block.id}`).click();
@@ -113,8 +190,7 @@ export class BuildPage extends BasePage {
       `Checking if block ${block.name} (${block.id}) is visible on page`,
     );
     try {
-      // Use both ID and name for most precise matching
-      const node = this.page.locator(`[data-blockid="${block.id}"]`).first();
+      const node = this.page.getByTestId(block.id).first();
       return await node.isVisible();
     } catch (error) {
       console.error("Error checking for block:", error);
