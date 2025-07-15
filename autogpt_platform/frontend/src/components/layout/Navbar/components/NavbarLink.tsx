@@ -11,6 +11,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Text } from "../../../atoms/Text/Text";
 
+const iconWidthClass = "h-5 w-5";
+
 interface Props {
   name: string;
   href: string;
@@ -21,42 +23,50 @@ export function NavbarLink({ name, href }: Props) {
   const isActive = pathname.includes(href);
 
   return (
-    <Link
-      href={href}
-      data-testid={`navbar-link-${name.toLowerCase()}`}
-      className="font-poppins text-[20px] leading-[28px]"
-    >
+    <Link href={href} data-testid={`navbar-link-${name.toLowerCase()}`}>
       <div
         className={cn(
           "flex items-center justify-start gap-1 p-2",
           isActive &&
-            "rounded-small bg-neutral-800 p-2 transition-all duration-300 dark:bg-neutral-200",
+            "rounded-small bg-neutral-800 py-2 pl-2 pr-3 transition-all duration-300 dark:bg-neutral-200",
         )}
       >
         {href === "/marketplace" && (
           <StorefrontIcon
-            className={cn("h-6 w-6", isActive && "text-white dark:text-black")}
+            className={cn(
+              iconWidthClass,
+              isActive && "text-white dark:text-black",
+            )}
           />
         )}
         {href === "/build" && (
           <CubeIcon
-            className={cn("h-6 w-6", isActive && "text-white dark:text-black")}
+            className={cn(
+              iconWidthClass,
+              isActive && "text-white dark:text-black",
+            )}
           />
         )}
         {href === "/monitor" && (
           <IconLaptop
-            className={cn("h-6 w-6", isActive && "text-white dark:text-black")}
+            className={cn(
+              iconWidthClass,
+              isActive && "text-white dark:text-black",
+            )}
           />
         )}
         {href === "/library" && (
           <HouseIcon
-            className={cn("h-6 w-6", isActive && "text-white dark:text-black")}
+            className={cn(
+              iconWidthClass,
+              isActive && "text-white dark:text-black",
+            )}
           />
         )}
         <Text
-          variant="body-medium"
+          variant="h4"
           className={cn(
-            "hidden lg:block",
+            "hidden !font-poppins lg:block",
             isActive ? "!text-white" : "!text-black",
           )}
         >
