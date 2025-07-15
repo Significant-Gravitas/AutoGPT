@@ -3,8 +3,12 @@
 //make sure to update the docs! Your autoformmater will break this page,
 // so don't run it on this file.
 // --8<-- [start:BuildPageExample]
-import { test } from "./fixtures";
+
+import test from "@playwright/test";
 import { BuildPage } from "./pages/build.page";
+import { LoginPage } from "./pages/login.page";
+import { getTestUser } from "./utils/auth";
+import { hasUrl } from "./utils/assertion";
 
 // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
 // prettier-ignore
@@ -13,22 +17,59 @@ test.describe("Build", () => { //(1)!
 
   // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
   // prettier-ignore
-  test.beforeEach(async ({ page, loginPage, testUser }) => { //(3)! ts-ignore
+  test.beforeEach(async ({ page }) => { //(3)! ts-ignore
+    const loginPage = new LoginPage(page);
+    const testUser = await getTestUser();
+
     buildPage = new BuildPage(page);
 
     // Start each test with login using worker auth
     await page.goto("/login"); //(4)!
     await loginPage.login(testUser.email, testUser.password);
-    await test.expect(page).toHaveURL("/marketplace"); //(5)!
+    await hasUrl(page, "/marketplace"); //(5)!
     await buildPage.navbar.clickBuildLink();
-    await test.expect(page).toHaveURL("/build");
+    await hasUrl(page, "/build");
     await buildPage.waitForPageLoad();
+    await buildPage.closeTutorial();
   });
+
+  // Helper function to add blocks starting with a specific letter
+  async function addBlocksStartingWith(letter: string, page: any): Promise<void> {
+    await buildPage.openBlocksPanel();
+    const blocks = await buildPage.getBlocks();
+
+    const blockIdsToSkip = await buildPage.getBlocksToSkip();
+    const blockTypesToSkip = ["Input", "Output", "Agent", "AI"];
+    console.log("⚠️ Skipping blocks:", blockIdsToSkip);
+    console.log("⚠️ Skipping block types:", blockTypesToSkip);
+
+    const targetLetter = letter.toLowerCase();
+    const blocksToAdd = blocks.filter(block => 
+      block.name[0].toLowerCase() === targetLetter &&
+      !blockIdsToSkip.includes(block.id) && 
+      !blockTypesToSkip.includes(block.type)
+    );
+
+    console.log(`Adding ${blocksToAdd.length} blocks starting with "${letter}"`);
+    
+    for (const block of blocksToAdd) {
+      await buildPage.addBlock(block);
+    }
+    
+    await buildPage.closeBlocksPanel();
+    
+    // Verify blocks are visible
+    for (const block of blocksToAdd) {
+      await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
+    }
+
+    await buildPage.saveAgent(`blocks ${letter} test`, `testing blocks starting with ${letter}`);
+    await test.expect(page).toHaveURL(({ searchParams }) => !!searchParams.get("flowID"));
+  }
 
   // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
   // prettier-ignore
-  test("user can add a block", async () => { //(6)!
-    await buildPage.closeTutorial(); //(9)!
+  test("user can add a block", async ({ page: _page }) => { //(6)!
     await buildPage.openBlocksPanel(); //(10)!
     const block = await buildPage.getDictionaryBlockDetails();
 
@@ -38,11 +79,114 @@ test.describe("Build", () => { //(1)!
   });
   // --8<-- [end:BuildPageExample]
 
+  test("user can add blocks starting with a", async ({ page }) => {
+    await addBlocksStartingWith("a", page);
+  });
+
+  test("user can add blocks starting with b", async ({ page }) => {
+    await addBlocksStartingWith("b", page);
+  });
+
+  test("user can add blocks starting with c", async ({ page }) => {
+    await addBlocksStartingWith("c", page);
+  });
+
+  test("user can add blocks starting with d", async ({ page }) => {
+    await addBlocksStartingWith("d", page);
+  });
+
+  test("user can add blocks starting with e", async ({ page }) => {
+    await addBlocksStartingWith("e", page);
+  });
+
+  test("user can add blocks starting with f", async ({ page }) => {
+    await addBlocksStartingWith("f", page);
+  });
+
+  test("user can add blocks starting with g", async ({ page }) => {
+    await addBlocksStartingWith("g", page);
+  });
+
+  test("user can add blocks starting with h", async ({ page }) => {
+    await addBlocksStartingWith("h", page);
+  });
+
+  test("user can add blocks starting with i", async ({ page }) => {
+    await addBlocksStartingWith("i", page);
+  });
+
+  test("user can add blocks starting with j", async ({ page }) => {
+    await addBlocksStartingWith("j", page);
+  });
+
+  test("user can add blocks starting with k", async ({ page }) => {
+    await addBlocksStartingWith("k", page);
+  });
+
+  test("user can add blocks starting with l", async ({ page }) => {
+    await addBlocksStartingWith("l", page);
+  });
+
+  test("user can add blocks starting with m", async ({ page }) => {
+    await addBlocksStartingWith("m", page);
+  });
+
+  test("user can add blocks starting with n", async ({ page }) => {
+    await addBlocksStartingWith("n", page);
+  });
+
+  test("user can add blocks starting with o", async ({ page }) => {
+    await addBlocksStartingWith("o", page);
+  });
+
+  test("user can add blocks starting with p", async ({ page }) => {
+    await addBlocksStartingWith("p", page);
+  });
+
+  test("user can add blocks starting with q", async ({ page }) => {
+    await addBlocksStartingWith("q", page);
+  });
+
+  test("user can add blocks starting with r", async ({ page }) => {
+    await addBlocksStartingWith("r", page);
+  });
+
+  test("user can add blocks starting with s", async ({ page }) => {
+    await addBlocksStartingWith("s", page);
+  });
+
+  test("user can add blocks starting with t", async ({ page }) => {
+    await addBlocksStartingWith("t", page);
+  });
+
+  test("user can add blocks starting with u", async ({ page }) => {
+    await addBlocksStartingWith("u", page);
+  });
+
+  test("user can add blocks starting with v", async ({ page }) => {
+    await addBlocksStartingWith("v", page);
+  });
+
+  test("user can add blocks starting with w", async ({ page }) => {
+    await addBlocksStartingWith("w", page);
+  });
+
+  test("user can add blocks starting with x", async ({ page }) => {
+    await addBlocksStartingWith("x", page);
+  });
+
+  test("user can add blocks starting with y", async ({ page }) => {
+    await addBlocksStartingWith("y", page);
+  });
+
+  test("user can add blocks starting with z", async ({ page }) => {
+    await addBlocksStartingWith("z", page);
+  });
+
   test.skip("user can add all blocks a-l", async ({ page }, testInfo) => {
     // this test is slow af so we 100x the timeout (sorry future me)
     test.setTimeout(testInfo.timeout * 100);
 
-    await buildPage.closeTutorial();
     await buildPage.openBlocksPanel();
     const blocks = await buildPage.getBlocks();
 
@@ -81,7 +225,6 @@ test.describe("Build", () => { //(1)!
     // this test is slow af so we 100x the timeout (sorry future me)
     test.setTimeout(testInfo.timeout * 100);
 
-    await buildPage.closeTutorial();
     await buildPage.openBlocksPanel();
     const blocks = await buildPage.getBlocks();
 
@@ -124,16 +267,13 @@ test.describe("Build", () => { //(1)!
     await buildPage.navbar.clickBuildLink();
     await buildPage.waitForPageLoad();
 
-    await test.expect(page).toHaveURL("/build");
+    await hasUrl(page, "/build");
     await test.expect(buildPage.isLoaded()).resolves.toBeTruthy();
   });
 
-  test("user can add two blocks and connect them", async ({
-    page,
-  }, testInfo) => {
+  test("user can add two blocks and connect them", async ({ page }, testInfo) => {
     test.setTimeout(testInfo.timeout * 10);
 
-    await buildPage.closeTutorial();
     await buildPage.openBlocksPanel();
 
     // Define the blocks to add
@@ -194,13 +334,10 @@ test.describe("Build", () => { //(1)!
       .resolves.toBeTruthy();
   });
 
-  test("user can build an agent with inputs and output blocks", async ({
-    page,
-  }) => {
+  test("user can build an agent with inputs and output blocks", async ({ page }) => {
     // simple calculator to double input and output it
 
     // prep
-    await buildPage.closeTutorial();
     await buildPage.openBlocksPanel();
 
     // find the blocks we want

@@ -1,14 +1,9 @@
 import { faker } from "@faker-js/faker";
 import { TestUser } from "./auth";
+import { getSelectors } from "./selectors";
+import { isVisible } from "./assertion";
+import { BuildPage } from "../pages/build.page";
 
-/**
- * Create a test user through signup page for test setup
- * @param page - Playwright page object
- * @param email - User email (optional, will generate if not provided)
- * @param password - User password (optional, will generate if not provided)
- * @param ignoreOnboarding - Skip onboarding and go to marketplace (default: true)
- * @returns Promise<TestUser> - Created user object
- */
 export async function signupTestUser(
   page: any,
   email?: string,
@@ -18,15 +13,17 @@ export async function signupTestUser(
   const userEmail = email || faker.internet.email();
   const userPassword = password || faker.internet.password({ length: 12 });
 
+  const { getText, getField, getRole, getButton, getId } = getSelectors(page);
+
   try {
     // Navigate to signup page
     await page.goto("http://localhost:3000/signup");
 
     // Wait for page to load
-    await page.getByText("Create a new account");
+    getText("Create a new account");
 
     // Fill form
-    const emailInput = page.getByLabel("Email");
+    const emailInput = getField("Email");
     await emailInput.fill(userEmail);
     const passwordInput = page.locator("#password");
     await passwordInput.fill(userPassword);
@@ -34,8 +31,8 @@ export async function signupTestUser(
     await confirmPasswordInput.fill(userPassword);
 
     // Agree to terms and submit
-    await page.getByRole("checkbox").click();
-    const signupButton = page.getByRole("button", { name: "Sign up" });
+    await getRole("checkbox").click();
+    const signupButton = getButton("Sign up");
     await signupButton.click();
 
     // Wait for successful signup - could redirect to onboarding or marketplace
@@ -76,6 +73,16 @@ export async function signupTestUser(
         .getByTestId("profile-popout-menu-trigger")
         .waitFor({ state: "visible", timeout: 10000 });
     }
+
+    // Create a dummy agent for each new user
+    const buildLink = getId("navbar-link-build");
+    await buildLink.click();
+
+    const blocksBtn = getId("blocks-control-blocks-button");
+    await isVisible(blocksBtn);
+
+    const buildPage = new BuildPage(page);
+    await buildPage.createDummyAgent();
 
     const testUser: TestUser = {
       email: userEmail,

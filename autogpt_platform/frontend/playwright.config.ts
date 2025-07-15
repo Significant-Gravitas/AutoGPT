@@ -36,14 +36,13 @@ export default defineConfig({
     bypassCSP: true,
   },
   /* Maximum time one test can run for */
-  timeout: 30000,
+  timeout: 8000,
 
   /* Configure web server to start automatically */
   webServer: {
     command: "NEXT_PUBLIC_PW_TEST=true pnpm start",
     url: "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
-    timeout: 120 * 1000,
   },
 
   /* Configure projects for major browsers */
