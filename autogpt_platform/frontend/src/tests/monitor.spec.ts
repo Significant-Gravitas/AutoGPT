@@ -9,6 +9,11 @@ import { LoginPage } from "./pages/login.page";
 import { getTestUser } from "./utils/auth";
 import { hasUrl } from "./utils/assertion";
 
+test.describe.configure({
+  mode: "parallel",
+  timeout: 30000,
+});
+
 test.beforeEach(async ({ page }, testInfo: TestInfo) => {
   const buildPage = new BuildPage(page);
   const loginPage = new LoginPage(page);
