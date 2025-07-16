@@ -1,7 +1,6 @@
 import 'package:auto_gpt_flutter_client/viewmodels/chat_viewmodel.dart';
 import 'package:auto_gpt_flutter_client/views/chat/continuous_mode_dialog.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class ChatInputField extends StatefulWidget {
   // Callback to be triggered when the send button is pressed
@@ -73,6 +72,7 @@ class _ChatInputFieldState extends State<ChatInputField> {
   }
 
   void _executeContinuousMode() {
+    if(_controller.text.isEmpty) return;
     if (!widget.isContinuousMode) {
       widget.onSendPressed(_controller.text);
       _controller.clear();
@@ -118,6 +118,7 @@ class _ChatInputFieldState extends State<ChatInputField> {
               focusNode: _focusNode,
               // Enable enter key stroke to send the message
               onSubmitted: (_) {
+                if(_controller.text.isEmpty) return;
                 widget.onSendPressed(_controller.text);
                 _controller.clear();
               },
@@ -136,6 +137,7 @@ class _ChatInputFieldState extends State<ChatInputField> {
                           splashRadius: 0.1,
                           icon: const Icon(Icons.send),
                           onPressed: () {
+                            if(_controller.text.isEmpty) return;
                             widget.onSendPressed(_controller.text);
                             _controller.clear();
                           },
