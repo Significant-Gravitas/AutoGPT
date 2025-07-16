@@ -388,51 +388,58 @@ class FileReadBlock(Block):
             except Exception as e:
                 raise ValueError(f"Unable to read file: {e}")
 
-        # Apply skip_size if specified
+        # Apply skip_size (character-level skip)
         if input_data.skip_size > 0:
             content = content[input_data.skip_size :]
 
-        # If no delimiter specified, handle size_limit and return content
-        if not input_data.delimiter:
-            if input_data.size_limit > 0:
-                # Yield content in chunks based on size_limit
-                for i in range(0, len(content), input_data.size_limit):
-                    chunk = content[i : i + input_data.size_limit]
-                    yield "content", chunk
-            else:
-                yield "content", content
-            return
+        # Split content into items (by delimiter or treat as single item)
+        items = (
+            content.split(input_data.delimiter) if input_data.delimiter else [content]
+        )
 
-        # Split content by delimiter (rows)
-        rows = content.split(input_data.delimiter)
-
-        # Apply skip_rows if specified
+        # Apply skip_rows (item-level skip)
         if input_data.skip_rows > 0:
-            rows = rows[input_data.skip_rows :]
+            items = items[input_data.skip_rows :]
 
-        # Apply row_limit if specified
+        # Apply row_limit (item-level limit)
         if input_data.row_limit > 0:
-            rows = rows[: input_data.row_limit]
+            items = items[: input_data.row_limit]
 
-        # Process each row
-        for row in rows:
-            if input_data.size_limit > 0:
-                # If size_limit is specified, yield row in chunks
-                for i in range(0, len(row), input_data.size_limit):
-                    chunk = row[i : i + input_data.size_limit]
-                    if chunk:  # Only yield non-empty chunks
+        # Process each item and create chunks
+        def create_chunks(text, size_limit):
+            """Create chunks from text based on size_limit"""
+            if size_limit <= 0:
+                return [text] if text else []
+
+            chunks = []
+            for i in range(0, len(text), size_limit):
+                chunk = text[i : i + size_limit]
+                if chunk:  # Only add non-empty chunks
+                    chunks.append(chunk)
+            return chunks
+
+        # Process items and yield chunks
+        all_chunks = []
+        for item in items:
+            if item:  # Only process non-empty items
+                chunks = create_chunks(item, input_data.size_limit)
+                # Only yield as 'chunk' if we have a delimiter (multiple items)
+                if input_data.delimiter:
+                    for chunk in chunks:
                         yield "chunk", chunk
-            else:
-                # Yield full row as chunk
-                if row:  # Only yield non-empty rows
-                    yield "chunk", row
+                all_chunks.extend(chunks)
 
-        # Also yield the full processed content
-        full_content = input_data.delimiter.join(rows)
-        if input_data.size_limit > 0:
-            # Yield full content in chunks based on size_limit
-            for i in range(0, len(full_content), input_data.size_limit):
-                chunk = full_content[i : i + input_data.size_limit]
+        # Yield the processed content
+        if all_chunks:
+            full_content = (
+                input_data.delimiter.join(items)
+                if input_data.delimiter
+                else "".join(items)
+            )
+
+            # Create chunks of the full content based on size_limit
+            content_chunks = create_chunks(full_content, input_data.size_limit)
+            for chunk in content_chunks:
                 yield "content", chunk
         else:
-            yield "content", full_content
+            yield "content", ""
