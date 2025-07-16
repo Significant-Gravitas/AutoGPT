@@ -6,9 +6,22 @@ test.describe("Authentication", () => {
     await page.goto("/login");
     await loginPage.login(testUser.email, testUser.password);
     await test.expect(page).toHaveURL("/marketplace");
-    await test
-      .expect(page.getByTestId("profile-popout-menu-trigger"))
-      .toBeVisible();
+
+    const accountMenuBtn = page.getByTestId("profile-popout-menu-trigger");
+
+    await test.expect(accountMenuBtn).toBeVisible();
+
+    await accountMenuBtn.click();
+
+    const dialog = page.getByRole("dialog");
+    await test.expect(dialog).toBeVisible();
+
+    const username = testUser.email.split("@")[0];
+    await test.expect(dialog.getByText(username)).toBeVisible();
+
+    const logoutBtn = page.getByRole("button", { name: "Log out" });
+    await test.expect(logoutBtn).toBeVisible();
+    await logoutBtn.click();
   });
 
   test("user can logout successfully", async ({

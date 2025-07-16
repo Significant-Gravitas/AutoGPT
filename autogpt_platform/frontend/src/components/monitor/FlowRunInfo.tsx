@@ -7,7 +7,7 @@ import { IconSquare } from "@/components/ui/icons";
 import { ExitIcon, Pencil2Icon } from "@radix-ui/react-icons";
 import moment from "moment/moment";
 import { FlowRunStatusBadge } from "@/components/monitor/FlowRunStatusBadge";
-import RunnerOutputUI, { BlockOutput } from "../runner-ui/RunnerOutputUI";
+import RunnerOutputUI, { OutputNodeInfo } from "../runner-ui/RunnerOutputUI";
 import { useBackendAPI } from "@/lib/autogpt-server-api/context";
 
 export const FlowRunInfo: React.FC<
@@ -17,7 +17,7 @@ export const FlowRunInfo: React.FC<
   }
 > = ({ agent, execution, ...props }) => {
   const [isOutputOpen, setIsOutputOpen] = useState(false);
-  const [blockOutputs, setBlockOutputs] = useState<BlockOutput[]>([]);
+  const [blockOutputs, setBlockOutputs] = useState<OutputNodeInfo[]>([]);
   const api = useBackendAPI();
 
   const fetchBlockResults = useCallback(async () => {
@@ -40,7 +40,7 @@ export const FlowRunInfo: React.FC<
                   "Output from the agent",
               },
               result: value,
-            }) satisfies BlockOutput,
+            }) satisfies OutputNodeInfo,
         ),
       ),
     );
@@ -121,8 +121,8 @@ export const FlowRunInfo: React.FC<
       </Card>
       <RunnerOutputUI
         isOpen={isOutputOpen}
-        onClose={() => setIsOutputOpen(false)}
-        blockOutputs={blockOutputs}
+        doClose={() => setIsOutputOpen(false)}
+        outputs={blockOutputs}
       />
     </>
   );

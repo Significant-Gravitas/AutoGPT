@@ -56,11 +56,16 @@ export const useLibraryAgentList = () => {
       return data.agents;
     }) ?? [];
 
+  const agentCount = agents?.pages[0]
+    ? (agents.pages[0].data as LibraryAgentResponse).pagination.total_items
+    : 0;
+
   return {
     allAgents,
     agentLoading,
     isFetchingNextPage,
     hasNextPage,
+    agentCount,
     isSearching: isFetching && !isFetchingNextPage,
   };
 };

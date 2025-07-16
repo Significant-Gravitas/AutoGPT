@@ -1,15 +1,24 @@
+from pathlib import Path
+
 from backend.data.block import Block, BlockCategory, BlockOutput, BlockSchema
 from backend.data.model import ContributorDetails, SchemaField
+from backend.util.file import get_exec_file_path, store_media_file
+from backend.util.type import MediaFileType
 
 
-class ReadCsvBlock(Block):
+class ReadSpreadsheetBlock(Block):
     class Input(BlockSchema):
-        contents: str = SchemaField(
-            description="The contents of the CSV file to read",
+        contents: str | None = SchemaField(
+            description="The contents of the CSV/spreadsheet data to read",
             placeholder="a, b, c\n1,2,3\n4,5,6",
+            default=None,
+        )
+        file_input: MediaFileType | None = SchemaField(
+            description="CSV or Excel file to read from (URL, data URI, or local path). Excel files are automatically converted to CSV",
+            default=None,
         )
         delimiter: str = SchemaField(
-            description="The delimiter used in the CSV file",
+            description="The delimiter used in the CSV/spreadsheet data",
             default=",",
         )
         quotechar: str = SchemaField(
@@ -39,41 +48,89 @@ class ReadCsvBlock(Block):
 
     class Output(BlockSchema):
         row: dict[str, str] = SchemaField(
-            description="The data produced from each row in the CSV file"
+            description="The data produced from each row in the spreadsheet"
         )
-        all_data: list[dict[str, str]] = SchemaField(
-            description="All the data in the CSV file as a list of rows"
+        rows: list[dict[str, str]] = SchemaField(
+            description="All the data in the spreadsheet as a list of rows"
         )
 
     def __init__(self):
         super().__init__(
             id="acf7625e-d2cb-4941-bfeb-2819fc6fc015",
-            input_schema=ReadCsvBlock.Input,
-            output_schema=ReadCsvBlock.Output,
-            description="Reads a CSV file and outputs the data as a list of dictionaries and individual rows via rows.",
+            input_schema=ReadSpreadsheetBlock.Input,
+            output_schema=ReadSpreadsheetBlock.Output,
+            description="Reads CSV and Excel files and outputs the data as a list of dictionaries and individual rows. Excel files are automatically converted to CSV format.",
             contributors=[ContributorDetails(name="Nicholas Tindle")],
             categories={BlockCategory.TEXT, BlockCategory.DATA},
             test_input={
                 "contents": "a, b, c\n1,2,3\n4,5,6",
             },
             test_output=[
-                ("row", {"a": "1", "b": "2", "c": "3"}),
-                ("row", {"a": "4", "b": "5", "c": "6"}),
                 (
-                    "all_data",
+                    "rows",
                     [
                         {"a": "1", "b": "2", "c": "3"},
                         {"a": "4", "b": "5", "c": "6"},
                     ],
                 ),
+                ("row", {"a": "1", "b": "2", "c": "3"}),
+                ("row", {"a": "4", "b": "5", "c": "6"}),
             ],
         )
 
-    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(
+        self, input_data: Input, *, graph_exec_id: str, **_kwargs
+    ) -> BlockOutput:
         import csv
         from io import StringIO
 
-        csv_file = StringIO(input_data.contents)
+        # Determine data source - prefer file_input if provided, otherwise use contents
+        if input_data.file_input:
+            stored_file_path = await store_media_file(
+                graph_exec_id=graph_exec_id,
+                file=input_data.file_input,
+                return_content=False,
+            )
+
+            # Get full file path
+            file_path = get_exec_file_path(graph_exec_id, stored_file_path)
+            if not Path(file_path).exists():
+                raise ValueError(f"File does not exist: {file_path}")
+
+            # Check if file is an Excel file and convert to CSV
+            file_extension = Path(file_path).suffix.lower()
+
+            if file_extension in [".xlsx", ".xls"]:
+                # Handle Excel files
+                try:
+                    from io import StringIO
+
+                    import pandas as pd
+
+                    # Read Excel file
+                    df = pd.read_excel(file_path)
+
+                    # Convert to CSV string
+                    csv_buffer = StringIO()
+                    df.to_csv(csv_buffer, index=False)
+                    csv_content = csv_buffer.getvalue()
+
+                except ImportError:
+                    raise ValueError(
+                        "pandas library is required to read Excel files. Please install it."
+                    )
+                except Exception as e:
+                    raise ValueError(f"Unable to read Excel file: {e}")
+            else:
+                # Handle CSV/text files
+                csv_content = Path(file_path).read_text(encoding="utf-8")
+        elif input_data.contents:
+            # Use direct string content
+            csv_content = input_data.contents
+        else:
+            raise ValueError("Either 'contents' or 'file_input' must be provided")
+
+        csv_file = StringIO(csv_content)
         reader = csv.reader(
             csv_file,
             delimiter=input_data.delimiter,
@@ -100,10 +157,8 @@ class ReadCsvBlock(Block):
                         data[str(i)] = value.strip() if input_data.strip else value
             return data
 
-        all_data = []
-        for row in reader:
-            processed_row = process_row(row)
-            all_data.append(processed_row)
-            yield "row", processed_row
+        rows = [process_row(row) for row in reader]
 
-        yield "all_data", all_data
+        yield "rows", rows
+        for processed_row in rows:
+            yield "row", processed_row

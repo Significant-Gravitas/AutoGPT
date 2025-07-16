@@ -1,9 +1,11 @@
-import { getV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 import { getServerUser } from "@/lib/supabase/server/getServerUser";
+import { prefetchGetV2GetUserProfileQuery } from "@/app/api/__generated__/endpoints/store/store";
+import { getQueryClient } from "@/lib/react-query/queryClient";
 
 export async function getNavbarAccountData() {
   const { user } = await getServerUser();
   const isLoggedIn = Boolean(user);
+  const queryClient = getQueryClient();
 
   if (!isLoggedIn) {
     return {
@@ -12,18 +14,13 @@ export async function getNavbarAccountData() {
     };
   }
 
-  let profile = null;
-
   try {
-    const profileResponse = await getV2GetUserProfile();
-    profile = profileResponse.data || null;
+    await prefetchGetV2GetUserProfileQuery(queryClient);
   } catch (error) {
     console.error("Error fetching profile:", error);
-    profile = null;
   }
 
   return {
-    profile,
     isLoggedIn,
   };
 }
