@@ -1,4 +1,4 @@
-import { expect, TestInfo } from "@playwright/test";
+import { TestInfo } from "@playwright/test";
 import { test } from "./fixtures";
 import { BuildPage } from "./pages/build.page";
 import { MonitorPage } from "./pages/monitor.page";
@@ -48,7 +48,7 @@ test.describe("Monitor", () => {
     });
   });
 
-  test("user can view agents", async ({ page }) => {
+  test("user can view agents", async () => {
     const agents = await monitorPage.listAgents();
     // there should be at least one agent
     await test.expect(agents.length).toBeGreaterThan(0);
@@ -117,7 +117,7 @@ test.describe("Monitor", () => {
     await test.expect(importedAgent).toBeDefined();
   });
 
-  test("user can view runs", async ({ page }) => {
+  test("user can view runs", async () => {
     const runs = await monitorPage.listRuns();
     console.log(runs);
     // there should be at least one run

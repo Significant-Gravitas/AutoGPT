@@ -1,6 +1,5 @@
-import { ShoppingBag } from "lucide-react";
 import { Sidebar } from "@/components/agptui/Sidebar";
-import { Users, DollarSign, LogOut } from "lucide-react";
+import { Users, DollarSign } from "lucide-react";
 
 import { IconSliders } from "@/components/ui/icons";
 

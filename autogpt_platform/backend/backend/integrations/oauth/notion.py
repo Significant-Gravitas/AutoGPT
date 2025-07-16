@@ -4,7 +4,7 @@ from urllib.parse import urlencode
 
 from backend.data.model import OAuth2Credentials
 from backend.integrations.providers import ProviderName
-from backend.util.request import requests
+from backend.util.request import Requests
 
 from .base import BaseOAuthHandler
 
@@ -39,7 +39,7 @@ class NotionOAuthHandler(BaseOAuthHandler):
         }
         return f"{self.auth_base_url}?{urlencode(params)}"
 
-    def exchange_code_for_tokens(
+    async def exchange_code_for_tokens(
         self, code: str, scopes: list[str], code_verifier: Optional[str]
     ) -> OAuth2Credentials:
         request_body = {
@@ -52,7 +52,9 @@ class NotionOAuthHandler(BaseOAuthHandler):
             "Authorization": f"Basic {auth_str}",
             "Accept": "application/json",
         }
-        response = requests.post(self.token_url, json=request_body, headers=headers)
+        response = await Requests().post(
+            self.token_url, json=request_body, headers=headers
+        )
         token_data = response.json()
         # Email is only available for non-bot users
         email = (
@@ -80,11 +82,13 @@ class NotionOAuthHandler(BaseOAuthHandler):
             },
         )
 
-    def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
+    async def revoke_tokens(self, credentials: OAuth2Credentials) -> bool:
         # Notion doesn't support token revocation
         return False
 
-    def _refresh_tokens(self, credentials: OAuth2Credentials) -> OAuth2Credentials:
+    async def _refresh_tokens(
+        self, credentials: OAuth2Credentials
+    ) -> OAuth2Credentials:
         # Notion doesn't support token refresh
         return credentials
 

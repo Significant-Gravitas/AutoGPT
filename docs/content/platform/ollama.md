@@ -13,13 +13,31 @@ Follow these steps to set up and run Ollama with the AutoGPT platform.
 
 ### 1. Launch Ollama
 
-Open a new terminal and execute:
+To properly set up Ollama for network access, follow these steps:
 
-```bash
-ollama run llama3.2
-```
+1. **Set the host environment variable:**
 
-> **Note**: This will download the [llama3.2](https://ollama.com/library/llama3.2) model and start the service. Keep this terminal running in the background.
+   **Windows (Command Prompt):**
+   ```
+   set OLLAMA_HOST=0.0.0.0:11434
+   ```
+   
+   **Linux/macOS (Terminal):**
+   ```bash
+   export OLLAMA_HOST=0.0.0.0:11434
+   ```
+
+2. Start the Ollama server:
+   ```
+   ollama serve
+   ```
+
+3. **Open a new terminal/command window** and download your desired model:
+   ```
+   ollama pull llama3.2
+   ```
+
+> **Note**: This will download the [llama3.2](https://ollama.com/library/llama3.2) model. Keep the terminal with `ollama serve` running in the background throughout your session.
 
 ### 2. Start the Backend
 
@@ -53,7 +71,38 @@ Now that both Ollama and the AutoGPT platform are running we can move onto using
 2. In the "LLM Model" dropdown, select "llama3.2" (This is the model we downloaded earlier)
    ![Select Ollama Model](../imgs/ollama/Ollama-Select-Llama32.png)
 
-3. Now we need to add some prompts then save and then run the graph:
+   > **Compatible Models**: Not all models work with Ollama in AutoGPT. Here are the models that are confirmed to work:
+   > - `llama3.2`
+   > - `llama3`
+   > - `llama3.1:405b`
+   > - `dolphin-mistral:latest`
+
+3. **Set your local IP address** in the "Ollama Host" field:
+
+   **To find your local IP address:**
+
+   **Windows (Command Prompt):**
+   ```
+   ipconfig
+   ```
+
+   **Linux/macOS (Terminal):**
+   ```bash
+   ip addr show
+   ```
+   or
+   ```bash
+   ipconfig
+   ```
+
+   Look for your IPv4 address (e.g., `192.168.0.39`), then enter it with port `11434` in the "Ollama Host" field:
+   ```
+   192.168.0.39:11434
+   ```
+
+   ![Ollama Remote Host](../imgs/ollama/Ollama-Remote-Host.png)
+
+4. Now we need to add some prompts then save and then run the graph:
    ![Add Prompt](../imgs/ollama/Ollama-Add-Prompts.png)
 
 That's it! You've successfully setup the AutoGPT platform and made a LLM call to Ollama.
@@ -61,7 +110,30 @@ That's it! You've successfully setup the AutoGPT platform and made a LLM call to
 
 ### Using Ollama on a Remote Server with AutoGPT
 
-For running Ollama on a remote server, simply make sure the Ollama server is running and is accessible from other devices on your network/remotely through the port 11434, then you can use the same steps above but you need to add the Ollama servers IP address to the "Ollama Host" field in the block settings like so:
+For running Ollama on a remote server, simply make sure the Ollama server is running and is accessible from other devices on your network/remotely through the port 11434. 
+
+**To find your local IP address of the system running Ollama:**
+
+**Windows (Command Prompt):**
+```
+ipconfig
+```
+
+**Linux/macOS (Terminal):**
+```bash
+ip addr show
+```
+or
+```bash
+ipconfig
+```
+
+Look for your IPv4 address (e.g., `192.168.0.39`).
+
+Then you can use the same steps above but you need to add the Ollama server's IP address to the "Ollama Host" field in the block settings like so:
+```
+192.168.0.39:11434
+```
 
 ![Ollama Remote Host](../imgs/ollama/Ollama-Remote-Host.png)
 

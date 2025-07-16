@@ -15,7 +15,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
 import { addDollars } from "@/app/(platform)/admin/spending/actions";
-import useCredits from "@/hooks/useCredits";
 
 export function AdminAddMoneyButton({
   userId,
@@ -35,8 +34,6 @@ export function AdminAddMoneyButton({
   const [dollarAmount, setDollarAmount] = useState(
     defaultAmount ? Math.abs(defaultAmount / 100).toFixed(2) : "1.00",
   );
-
-  const { formatCredits } = useCredits();
 
   const handleApproveSubmit = async (formData: FormData) => {
     setIsAddMoneyDialogOpen(false);

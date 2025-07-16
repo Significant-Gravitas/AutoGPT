@@ -11,8 +11,6 @@ const nextConfig = {
 
       "ideogram.ai", // for generated images
       "picsum.photos", // for placeholder images
-      "dummyimage.com", // for placeholder images
-      "placekitten.com", // for placeholder images
     ],
   },
   output: "standalone",
@@ -29,6 +27,11 @@ export default isDevelopmentBuild
 
       org: "significant-gravitas",
       project: "builder",
+
+      // Expose Vercel env to the client
+      env: {
+        NEXT_PUBLIC_VERCEL_ENV: process.env.VERCEL_ENV,
+      },
 
       // Only print logs for uploading source maps in CI
       silent: !process.env.CI,

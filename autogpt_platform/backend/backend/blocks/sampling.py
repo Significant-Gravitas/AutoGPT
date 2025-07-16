@@ -93,7 +93,7 @@ class DataSamplingBlock(Block):
         )
         self.accumulated_data = []
 
-    def run(self, input_data: Input, **kwargs) -> BlockOutput:
+    async def run(self, input_data: Input, **kwargs) -> BlockOutput:
         if input_data.accumulate:
             if isinstance(input_data.data, dict):
                 self.accumulated_data.append(input_data.data)

@@ -3,9 +3,7 @@
 import { revalidatePath } from "next/cache";
 import BackendApi from "@/lib/autogpt-server-api";
 import {
-  NotificationPreferenceDTO,
   StoreListingsWithVersionsResponse,
-  StoreSubmissionsResponse,
   SubmissionStatus,
 } from "@/lib/autogpt-server-api/types";
 

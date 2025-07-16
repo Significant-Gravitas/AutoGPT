@@ -27,7 +27,7 @@ interface FeaturedSectionProps {
 export const FeaturedSection: React.FC<FeaturedSectionProps> = ({
   featuredAgents,
 }) => {
-  const [currentSlide, setCurrentSlide] = useState(0);
+  const [_, setCurrentSlide] = useState(0);
 
   const handlePrevSlide = useCallback(() => {
     setCurrentSlide((prev) =>

@@ -7,8 +7,9 @@ import uuid
 from pathlib import Path
 from urllib.parse import urlparse
 
-from backend.util.request import requests
+from backend.util.request import Requests
 from backend.util.type import MediaFileType
+from backend.util.virus_scanner import scan_content_safe
 
 TEMP_DIR = Path(tempfile.gettempdir()).resolve()
 
@@ -29,7 +30,7 @@ def clean_exec_files(graph_exec_id: str, file: str = "") -> None:
         shutil.rmtree(exec_path)
 
 
-def store_media_file(
+async def store_media_file(
     graph_exec_id: str, file: MediaFileType, return_content: bool = False
 ) -> MediaFileType:
     """
@@ -105,7 +106,11 @@ def store_media_file(
         extension = _extension_from_mime(mime_type)
         filename = f"{uuid.uuid4()}{extension}"
         target_path = _ensure_inside_base(base_path / filename, base_path)
-        target_path.write_bytes(base64.b64decode(b64_content))
+        content = base64.b64decode(b64_content)
+
+        # Virus scan the base64 content before writing
+        await scan_content_safe(content, filename=filename)
+        target_path.write_bytes(content)
 
     elif file.startswith(("http://", "https://")):
         # URL
@@ -114,8 +119,10 @@ def store_media_file(
         target_path = _ensure_inside_base(base_path / filename, base_path)
 
         # Download and save
-        resp = requests.get(file)
-        resp.raise_for_status()
+        resp = await Requests().get(file)
+
+        # Virus scan the downloaded content before writing
+        await scan_content_safe(resp.content, filename=filename)
         target_path.write_bytes(resp.content)
 
     else:

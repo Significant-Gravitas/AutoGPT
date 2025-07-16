@@ -7,8 +7,8 @@ export async function verifyTurnstileToken(
   token: string,
   action?: string,
 ): Promise<boolean> {
-  // Skip verification if explicitly disabled via environment variable
-  if (process.env.NEXT_PUBLIC_DISABLE_TURNSTILE === "true") {
+  // Skip verification unless explicitly enabled via environment variable
+  if (process.env.NEXT_PUBLIC_TURNSTILE !== "enabled") {
     return true;
   }
 

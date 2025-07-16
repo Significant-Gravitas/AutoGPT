@@ -96,6 +96,7 @@ class GetRedditPostsBlock(Block):
 
     class Output(BlockSchema):
         post: RedditPost = SchemaField(description="Reddit post")
+        posts: list[RedditPost] = SchemaField(description="List of all Reddit posts")
 
     def __init__(self):
         super().__init__(
@@ -128,6 +129,23 @@ class GetRedditPostsBlock(Block):
                         id="id2", subreddit="subreddit", title="title2", body="body2"
                     ),
                 ),
+                (
+                    "posts",
+                    [
+                        RedditPost(
+                            id="id1",
+                            subreddit="subreddit",
+                            title="title1",
+                            body="body1",
+                        ),
+                        RedditPost(
+                            id="id2",
+                            subreddit="subreddit",
+                            title="title2",
+                            body="body2",
+                        ),
+                    ],
+                ),
             ],
             test_mock={
                 "get_posts": lambda input_data, credentials: [
@@ -146,10 +164,11 @@ class GetRedditPostsBlock(Block):
         subreddit = client.subreddit(input_data.subreddit)
         return subreddit.new(limit=input_data.post_limit or 10)
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: RedditCredentials, **kwargs
     ) -> BlockOutput:
         current_time = datetime.now(tz=timezone.utc)
+        all_posts = []
         for post in self.get_posts(input_data=input_data, credentials=credentials):
             if input_data.last_minutes:
                 post_datetime = datetime.fromtimestamp(
@@ -162,12 +181,16 @@ class GetRedditPostsBlock(Block):
             if input_data.last_post and post.id == input_data.last_post:
                 break
 
-            yield "post", RedditPost(
+            reddit_post = RedditPost(
                 id=post.id,
                 subreddit=input_data.subreddit,
                 title=post.title,
                 body=post.selftext,
             )
+            all_posts.append(reddit_post)
+            yield "post", reddit_post
+
+        yield "posts", all_posts
 
 
 class PostRedditCommentBlock(Block):
@@ -207,7 +230,7 @@ class PostRedditCommentBlock(Block):
             raise ValueError("Failed to post comment.")
         return new_comment.id
 
-    def run(
+    async def run(
         self, input_data: Input, *, credentials: RedditCredentials, **kwargs
     ) -> BlockOutput:
         yield "comment_id", self.reply_post(credentials, input_data.data)

@@ -1,12 +1,12 @@
 import logging
 
-import requests
 from fastapi import Request
 
 from backend.data import integrations
 from backend.data.model import APIKeyCredentials, Credentials
 from backend.integrations.providers import ProviderName
 from backend.integrations.webhooks._base import BaseWebhooksManager
+from backend.util.request import Requests
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class Slant3DWebhooksManager(BaseWebhooksManager):
         # Slant3D's API doesn't use events list, just register for all order updates
         payload = {"endPoint": ingress_url}
 
-        response = requests.post(
+        response = await Requests().post(
             f"{self.BASE_URL}/customer/webhookSubscribe", headers=headers, json=payload
         )
 

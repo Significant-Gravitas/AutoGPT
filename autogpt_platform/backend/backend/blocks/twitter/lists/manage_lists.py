@@ -64,7 +64,7 @@ class TwitterDeleteListBlock(Block):
         except Exception:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -158,7 +158,7 @@ class TwitterUpdateListBlock(Block):
         except Exception:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
@@ -263,7 +263,7 @@ class TwitterCreateListBlock(Block):
         except Exception:
             raise
 
-    def run(
+    async def run(
         self,
         input_data: Input,
         *,
