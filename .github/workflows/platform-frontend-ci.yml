@@ -192,7 +192,7 @@ jobs:
 
       - name: Generate E2E test data
         run: |
-          docker exec agpt-backend poetry run python test/e2e_test_data.py
+          docker exec rest_server-1 poetry run python test/e2e_test_data.py
 
       - name: Restore dependencies cache
         uses: actions/cache@v4
