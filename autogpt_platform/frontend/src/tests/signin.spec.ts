@@ -13,11 +13,21 @@ test.beforeEach(async ({ page }) => {
 test("user can login successfully", async ({ page }) => {
   const testUser = await getTestUser();
   const loginPage = new LoginPage(page);
-  const { getId } = getSelectors(page);
+  const { getId, getRole, getButton, getText } = getSelectors(page);
 
   await loginPage.login(testUser.email, testUser.password);
   await hasUrl(page, "/marketplace");
   await isVisible(getId("profile-popout-menu-trigger"));
+
+  const dialog = getRole("dialog");
+  await isVisible(dialog);
+
+  const username = testUser.email.split("@")[0];
+  await isVisible(getText(username));
+
+  const logoutBtn = getButton("Log out");
+  await isVisible(logoutBtn);
+  await logoutBtn.click();
 });
 
 test("user can logout successfully", async ({ page }) => {
@@ -44,13 +54,16 @@ test("login in, then out, then in again", async ({ page }) => {
   await loginPage.login(testUser.email, testUser.password);
   await hasUrl(page, "/marketplace");
 
-  // Logout
+  // Click on the profile menu trigger to open account menu
   await getId("profile-popout-menu-trigger").click();
+
+  // Click the logout button in the popout menu
   await getButton("Log out").click();
 
-  // Login again
-  await hasUrl(page, "/login");
+  await test.expect(page).toHaveURL("/login");
   await loginPage.login(testUser.email, testUser.password);
-  await hasUrl(page, "/marketplace");
-  await isVisible(getId("profile-popout-menu-trigger"));
+  await test.expect(page).toHaveURL("/marketplace");
+  await test
+    .expect(page.getByTestId("profile-popout-menu-trigger"))
+    .toBeVisible();
 });
