@@ -37,13 +37,9 @@ import type { HTTPValidationError } from "../../models/hTTPValidationError";
 
 import type { LibraryAgent } from "../../models/libraryAgent";
 
-import type { LibraryAgentPreset } from "../../models/libraryAgentPreset";
-
 import type { LibraryAgentResponse } from "../../models/libraryAgentResponse";
 
 import type { LibraryAgentUpdateRequest } from "../../models/libraryAgentUpdateRequest";
-
-import type { TriggeredPresetSetupParams } from "../../models/triggeredPresetSetupParams";
 
 import { customMutator } from "../../../mutators/custom-mutator";
 
@@ -308,6 +304,38 @@ export function useGetV2ListLibraryAgentsInfinite<
   return query;
 }
 
+/**
+ * @summary List Library Agents
+ */
+export const prefetchGetV2ListLibraryAgentsInfiniteQuery = async <
+  TData = Awaited<ReturnType<typeof getV2ListLibraryAgents>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  params?: GetV2ListLibraryAgentsParams,
+  options?: {
+    query?: Partial<
+      UseInfiniteQueryOptions<
+        Awaited<ReturnType<typeof getV2ListLibraryAgents>>,
+        TError,
+        TData,
+        QueryKey,
+        GetV2ListLibraryAgentsParams["page"]
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2ListLibraryAgentsInfiniteQueryOptions(
+    params,
+    options,
+  );
+
+  await queryClient.prefetchInfiniteQuery(queryOptions);
+
+  return queryClient;
+};
+
 export const getGetV2ListLibraryAgentsQueryOptions = <
   TData = Awaited<ReturnType<typeof getV2ListLibraryAgents>>,
   TError = HTTPValidationError,
@@ -453,6 +481,33 @@ export function useGetV2ListLibraryAgents<
 
   return query;
 }
+
+/**
+ * @summary List Library Agents
+ */
+export const prefetchGetV2ListLibraryAgentsQuery = async <
+  TData = Awaited<ReturnType<typeof getV2ListLibraryAgents>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  params?: GetV2ListLibraryAgentsParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2ListLibraryAgents>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2ListLibraryAgentsQueryOptions(params, options);
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * Add an agent from the marketplace to the user's library.
@@ -781,6 +836,36 @@ export function useGetV2GetLibraryAgent<
 
   return query;
 }
+
+/**
+ * @summary Get Library Agent
+ */
+export const prefetchGetV2GetLibraryAgentQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetLibraryAgent>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  libraryAgentId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetLibraryAgent>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetLibraryAgentQueryOptions(
+    libraryAgentId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
 
 /**
  * Update the library agent with the given fields.
@@ -1275,6 +1360,38 @@ export function useGetV2GetLibraryAgentByGraphId<
 }
 
 /**
+ * @summary Get Library Agent By Graph Id
+ */
+export const prefetchGetV2GetLibraryAgentByGraphIdQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  graphId: string,
+  params?: GetV2GetLibraryAgentByGraphIdParams,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetLibraryAgentByGraphId>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetLibraryAgentByGraphIdQueryOptions(
+    graphId,
+    params,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * Get Library Agent from Store Listing Version ID.
  * @summary Get Agent By Store ID
  */
@@ -1479,6 +1596,36 @@ export function useGetV2GetAgentByStoreId<
 }
 
 /**
+ * @summary Get Agent By Store ID
+ */
+export const prefetchGetV2GetAgentByStoreIdQuery = async <
+  TData = Awaited<ReturnType<typeof getV2GetAgentByStoreId>>,
+  TError = HTTPValidationError,
+>(
+  queryClient: QueryClient,
+  storeListingVersionId: string,
+  options?: {
+    query?: Partial<
+      UseQueryOptions<
+        Awaited<ReturnType<typeof getV2GetAgentByStoreId>>,
+        TError,
+        TData
+      >
+    >;
+    request?: SecondParameter<typeof customMutator>;
+  },
+): Promise<QueryClient> => {
+  const queryOptions = getGetV2GetAgentByStoreIdQueryOptions(
+    storeListingVersionId,
+    options,
+  );
+
+  await queryClient.prefetchQuery(queryOptions);
+
+  return queryClient;
+};
+
+/**
  * @summary Fork Library Agent
  */
 export type postV2ForkLibraryAgentResponse200 = {
@@ -1585,120 +1732,6 @@ export const usePostV2ForkLibraryAgent = <
   TContext
 > => {
   const mutationOptions = getPostV2ForkLibraryAgentMutationOptions(options);
-
-  return useMutation(mutationOptions, queryClient);
-};
-/**
- * Sets up a webhook-triggered `LibraryAgentPreset` for a `LibraryAgent`.
-Returns the correspondingly created `LibraryAgentPreset` with `webhook_id` set.
- * @summary Setup Trigger
- */
-export type postV2SetupTriggerResponse200 = {
-  data: LibraryAgentPreset;
-  status: 200;
-};
-
-export type postV2SetupTriggerResponse422 = {
-  data: HTTPValidationError;
-  status: 422;
-};
-
-export type postV2SetupTriggerResponseComposite =
-  | postV2SetupTriggerResponse200
-  | postV2SetupTriggerResponse422;
-
-export type postV2SetupTriggerResponse = postV2SetupTriggerResponseComposite & {
-  headers: Headers;
-};
-
-export const getPostV2SetupTriggerUrl = (libraryAgentId: string) => {
-  return `/api/library/agents/${libraryAgentId}/setup-trigger`;
-};
-
-export const postV2SetupTrigger = async (
-  libraryAgentId: string,
-  triggeredPresetSetupParams: TriggeredPresetSetupParams,
-  options?: RequestInit,
-): Promise<postV2SetupTriggerResponse> => {
-  return customMutator<postV2SetupTriggerResponse>(
-    getPostV2SetupTriggerUrl(libraryAgentId),
-    {
-      ...options,
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...options?.headers },
-      body: JSON.stringify(triggeredPresetSetupParams),
-    },
-  );
-};
-
-export const getPostV2SetupTriggerMutationOptions = <
-  TError = HTTPValidationError,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof postV2SetupTrigger>>,
-    TError,
-    { libraryAgentId: string; data: TriggeredPresetSetupParams },
-    TContext
-  >;
-  request?: SecondParameter<typeof customMutator>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof postV2SetupTrigger>>,
-  TError,
-  { libraryAgentId: string; data: TriggeredPresetSetupParams },
-  TContext
-> => {
-  const mutationKey = ["postV2SetupTrigger"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof postV2SetupTrigger>>,
-    { libraryAgentId: string; data: TriggeredPresetSetupParams }
-  > = (props) => {
-    const { libraryAgentId, data } = props ?? {};
-
-    return postV2SetupTrigger(libraryAgentId, data, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type PostV2SetupTriggerMutationResult = NonNullable<
-  Awaited<ReturnType<typeof postV2SetupTrigger>>
->;
-export type PostV2SetupTriggerMutationBody = TriggeredPresetSetupParams;
-export type PostV2SetupTriggerMutationError = HTTPValidationError;
-
-/**
- * @summary Setup Trigger
- */
-export const usePostV2SetupTrigger = <
-  TError = HTTPValidationError,
-  TContext = unknown,
->(
-  options?: {
-    mutation?: UseMutationOptions<
-      Awaited<ReturnType<typeof postV2SetupTrigger>>,
-      TError,
-      { libraryAgentId: string; data: TriggeredPresetSetupParams },
-      TContext
-    >;
-    request?: SecondParameter<typeof customMutator>;
-  },
-  queryClient?: QueryClient,
-): UseMutationResult<
-  Awaited<ReturnType<typeof postV2SetupTrigger>>,
-  TError,
-  { libraryAgentId: string; data: TriggeredPresetSetupParams },
-  TContext
-> => {
-  const mutationOptions = getPostV2SetupTriggerMutationOptions(options);
 
   return useMutation(mutationOptions, queryClient);
 };
