@@ -19,9 +19,7 @@ images: {
 
 import asyncio
 import random
-import json
 from typing import List, Dict, Any
-from pathlib import Path
 
 from faker import Faker
 
@@ -39,8 +37,6 @@ from backend.server.integrations.utils import get_supabase
 
 faker = Faker()
 
-# Path to save test data files
-TEST_DATA_DIR = Path(__file__).parent.parent.parent / "frontend" / ".test-data"
 
 # Constants for data generation limits (reduced for E2E tests)
 NUM_USERS = 10
@@ -87,51 +83,11 @@ class TestDataCreator:
         self.users: List[Dict[str, Any]] = []
         self.agent_blocks: List[Dict[str, Any]] = []
         self.agent_graphs: List[Dict[str, Any]] = []
-        self.profiles: List[Dict[str, Any]] = []
         self.library_agents: List[Dict[str, Any]] = []
         self.store_submissions: List[Dict[str, Any]] = []
         self.api_keys: List[Dict[str, Any]] = []
         self.presets: List[Dict[str, Any]] = []
         
-    def save_data_to_files(self):
-        """Save all generated data to JSON files in the frontend .test-data folder."""
-        print("Saving test data to JSON files...")
-        
-        # Ensure the test data directory exists
-        TEST_DATA_DIR.mkdir(parents=True, exist_ok=True)
-        
-        # Prepare data structures for saving - only users for now
-        data_to_save = {
-            "users.json": {
-                "users": self.users
-            }
-        }
-        
-        # Save each data structure to its respective file
-        for filename, data in data_to_save.items():
-            file_path = TEST_DATA_DIR / filename
-            try:
-                with open(file_path, 'w', encoding='utf-8') as f:
-                    json.dump(data, f, indent=2, ensure_ascii=False, default=str)
-                print(f"✅ Saved {filename}")
-            except Exception as e:
-                print(f"❌ Error saving {filename}: {e}")
-        
-        print(f"Test data saved to: {TEST_DATA_DIR}")
-        
-        # Create a summary file
-        summary = {
-            "generated_at": faker.iso8601(),
-            "summary": {
-                "users": len(self.users)
-            },
-            "test_data_location": str(TEST_DATA_DIR)
-        }
-        
-        summary_path = TEST_DATA_DIR / "summary.json"
-        with open(summary_path, 'w', encoding='utf-8') as f:
-            json.dump(summary, f, indent=2, ensure_ascii=False, default=str)
-        print(f"✅ Saved summary.json")
         
     async def create_test_users(self) -> List[Dict[str, Any]]:
         """Create test users using Supabase client."""
@@ -143,9 +99,12 @@ class TestDataCreator:
         for i in range(NUM_USERS):
             try:
                 # Generate test user data
-                email = faker.unique.email()
+                if i == 0:
+                    # First user should have test@gmail.com email for testing
+                    email = "test123@gmail.com"
+                else:
+                    email = faker.unique.email()
                 password = "testpassword123"  # Standard test password
-                name = faker.name()
                 user_id = f"test-user-{i}-{faker.uuid4()}"
                 
                 # Create user in Supabase Auth (if needed)
@@ -153,7 +112,6 @@ class TestDataCreator:
                     auth_response = supabase.auth.admin.create_user({
                         "email": email,
                         "password": password,
-                        "user_metadata": {"name": name},
                         "email_confirm": True
                     })
                     if auth_response.user:
@@ -166,9 +124,6 @@ class TestDataCreator:
                 user_data = {
                     "sub": user_id,
                     "email": email,
-                    "user_metadata": {
-                        "name": name
-                    }
                 }
                 
                 # Use the API function to create user in local database
@@ -192,12 +147,14 @@ class TestDataCreator:
             print("No blocks found in database, creating some basic blocks...")
             # Create some basic blocks if none exist
             from backend.blocks.io import AgentInputBlock, AgentOutputBlock
-            from backend.blocks.llm import AITextGeneratorBlock
+            from backend.blocks.maths import CalculatorBlock
+            from backend.blocks.time_blocks import GetCurrentTimeBlock
             
             blocks_to_create = [
                 AgentInputBlock(),
                 AgentOutputBlock(), 
-                AITextGeneratorBlock()
+                CalculatorBlock(),
+                GetCurrentTimeBlock()
             ]
             
             for block in blocks_to_create:
@@ -228,23 +185,22 @@ class TestDataCreator:
         for user in self.users:
             num_graphs = random.randint(MIN_GRAPHS_PER_USER, MAX_GRAPHS_PER_USER)
             
-            for _ in range(num_graphs):
+            for graph_num in range(num_graphs):
                 # Create a simple graph with nodes and links
                 graph_id = str(faker.uuid4())
                 nodes = []
                 links = []
                 
-                # Create nodes
-                num_nodes = random.randint(MIN_NODES_PER_GRAPH, MAX_NODES_PER_GRAPH)
-                for i in range(num_nodes):
+                # Determine if this should be a DummyInput graph (first 3-4 graphs per user)
+                is_dummy_input = graph_num < 4
+                
+                # Create nodes based on graph type
+                if is_dummy_input:
+                    # For dummy input graphs: only GetCurrentTimeBlock
+                    num_nodes = 1
                     node_id = str(faker.uuid4())
-                    block = random.choice(self.agent_blocks)
-                    
-                    # Set appropriate input_default based on block type
-                    input_default = {}
-                    if block["name"] in ["AgentInputBlock", "AgentOutputBlock"]:
-                        # For IO blocks, provide the required 'name' field
-                        input_default = {"name": f"node_{i}"}
+                    block = next(b for b in self.agent_blocks if b["name"] == "GetCurrentTimeBlock")
+                    input_default = {"trigger": "start", "format": "%H:%M:%S"}
                     
                     node = Node(
                         id=node_id,
@@ -253,25 +209,116 @@ class TestDataCreator:
                         metadata={}
                     )
                     nodes.append(node)
-                
-                # Create links between nodes
-                if len(nodes) >= 2:
-                    source_node = nodes[0]
-                    sink_node = nodes[1]
+                else:
+                    # For regular graphs: Create calculator agent pattern with 4 nodes
+                    # Node 1: AgentInputBlock for 'a'
+                    input_a_id = str(faker.uuid4())
+                    input_a_block = next(b for b in self.agent_blocks if b["name"] == "AgentInputBlock")
+                    input_a_node = Node(
+                        id=input_a_id,
+                        block_id=input_a_block["id"],
+                        input_default={
+                            "name": "a",
+                            "title": None,
+                            "value": "",
+                            "advanced": False,
+                            "description": None,
+                            "placeholder_values": []
+                        },
+                        metadata={}
+                    )
+                    nodes.append(input_a_node)
                     
-                    link = Link(
-                        source_id=source_node.id,
-                        sink_id=sink_node.id,
-                        source_name="output",
-                        sink_name="input",
+                    # Node 2: AgentInputBlock for 'b'
+                    input_b_id = str(faker.uuid4())
+                    input_b_block = next(b for b in self.agent_blocks if b["name"] == "AgentInputBlock")
+                    input_b_node = Node(
+                        id=input_b_id,
+                        block_id=input_b_block["id"],
+                        input_default={
+                            "name": "b",
+                            "title": None,
+                            "value": "",
+                            "advanced": False,
+                            "description": None,
+                            "placeholder_values": []
+                        },
+                        metadata={}
+                    )
+                    nodes.append(input_b_node)
+                    
+                    # Node 3: CalculatorBlock
+                    calc_id = str(faker.uuid4())
+                    calc_block = next(b for b in self.agent_blocks if b["name"] == "CalculatorBlock")
+                    calc_node = Node(
+                        id=calc_id,
+                        block_id=calc_block["id"],
+                        input_default={
+                            "operation": "Add",
+                            "round_result": False
+                        },
+                        metadata={}
+                    )
+                    nodes.append(calc_node)
+                    
+                    # Node 4: AgentOutputBlock
+                    output_id = str(faker.uuid4())
+                    output_block = next(b for b in self.agent_blocks if b["name"] == "AgentOutputBlock")
+                    output_node = Node(
+                        id=output_id,
+                        block_id=output_block["id"],
+                        input_default={
+                            "name": "result",
+                            "title": None,
+                            "value": "",
+                            "format": "",
+                            "advanced": False,
+                            "description": None
+                        },
+                        metadata={}
+                    )
+                    nodes.append(output_node)
+                
+                # Create links between nodes (only for non-dummy graphs with multiple nodes)
+                if not is_dummy_input and len(nodes) >= 4:
+                    # Link input_a to calculator.a
+                    link1 = Link(
+                        source_id=input_a_id,
+                        sink_id=calc_id,
+                        source_name="result",
+                        sink_name="a",
+                        is_static=True
+                    )
+                    links.append(link1)
+                    
+                    # Link input_b to calculator.b
+                    link2 = Link(
+                        source_id=input_b_id,
+                        sink_id=calc_id,
+                        source_name="result",
+                        sink_name="b",
+                        is_static=True
+                    )
+                    links.append(link2)
+                    
+                    # Link calculator.result to output.value
+                    link3 = Link(
+                        source_id=calc_id,
+                        sink_id=output_id,
+                        source_name="result",
+                        sink_name="value",
                         is_static=False
                     )
-                    links.append(link)
+                    links.append(link3)
                 
-                # Create graph object
+                # Create graph object with DummyInput in name if it's a dummy input graph
+                graph_name = faker.sentence(nb_words=3)
+                if is_dummy_input:
+                    graph_name = f"DummyInput {graph_name}"
+                
                 graph = Graph(
                     id=graph_id,
-                    name=faker.sentence(nb_words=3),
+                    name=graph_name,
                     description=faker.text(max_nb_chars=200),
                     nodes=nodes,
                     links=links,
@@ -516,9 +563,6 @@ class TestDataCreator:
         except Exception as e:
             print(f"Error refreshing materialized views: {e}")
         
-        # Save all data to JSON files
-        self.save_data_to_files()
-        
         print("E2E test data creation completed successfully!")
         
         # Print summary
@@ -526,12 +570,10 @@ class TestDataCreator:
         print(f"✅ Users created: {len(self.users)}")
         print(f"✅ Agent blocks available: {len(self.agent_blocks)}")
         print(f"✅ Agent graphs created: {len(self.agent_graphs)}")
-        print(f"✅ Profiles created: {len(self.profiles)}")
         print(f"✅ Library agents created: {len(self.library_agents)}")
         print(f"✅ Store submissions created: {len(self.store_submissions)}")
         print(f"✅ API keys created: {len(self.api_keys)}")
         print(f"✅ Presets created: {len(self.presets)}")
-        print(f"✅ Data saved to: {TEST_DATA_DIR}")
         print(f"\n🚀 Your E2E test database is ready to use!")
 
 
