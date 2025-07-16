@@ -13,14 +13,18 @@ test.beforeEach(async ({ page }) => {
 test("user can login successfully", async ({ page }) => {
   const testUser = await getTestUser();
   const loginPage = new LoginPage(page);
-  const { getId, getRole, getButton, getText } = getSelectors(page);
+  const { getId, getButton, getText, getRole } = getSelectors(page);
 
   await loginPage.login(testUser.email, testUser.password);
   await hasUrl(page, "/marketplace");
-  await isVisible(getId("profile-popout-menu-trigger"));
 
-  const dialog = getRole("dialog");
-  await isVisible(dialog);
+  const accountMenuTrigger = getId("profile-popout-menu-trigger");
+
+  await isVisible(accountMenuTrigger);
+
+  await accountMenuTrigger.click();
+  const accountMenuPopover = getRole("dialog");
+  await isVisible(accountMenuPopover);
 
   const username = testUser.email.split("@")[0];
   await isVisible(getText(username));
