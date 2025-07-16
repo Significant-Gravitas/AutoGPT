@@ -12,8 +12,7 @@ interface NavbarViewProps {
   isLoggedIn: boolean;
 }
 
-export const NavbarView = ({ isLoggedIn } : NavbarViewProps) => {
-    
+export const NavbarView = ({ isLoggedIn }: NavbarViewProps) => {
   const { data: profile } = useGetV2GetUserProfile({
     query: {
       select: (x) => {
