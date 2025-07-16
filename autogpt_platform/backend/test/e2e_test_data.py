@@ -293,48 +293,6 @@ class TestDataCreator:
         self.agent_graphs = graphs
         return graphs
     
-        """Create test profiles directly in the database."""
-        print("Creating test profiles...")
-        
-        profiles = []
-        for user in self.users:
-            try:
-                # Simple direct database creation
-                username = faker.unique.user_name()
-                name = user.get("name", faker.name())
-                description = faker.text()
-                links = [faker.url() for _ in range(3)]
-                avatar_url = get_image()
-                
-                profile_record = await prisma.profile.create(
-                    data={
-                        "userId": user["id"],
-                        "name": name,
-                        "username": username,
-                        "description": description,
-                        "links": links,
-                        "avatarUrl": avatar_url,
-                    }
-                )
-                
-                profiles.append({
-                    "id": profile_record.id,
-                    "userId": profile_record.userId,
-                    "name": profile_record.name,
-                    "username": profile_record.username,
-                    "description": profile_record.description,
-                    "links": profile_record.links,
-                    "avatarUrl": profile_record.avatarUrl,
-                })
-                print(f"✅ Created profile for user: {profile_record.name}")
-                
-            except Exception as e:
-                print(f"Error creating profile for user {user['id']}: {e}")
-                continue
-                
-        self.profiles = profiles
-        return profiles
-    
     async def create_test_library_agents(self) -> List[Dict[str, Any]]:
         """Create test library agents using the API function."""
         print("Creating test library agents...")
