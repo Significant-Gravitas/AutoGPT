@@ -190,6 +190,10 @@ jobs:
         run: |
           docker compose -f ../docker-compose.yml up -d
 
+      - name: Generate E2E test data
+        run: |
+          docker exec agpt-backend poetry run python test/e2e_test_data.py
+
       - name: Restore dependencies cache
         uses: actions/cache@v4
         with:

@@ -100,7 +100,7 @@ class TestDataCreator:
             try:
                 # Generate test user data
                 if i == 0:
-                    # First user should have test@gmail.com email for testing
+                    # First user should have test123@gmail.com email for testing
                     email = "test123@gmail.com"
                 else:
                     email = faker.unique.email()
