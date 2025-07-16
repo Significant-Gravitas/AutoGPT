@@ -1,8 +1,9 @@
-import { getV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
+import BackendAPI from "@/lib/autogpt-server-api";
 import { getServerUser } from "@/lib/supabase/server/getServerUser";
 
 export async function getNavbarAccountData() {
   const { user } = await getServerUser();
+  const api = new BackendAPI();
   const isLoggedIn = Boolean(user);
 
   if (!isLoggedIn) {
@@ -15,8 +16,7 @@ export async function getNavbarAccountData() {
   let profile = null;
 
   try {
-    const profileResponse = await getV2GetUserProfile();
-    profile = profileResponse.data || null;
+    profile = await api.getStoreProfile();
   } catch (error) {
     console.error("Error fetching profile:", error);
     profile = null;
