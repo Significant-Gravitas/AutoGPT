@@ -1,5 +1,6 @@
 import { expect, Locator, Page } from "@playwright/test";
 import { BasePage } from "./base.page";
+import { Block as APIBlock } from "../../lib/autogpt-server-api/types";
 
 export interface Block {
   id: string;
@@ -98,6 +99,80 @@ export class BuildPage extends BasePage {
     }
   }
 
+  async getBlocksFromAPI(): Promise<Block[]> {
+    console.log(`Getting blocks from API request`);
+
+    // Make direct API request using the page's request context
+    const response = await this.page.request.get(
+      "http://localhost:3000/api/proxy/api/blocks",
+    );
+    const apiBlocks: APIBlock[] = await response.json();
+
+    console.log(`Found ${apiBlocks.length} blocks from API`);
+
+    // Convert API blocks to test Block format
+    return apiBlocks.map((block) => ({
+      id: block.id,
+      name: block.name,
+      description: block.description,
+      type: block.uiType,
+    }));
+  }
+
+  async getFilteredBlocksFromAPI(
+    filterFn: (block: Block) => boolean,
+  ): Promise<Block[]> {
+    console.log(`Getting filtered blocks from API`);
+    const blocks = await this.getBlocksFromAPI();
+    return blocks.filter(filterFn);
+  }
+
+  async addBlock(block: Block): Promise<void> {
+    console.log(`Adding block ${block.name} (${block.id}) to agent`);
+    await this.page.getByTestId(`block-name-${block.id}`).click();
+  }
+
+  async isRFNodeVisible(nodeId: string): Promise<boolean> {
+    console.log(`checking if RF node ${nodeId} is visible on page`);
+    return await this.page.getByTestId(`rf__node-${nodeId}`).isVisible();
+  }
+
+  async hasBlock(block: Block): Promise<boolean> {
+    try {
+      const node = this.page.getByTestId(block.id).first();
+      return await node.isVisible();
+    } catch (error) {
+      console.error("Error checking for block:", error);
+      return false;
+    }
+  }
+
+  async getBlockInputs(blockId: string): Promise<string[]> {
+    console.log(`Getting block ${blockId} inputs`);
+    try {
+      const node = this.page.locator(`[data-blockid="${blockId}"]`).first();
+      const inputsData = await node.getAttribute("data-inputs");
+      return inputsData ? JSON.parse(inputsData) : [];
+    } catch (error) {
+      console.error("Error getting block inputs:", error);
+      return [];
+    }
+  }
+
+  async getBlockOutputs(): Promise<string[]> {
+    throw new Error("Not implemented");
+    // try {
+    //   const node = await this.page
+    //     .locator(`[data-blockid="${blockId}"]`)
+    //     .first();
+    //   const outputsData = await node.getAttribute("data-outputs");
+    //   return outputsData ? JSON.parse(outputsData) : [];
+    // } catch (error) {
+    //   console.error("Error getting block outputs:", error);
+    //   return [];
+    // }
+  }
+
   async selectBlockCategory(category: string): Promise<void> {
     console.log(`Selecting block category: ${category}`);
     await this.page.getByText(category, { exact: true }).click();
@@ -173,55 +248,6 @@ export class BuildPage extends BasePage {
       console.error(`Error getting blocks for category ${category}:`, error);
       return [];
     }
-  }
-
-  async addBlock(block: Block): Promise<void> {
-    console.log(`Adding block ${block.name} (${block.id}) to agent`);
-    await this.page.getByTestId(`block-name-${block.id}`).click();
-  }
-
-  async isRFNodeVisible(nodeId: string): Promise<boolean> {
-    console.log(`checking if RF node ${nodeId} is visible on page`);
-    return await this.page.getByTestId(`rf__node-${nodeId}`).isVisible();
-  }
-
-  async hasBlock(block: Block): Promise<boolean> {
-    console.log(
-      `Checking if block ${block.name} (${block.id}) is visible on page`,
-    );
-    try {
-      const node = this.page.getByTestId(block.id).first();
-      return await node.isVisible();
-    } catch (error) {
-      console.error("Error checking for block:", error);
-      return false;
-    }
-  }
-
-  async getBlockInputs(blockId: string): Promise<string[]> {
-    console.log(`Getting block ${blockId} inputs`);
-    try {
-      const node = this.page.locator(`[data-blockid="${blockId}"]`).first();
-      const inputsData = await node.getAttribute("data-inputs");
-      return inputsData ? JSON.parse(inputsData) : [];
-    } catch (error) {
-      console.error("Error getting block inputs:", error);
-      return [];
-    }
-  }
-
-  async getBlockOutputs(): Promise<string[]> {
-    throw new Error("Not implemented");
-    // try {
-    //   const node = await this.page
-    //     .locator(`[data-blockid="${blockId}"]`)
-    //     .first();
-    //   const outputsData = await node.getAttribute("data-outputs");
-    //   return outputsData ? JSON.parse(outputsData) : [];
-    // } catch (error) {
-    //   console.error("Error getting block outputs:", error);
-    //   return [];
-    // }
   }
 
   async _buildBlockSelector(blockId: string, dataId?: string): Promise<string> {

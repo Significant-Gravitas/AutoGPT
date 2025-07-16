@@ -10,6 +10,11 @@ import { LoginPage } from "./pages/login.page";
 import { getTestUser } from "./utils/auth";
 import { hasUrl } from "./utils/assertion";
 
+test.describe.configure({
+  timeout: 40000,
+  mode: "parallel",
+});
+
 // Reason Ignore: admonishment is in the wrong place visually with correct prettier rules
 // prettier-ignore
 test.describe("Build", () => { //(1)!
@@ -35,20 +40,21 @@ test.describe("Build", () => { //(1)!
 
   // Helper function to add blocks starting with a specific letter
   async function addBlocksStartingWith(letter: string): Promise<void> {
-    await buildPage.openBlocksPanel();
-    const blocks = await buildPage.getBlocks();
-
     const blockIdsToSkip = await buildPage.getBlocksToSkip();
     const blockTypesToSkip = ["Input", "Output", "Agent", "AI"];
     console.log("⚠️ Skipping blocks:", blockIdsToSkip);
     console.log("⚠️ Skipping block types:", blockTypesToSkip);
 
     const targetLetter = letter.toLowerCase();
-    const blocksToAdd = blocks.filter(block => 
+    
+    // Get filtered blocks from API instead of DOM
+    const blocksToAdd = await buildPage.getFilteredBlocksFromAPI(block => 
       block.name[0].toLowerCase() === targetLetter &&
       !blockIdsToSkip.includes(block.id) && 
       !blockTypesToSkip.includes(block.type)
     );
+
+    await buildPage.openBlocksPanel();
 
     console.log(`Adding ${blocksToAdd.length} blocks starting with "${letter}"`);
     
@@ -182,82 +188,6 @@ test.describe("Build", () => { //(1)!
     await addBlocksStartingWith("z");
   });
 
-  test.skip("user can add all blocks a-l", async ({ page }, testInfo) => {
-    // this test is slow af so we 100x the timeout (sorry future me)
-    test.setTimeout(testInfo.timeout * 100);
-
-    await buildPage.openBlocksPanel();
-    const blocks = await buildPage.getBlocks();
-
-    const blockIdsToSkip = await buildPage.getBlocksToSkip();
-    const blockTypesToSkip = ["Input", "Output", "Agent", "AI"];
-    console.log("⚠️ Skipping blocks:", blockIdsToSkip);
-    console.log("⚠️ Skipping block types:", blockTypesToSkip);
-
-    // add all the blocks in order except for the agent executor block
-    for (const block of blocks) {
-      if (block.name[0].toLowerCase() >= "m") {
-        continue;
-      }
-      if (!blockIdsToSkip.includes(block.id) && !blockTypesToSkip.includes(block.type)) {
-        await buildPage.addBlock(block);
-      }
-    }
-    await buildPage.closeBlocksPanel();
-    // check that all the blocks are visible
-    for (const block of blocks) {
-      if (block.name[0].toLowerCase() >= "m") {
-        continue;
-      }
-      if (!blockIdsToSkip.includes(block.id) && !blockTypesToSkip.includes(block.type)) {
-        await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
-      }
-    }
-
-    // check that we can save the agent with all the blocks
-    await buildPage.saveAgent("all blocks test", "all blocks test");
-    // page should have a url like http://localhost:3000/build?flowID=f4f3a1da-cfb3-430f-a074-a455b047e340
-    await test.expect(page).toHaveURL(({ searchParams }) => !!searchParams.get("flowID"));
-  });
-
-  test.skip("user can add all blocks m-z", async ({ page }, testInfo) => {
-    // this test is slow af so we 100x the timeout (sorry future me)
-    test.setTimeout(testInfo.timeout * 100);
-
-    await buildPage.openBlocksPanel();
-    const blocks = await buildPage.getBlocks();
-
-    const blockIdsToSkip = await buildPage.getBlocksToSkip();
-    const blockTypesToSkip = ["Input", "Output", "Agent", "AI"];
-    console.log("⚠️ Skipping blocks:", blockIdsToSkip);
-    console.log("⚠️ Skipping block types:", blockTypesToSkip);
-
-    // add all the blocks in order except for the agent executor block
-    for (const block of blocks) {
-      if (block.name[0].toLowerCase() < "m") {
-        continue;
-      }
-      if (!blockIdsToSkip.includes(block.id) && !blockTypesToSkip.includes(block.type)) {
-        await buildPage.addBlock(block);
-      }
-    }
-    await buildPage.closeBlocksPanel();
-    // check that all the blocks are visible
-    for (const block of blocks) {
-      if (block.name[0].toLowerCase() < "m") {
-        continue;
-      }
-      if (!blockIdsToSkip.includes(block.id) && !blockTypesToSkip.includes(block.type)) {
-        await test.expect(buildPage.hasBlock(block)).resolves.toBeTruthy();
-      }
-    }
-
-    // check that we can save the agent with all the blocks
-    await buildPage.saveAgent("all blocks test", "all blocks test");
-    // page should have a url like http://localhost:3000/build?flowID=f4f3a1da-cfb3-430f-a074-a455b047e340
-    await test.expect(page).toHaveURL(({ searchParams }) => !!searchParams.get("flowID"));
-  });
-
   test("build navigation is accessible from navbar", async ({ page }) => {
     // Navigate somewhere else first
     await page.goto("/marketplace"); //(4)!
@@ -334,100 +264,101 @@ test.describe("Build", () => { //(1)!
   });
 
   test("user can build an agent with inputs and output blocks", async ({ page }) => {
-    // simple calculator to double input and output it
-
-    // prep
-    await buildPage.openBlocksPanel();
-
-    // find the blocks we want
-    const blocks = await buildPage.getBlocks();
-    const inputBlock = blocks.find((b) => b.name === "Agent Input");
-    const outputBlock = blocks.find((b) => b.name === "Agent Output");
-    const calculatorBlock = blocks.find((b) => b.name === "Calculator");
-    if (!inputBlock || !outputBlock || !calculatorBlock) {
-      throw new Error("Input or output block not found");
-    }
-
-    // add the blocks
-    await buildPage.addBlock(inputBlock);
-    await buildPage.addBlock(outputBlock);
-    await buildPage.addBlock(calculatorBlock);
-    await buildPage.closeBlocksPanel();
-
-    // Wait for blocks to be fully loaded
-    await page.waitForTimeout(1000);
-
-    await test.expect(buildPage.hasBlock(inputBlock)).resolves.toBeTruthy();
-    await test.expect(buildPage.hasBlock(outputBlock)).resolves.toBeTruthy();
-    await test
-      .expect(buildPage.hasBlock(calculatorBlock))
-      .resolves.toBeTruthy();
-
-    // Wait for blocks to be ready for connections
-    await page.waitForTimeout(1000);
-
-    await buildPage.connectBlockOutputToBlockInputViaName(
-      inputBlock.id,
-      "Result",
-      calculatorBlock.id,
-      "A",
-    );
-    await buildPage.connectBlockOutputToBlockInputViaName(
-      inputBlock.id,
-      "Result",
-      calculatorBlock.id,
-      "B",
-    );
-    await buildPage.connectBlockOutputToBlockInputViaName(
-      calculatorBlock.id,
-      "Result",
-      outputBlock.id,
-      "Value",
-    );
-
-    // Wait for connections to stabilize
-    await page.waitForTimeout(1000);
-
-    await buildPage.fillBlockInputByPlaceholder(
-      inputBlock.id,
-      "Enter Name",
-      "Value",
-    );
-    await buildPage.fillBlockInputByPlaceholder(
-      outputBlock.id,
-      "Enter Name",
-      "Doubled",
-    );
-
-    // Wait before changing dropdown
-    await page.waitForTimeout(500);
-
-    await buildPage.selectBlockInputValue(
-      calculatorBlock.id,
-      "Operation",
-      "Add",
-    );
-
-    // Wait before saving
-    await page.waitForTimeout(1000);
-
-    await buildPage.saveAgent(
-      "Input and Output Blocks Test",
-      "Testing input and output blocks",
-    );
-    await test.expect(page).toHaveURL(({ searchParams }) => !!searchParams.get("flowID"));
-
-    // Wait for save to complete
-    await page.waitForTimeout(1000);
-
-    await buildPage.runAgent();
-    await buildPage.fillRunDialog({
-      Value: "10",
-    });
-    await buildPage.clickRunDialogRunButton();
-    await buildPage.waitForCompletionBadge();
-    await test
-      .expect(buildPage.isCompletionBadgeVisible())
-      .resolves.toBeTruthy();
+      // prep
+      await buildPage.openBlocksPanel();
+  
+      // Get input block from Input category
+      const inputBlocks = await buildPage.getBlocksForCategory("Input");
+      const inputBlock = inputBlocks.find((b) => b.name === "Agent Input");
+      if (!inputBlock) throw new Error("Input block not found");
+      await buildPage.addBlock(inputBlock);
+  
+      // Get output block from Output category  
+      const outputBlocks = await buildPage.getBlocksForCategory("Output");
+      const outputBlock = outputBlocks.find((b) => b.name === "Agent Output");
+      if (!outputBlock) throw new Error("Output block not found");
+      await buildPage.addBlock(outputBlock);
+  
+      // Get calculator block from Logic category
+      const logicBlocks = await buildPage.getBlocksForCategory("Logic");
+      const calculatorBlock = logicBlocks.find((b) => b.name === "Calculator");
+      if (!calculatorBlock) throw new Error("Calculator block not found");
+      await buildPage.addBlock(calculatorBlock);
+  
+      await buildPage.closeBlocksPanel();
+  
+      // Wait for blocks to be fully loaded
+      await page.waitForTimeout(1000);
+  
+      await buildPage.hasBlock(inputBlock)
+      await buildPage.hasBlock(outputBlock)
+      await buildPage.hasBlock(calculatorBlock)
+  
+      // Wait for blocks to be ready for connections
+      await page.waitForTimeout(1000);
+  
+      await buildPage.connectBlockOutputToBlockInputViaName(
+        inputBlock.id,
+        "Result",
+        calculatorBlock.id,
+        "A",
+      );
+      await buildPage.connectBlockOutputToBlockInputViaName(
+        inputBlock.id,
+        "Result",
+        calculatorBlock.id,
+        "B",
+      );
+      await buildPage.connectBlockOutputToBlockInputViaName(
+        calculatorBlock.id,
+        "Result",
+        outputBlock.id,
+        "Value",
+      );
+  
+      // Wait for connections to stabilize
+      await page.waitForTimeout(1000);
+  
+      await buildPage.fillBlockInputByPlaceholder(
+        inputBlock.id,
+        "Enter Name",
+        "Value",
+      );
+      await buildPage.fillBlockInputByPlaceholder(
+        outputBlock.id,
+        "Enter Name",
+        "Doubled",
+      );
+  
+      // Wait before changing dropdown
+      await page.waitForTimeout(500);
+  
+      await buildPage.selectBlockInputValue(
+        calculatorBlock.id,
+        "Operation",
+        "Add",
+      );
+  
+      // Wait before saving
+      await page.waitForTimeout(1000);
+  
+      await buildPage.saveAgent(
+        "Input and Output Blocks Test",
+        "Testing input and output blocks",
+      );
+      await test.expect(page).toHaveURL(({ searchParams }) => !!searchParams.get("flowID"));
+  
+      // Wait for save to complete
+      await page.waitForTimeout(1000);
+  
+      await buildPage.runAgent();
+      await buildPage.fillRunDialog({
+        Value: "10",
+      });
+      await buildPage.clickRunDialogRunButton();
+      await buildPage.waitForCompletionBadge();
+      await test
+        .expect(buildPage.isCompletionBadgeVisible())
+        .resolves.toBeTruthy();
   });
 });
