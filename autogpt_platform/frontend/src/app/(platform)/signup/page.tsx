@@ -32,6 +32,7 @@ export default function SignupPage() {
     isLoading,
     isCloudEnv,
     isUserLoading,
+    shouldNotRenderCaptcha,
     isGoogleLoading,
     showNotAllowedModal,
     isSupabaseAvailable,
@@ -163,16 +164,18 @@ export default function SignupPage() {
             />
 
             {/* Turnstile CAPTCHA Component */}
-            <Turnstile
-              key={captchaKey}
-              siteKey={turnstile.siteKey}
-              onVerify={turnstile.handleVerify}
-              onExpire={turnstile.handleExpire}
-              onError={turnstile.handleError}
-              setWidgetId={turnstile.setWidgetId}
-              action="signup"
-              shouldRender={turnstile.shouldRender}
-            />
+            {shouldNotRenderCaptcha ? null : (
+              <Turnstile
+                key={captchaKey}
+                siteKey={turnstile.siteKey}
+                onVerify={turnstile.handleVerify}
+                onExpire={turnstile.handleExpire}
+                onError={turnstile.handleError}
+                setWidgetId={turnstile.setWidgetId}
+                action="signup"
+                shouldRender={turnstile.shouldRender}
+              />
+            )}
 
             <Button
               variant="primary"

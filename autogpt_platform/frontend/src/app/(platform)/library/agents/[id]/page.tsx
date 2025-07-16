@@ -1,5 +1,6 @@
 "use client";
 import { useParams, useRouter } from "next/navigation";
+import { useQueryState } from "nuqs";
 import React, {
   useCallback,
   useEffect,
@@ -45,6 +46,7 @@ import { useToast } from "@/components/molecules/Toast/use-toast";
 
 export default function AgentRunsPage(): React.ReactElement {
   const { id: agentID }: { id: LibraryAgentID } = useParams();
+  const [executionId, setExecutionId] = useQueryState("executionId");
   const { toast } = useToast();
   const router = useRouter();
   const api = useBackendAPI();
@@ -201,6 +203,13 @@ export default function AgentRunsPage(): React.ReactElement {
     selectRun,
     selectPreset,
   ]);
+
+  useEffect(() => {
+    if (executionId) {
+      selectRun(executionId as GraphExecutionID);
+      setExecutionId(null);
+    }
+  }, [executionId, selectRun, setExecutionId]);
 
   // Initial load
   useEffect(() => {
@@ -468,7 +477,7 @@ export default function AgentRunsPage(): React.ReactElement {
   }
 
   return (
-    <div className="container justify-stretch p-0 lg:flex">
+    <div className="container justify-stretch p-0 pt-16 lg:flex">
       {/* Sidebar w/ list of runs */}
       {/* TODO: render this below header in sm and md layouts */}
       <AgentRunsSelectorList

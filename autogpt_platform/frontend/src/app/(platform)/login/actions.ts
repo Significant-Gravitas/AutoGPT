@@ -23,6 +23,7 @@ export async function login(
   return await Sentry.withServerActionInstrumentation("login", {}, async () => {
     const supabase = await getServerSupabase();
     const api = new BackendAPI();
+    const isVercelPreview = process.env.VERCEL_ENV === "preview";
 
     if (!supabase) {
       redirect("/error");
@@ -30,7 +31,7 @@ export async function login(
 
     // Verify Turnstile token if provided
     const success = await verifyTurnstileToken(turnstileToken, "login");
-    if (!success) {
+    if (!success && !isVercelPreview) {
       return "CAPTCHA verification failed. Please try again.";
     }
 

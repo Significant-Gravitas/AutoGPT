@@ -1,8 +1,7 @@
 "use client";
-import React, { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
+import React, { useEffect, useState } from "react";
 
-import { cn } from "@/lib/utils";
 import {
   GraphExecutionID,
   GraphExecutionMeta,
@@ -12,14 +11,15 @@ import {
   Schedule,
   ScheduleID,
 } from "@/lib/autogpt-server-api";
+import { cn } from "@/lib/utils";
 
+import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { Button } from "@/components/agptui/Button";
-import { Badge } from "@/components/ui/badge";
 
 import { agentRunStatusMap } from "@/components/agents/agent-run-status-chip";
 import AgentRunSummaryCard from "@/components/agents/agent-run-summary-card";
+import { Button } from "../atoms/Button/Button";
 
 interface AgentRunsSelectorListProps {
   agent: LibraryAgent;
@@ -72,17 +72,11 @@ export default function AgentRunsSelectorList({
     <aside className={cn("flex flex-col gap-4", className)}>
       {allowDraftNewRun && (
         <Button
-          size="card"
-          className={
-            "mb-4 hidden h-16 w-72 items-center gap-2 py-6 lg:flex xl:w-80 " +
-            (selectedView.type == "run" && !selectedView.id
-              ? "agpt-card-selected text-accent"
-              : "")
-          }
+          className={"mb-4 hidden lg:flex"}
           onClick={onSelectDraftNewRun}
+          leftIcon={<Plus className="h-6 w-6" />}
         >
-          <Plus className="h-6 w-6" />
-          <span>New {agent.has_external_trigger ? "trigger" : "run"}</span>
+          New {agent.has_external_trigger ? "trigger" : "run"}
         </Button>
       )}
 
@@ -112,7 +106,7 @@ export default function AgentRunsSelectorList({
           {/* New Run button - only in small layouts */}
           {allowDraftNewRun && (
             <Button
-              size="card"
+              size="large"
               className={
                 "flex h-28 w-40 items-center gap-2 py-6 lg:hidden " +
                 (selectedView.type == "run" && !selectedView.id
@@ -120,9 +114,9 @@ export default function AgentRunsSelectorList({
                   : "")
               }
               onClick={onSelectDraftNewRun}
+              leftIcon={<Plus className="h-6 w-6" />}
             >
-              <Plus className="h-6 w-6" />
-              <span>New {agent.has_external_trigger ? "trigger" : "run"}</span>
+              New {agent.has_external_trigger ? "trigger" : "run"}
             </Button>
           )}
 

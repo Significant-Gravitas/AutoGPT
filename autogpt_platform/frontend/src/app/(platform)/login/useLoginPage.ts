@@ -28,6 +28,8 @@ export function useLoginPage() {
     resetOnError: true,
   });
 
+  const shouldNotRenderCaptcha = isVercelPreview || turnstile.verified;
+
   const form = useForm<z.infer<typeof loginFormSchema>>({
     resolver: zodResolver(loginFormSchema),
     defaultValues: {
@@ -125,6 +127,7 @@ export function useLoginPage() {
     isLoading,
     isCloudEnv,
     isUserLoading,
+    shouldNotRenderCaptcha,
     isGoogleLoading,
     showNotAllowedModal,
     isSupabaseAvailable: !!supabase,

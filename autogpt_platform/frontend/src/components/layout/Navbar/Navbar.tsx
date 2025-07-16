@@ -1,6 +1,7 @@
 import { IconAutoGPTLogo, IconType } from "@/components/ui/icons";
 import Wallet from "../../agptui/Wallet";
 import { AccountMenu } from "./components/AccountMenu/AccountMenu";
+import { AgentActivityDropdown } from "./components/AgentActivityDropdown/AgentActivityDropdown";
 import { LoginButton } from "./components/LoginButton";
 import { MobileNavBar } from "./components/MobileNavbar/MobileNavBar";
 import { NavbarLink } from "./components/NavbarLink";
@@ -33,6 +34,7 @@ export async function Navbar() {
         <div className="flex flex-1 items-center justify-end gap-4">
           {isLoggedIn ? (
             <div className="flex items-center gap-4">
+              <AgentActivityDropdown />
               {profile && <Wallet />}
               <AccountMenu
                 userName={profile?.username}

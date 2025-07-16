@@ -5,13 +5,13 @@
  * This server is used to execute agents that are created by the AutoGPT system.
  * OpenAPI spec version: 0.1
  */
-import type { ProviderName } from "./providerName";
 import type { WebhookConfig } from "./webhookConfig";
 
 export interface Webhook {
   id?: string;
   user_id: string;
-  provider: ProviderName;
+  /** Provider name for integrations. Can be any string value, including custom provider names. */
+  provider: string;
   credentials_id: string;
   webhook_type: string;
   resource: string;

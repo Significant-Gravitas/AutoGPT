@@ -18,6 +18,7 @@ export async function signup(
     {},
     async () => {
       const supabase = await getServerSupabase();
+      const isVercelPreview = process.env.VERCEL_ENV === "preview";
 
       if (!supabase) {
         redirect("/error");
@@ -25,7 +26,7 @@ export async function signup(
 
       // Verify Turnstile token if provided
       const success = await verifyTurnstileToken(turnstileToken, "signup");
-      if (!success) {
+      if (!success && !isVercelPreview) {
         return "CAPTCHA verification failed. Please try again.";
       }
 
