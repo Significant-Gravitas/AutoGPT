@@ -8,6 +8,12 @@ import path from "path";
 import { LoginPage } from "./pages/login.page";
 import { getTestUser } from "./utils/auth";
 import { hasUrl } from "./utils/assertion";
+import {
+  navigateToLibrary,
+  clickFirstAgent,
+  runAgent,
+  waitForAgentPageLoad,
+} from "./pages/library.page";
 
 test.describe.configure({
   mode: "parallel",
@@ -15,7 +21,6 @@ test.describe.configure({
 });
 
 test.beforeEach(async ({ page }, testInfo: TestInfo) => {
-  const buildPage = new BuildPage(page);
   const loginPage = new LoginPage(page);
   const testUser = await getTestUser();
   const monitorPage = new MonitorPage(page);
@@ -25,21 +30,19 @@ test.beforeEach(async ({ page }, testInfo: TestInfo) => {
   await loginPage.login(testUser.email, testUser.password);
   await hasUrl(page, "/marketplace");
 
-  // add a test agent
-  const basicBlock = await buildPage.getDictionaryBlockDetails();
-  const id = uuidv4();
-  await buildPage.createSingleBlockAgent(
-    `test-agent-${id}`,
-    `test-agent-description-${id}`,
-    basicBlock,
-  );
+  // Navigate to library and run the first agent
+  await navigateToLibrary(page);
+  await clickFirstAgent(page);
+  await waitForAgentPageLoad(page);
+  await runAgent(page);
 
-  await buildPage.runAgent();
-
-  // await monitorPage.navbar.clickMonitorLink();
-  await page.goto("/monitoring"); // Library link now points to /library
+  // Navigate to monitoring page
+  await page.goto("/monitoring");
   await monitorPage.waitForPageLoad();
   await test.expect(monitorPage.isLoaded()).resolves.toBeTruthy();
+
+  // Generate a test ID for tracking
+  const id = uuidv4();
   testInfo.attach("agent-id", { body: id });
 });
 
@@ -52,12 +55,6 @@ test.afterAll(async () => {
     recursive: true,
     force: true,
   });
-});
-
-test("user can view agents", async ({ page }) => {
-  const monitorPage = new MonitorPage(page);
-  const agents = await monitorPage.listAgents();
-  expect(agents.length).toBeGreaterThan(0);
 });
 
 test.skip("user can export and import agents", async ({
@@ -133,9 +130,11 @@ test.skip("user can export and import agents", async ({
   expect(importedAgent).toBeDefined();
 });
 
-test("user can view runs", async ({ page }) => {
+test("user can view runs and agents", async ({ page }) => {
   const monitorPage = new MonitorPage(page);
   const runs = await monitorPage.listRuns();
-  console.log(runs);
+  const agents = await monitorPage.listAgents();
+
   expect(runs.length).toBeGreaterThan(0);
+  expect(agents.length).toBeGreaterThan(0);
 });
