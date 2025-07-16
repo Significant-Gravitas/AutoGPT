@@ -8,7 +8,7 @@ import { NavbarLink } from "../components/NavbarLink";
 import { accountMenuItems, loggedInLinks, loggedOutLinks } from "../helpers";
 import { useGetV2GetUserProfile } from "@/app/api/__generated__/endpoints/store/store";
 
-export const NavbarMainPage = ({ isLoggedIn }: { isLoggedIn: boolean }) => {
+export const NavbarView = ({ isLoggedIn }: { isLoggedIn: boolean }) => {
   const { data: profile } = useGetV2GetUserProfile({
     query: {
       select: (x) => {

@@ -1,8 +1,8 @@
-import { NavbarMainPage } from "./components/NavbarMainPage";
+import { NavbarView } from "./components/NavbarMainPage";
 import { getNavbarAccountData } from "./data";
 
 export async function Navbar() {
   const { isLoggedIn } = await getNavbarAccountData();
 
-  return <NavbarMainPage isLoggedIn={isLoggedIn} />;
+  return <NavbarView isLoggedIn={isLoggedIn} />;
 }
